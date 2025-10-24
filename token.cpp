@@ -34,26 +34,34 @@ bool token::isDataType(){
     if(string("void,int,string").find(text)!=string::npos) return true;
     return false;
 }
+bool token::isValidIdentifier(){
+    if(!(isalpha(text[0])&&text[0]!='_')) return false;
+    for (int i = 0; text[i] != '\0'; ++i){
+        if(isalnum(text[i]==false&&text[i]!='_')) return false;   
+    }
+    return true;
+}
+
 
 token token::assert(eTokenType type, std::string errMsg){ return assertOneOf({type}, errMsg); }
 token token::assert(std::string text, std::string errMsg){ return assertOneOf({text}, errMsg); }
 
 token token::assertOneOf(vector<eTokenType> types, string errMsg){
     if(!isOneOf(types)) {
-        if(errMsg=="") beguiler.parseError(assertFailedMessage(types));
-        beguiler.parseError(errMsg);
+        if(errMsg=="") bglParser.parseError(assertFailedMessage(types));
+        bglParser.parseError(errMsg);
     }
     return *this;
 }
 token token::assertOneOf(vector<string> vals, string errMsg){
     if(!isOneOf(vals)) {
-        if(errMsg=="") beguiler.parseError(assertFailedMessage(vals));
-        beguiler.parseError(errMsg);
+        if(errMsg=="") bglParser.parseError(assertFailedMessage(vals));
+        bglParser.parseError(errMsg);
     }
     return *this;
 }
 token token::assertDataType(){
-    if(!isDataType()) beguiler.parseError("Expected data type.");
+    if(!isDataType()) bglParser.parseError("Expected data type.");
     return *this;
 }        
 
@@ -104,7 +112,7 @@ size_t token::chk() {
     return total;
 }
 token token::emit(){
-    beguiler.emit.put(text);
+    bglParser.emit.put(text);
     return *this;
 }
 string token::tokenTypeToString(eTokenType type){
@@ -121,10 +129,11 @@ string token::tokenTypeToString(eTokenType type){
             break;
         
     }
+    return "Unknown";
 }
-token token::expand(){
-    text+=beguiler.file.getToken().text;
-    return *this;
-}
+// token token::expand(){
+//     text+=bglParser.file.getBasicToken().text;
+//     return *this;
+// }
 
 
