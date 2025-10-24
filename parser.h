@@ -4,7 +4,7 @@
 #include <deque>
 
 #include "token.h"
-#include "fileReader.h"
+#include "fileLexer.h"
 #include "emitter.h"
 
 struct resultsStruct{
@@ -20,7 +20,7 @@ class parser {
     public:
         emitter emit;
         resultsStruct results;
-        fileReader file;
+        fileLexer file;
         
  
         parser();
@@ -31,7 +31,8 @@ class parser {
         
         void openCompileScope(eCompileScope); 
         void closeCompileScope(); 
-        
+        int getScopeNestingDepth();
+
     private:
         std::deque<eCompileLanguage> compileLanguageStack;   //of course, these aren't really stacks, but we use them that way
         std::deque<eCompileScope> compileScopeStack; 
@@ -46,6 +47,8 @@ class parser {
         void processFunctionCall(token, token=_nullToken);
         bool getArgumentExpression(std::string&);
         void processI6();
+        
+        
 
         void emitVariable(token, token, token= _nullToken);
         

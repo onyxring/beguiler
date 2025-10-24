@@ -8,6 +8,11 @@ enum class eTokenType{
     unknown,
     eof,
     text,
+    identifier,
+    directive,
+    dataType,
+    integer,
+    expression,
     symbol,
     quote,
 };
@@ -37,6 +42,7 @@ class token {
         bool isOneOf(std::vector<std::string>);
         bool isNull();
         bool isDataType();
+        bool isValidIdentifier();
 
         token assert(eTokenType, std::string="");
         token assert(std::string, std::string="");
@@ -48,7 +54,7 @@ class token {
         std::string assertFailedMessage(std::vector<std::string> vals);
         std::string tokenTypeToString(eTokenType type);
 
-        token expand();
+        //token expand();
         token emit();
         size_t chk();
         

@@ -6,38 +6,38 @@
 #include <tuple> 
 #include <optional>
 
-#include "fileReader.h"
+#include "fileLexer.h"
 #include "parser.h"
 #include "orbit.h"
 
 using namespace std;
 
-void fileReader::open(string filename){
+void fileLexer::open(string filename){
     ifstream& inputFileStream=*(new ifstream(filename));  
     
-    if (!inputFileStream.is_open()) beguiler.parseError("Unable to open file "+filename+".");
+    if (!inputFileStream.is_open()) bglParser.parseError("Unable to open file "+filename+".");
     files.push(make_tuple(&inputFileStream, filename, 1, 0)); //take the current file and push it on the stack    
 }
-void fileReader::close(){
+void fileLexer::close(){
     auto[inputFileStream, fileName, curLine, curCol]=files.top(); 
     inputFileStream->close();
     delete inputFileStream;
     files.pop();
 }
-int fileReader::numOpen(){
+int fileLexer::numOpen(){
     return files.size();
 }
-void fileReader::moveToStart(){
+void fileLexer::moveToStart(){
     currentStream()->seekg(currentStream()->beg); 
 }
 //-- read file methods----------------------------------------------
-ifstream* fileReader::currentStream(){
+ifstream* fileLexer::currentStream(){
     auto[inputFileStream, fileName, curLine, curCol]=files.top(); 
     return inputFileStream;   
 }
 
 // ignore all spaces before the next token
-void fileReader::bleedSpaces(){
+void fileLexer::bleedSpaces(){
     char c=peekChar(); 
     while(c!=EOF && isspace(c)) { //this is just whitespace; discard it
         readChar(); 
@@ -45,10 +45,10 @@ void fileReader::bleedSpaces(){
     }
 }
 
-char fileReader::peekChar(){
+char fileLexer::peekChar(){
     return currentStream()->peek();
 }
-char fileReader::readChar(){
+char fileLexer::readChar(){
     int retval;
     auto&[inputFileStream, fileName, curLine, curCol]=files.top(); 
 
@@ -61,24 +61,20 @@ char fileReader::readChar(){
     curCol++;
     return retval;
 }
-// bool parser::isSymbolChar(char c){
-//     string symbols="[](){}#.\";'";
-//     if(symbols.find(c)==string::npos) return false;
-//     return true;
-// }
-bool fileReader::isKeywordChar(char c){
+
+bool fileLexer::isKeywordChar(char c){
     if(isalnum(c)) return true;
     if(c=='_') return true;
     return false;
 }
-tuple<ifstream*, string, int, int> fileReader::getDetail(){
+tuple<ifstream*, string, int, int> fileLexer::getDetail(){
     return files.top();
 }
 //scan the next characters in the file and return a basic token which fits one of three types:
 // a single valid "symbol" character.  For example, parentheses, semicolon, braces, etc... Not all symbols are valid in the language.
-// a string of characters made up of characters which are valid for keywords.  Note that this doesn't check for validity:  1abc is not a valid identifier; but will still be returned; as would 45.
+// a string of characters made up of those which are valid for keywords.  Note that this doesn't check for validity:  1abc is not a valid identifier; but will still be returned; as would 45.
 // a quoted string of text, potentially containing any characters (except a quote, presently)
-token fileReader::getToken(bool suppressBleed){
+token fileLexer::getBasicToken(bool suppressBleed){
     token retval;
     
     if(!suppressBleed) bleedSpaces();
@@ -119,24 +115,46 @@ token fileReader::getToken(bool suppressBleed){
     }
     
     if(c==EOF) {
-        if(beguiler.resolveCurrentCompileScope()!=eCompileScope::root) beguiler.parseError("End of file encountered prematurely");
+        if(bglParser.resolveCurrentCompileScope()!=eCompileScope::root) bglParser.parseError("End of file encountered prematurely");
         retval.tokenType=eTokenType::eof;
     }
     return retval;
 }
-token fileReader::getToken(eTokenType tokenType){
-    token retval=getToken();
+token fileLexer::getBasicToken(eTokenType tokenType){
+    token retval=getBasicToken();
     return retval.assertOneOf({tokenType}); 
 }
-token fileReader::getToken(vector<eTokenType> types){
-    token retval=getToken();
+token fileLexer::getBasicToken(vector<eTokenType> types){
+    token retval=getBasicToken();
     return retval.assertOneOf(types); 
 }
-token fileReader::getToken(string val){
-    token retval=getToken();
+token fileLexer::getBasicToken(string val){
+    token retval=getBasicToken();
     return retval.assertOneOf({val}); 
 }
-token fileReader::getToken(std::vector<string> vals){
-    token retval=getToken();
+token fileLexer::getBasicToken(std::vector<string> vals){
+    token retval=getBasicToken();
     return retval.assertOneOf(vals); 
+}
+token fileLexer::getToken(bool suppressBleed){
+    token retval=getBasicToken(suppressBleed);
+    token next;
+    switch(retval.tokenType){
+        case eTokenType::symbol:
+                if(retval.is("#")){
+                    next=getBasicToken(eTokenType::identifier);
+                    retval.text+=next.text;
+                    retval.tokenType=eTokenType::directive;
+                }
+            break;
+        case eTokenType::text:
+                if(retval.isDataType()) retval.tokenType=eTokenType::dataType;    
+                    break;
+                if(retval.isValidIdentifier()) retval.tokenType=eTokenType::identifier;
+                    break;
+                
+            break;
+    }
+
+    return retval; 
 }
