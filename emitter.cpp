@@ -5,8 +5,15 @@
 
 using namespace std;
 
-void emitter::to(ostream& strm){ out.std::ios::rdbuf(strm.rdbuf()); }
 
+void emitter::put(string str){ 
+    out<<str; 
+}
+void emitter::put(token tok){ 
+    out<<tok.text; 
+}
+
+void emitter::to(ostream& strm){ out.std::ios::rdbuf(strm.rdbuf()); }
 void emitter::variable(token datatype, token id, token val){
     if(val.isNull())  {
         out<<format("{0};\n",id.text);

@@ -15,6 +15,8 @@ class emitter{
         void enumOrFlags(token,bool);
         void globalVariable(token, token, token= _nullToken);
         void variable(token, token, token= _nullToken);
+        void put(std::string);
+        void put(token);
 
         //bool getArgumentExpression(std::string&);
 };
