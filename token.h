@@ -1,4 +1,5 @@
 #include <string>
+#include <string_view>
 #include <stack>
 #include <vector>
 #pragma once
@@ -14,15 +15,15 @@ enum class eTokenType{
 class token {
      
      public:
-        static std::string endStatement; 
-        static std::string assignment;
-        static std::string parenOpen; 
-        static std::string parenClose; 
-        static std::string bracesOpen; 
-        static std::string bracesClose; 
-        static std::string bracketOpen;
-        static std::string bracketClose; 
-        static std::string comma; 
+        static constexpr std::string endStatement=";"; 
+        static constexpr std::string assignment ="="; 
+        static constexpr std::string parenOpen ="(";  
+        static constexpr std::string parenClose =")"; 
+        static constexpr std::string bracesOpen ="{";  
+        static constexpr std::string bracesClose ="}"; 
+        static constexpr std::string bracketOpen ="["; 
+        static constexpr std::string bracketClose ="]"; 
+        static constexpr std::string comma  =","; 
         
         eTokenType tokenType=eTokenType::unknown;
         
@@ -48,5 +49,8 @@ class token {
         std::string tokenTypeToString(eTokenType type);
 
         token expand();
+        token emit();
+        size_t chk();
+        
 };
 extern token _nullToken;

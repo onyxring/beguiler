@@ -10,7 +10,7 @@ int main(int argc, char* argv[]) {
     app.go(argc, argv);
   }
   catch(std::runtime_error &e){
-    std::cout<<std::endl<<e.what()<<std::endl;
+    std::cerr<<std::endl<<e.what()<<std::endl;
   }
   return 0;
 }
