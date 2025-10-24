@@ -11,4 +11,4 @@ class orbit {
         bool writeFile(std::string);                //write the output file
 };
 
-extern parser beguiler;
+extern parser bglParser;
