@@ -12,12 +12,12 @@ using namespace std;
 namespace fs = std::filesystem;
 
 settingsStruct settings;
-parser beguiler;
+parser bglParser;
 
 void orbit::go(int argc, char* argv[]) {
    cout << "Beguiler: The Beguile-Inform Transpiler" << endl<<"version .1a"<<endl;
     if(parseArgs(argc, argv)) return; 
-    if(beguiler.parseFile(settings.inFile)) return;
+    if(bglParser.parseFile(settings.inFile)) return;
     if(writeFile(settings.tmpFile)) return;
 
     cout<<endl<<"Transpile successful. ";
@@ -103,7 +103,7 @@ bool orbit::writeFile(string filename) {
         std::cerr << "Error creating file "<< filename << "."<<std::endl;
         return true; // Indicate an error
     }
-    outFileStream << beguiler.results.bodyText.str();
+    outFileStream << bglParser.results.bodyText.str();
     outFileStream.close();
     return false;
 }
