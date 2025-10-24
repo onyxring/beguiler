@@ -6,16 +6,29 @@
 #include <tuple> 
 #include <optional>
 
+#include <string_view>
+
 #include "parser.h"
 #include "fileReader.h"
 
 using namespace std;
 
 parser::parser(){ 
-    emit.to(cout);  //write the result to the terminal window for now
+    //emit.to(cout);  //write the result to the terminal window for now
+    emit.to(results.bodyText);
 }
-// change the stream that output is written to
 
+constexpr size_t chk(string_view str) {
+    const long long p = 131;
+    const long long m = 4294967291; // 2^32 - 5, largest 32 bit prime
+    long long total = 0;
+    long long current_multiplier = 1;
+    for (int i = 0; str[i] != '\0'; ++i){
+        total = (total + current_multiplier * str[i]) % m;
+        current_multiplier = (current_multiplier * p) % m;
+    }
+    return total;
+}
 
 // Open an input file, process each statement.  This is the entry point to this whole parsing process
 bool parser::parseFile(string filename){
@@ -61,7 +74,7 @@ bool parser::processNextStatement(){
 
     if(resolveCurrentCompileScope()==eCompileScope::root){ //we are at the root of the source code heirarchy, where global declarations and class definitions all live    
     
-        if(tok.is(eTokenType::eof)) return true; 
+        if(tok.is(eTokenType::eof)) return true; //end of file at global scope... exit
 
         //Statements which begin with a data type: 
         // int j;
@@ -70,23 +83,22 @@ bool parser::processNextStatement(){
         if(tok.isDataType()){ 
             token name = file.getToken(eTokenType::text);
             token symbol = file.getToken(eTokenType::symbol);
-
-            if(symbol.text==token::endStatement) {
-                emit.globalVariable(tok, name); 
-                return false;
-            }
-
-            if(symbol.text==token::assignment) {
-                token val = file.getToken({eTokenType::text, eTokenType::quote}); 
-                file.getToken(token::endStatement);
-                emit.globalVariable(tok, name, val); 
-                return false;
-            }
-            
-            //--Global Routine 
-            if(symbol.text==token::parenOpen) {
-                emit.globalFunction(tok, name);
-                return false;
+            token val;
+            switch(symbol.chk()){
+                case chk(token::endStatement):
+                    emit.globalVariable(tok, name); 
+                    return false;
+                    break;
+                case chk(token::assignment):
+                    val = file.getToken({eTokenType::text, eTokenType::quote}); 
+                    file.getToken(token::endStatement);
+                    emit.globalVariable(tok, name, val); 
+                    return false;
+                    break;
+                case chk(token::parenOpen): 
+                    emit.globalFunction(tok, name);
+                    return false;
+                    break;
             }
             parseError("Invalid character '"+symbol.text+"'.");
         }
@@ -101,9 +113,22 @@ bool parser::processNextStatement(){
         parseError("Invalid keyword '"+tok.text+"'.");
     } 
 
-    if(resolveCurrentCompileScope()==eCompileScope::codeBlock){ //we are at the root of the source code heirarchy, where global declarations and class definitions all live    
+    if(resolveCurrentCompileScope()==eCompileScope::codeBlock){ //we are inside a code block, where executable commands live
         if(tok.is(token::bracesClose)) return true; //exiting the code block
         
+        if(tok.is("return")){
+            tok.emit(); 
+            token nextToken=file.getToken();
+            if(nextToken.is(";")) {
+                nextToken.emit(); //return;
+            }
+            else{
+                emit.out<<" "; 
+                nextToken.emit(); 
+                file.getToken(";").emit(); //return val;
+            }
+            return false;
+        }
         token symbol = file.getToken(eTokenType::symbol);
 
         //TODO: add inline variable declarations
@@ -211,8 +236,8 @@ void parser::parseError(string msg){
     string errorMessage;
     if(file.numOpen()>0) {
         auto [inputFileStream, fileName, curLine, curCol]=file.getDetail(); 
-        //cerr<<fileName<<":"<<curLine<<":"<<curCol<<": error: "<<errMsg<<endl; 
-        errorMessage=format("\033[1m{0}:{1}:{2}: \x1b[31merror:\x1b[0m {3}",fileName,curLine,curCol,msg); 
+        //errorMessage=format("\033[1m{0}:{1}:{2}: \x1b[31merror:\x1b[0m {3}",fileName,curLine,curCol,msg); 
+        errorMessage=format("{0}:{1}:{2}: error: {3}",fileName,curLine,curCol,msg); 
     }
     else{
         errorMessage=msg; 
