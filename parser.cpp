@@ -9,7 +9,7 @@
 #include <string_view>
 
 #include "parser.h"
-#include "fileReader.h"
+#include "fileLexer.h"
 
 using namespace std;
 
@@ -65,7 +65,7 @@ bool parser::parseFile(string filename){
 bool parser::processNextStatement(){
     processI6(); //we may be in the middle of emitting I6 code; do that until it is done.
     
-    token tok=file.getToken({eTokenType::text, eTokenType::symbol, eTokenType::eof});
+    token tok=file.getBasicToken({eTokenType::text, eTokenType::symbol, eTokenType::eof});
 
     if(tok.is(token::bracesClose)){
         closeCompileScope();
@@ -81,8 +81,8 @@ bool parser::processNextStatement(){
         // int j=5;
         // int j(int a, int b){ print(a); print(b); return false;}
         if(tok.isDataType()){ 
-            token name = file.getToken(eTokenType::text);
-            token symbol = file.getToken(eTokenType::symbol);
+            token name = file.getBasicToken(eTokenType::text);
+            token symbol = file.getBasicToken(eTokenType::symbol);
             token val;
             switch(symbol.chk()){
                 case chk(token::endStatement):
@@ -90,8 +90,8 @@ bool parser::processNextStatement(){
                     return false;
                     break;
                 case chk(token::assignment):
-                    val = file.getToken({eTokenType::text, eTokenType::quote}); 
-                    file.getToken(token::endStatement);
+                    val = file.getBasicToken({eTokenType::text, eTokenType::quote}); 
+                    file.getBasicToken(token::endStatement);
                     emit.globalVariable(tok, name, val); 
                     return false;
                     break;
@@ -103,8 +103,8 @@ bool parser::processNextStatement(){
             parseError("Invalid character '"+symbol.text+"'.");
         }
         if(tok.isOneOf({"enum","bitFlags"})) {
-            token name = file.getToken(eTokenType::text);
-            token symbol = file.getToken(eTokenType::symbol);
+            token name = file.getBasicToken(eTokenType::text);
+            token symbol = file.getBasicToken(eTokenType::symbol);
             
             symbol.assert(token::bracesOpen);
             processEnumOrFlags(name, tok.is("bitFlags"));
@@ -115,21 +115,22 @@ bool parser::processNextStatement(){
 
     if(resolveCurrentCompileScope()==eCompileScope::codeBlock){ //we are inside a code block, where executable commands live
         if(tok.is(token::bracesClose)) return true; //exiting the code block
+        emit.indent();
         
         if(tok.is("return")){
             tok.emit(); 
-            token nextToken=file.getToken();
+            token nextToken=file.getBasicToken();
             if(nextToken.is(";")) {
                 nextToken.emit(); //return;
             }
             else{
                 emit.out<<" "; 
                 nextToken.emit(); 
-                file.getToken(";").emit(); //return val;
+                file.getBasicToken(";").emit(); //return val;
             }
             return false;
         }
-        token symbol = file.getToken(eTokenType::symbol);
+        token symbol = file.getBasicToken(eTokenType::symbol);
 
         //TODO: add inline variable declarations
         
@@ -138,8 +139,8 @@ bool parser::processNextStatement(){
         else{
             symbol.assert(".");
             
-            token member = file.getToken(eTokenType::text);
-            file.getToken(token::parenOpen);
+            token member = file.getBasicToken(eTokenType::text);
+            file.getBasicToken(token::parenOpen);
 
             processFunctionCall(tok, member);
         }
@@ -154,9 +155,9 @@ void parser::processI6(){
     char c=file.readChar();
     while(c!=EOF){
         if(c=='#'){
-            token t=file.getToken(true);
+            token t=file.getBasicToken(true);
             if(t.text=="beguile"){
-                file.getToken("{");
+                file.getBasicToken("{");
                 compileLanguageStack.push_front(eCompileLanguage::beguile);
                 openCompileScope(eCompileScope::languageBlock);
                 return;
@@ -169,7 +170,7 @@ void parser::processI6(){
 void parser::processEnumOrFlags(token name, bool asFlag){
     int val=(asFlag)?1:0; 
     emit.out<<"object "<<name.text<<" with ";
-    token tok = file.getToken({eTokenType::text, eTokenType::symbol});
+    token tok = file.getBasicToken({eTokenType::text, eTokenType::symbol});
     while(!tok.is(token::bracesClose)){
         tok.assert(eTokenType::text);
         emit.out<<tok.text<< " "<<val;
@@ -177,10 +178,10 @@ void parser::processEnumOrFlags(token name, bool asFlag){
             val=val<<1; 
         else
             val++;
-        tok = file.getToken(eTokenType::symbol).assertOneOf({token::comma,token::bracesClose});
+        tok = file.getBasicToken(eTokenType::symbol).assertOneOf({token::comma,token::bracesClose});
         if(tok.is(token::comma)) {
             emit.out<<", ";
-            tok=file.getToken(eTokenType::text);
+            tok=file.getBasicToken(eTokenType::text);
         }
     }
     emit.out<<";"<<endl;
@@ -200,24 +201,24 @@ void parser::processFunctionCall(token obj, token member){
         paramString+=exp;
     }while(complete==false);
     
-    file.getToken(token::endStatement);
+    file.getBasicToken(token::endStatement);
 
     emit.out<<paramString<<");"<<endl;
     
 }
 //TODO: this is very rudimentary at the moment.  Expand this.
 bool parser::getArgumentExpression(string& expression){
-    token tok = file.getToken();
+    token tok = file.getBasicToken();
 
     while(tok.isNot(token::parenClose)){
         if(tok.is(token::comma)) return false; //process the expression
         expression=expression+tok.text; //build the expression up from component expressions
-        tok = file.getToken();
+        tok = file.getBasicToken();
     }
     return true; //done processing arguments
 }
 void parser::processFunctionBody(token returnType){
-    file.getToken(token::bracesOpen);
+    file.getBasicToken(token::bracesOpen);
     
     openCompileScope(eCompileScope::codeBlock);
     //process all statements until a close brace is encountered
@@ -254,6 +255,9 @@ eCompileScope parser::resolveCurrentCompileScope(){
     }
     
     throw runtime_error("Internal Error: Unable to detect Scope.");
+}
+int parser::getScopeNestingDepth(){
+    return compileScopeStack.size();
 }
 void parser::openCompileScope(eCompileScope newScope){
     compileScopeStack.push_front(newScope); 
