@@ -132,7 +132,7 @@ token fileReader::getToken(vector<eTokenType> types){
     token retval=getToken();
     return retval.assertOneOf(types); 
 }
-token fileReader::getToken(std::string val){
+token fileReader::getToken(string val){
     token retval=getToken();
     return retval.assertOneOf({val}); 
 }

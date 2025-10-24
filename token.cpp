@@ -8,17 +8,6 @@ using namespace std;
 
 token _nullToken;
 
-std::string token::endStatement=";"; 
-std::string token::assignment ="="; 
-std::string token::parenOpen ="("; 
-std::string token::parenClose =")"; 
-std::string token::bracesOpen ="{"; 
-std::string token::bracesClose ="}"; 
-std::string token::bracketOpen ="[]"; 
-std::string token::bracketClose ="]"; 
-std::string token::comma =","; 
-
-
 bool token::is(eTokenType type){return isOneOf({type});}
 bool token::is(string text){return isOneOf({text});}
 bool token::isNot(eTokenType type){return !isOneOf({type});}
@@ -102,6 +91,21 @@ string token::assertFailedMessage(vector<string> vals){
     }
     retval+=".";
     return retval;
+}
+size_t token::chk() {
+    const long long p = 131;
+    const long long m = 4294967291; // 2^32 - 5, largest 32 bit prime
+    long long total = 0;
+    long long current_multiplier = 1;
+    for (int i = 0; text[i] != '\0'; ++i){
+        total = (total + current_multiplier * text[i]) % m;
+        current_multiplier = (current_multiplier * p) % m;
+    }
+    return total;
+}
+token token::emit(){
+    beguiler.emit.put(text);
+    return *this;
 }
 string token::tokenTypeToString(eTokenType type){
     switch(type){
