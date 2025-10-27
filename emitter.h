@@ -17,7 +17,9 @@ class emitter{
         void variable(token, token, token= _nullToken);
         void put(std::string);
         void put(token);
-        void indent();
+        void indent(int=0);
+        void newLine();
+        void endStatement();
 
         //bool getArgumentExpression(std::string&);
 };
