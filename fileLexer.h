@@ -18,12 +18,12 @@ class fileLexer{
         void bleedSpaces();
         char peekChar();
         char readChar();
-        bool isKeywordChar(char c);
+        bool isValidIdentifierChar(char c);
 
         token getBasicToken(bool=false);
-        token getBasicToken(eTokenType);
-        token getBasicToken(std::vector<eTokenType>);
-        token getBasicToken(std::string);
-        token getBasicToken(std::vector<std::string>);
-        token getToken(bool=false);
+        token getToken(eTokenType);
+        token getToken(std::vector<eTokenType>);
+        token getToken(std::string);
+        token getToken(std::vector<std::string>);
+        token getToken();
 };

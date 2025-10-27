@@ -6,6 +6,7 @@
 #include "token.h"
 #include "fileLexer.h"
 #include "emitter.h"
+#include "parseNode.h"
 
 struct resultsStruct{
     std::stringstream tempText;
@@ -21,17 +22,21 @@ class parser {
         emitter emit;
         resultsStruct results;
         fileLexer file;
-        
+
+        std::vector<std::string> objects;
  
         parser();
         bool parseFile(std::string);
-        void parseError(std::string);
+        bool parseError(std::string);
         void processFunctionBody(token);
         eCompileScope resolveCurrentCompileScope(); 
         
         void openCompileScope(eCompileScope); 
         void closeCompileScope(); 
         int getScopeNestingDepth();
+        
+        parseNode parseTree;
+        parseNode& currentParseTreeNode;
 
     private:
         std::deque<eCompileLanguage> compileLanguageStack;   //of course, these aren't really stacks, but we use them that way
@@ -40,16 +45,23 @@ class parser {
         void emitTo(std::ostream&);
         eCompileLanguage getCurrentLanguage(); 
 
+        //old...
         bool processNextStatement();
         void processFunctionParams();
         void processEnumOrFlags(token, bool);
-        
         void processFunctionCall(token, token=_nullToken);
         bool getArgumentExpression(std::string&);
         void processI6();
+        void registerNewObjectType(std::string);
         
-        
+        //new...
+        bool serializeNextStatement();
+        bool processObjectType(token);
+        bool processDataType(token);
+        bool processDirective(token);
+        bool processRoutine(token, token);
 
         void emitVariable(token, token, token= _nullToken);
+        void dumpTree(parseNode);
         
 };
