@@ -204,14 +204,14 @@ bool parser::processObjectType(token tok){
     
     pNode.type=eNodeType::objectDeclaration;
     pNode.keyToken=tok;
-    pNode.properties["objectName"]=name;
-    currentParseTreeNode.children.push_back(pNode);
+    pNode["objectName"]=name;
+    currentParseTreeNode.add(pNode);
 
     if(symbol.value==token::endStatement) return false;     // object obj;
     if(symbol.value==token::assignment){                    // object s_to=library;
         parseNode el;
         el.keyToken=file.getToken(eTokenType::identifier);
-        currentParseTreeNode.children.push_back(el);
+        currentParseTreeNode.add(el);
         file.getToken(token::endStatement);
     };
     
@@ -222,7 +222,7 @@ bool parser::processObjectType(token tok){
         
         do{
             el.keyToken=file.getToken(eTokenType::identifier);
-            currentParseTreeNode.children.push_back(el);
+            currentParseTreeNode.add(el);
             symbol = file.getToken({token::comma,token::bracesClose});
         }while(symbol.is(token::comma));
     }
@@ -244,18 +244,18 @@ bool parser::processDataType(token tok){
     if(symbol.value==token::endStatement || symbol.value==token::assignment){
         pNode.type=eNodeType::variableDeclaration;
         pNode.keyToken=tok;
-        pNode.properties["variableName"]=name;
+        pNode["variableName"]=name;
         if(symbol.value==token::assignment){
             val = file.getToken({eTokenType::identifier, eTokenType::quote}); 
             file.getToken(token::endStatement);
-            pNode.properties["assignedValue"]=val;
+            pNode["assignedValue"]=val;
         }
-        currentParseTreeNode.children.push_back(pNode);
+        currentParseTreeNode.add(pNode);
         return false;
     }
     
     //--a function
-    if(symbol.tokenType==token::parenOpen) return processFunction(tok, name);
+    if(symbol.is(token::parenOpen)) return processRoutine(tok, name);
 
     return parseError("Unexpected value '"+symbol.value+"'.");
    
@@ -266,8 +266,8 @@ bool parser::processDirective(token tok){
     pNode.keyToken=tok;
     
     if(tok.value=="#include"){
-        pNode.properties["filename"]=file.getToken(eTokenType::quote);
-        currentParseTreeNode.children.push_back(pNode);
+        pNode["filename"]=file.getToken(eTokenType::quote);
+        currentParseTreeNode.add(pNode);
         return false;
     }
     return parseError("Unexpected directive '"+tok.value+"'.");
@@ -279,9 +279,9 @@ bool parser::processRoutine(token returnType, token name){
 
     pNode.type=eNodeType::routine;
     pNode.keyToken=name;
-    pNode.properties["returnType"]=returnType;
-    pNode.properties["parameters"]=paramsNode;
-    pNode.properties["body"]=bodyNode;
+    pNode["returnType"]=returnType;
+    pNode["parameters"]=paramsNode;
+    pNode["body"]=bodyNode;
     
     //string paramDefaultInit="";
     
@@ -291,7 +291,7 @@ bool parser::processRoutine(token returnType, token name){
             datatype.assertDataType();
             
             parseNode param;
-            param.properties["dataType"]=datatype;
+            param["dataType"]=datatype;
             param.keyToken=file.getToken(eTokenType::identifier); 
 
             token symbol = file.getToken({token::parenClose, token::assignment, token::comma}); 
@@ -300,10 +300,10 @@ bool parser::processRoutine(token returnType, token name){
             if(symbol.is(token::assignment)){
                 token val=file.getToken({eTokenType::integer, eTokenType::quote});  
                 if(val.tokenType==eTokenType::quote) datatype.assertOneOf({"string", "var"}, "Illegal default definition: string value is incompatible with type '"+datatype.value+"'.");
-                param.properties["defaultValue"]=val;
+                param["defaultValue"]=val;
             }
             
-            paramsNode.children.push_back(param);
+            paramsNode.add(param);
 
             datatype = file.getToken(); 
         }
@@ -358,7 +358,7 @@ bool parser::processRoutine(token returnType, token name){
 //             }
 //             parseError("Invalid character '"+symbol.value+"'.");
 //         }
-//         if(tok.isOneOf({"enum","bitFlags"})) {
+//         if(tok.isOneOf({"enum","bnum"})) { //formerly "bitFlags"
 //             token name = file.getToken(eTokenType::identifier);
 //             token symbol = file.getToken(eTokenType::symbol);
             
