@@ -23,6 +23,9 @@ class parseNode {
         parseNode* parent;
         std::map<std::string, std::variant<parseNode, token>> properties;
         std::vector<parseNode> children;
+
+        parseNode add(parseNode);
+        std::variant<parseNode, token>& operator[](std::string);
                
 };
 
