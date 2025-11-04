@@ -3,23 +3,28 @@
 #include <sstream>
 #include <stack>
 #include "token.h"
+#include "parseNode.h"
+
+using namespace std;
 
 class emitter{
     public:
         std::stringstream out; 
 
         void to(std::ostream&);
-        void globalFunction(token, token);
-        void functionParams();
+        //void globalFunction(token, token);
+        //void functionParams();
         void functionCall(token, token=_nullToken);
         void enumOrFlags(token,bool);
         void globalVariable(token, token, token= _nullToken);
         void variable(token, token, token= _nullToken);
         void put(std::string);
         void put(token);
+        void indent(parseNode&, int=0);
         void indent(int=0);
         void newLine();
         void endStatement();
-
-        //bool getArgumentExpression(std::string&);
+        void executableStatement(parseNode&);
+        void objectDeclaration(parseNode&);
+        void generateI6(parseNode&);
 };

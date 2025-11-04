@@ -1,42 +1,165 @@
+#include <iostream>
+
 #include "emitter.h"
 #include "parser.h"
 #include "orbit.h"
-#include <iostream>
+#include "globals.h"
 
 using namespace std;
 
+void emitter::to(ostream& strm){ out.std::ios::rdbuf(strm.rdbuf()); }
 void emitter::put(string str){ 
     out<<str; 
 }
 void emitter::put(token tok){ 
     out<<tok.value; 
 }
+void emitter::generateI6(parseNode& node){
+    //parseNode* params;
+    string defaultInits="";
+    indent(node);
+    switch(node.type){
+        case eNodeType::root:
+            for(auto& child : node.children){
+                generateI6(child);
+            }
+            return;
+        case eNodeType::directive:
+             out<<format("{0} {1};\n", (string)node, (string)node["filename"]);
+             return;
+        case eNodeType::routine:
+            out<<format("[{0}", (string)node["routineName"]);
+            //params= &node["parameters"]; 
+            
+            for(parseNode& param : node["parameters"].children){
+                out<<" "<<(string)param["variableName"];
+                if(param.properties.contains("assignedValue")){
+                    defaultInits+=format("if({0}==0) {0}={1}; ", (string)param["variableName"], (string)param["assignedValue"]);
+                }   
+            }
+            out<<";\n";
+            if(defaultInits!=""){
+                indent(node,1);
+                out<<defaultInits<<endl;
+            }
+            
+            for(parseNode& statement : node.children){
+                generateI6(statement); 
+            }
+            
+            indent(node);
+            out<<"];\n";
+            return;
+        case eNodeType::variableDeclaration:           
+            switch(node.parent->type){
+                case eNodeType::root:
+                    out<<format("global {0}", (string)node["variableName"]);
+                    if(node.properties.contains("assignedValue")){
+                        out<<format("={0}", (string)node["assignedValue"]);
+                    }
+                    endStatement();
+                    return;
+                    break;
+                case eNodeType::classDeclaration:
+                case eNodeType::objectDeclaration:
+                    out<<format("{0}", (string)node["variableName"]);
+                    if(node.properties.contains("assignedValue")){
+                        out<<format(" {0}", (string)node["assignedValue"]);
+                    }
+                    return;
+                    break;
+            }
 
-void emitter::to(ostream& strm){ out.std::ios::rdbuf(strm.rdbuf()); }
-void emitter::variable(token datatype, token id, token val){
-    if(val.isNull())  {
-        out<<format("{0};\n",id.value);
-        return;
+            
+           return;
+        case eNodeType::executableStatement:
+            executableStatement(node);
+            return;
+        case eNodeType::objectDeclaration:
+            objectDeclaration(node);
+            return;
+        
+    //     case eNodeType::objectDeclaration:
+    //         out<<format("Object {0} {{\n", node.keyToken.value);
+    //         return;
+    //     case eNodeType::classDeclaration:
+    //         out<<format("Class {0} {{\n", node.keyToken.value);
+    //         return;
+    //     default:
+    //         break;
     }
-    
-    if(val.tokenType==eTokenType::quote) datatype.assertOneOf({"string", "var"}, "Illegal assignment of string literal to data type '"+datatype.value+"'.");
 
-    out<<format("{0}={1};\n",id.value,val.value);
+}
+void emitter::objectDeclaration(parseNode& node){
+    out<<format("{0} {1} ", (string)node["objectType"], (string)node["objectName"]);
+    if(node.children.size()>0){
+        out<<" with ";
+        bool isFirst=true;
+        for(parseNode& statement : node.children){
+            if(isFirst==false) out<<", ";
+            isFirst=false;  
+            generateI6(statement); 
+            out<<endl;
+        }    
+    }
+    out<<";\n";
+}
+void emitter::executableStatement(parseNode& node){
+    switch(((token)node["statement"]).chk()){
+        case chk("print"):
+            out<<"print ";
+            out<<(string)node["value"];
+            endStatement();
+            return;
+        case chk("return"):
+            //TODO: perform type checking against the declared return type of the routine
+            if(node.properties.contains("returnValue")){
+                switch(((token)node["returnValue"]).chk()){
+                    case chk("true"): out << "rtrue";
+                        break;
+                    case chk("false"): out << "rfalse";
+                        break;
+                    default: out<<"return "<<(string)node["returnValue"];
+                }
+            }
+            else{
+                out<<"return";
+            }
+            endStatement();
+            return;
+        default:
+            //assume it's a function call
+            out<<(string)node["functionName"];
+            if(node.properties.contains("memberName")){
+                out<<"."<<(string)node["memberName"];
+            }
+            out<<"(";
+        }
 }
 void emitter::endStatement(){
-    out<<";\n";
+    out<<";";
+    newLine();
 }
 void emitter::newLine(){
     out<<"\n";
 }
 void emitter::globalVariable(token datatype, token id, token val){
-    out<<"Global ";
-    variable(datatype, id, val);
+    out<<format("global {0}",(string)id);
+    
+    if(!val.isNull())  out<<format("={0}",(string)val);
+    
+    endStatement();
+    return;
+
+}
+void emitter::indent(parseNode& node, int extra){
+    for(int t=0; t<node.getNodeNestingDepth()+extra;t++) out<<"   ";    
 }
 void emitter::indent(int extra){
-    for(int t=0; t<bglParser.getScopeNestingDepth()+extra-1;t++) out<<"   ";
+    for(int t=0; t<bglParser.getCurrentNode().getNodeNestingDepth()+extra;t++) out<<"   ";    
 }
 
+/*
 void emitter::globalFunction(token returnType, token name){
     indent();
     out<<format("[{0}",name.value);
@@ -46,8 +169,8 @@ void emitter::globalFunction(token returnType, token name){
     indent();
     out<<"];";
 }
-
-//TODO: move this into parser.  We shouldn't be reading all this from the emitter
+*/
+/*
 void emitter::functionParams(){
     string paramDefaultInit="";
     token datatype = bglParser.file.getToken(); 
@@ -71,3 +194,18 @@ void emitter::functionParams(){
     //indent(1);
     out<<paramDefaultInit<<endl;            
 }
+*/
+// bool parser::error(string msg){
+//     string errorMessage;
+//     if(file.numOpen()>0) {
+//         auto [inputFileStream, fileName, curLine, curCol]=file.getDetail(); 
+//         //errorMessage=format("\033[1m{0}:{1}:{2}: \x1b[31merror:\x1b[0m {3}",fileName,curLine,curCol,msg); 
+//         errorMessage=format("{0}:{1}:{2}: error: {3}",fileName,curLine,curCol,msg); 
+//     }
+//     else{
+//         errorMessage=msg; 
+//     }
+    
+//     throw runtime_error(errorMessage); 
+//     return true; //won't every actually run
+// }
