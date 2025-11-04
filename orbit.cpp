@@ -98,13 +98,15 @@ string orbit::getPath(string filename){
 
 //When we're all done, commit the final transpiled text to the output file.
 bool orbit::writeFile(string filename) {
-    std::ofstream outFileStream(filename);
-    if (!outFileStream.is_open()) {
-        std::cerr << "Error creating file "<< filename << "."<<std::endl;
-        return true; // Indicate an error
-    }
-    outFileStream << bglParser.results.bodyText.str();
-    outFileStream.close();
-    return false;
+    // std::ofstream outFileStream(filename);
+    // if (!outFileStream.is_open()) {
+    //     std::cerr << "Error creating file "<< filename << "."<<std::endl;
+    //     return true; // Indicate an error
+    // }
+    // outFileStream << bglParser.results.bodyText.str();
+    // outFileStream.close();
+    // return false;
+
+    bglParser.emit.generateI6(bglParser.parseTree);
 }
 

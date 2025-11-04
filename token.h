@@ -1,8 +1,8 @@
+#pragma once
 #include <string>
 #include <string_view>
 #include <stack>
 #include <vector>
-#pragma once
 
 enum class eTokenType{
     unknown, 
@@ -18,9 +18,14 @@ enum class eTokenType{
     //expression,
 };
 
+class parseNode; //forward declaration
+
 class token {
      
      public:
+        eTokenType tokenType=eTokenType::unknown;
+        std::string value;
+
         static constexpr std::string endStatement=";"; 
         static constexpr std::string assignment ="="; 
         static constexpr std::string parenOpen ="(";  
@@ -30,10 +35,6 @@ class token {
         static constexpr std::string bracketOpen ="["; 
         static constexpr std::string bracketClose ="]"; 
         static constexpr std::string comma  =","; 
-        
-        eTokenType tokenType=eTokenType::unknown;
-        
-        std::string value;
 
         bool is(eTokenType);
         bool is(std::string);
@@ -53,6 +54,10 @@ class token {
         token assertOneOf(std::vector<std::string>, std::string="");
         token assertDataType();
         
+        operator parseNode(); 
+        operator std::string(); 
+        
+    
         std::string assertFailedMessage(std::vector<eTokenType> types);
         std::string assertFailedMessage(std::vector<std::string> vals);
         std::string tokenTypeToString(eTokenType type);
@@ -61,4 +66,4 @@ class token {
         size_t chk();
         
 };
-extern token _nullToken;
+extern const token _nullToken;

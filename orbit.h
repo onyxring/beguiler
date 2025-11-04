@@ -1,6 +1,8 @@
 #include <string>
 #include "parser.h"
 
+using namespace std;
+
 class orbit {
     public:
         void go(int, char*[]);                      //entry point.  Main is just a shell which passes its args to this class member

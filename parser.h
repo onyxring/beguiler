@@ -8,6 +8,8 @@
 #include "emitter.h"
 #include "parseNode.h"
 
+using namespace std;
+
 struct resultsStruct{
     std::stringstream tempText;
     std::stringstream bodyText;
@@ -24,6 +26,7 @@ class parser {
         fileLexer file;
 
         std::vector<std::string> objects;
+        std::vector<std::string> routines;
  
         parser();
         bool parseFile(std::string);
@@ -36,7 +39,7 @@ class parser {
         int getScopeNestingDepth();
         
         parseNode parseTree;
-        parseNode& currentParseTreeNode;
+        parseNode& getCurrentNode();
 
     private:
         std::deque<eCompileLanguage> compileLanguageStack;   //of course, these aren't really stacks, but we use them that way
@@ -46,22 +49,29 @@ class parser {
         eCompileLanguage getCurrentLanguage(); 
 
         //old...
-        bool processNextStatement();
+        //bool processNextStatement();
         void processFunctionParams();
         void processEnumOrFlags(token, bool);
         void processFunctionCall(token, token=_nullToken);
         bool getArgumentExpression(std::string&);
         void processI6();
         void registerNewObjectType(std::string);
-        
-        //new...
-        bool serializeNextStatement();
-        bool processObjectType(token);
-        bool processDataType(token);
-        bool processDirective(token);
-        bool processRoutine(token, token);
-
+        void registerNewRoutine(std::string);
         void emitVariable(token, token, token= _nullToken);
-        void dumpTree(parseNode);
+
+        //new...
+        std::deque<parseNode*> currentNodeStack;
+        void pushCurrentNode(parseNode&);
+        void popCurrentNode();
+        void commitNode(parseNode); //not a reference; commit a copy of the node
+        
+        bool processNextStatement();
+        bool processDataType(token);
+        bool processVariableDeclaration(token, token, token);
+        bool processRoutineDeclaration(token, token);
+        bool processObjectDeclaration(token, token);
+        bool processStatement(token);
+        bool processObjectType(token);
+        bool processDirective(token);
         
 };

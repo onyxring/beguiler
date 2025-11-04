@@ -1,4 +1,6 @@
 #include <string>
+using namespace std;
+
 struct settingsStruct{
     std::string inFile;
     std::string tmpFile;
