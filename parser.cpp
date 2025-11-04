@@ -10,34 +10,30 @@
 
 #include "parser.h"
 #include "fileLexer.h"
+#include "globals.h"
 
 using namespace std;
 
-parser::parser():currentParseTreeNode(parseTree){ 
-    //emit.to(cout);  //write the result to the terminal window for now
-    emit.to(results.bodyText);
-    objects.push_back("class");
-    objects.push_back("object");
-    objects.push_back("enum");
-    objects.push_back("bitFlags");
-    //objects.push_back("string"); //todo: this should move to an #insert language extension 
+parser::parser(){ 
+    
+    emit.to(cout);  //write the result to the terminal window for now
+    parseTree.type=eNodeType::root;
+    pushCurrentNode(parseTree);
+
+    //emit.to(results.bodyText);
+    registerNewObjectType("object"); 
+    registerNewObjectType("class"); 
+    registerNewObjectType("enum"); 
+    registerNewObjectType("bnum"); 
+    // objects.push_back("enum");
+    // objects.push_back("bitFlags");
+    // //objects.push_back("string"); //todo: this should move to an #insert language extension 
 }
 
-constexpr size_t chk(string_view str) {
-    const long long p = 131;
-    const long long m = 4294967291; // 2^32 - 5, largest 32 bit prime
-    long long total = 0;
-    long long current_multiplier = 1;
-    for (int i = 0; str[i] != '\0'; ++i){
-        total = (total + current_multiplier * str[i]) % m;
-        current_multiplier = (current_multiplier * p) % m;
-    }
-    return total;
-}
 
 // Open an input file, process each statement.  This is the entry point to this whole parsing process
 bool parser::parseFile(string filename){
-    file.open(filename);
+    file.open(filesystem::absolute(filename).string());
 
     if(file.numOpen()==1){ //this is the first file, so let's do a little inspection and try to determine our default mode
         if(file.readChar()=='!' && file.readChar()=='%'){ //is the first line one of Inform's IGL declarations? 
@@ -54,7 +50,7 @@ bool parser::parseFile(string filename){
         openCompileScope(eCompileScope::root);
     }
     //process all statements in the file one by one
-    while(serializeNextStatement()==false){ 
+    while(processNextStatement()==false){ 
         //cout<<"Block processed."<<endl;
     }
     emit.out<<endl;
@@ -66,7 +62,7 @@ bool parser::parseFile(string filename){
 // We have a finite set of allowable patterns which may or may not
 // be valid, depending on the Scope.  We match the input to these
 // and raise compile-time errors if we cant.
-bool parser::processNextStatement(){
+/*bool parser::processNextStatement(){
     processI6(); //we may be in the middle of emitting I6 code; do that until it is done.
     
     token tok=file.getToken({eTokenType::identifier, eTokenType::directive, eTokenType::dataType, eTokenType::symbol, eTokenType::eof});
@@ -181,84 +177,193 @@ bool parser::processNextStatement(){
     
     return false;
 }
-
+*/
 //------------------------------------------------------------------
-// Serialize the current statement into our parseTree.
-bool parser::serializeNextStatement(){
+// Transcribe the current statement into our parseTree.
+bool parser::processNextStatement(){
     token tok=file.getToken();
     
-    if(tok.is(token::bracesClose)) return true; //signal to the calling routine that we've reached the end of the current scope
-    
-    if(tok.isObjectType()) return processObjectType(tok);
-    if(tok.isDataType()) return processDataType(tok);
+    if(tok.is(token::bracesClose)) return true; //true: signal to the calling routine that we've reached the end of the current scope
+    if(tok.is(eTokenType::eof)) return true; //true: signal to the calling routine that we've reached the end of the file
+
+    //if(tok.isObjectType()) return processObjectType(tok);  //note: order is important here, because an object is also be a valid "data type"; we process objects, with their extended syntax options, before basic data types
+    if(tok.isDataType()) return processDataType(tok);      //handle "primitive", or "non-object" data types
     if(tok.is(eTokenType::directive)) return processDirective(tok);
+    
+    return processStatement(tok);//TODO: make sure statements aren't happening at illegal scopes
+    
     return parseError(format("Unhandled token '{0}'",tok.value));
 }
 
-bool parser::processObjectType(token tok){
+bool parser::processStatement(token tok){
+    token nextToken=_nullToken;    
     
+    parseNode pNode; 
+    pNode["statement"]=tok;
+    pNode.type=eNodeType::executableStatement;
+
+    switch(tok.chk()){
+        case chk("print"):
+            file.getToken(token::parenOpen);
+            pNode["value"]=file.getToken({eTokenType::quote, eTokenType::identifier});
+            file.getToken(token::parenClose);
+            file.getToken(token::endStatement);
+            commitNode(pNode);
+            return false;
+            break;
+        case chk("return"):
+    
+            nextToken=file.getToken();
+            //TODO: check return values here...
+            if(nextToken.is(token::endStatement)) {
+                //return;
+            }
+            else{
+                pNode["returnValue"]=nextToken;
+                file.getToken(token::endStatement);
+            }
+            commitNode(pNode);
+            return false;
+            break;
+        default:
+            //assume it's a function call
+            pNode.type=eNodeType::executableStatement;
+            pNode["functionName"]=tok;
+            
+            token symbol = file.getToken(eTokenType::symbol);
+
+            if(symbol.is(token::parenOpen))  {
+                //simple function call
+                //processFunctionCall(tok);
+            }
+            else{
+                symbol.assert(".");
+                
+                token member = file.getToken(eTokenType::identifier);
+                pNode["memberName"]=member;
+                file.getToken(token::parenOpen);
+
+                //processFunctionCall(tok, member);
+            }
+    }
+}
+bool parser::processObjectType(token tok){
+/*
+    parseNode pNode; 
+    pNode.type=eNodeType::objectDeclaration;
+    pNode.keyToken=tok;
+
     token name = file.getToken(eTokenType::identifier);
     token symbol = file.getToken({token::bracesOpen,token::endStatement, token::assignment});
     
-    parseNode pNode; 
-    
-    pNode.type=eNodeType::objectDeclaration;
-    pNode.keyToken=tok;
-    pNode["objectName"]=name;
-    currentParseTreeNode.add(pNode);
-
     if(symbol.value==token::endStatement) return false;     // object obj;
     if(symbol.value==token::assignment){                    // object s_to=library;
         parseNode el;
         el.keyToken=file.getToken(eTokenType::identifier);
-        currentParseTreeNode.add(el);
+        commitNode(pNode);
         file.getToken(token::endStatement);
     };
+*/    
+    //parseNode* saveNode=currentParseTreeNode;
+    //currentParseTreeNode=&pNode;
     
-    parseNode saveNode=currentParseTreeNode;
-    currentParseTreeNode=pNode;
+    //TODO: these should go away when macros are implemented
+    /*
     if(tok.value=="enum"|| tok.value=="bitFlags"){
         parseNode el;
         
         do{
             el.keyToken=file.getToken(eTokenType::identifier);
-            currentParseTreeNode.add(el);
+            pNode.addChild(el);
             symbol = file.getToken({token::comma,token::bracesClose});
         }while(symbol.is(token::comma));
     }
-    else{ 
-        while(serializeNextStatement()==false){ 
-            //cout<<"Block processed."<<endl;
-        }
-    }
-    currentParseTreeNode=saveNode;
+    // else{ */
+    //     while(processNextStatement()==false){ 
+    //         //cout<<"Block processed."<<endl;
+    //     }
+    // //}
+    // //currentParseTreeNode=saveNode;
+    // commitNode(pNode);
+
     return false;
 }
-bool parser::processDataType(token tok){
+bool parser::processDataType(token dataType){
     token name = file.getToken(eTokenType::identifier);
     token symbol = file.getToken(eTokenType::symbol);
-    token val;
-    parseNode pNode; 
+    
+    //parseNode pNode; 
 
-    //--a data element
-    if(symbol.value==token::endStatement || symbol.value==token::assignment){
-        pNode.type=eNodeType::variableDeclaration;
-        pNode.keyToken=tok;
-        pNode["variableName"]=name;
-        if(symbol.value==token::assignment){
-            val = file.getToken({eTokenType::identifier, eTokenType::quote}); 
-            file.getToken(token::endStatement);
-            pNode["assignedValue"]=val;
-        }
-        currentParseTreeNode.add(pNode);
+    //--a variable declaration, with optional assignment:
+    //      int myVar;
+    //      int myVar=99; 
+    if(symbol.value==token::endStatement || symbol.value==token::assignment) {
+        processVariableDeclaration(dataType, name, symbol);
+        if(symbol.value==token::assignment) file.getToken(token::endStatement);
         return false;
     }
+    // {
+    //     pNode.type=eNodeType::variableDeclaration;
+    //     pNode["dataType"]=tok;
+    //     pNode["variableName"]=name;
+
+    //      if(symbol.value==token::assignment){
+    //         val = file.getToken({eTokenType::identifier, eTokenType::quote}); 
+    //         file.getToken(token::endStatement);
+    //         pNode["assignedValue"]=val;
+    //     }
+    //     commitNode(pNode);
+    //     return false;
+    // }
     
-    //--a function
-    if(symbol.is(token::parenOpen)) return processRoutine(tok, name);
+    //--a function declaration:
+    if(symbol.is(token::parenOpen)) return processRoutineDeclaration(dataType, name);
+
+    //--an object instance declaration:
+    if(symbol.is(token::bracesOpen)) return processObjectDeclaration(dataType, name);
 
     return parseError("Unexpected value '"+symbol.value+"'.");
    
+}
+//--process a variable declaration statement and add it to the parse tree
+//-- handles both simple declarations and declarations with assignment
+//-- also handles parameter declarations within function definitions
+//-- e.g.:
+//--      int myVar;
+//--      int myVar=99;
+//--      int myParam)
+//--      int myParam=5) 
+//--      int myParam=5, ...
+bool parser::processVariableDeclaration(token dataType, token variableName, token symbol){
+    parseNode pNode; 
+    pNode.type=eNodeType::variableDeclaration;
+    pNode["dataType"]=dataType;
+    pNode["variableName"]=variableName;
+    
+    if(symbol.value==token::assignment){
+        parseNode val = file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::integer}); 
+        pNode["assignedValue"]=val;
+    }
+    commitNode(pNode);
+    //note the token pointer may end up at different places depending on if an assignment was present or not.
+    //  the calling process, then must determine, based on if as assignment was declared, what to do with the next token, based
+    //  on context.  For example, if this was a parameter declaration, the next token may be either a comma or a parenClose
+    //  if this was a global variable declaration, the next token should be an endStatement.
+    return false;
+}
+
+void parser::pushCurrentNode(parseNode& node){
+    currentNodeStack.push_front(&node);    
+}
+void parser::popCurrentNode(){
+    currentNodeStack.pop_front();
+}
+parseNode& parser::getCurrentNode(){
+    return *currentNodeStack.front();    
+}
+void parser::commitNode(parseNode node){
+    node.parent=&(getCurrentNode());
+    getCurrentNode().addChild(node);
 }
 bool parser::processDirective(token tok){
     parseNode pNode; 
@@ -267,51 +372,76 @@ bool parser::processDirective(token tok){
     
     if(tok.value=="#include"){
         pNode["filename"]=file.getToken(eTokenType::quote);
-        currentParseTreeNode.add(pNode);
+        commitNode(pNode);
         return false;
     }
-    return parseError("Unexpected directive '"+tok.value+"'.");
+    return parseError("Unrecognized directive '"+tok.value+"'.");
 }
-bool parser::processRoutine(token returnType, token name){
+bool parser::processRoutineDeclaration(token returnType, token name){
     parseNode pNode; 
     parseNode paramsNode; 
-    parseNode bodyNode; 
 
     pNode.type=eNodeType::routine;
-    pNode.keyToken=name;
+    pNode["routineName"]=name;
     pNode["returnType"]=returnType;
-    pNode["parameters"]=paramsNode;
-    pNode["body"]=bodyNode;
     
-    //string paramDefaultInit="";
+    paramsNode.type=eNodeType::parameterListDeclaration; 
+    
+    //TODO: refactor currentParseTreeNode to allow an optional passed-in parseNode; or possibly a stack of parseNodes, so that we can build nested structures properly
+    //parseNode* currentNodeSave=currentParseTreeNode;
+    pushCurrentNode(paramsNode);
     
     token datatype = file.getToken(); 
-    if(datatype.isNot(token::parenClose)){
-        while(true){
-            datatype.assertDataType();
-            
-            parseNode param;
-            param["dataType"]=datatype;
-            param.keyToken=file.getToken(eTokenType::identifier); 
+    
+    while(datatype.isNot(token::parenClose)){
+        datatype.assertDataType();
+        
+        token variableName=file.getToken(eTokenType::identifier);
+        token symbol= file.getToken({token::comma, token::parenClose, token::assignment});
 
-            token symbol = file.getToken({token::parenClose, token::assignment, token::comma}); 
-            if(symbol.is(token::parenClose)) break;
-            
-            if(symbol.is(token::assignment)){
-                token val=file.getToken({eTokenType::integer, eTokenType::quote});  
-                if(val.tokenType==eTokenType::quote) datatype.assertOneOf({"string", "var"}, "Illegal default definition: string value is incompatible with type '"+datatype.value+"'.");
-                param["defaultValue"]=val;
-            }
-            
-            paramsNode.add(param);
+        processVariableDeclaration(datatype, variableName, symbol);
 
-            datatype = file.getToken(); 
+        if(symbol.is(token::assignment)){
+            datatype=file.getToken({token::comma, token::parenClose}); 
+            if(datatype.is(token::comma)) datatype = file.getToken();
+        }
+        else{
+            datatype=symbol;
         }
     }
-    file.getToken(token::bracesOpen);
-    //todo: process body here
+    popCurrentNode(); //restore: no longer saving to the params node
+    
+    pNode["parameters"]=paramsNode;
+    
+    file.getToken(token::bracesOpen); //consume the open brace
+    
+    pushCurrentNode(pNode);
+    while(processNextStatement()==false){ 
+        
+    }   
+    popCurrentNode(); //no longer saving to the routine node
+
+    commitNode(pNode);
     return false;
 }
+bool parser::processObjectDeclaration(token objectType, token name){
+    parseNode pNode; 
+    
+    pNode.type=eNodeType::objectDeclaration;
+    pNode["objectName"]=name;
+    pNode["objectType"]=objectType;
+    
+    pushCurrentNode(pNode); //save all statements within the object to this node
+    
+    while(processNextStatement()==false){ 
+        
+    }   
+    popCurrentNode(); //restore to the objects parent (likely root)
+     
+    commitNode(pNode); //commit the object node to the parse tree
+    return false;
+}
+
     
 //     if(tok.is(token::bracesClose)){
 //         closeCompileScope();
@@ -447,6 +577,11 @@ void parser::registerNewObjectType(string name){
     if(find(objects.begin(), objects.end(), name)!=objects.end()) parseError(format("Declared type '{0}' already exists.", name));
     objects.push_back(name);
 }
+//TODO: this is temporary; it should walk the node tree to find a routine in scope
+void parser::registerNewRoutine(string name){
+    if(find(routines.begin(), routines.end(), name)!=routines.end()) parseError(format("Declared routine '{0}' already exists.", name));
+    routines.push_back(name);
+}
 void parser::processEnumOrFlags(token name, bool asFlag){
     int val=(asFlag)?1:0; 
     
@@ -560,8 +695,4 @@ void parser::closeCompileScope(){
     eCompileScope oldScope=compileScopeStack.front();
     compileScopeStack.pop_front();
     if(oldScope==eCompileScope::languageBlock) compileLanguageStack.pop_front();
-}
-
-void parser::dumpTree(parseNode node){
-
 }

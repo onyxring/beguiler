@@ -1,31 +1,44 @@
+#pragma once
+
 #include <string>
 #include <map>
 #include <variant>
 
 #include "token.h"
 
+using namespace std;
+
 enum class eNodeType{
+    root,
     directive,
     integer,
     symbol,
     quote,
-    routine,
     variableDeclaration,
     objectDeclaration,
     classDeclaration,
+    parameterListDeclaration,
+    routine,
+    executableStatement,
     //expression,
 };
+
 class parseNode {
     public:
         eNodeType type;
         token keyToken;
 
         parseNode* parent;
-        std::map<std::string, std::variant<parseNode, token>> properties;
         std::vector<parseNode> children;
+        
+        std::map<std::string, parseNode> properties;
+        parseNode& operator[](std::string);
+        int getNodeNestingDepth();
 
-        parseNode add(parseNode);
-        std::variant<parseNode, token>& operator[](std::string);
-               
+        operator token(); 
+        operator std::string(); 
+
+        void addChild(parseNode);
+
 };
 

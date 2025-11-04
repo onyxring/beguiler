@@ -5,6 +5,8 @@
 #include <stack>
 #include "token.h"
 
+using namespace std;
+
 class fileLexer{
     public:
         std::stack<std::tuple<std::ifstream*, std::string, int, int>> files; 
