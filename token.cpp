@@ -1,126 +1,131 @@
 #include <iostream>
 #include <vector>
+
 #include "token.h"
 #include "orbit.h"
 #include "parser.h"
 
 using namespace std;
 
-token _nullToken;
+const token _nullToken;
 
-bool token::is(eTokenType type){return isOneOf({type});}
-bool token::is(string text){return isOneOf({text});}
-bool token::isNot(eTokenType type){return !isOneOf({type});}
-bool token::isNot(string text){return !isOneOf({text});}
+#pragma region Type checks
+    bool token::is(eTokenType type){return isOneOf({type});}
+    bool token::is(string text){return isOneOf({text});}
+    bool token::isNot(eTokenType type){return !isOneOf({type});}
+    bool token::isNot(string text){return !isOneOf({text});}
 
-bool token::isOneOf(vector<eTokenType> types){
-    for (eTokenType &type : types) {
-        //if(type==eTokenType::unknown || tokenType==type) return true;
-        if(tokenType==type) return true;
+    bool token::isOneOf(vector<eTokenType> types){
+        for (eTokenType &type : types) {
+            //if(type==eTokenType::unknown || tokenType==type) return true;
+            if(tokenType==type) return true;
+        }
+        return false;
     }
-    return false;
-}
-bool token::isOneOf(vector<string> vals){
-    for (string &val : vals) {
-        if(value==val) return true;
+    bool token::isOneOf(vector<string> vals){
+        for (string &val : vals) {
+            if(value==val) return true;
+        }
+        return false;
     }
-    return false;
-}
 
-//primarily used to test for _nullToken, which is defined as a default value for optional parameters
-bool token::isNull(){ 
-    return is(eTokenType::unknown); 
-}
-bool token::isObjectType(){
-    if(find(bglParser.objects.begin(), bglParser.objects.end(),value)!=bglParser.objects.end()) return true;
-    return false;
-}
-bool token::isDataType(){
-    if(string("var void int string").find(value)!=string::npos) return true;
-    return isObjectType();    
-}
-bool token::isNumeric(){
-    for(char c:value){
-        if(isnumber(c)==false) return false;
+    //primarily used to test for _nullToken, which is defined as a default value for optional parameters
+    bool token::isNull(){ 
+        return is(eTokenType::unknown); 
     }
-    return true;
-}
-bool token::isValidIdentifier(){
-    if(!(isalpha(value[0])&&value[0]!='_')) return false;
-    for (int i = 0; value[i] != '\0'; ++i){
-        if(isalnum(value[i]==false&&value[i]!='_')) return false;   
+    bool token::isObjectType(){    if(find(bglParser.objects.begin(), bglParser.objects.end(),value)!=bglParser.objects.end()) return true;
+        return false;
     }
-    return true;
-}
-// bool token::isFloat(){
-    
-//     if(text=='+')
-//     for(char c:text){
+    bool token::isDataType(){
+        if(string("var void int string").find(value)!=string::npos) return true;
+        return isObjectType();    
+    }
+    bool token::isNumeric(){
+        for(char c:value){
+            if(isnumber(c)==false) return false;
+        }
+        return true;
+    }
+    bool token::isValidIdentifier(){
+        if(!(isalpha(value[0])&&value[0]!='_')) return false;
+        for (int i = 0; value[i] != '\0'; ++i){
+            if(isalnum(value[i]==false&&value[i]!='_')) return false;   
+        }
+        return true;
+    }
+#pragma endregion
+
+#pragma region Conversion operators
+    token::operator parseNode(){
+        parseNode pNode;
+        pNode.keyToken=*this;
+        return pNode;
+    }
+    token::operator string(){
+        return value;
+    }
+#pragma endregion
+
+#pragma region Assertions
+
+    token token::assert(eTokenType type, std::string errMsg){ return assertOneOf({type}, errMsg); }
+    token token::assert(std::string text, std::string errMsg){ return assertOneOf({text}, errMsg); }
+
+    token token::assertOneOf(vector<eTokenType> types, string errMsg){
+        if(!isOneOf(types)) {
+            if(errMsg=="") bglParser.parseError(assertFailedMessage(types));
+            bglParser.parseError(errMsg);
+        }
+        return *this;
+    }
+    token token::assertOneOf(vector<string> vals, string errMsg){
+        if(!isOneOf(vals)) {
+            if(errMsg=="") bglParser.parseError(assertFailedMessage(vals));
+            bglParser.parseError(errMsg);
+        }
+        return *this;
+    }
+    token token::assertDataType(){
+        if(!isDataType()) bglParser.parseError("Expected data type.");
+        return *this;
+    }        
+
+    string token::assertFailedMessage(vector<eTokenType> types){
+        string retval=format("Unexpected {0} '{1}'.  Expected ",(tokenType==eTokenType::quote)?"literal string":"token", value);
         
-//         if(isnumber(c)==false) return false;
-//     }
-//     return true;
-// }
+        types.erase(std::remove(types.begin(), types.end(), eTokenType::eof), types.end()); 
+        types.erase(std::remove(types.begin(), types.end(), eTokenType::unknown), types.end()); 
 
-
-
-token token::assert(eTokenType type, std::string errMsg){ return assertOneOf({type}, errMsg); }
-token token::assert(std::string text, std::string errMsg){ return assertOneOf({text}, errMsg); }
-
-token token::assertOneOf(vector<eTokenType> types, string errMsg){
-    if(!isOneOf(types)) {
-        if(errMsg=="") bglParser.parseError(assertFailedMessage(types));
-        bglParser.parseError(errMsg);
-    }
-    return *this;
-}
-token token::assertOneOf(vector<string> vals, string errMsg){
-    if(!isOneOf(vals)) {
-        if(errMsg=="") bglParser.parseError(assertFailedMessage(vals));
-        bglParser.parseError(errMsg);
-    }
-    return *this;
-}
-token token::assertDataType(){
-    if(!isDataType()) bglParser.parseError("Expected data type.");
-    return *this;
-}        
-
-string token::assertFailedMessage(vector<eTokenType> types){
-    string retval=format("Unexpected {0} '{1}'.  Expected ",(tokenType==eTokenType::quote)?"literal string":"token", value);
-    
-    
-    types.erase(std::remove(types.begin(), types.end(), eTokenType::eof), types.end()); 
-    types.erase(std::remove(types.begin(), types.end(), eTokenType::unknown), types.end()); 
-
-    int printed=0;
-    for(int t=0;t<types.size();t++){
-        string val;
-        if(t>0) {
-            retval+=", ";
-            if(t==types.size()-1) retval+="or ";
+        int printed=0;
+        for(int t=0;t<types.size();t++){
+            string val;
+            if(t>0) {
+                retval+=", ";
+                if(t==types.size()-1) retval+="or ";
+            }
+            val=tokenTypeToString(types[t]);
+            if(val=="") continue;
+            retval+=val;
+            printed++;
         }
-        val=tokenTypeToString(types[t]);
-        if(val=="") continue;
-        retval+=val;
-        printed++;
+        retval+=".";
+        return retval;
     }
-    retval+=".";
-    return retval;
-}
-string token::assertFailedMessage(vector<string> vals){
-    string retval=format("Unexpected {0} '{1}'.  Expected ",(tokenType==eTokenType::quote)?"literal string":"token", value);
+    string token::assertFailedMessage(vector<string> vals){
+        string retval=format("Unexpected {0} '{1}'.  Expected ",(tokenType==eTokenType::quote)?"literal string":"token", value);
 
-    for(int t=0;t<vals.size();t++){
-        if(t>0) {
-            retval+=", ";
-            if(t==vals.size()-1) retval+="or ";
+        for(int t=0;t<vals.size();t++){
+            if(t>0) {
+                retval+=", ";
+                if(t==vals.size()-1) retval+="or ";
+            }
+            retval+="'"+vals[t]+"'";
         }
-        retval+="'"+vals[t]+"'";
+        retval+=".";
+        return retval;
     }
-    retval+=".";
-    return retval;
-}
+#pragma endregion
+
 //generate a checksum for this token; primarily to make the token values useable in switch statements
 size_t token::chk() {
     const long long p = 131;
