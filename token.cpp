@@ -62,6 +62,7 @@ const token _nullToken;
         return pNode;
     }
     token::operator string(){
+        if(tokenType==eTokenType::quote) return unescape(value);
         return value;
     }
 #pragma endregion
@@ -140,8 +141,26 @@ size_t token::chk() {
 }
 //pass the token text off to the emitter
 token token::emit(){
-    bglParser.emit.put(value);
+    if(tokenType==eTokenType::quote){
+        bglParser.emit.put(unescape(value));
+    }
+    else{
+        bglParser.emit.put(value);
+    }
     return *this;
+}
+string token::unescape(string value){
+    value=replaceAll(value,"\\n","^");
+    value=replaceAll(value,"\\\"","~");
+    return value;
+}
+string token::replaceAll(string str, const string& from, const string& to) {
+    size_t start_pos = 0;
+    while ((start_pos = str.find(from, start_pos)) != string::npos) {
+        str.replace(start_pos, from.length(), to);
+        start_pos += to.length(); 
+    }
+    return str;
 }
 string token::tokenTypeToString(eTokenType type){
     switch(type){
