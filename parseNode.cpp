@@ -4,10 +4,23 @@
 using namespace std;
 
 void parseNode::addChild(parseNode node){
-    //node.parent=this;
+    node.parent=this;
     children.push_back(node);
 }
 
+void parseNode::mapParents(parseNode* parent){
+    if(this->type==eNodeType::root)
+        this->parent=NULL;
+    else
+        this->parent=parent;
+
+    for (auto& prop : properties) {
+        prop.second.mapParents(this);
+    }
+    for(parseNode& child : children){
+        child.mapParents(this);
+    }
+}
 int parseNode::getNodeNestingDepth(){
     int depth=0;
     parseNode* current=this;

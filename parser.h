@@ -21,7 +21,7 @@ enum class eCompileScope {root, classDef, codeBlock, languageBlock};
 
 class parser {
     public:
-        emitter emit;
+        i6Emitter emit;
         resultsStruct results;
         fileLexer file;
 
@@ -63,11 +63,13 @@ class parser {
         std::deque<parseNode*> currentNodeStack;
         void pushCurrentNode(parseNode&);
         void popCurrentNode();
-        void commitNode(parseNode); //not a reference; commit a copy of the node
+        parseNode& commitNode(parseNode&); //not a reference; commit 
         
         bool processNextStatement();
         bool processDataType(token);
         bool processVariableDeclaration(token, token, token);
+        bool processConstantDeclaration(token, token, token);
+        
         bool processRoutineDeclaration(token, token);
         bool processObjectDeclaration(token, token);
         bool processStatement(token);
