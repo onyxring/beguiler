@@ -18,6 +18,7 @@ void orbit::go(int argc, char* argv[]) {
    cout << "Beguiler: The Beguile-Inform Transpiler" << endl<<"version .1a"<<endl;
     if(parseArgs(argc, argv)) return; 
     if(bglParser.parseFile(settings.inFile)) return;
+    bglParser.parseTree.mapParents();
     if(writeFile(settings.tmpFile)) return;
 
     cout<<endl<<"Transpile successful. ";
@@ -98,15 +99,19 @@ string orbit::getPath(string filename){
 
 //When we're all done, commit the final transpiled text to the output file.
 bool orbit::writeFile(string filename) {
-    // std::ofstream outFileStream(filename);
-    // if (!outFileStream.is_open()) {
-    //     std::cerr << "Error creating file "<< filename << "."<<std::endl;
-    //     return true; // Indicate an error
-    // }
-    // outFileStream << bglParser.results.bodyText.str();
-    // outFileStream.close();
-    // return false;
-
+    
+    std::ofstream outFileStream(filename);
+    if (!outFileStream.is_open()) {
+        std::cerr << "Error creating file "<< filename << "."<<std::endl;
+        return true; // Indicate an error
+    }
+    
+    bglParser.emit.to(bglParser.results.bodyText);
     bglParser.emit.generateI6(bglParser.parseTree);
+
+    outFileStream << bglParser.results.bodyText.str();
+    outFileStream.close();
+    return false;
+
 }
 
