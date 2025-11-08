@@ -7,7 +7,6 @@
 #include "token.h"
 
 using namespace std;
-
 enum class eNodeType{
     root,
     directive,
@@ -15,6 +14,7 @@ enum class eNodeType{
     symbol,
     quote,
     variableDeclaration,
+    constantDeclaration,
     objectDeclaration,
     classDeclaration,
     parameterListDeclaration,
@@ -37,7 +37,7 @@ class parseNode {
 
         operator token(); 
         operator std::string(); 
-
+        void mapParents(parseNode* parent=NULL);
         void addChild(parseNode);
 
 };
