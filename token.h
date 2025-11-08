@@ -34,6 +34,7 @@ class token {
         static constexpr std::string bracesClose ="}"; 
         static constexpr std::string bracketOpen ="["; 
         static constexpr std::string bracketClose ="]"; 
+        static constexpr std::string constant="const"; 
         static constexpr std::string comma  =","; 
 
         bool is(eTokenType);
@@ -61,6 +62,9 @@ class token {
         std::string assertFailedMessage(std::vector<eTokenType> types);
         std::string assertFailedMessage(std::vector<std::string> vals);
         std::string tokenTypeToString(eTokenType type);
+
+        std::string unescape(std::string value);
+        std::string replaceAll(std::string str, const std::string& from, const std::string& to);
 
         token emit();
         size_t chk();

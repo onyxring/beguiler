@@ -16,11 +16,10 @@ using namespace std;
 
 parser::parser(){ 
     
-    emit.to(cout);  //write the result to the terminal window for now
     parseTree.type=eNodeType::root;
     pushCurrentNode(parseTree);
-
-    //emit.to(results.bodyText);
+    
+    //emit.to(cout);  //write the result to the terminal window for now
     registerNewObjectType("object"); 
     registerNewObjectType("class"); 
     registerNewObjectType("enum"); 
@@ -185,14 +184,9 @@ bool parser::processNextStatement(){
     
     if(tok.is(token::bracesClose)) return true; //true: signal to the calling routine that we've reached the end of the current scope
     if(tok.is(eTokenType::eof)) return true; //true: signal to the calling routine that we've reached the end of the file
-
-    //if(tok.isObjectType()) return processObjectType(tok);  //note: order is important here, because an object is also be a valid "data type"; we process objects, with their extended syntax options, before basic data types
-    if(tok.isDataType()) return processDataType(tok);      //handle "primitive", or "non-object" data types
     if(tok.is(eTokenType::directive)) return processDirective(tok);
-    
+    if(tok.is(token::constant) || tok.isDataType()) return processDataType(tok);      //handle "primitive", or "non-object", data types and constant declarations
     return processStatement(tok);//TODO: make sure statements aren't happening at illegal scopes
-    
-    return parseError(format("Unhandled token '{0}'",tok.value));
 }
 
 bool parser::processStatement(token tok){
@@ -246,6 +240,7 @@ bool parser::processStatement(token tok){
                 //processFunctionCall(tok, member);
             }
     }
+    //return parseError(format("Unhandled token '{0}'",tok.value));
 }
 bool parser::processObjectType(token tok){
 /*
@@ -289,19 +284,30 @@ bool parser::processObjectType(token tok){
     return false;
 }
 bool parser::processDataType(token dataType){
-    token name = file.getToken(eTokenType::identifier);
-    token symbol = file.getToken(eTokenType::symbol);
+    token name;
+    token symbol;
+
+    if(dataType.is(token::constant)){
+        dataType = file.getToken(eTokenType::dataType);
+        name = file.getToken(eTokenType::identifier);
+        symbol = file.getToken(token::assignment);
+        processConstantDeclaration(dataType, name, symbol);        
+        file.getToken(token::endStatement);
+        return false;
+    }
     
-    //parseNode pNode; 
+    name = file.getToken(eTokenType::identifier);
+    symbol = file.getToken(eTokenType::symbol);
 
     //--a variable declaration, with optional assignment:
     //      int myVar;
     //      int myVar=99; 
-    if(symbol.value==token::endStatement || symbol.value==token::assignment) {
+    if(symbol.isOneOf({token::endStatement, token::assignment})) {
         processVariableDeclaration(dataType, name, symbol);
         if(symbol.value==token::assignment) file.getToken(token::endStatement);
         return false;
     }
+  
     // {
     //     pNode.type=eNodeType::variableDeclaration;
     //     pNode["dataType"]=tok;
@@ -325,6 +331,7 @@ bool parser::processDataType(token dataType){
     return parseError("Unexpected value '"+symbol.value+"'.");
    
 }
+
 //--process a variable declaration statement and add it to the parse tree
 //-- handles both simple declarations and declarations with assignment
 //-- also handles parameter declarations within function definitions
@@ -344,6 +351,7 @@ bool parser::processVariableDeclaration(token dataType, token variableName, toke
         parseNode val = file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::integer}); 
         pNode["assignedValue"]=val;
     }
+    
     commitNode(pNode);
     //note the token pointer may end up at different places depending on if an assignment was present or not.
     //  the calling process, then must determine, based on if as assignment was declared, what to do with the next token, based
@@ -351,7 +359,18 @@ bool parser::processVariableDeclaration(token dataType, token variableName, toke
     //  if this was a global variable declaration, the next token should be an endStatement.
     return false;
 }
+bool parser::processConstantDeclaration(token dataType, token variableName, token symbol){
+    parseNode pNode; 
+    pNode.type=eNodeType::constantDeclaration;
+    pNode["dataType"]=dataType;
+    pNode["variableName"]=variableName;
+    
+    parseNode val = file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::integer}); 
+    pNode["assignedValue"]=val;
 
+    commitNode(pNode);
+    return false;
+}
 void parser::pushCurrentNode(parseNode& node){
     currentNodeStack.push_front(&node);    
 }
@@ -361,9 +380,11 @@ void parser::popCurrentNode(){
 parseNode& parser::getCurrentNode(){
     return *currentNodeStack.front();    
 }
-void parser::commitNode(parseNode node){
-    node.parent=&(getCurrentNode());
-    getCurrentNode().addChild(node);
+parseNode& parser::commitNode(parseNode& node){
+    parseNode &retval=getCurrentNode();
+    retval.addChild(node);
+    retval.parent=&(getCurrentNode());
+    return retval;
 }
 bool parser::processDirective(token tok){
     parseNode pNode; 

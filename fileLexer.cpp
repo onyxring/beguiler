@@ -82,7 +82,7 @@ bool fileLexer::isValidIdentifierChar(char c){
 //  comment:            The next token encountered was a comment.  Text contains the entirety of the comment, whether
 //                      it is a single line comment (//) or a multiline comment (/*...*/)
 //  quote:              The next token encountered was a quoted string.  Text contains the entirety of the string, 
-//                      including the quotes.
+//                      including the quotes and any escape characters.
 //  unclassifiedText:   The next token encountered was a series of contiguous "identifier appropriate" characters, 
 //                      including the underscore and alphanumeric characters.  Note that this doesn't check for validity:  
 //                      1abc is not a valid identifier, but will still be returned; as would 45.
@@ -92,7 +92,7 @@ bool fileLexer::isValidIdentifierChar(char c){
 //                      pairs, e.g. ", //, and /*
 //
 // Note: by default, all begining whitespace is ignored ("bled" off of the stream) and each call to getBasicToken()
-// returns the first actual text token; however, if the suppressBleed parameter is passed as true, and the first 
+// returns the first actual text token; however, if the suppressBleed argument is passed as true, and the first 
 // encountered character is a whitespace, it will be returned as a symbol token.
 token fileLexer::getBasicToken(bool suppressBleed){
     token retval;
@@ -124,7 +124,15 @@ token fileLexer::getBasicToken(bool suppressBleed){
         if(retval.tokenType==eTokenType::quote){
             retval.value+=c;
             readChar(); //dispose of the character we previewed    
-            if(c=='\"')  break; //closing quote
+            
+            if(c=='\\')  { //if we are processing an escape character, just add the next character no matter what it is
+                c=peekChar(); 
+                retval.value+=c;
+                readChar(); 
+            }
+            else{
+                if(c=='\"')  break; //closing quote
+            }
             c=peekChar(); //peek at the next character to process
             continue;
         } 
