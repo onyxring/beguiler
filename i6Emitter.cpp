@@ -8,21 +8,21 @@
 
 using namespace std;
 
-void i6i6Emitter::to(ostream& strm){ out.std::ios::rdbuf(strm.rdbuf()); }
-void i6i6Emitter::put(string str){ out<<str; }
+//The emitter writes to a standard output stream.  We can reassign this if we want...
+void i6Emitter::to(ostream& strm){ out.std::ios::rdbuf(strm.rdbuf()); }
+
+
+void i6Emitter::put(string str){ out<<str; }
 void i6Emitter::put(token tok){ out<<tok.value; }
+
 void i6Emitter::generateI6(parseNode& node){
-    //parseNode* params;
-    //string defaultInits="";
     indent(node);
     switch(node.type){
         case eNodeType::root:
-            for(auto& child : node.children){
-                generateI6(child);
-            }
+            rootNode(node);
             return;
         case eNodeType::directive:
-             out<<format("{0} {1};\n", (string)node, (string)node["filename"]);
+             directive(node);
              return;
         case eNodeType::routine:
             if(node.parent->type==eNodeType::root)
@@ -37,7 +37,8 @@ void i6Emitter::generateI6(parseNode& node){
                     //defaultInits+=format("if({0}==0) {0}={1}; ", (string)param["variableName"], (string)param["assignedValue"]);
                 //}   
             }
-            out<<";\n";
+            endStatement();
+            
             // if(defaultInits!=""){
             //     indent(node,1);
             //     out<<defaultInits<<endl;
@@ -48,7 +49,9 @@ void i6Emitter::generateI6(parseNode& node){
             }
             
             indent(node);
-            out<<"];\n";
+            out<<"]";
+            if(node.parent->type==eNodeType::root) endStatement(); 
+            newLine();
             return;
         case eNodeType::variableDeclaration:           
             switch(node.parent->type){
@@ -72,7 +75,7 @@ void i6Emitter::generateI6(parseNode& node){
            return;
            break;
         case eNodeType::constantDeclaration:           
-            out<<format("const {0}={1};", (string)node["variableName"],(string)node["assignedValue"]);
+            out<<format("constant  {0}={1};", (string)node["variableName"],(string)node["assignedValue"]);
             newLine();
             return;
             break;
@@ -82,6 +85,7 @@ void i6Emitter::generateI6(parseNode& node){
         case eNodeType::objectDeclaration:
             objectDeclaration(node);
             return;
+        
         
     //     case eNodeType::objectDeclaration:
     //         out<<format("Object {0} {{\n", node.keyToken.value);
@@ -93,6 +97,14 @@ void i6Emitter::generateI6(parseNode& node){
     //         break;
     }
 
+}
+void i6Emitter::directive(parseNode& node){
+    switch(((token)node).chk()){
+        case chk("#include"): out<<format("{0} {1};\n", (string)node, (string)node["filename"]);
+            break;
+        case chk("#i6"): out<<format("{0}\n", (string)node["i6Content"]);
+            break;
+    }
 }
 void i6Emitter::objectDeclaration(parseNode& node){
     out<<format("{0} {1} ", (string)node["objectType"], (string)node["objectName"]);
@@ -146,6 +158,13 @@ void i6Emitter::endStatement(){
 }
 void i6Emitter::newLine(){
     out<<"\n";
+}
+
+void i6Emitter::rootNode(parseNode & node){
+    out<<"!% +include_path=../_myExtensions,../../orLibraryI6,../../inform6/lib\n";
+    for(auto& child : node.children){
+        generateI6(child);
+    }
 }
 void i6Emitter::globalVariable(token datatype, token id, token val){
     out<<format("global {0}",(string)id);

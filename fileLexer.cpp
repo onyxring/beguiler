@@ -167,6 +167,30 @@ token fileLexer::getBasicToken(bool suppressBleed){
 
     return retval;//return our completed basic token
 }
+// token fileLexer::getRunTokenEol(){
+//     token retval;
+//     retval.tokenType=eTokenType::unclassifiedText;
+    
+//     char c=peekChar(); 
+
+//     while(c!=EOF&&c != '\n'){
+//         retval.value+=c; 
+//         readChar();      
+//     }
+//     return retval;
+// }
+// token fileLexer::getRunTokenBraceClose(){
+//     token retval;
+//     retval.tokenType=eTokenType::unclassifiedText;
+    
+//     char c=peekChar(); 
+//     while(c!=EOF){
+//         &&c != '}'){
+//         retval.value+=c; 
+//         readChar();      
+//     }
+//     return retval;
+// } 
 //Return a token from the stream. This calls getBasicToken, and classifies it further in specific cases.  After this runs, the token 
 //can be any of the following: 
 //
