@@ -66,7 +66,7 @@ bool parser::parseFile(string filename){
     
     token tok=file.getToken({eTokenType::identifier, eTokenType::directive, eTokenType::dataType, eTokenType::symbol, eTokenType::eof});
     
-    if(tok.is(token::bracesClose)){
+    if(tok.is(token::braceClose)){
         closeCompileScope();
         return false;
     }
@@ -104,7 +104,7 @@ bool parser::parseFile(string filename){
                     emit.globalFunction(tok, name);
                     return false;
                     break;
-                case chk(token::bracesOpen): 
+                case chk(token::braceOpen): 
                     //processObjectDeclaration(tok, name);
                     return false;
                     break;
@@ -115,7 +115,7 @@ bool parser::parseFile(string filename){
             token name = file.getToken(eTokenType::identifier);
             token symbol = file.getToken(eTokenType::symbol);
             
-            symbol.assert(token::bracesOpen);
+            symbol.assert(token::braceOpen);
             processEnumOrFlags(name, tok.is("bitFlags"));
             return false;
         }
@@ -123,7 +123,7 @@ bool parser::parseFile(string filename){
     } 
 
     if(resolveCurrentCompileScope()==eCompileScope::codeBlock){ //we are inside a code block, where executable commands live
-        if(tok.is(token::bracesClose)) return true; //exiting the code block
+        if(tok.is(token::braceClose)) return true; //exiting the code block
         emit.indent();
         
         if(tok.is("return")){
@@ -182,7 +182,7 @@ bool parser::parseFile(string filename){
 bool parser::processNextStatement(){
     token tok=file.getToken();
     
-    if(tok.is(token::bracesClose)) return true; //true: signal to the calling routine that we've reached the end of the current scope
+    if(tok.is(token::braceClose)) return true; //true: signal to the calling routine that we've reached the end of the current scope
     if(tok.is(eTokenType::eof)) return true; //true: signal to the calling routine that we've reached the end of the file
     if(tok.is(eTokenType::directive)) return processDirective(tok);
     if(tok.is(token::constant) || tok.isDataType()) return processDataType(tok);      //handle "primitive", or "non-object", data types and constant declarations
@@ -249,7 +249,7 @@ bool parser::processObjectType(token tok){
     pNode.keyToken=tok;
 
     token name = file.getToken(eTokenType::identifier);
-    token symbol = file.getToken({token::bracesOpen,token::endStatement, token::assignment});
+    token symbol = file.getToken({token::braceOpen,token::endStatement, token::assignment});
     
     if(symbol.value==token::endStatement) return false;     // object obj;
     if(symbol.value==token::assignment){                    // object s_to=library;
@@ -270,7 +270,7 @@ bool parser::processObjectType(token tok){
         do{
             el.keyToken=file.getToken(eTokenType::identifier);
             pNode.addChild(el);
-            symbol = file.getToken({token::comma,token::bracesClose});
+            symbol = file.getToken({token::comma,token::braceClose});
         }while(symbol.is(token::comma));
     }
     // else{ */
@@ -326,7 +326,7 @@ bool parser::processDataType(token dataType){
     if(symbol.is(token::parenOpen)) return processRoutineDeclaration(dataType, name);
 
     //--an object instance declaration:
-    if(symbol.is(token::bracesOpen)) return processObjectDeclaration(dataType, name);
+    if(symbol.is(token::braceOpen)) return processObjectDeclaration(dataType, name);
 
     return parseError("Unexpected value '"+symbol.value+"'.");
    
@@ -386,15 +386,53 @@ parseNode& parser::commitNode(parseNode& node){
     retval.parent=&(getCurrentNode());
     return retval;
 }
-bool parser::processDirective(token tok){
+bool parser::processDirective(token directive){
     parseNode pNode; 
     pNode.type=eNodeType::directive;
-    pNode.keyToken=tok;
+    pNode.keyToken=directive;
+
+    token tok;
     
-    if(tok.value=="#include"){
-        pNode["filename"]=file.getToken(eTokenType::quote);
-        commitNode(pNode);
-        return false;
+
+    switch(directive.chk()){
+        case chk("#include"):
+            pNode["filename"]=file.getToken(eTokenType::quote);
+            commitNode(pNode);
+            return false;
+            break;    
+        case chk("#i6"):
+            token t=file.getToken();
+            if(t.is(token::braceOpen)){ //multi line
+                deque<char> closeChar;
+                closeChar.push_back('}');
+                
+                t=file.getBasicToken(true);
+                while(closeChar.size()>0){
+                    if(t.value[0]==closeChar.back()){
+                        closeChar.pop_back();
+                        if(closeChar.size()==0) break;
+                    }
+                    tok.value=tok.value+t.value;  //add the new token to the i6 text we are building up
+
+                    if(closeChar.back()!='!') {  //if we are in a comment, then lets not push more special characters on to our stack (quotes would be treated the same; however, the lexer returns whole quoted strings, so this is covered for us automatically)
+                        //push context onto our stack...
+                        if(t.value[0]=='{') closeChar.push_back('}'); //a nested statement
+                        if(t.value[0]=='!') closeChar.push_back('\n');//a comment
+                    }
+                    t=file.getBasicToken(true);                    
+                }            
+            }
+            else{ //single line only
+                while(t.isNot("\n")){
+                    tok.value=tok.value+t.value;
+                    t=file.getBasicToken(true);
+                }
+            }
+            tok.tokenType=eTokenType::unclassifiedText;
+            pNode["i6Content"]=tok;
+            commitNode(pNode);
+            return false;
+            break;
     }
     return parseError("Unrecognized directive '"+tok.value+"'.");
 }
@@ -434,7 +472,7 @@ bool parser::processRoutineDeclaration(token returnType, token name){
     
     pNode["parameters"]=paramsNode;
     
-    file.getToken(token::bracesOpen); //consume the open brace
+    file.getToken(token::braceOpen); //consume the open brace
     
     pushCurrentNode(pNode);
     while(processNextStatement()==false){ 
@@ -462,103 +500,6 @@ bool parser::processObjectDeclaration(token objectType, token name){
     commitNode(pNode); //commit the object node to the parse tree
     return false;
 }
-
-    
-//     if(tok.is(token::bracesClose)){
-//         closeCompileScope();
-//         return false;
-//     }
-
-//     if(resolveCurrentCompileScope()==eCompileScope::root){ //we are at the root of the source code heirarchy, where global declarations and class definitions all live    
-    
-//         if(tok.is(eTokenType::eof)) return true; //end of file at global scope... exit
-
-//         token next;
-
-//         if(tok.is(eTokenType::directive)){
-//             switch(tok.chk()){
-//                 case chk("#include"): 
-//                     next=file.getToken(eTokenType::quote);
-//                     emit.put(format("{0} {1};\n",tok.value, next.value));
-//                     return false;
-//             }
-//         }
-//         if(tok.isDataType()){ 
-//             token name = file.getToken(eTokenType::identifier);
-//             token symbol = file.getToken(eTokenType::symbol);
-//             token val;
-//             switch(symbol.chk()){
-//                 case chk(token::endStatement):
-//                     emit.globalVariable(tok, name); 
-//                     return false;
-//                     break;
-//                 case chk(token::assignment):
-//                     val = file.getToken({eTokenType::identifier, eTokenType::quote}); 
-//                     file.getToken(token::endStatement);
-//                     emit.globalVariable(tok, name, val); 
-//                     return false;
-//                     break;
-//                 case chk(token::parenOpen): 
-//                     emit.globalFunction(tok, name);
-//                     return false;
-//                     break;
-//                 case chk(token::bracesOpen): 
-//                     //processObjectDeclaration(tok, name);
-//                     return false;
-//                     break;
-//             }
-//             parseError("Invalid character '"+symbol.value+"'.");
-//         }
-//         if(tok.isOneOf({"enum","bnum"})) { //formerly "bitFlags"
-//             token name = file.getToken(eTokenType::identifier);
-//             token symbol = file.getToken(eTokenType::symbol);
-            
-//             symbol.assert(token::bracesOpen);
-//             processEnumOrFlags(name, tok.is("bitFlags"));
-//             return false;
-//         }
-//         parseError("Invalid keyword '"+tok.value+"'.");
-//     } 
-
-//     if(resolveCurrentCompileScope()==eCompileScope::codeBlock){ //we are inside a code block, where executable commands live
-//         if(tok.is(token::bracesClose)) return true; //exiting the code block
-//         emit.indent();
-        
-//         if(tok.is("return")){
-//             tok.emit(); 
-//             token nextToken=file.getToken();
-//             if(nextToken.is(";")) {
-//                 nextToken.emit(); //return;
-//             }
-//             else{
-//                 emit.out<<" "; 
-//                 nextToken.emit(); 
-//                 file.getToken(";").emit(); //return val;
-//             }
-//             return false;
-//         }
-//         if(tok.is("print")){
-//             file.getToken("(");
-//             token nextToken=file.getToken();
-//             if(nextToken.is(")")) {
-//                 file.getToken(";");
-//                 emit.put("new_line;"); 
-//                 emit.newLine();
-//                 return false; 
-//             }
-//             if(nextToken.isOneOf({eTokenType::quote, eTokenType::identifier})) {
-//                 file.getToken(")"); //TODO: expand this to support expressions 
-//                 file.getToken(";");
-//                 emit.put("print ");
-//                 nextToken.emit();
-//                 emit.endStatement(); 
-//                 return false; 
-//             }
-//             parseError("Could evaluate print parameter '"+nextToken.value+"'.");
-//         }
-//         token symbol = file.getToken(eTokenType::symbol);
-
-//         //TODO: add inline variable declarations
         
 //         if(symbol.is(token::parenOpen))  
 //             processFunctionCall(tok);
@@ -570,30 +511,27 @@ bool parser::processObjectDeclaration(token objectType, token name){
 
 //             processFunctionCall(tok, member);
 //         }
-//     } 
-    
-//     return false;
-// }
-void parser::processI6(){
-    if(getCurrentLanguage()==eCompileLanguage::beguile) return;
-    
-    char c=file.readChar();
-    while(c!=EOF){
-        //TODO: Make this better; it isn't fully implemented; since it will be triggered by #beguile even within string, expressions, and comments.
-        if(c=='#'){
-            token t=file.getBasicToken(true); 
-            if(t.value=="beguile"){
-                file.getToken("{");
-                compileLanguageStack.push_front(eCompileLanguage::beguile);
-                openCompileScope(eCompileScope::languageBlock);
-                return;
-            }
-        }
-        emit.out<<c;
-        c=file.readChar();
-    }
 
-}
+// void parser::processI6(){
+//     if(getCurrentLanguage()==eCompileLanguage::beguile) return;
+    
+//     char c=file.readChar();
+//     while(c!=EOF){
+//         //TODO: Make this better; it isn't fully implemented; since it will be triggered by #beguile even within string, expressions, and comments.
+//         if(c=='#'){
+//             token t=file.getBasicToken(true); 
+//             if(t.value=="beguile"){
+//                 file.getToken("{");
+//                 compileLanguageStack.push_front(eCompileLanguage::beguile);
+//                 openCompileScope(eCompileScope::languageBlock);
+//                 return;
+//             }
+//         }
+//         emit.out<<c;
+//         c=file.readChar();
+//     }
+
+// }
 void parser::registerNewObjectType(string name){
     if(find(objects.begin(), objects.end(), name)!=objects.end()) parseError(format("Declared type '{0}' already exists.", name));
     objects.push_back(name);
@@ -603,61 +541,61 @@ void parser::registerNewRoutine(string name){
     if(find(routines.begin(), routines.end(), name)!=routines.end()) parseError(format("Declared routine '{0}' already exists.", name));
     routines.push_back(name);
 }
-void parser::processEnumOrFlags(token name, bool asFlag){
-    int val=(asFlag)?1:0; 
+// void parser::processEnumOrFlags(token name, bool asFlag){
+//     int val=(asFlag)?1:0; 
     
-    registerNewObjectType(name.value);
+//     registerNewObjectType(name.value);
 
-    emit.out<<"object "<<name.value<<" with ";
-    token tok = file.getToken({eTokenType::identifier, eTokenType::symbol});
-    while(!tok.is(token::bracesClose)){
-        tok.assert(eTokenType::identifier);
-        emit.out<<tok.value<< " "<<val;
-        if(asFlag) 
-            val=val<<1; 
-        else
-            val++;
-        tok = file.getToken(eTokenType::symbol).assertOneOf({token::comma,token::bracesClose});
-        if(tok.is(token::comma)) {
-            emit.out<<", ";
-            tok=file.getToken(eTokenType::identifier);
-        }
-    }
-    emit.out<<";"<<endl;
-}
-void parser::processFunctionCall(token obj, token member){
-    string call=obj.value;
-    if(!member.isNull()) call+="."+member.value;
-    emit.out<<call<<"(";
+//     emit.out<<"object "<<name.value<<" with ";
+//     token tok = file.getToken({eTokenType::identifier, eTokenType::symbol});
+//     while(!tok.is(token::braceClose)){
+//         tok.assert(eTokenType::identifier);
+//         emit.out<<tok.value<< " "<<val;
+//         if(asFlag) 
+//             val=val<<1; 
+//         else
+//             val++;
+//         tok = file.getToken(eTokenType::symbol).assertOneOf({token::comma,token::braceClose});
+//         if(tok.is(token::comma)) {
+//             emit.out<<", ";
+//             tok=file.getToken(eTokenType::identifier);
+//         }
+//     }
+//     emit.out<<";"<<endl;
+// }
+// void parser::processFunctionCall(token obj, token member){
+//     string call=obj.value;
+//     if(!member.isNull()) call+="."+member.value;
+//     emit.out<<call<<"(";
     
-    string paramString="";
-    bool complete=false;
+//     string paramString="";
+//     bool complete=false;
 
-    do{
-        string exp;
-        complete=getArgumentExpression(exp);
-        if(paramString.length()>0) paramString+=", ";
-        paramString+=exp;
-    }while(complete==false);
+//     do{
+//         string exp;
+//         complete=getArgumentExpression(exp);
+//         if(paramString.length()>0) paramString+=", ";
+//         paramString+=exp;
+//     }while(complete==false);
     
-    file.getToken(token::endStatement);
+//     file.getToken(token::endStatement);
 
-    emit.out<<paramString<<");"<<endl;
+//     emit.out<<paramString<<");"<<endl;
     
-}
+// }
 //TODO: this is very rudimentary at the moment.  Expand this.
-bool parser::getArgumentExpression(string& expression){
-    token tok = file.getToken();
+// bool parser::getArgumentExpression(string& expression){
+//     token tok = file.getToken();
 
-    while(tok.isNot(token::parenClose)){
-        if(tok.is(token::comma)) return false; //process the expression
-        expression=expression+tok.value; //build the expression up from component expressions
-        tok = file.getToken();
-    }
-    return true; //done processing arguments
-}
+//     while(tok.isNot(token::parenClose)){
+//         if(tok.is(token::comma)) return false; //process the expression
+//         expression=expression+tok.value; //build the expression up from component expressions
+//         tok = file.getToken();
+//     }
+//     return true; //done processing arguments
+// }
 void parser::processFunctionBody(token returnType){
-    file.getToken(token::bracesOpen);
+    file.getToken(token::braceOpen);
     
     openCompileScope(eCompileScope::codeBlock);
     //process all statements until a close brace is encountered

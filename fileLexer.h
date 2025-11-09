@@ -28,4 +28,6 @@ class fileLexer{
         token getToken(std::string);
         token getToken(std::vector<std::string>);
         token getToken();
+        //token getRunTokenEol(); 
+        //token getRunTokenBraceClose(); 
 };

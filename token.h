@@ -30,8 +30,8 @@ class token {
         static constexpr std::string assignment ="="; 
         static constexpr std::string parenOpen ="(";  
         static constexpr std::string parenClose =")"; 
-        static constexpr std::string bracesOpen ="{";  
-        static constexpr std::string bracesClose ="}"; 
+        static constexpr std::string braceOpen ="{";  
+        static constexpr std::string braceClose ="}"; 
         static constexpr std::string bracketOpen ="["; 
         static constexpr std::string bracketClose ="]"; 
         static constexpr std::string constant="const"; 
