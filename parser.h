@@ -5,7 +5,7 @@
 
 #include "token.h"
 #include "fileLexer.h"
-#include "emitter.h"
+#include "i6Emitter.h"
 #include "parseNode.h"
 
 using namespace std;
@@ -50,20 +50,20 @@ class parser {
 
         //old...
         //bool processNextStatement();
-        void processFunctionParams();
-        void processEnumOrFlags(token, bool);
-        void processFunctionCall(token, token=_nullToken);
-        bool getArgumentExpression(std::string&);
-        void processI6();
+        //void processFunctionParams();
+        //void processEnumOrFlags(token, bool);
+        //void processFunctionCall(token, token=_nullToken);
+        //bool getArgumentExpression(std::string&);
+        //void processI6();
         void registerNewObjectType(std::string);
         void registerNewRoutine(std::string);
-        void emitVariable(token, token, token= _nullToken);
+        //void emitVariable(token, token, token= _nullToken);
 
         //new...
         std::deque<parseNode*> currentNodeStack;
         void pushCurrentNode(parseNode&);
         void popCurrentNode();
-        parseNode& commitNode(parseNode&); //not a reference; commit 
+        parseNode& commitNode(parseNode&);
         
         bool processNextStatement();
         bool processDataType(token);

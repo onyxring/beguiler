@@ -16,6 +16,7 @@ class i6Emitter{
         //void functionParams();
         void functionCall(token, token=_nullToken);
         void enumOrFlags(token,bool);
+        void directive(parseNode&);
         void globalVariable(token, token, token= _nullToken);
         void variable(token, token, token= _nullToken);
         void put(std::string);
@@ -27,4 +28,5 @@ class i6Emitter{
         void executableStatement(parseNode&);
         void objectDeclaration(parseNode&);
         void generateI6(parseNode&);
+        void rootNode(parseNode&);
 };

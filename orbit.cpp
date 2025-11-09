@@ -15,6 +15,8 @@ settingsStruct settings;
 parser bglParser;
 
 void orbit::go(int argc, char* argv[]) {
+
+
    cout << "Beguiler: The Beguile-Inform Transpiler" << endl<<"version .1a"<<endl;
     if(parseArgs(argc, argv)) return; 
     if(bglParser.parseFile(settings.inFile)) return;
@@ -67,18 +69,24 @@ bool orbit::parseArgs(int argc, char* argv[]) {
         }
     }
 
+    if(settings.outFile=="") {
+        string extension="ulx";
+
+        fs::path p(settings.inFile);
+        
+        if(settings.switches.contains("-v3")) extension="z3";
+        if(settings.switches.contains("-v5")) extension="z5";
+        if(settings.switches.contains("-v6")) extension="z6";
+        if(settings.switches.contains("-v8")) extension="z8";
+        
+        settings.outFile=format("{0}.{1}",p.stem().c_str(),extension);
+    }
 
     #if defined(_WIN32) || defined(_WIN64)
         settings.pathSep = '\\';
     #else
         settings.pathSep = '/';  
     #endif
-
-    //get the current time in milliseconds.  And use it to create a unique temp file name.
-    //auto duration = std::chrono::system_clock::now().time_since_epoch();
-    //auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-    //string filePath=getPath(settings.inFile);
-    //settings.tmpFile = filePath+"_"+to_string(milliseconds)+".inf";
 
     settings.tmpFile = settings.inFile+".transpiled.inf";
     settings.informPath = getPath(argv[0])+settings.informName;
