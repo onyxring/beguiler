@@ -37,7 +37,7 @@ const token _nullToken;
         return false;
     }
     bool token::isDataType(){
-        if(string("var void int string").find(value)!=string::npos) return true;
+        if(string("var void bool int string").find(value)!=string::npos) return true; //TODO: make this a list someplace
         return isObjectType();    
     }
     bool token::isNumeric(){

@@ -54,23 +54,23 @@ void i6Emitter::generateI6(parseNode& node){
             newLine();
             return;
         case eNodeType::variableDeclaration:           
-            switch(node.parent->type){
-                case eNodeType::root:
+            if(node.resolveContext()==eCompileContext::global){
+                if(bglParser.isObjectType((string)node["dataType"])){
+                    out<<format("{0} {1}", (string)node["dataType"], (string)node["variableName"]);
+                }
+                else{
                     out<<format("global {0}", (string)node["variableName"]);
-                    if(node.properties.contains("assignedValue")){
-                        out<<format("={0}", (string)node["assignedValue"]);
-                    }
-                    endStatement();
-                    return;
-                    break;
-                case eNodeType::classDeclaration:
-                case eNodeType::objectDeclaration:
-                    out<<format("{0}", (string)node["variableName"]);
-                    if(node.properties.contains("assignedValue")){
-                        out<<format(" {0}", (string)node["assignedValue"]);
-                    }
-                    return;
-                    break;
+                }
+                if(node.properties.contains("assignedValue")){
+                    out<<format("={0}", (string)node["assignedValue"]);
+                }
+                endStatement();
+            }
+            else{
+                out<<format("{0}", (string)node["variableName"]);
+                if(node.properties.contains("assignedValue")){
+                    out<<format(" {0}", (string)node["assignedValue"]);
+                }
             }
            return;
            break;
@@ -98,6 +98,7 @@ void i6Emitter::generateI6(parseNode& node){
     }
 
 }
+
 void i6Emitter::directive(parseNode& node){
     switch(((token)node).chk()){
         case chk("#include"): out<<format("{0} {1};\n", (string)node, (string)node["filename"]);
@@ -108,15 +109,18 @@ void i6Emitter::directive(parseNode& node){
 }
 void i6Emitter::objectDeclaration(parseNode& node){
     out<<format("{0} {1} ", (string)node["objectType"], (string)node["objectName"]);
-    if(node.children.size()>0){
-        out<<" with ";
-        bool isFirst=true;
-        for(parseNode& statement : node.children){
-            if(isFirst==false) out<<", ";
-            isFirst=false;  
-            generateI6(statement); 
-            out<<endl;
-        }    
+    
+    bool isFirst=true;
+    for(parseNode& child : node.children) {
+        if(((string)child)!="#i6") {
+            if(isFirst)
+                out<<" with ";
+            else
+                out<<", ";
+            isFirst=false;
+        }
+        generateI6(child); 
+        out<<endl;
     }
     out<<";\n";
 }
@@ -166,20 +170,20 @@ void i6Emitter::rootNode(parseNode & node){
         generateI6(child);
     }
 }
-void i6Emitter::globalVariable(token datatype, token id, token val){
-    out<<format("global {0}",(string)id);
+// void i6Emitter::globalVariable(token datatype, token id, token val){
+//     out<<format("global {0}",(string)id);
     
-    if(!val.isNull())  out<<format("={0}",(string)val);
+//     if(!val.isNull())  out<<format("={0}",(string)val);
     
-    endStatement();
-    return;
+//     endStatement();
+//     return;
 
-}
+// }
 void i6Emitter::indent(parseNode& node, int extra){
-    for(int t=0; t<node.getNodeNestingDepth()+extra;t++) out<<"   ";    
+    for(int t=0; t<node.resolveNestingDepth()+extra;t++) out<<"   ";    
 }
 void i6Emitter::indent(int extra){
-    for(int t=0; t<bglParser.getCurrentNode().getNodeNestingDepth()+extra;t++) out<<"   ";    
+    for(int t=0; t<bglParser.getCurrentNode().resolveNestingDepth()+extra;t++) out<<"   ";    
 }
 
 /*
