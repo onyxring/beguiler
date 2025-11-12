@@ -3,6 +3,32 @@
 
 using namespace std;
 
+enum class eCompileContext {global, objectDef, codeBlock};
+
+enum class eNodeType{
+    root,
+    directive,
+    integer,
+    symbol,
+    quote,
+    variableDeclaration,
+    constantDeclaration,
+    objectDeclaration,
+    classDeclaration,
+    parameterListDeclaration,
+    routine,
+    executableStatement,
+    tagDeclaration
+    //expression,
+};
+
+enum class eCompileLanguage {beguile, i6};
+
+struct resultsStruct{
+    std::stringstream tempText;
+    std::stringstream bodyText;
+};
+
 constexpr size_t chk(string_view str) {
     const long long p = 131;
     const long long m = 4294967291; // 2^32 - 5, largest 32 bit prime

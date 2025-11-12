@@ -7,7 +7,14 @@ void parseNode::addChild(parseNode node){
     node.parent=this;
     children.push_back(node);
 }
+eCompileContext parseNode::resolveContext(){
+    if(parent->type==eNodeType::root) return eCompileContext::global; 
+    if(parent->type==eNodeType::classDeclaration || parent->type==eNodeType::objectDeclaration) return eCompileContext::objectDef; 
+    if(parent->type==eNodeType::routine) return eCompileContext::codeBlock; 
+    
+    return eCompileContext::codeBlock; //TODO: really should throw an error here, instead of assuming code.
 
+}
 void parseNode::mapParents(parseNode* parent){
     if(this->type==eNodeType::root)
         this->parent=NULL;
@@ -21,7 +28,7 @@ void parseNode::mapParents(parseNode* parent){
         child.mapParents(this);
     }
 }
-int parseNode::getNodeNestingDepth(){
+int parseNode::resolveNestingDepth(){
     int depth=0;
     parseNode* current=this;
     while(current !=0 && current->type!=eNodeType::root){
