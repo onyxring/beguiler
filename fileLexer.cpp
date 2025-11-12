@@ -161,7 +161,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
 
     //a special case: we've reached the end of file.  If we are not at the global scope, then throw an error, because we've terminated early
     if(c==EOF) {
-        if(bglParser.resolveCurrentCompileScope()!=eCompileScope::root) bglParser.parseError("End of file encountered prematurely");
+        if(bglParser.getCurrentCompileContext()!=eCompileContext::global) bglParser.parseError("End of file encountered prematurely");
         retval.tokenType=eTokenType::eof;
     }
 

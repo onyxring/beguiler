@@ -5,30 +5,30 @@
 #include <cctype> 
 #include <tuple> 
 #include <optional>
-
 #include <string_view>
 
+#include "globals.h"
 #include "parser.h"
 #include "fileLexer.h"
-#include "globals.h"
 
 using namespace std;
 
 parser::parser(){ 
+    //emit.to(cout);  //write the result to the terminal window for now
     
     parseTree.type=eNodeType::root;
     pushCurrentNode(parseTree);
     
-    //emit.to(cout);  //write the result to the terminal window for now
     registerNewObjectType("object"); 
     registerNewObjectType("class"); 
-    registerNewObjectType("enum"); 
-    registerNewObjectType("bnum"); 
-    // objects.push_back("enum");
-    // objects.push_back("bitFlags");
-    // //objects.push_back("string"); //todo: this should move to an #insert language extension 
-}
+    
+    registerNewBaseDataType("var"); 
+    registerNewBaseDataType("void"); 
+    registerNewBaseDataType("bool"); 
+    registerNewBaseDataType("int"); 
+    registerNewBaseDataType("string"); 
 
+}
 
 // Open an input file, process each statement.  This is the entry point to this whole parsing process
 bool parser::parseFile(string filename){
@@ -41,12 +41,12 @@ bool parser::parseFile(string filename){
         }
         else{ 
             compileLanguageStack.push_front(eCompileLanguage::beguile); //use default mode
-            cout<<format("Beguiling file {0}.\n",filename);
+            cout<<format("Beguiling file \"{0}\"\n",filename);
         }
         
         //now that we've checked for that convention, rewind the stream pointer to the beginning for actual processing.
         file.moveToStart(); 
-        openCompileScope(eCompileScope::root);
+        openCompileContext(eCompileContext::global);
     }
     //process all statements in the file one by one
     while(processNextStatement()==false){ 
@@ -56,137 +56,31 @@ bool parser::parseFile(string filename){
     file.close();
     return false;
 }
-//------------------------------------------------------------------
-// Process a complete statement. 
-// We have a finite set of allowable patterns which may or may not
-// be valid, depending on the Scope.  We match the input to these
-// and raise compile-time errors if we cant.
-/*bool parser::processNextStatement(){
-    processI6(); //we may be in the middle of emitting I6 code; do that until it is done.
-    
-    token tok=file.getToken({eTokenType::identifier, eTokenType::directive, eTokenType::dataType, eTokenType::symbol, eTokenType::eof});
-    
-    if(tok.is(token::braceClose)){
-        closeCompileScope();
-        return false;
-    }
 
-    if(resolveCurrentCompileScope()==eCompileScope::root){ //we are at the root of the source code heirarchy, where global declarations and class definitions all live    
-    
-        if(tok.is(eTokenType::eof)) return true; //end of file at global scope... exit
-
-        token next;
-
-        if(tok.is(eTokenType::directive)){
-            switch(tok.chk()){
-                case chk("#include"): 
-                    next=file.getToken(eTokenType::quote);
-                    emit.put(format("{0} {1};\n",tok.value, next.value));
-                    return false;
-            }
-        }
-        if(tok.isDataType()){ 
-            token name = file.getToken(eTokenType::identifier);
-            token symbol = file.getToken(eTokenType::symbol);
-            token val;
-            switch(symbol.chk()){
-                case chk(token::endStatement):
-                    emit.globalVariable(tok, name); 
-                    return false;
-                    break;
-                case chk(token::assignment):
-                    val = file.getToken({eTokenType::identifier, eTokenType::quote}); 
-                    file.getToken(token::endStatement);
-                    emit.globalVariable(tok, name, val); 
-                    return false;
-                    break;
-                case chk(token::parenOpen): 
-                    emit.globalFunction(tok, name);
-                    return false;
-                    break;
-                case chk(token::braceOpen): 
-                    //processObjectDeclaration(tok, name);
-                    return false;
-                    break;
-            }
-            parseError("Invalid character '"+symbol.value+"'.");
-        }
-        if(tok.isOneOf({"enum","bitFlags"})) {
-            token name = file.getToken(eTokenType::identifier);
-            token symbol = file.getToken(eTokenType::symbol);
-            
-            symbol.assert(token::braceOpen);
-            processEnumOrFlags(name, tok.is("bitFlags"));
-            return false;
-        }
-        parseError("Invalid keyword '"+tok.value+"'.");
-    } 
-
-    if(resolveCurrentCompileScope()==eCompileScope::codeBlock){ //we are inside a code block, where executable commands live
-        if(tok.is(token::braceClose)) return true; //exiting the code block
-        emit.indent();
-        
-        if(tok.is("return")){
-            tok.emit(); 
-            token nextToken=file.getToken();
-            if(nextToken.is(";")) {
-                nextToken.emit(); //return;
-            }
-            else{
-                emit.out<<" "; 
-                nextToken.emit(); 
-                file.getToken(";").emit(); //return val;
-            }
-            return false;
-        }
-        if(tok.is("print")){
-            file.getToken("(");
-            token nextToken=file.getToken();
-            if(nextToken.is(")")) {
-                file.getToken(";");
-                emit.put("new_line;"); 
-                emit.newLine();
-                return false; 
-            }
-            if(nextToken.isOneOf({eTokenType::quote, eTokenType::identifier})) {
-                file.getToken(")"); //TODO: expand this to support expressions 
-                file.getToken(";");
-                emit.put("print ");
-                nextToken.emit();
-                emit.endStatement(); 
-                return false; 
-            }
-            parseError("Could evaluate print parameter '"+nextToken.value+"'.");
-        }
-        token symbol = file.getToken(eTokenType::symbol);
-
-        //TODO: add inline variable declarations
-        
-        if(symbol.is(token::parenOpen))  
-            processFunctionCall(tok);
-        else{
-            symbol.assert(".");
-            
-            token member = file.getToken(eTokenType::identifier);
-            file.getToken(token::parenOpen);
-
-            processFunctionCall(tok, member);
-        }
-    } 
-    
-    return false;
-}
-*/
 //------------------------------------------------------------------
 // Transcribe the current statement into our parseTree.
 bool parser::processNextStatement(){
+    if(getTagCount()>0) parseError("Unassigned tag declaration.");
+
     token tok=file.getToken();
     
+    if(tok.is("[")) {
+        processTags(tok);      
+        tok=file.getBasicToken();
+    }
+
     if(tok.is(token::braceClose)) return true; //true: signal to the calling routine that we've reached the end of the current scope
     if(tok.is(eTokenType::eof)) return true; //true: signal to the calling routine that we've reached the end of the file
+    
+
     if(tok.is(eTokenType::directive)) return processDirective(tok);
+
     if(tok.is(token::constant) || tok.isDataType()) return processDataType(tok);      //handle "primitive", or "non-object", data types and constant declarations
-    return processStatement(tok);//TODO: make sure statements aren't happening at illegal scopes
+
+    //that's all we allow in global context.  Throw an error otherwise...
+    if(getCurrentCompileContext()==eCompileContext::global) parseError(format("Unrecognized identifier:'{0}'", (string) tok));
+    
+     processStatement(tok);//TODO: make sure statements aren't happening at illegal scopes
 }
 
 bool parser::processStatement(token tok){
@@ -242,47 +136,7 @@ bool parser::processStatement(token tok){
     }
     //return parseError(format("Unhandled token '{0}'",tok.value));
 }
-bool parser::processObjectType(token tok){
-/*
-    parseNode pNode; 
-    pNode.type=eNodeType::objectDeclaration;
-    pNode.keyToken=tok;
 
-    token name = file.getToken(eTokenType::identifier);
-    token symbol = file.getToken({token::braceOpen,token::endStatement, token::assignment});
-    
-    if(symbol.value==token::endStatement) return false;     // object obj;
-    if(symbol.value==token::assignment){                    // object s_to=library;
-        parseNode el;
-        el.keyToken=file.getToken(eTokenType::identifier);
-        commitNode(pNode);
-        file.getToken(token::endStatement);
-    };
-*/    
-    //parseNode* saveNode=currentParseTreeNode;
-    //currentParseTreeNode=&pNode;
-    
-    //TODO: these should go away when macros are implemented
-    /*
-    if(tok.value=="enum"|| tok.value=="bitFlags"){
-        parseNode el;
-        
-        do{
-            el.keyToken=file.getToken(eTokenType::identifier);
-            pNode.addChild(el);
-            symbol = file.getToken({token::comma,token::braceClose});
-        }while(symbol.is(token::comma));
-    }
-    // else{ */
-    //     while(processNextStatement()==false){ 
-    //         //cout<<"Block processed."<<endl;
-    //     }
-    // //}
-    // //currentParseTreeNode=saveNode;
-    // commitNode(pNode);
-
-    return false;
-}
 bool parser::processDataType(token dataType){
     token name;
     token symbol;
@@ -308,20 +162,6 @@ bool parser::processDataType(token dataType){
         return false;
     }
   
-    // {
-    //     pNode.type=eNodeType::variableDeclaration;
-    //     pNode["dataType"]=tok;
-    //     pNode["variableName"]=name;
-
-    //      if(symbol.value==token::assignment){
-    //         val = file.getToken({eTokenType::identifier, eTokenType::quote}); 
-    //         file.getToken(token::endStatement);
-    //         pNode["assignedValue"]=val;
-    //     }
-    //     commitNode(pNode);
-    //     return false;
-    // }
-    
     //--a function declaration:
     if(symbol.is(token::parenOpen)) return processRoutineDeclaration(dataType, name);
 
@@ -331,7 +171,9 @@ bool parser::processDataType(token dataType){
     return parseError("Unexpected value '"+symbol.value+"'.");
    
 }
+bool parser::processAttribute(token tok){
 
+}
 //--process a variable declaration statement and add it to the parse tree
 //-- handles both simple declarations and declarations with assignment
 //-- also handles parameter declarations within function definitions
@@ -371,21 +213,6 @@ bool parser::processConstantDeclaration(token dataType, token variableName, toke
     commitNode(pNode);
     return false;
 }
-void parser::pushCurrentNode(parseNode& node){
-    currentNodeStack.push_front(&node);    
-}
-void parser::popCurrentNode(){
-    currentNodeStack.pop_front();
-}
-parseNode& parser::getCurrentNode(){
-    return *currentNodeStack.front();    
-}
-parseNode& parser::commitNode(parseNode& node){
-    parseNode &retval=getCurrentNode();
-    retval.addChild(node);
-    retval.parent=&(getCurrentNode());
-    return retval;
-}
 bool parser::processDirective(token directive){
     parseNode pNode; 
     pNode.type=eNodeType::directive;
@@ -414,7 +241,7 @@ bool parser::processDirective(token directive){
                     }
                     tok.value=tok.value+t.value;  //add the new token to the i6 text we are building up
 
-                    if(closeChar.back()!='!') {  //if we are in a comment, then lets not push more special characters on to our stack (quotes would be treated the same; however, the lexer returns whole quoted strings, so this is covered for us automatically)
+                    if(closeChar.back()!='\n') {  //if we are processing an "until end of line" span (e.g. an I6 comment), then do not push more special characters on to our stack (quotes would be treated the same; however, the lexer returns whole quoted strings, so this is covered for us automatically)
                         //push context onto our stack...
                         if(t.value[0]=='{') closeChar.push_back('}'); //a nested statement
                         if(t.value[0]=='!') closeChar.push_back('\n');//a comment
@@ -446,8 +273,6 @@ bool parser::processRoutineDeclaration(token returnType, token name){
     
     paramsNode.type=eNodeType::parameterListDeclaration; 
     
-    //TODO: refactor currentParseTreeNode to allow an optional passed-in parseNode; or possibly a stack of parseNodes, so that we can build nested structures properly
-    //parseNode* currentNodeSave=currentParseTreeNode;
     pushCurrentNode(paramsNode);
     
     token datatype = file.getToken(); 
@@ -475,17 +300,26 @@ bool parser::processRoutineDeclaration(token returnType, token name){
     file.getToken(token::braceOpen); //consume the open brace
     
     pushCurrentNode(pNode);
+    openCompileContext(eCompileContext::codeBlock);
+
     while(processNextStatement()==false){ 
         
-    }   
+    }
+    closeCompileContext();
     popCurrentNode(); //no longer saving to the routine node
 
     commitNode(pNode);
     return false;
 }
+
 bool parser::processObjectDeclaration(token objectType, token name){
     parseNode pNode; 
     
+    if(isObjectType((string)objectType)==false) parseError(format("Unrecognized object type '{0}'.", (string)objectType));
+
+    openCompileContext(eCompileContext::objectDef);
+    if(objectType.is("class")) registerNewObjectType((string) name);    
+
     pNode.type=eNodeType::objectDeclaration;
     pNode["objectName"]=name;
     pNode["objectType"]=objectType;
@@ -495,131 +329,39 @@ bool parser::processObjectDeclaration(token objectType, token name){
     while(processNextStatement()==false){ 
         
     }   
-    popCurrentNode(); //restore to the objects parent (likely root)
-     
+    popCurrentNode(); 
+    closeCompileContext();
+    
     commitNode(pNode); //commit the object node to the parse tree
     return false;
 }
-        
-//         if(symbol.is(token::parenOpen))  
-//             processFunctionCall(tok);
-//         else{
-//             symbol.assert(".");
-            
-//             token member = file.getToken(eTokenType::identifier);
-//             file.getToken(token::parenOpen);
 
-//             processFunctionCall(tok, member);
-//         }
-
-// void parser::processI6(){
-//     if(getCurrentLanguage()==eCompileLanguage::beguile) return;
-    
-//     char c=file.readChar();
-//     while(c!=EOF){
-//         //TODO: Make this better; it isn't fully implemented; since it will be triggered by #beguile even within string, expressions, and comments.
-//         if(c=='#'){
-//             token t=file.getBasicToken(true); 
-//             if(t.value=="beguile"){
-//                 file.getToken("{");
-//                 compileLanguageStack.push_front(eCompileLanguage::beguile);
-//                 openCompileScope(eCompileScope::languageBlock);
-//                 return;
-//             }
-//         }
-//         emit.out<<c;
-//         c=file.readChar();
-//     }
-
-// }
+bool parser::isObjectType(string name){
+    if(find(objects.begin(), objects.end(), name)!=objects.end()) return true; 
+    return false;
+}
+bool parser::isBaseDataType(string name){
+    if(find(dataTypes.begin(), dataTypes.end(), name)!=dataTypes.end()) return true; 
+    return false;
+}
+bool parser::isRoutine(string name){
+    if(find(routines.begin(), routines.end(), name)!=routines.end()) return true; 
+    return false;
+}
 void parser::registerNewObjectType(string name){
-    if(find(objects.begin(), objects.end(), name)!=objects.end()) parseError(format("Declared type '{0}' already exists.", name));
+    if(isObjectType(name)) parseError(format("Declared type '{0}' already exists.", name));
     objects.push_back(name);
+}
+void parser::registerNewBaseDataType(string name){
+    if(isBaseDataType(name)) parseError(format("Declared type '{0}' already exists.", name));
+    dataTypes.push_back(name);
 }
 //TODO: this is temporary; it should walk the node tree to find a routine in scope
 void parser::registerNewRoutine(string name){
-    if(find(routines.begin(), routines.end(), name)!=routines.end()) parseError(format("Declared routine '{0}' already exists.", name));
+    if(isRoutine(name)) parseError(format("Declared routine '{0}' already exists.", name));
     routines.push_back(name);
 }
-// void parser::processEnumOrFlags(token name, bool asFlag){
-//     int val=(asFlag)?1:0; 
-    
-//     registerNewObjectType(name.value);
 
-//     emit.out<<"object "<<name.value<<" with ";
-//     token tok = file.getToken({eTokenType::identifier, eTokenType::symbol});
-//     while(!tok.is(token::braceClose)){
-//         tok.assert(eTokenType::identifier);
-//         emit.out<<tok.value<< " "<<val;
-//         if(asFlag) 
-//             val=val<<1; 
-//         else
-//             val++;
-//         tok = file.getToken(eTokenType::symbol).assertOneOf({token::comma,token::braceClose});
-//         if(tok.is(token::comma)) {
-//             emit.out<<", ";
-//             tok=file.getToken(eTokenType::identifier);
-//         }
-//     }
-//     emit.out<<";"<<endl;
-// }
-// void parser::processFunctionCall(token obj, token member){
-//     string call=obj.value;
-//     if(!member.isNull()) call+="."+member.value;
-//     emit.out<<call<<"(";
-    
-//     string paramString="";
-//     bool complete=false;
-
-//     do{
-//         string exp;
-//         complete=getArgumentExpression(exp);
-//         if(paramString.length()>0) paramString+=", ";
-//         paramString+=exp;
-//     }while(complete==false);
-    
-//     file.getToken(token::endStatement);
-
-//     emit.out<<paramString<<");"<<endl;
-    
-// }
-//TODO: this is very rudimentary at the moment.  Expand this.
-// bool parser::getArgumentExpression(string& expression){
-//     token tok = file.getToken();
-
-//     while(tok.isNot(token::parenClose)){
-//         if(tok.is(token::comma)) return false; //process the expression
-//         expression=expression+tok.value; //build the expression up from component expressions
-//         tok = file.getToken();
-//     }
-//     return true; //done processing arguments
-// }
-void parser::processFunctionBody(token returnType){
-    file.getToken(token::braceOpen);
-    
-    openCompileScope(eCompileScope::codeBlock);
-    //process all statements until a close brace is encountered
-    while(processNextStatement()==false){ 
-        //cout<<"Block processed."<<endl;
-    }
-    //closeCompileScope(); //--scope is automatically popped off the stack by processNextStatement, when the closing brace is encountered.
-    
-    emit.out<<endl;
-    
-}
-// void parser::processObjectDeclaration(token tok, string name){
-//     vector<tuple<string, string, string>> properties;
-    
-//     openCompileScope(eCompileScope::classDef);
-//     //process all statements until a close brace is encountered
-//     while(processNextStatement()==false){ 
-//         //cout<<"Block processed."<<endl;
-//     }
-
-// }
-
-
-//--------------------------------------------------------------------------------------------
 bool parser::parseError(string msg){
     string errorMessage;
     if(file.numOpen()>0) {
@@ -634,24 +376,43 @@ bool parser::parseError(string msg){
     throw runtime_error(errorMessage); 
     return true; //won't every actually run
 }
-eCompileLanguage parser::getCurrentLanguage(){
-    return compileLanguageStack.front();
+
+void parser::pushCurrentNode(parseNode& node){
+    currentNodeStack.push_front(&node);    
 }
-eCompileScope parser::resolveCurrentCompileScope(){ 
-    for(int t=0; t<compileScopeStack.size();t++){
-        if(compileScopeStack.at(t)!=eCompileScope::languageBlock) return compileScopeStack.at(t);
-    }
-    
-    throw runtime_error("Internal Error: Unable to detect Scope.");
+void parser::popCurrentNode(){
+    currentNodeStack.pop_front();
+}
+parseNode& parser::getCurrentNode(){
+    return *currentNodeStack.front();    
+}
+parseNode& parser::commitNode(parseNode& node){
+    parseNode &retval=getCurrentNode();
+    retval.addChild(node);
+    retval.parent=&(getCurrentNode());
+    return retval;
 }
 int parser::getScopeNestingDepth(){
-    return compileScopeStack.size();
+    return compileContextStack.size();
 }
-void parser::openCompileScope(eCompileScope newScope){
-    compileScopeStack.push_front(newScope); 
+//TODO:
+// eCompileLanguage parser::getCurrentLanguage(){
+//     return compileLanguageStack.front();
+// }
+
+void parser::openCompileContext(eCompileContext newScope){
+    compileContextStack.push_front(newScope); 
 }
-void parser::closeCompileScope(){
-    eCompileScope oldScope=compileScopeStack.front();
-    compileScopeStack.pop_front();
-    if(oldScope==eCompileScope::languageBlock) compileLanguageStack.pop_front();
+void parser::closeCompileContext(){
+    eCompileContext oldScope=compileContextStack.front();
+    compileContextStack.pop_front();
+    //if(oldScope==eCompileContext::languageBlock) compileLanguageStack.pop_front();
+}
+eCompileContext parser::getCurrentCompileContext(){ 
+    return compileContextStack.front();
+    /*for(int t=0; t<compileScopeStack.size();t++){
+        if(compileScopeStack.at(t)!=eCompileContext::languageBlock) return compileScopeStack.at(t);
+    }*/
+    
+    //throw runtime_error("Internal Error: Unable to detect Scope.");
 }

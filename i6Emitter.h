@@ -17,7 +17,7 @@ class i6Emitter{
         void functionCall(token, token=_nullToken);
         void enumOrFlags(token,bool);
         void directive(parseNode&);
-        void globalVariable(token, token, token= _nullToken);
+        //void globalVariable(token, token, token= _nullToken);
         void variable(token, token, token= _nullToken);
         void put(std::string);
         void put(token);
