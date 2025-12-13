@@ -168,7 +168,7 @@ string token::tokenTypeToString(eTokenType type){
             break;
         case eTokenType::quote: return "literal string";
             break;
-        case eTokenType::symbol: return "operator";
+        case eTokenType::symbol: return "symbol";
             break;
         case eTokenType::unknown: return "Unknown";
             break;
@@ -184,6 +184,9 @@ string token::tokenTypeToString(eTokenType type){
             break;
         case eTokenType::integer: return "integer";
             break;
+        case eTokenType::oper: return "operator";
+            break;
+        
         
     }
     return "Unknown";

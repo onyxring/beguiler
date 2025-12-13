@@ -104,17 +104,23 @@ token fileLexer::getBasicToken(bool suppressBleed){
         if(retval.tokenType==eTokenType::unknown) { //we don't know what sort of token we are building yet; this is probably in the first couple of pass through our loop.  So, we analyze and determine the basic type of this token for the next pass of the loop.
             retval.value+=c;  //add the character we previewed to the value we are building
             readChar();      //dispose of it and move on to the next
+            char nc=peekChar();                             
 
             if(c=='/'){     //if the token starts with a slash, its likely a comment
-                char nc=peekChar();                             
                 if(nc=='/'||nc=='*') retval.tokenType=eTokenType::comment;
             } 
-            else if(c=='\"') 
-                retval.tokenType=eTokenType::quote;
-            else if(isValidIdentifierChar(c)) 
-                retval.tokenType=eTokenType::unclassifiedText;
+            else if(c=='\"')  retval.tokenType=eTokenType::quote;
+            else if(isValidIdentifierChar(c))  retval.tokenType=eTokenType::unclassifiedText;
             else {
-                retval.tokenType=eTokenType::symbol;
+                std::vector<std::string> operatorList={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^="};
+                string tmp=retval.value + nc;
+                if(find(operatorList.begin(), operatorList.end(), tmp)!=operatorList.end()){
+                    retval.value=tmp;
+                    readChar(); //dispose of the character we previewed   
+                    retval.tokenType=eTokenType::oper;
+                }else{
+                    retval.tokenType=eTokenType::symbol;
+                }
                 break;
             }
             c=peekChar(); //peek at the next character to process
@@ -232,6 +238,9 @@ token fileLexer::getToken(){
                                                                             //  rules for valid identifiers (data types for example)
     if(retval.isNumeric())retval.tokenType=eTokenType::integer;
     if(retval.isDataType()) retval.tokenType=eTokenType::dataType; //this would replace the previous identifier assumption
+    if(retval.tokenType==eTokenType::symbol && retval.isOneOf({"=","+","-","*","/","%","<",">","!","&","|","^"})){
+        retval.tokenType==eTokenType::oper;
+    }
 
     return retval; 
 }
