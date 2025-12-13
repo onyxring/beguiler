@@ -15,6 +15,7 @@ enum class eTokenType{
     integer,
     symbol,
     quote,
+    oper,
     //expression,
 };
 

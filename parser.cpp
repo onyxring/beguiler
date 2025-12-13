@@ -60,14 +60,14 @@ bool parser::parseFile(string filename){
 //------------------------------------------------------------------
 // Transcribe the current statement into our parseTree.
 bool parser::processNextStatement(){
-    if(getTagCount()>0) parseError("Unassigned tag declaration.");
+    //if(getTagCount()>0) parseError("Unassigned tag declaration.");
 
     token tok=file.getToken();
     
-    if(tok.is("[")) {
-        processTags(tok);      
-        tok=file.getBasicToken();
-    }
+    // if(tok.is("[")) {
+    //     processTags(tok);      
+    //     tok=file.getBasicToken();
+    // }
 
     if(tok.is(token::braceClose)) return true; //true: signal to the calling routine that we've reached the end of the current scope
     if(tok.is(eTokenType::eof)) return true; //true: signal to the calling routine that we've reached the end of the file
@@ -151,6 +151,10 @@ bool parser::processDataType(token dataType){
     }
     
     name = file.getToken(eTokenType::identifier);
+    if(name.is("operator")){
+        //set is operator value here.
+        name = file.getToken(eTokenType::oper);    
+    }
     symbol = file.getToken(eTokenType::symbol);
 
     //--a variable declaration, with optional assignment:
@@ -171,9 +175,9 @@ bool parser::processDataType(token dataType){
     return parseError("Unexpected value '"+symbol.value+"'.");
    
 }
-bool parser::processAttribute(token tok){
+// bool parser::processAttribute(token tok){
 
-}
+// }
 //--process a variable declaration statement and add it to the parse tree
 //-- handles both simple declarations and declarations with assignment
 //-- also handles parameter declarations within function definitions
@@ -281,6 +285,9 @@ bool parser::processRoutineDeclaration(token returnType, token name){
         datatype.assertDataType();
         
         token variableName=file.getToken(eTokenType::identifier);
+        if(variableName.is("operator")){
+            token symbol= file.getToken(eTokenType::oper);    
+        }
         token symbol= file.getToken({token::comma, token::parenClose, token::assignment});
 
         processVariableDeclaration(datatype, variableName, symbol);
