@@ -36,6 +36,7 @@ class token {
         static constexpr std::string bracketOpen ="["; 
         static constexpr std::string bracketClose ="]"; 
         static constexpr std::string constant="const"; 
+        static constexpr std::string class="class"; 
         static constexpr std::string comma  =","; 
 
         bool is(eTokenType);
