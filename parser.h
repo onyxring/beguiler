@@ -85,6 +85,7 @@ class parser {
         
         bool processNextStatement();
         bool processDataType(token);
+        bool processClassDefinition(token);
         bool processVariableDeclaration(token, token, token);
         bool processConstantDeclaration(token, token, token);
         

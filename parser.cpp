@@ -19,20 +19,27 @@ parser::parser(){
     parseTree.type=eNodeType::root;
     pushCurrentNode(parseTree);
     
-    registerNewObjectType("object"); 
-    registerNewObjectType("class"); 
+    //registerNewObjectType("object"); 
+    //registerNewObjectType("class"); 
     
+    /*
     registerNewBaseDataType("var"); 
     registerNewBaseDataType("void"); 
     registerNewBaseDataType("bool"); 
     registerNewBaseDataType("int"); 
     registerNewBaseDataType("string"); 
-
+    */
 }
 
 // Open an input file, process each statement.  This is the entry point to this whole parsing process
 bool parser::parseFile(string filename){
-    file.open(filesystem::absolute(filename).string());
+    try{
+        file.open(filesystem::absolute(filename).string());
+    }
+    catch(runtime_error& e){
+        return parseError(e.what());
+        return true;
+    }
 
     if(file.numOpen()==1){ //this is the first file, so let's do a little inspection and try to determine our default mode
         if(file.readChar()=='!' && file.readChar()=='%'){ //is the first line one of Inform's IGL declarations? 
@@ -58,23 +65,16 @@ bool parser::parseFile(string filename){
 }
 
 //------------------------------------------------------------------
-// Transcribe the current statement into our parseTree.
+// Transcribe the current statement into our parseTree.  This is called recursively.
 bool parser::processNextStatement(){
-    //if(getTagCount()>0) parseError("Unassigned tag declaration.");
-
     token tok=file.getToken();
     
-    // if(tok.is("[")) {
-    //     processTags(tok);      
-    //     tok=file.getBasicToken();
-    // }
-
-    if(tok.is(token::braceClose)) return true; //true: signal to the calling routine that we've reached the end of the current scope
+    if(tok.is(token::braceClose)) return true; //true: signal to the calling routine that we've reached the end of the current scope. 
     if(tok.is(eTokenType::eof)) return true; //true: signal to the calling routine that we've reached the end of the file
-    
 
+    //decide what to do with this token...
     if(tok.is(eTokenType::directive)) return processDirective(tok);
-
+    if(tok.is(token::class)) return processClassDefinition(tok);      //handle "primitive", or "non-object", data types and constant declarations
     if(tok.is(token::constant) || tok.isDataType()) return processDataType(tok);      //handle "primitive", or "non-object", data types and constant declarations
 
     //that's all we allow in global context.  Throw an error otherwise...
@@ -83,6 +83,19 @@ bool parser::processNextStatement(){
      processStatement(tok);//TODO: make sure statements aren't happening at illegal scopes
 }
 
+bool parser::processClassDefinition(token tok){
+    tok=file.getToken(eTokenType::identifier); //class name
+    registerNewObjectType((string) tok);
+    parseNode pNode; 
+    pNode["className"]=tok;
+    pNode.type=eNodeType::classDeclaration;
+    file.getToken(token::parenOpen);
+    //if...
+    file.getToken("emitter");
+    token retval=file.getToken(eTokenType::dataType);
+
+
+}
 bool parser::processStatement(token tok){
     token nextToken=_nullToken;    
     
@@ -229,6 +242,7 @@ bool parser::processDirective(token directive){
         case chk("#include"):
             pNode["filename"]=file.getToken(eTokenType::quote);
             commitNode(pNode);
+            file.getToken(token::endStatement);
             return false;
             break;    
         case chk("#i6"):
@@ -381,7 +395,7 @@ bool parser::parseError(string msg){
     }
     
     throw runtime_error(errorMessage); 
-    return true; //won't every actually run
+    return true; //won't ever actually run
 }
 
 void parser::pushCurrentNode(parseNode& node){
