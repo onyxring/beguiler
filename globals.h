@@ -1,5 +1,9 @@
 #pragma once
 #include <string_view>
+// #include "bglParser.h"
+// #include "bglLanguageService.h"
+// extern bglParser parser;
+// extern bglLanguageService languageService;
 
 using namespace std;
 

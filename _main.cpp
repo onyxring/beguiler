@@ -1,9 +1,8 @@
-// the OnyxRing Beguile/Inform Transpiler
+//OBIT: the OnyxRing Beguile-Inform Transpiler
 #include <iostream>
-
-#include "settings.h" 
 #include "orbit.h" 
 
+//The application entry point, here we just create an instance of ORBIT's main class and pass the command line arguments to it.
 int main(int argc, char* argv[]) {
   orbit app;
   try{

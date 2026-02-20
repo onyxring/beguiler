@@ -8,10 +8,11 @@
 #include "fileLexer.h"
 #include "i6Emitter.h"
 #include "parseNode.h"
+#include "typeDef.h"
 
 using namespace std;
 
-class parser {
+class bglParser {
     public:
         
         fileLexer file;         //what the parser reads from.  Tokens are produced by the filelexer.
@@ -19,24 +20,15 @@ class parser {
         parseNode tags;         //a placeholder to store any delared tags
         i6Emitter emit;         //how the parseTree is saved out as into i6 code
 
-        
         resultsStruct results;// TODO: is this still needed?
-
-        std::vector<std::string> dataTypes; //the list of base dataTypes
-        std::vector<std::string> objects;   //the list of objects, as they are created
-        std::vector<std::string> routines;  //the list of routines as they are defined
 
         std::deque<parseNode*> currentNodeStack; //as we are generating nodes on the parseTree, we leverage this to help us mark where we are, as we nest nodes as children, of other nodes
  
-        parser();
+        bglParser();
         
         bool parseFile(std::string);    //the main entry point: given a file, read it in, parse it, and store it in the parse tree
         bool parseError(std::string);   //called when there is a parse error, to output the error message and the place in the code where it appeared
         
-        //string look ups...
-        bool isObjectType(string name);
-        bool isBaseDataType(string name);
-        bool isRoutine(string name);
 
         // void processFunctionBody(token);
         
@@ -71,9 +63,9 @@ class parser {
         //bool getArgumentExpression(std::string&);
         //void processI6();
         
-        void registerNewBaseDataType(std::string);
-        void registerNewObjectType(std::string);
-        void registerNewRoutine(std::string);
+        //void registerNewBaseDataType(std::string);
+        //objTypeDef registerNewObjectType(std::string);
+        //void registerNewRoutine(std::string);
         
         //void emitVariable(token, token, token= _nullToken);
 
@@ -85,7 +77,10 @@ class parser {
         
         bool processNextStatement();
         bool processDataType(token);
-        bool processClassDefinition(token);
+        bool processParameterList(memberFunction&);
+
+        bool processClassDeclaration(token);
+        bool processEnumDeclaration(token);
         bool processVariableDeclaration(token, token, token);
         bool processConstantDeclaration(token, token, token);
         
@@ -95,3 +90,5 @@ class parser {
         bool processDirective(token);
         
 };
+
+extern bglParser parser;
