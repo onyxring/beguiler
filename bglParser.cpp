@@ -24,8 +24,8 @@ using namespace std;
 bglParser::bglParser(){ 
     //emit.to(cout);  //write the result to the terminal window for now
     
-    parseTree.type=eNodeType::root;
-    pushCurrentNode(parseTree);
+    //parseTree.type=eNodeType::root;
+    //pushCurrentNode(parseTree);
     
     languageService.addObjectType("void");
     
@@ -74,7 +74,7 @@ bool bglParser::parseFile(string filename){
 }
 
 //------------------------------------------------------------------
-// Transcribe the current statement into our parseTree.  This will be called recursively which the statement includes nested statements (e.g. function definitions, object definitions, etc.)
+// parse the next statement in the input file.  Return true if we've reached the end of the current code block, false otherwise.  If there is a parse error, throw an exception with the details.
 bool bglParser::processNextStatement(){
     token tok=file.getToken(); 
     
@@ -82,19 +82,29 @@ bool bglParser::processNextStatement(){
     if(tok.is(eTokenType::eof)) return true;    //return true: same as above; end of file is just another form of end of code block.  TODO: this approach may need to be re-evaluated since an unclosed code block at the end of a file is a common error condition that we may want to report differently than a properly closed code block.  
 
     //decide what to do with this token...
-    if(tok.is(eTokenType::directive)) return processDirective(tok);
-    if(tok.isOneOf({token::enumDeclaration, token::bnumDeclaration})) return processEnumDeclaration(tok);      //handle "primitive", or "non-object", data types and constant declarations
-    if(tok.is(token::classDeclaration)) return processClassDeclaration(tok);      //handle "primitive", or "non-object", data types and constant declarations
-    if(tok.is(token::constantDeclararion) || tok.isDataType()) return processDataType(tok);      //handle "primitive", or "non-object", data types and constant declarations
     
+    if(tok.is(eTokenType::directive)) return processDirective(tok);
+    if(tok.isOneOf({token::enumDeclaration, token::bnumDeclaration})) return processEnumDeclaration(tok);       //handle the enumeration types
+    if(tok.is(token::classDeclaration)) return processClassDeclaration(tok);                                    //handle type declarations
+    
+    if(tok.isDataType()) {
+        token name=file.getToken(eTokenType::identifier);
+        token symbol=file.getToken({token::assignment, token::parenOpen, token::endStatement});
 
+        if(symbol.is(token::parenOpen)) return processRoutineDeclaration(tok,name);         
+        return  processVariableDeclaration(tok, name, symbol); 
+        
+    }
+    
     //that's all we allow in global context.  Throw an error otherwise...
     if(getCurrentCompileContext()==eCompileContext::global) parseError(format("Unrecognized identifier:'{0}'", (string) tok));
     
+    //must be in the context of a code block at this point, so we are expecting an executable statement.
     processStatement(tok);
 }
 
 bool bglParser::processEnumDeclaration(token tok){
+    if(getCurrentCompileContext()!=eCompileContext::global) parseError(format("Enumerations are only allowed in global context:'{0}'", (string) tok));
     bool isBnum=false;
     if(tok.is(token::bnumDeclaration)) isBnum=true;
     token name=file.getToken(eTokenType::identifier); //enum name
@@ -116,13 +126,16 @@ bool bglParser::processEnumDeclaration(token tok){
     languageService.registerEnum(newEnum);
 }
 bool bglParser::processClassDeclaration(token tok){
+    if(getCurrentCompileContext()!=eCompileContext::global) parseError(format("Class declarations are only allowed in global context:'{0}'", (string) tok));
     tok=file.getToken(eTokenType::identifier); //class name
+    
+    openCompileContext(eCompileContext::objectDef);
     
     typeDef newType=languageService.addObjectType((string) tok);
 
-    parseNode pNode; 
-    pNode["className"]=tok;
-    pNode.type=eNodeType::classDeclaration;
+    //parseNode pNode; 
+    //pNode["className"]=tok;
+    //pNode.type=eNodeType::classDeclaration;
     file.getToken(token::braceOpen);
     tok=file.getToken();
     while(tok.isNot(token::braceClose)){
@@ -177,7 +190,8 @@ bool bglParser::processClassDeclaration(token tok){
     //if...
     //file.getToken("emitter");
     //token retval=file.getToken(eTokenType::dataType);
-
+    closeCompileContext(eCompileContext::objectDef);
+    
 }
 bool bglParser::processParameterList(memberFunction& funcDef){
     token tok=file.getToken(); //first token of the parameter listd
@@ -196,83 +210,116 @@ bool bglParser::processParameterList(memberFunction& funcDef){
 bool bglParser::processStatement(token tok){
     token nextToken=_nullToken;    
     
-    parseNode pNode; 
-    pNode["statement"]=tok;
-    pNode.type=eNodeType::executableStatement;
+    //parseNode pNode; 
+    //pNode["statement"]=tok;
+    //pNode.type=eNodeType::executableStatement;
 
     switch(tok.chk()){
-        case chk("print"):
-            file.getToken(token::parenOpen);
-            pNode["value"]=file.getToken({eTokenType::quote, eTokenType::identifier});
-            file.getToken(token::parenClose);
-            file.getToken(token::endStatement);
-            commitNode(pNode);
-            return false;
-            break;
-        case chk("return"):
-    
-            nextToken=file.getToken();
-            //TODO: check return values here...
-            if(nextToken.is(token::endStatement)) {
-                //return;
-            }
-            else{
-                pNode["returnValue"]=nextToken;
-                file.getToken(token::endStatement);
-            }
-            commitNode(pNode);
-            return false;
-            break;
-        default:
-            if(tok.is(eTokenType::identifier)==false) return parseError(format("Unrecognized statement starting with token '{0}'", (string) tok));  
-            
-            token symbol = file.getToken(eTokenType::symbol);
-
-            if(symbol.is(token::period)) {
-                tok.value=tok.value+symbol.value+file.getToken(eTokenType::identifier).value; //combine the tokens to make a single token with the full member access path.  This allows us to support member accesses in function calls, e.g. myObject.myFunction()
-                symbol = file.getToken(eTokenType::symbol);
-            }
-
-            if(symbol.is(token::assignment))  {
-                pNode.type=eNodeType::executableStatement;   
-            }
-            if(symbol.is(token::parenOpen))  {
+        // case chk("print"):
+        //     file.getToken(token::parenOpen);
+        //     pNode["value"]=file.getToken({eTokenType::quote, eTokenType::identifier});
+        //     file.getToken(token::parenClose);
+        //     file.getToken(token::endStatement);
+        //     commitNode(pNode);
+        //     return false;
+        //     break;
         
-            pNode.type=eNodeType::executableStatement;
-            pNode["functionName"]=tok;
-            
-            token symbol = file.getToken(eTokenType::symbol);
+        // for
+        // while
+        // do
+        // objectloop
+        // if/else
+        // return
 
-            if(symbol.is(token::parenOpen))  {
-                //simple function call
-                //processFunctionCall(tok);
+        case chk("for"):
+            return false;
+            break;
+        case chk("while"):
+            return false;
+            break;
+        case chk("do"):
+            return false;
+            break;
+        case chk("objectloop"):
+            return false;
+            break;
+        case chk("if"):
+            return false;
+            break;
+        case chk("rtrue"):
+            return false;
+            break;
+        case chk("rfalse"):
+            return false;
+            break;
+        case chk("return"):    
+            returnStatement returnStmnt;
+            nextToken=file.getToken(); 
+            if(nextToken.isNot(token::endStatement)) {
+                 returnStmnt.returnExpression=nextToken.value; //TODO: expand to support more complex return expressions
+                 file.getToken(token::endStatement);
             }
-            else{
-                symbol.assert(".");
-                
-                token member = file.getToken(eTokenType::identifier);
-                pNode["memberName"]=member;
-                file.getToken(token::parenOpen);
-
-                //processFunctionCall(tok, member);
-            }
-        }
+            //todo: save this return statement to the parse tree, including any return value expression.  This will likely involve creating a new node in the parse tree for this statement, and saving the return value expression as a child node or series of nodes under that.
+            return false;
+            break;
     }
-    //return parseError(format("Unhandled token '{0}'",tok.value));
+
+    if(tok.is(eTokenType::identifier)==false) return parseError(format("Unrecognized statement starting with token '{0}'", (string) tok));          
+    
+    //make sure the identifier is complete, including any member access paths
+    token symbol = file.getToken({eTokenType::symbol, eTokenType::oper});
+    if(symbol.is(token::period)) {
+        tok.value=tok.value+symbol.value+file.getToken(eTokenType::identifier).value; //combine the tokens to make a single token with the full member access path.  This allows us to support member accesses in function calls, e.g. myObject.myFunction()
+        symbol = file.getToken({eTokenType::symbol, eTokenType::oper}); 
+    }
+    
+    //----------------------------------------------------------------------
+    //We've encountered an indentifier, which could be a variable assignment
+    //  or function call.
+    if(symbol.is(token::assignment))  {
+        //pNode.type=eNodeType::executableStatement;   
+        assignmentStatement assignExpr;
+        assignExpr.variableLeft=(string) tok;
+        assignExpr.assignedExpression=file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::integer}).value; //TODO: expand to include expressions
+        //todo commit
+        file.getToken(token::endStatement);
+        return false;
+    }
+    if(symbol.is(token::parenOpen))  { //then this is a function call. 
+        // pNode.type=eNodeType::executableStatement;
+        // pNode["functionName"]=tok;
+        
+        // token symbol = file.getToken(eTokenType::symbol);
+
+        // if(symbol.is(token::parenOpen))  {
+        //     //simple function call
+        //     //processFunctionCall(tok);
+        // }
+        // else{
+        //     symbol.assert(".");
+            
+        //     token member = file.getToken(eTokenType::identifier);
+        //     pNode["memberName"]=member;
+        //     file.getToken(token::parenOpen);
+
+            //processFunctionCall(tok, member);
+        return false;
+    }
+    return parseError(format("Unhandled token '{0}'",tok.value));
 }
 
 bool bglParser::processDataType(token dataType){
     token name;
     token symbol;
 
-    if(dataType.is(token::constantDeclararion)){
-        dataType = file.getToken(eTokenType::dataType);
-        name = file.getToken(eTokenType::identifier);
-        symbol = file.getToken(token::assignment);
-        processConstantDeclaration(dataType, name, symbol);        
-        file.getToken(token::endStatement);
-        return false;
-    }
+    // if(dataType.is(token::constantDeclararion)){
+    //     dataType = file.getToken(eTokenType::dataType);
+    //     name = file.getToken(eTokenType::identifier);
+    //     symbol = file.getToken(token::assignment);
+    //     processConstantDeclaration(dataType, name, symbol);        
+    //     file.getToken(token::endStatement);
+    //     return false;
+    // }
     
     name = file.getToken(eTokenType::identifier);
     if(name.is("operator")){
@@ -313,24 +360,20 @@ bool bglParser::processDataType(token dataType){
 //--      int myParam=5) 
 //--      int myParam=5, ...
 bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol){
-    parseNode pNode; 
-    pNode.type=eNodeType::variableDeclaration;
-    pNode["dataType"]=dataType;
-    pNode["variableName"]=variableName;
+    variableDeclaration varDecl;
     
+    varDecl.name=(string) variableName;
+    varDecl.type=languageService.getType((string) dataType);
+
     if(symbol.value==token::assignment){
-        parseNode val = file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::integer}); 
-        pNode["assignedValue"]=val;
+        varDecl.declaredExpressionValue=file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::integer}); //TODO: expand to include expressions        
+        file.getToken(token::endStatement);
     }
     
-    commitNode(pNode);
-    //note the token pointer may end up at different places depending on if an assignment was present or not.
-    //  the calling process, then must determine, based on if as assignment was declared, what to do with the next token, based
-    //  on context.  For example, if this was a parameter declaration, the next token may be either a comma or a parenClose
-    //  if this was a global variable declaration, the next token should be an endStatement.
+    //TODO: add this to the current scope
     return false;
 }
-bool bglParser::processConstantDeclaration(token dataType, token variableName, token symbol){
+/*bool bglParser::processConstantDeclaration(token dataType, token variableName, token symbol){
     parseNode pNode; 
     pNode.type=eNodeType::constantDeclaration;
     pNode["dataType"]=dataType;
@@ -341,20 +384,24 @@ bool bglParser::processConstantDeclaration(token dataType, token variableName, t
 
     commitNode(pNode);
     return false;
-}
+}*/
 bool bglParser::processDirective(token directive){
-    parseNode pNode; 
-    pNode.type=eNodeType::directive;
-    pNode.keyToken=directive;
+    if(getCurrentCompileContext()!=eCompileContext::global) parseError(format("Directive are only allowed in global context:'{0}'", (string) directive));
+
+    // parseNode pNode; 
+    // pNode.type=eNodeType::directive;
+    // pNode.keyToken=directive;
 
     token tok;
     
 
     switch(directive.chk()){
         case chk("#include"):
-            pNode["filename"]=file.getToken(eTokenType::quote);
-            commitNode(pNode);
+            //pNode["filename"]=file.getToken(eTokenType::quote);
+            //commitNode(pNode);
+            file.getToken(eTokenType::quote);
             file.getToken(token::endStatement);
+            //TODO: do something with this
             return false;
             break;    
         case chk("#i6"):
@@ -386,66 +433,35 @@ bool bglParser::processDirective(token directive){
                 }
             }
             tok.tokenType=eTokenType::unclassifiedText;
-            pNode["i6Content"]=tok;
-            commitNode(pNode);
+            //pNode["i6Content"]=tok;
+            //commitNode(pNode);
             return false;
             break;
     }
     return parseError("Unrecognized directive '"+tok.value+"'.");
 }
 bool bglParser::processRoutineDeclaration(token returnType, token name){
-    parseNode pNode; 
-    parseNode paramsNode; 
-
-    pNode.type=eNodeType::routine;
-    pNode["routineName"]=name;
-    pNode["returnType"]=returnType;
-    
-    paramsNode.type=eNodeType::parameterListDeclaration; 
-    
-    pushCurrentNode(paramsNode);
-    
-    token datatype = file.getToken(); 
-    
-    while(datatype.isNot(token::parenClose)){
-        datatype.assertDataType();
-        
-        token variableName=file.getToken(eTokenType::identifier);
-        if(variableName.is("operator")){
-            token symbol= file.getToken(eTokenType::oper);    
-        }
-        token symbol= file.getToken({token::comma, token::parenClose, token::assignment});
-
-        processVariableDeclaration(datatype, variableName, symbol);
-
-        if(symbol.is(token::assignment)){
-            datatype=file.getToken({token::comma, token::parenClose}); 
-            if(datatype.is(token::comma)) datatype = file.getToken();
-        }
-        else{
-            datatype=symbol;
-        }
-    }
-    popCurrentNode(); //restore: no longer saving to the params node
-    
-    pNode["parameters"]=paramsNode;
+    memberFunction funcDef;
+    funcDef.name=(string) name;
+    funcDef.returnType=languageService.getType((string) returnType);
+    processParameterList(funcDef);
     
     file.getToken(token::braceOpen); //consume the open brace
     
-    pushCurrentNode(pNode);
+    
     openCompileContext(eCompileContext::codeBlock);
 
     while(processNextStatement()==false){ 
         
     }
-    closeCompileContext();
-    popCurrentNode(); //no longer saving to the routine node
-
-    commitNode(pNode);
+    closeCompileContext(eCompileContext::codeBlock);
+    //TODO: save the function definition, including its body, to the current scope.  This will likely involve creating a new node in the parse tree for this function, and saving the function definition details to that node, including the body as a child node or series of nodes.
     return false;
 }
 
 bool bglParser::processObjectDeclaration(token objectType, token name){
+    
+    /*
     parseNode pNode; 
     
     if(languageService.isObjectType((string)objectType)==false) parseError(format("Unrecognized object type '{0}'.", (string)objectType));
@@ -463,9 +479,10 @@ bool bglParser::processObjectDeclaration(token objectType, token name){
         
     }   
     popCurrentNode(); 
-    closeCompileContext();
+    closeCompileContext(eCompileContext::objectDef);
     
     commitNode(pNode); //commit the object node to the parse tree
+    */
     return false;
 }
 
@@ -509,21 +526,21 @@ bool bglParser::parseError(string msg){
     return true; //won't ever actually run
 }
 
-void bglParser::pushCurrentNode(parseNode& node){
-    currentNodeStack.push_front(&node);    
-}
-void bglParser::popCurrentNode(){
-    currentNodeStack.pop_front();
-}
-parseNode& bglParser::getCurrentNode(){
-    return *currentNodeStack.front();    
-}
-parseNode& bglParser::commitNode(parseNode& node){
+// void bglParser::pushCurrentNode(parseNode& node){
+//     currentNodeStack.push_front(&node);    
+// }
+// void bglParser::popCurrentNode(){
+//     currentNodeStack.pop_front();
+// }
+// parseNode& bglParser::getCurrentNode(){
+//     return *currentNodeStack.front();    
+// }
+/*parseNode& bglParser::commitNode(parseNode& node){
     parseNode &retval=getCurrentNode();
     retval.addChild(node);
     retval.parent=&(getCurrentNode());
     return retval;
-}
+}*/
 int bglParser::getScopeNestingDepth(){
     return compileContextStack.size();
 }
@@ -535,8 +552,24 @@ int bglParser::getScopeNestingDepth(){
 void bglParser::openCompileContext(eCompileContext newScope){
     compileContextStack.push_front(newScope); 
 }
-void bglParser::closeCompileContext(){
+string bglParser::compileContextToString(eCompileContext context){
+    switch(context){
+        case eCompileContext::global:
+            return "global";
+            break;
+        case eCompileContext::objectDef:
+            return "object definition";
+            break;
+        case eCompileContext::codeBlock:
+            return "code block";
+            break;
+        default:
+            return "unknown compile context";
+    }  
+}
+void bglParser::closeCompileContext(eCompileContext expectedScope){
     eCompileContext oldScope=compileContextStack.front();
+    if(oldScope!=expectedScope) parseError(format("Internal Error: Attempting to close compile context '{0}' but current context is '{1}'.", compileContextToString(expectedScope), compileContextToString(oldScope)));
     compileContextStack.pop_front();
     //if(oldScope==eCompileContext::languageBlock) compileLanguageStack.pop_front();
 }

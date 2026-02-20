@@ -56,10 +56,25 @@ class statementBlock:public codeBlock{
     public:
         vector<statement> statements;
 };
-class assignment:public statement{
+class assignmentStatement:public statement{
     public:
         string variableLeft; //todo: probably should have a variable table for scope
         string assignedExpression;
+};  
+class returnStatement:public statement{
+    public:
+        string returnExpression;
+};  
+class variableDeclaration:public statement{
+    public:
+    typeDef type;    
+    string name; 
+    string declaredExpressionValue;
+};  
+class functionCall:public statement{
+    public:
+        string functionName; 
+        vector<paramDef> params;
 };  
 class memberFunction: public typeMember{
     public:

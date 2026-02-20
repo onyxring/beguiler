@@ -184,7 +184,7 @@ void i6Emitter::indent(parseNode& node, int extra){
     for(int t=0; t<node.resolveNestingDepth()+extra;t++) out<<"   ";    
 }
 void i6Emitter::indent(int extra){
-    for(int t=0; t<parser.getCurrentNode().resolveNestingDepth()+extra;t++) out<<"   ";    
+    //for(int t=0; t<parser.getCurrentNode().resolveNestingDepth()+extra;t++) out<<"   ";    
 }
 
 /*
