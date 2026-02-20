@@ -276,6 +276,18 @@ token fileLexer::getToken(){
 
     return retval; 
 }
+token fileLexer::peekToken(){
+    return peekToken(0);
+}
+token fileLexer::peekToken(int tokNum){
+    token retval;
+    auto savepos=currentStream()->tellg(); 
+    for(int i=0;i<tokNum;i++){
+        retval=getToken();
+    }
+    currentStream()->seekg(savepos);
+    return retval;
+}
 //Get tokens, limited to specific types or values. Throw a compile-time error if the next token does not match the requirements.
 //These are used when the language absolutely requires the next token to conform to a specific set of features.
 token fileLexer::getToken(eTokenType tokenType){
@@ -294,3 +306,4 @@ token fileLexer::getToken(std::vector<string> vals){
     token retval=getToken();
     return retval.assertOneOf(vals); 
 }
+ 
