@@ -20,7 +20,7 @@ void orbit::go(int argc, char* argv[]) {
    cout << "Beguiler: The Beguile-Inform Transpiler" << endl<<"version .1a"<<endl;
     if(parseArgs(argc, argv)) return; 
     if(parser.parseFile(settings.inFile)) return;
-    parser.parseTree.mapParents();
+    //parser.parseTree.mapParents();
     if(writeFile(settings.tmpFile)) return;
 
     cout<<endl<<"Transpile successful. ";
@@ -115,7 +115,7 @@ bool orbit::writeFile(string filename) {
     }
     
     parser.emit.to(parser.results.bodyText);
-    parser.emit.generateI6(parser.parseTree);
+    //parser.emit.generateI6(parser.parseTree);
 
     outFileStream << parser.results.bodyText.str();
     outFileStream.close();
