@@ -3,24 +3,24 @@
 #include <filesystem>
 #include <iostream>
 #include <chrono>
+#include <cstdlib>
 
 #include "settings.h"
 #include "orbit.h"
-#include <cstdlib>
+#include "globals.h"
+#include "bglParser.h"
 
 using namespace std;
 namespace fs = std::filesystem;
 
 settingsStruct settings;
-parser bglParser;
 
 void orbit::go(int argc, char* argv[]) {
 
-
    cout << "Beguiler: The Beguile-Inform Transpiler" << endl<<"version .1a"<<endl;
     if(parseArgs(argc, argv)) return; 
-    if(bglParser.parseFile(settings.inFile)) return;
-    bglParser.parseTree.mapParents();
+    if(parser.parseFile(settings.inFile)) return;
+    parser.parseTree.mapParents();
     if(writeFile(settings.tmpFile)) return;
 
     cout<<endl<<"Transpile successful. ";
@@ -114,10 +114,10 @@ bool orbit::writeFile(string filename) {
         return true; // Indicate an error
     }
     
-    bglParser.emit.to(bglParser.results.bodyText);
-    bglParser.emit.generateI6(bglParser.parseTree);
+    parser.emit.to(parser.results.bodyText);
+    parser.emit.generateI6(parser.parseTree);
 
-    outFileStream << bglParser.results.bodyText.str();
+    outFileStream << parser.results.bodyText.str();
     outFileStream.close();
     return false;
 

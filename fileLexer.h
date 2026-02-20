@@ -13,10 +13,10 @@ class fileLexer{
         
         void open(std::string);
         void close();
-        int numOpen();
+        int getNumberOfOpenFiles();
         void moveToStart();
         std::ifstream* currentStream();
-        std::tuple<std::ifstream*, std::string, int, int> getDetail();
+        std::tuple<std::ifstream*, std::string, int, int> getCurrentFileDetail();
         void bleedSpaces();
         char peekChar();
         char readChar();
@@ -28,6 +28,7 @@ class fileLexer{
         token getToken(std::string);
         token getToken(std::vector<std::string>);
         token getToken();
+        string getRawTextThroughClosingBrace();
         //token getRunTokenEol(); 
         //token getRunTokenBraceClose(); 
 };

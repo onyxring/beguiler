@@ -10,7 +10,6 @@ using namespace std;
 class i6Emitter{
     public:
         std::stringstream out; 
-
         void to(std::ostream&);
         //void globalFunction(token, token);
         //void functionParams();
