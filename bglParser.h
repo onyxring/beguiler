@@ -16,30 +16,31 @@ class bglParser {
     public:
         
         fileLexer file;         //what the parser reads from.  Tokens are produced by the filelexer.
-        parseNode parseTree;    //where the parser stores what it interprets from tokens read in.
-        parseNode tags;         //a placeholder to store any delared tags
+        //parseNode parseTree;    //where the parser stores what it interprets from tokens read in.
+        //parseNode tags;         //a placeholder to store any delared tags
         i6Emitter emit;         //how the parseTree is saved out as into i6 code
 
         resultsStruct results;// TODO: is this still needed?
 
-        std::deque<parseNode*> currentNodeStack; //as we are generating nodes on the parseTree, we leverage this to help us mark where we are, as we nest nodes as children, of other nodes
+        //std::deque<parseNode*> currentNodeStack; //as we are generating nodes on the parseTree, we leverage this to help us mark where we are, as we nest nodes as children, of other nodes
  
         bglParser();
         
         bool parseFile(std::string);    //the main entry point: given a file, read it in, parse it, and store it in the parse tree
         bool parseError(std::string);   //called when there is a parse error, to output the error message and the place in the code where it appeared
-        
+        std::string compileContextToString(eCompileContext);
 
         // void processFunctionBody(token);
         
         //as we are parsing a file, we enter and exit "contexts" which help the parser determine what is and isn't valid.  For example, the global context allow different things than in the context of a routine.
         void openCompileContext(eCompileContext);   //entering a new context
-        void closeCompileContext();                 //closing out the current context and returning to the previous
+        void closeCompileContext(eCompileContext);  //closing out the current context and returning to the previous
+
         eCompileContext getCurrentCompileContext(); //what is the the current context?
         
         int getScopeNestingDepth();                 //how deeply are out contexts nested?  We use this to indent the code we generate
         
-        parseNode& getCurrentNode();                //as we are parsing the input file, we write nodes to the current node in the parseTree.  This points to the current node we are actively working on.
+        //parseNode& getCurrentNode();                //as we are parsing the input file, we write nodes to the current node in the parseTree.  This points to the current node we are actively working on.
         
         void addTag(std::string name, std::string value);
         void clearTags();
@@ -71,9 +72,9 @@ class bglParser {
 
         //new...
         
-        void pushCurrentNode(parseNode&);
-        void popCurrentNode();
-        parseNode& commitNode(parseNode&);
+        //void pushCurrentNode(parseNode&);
+        //void popCurrentNode();
+        //parseNode& commitNode(parseNode&);
         
         bool processNextStatement();
         bool processDataType(token);
@@ -82,7 +83,7 @@ class bglParser {
         bool processClassDeclaration(token);
         bool processEnumDeclaration(token);
         bool processVariableDeclaration(token, token, token);
-        bool processConstantDeclaration(token, token, token);
+        //bool processConstantDeclaration(token, token, token);
         
         bool processRoutineDeclaration(token, token);
         bool processObjectDeclaration(token, token);
