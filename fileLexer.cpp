@@ -7,17 +7,18 @@
 #include <optional>
 
 #include "fileLexer.h"
-#include "parser.h"
+#include "bglParser.h"
 #include "orbit.h"
 
 using namespace std;
 
+vector<string> operatorList={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^="};  //TODO: this should be moved to a language-specific global location, which will probably need to be shared by the parser
 //----------------------------------------------------------------------------------------
 //--Opening and closing files, and managing which of these is the "current file" 
 void fileLexer::open(string filename){
     ifstream& inputFileStream=*(new ifstream(filename));  
     
-    if (!inputFileStream.is_open()) bglParser.parseError("Unable to open file "+filename+".");
+    if (!inputFileStream.is_open()) parser.parseError("Unable to open file "+filename+".");
     files.push(make_tuple(&inputFileStream, filename, 1, 0)); //take the current file and push it on the stack    
 }
 void fileLexer::close(){
@@ -26,7 +27,7 @@ void fileLexer::close(){
     delete inputFileStream;
     files.pop();
 }
-int fileLexer::numOpen(){
+int fileLexer::getNumberOfOpenFiles(){
     return files.size();
 }
 void fileLexer::moveToStart(){
@@ -36,7 +37,7 @@ ifstream* fileLexer::currentStream(){
     auto[inputFileStream, fileName, curLine, curCol]=files.top(); 
     return inputFileStream;   
 }
-tuple<ifstream*, string, int, int> fileLexer::getDetail(){ //return saved information about the current file
+tuple<ifstream*, string, int, int> fileLexer::getCurrentFileDetail(){ //return saved information about the current file
     return files.top();
 }
 
@@ -71,54 +72,58 @@ bool fileLexer::isValidIdentifierChar(char c){
     if(c=='_') return true;
     return false;
 }
-//----------------------------------------------------------------------------------------
-//--Turning characters in the stream into meaningful tokens which the parser can make sense of 
-//----------------------------------------------------------------------------------------
-// Read in one character at a time, constructing, then returning, a "basic" token.
-// A "basic" token is the most meaningful token than can be pulled from a stream without additional 
-// consideration.  All input can be translated into these tokens:
-//
-//  EOF:                The next token encountered was the end of file.
-//  comment:            The next token encountered was a comment.  Text contains the entirety of the comment, whether
-//                      it is a single line comment (//) or a multiline comment (/*...*/)
-//  quote:              The next token encountered was a quoted string.  Text contains the entirety of the string, 
-//                      including the quotes and any escape characters.
-//  unclassifiedText:   The next token encountered was a series of contiguous "identifier appropriate" characters, 
-//                      including the underscore and alphanumeric characters.  Note that this doesn't check for validity:  
-//                      1abc is not a valid identifier, but will still be returned; as would 45.
-//  symbol:             The next token encountered is a single, "non-identifier appropriate" character.  Note that 
-//                      multiple symbols may be contiguous in the file, but each of these will be returned as separate 
-//                      with the exception of comments and text string, with both start with symbols or symbol 
-//                      pairs, e.g. ", //, and /*
-//
-// Note: by default, all begining whitespace is ignored ("bled" off of the stream) and each call to getBasicToken()
-// returns the first actual text token; however, if the suppressBleed argument is passed as true, and the first 
-// encountered character is a whitespace, it will be returned as a symbol token.
+/*----------------------------------------------------------------------------------------
+    getBasicToken()
+
+    This routine reads in one character at a time, constructing, then returning, the most 
+    meaningful token than can be pulled from a stream without additional consideration.  
+    All input can be translated into these tokens (see commends on getToken for more 
+    information.    
+
+        EOF             
+        comment               
+        quote    
+        unclassifiedText
+        operator 
+        symbol
+
+    Note: by default, all begining whitespace is ignored ("bled" off of the stream) and each call to getBasicToken()
+    returns the first actual text token; however, if the suppressBleed argument is passed as true, and the first 
+    encountered character is a whitespace, it will be returned as a symbol token.
+*/
 token fileLexer::getBasicToken(bool suppressBleed){
-    token retval;
+    token retval;    
     
     if(!suppressBleed) bleedSpaces();
     char c=peekChar(); 
 
     while(c!=EOF){
-        if(retval.tokenType==eTokenType::unknown) { //we don't know what sort of token we are building yet; this is probably in the first couple of pass through our loop.  So, we analyze and determine the basic type of this token for the next pass of the loop.
-            retval.value+=c;  //add the character we previewed to the value we are building
-            readChar();      //dispose of it and move on to the next
-            char nc=peekChar();                             
+        if(retval.tokenType==eTokenType::unknown) {     /*  We don't yet know what sort of token we are building yet (this is probably  the first pass
+                                                            through of our loop).  Let's determine the basic type of this token so we know how to process 
+                                                            it in subsequent passes. */
 
-            if(c=='/'){     //if the token starts with a slash, its likely a comment
-                if(nc=='/'||nc=='*') retval.tokenType=eTokenType::comment;
-            } 
-            else if(c=='\"')  retval.tokenType=eTokenType::quote;
-            else if(isValidIdentifierChar(c))  retval.tokenType=eTokenType::unclassifiedText;
-            else {
-                std::vector<std::string> operatorList={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^="};
-                string tmp=retval.value + nc;
-                if(find(operatorList.begin(), operatorList.end(), tmp)!=operatorList.end()){
-                    retval.value=tmp;
-                    readChar(); //dispose of the character we previewed   
+            retval.value+=c;    //add the character we previewed (peeked at) to the value we are building
+            readChar();         //dispose of it and move on to the next
+            char nc=peekChar();                             
+            string twoChars=retval.value + nc; /*   we do a lot of two character checks, so let's just build this string once and use it repeatedly; we will 
+                                                    readChar() to dispose of the nc if we end up using it, but for now we just want to peek at it without consuming it*/
+            
+            if(twoChars=="//" || twoChars=="/*") 
+                retval.tokenType=eTokenType::comment;
+            else if(c=='\"')  
+                retval.tokenType=eTokenType::quote;
+            else if(isValidIdentifierChar(c))  
+                retval.tokenType=eTokenType::unclassifiedText;
+            else {                
+                if(find(operatorList.begin(), operatorList.end(), retval.value)!=operatorList.end()){
+                    retval.tokenType=eTokenType::oper; 
+                }
+                else if(find(operatorList.begin(), operatorList.end(), twoChars)!=operatorList.end()){
+                    retval.value=twoChars; //note: this overwrites the previous value, which is just the first character
+                    readChar(); //dispose of the second character we previewed   
                     retval.tokenType=eTokenType::oper;
-                }else{
+                }
+                else{
                     retval.tokenType=eTokenType::symbol;
                 }
                 break;
@@ -167,12 +172,29 @@ token fileLexer::getBasicToken(bool suppressBleed){
 
     //a special case: we've reached the end of file.  If we are not at the global scope, then throw an error, because we've terminated early
     if(c==EOF) {
-        if(bglParser.getCurrentCompileContext()!=eCompileContext::global) bglParser.parseError("End of file encountered prematurely");
+        if(parser.getCurrentCompileContext()!=eCompileContext::global) parser.parseError("End of file encountered prematurely");
         retval.tokenType=eTokenType::eof;
     }
 
     return retval;//return our completed basic token
 }
+string fileLexer::getRawTextThroughClosingBrace(){
+    string retval;
+    int count=1; //we have already encountered the first open brace, which is why we are calling this function, so we start our count at 1
+    char c=readChar(); 
+
+     while(count>0){
+         if(c=='}') count--;
+         if(count==0) break; //don't include the closing brace in the text we return
+         if(c=='{') count++;
+        
+         retval=retval+c; 
+         c=readChar();      
+     }
+     return retval;
+}
+
+
 // token fileLexer::getRunTokenEol(){
 //     token retval;
 //     retval.tokenType=eTokenType::unclassifiedText;
@@ -197,22 +219,32 @@ token fileLexer::getBasicToken(bool suppressBleed){
 //     }
 //     return retval;
 // } 
-//Return a token from the stream. This calls getBasicToken, and classifies it further in specific cases.  After this runs, the token 
-//can be any of the following: 
-//
-//  EOF:                The next token encountered was the end of file.
-//  comment:            The next token encountered was a comment.  Text contains the entirety of the comment, whether
-//                      it is a single line comment (//) or a multiline comment (/*...*/)
-//  quote:              The next token encountered was a quoted string.  Text contains the entirety of the string, 
-//                      including the quotes.
-//  dataType:           The next token is a valid data type.
-//  identifier:         The next token is a valid identifier, but not a data type.
-//  integer:            The next token is an integer number.
-//  unclassifiedText:   The next token encountered was a series of contiguous "identifier appropriate" characters, 
-//                      including the underscore and alphanumeric characters; however, it could not be further classified
-//                      into another token type.  Usually, this indicates an error condition.
-//  directive:          The next token encountered was a compiler directive (e.g., #include).
-//  symbol:             The next token encountered is a single, "non-identifier appropriate" character. 
+
+/*----------------------------------------------------------------------------------------
+    getToken()
+
+    Return a token from the stream. This calls getBasicToken, and tries to classify it further.  After this runs, the token 
+    can be any of the following: 
+
+    EOF:                The next token encountered was the end of file.    
+    quote:              The next token encountered was a quoted string.  Text contains the entirety of the string, 
+                        including the quotes.
+    dataType:           The next token is a valid data type.
+    identifier:         The next token is a valid identifier, but not a data type.
+    integer:            The next token is an integer number.
+    directive:          The next token encountered was a compiler directive (e.g., #include).
+    operator:           The next token encountered is a recognized language operator.
+    symbol:             The next token encountered is a single symbol which was not matched to an operator.
+                        Note 1: multiple symbols may appear contiguously in the file, but each of these will be 
+                        returned as separate tokens.
+                        Note 2: the comments and text strings are not returned as symbols, even though they both start
+                        with both start with symbols or symbol pairs (i.e., //, /*, and ") 
+    unclassifiedText:   The next token encountered was a series of contiguous "identifier appropriate" characters, 
+                        including the underscore and alphanumeric characters; however, it could not be further classified
+                        into another token type.  Usually, this indicates an error condition.
+    
+    note: comment tokens are discarded, whether single line or multiline comments 
+*/
 token fileLexer::getToken(){
     token next;
     token retval;
@@ -227,7 +259,7 @@ token fileLexer::getToken(){
     //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones 
     if(retval.is("#")){ 
         next=getBasicToken(true); //to make sense, this MUST be a name directly connected to the # with no whitespaces in between
-        if(!next.isValidIdentifier()) bglParser.parseError("Encountered invalid directive name '"+next.value+"'.");
+        if(!next.isValidIdentifier()) parser.parseError("Encountered invalid directive name '"+next.value+"'.");
         retval.value+=next.value;
         retval.tokenType=eTokenType::directive;
         return retval;
@@ -239,7 +271,7 @@ token fileLexer::getToken(){
     if(retval.isNumeric())retval.tokenType=eTokenType::integer;
     if(retval.isDataType()) retval.tokenType=eTokenType::dataType; //this would replace the previous identifier assumption
     if(retval.tokenType==eTokenType::symbol && retval.isOneOf({"=","+","-","*","/","%","<",">","!","&","|","^"})){
-        retval.tokenType==eTokenType::oper;
+        retval.tokenType=eTokenType::oper;
     }
 
     return retval; 
