@@ -1,10 +1,11 @@
 #include <iostream>
 
 #include "i6Emitter.h"
-#include "parser.h"
+#include "bglParser.h"
 #include "orbit.h"
 #include "globals.h"
 #include "parseNode.h"
+#include "bglLanguageService.h"
 
 using namespace std;
 
@@ -55,7 +56,7 @@ void i6Emitter::generateI6(parseNode& node){
             return;
         case eNodeType::variableDeclaration:           
             if(node.resolveContext()==eCompileContext::global){
-                if(bglParser.isObjectType((string)node["dataType"])){
+                if(languageService.isObjectType((string)node["dataType"])){
                     out<<format("{0} {1}", (string)node["dataType"], (string)node["variableName"]);
                 }
                 else{
@@ -183,7 +184,7 @@ void i6Emitter::indent(parseNode& node, int extra){
     for(int t=0; t<node.resolveNestingDepth()+extra;t++) out<<"   ";    
 }
 void i6Emitter::indent(int extra){
-    for(int t=0; t<bglParser.getCurrentNode().resolveNestingDepth()+extra;t++) out<<"   ";    
+    for(int t=0; t<parser.getCurrentNode().resolveNestingDepth()+extra;t++) out<<"   ";    
 }
 
 /*
@@ -192,7 +193,7 @@ void i6Emitter::globalFunction(token returnType, token name){
     out<<format("[{0}",name.value);
     indent();
     functionParams(); 
-    bglParser.processFunctionBody(returnType);
+    parser.processFunctionBody(returnType);
     indent();
     out<<"];";
 }
@@ -200,20 +201,20 @@ void i6Emitter::globalFunction(token returnType, token name){
 /*
 void i6Emitter::functionParams(){
     string paramDefaultInit="";
-    token datatype = bglParser.file.getToken(); 
+    token datatype = parser.file.getToken(); 
     while(datatype.isNot(token::parenClose)){
         datatype.assertDataType();
-        token varname=bglParser.file.getToken(eTokenType::identifier); 
+        token varname=parser.file.getToken(eTokenType::identifier); 
         out<<" "<<varname.value;
-        token symbol = bglParser.file.getToken(eTokenType::symbol); 
+        token symbol = parser.file.getToken(eTokenType::symbol); 
         if(symbol.is(token::assignment)){
-            token val=bglParser.file.getToken({eTokenType::integer, eTokenType::quote});  
+            token val=parser.file.getToken({eTokenType::integer, eTokenType::quote});  
             if(val.tokenType==eTokenType::quote) datatype.assertOneOf({"string", "var"}, "Illegal default definition: string value is incompatible with type '"+datatype.value+"'.");
             paramDefaultInit+=format("if({0}==0){0}={1}; ",varname.value,val.value); //TODO: testing for zero doesn't work for all int types, because zero is a common and valid value that could be passed in.  Think about how to address this.
             //TODO: strings should be orStrings, with the appropriate new() and free() calls
             //TODO: add a list of variables with types, so that we can emit different code based on type, orString being the most obvious example of where this is needed
-            datatype = bglParser.file.getToken(eTokenType::symbol); 
-            if(datatype.value==token::comma) datatype = bglParser.file.getToken(eTokenType::dataType); 
+            datatype = parser.file.getToken(eTokenType::symbol); 
+            if(datatype.value==token::comma) datatype = parser.file.getToken(eTokenType::dataType); 
         }
         else datatype=symbol;
     }
