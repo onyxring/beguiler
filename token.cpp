@@ -3,7 +3,8 @@
 
 #include "token.h"
 #include "orbit.h"
-#include "parser.h"
+#include "bglParser.h"
+#include "bglLanguageService.h"
 
 using namespace std;
 
@@ -28,17 +29,19 @@ const token _nullToken;
         }
         return false;
     }
-
+    bool contains(vector<string> vals, string val){
+        for (string &v : vals) {
+            if(v==val) return true;
+        }
+        return false;
+    }
     //primarily used to test for _nullToken, which is defined as a default value for optional parameters
     bool token::isNull(){ 
         return is(eTokenType::unknown); 
     }
-    bool token::isObjectType(){    if(find(bglParser.objects.begin(), bglParser.objects.end(),value)!=bglParser.objects.end()) return true;
-        return false;
-    }
+    
     bool token::isDataType(){
-        //if(string("var void bool int string").find(value)!=string::npos) return true; //TODO: make this a list someplace
-        return isObjectType();    
+        return languageService.isObjectType(value);    
     }
     bool token::isNumeric(){
         for(char c:value){
@@ -74,20 +77,20 @@ const token _nullToken;
 
     token token::assertOneOf(vector<eTokenType> types, string errMsg){
         if(!isOneOf(types)) {
-            if(errMsg=="") bglParser.parseError(assertFailedMessage(types));
-            bglParser.parseError(errMsg);
+            if(errMsg=="") parser.parseError(assertFailedMessage(types));
+            parser.parseError(errMsg);
         }
         return *this;
     }
     token token::assertOneOf(vector<string> vals, string errMsg){
         if(!isOneOf(vals)) {
-            if(errMsg=="") bglParser.parseError(assertFailedMessage(vals));
-            bglParser.parseError(errMsg);
+            if(errMsg=="") parser.parseError(assertFailedMessage(vals));
+            parser.parseError(errMsg);
         }
         return *this;
     }
     token token::assertDataType(){
-        if(!isDataType()) bglParser.parseError("Expected data type.");
+        if(!isDataType()) parser.parseError("Expected data type.");
         return *this;
     }        
 
@@ -142,10 +145,10 @@ size_t token::chk() {
 //pass the token text off to the emitter
 token token::emit(){
     if(tokenType==eTokenType::quote){
-        bglParser.emit.put(unescape(value));
+        parser.emit.put(unescape(value));
     }
     else{
-        bglParser.emit.put(value);
+        parser.emit.put(value);
     }
     return *this;
 }

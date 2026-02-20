@@ -35,9 +35,12 @@ class token {
         static constexpr std::string braceClose ="}"; 
         static constexpr std::string bracketOpen ="["; 
         static constexpr std::string bracketClose ="]"; 
-        static constexpr std::string constant="const"; 
-        static constexpr std::string class="class"; 
+        static constexpr std::string constantDeclararion="const"; 
+        static constexpr std::string classDeclaration="class"; 
+        static constexpr std::string enumDeclaration="enum"; 
+        static constexpr std::string bnumDeclaration="bnum"; 
         static constexpr std::string comma  =","; 
+        static constexpr std::string period  ="."; 
 
         bool is(eTokenType);
         bool is(std::string);
