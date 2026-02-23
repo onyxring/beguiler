@@ -9,11 +9,20 @@ using namespace std;
 
 class bglLanguageService{
     public:
-        std::vector<typeDef> objectTypes;
-        typeDef getType(string);
+        
+    vector<unique_ptr<typeDef>> objectTypes;  //used to store named object definitions; both classes and object instances.
+    vector<typeDef*> globals;  
+    
+    bglLanguageService();
+        typeDef& getType(string);
         bool isObjectType(string);
-        typeDef addObjectType(string);
-        void registerEnum(enumDef&);
+        
+        objectDef& registerType(objectDef&);
+        classDef& registerType(classDef&);
+        enumDef& registerType(enumDef&);
+        typeDef& registerType(string);
+        
+        vector<string> operators={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^="};
 };
 
 extern bglLanguageService languageService;
