@@ -19,7 +19,7 @@ enum class eTokenType{
     //expression,
 };
 
-class parseNode; //forward declaration
+class parseTreeNode; //forward declaration
 
 class token {
      
@@ -60,7 +60,7 @@ class token {
         token assertOneOf(std::vector<std::string>, std::string="");
         token assertDataType();
         
-        operator parseNode(); 
+        operator parseTreeNode(); 
         operator std::string(); 
         
     

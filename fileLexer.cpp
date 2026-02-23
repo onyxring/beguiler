@@ -6,19 +6,22 @@
 #include <tuple> 
 #include <optional>
 
+#include "types.h"
+#include "globals.h"
+#include "bglLanguageService.h"
 #include "fileLexer.h"
 #include "bglParser.h"
 #include "orbit.h"
 
 using namespace std;
 
-vector<string> operatorList={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^="};  //TODO: this should be moved to a language-specific global location, which will probably need to be shared by the parser
+//vector<string> operatorList={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^="};  //TODO: this should be moved to a language-specific global location, which will probably need to be shared by the parser
 //----------------------------------------------------------------------------------------
 //--Opening and closing files, and managing which of these is the "current file" 
 void fileLexer::open(string filename){
     ifstream& inputFileStream=*(new ifstream(filename));  
     
-    if (!inputFileStream.is_open()) parser.parseError("Unable to open file "+filename+".");
+    if (!inputFileStream.is_open()) parser.parsingError("Unable to open file "+filename+".");
     files.push(make_tuple(&inputFileStream, filename, 1, 0)); //take the current file and push it on the stack    
 }
 void fileLexer::close(){
@@ -115,10 +118,10 @@ token fileLexer::getBasicToken(bool suppressBleed){
             else if(isValidIdentifierChar(c))  
                 retval.tokenType=eTokenType::unclassifiedText;
             else {                
-                if(find(operatorList.begin(), operatorList.end(), retval.value)!=operatorList.end()){
+                if(find(languageService.operators.begin(), languageService.operators.end(), retval.value)!=languageService.operators.end()){
                     retval.tokenType=eTokenType::oper; 
                 }
-                else if(find(operatorList.begin(), operatorList.end(), twoChars)!=operatorList.end()){
+                else if(find(languageService.operators.begin(), languageService.operators.end(), twoChars)!=languageService.operators.end()){
                     retval.value=twoChars; //note: this overwrites the previous value, which is just the first character
                     readChar(); //dispose of the second character we previewed   
                     retval.tokenType=eTokenType::oper;
@@ -172,7 +175,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
 
     //a special case: we've reached the end of file.  If we are not at the global scope, then throw an error, because we've terminated early
     if(c==EOF) {
-        if(parser.getCurrentCompileContext()!=eCompileContext::global) parser.parseError("End of file encountered prematurely");
+        if(parser.getCurrentCompileContext()!=eCompileContext::global) parser.parsingError("End of file encountered prematurely");
         retval.tokenType=eTokenType::eof;
     }
 
@@ -235,15 +238,15 @@ string fileLexer::getRawTextThroughClosingBrace(){
     directive:          The next token encountered was a compiler directive (e.g., #include).
     operator:           The next token encountered is a recognized language operator.
     symbol:             The next token encountered is a single symbol which was not matched to an operator.
-                        Note 1: multiple symbols may appear contiguously in the file, but each of these will be 
+                        Note: multiple symbols may appear contiguously in the file, but each will be 
                         returned as separate tokens.
-                        Note 2: the comments and text strings are not returned as symbols, even though they both start
-                        with both start with symbols or symbol pairs (i.e., //, /*, and ") 
+                        Note: comments and text strings are not returned as symbols, even though they both start
+                        with symbols or symbol pairs.
     unclassifiedText:   The next token encountered was a series of contiguous "identifier appropriate" characters, 
                         including the underscore and alphanumeric characters; however, it could not be further classified
                         into another token type.  Usually, this indicates an error condition.
     
-    note: comment tokens are discarded, whether single line or multiline comments 
+    Note: comment tokens are discarded, whether single line or multiline comments 
 */
 token fileLexer::getToken(){
     token next;
@@ -259,7 +262,7 @@ token fileLexer::getToken(){
     //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones 
     if(retval.is("#")){ 
         next=getBasicToken(true); //to make sense, this MUST be a name directly connected to the # with no whitespaces in between
-        if(!next.isValidIdentifier()) parser.parseError("Encountered invalid directive name '"+next.value+"'.");
+        if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid directive name '"+next.value+"'.");
         retval.value+=next.value;
         retval.tokenType=eTokenType::directive;
         return retval;
@@ -306,4 +309,4 @@ token fileLexer::getToken(std::vector<string> vals){
     token retval=getToken();
     return retval.assertOneOf(vals); 
 }
- 
+

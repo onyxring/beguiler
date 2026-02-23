@@ -1,37 +1,8 @@
 #pragma once
+
 #include <string_view>
-// #include "bglParser.h"
-// #include "bglLanguageService.h"
-// extern bglParser parser;
-// extern bglLanguageService languageService;
 
 using namespace std;
-
-enum class eCompileContext {global, objectDef, codeBlock};
-
-enum class eNodeType{
-    root,
-    directive,
-    integer,
-    symbol,
-    quote,
-    variableDeclaration,
-    constantDeclaration,
-    objectDeclaration,
-    classDeclaration,
-    parameterListDeclaration,
-    routine,
-    executableStatement,
-    tagDeclaration
-    //expression,
-};
-
-enum class eCompileLanguage {beguile, i6};
-
-struct resultsStruct{
-    std::stringstream tempText;
-    std::stringstream bodyText;
-};
 
 constexpr size_t chk(string_view str) {
     const long long p = 131;

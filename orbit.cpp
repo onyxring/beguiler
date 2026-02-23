@@ -9,6 +9,7 @@
 #include "orbit.h"
 #include "globals.h"
 #include "bglParser.h"
+#include "bglLanguageService.h"
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -107,17 +108,17 @@ string orbit::getPath(string filename){
 
 //When we're all done, commit the final transpiled text to the output file.
 bool orbit::writeFile(string filename) {
-    
+    stringstream bodyText;
     std::ofstream outFileStream(filename);
+    
     if (!outFileStream.is_open()) {
         std::cerr << "Error creating file "<< filename << "."<<std::endl;
         return true; // Indicate an error
     }
     
-    parser.emit.to(parser.results.bodyText);
-    //parser.emit.generateI6(parser.parseTree);
-
-    outFileStream << parser.results.bodyText.str();
+    emitter.to(bodyText);
+    emitter.emit(languageService.globals);
+    outFileStream << bodyText.str();
     outFileStream.close();
     return false;
 

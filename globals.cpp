@@ -1,8 +1,11 @@
-#include "bglParser.h"
-#include "bglLanguageService.h"
-#include "typeDef.h"
+#include "globals.h"
 
-bglParser parser;
-bglLanguageService languageService;
+// #include "bglParser.h"
+// #include "i6Emitter.h"
+// #include "bglLanguageService.h"
 
-typeDef _objectTypeNotFound;
+
+// bglParser parser;
+// i6Emitter emitter;
+// bglLanguageService languageService;
+

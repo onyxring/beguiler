@@ -4,173 +4,203 @@
 #include "bglParser.h"
 #include "orbit.h"
 #include "globals.h"
-#include "parseNode.h"
+#include "parseTreeNode.h"
 #include "bglLanguageService.h"
 
 using namespace std;
 
 //The emitter writes to a standard output stream.  We can reassign this if we want...
 void i6Emitter::to(ostream& strm){ out.std::ios::rdbuf(strm.rdbuf()); }
-
-
-void i6Emitter::put(string str){ out<<str; }
-void i6Emitter::put(token tok){ out<<tok.value; }
-
-void i6Emitter::generateI6(parseNode& node){
-    indent(node);
-    switch(node.type){
-        case eNodeType::root:
-            rootNode(node);
-            return;
-        case eNodeType::directive:
-             directive(node);
-             return;
-        case eNodeType::routine:
-            if(node.parent->type==eNodeType::root)
-                out<<format("[{0}", (string)node["routineName"]);
-            else
-                out<<format("{0}[", (string)node["routineName"]);
-            //params= &node["parameters"]; 
-            
-            for(parseNode& param : node["parameters"].children){
-                out<<" "<<(string)param["variableName"];
-                //if(param.properties.contains("assignedValue")){
-                    //defaultInits+=format("if({0}==0) {0}={1}; ", (string)param["variableName"], (string)param["assignedValue"]);
-                //}   
-            }
-            endStatement();
-            
-            // if(defaultInits!=""){
-            //     indent(node,1);
-            //     out<<defaultInits<<endl;
-            // }
-            
-            for(parseNode& statement : node.children){
-                generateI6(statement); 
-            }
-            
-            indent(node);
-            out<<"]";
-            if(node.parent->type==eNodeType::root) endStatement(); 
-            newLine();
-            return;
-        case eNodeType::variableDeclaration:           
-            if(node.resolveContext()==eCompileContext::global){
-                if(languageService.isObjectType((string)node["dataType"])){
-                    out<<format("{0} {1}", (string)node["dataType"], (string)node["variableName"]);
-                }
-                else{
-                    out<<format("global {0}", (string)node["variableName"]);
-                }
-                if(node.properties.contains("assignedValue")){
-                    out<<format("={0}", (string)node["assignedValue"]);
-                }
-                endStatement();
-            }
-            else{
-                out<<format("{0}", (string)node["variableName"]);
-                if(node.properties.contains("assignedValue")){
-                    out<<format(" {0}", (string)node["assignedValue"]);
-                }
-            }
-           return;
-           break;
-        case eNodeType::constantDeclaration:           
-            out<<format("constant  {0}={1};", (string)node["variableName"],(string)node["assignedValue"]);
-            newLine();
-            return;
-            break;
-        case eNodeType::executableStatement:
-            executableStatement(node);
-            return;
-        case eNodeType::objectDeclaration:
-            objectDeclaration(node);
-            return;
-        
-        
-    //     case eNodeType::objectDeclaration:
-    //         out<<format("Object {0} {{\n", node.keyToken.value);
-    //         return;
-    //     case eNodeType::classDeclaration:
-    //         out<<format("Class {0} {{\n", node.keyToken.value);
-    //         return;
-    //     default:
-    //         break;
+void i6Emitter::emit(vector<typeDef*>& nodeList){
+    for(typeDef* node : nodeList){
+        generateI6(*node);
     }
-
-}
-
-void i6Emitter::directive(parseNode& node){
-    switch(((token)node).chk()){
-        case chk("#include"): out<<format("{0} {1};\n", (string)node, (string)node["filename"]);
-            break;
-        case chk("#i6"): out<<format("{0}\n", (string)node["i6Content"]);
-            break;
-    }
-}
-void i6Emitter::objectDeclaration(parseNode& node){
-    out<<format("{0} {1} ", (string)node["objectType"], (string)node["objectName"]);
     
-    bool isFirst=true;
-    for(parseNode& child : node.children) {
-        if(((string)child)!="#i6") {
-            if(isFirst)
-                out<<" with ";
-            else
-                out<<", ";
-            isFirst=false;
-        }
-        generateI6(child); 
-        out<<endl;
-    }
-    out<<";\n";
 }
-void i6Emitter::executableStatement(parseNode& node){
-    switch(((token)node["statement"]).chk()){
-        case chk("print"):
-            out<<"print ";
-            out<<(string)node["value"];
-            endStatement();
-            return;
-        case chk("return"):
-            //TODO: perform type checking against the declared return type of the routine
-            if(node.properties.contains("returnValue")){
-                switch(((token)node["returnValue"]).chk()){
-                    case chk("true"): out << "rtrue";
-                        break;
-                    case chk("false"): out << "rfalse";
-                        break;
-                    default: out<<"return "<<(string)node["returnValue"];
-                }
-            }
-            else{
-                out<<"return";
-            }
-            endStatement();
-            return;
-        default:
-            //assume it's a function call
-            out<<(string)node["functionName"];
-            if(node.properties.contains("memberName")){
-                out<<"."<<(string)node["memberName"];
-            }
-            out<<"(";
-        }
-}
-void i6Emitter::endStatement(){
-    out<<";";
-    newLine();
-}
-void i6Emitter::newLine(){
-    out<<"\n";
-}
+// void i6Emitter::put(string str){ out<<str; }
+// void i6Emitter::put(token tok){ out<<tok.value; }
 
-void i6Emitter::rootNode(parseNode & node){
-    out<<"!% +include_path=../_myExtensions,../../orLibraryI6,../../inform6/lib\n";
-    for(auto& child : node.children){
-        generateI6(child);
-    }
+void i6Emitter::generateI6(typeDef& node){
+     //if (typeid(node) == typeid(enumDef)) emitEnum(static_cast<enumDef>(node));
+     //if (typeid(node) == typeid(enumDef)) emitEnum(dynamic_cast<enumDef&>(node));
 }
+    //  else if (typeid(node) == typeid(classDef)) emitClass(static_cast<classDef>(node));
+    //  else if (typeid(node) == typeid(objectDef)) emitObject(static_cast<objectDef>(node));
+    //  else if (typeid(node) == typeid(functionDef)) emitFunction(static_cast<functionDef>(node));
+    //  else if (typeid(node) == typeid(i6Block)) out << ((i6Block)node).i6Body; //i6Blocks are emitted directly, without any processing by Beguile.
+    //  else{
+    //      //handle error: unrecognized node type
+    //  }
+     
+
+//     indent(node);
+//     switch(node.type){
+//         case eNodeType::root:
+//             rootNode(node);
+//             return;
+//         case eNodeType::directive:
+//              directive(node);
+//              return;
+//         case eNodeType::routine:
+//             if(node.parent->type==eNodeType::root)
+//                 out<<format("[{0}", (string)node["routineName"]);
+//             else
+//                 out<<format("{0}[", (string)node["routineName"]);
+//             //params= &node["parameters"]; 
+            
+//             for(parseTreeNode& param : node["parameters"].children){
+//                 out<<" "<<(string)param["variableName"];
+//                 //if(param.properties.contains("assignedValue")){
+//                     //defaultInits+=format("if({0}==0) {0}={1}; ", (string)param["variableName"], (string)param["assignedValue"]);
+//                 //}   
+//             }
+//             endStatement();
+            
+//             // if(defaultInits!=""){
+//             //     indent(node,1);
+//             //     out<<defaultInits<<endl;
+//             // }
+            
+//             for(parseTreeNode& statement : node.children){
+//                 generateI6(statement); 
+//             }
+            
+//             indent(node);
+//             out<<"]";
+//             if(node.parent->type==eNodeType::root) endStatement(); 
+//             newLine();
+//             return;
+//         case eNodeType::variableDeclaration:           
+//             if(node.resolveContext()==eCompileContext::global){
+//                 if(languageService.isObjectType((string)node["dataType"])){
+//                     out<<format("{0} {1}", (string)node["dataType"], (string)node["variableName"]);
+//                 }
+//                 else{
+//                     out<<format("global {0}", (string)node["variableName"]);
+//                 }
+//                 if(node.properties.contains("assignedValue")){
+//                     out<<format("={0}", (string)node["assignedValue"]);
+//                 }
+//                 endStatement();
+//             }
+//             else{
+//                 out<<format("{0}", (string)node["variableName"]);
+//                 if(node.properties.contains("assignedValue")){
+//                     out<<format(" {0}", (string)node["assignedValue"]);
+//                 }
+//             }
+//            return;
+//            break;
+//         case eNodeType::constantDeclaration:           
+//             out<<format("constant  {0}={1};", (string)node["variableName"],(string)node["assignedValue"]);
+//             newLine();
+//             return;
+//             break;
+//         case eNodeType::executableStatement:
+//             executableStatement(node);
+//             return;
+//         case eNodeType::objectDeclaration:
+//             objectDeclaration(node);
+//             return;
+        
+        
+//     //     case eNodeType::objectDeclaration:
+//     //         out<<format("Object {0} {{\n", node.keyToken.value);
+//     //         return;
+//     //     case eNodeType::classDeclaration:
+//     //         out<<format("Class {0} {{\n", node.keyToken.value);
+//     //         return;
+//     //     default:
+//     //         break;
+//     }
+
+//}
+
+// void i6Emitter::emitEnum(enumDef& enumNode){
+//     out<<format("Enumeration {0} {{\n", enumNode.name);
+//     for(enumValueDef& val : enumNode.namedValues){
+//         out<<format("   {0}={1},\n", val.name, val.value);
+//     }
+//     out<<"}\n";
+// }
+// void i6Emitter::emitClass(classDef& classNode){
+// }
+// void i6Emitter::emitObject(objectDef& objectNode){
+// }
+// void i6Emitter::emitFunction(functionDef& functionNode){
+// }
+    
+// void i6Emitter::directive(parseTreeNode& node){
+//     switch(((token)node).chk()){
+//         case chk("#include"): out<<format("{0} {1};\n", (string)node, (string)node["filename"]);
+//             break;
+//         case chk("#i6"): out<<format("{0}\n", (string)node["i6Content"]);
+//             break;
+//     }
+// }
+// void i6Emitter::objectDeclaration(parseTreeNode& node){
+//     out<<format("{0} {1} ", (string)node["objectType"], (string)node["objectName"]);
+    
+//     bool isFirst=true;
+//     for(parseTreeNode& child : node.children) {
+//         if(((string)child)!="#i6") {
+//             if(isFirst)
+//                 out<<" with ";
+//             else
+//                 out<<", ";
+//             isFirst=false;
+//         }
+//         generateI6(child); 
+//         out<<endl;
+//     }
+//     out<<";\n";
+// }
+// void i6Emitter::executableStatement(parseTreeNode& node){
+//     switch(((token)node["statement"]).chk()){
+//         case chk("print"):
+//             out<<"print ";
+//             out<<(string)node["value"];
+//             endStatement();
+//             return;
+//         case chk("return"):
+//             //TODO: perform type checking against the declared return type of the routine
+//             if(node.properties.contains("returnValue")){
+//                 switch(((token)node["returnValue"]).chk()){
+//                     case chk("true"): out << "rtrue";
+//                         break;
+//                     case chk("false"): out << "rfalse";
+//                         break;
+//                     default: out<<"return "<<(string)node["returnValue"];
+//                 }
+//             }
+//             else{
+//                 out<<"return";
+//             }
+//             endStatement();
+//             return;
+//         default:
+//             //assume it's a function call
+//             out<<(string)node["functionName"];
+//             if(node.properties.contains("memberName")){
+//                 out<<"."<<(string)node["memberName"];
+//             }
+//             out<<"(";
+//         }
+// }
+// void i6Emitter::endStatement(){
+//     out<<";";
+//     newLine();
+// }
+// void i6Emitter::newLine(){
+//     out<<"\n";
+// }
+
+// void i6Emitter::rootNode(parseTreeNode & node){
+//     out<<"!% +include_path=../_myExtensions,../../orLibraryI6,../../inform6/lib\n";
+//     for(auto& child : node.children){
+//         generateI6(child);
+//     }
+// }
 // void i6Emitter::globalVariable(token datatype, token id, token val){
 //     out<<format("global {0}",(string)id);
     
@@ -180,12 +210,12 @@ void i6Emitter::rootNode(parseNode & node){
 //     return;
 
 // }
-void i6Emitter::indent(parseNode& node, int extra){
-    for(int t=0; t<node.resolveNestingDepth()+extra;t++) out<<"   ";    
-}
-void i6Emitter::indent(int extra){
-    //for(int t=0; t<parser.getCurrentNode().resolveNestingDepth()+extra;t++) out<<"   ";    
-}
+// void i6Emitter::indent(parseTreeNode& node, int extra){
+//     for(int t=0; t<node.resolveNestingDepth()+extra;t++) out<<"   ";    
+// }
+// void i6Emitter::indent(int extra){
+//     //for(int t=0; t<parser.getCurrentNode().resolveNestingDepth()+extra;t++) out<<"   ";    
+// }
 
 /*
 void i6Emitter::globalFunction(token returnType, token name){
@@ -237,3 +267,5 @@ void i6Emitter::functionParams(){
 //     throw runtime_error(errorMessage); 
 //     return true; //won't every actually run
 // }
+
+i6Emitter emitter;

@@ -59,11 +59,11 @@ const token _nullToken;
 #pragma endregion
 
 #pragma region Conversion operators
-    token::operator parseNode(){
-        parseNode pNode;
-        pNode.keyToken=*this;
-        return pNode;
-    }
+    // token::operator parseTreeNode(){
+    //     parseTreeNode pNode;
+    //     //pNode.keyToken=*this;
+    //     return pNode;
+    // }
     token::operator string(){
         if(tokenType==eTokenType::quote) return unescape(value);
         return value;
@@ -77,20 +77,20 @@ const token _nullToken;
 
     token token::assertOneOf(vector<eTokenType> types, string errMsg){
         if(!isOneOf(types)) {
-            if(errMsg=="") parser.parseError(assertFailedMessage(types));
-            parser.parseError(errMsg);
+            if(errMsg=="") parser.parsingError(assertFailedMessage(types));
+            parser.parsingError(errMsg);
         }
         return *this;
     }
     token token::assertOneOf(vector<string> vals, string errMsg){
         if(!isOneOf(vals)) {
-            if(errMsg=="") parser.parseError(assertFailedMessage(vals));
-            parser.parseError(errMsg);
+            if(errMsg=="") parser.parsingError(assertFailedMessage(vals));
+            parser.parsingError(errMsg);
         }
         return *this;
     }
     token token::assertDataType(){
-        if(!isDataType()) parser.parseError("Expected data type.");
+        if(!isDataType()) parser.parsingError("Expected data type.");
         return *this;
     }        
 
@@ -144,12 +144,12 @@ size_t token::chk() {
 }
 //pass the token text off to the emitter
 token token::emit(){
-    if(tokenType==eTokenType::quote){
-        parser.emit.put(unescape(value));
-    }
-    else{
-        parser.emit.put(value);
-    }
+    // if(tokenType==eTokenType::quote){
+    //     parser.emit.put(unescape(value));
+    // }
+    // else{
+    //     parser.emit.put(value);
+    // }
     return *this;
 }
 string token::unescape(string value){
