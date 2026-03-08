@@ -4,7 +4,7 @@
 #include <sstream>
 #include <stack>
 #include <vector>
-//#include "1eNode.h"
+#include <memory>
 
 using namespace std;
 
@@ -13,43 +13,41 @@ class abstractObject{
     public:
         string name;
         bool operator == (abstractObject);
-        virtual void dummy() {} //TODO: this was an experiment and might be able to be removed 
-        
+        bool isExternal;
+        virtual void dummy(){}  //typeid requires at lease one virtual function in the base class to work
 };
 //things defined at the global level, such as type definitions, objects, enums, and functions and global variables.
-class globalDef:virtual public abstractObject{    
+class typeDef:virtual public abstractObject{
+    public:         
+};
+class typeInstance:virtual public abstractObject{
+    public:                 
 };
 //members of types, including functions and variables.
 class typeMember:virtual public abstractObject{   
+    public:        
 };
 
-//types definitions 
-class typeDef:public globalDef{
-    public:
-};
 //class definitions 
 class classDef:public typeDef{
     public:
-        //vector<unique_ptr<typeDef>> baseClasses;
-        //vector<unique_ptr<typeMember>> members;
-        
-        vector<typeDef> baseClasses;
-        vector<typeMember> members;
+        vector<typeMember*> members;
+        vector<classDef*> baseClasses;
+
         //void registerNewMember(typeMember);
 };
 //instances of classes, including overrides
 class objectDef: public typeDef{
     public:
-        vector<typeDef> baseClasses;
-        vector<typeMember> members;
+        vector<typeDef*> baseClasses;
+        vector<typeMember*> members;
 };
 
 //a parameter of a function
 class paramDef:public abstractObject{
     public:
-        globalDef type;
-        //todo: add default values here
-        
+        typeDef type;
+        string defaultValue;  // "" if no default; otherwise the default expression text
 };
 
 //the function body
@@ -70,40 +68,68 @@ class statement:virtual public abstractObject{
 //a block of statements, essentiall the body of a function
 class statementBlock:public codeBlock{
     public:
-        vector<statement> statements;
+        vector<statement*> statements;
+};
+// a parsed expression: a flat list of tokens with a resolved type.
+// emitted verbatim to I6; type is used for operator/emitter dispatch.
+class expression {
+    public:
+        vector<string> tokens;     // raw token strings making up the expression
+        string resolvedType;       // inferred Beguile type name, or "" if unknown
+        string terminator;         // which terminator token ended this expression
+
+        string text() const {
+            string result;
+            for(const string& t : tokens) result += t;
+            return result;
+        }
 };
 //a type of statement which assigns a value to a variable
 class assignmentStatement:public statement{
     public:
         string variableLeft; //todo: probably should have a variable table for scope
-        string assignedExpression;
-};  
+        expression* assignedExpression = nullptr;
+        string emitterBody;   // raw i6 body text if operator is an emitter, else ""
+        string emitterParam;  // parameter name to substitute in the body
+};
 //a type of statement which returns a value from a function
 class returnStatement:public statement{
     public:
         string returnExpression;
-};  
+};
 //the declaration of a variable.  This may be a global variable, an object member, or a local variable within a function.
-class variableDeclaration:public typeMember, public statement, public globalDef{
+class variableDeclaration:public typeMember, public statement, public typeDef, public typeInstance{
     public:
-        globalDef type;    
-        string declaredExpressionValue;
-};  
-//a type of statement which represents a function call. 
+        typeDef type;
+        bool isConst = false;
+        expression* declaredExpressionValue = nullptr;
+    //virtual std::unique_ptr<typeMember> clone() const override { return std::make_unique<variableDeclaration>(*this); }
+};
+//a type of statement which represents a function call.
 class functionCall:public statement{
     public:
-        vector<paramDef> params;
-};  
+        vector<paramDef*> params;
+};
+//a function call statement with resolved arguments, optionally backed by an emitter body
+class functionCallStatement:public statement{
+    public:
+        string functionName;
+        vector<expression*> args;      // parsed argument expressions (type in args[i]->resolvedType)
+        string emitterBody;            // raw i6 body if an emitter was resolved, else ""
+        vector<string> emitterParams;  // parameter names to substitute in the body
+};
 //the declaration of a function.  This may be a global function, or an object member
 class functionDef:public typeMember, public typeDef{
     public:
         bool isEmitter;
-        globalDef returnType;
-        vector<paramDef> params;
-        codeBlock body;
-    
+        typeDef returnType;
+        vector<paramDef*> params;
+        codeBlock* body = nullptr;
+        // deinit cleanup entries: {varName, deinitBody} — emitted before every return and at end of function
+        vector<pair<string,string>> cleanups;
+
     using abstractObject::name;
-        
+
 };
 //an individual value within an enum definition
 class enumValueDef:public abstractObject{
@@ -113,7 +139,67 @@ class enumValueDef:public abstractObject{
 //the declaration of an enum type
 class enumDef:public typeDef{
     public:
-        vector<enumValueDef> namedValues;        
+        vector<enumValueDef*> namedValues;        
+};
+
+// an if statement, with a condition expression and a then-block, and an optional else-block
+class ifStatement : public statement {
+    public:
+        expression* condition = nullptr;
+        statementBlock* thenBlock = nullptr;
+        statementBlock* elseBlock = nullptr;
+};
+
+// one arm of a switch statement; value==nullptr means default:
+class switchCase : public abstractObject {
+    public:
+        expression* value = nullptr;   // nullptr for default:
+        statementBlock* body = nullptr;
+};
+
+// a switch statement
+class switchStatement : public statement {
+    public:
+        expression* condition = nullptr;
+        vector<switchCase*> cases;
+};
+
+// a for loop: for(init; condition; increment) { body }
+class forStatement : public statement {
+    public:
+        string initText;               // raw token text for init (before first ;)
+        expression* condition = nullptr;
+        string incrementText;          // raw token text for increment (before ))
+        statementBlock* body = nullptr;
+};
+
+// a raw block of I6 text emitted directly, usable at global scope, within a function body, or as an object member
+class i6RawNode : public typeDef, public statement, public typeMember {
+    public:
+        string text;
+};
+
+// compile-time settings declared in source via a beguilerSettings { } block.
+// Fields split into three categories:
+//   - beguiler paths: applied immediately at parse time, not emitted to I6
+//   - ICL directives: emitted as !% lines at the very top of the I6 output
+//   - I6 constants:   emitted as Constant declarations (Story, Headline)
+class beguilerSettingsDef : public typeDef {
+    public:
+        // beguiler paths (not emitted)
+        string beguiLibPath;        // overrides BEGUILE_LIB / binary-adjacent lookup
+        string informBinaryPath;    // overrides the inform6 binary path
+
+        // ICL directives (!% lines)
+        string target;              // !% -G (Glulx), !% -v3, !% -v5, !% -v8
+        int release = 0;            // !% Release N;  (0 = not set)
+        string serial;              // !% Serial "...";
+        string errorFormat;         // !% -EN  (e.g. "1" → -E1)
+        vector<string> includePaths;// !% +include_path=...  (one line per path)
+
+        // I6 Constants
+        string story;               // Constant Story "...";
+        string headline;            // Constant Headline "^...^";
 };
 
 extern typeDef emptyTDef;

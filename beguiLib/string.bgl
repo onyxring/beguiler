@@ -1,0 +1,26 @@
+extend extern class string{
+    replace emitter string operator = (stringLiteral v){
+        $self.set(v);
+    }
+    emitter string operator = (string v){
+        $self.set(v);
+    }
+    emitter string operator + (stringLiteral v){
+        $self.append(v)
+    }
+    emitter string operator + (string v){
+        $self.append(v)
+    }
+    emitter eBool operator == (stringLiteral v){
+        $self.equals(v)
+    }
+    string print();
+    // Example conversion operator: converts string to bool by checking if the string equals "true"
+    // emitter bool operator(){
+    //     $self.equals("true")
+    // }
+}
+
+emitter void print(string str){
+    str.print()
+}
