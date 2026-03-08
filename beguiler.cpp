@@ -6,8 +6,8 @@
 #include <cstdlib>
 
 #include "settings.h"
-#include "orbit.h"
-#include "globals.h"
+#include "beguiler.h"
+#include "helpers.h"
 #include "bglParser.h"
 #include "bglLanguageService.h"
 
@@ -16,12 +16,19 @@ namespace fs = std::filesystem;
 
 settingsStruct settings;
 
-void orbit::go(int argc, char* argv[]) {
+void beguiler::go(int argc, char* argv[]) {
 
    cout << "Beguiler: The Beguile-Inform Transpiler" << endl<<"version .1a"<<endl;
-    if(parseArgs(argc, argv)) return; 
+    if(parseArgs(argc, argv)) return;
     if(parser.parseFile(settings.inFile)) return;
-    //parser.parseTree.mapParents();
+
+    // Warn if no beguilerSettings block was declared
+    bool hasSettings = false;
+    for(typeDef* g : languageService.globals)
+        if(typeid(*g) == typeid(beguilerSettingsDef)) { hasSettings = true; break; }
+    if(!hasSettings)
+        cout << "warning: no beguilerSettings declared; defaulting target to Glulx.\n";
+
     if(writeFile(settings.tmpFile)) return;
 
     cout<<endl<<"Transpile successful. ";
@@ -36,11 +43,11 @@ void orbit::go(int argc, char* argv[]) {
             return;
         }
     }
-   
+
     cout<<endl;
 };
 
-bool orbit::parseArgs(int argc, char* argv[]) {
+bool beguiler::parseArgs(int argc, char* argv[]) {
     if(argc==1){
         cout << "   Usage: beguile [Inform6 switches] [-inform=none|<execname>] <sourcefilepath> [<outputfilepath>]" << endl;
         cout << "   This program should be placed in the same folder as the I6 compiler."<<endl;
@@ -57,10 +64,10 @@ bool orbit::parseArgs(int argc, char* argv[]) {
             settings.switches=settings.switches+" "+argv[i];
         }
         else{
-            if(settings.inFile=="") 
+            if(settings.inFile=="")
                 settings.inFile=argv[i];
             else {
-                if(settings.outFile=="") 
+                if(settings.outFile=="")
                     settings.outFile=argv[i];
                 else{
                     cerr << "Too many file names specified." << endl;
@@ -74,48 +81,50 @@ bool orbit::parseArgs(int argc, char* argv[]) {
         string extension="ulx";
 
         fs::path p(settings.inFile);
-        
+
         if(settings.switches.contains("-v3")) extension="z3";
         if(settings.switches.contains("-v5")) extension="z5";
         if(settings.switches.contains("-v6")) extension="z6";
         if(settings.switches.contains("-v8")) extension="z8";
-        
+
         settings.outFile=format("{0}.{1}",p.stem().c_str(),extension);
     }
 
     #if defined(_WIN32) || defined(_WIN64)
         settings.pathSep = '\\';
     #else
-        settings.pathSep = '/';  
+        settings.pathSep = '/';
     #endif
 
-    settings.tmpFile = settings.inFile+".transpiled.inf";
+    settings.tmpFile = fs::absolute(settings.inFile).string()+".transpiled.inf";
     settings.informPath = getPath(argv[0])+settings.informName;
+    const char* envLib = getenv("BEGUILE_LIB");
+    settings.libPath = envLib ? string(envLib) : getPath(argv[0])+"beguilib";
 
     return false;
 }
-string orbit::getPath(string filename){
+string beguiler::getPath(string filename){
     string filePath="";
     size_t i = filename.rfind(settings.pathSep, filename.length());
-    if (i != string::npos) 
+    if (i != string::npos)
         filePath=filename.substr(0, i);
     else
         filePath=".";
-    
+
     if(filePath[filePath.length()-1]!=settings.pathSep) filePath+=settings.pathSep;
     return filePath;
 }
 
 //When we're all done, commit the final transpiled text to the output file.
-bool orbit::writeFile(string filename) {
+bool beguiler::writeFile(string filename) {
     stringstream bodyText;
     std::ofstream outFileStream(filename);
-    
+
     if (!outFileStream.is_open()) {
         std::cerr << "Error creating file "<< filename << "."<<std::endl;
         return true; // Indicate an error
     }
-    
+
     emitter.to(bodyText);
     emitter.emit(languageService.globals);
     outFileStream << bodyText.str();
@@ -123,4 +132,5 @@ bool orbit::writeFile(string filename) {
     return false;
 
 }
+
 

@@ -9,34 +9,22 @@ using namespace std;
 
 class i6Emitter{
     public:
-        stringstream out; 
+        stringstream out;
+        vector<pair<string,string>>* currentCleanups = nullptr; // set during emitFunction; used by emitStatement for return
         void to(ostream&);
 
-        // //void globalFunction(token, token);
-        // //void functionParams();
-        // void functionCall(token, token=_nullToken);
-        // void enumOrFlags(token,bool);
-        // void directive(parseTreeNode&);
-        // //void globalVariable(token, token, token= _nullToken);
-        // void variable(token, token, token= _nullToken);
-        // void put(std::string);
-        // void put(token);
-        // void indent(parseTreeNode&, int=0);
-        // void indent(int=0);
-        // void newLine();
-        // void endStatement();
-        // void executableStatement(parseTreeNode&);
-        // void objectDeclaration(parseTreeNode&);
-        
-        // void emit(vector<globalDef>&);
-        // void emitEnum(enumDef&);
-        // void emitClass(classDef&);
-        // void emitObject(objectDef&);
-        // void emitFunction(functionDef&);
         void emit(vector<typeDef*>&);
-        void generateI6(typeDef&);
+        void generateI6(typeDef*);
+        void emitICL(beguilerSettingsDef*);
+        void emitSettingsConstants(beguilerSettingsDef*);
+        void emitEnum(enumDef*);
+        void emitClass(classDef*);
+        void emitObject(objectDef*);
+        void emitMember(typeMember*);
+        void emitGlobal(variableDeclaration*);
+        void emitFunction(functionDef*);
+        void emitStatement(statement*, string indent);
 
-        // void rootNode(parseTreeNode&);
 };
 
 extern i6Emitter emitter;

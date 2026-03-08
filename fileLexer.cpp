@@ -7,11 +7,11 @@
 #include <optional>
 
 #include "types.h"
-#include "globals.h"
+#include "helpers.h"
 #include "bglLanguageService.h"
 #include "fileLexer.h"
 #include "bglParser.h"
-#include "orbit.h"
+#include "beguiler.h"
 
 using namespace std;
 

@@ -1,0 +1,68 @@
+//-----------------------------------------------------------------------------
+// System.bgl - the core system file for the Beguile language, included
+//      automatically by the compiler.
+//-----------------------------------------------------------------------------
+extern enum eTarget{ //--used to specify the target in the beguilerSettings object.  Declared as external, since these are defined in Beguile compiler
+    Glulx,
+    Z3,
+    Z5,
+    Z8
+}
+
+extern enum eBool{ //--literal values used by the bool type.  Declared as external, since these values are defined in the I6 compiler
+    true,
+    false
+}
+
+
+extern class object{ //--the base I6 object, declared as external because it is defined in the I6 compiler
+    emitter void print(){
+        print $self;
+    }
+    emitter eBool operator == (var v){
+        $self == v
+    }
+}
+
+extern class int { //--base type integer, declared as external because it wraps the type-less I6 type
+    emitter int operator = (intLiteral v){
+        $self=v;
+    }
+    emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
+}
+
+//-- type bool -----------------------------------------------------------------
+extern class bool{ //--base type bool, declared as external because it wraps the type-less I6 type
+    emitter void print(){
+        if($self == true) 
+            print "true";
+        else 
+            print "false";
+        
+    }
+    emitter eBool operator == (bool v){
+        $self == v
+    } 
+    emitter eBool operator == (eBool v){
+        $self == v
+    } 
+    emitter bool operator = (bool v){
+        $self=v;
+    } 
+    emitter bool operator = (eBool v){
+        $self=v;
+    } 
+}
+extern class string{
+    emitter string operator = (stringLiteral v){
+        $self=v;
+    }
+    emitter stringLiteral operator(){} //--declares I6 compatibility with stringLiteral
+}
+//-- The print() routine, and all overloads ----------------
+emitter void print(var val){
+    print val;
+}
+emitter void print(stringLiteral str){
+    print (string)str;
+}

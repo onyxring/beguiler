@@ -5,21 +5,20 @@
 #include <vector>
 
 enum class eTokenType{
-    unknown, 
+    unknown,
     eof,
     comment,
     unclassifiedText,
     identifier,
     directive,
     dataType,
+    name,       // matches either identifier or dataType; use isDataType() to disambiguate
     integer,
     symbol,
     quote,
     oper,
     //expression,
 };
-
-class parseTreeNode; //forward declaration
 
 class token {
      
@@ -41,6 +40,9 @@ class token {
         static constexpr std::string bnumDeclaration="bnum"; 
         static constexpr std::string comma  =","; 
         static constexpr std::string period  ="."; 
+        static constexpr std::string external ="extern";
+        static constexpr std::string extend ="extend";
+        static constexpr std::string replace ="replace";
 
         bool is(eTokenType);
         bool is(std::string);
@@ -60,7 +62,6 @@ class token {
         token assertOneOf(std::vector<std::string>, std::string="");
         token assertDataType();
         
-        operator parseTreeNode(); 
         operator std::string(); 
         
     

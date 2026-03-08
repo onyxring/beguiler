@@ -8,6 +8,7 @@ struct settingsStruct{
     std::string switches;
     std::string informName="inform";
     std::string informPath;
+    std::string libPath;   // path to the beguile standard library folder (beguilib), alongside the compiler binary
     char   pathSep;
 };
 extern settingsStruct settings;
