@@ -2,7 +2,7 @@
 #include <vector>
 
 #include "token.h"
-#include "orbit.h"
+#include "beguiler.h"
 #include "bglParser.h"
 #include "bglLanguageService.h"
 
@@ -18,8 +18,11 @@ const token _nullToken;
 
     bool token::isOneOf(vector<eTokenType> types){
         for (eTokenType &type : types) {
-            //if(type==eTokenType::unknown || tokenType==type) return true;
-            if(tokenType==type) return true;
+            if(type == eTokenType::name){
+                if(tokenType == eTokenType::identifier || tokenType == eTokenType::dataType) return true;
+            } else {
+                if(tokenType == type) return true;
+            }
         }
         return false;
     }
@@ -59,11 +62,6 @@ const token _nullToken;
 #pragma endregion
 
 #pragma region Conversion operators
-    // token::operator parseTreeNode(){
-    //     parseTreeNode pNode;
-    //     //pNode.keyToken=*this;
-    //     return pNode;
-    // }
     token::operator string(){
         if(tokenType==eTokenType::quote) return unescape(value);
         return value;
@@ -180,6 +178,8 @@ string token::tokenTypeToString(eTokenType type){
         case eTokenType::comment: return "comment";
             break;
         case eTokenType::dataType: return "data type";
+            break;
+        case eTokenType::name: return "name";
             break;
         case eTokenType::directive: return "directive";
             break;
