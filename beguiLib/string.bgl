@@ -1,26 +1,399 @@
-extend extern class string{
-    replace emitter string operator = (stringLiteral v){
-        $self.set(v);
+//-----------------------------------------------------------------------------
+// string.bgl - Beguile string runtime, backed by bglString / bglStringPool.
+//              Ported from orString / orUtilStr (Jim Fisher, Public Domain).
+//
+// Usage:
+//   #include <string>          in your .bgl file to activate string support.
+//   initBeguile();             call from your initialise() routine.
+//
+// Pool size can be overridden before including this file:
+//   Default bglStringPoolReserve 20;   ! number of simultaneous strings
+//-----------------------------------------------------------------------------
+
+#include <buf>
+
+#i6 {
+
+Default bglStringPoolReserve  10;                          ! simultaneous string instances
+Default bglBufferPoolReserve  (bglStringPoolReserve + 2); ! buffer wrappers (needs a couple extra)
+
+!------------------------------------------------------------------------------
+! Pool tracking: objects are moved between these to track allocation state
+!------------------------------------------------------------------------------
+object bglAllocatedObjects;
+object bglObjectHeap;
+
+!------------------------------------------------------------------------------
+! bglString class  — the runtime backing for Beguile's 'string' type
+!------------------------------------------------------------------------------
+class bglString(bglStringPoolReserve)
+    private _underlyingBuffer 0
+    with getBuf [ suppressAllocation;
+            if(self._underlyingBuffer==0 && suppressAllocation==0)
+                self._underlyingBuffer = bglStringPool.allocateBuffer();
+            return self._underlyingBuffer;
+        ]
+    ,    getLength [; return _bglBuf.getLength(self.getBuf()); ]
+    ,    getChar   [ pos; return self.getBuf()->(pos+WORDSIZE); ]
+    ,    getCharFromRight [ pos; return self.getChar(self.getLength()-(pos+1)); ]
+    ,    isEmpty   [; return self.getLength()==0; ]
+    ,    isLocked  [; return bglStringPool.isLocked(self); ]
+    ,    lock      [; bglStringPool.reclaimString(self); return self; ]
+    ,    bglFree   [; bglStringPool.freeString(self); return self; ]
+
+    ,    set [ unkStr ab lckBuf lckSelf;
+            lckSelf = _bglStr.ambiguousLock(self);
+            ab      = _bglStr.toAmbiguousBuffer(unkStr);
+            lckBuf  = _bglStr.ambiguousLock(ab);
+            _bglBuf.set(self.getBuf(), ab);
+            _bglStr.ambiguousFree(ab, lckBuf);
+            _bglStr.ambiguousFree(self, lckSelf);
+            return self;
+        ]
+    ,    bglClone [; return _bglStr.new(self); ]
+
+    ! bglAppendCopy: clone self, append text, return as ephemeral (unlocked).
+    ! Used by operator + to avoid mutating the left-hand operand.
+    ,    bglAppendCopy [ text retval;
+            retval = bglStringPool.allocateString();
+            _bglBuf.setFromBuffer(retval.getBuf(), self.getBuf());
+            _bglBuf.append(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            return retval.bglFree();
+        ]
+
+    ! append / prepend: modify self in place
+    ,    append [ text lck;
+            lck = _bglStr.ambiguousLock(self);
+            _bglBuf.append(self.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            _bglStr.ambiguousFree(self, lck);
+            return self;
+        ]
+    ,    prepend [ text;
+            _bglBuf.prepend(self.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            return self;
+        ]
+
+    ,    capture [; _bglBuf.capture(self.getBuf()); return self; ]
+    ,    release [; _bglBuf.release(); return self; ]
+    ,    captureOutput [ o r;
+            self.capture();
+            _bglStr.print(o, r);
+            self.release();
+            return self;
+        ]
+
+    ,    setLength [ n; _bglBuf.setLength(self.getBuf(), n); return self; ]
+    ,    setChar   [ pos val; self.getBuf()->(pos+WORDSIZE)=val; return self; ]
+    ,    print     [; _bglBuf.print(self.getBuf()); return self; ]
+
+    ,    equals [ altBuf caseInsensitive;
+            return _bglBuf.equals(_bglStr.toAmbiguousBuffer(altBuf),
+                                  self.getBuf(), caseInsensitive);
+        ]
+    ,    equalsOneOf [ buf1 buf2 buf3 buf4 caseInsensitive;
+            if(buf4==true || buf4==false) caseInsensitive=buf4;
+            if(buf3==true || buf3==false) caseInsensitive=buf3;
+            if(buf2==true || buf2==false) caseInsensitive=buf2;
+            if(self.equals(buf1, caseInsensitive)==true) rtrue;
+            if((~~(buf2==true || buf2==false)) && self.equals(buf2, caseInsensitive)==true) rtrue;
+            if((~~(buf3==true || buf3==false)) && self.equals(buf3, caseInsensitive)==true) rtrue;
+            if((~~(buf4==true || buf4==false)) && self.equals(buf4, caseInsensitive)==true) rtrue;
+            rfalse;
+        ]
+    ,    startsWith [ buf2 caseInsensitive;
+            return _bglBuf.startsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive);
+        ]
+    ,    endsWith [ buf2 caseInsensitive;
+            return _bglBuf.endsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive);
+        ]
+    ,    contains   [ text; return self.indexOf(text, 0)>-1; ]
+    ,    indexOf    [ searchText startingIndex;
+            return _bglBuf.indexOf(self.getBuf(),
+                                   _bglStr.toAmbiguousBuffer(searchText), startingIndex);
+        ]
+
+    ! Modification methods: clone, transform, return ephemeral result
+    ,    upper    [ retval; retval=self.bglClone(); _bglBuf.toUpper(retval.getBuf()); return retval.bglFree(); ]
+    ,    lower    [ retval; retval=self.bglClone(); _bglBuf.toLower(retval.getBuf()); return retval.bglFree(); ]
+    ,    trim     [ retval; retval=self.bglClone(); _bglBuf.trim(retval.getBuf());     return retval.bglFree(); ]
+    ,    trimLeft [ retval; retval=self.bglClone(); _bglBuf.trimLeft(retval.getBuf()); return retval.bglFree(); ]
+    ,    trimRight[ retval; retval=self.bglClone(); _bglBuf.trimRight(retval.getBuf());return retval.bglFree(); ]
+    ,    reverse  [ retval; retval=self.bglClone(); _bglBuf.reverse(retval.getBuf());  return retval.bglFree(); ]
+
+    ,    mid [ start count retval;
+            retval=_bglStr.new();
+            _bglBuf.mid(retval.getBuf(), self.getBuf(), start, count);
+            return retval.bglFree();
+        ]
+    ,    left [ count retval;
+            retval=_bglStr.new();
+            _bglBuf.left(retval.getBuf(), self.getBuf(), count);
+            return retval.bglFree();
+        ]
+    ,    right [ count retval;
+            retval=_bglStr.new();
+            _bglBuf.right(retval.getBuf(), self.getBuf(), count);
+            return retval.bglFree();
+        ]
+    ,    insert [ pos source count retval;
+            retval=self.bglClone();
+            _bglBuf.insert(retval.getBuf(), _bglStr.toAmbiguousBuffer(source), pos, count);
+            return retval.bglFree();
+        ]
+    ,    delete [ pos count retval;
+            retval=self.bglClone();
+            _bglBuf.delete(retval.getBuf(), pos, count);
+            return retval.bglFree();
+        ]
+    ,    replace [ searchText replaceText retval stl;
+            retval=self.bglClone();
+            searchText=_bglStr.toAmbiguousBuffer(searchText);
+            stl=_bglStr.ambiguousLock(searchText);
+            _bglBuf.replace(retval.getBuf(), searchText, _bglStr.toAmbiguousBuffer(replaceText));
+            _bglStr.ambiguousFree(searchText, stl);
+            return retval.bglFree();
+        ]
+    ,    replaceAll [ searchText replaceText retval stl;
+            retval=self.bglClone();
+            searchText=_bglStr.toAmbiguousBuffer(searchText);
+            stl=_bglStr.ambiguousLock(searchText);
+            _bglBuf.replaceAll(retval.getBuf(), searchText, _bglStr.toAmbiguousBuffer(replaceText));
+            _bglStr.ambiguousFree(searchText, stl);
+            return retval.bglFree();
+        ]
+    ,    format [ pattern p1 p2 p3 retval;
+            retval=_bglStr.new();
+            if(pattern==0) pattern="$0";
+            pattern=_bglStr.new(pattern);
+            pattern.set(pattern.replaceAll("$0", self));
+            if(p1~=0) pattern.set(pattern.replaceAll("$1", p1));
+            if(p2~=0) pattern.set(pattern.replaceAll("$2", p2));
+            if(p3~=0) pattern.set(pattern.replaceAll("$3", p3));
+            retval.set(pattern);
+            pattern.bglFree();
+            return retval.bglFree();
+        ]
+;
+
+!------------------------------------------------------------------------------
+! bglBufferWrapper — wraps individual buffer slices as movable I6 objects
+!------------------------------------------------------------------------------
+class bglBufferWrapper(bglBufferPoolReserve) with buf 0;
+
+!------------------------------------------------------------------------------
+! Backing buffer store — one big array chopped into bglStringDefaultSize slices
+!------------------------------------------------------------------------------
+Array __bglDsBuf buffer bglStringDefaultSize*bglBufferPoolReserve;
+
+!------------------------------------------------------------------------------
+! _bglStr — string utility object (ported from orUtilStr)
+!------------------------------------------------------------------------------
+object _bglStr
+    with new [ unkStr retval lck;
+            lck    = self.ambiguousLock(unkStr);
+            retval = bglStringPool.allocateString();
+            if(unkStr~=0) retval.set(unkStr);
+            self.ambiguousFree(unkStr, lck);
+            return retval.lock();
+        ]
+    ,    toAmbiguousBuffer [ unkStr retval;
+            ! If it's already a bglString, return its buffer directly (locked by the string).
+            if(unkStr ofclass bglString) return unkStr.getBuf();
+            ! Otherwise it's a literal — copy into a temporary unlocked (ephemeral) buffer.
+            retval = bglStringPool.allocateBuffer();
+            _bglBuf.set(retval, unkStr);
+            return bglStringPool.freeBuffer(retval);
+        ]
+    ,    ambiguousLock [ buf retval;
+            ! If buf is in the free pool, temporarily reclaim it so it won't be reallocated.
+            if(bglStringPool.isFree(buf)) {
+                bglStringPool.reclaimBuffer(buf);
+                bglStringPool.reclaimString(buf);
+                retval = true;
+            }
+            return retval;
+        ]
+    ,    ambiguousFree [ buf val;
+            ! Restore buf to its previous lock state.
+            if(val) {
+                bglStringPool.freeBuffer(buf);
+                bglStringPool.freeString(buf);
+            }
+        ]
+    ,    print [ buf prop;
+            if(prop~=0) buf = buf.prop;
+            if(buf provides print) { buf.print(); return; }
+            _bglBuf.print(buf);
+        ]
+;
+
+!------------------------------------------------------------------------------
+! bglStringPool — allocation and free pool manager
+!------------------------------------------------------------------------------
+object bglStringPool
+    private _allocateObj [ type o retval;
+            objectloop(o in bglObjectHeap && o ofclass type) { retval=o; break; }
+            if(retval==0) {
+                print "[ERROR: bglString pool exhausted. Increase bglStringPoolReserve.]";
+                return 0;
+            }
+            move retval to bglAllocatedObjects;
+            return retval;
+        ]
+    ,       _freeObj [ obj;
+            if(obj==0) return 0;
+            move obj to bglObjectHeap;
+            return obj;
+        ]
+    ,       _reclaimObj [ obj;
+            if(obj==0) return 0;
+            move obj to bglAllocatedObjects;
+            return obj;
+        ]
+    ,       _findAllocatedObjFromBuffer [ b o;
+            objectloop(o in bglAllocatedObjects && o ofclass bglBufferWrapper)
+                if(o.buf==b) return o;
+            return 0;
+        ]
+    ,       _findAvailableObjFromBuffer [ b o;
+            objectloop(o in bglObjectHeap && o ofclass bglBufferWrapper)
+                if(o.buf==b) return o;
+            return 0;
+        ]
+    ,       _findAllocatedObj [ b o;
+            objectloop(o in bglAllocatedObjects) if(o==b) return o;
+            return 0;
+        ]
+    ,       _findAvailableObj [ b o;
+            objectloop(o in bglObjectHeap) if(o==b) return o;
+            return 0;
+        ]
+
+    with allocateString [ retval;
+            retval = self._allocateObj(bglString);
+            retval.getBuf();   ! force buffer association
+            return retval;
+        ]
+    ,    freeString [ str;
+            self.freeBuffer(str.getBuf(true));            ! free the underlying buffer first
+            self._freeObj(self._findAllocatedObj(str));   ! then free the string object
+            return str;
+        ]
+    ,    reclaimString [ b retval;
+            retval = self._reclaimObj(self._findAvailableObj(b));
+            if(retval~=0) self.reclaimBuffer(retval.getBuf(true));
+            return retval;
+        ]
+    ,    allocateBuffer [ retval;
+            retval = self._allocateObj(bglBufferWrapper).buf;
+            _bglBuf.setLength(retval, 0);
+            return retval;
+        ]
+    ,    freeBuffer [ b;
+            self._freeObj(self._findAllocatedObjFromBuffer(b));
+            return b;
+        ]
+    ,    reclaimBuffer [ b retval;
+            retval = self._reclaimObj(self._findAvailableObjFromBuffer(b));
+            if(retval~=0) return retval.buf;
+            return 0;
+        ]
+    ,    isLocked [ obj;
+            if(self._findAllocatedObj(obj)) return true;
+            if(self._findAllocatedObjFromBuffer(obj)) return true;
+            return false;
+        ]
+    ,    isFree [ obj;
+            if(self._findAvailableObj(obj)) return true;
+            if(self._findAvailableObjFromBuffer(obj)) return true;
+            return false;
+        ]
+;
+
+!------------------------------------------------------------------------------
+! bglStringPoolInit — wires up the pool; called by initBeguile()
+!------------------------------------------------------------------------------
+[ bglStringPoolInit   i obj;
+    ! Assign each buffer wrapper a slice of the backing store and park it in the heap
+    for(i=0 : bglBufferWrapper.remaining()>0 : i++) {
+        obj = bglBufferWrapper.create();
+        obj.buf = __bglDsBuf + (i * bglStringDefaultSize);
+        obj.buf = _bglBuf.convertToSizedBuffer(obj.buf, bglStringDefaultSize);
+        move obj to bglObjectHeap;
     }
-    emitter string operator = (string v){
-        $self.set(v);
+    ! Pre-associate each bglString with a buffer and park it in the heap
+    for(i=0 : bglString.remaining()>0 : i++) {
+        obj = bglString.create();
+        obj.getBuf();   ! allocates _underlyingBuffer
+        move obj to bglObjectHeap;
     }
-    emitter string operator + (stringLiteral v){
-        $self.append(v)
-    }
-    emitter string operator + (string v){
-        $self.append(v)
-    }
-    emitter eBool operator == (stringLiteral v){
-        $self.equals(v)
-    }
-    string print();
-    // Example conversion operator: converts string to bool by checking if the string equals "true"
-    // emitter bool operator(){
-    //     $self.equals("true")
-    // }
+];
+
 }
 
-emitter void print(string str){
-    str.print()
+//------------------------------------------------------------------------------
+// Sentinel class: registers bglStringPoolInit() with initBeguile automatically.
+// When _bglRuntimeInit is declared as a global, its init emitter body
+// (bglStringPoolInit();) is added to languageService.globalInits, which causes
+// the compiler to emit it as the first statement in initBeguile().
+//------------------------------------------------------------------------------
+class _bglRuntimeInitType {
+    emitter void init() {
+        bglStringPoolInit();
+    }
 }
+_bglRuntimeInitType _bglRuntimeInit;
+
+//------------------------------------------------------------------------------
+// Beguile string class extension
+//------------------------------------------------------------------------------
+extend extern class string {
+    // Lifecycle
+    emitter void init()   { $self = bglStringPool.allocateString(); }
+    emitter void deinit() { bglStringPool.freeString($self); }
+
+    // Assignment
+    replace emitter string operator = (stringLiteral v) { $self.set(v); }
+    emitter string operator = (string v)                { $self.set(v); }
+
+    // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
+    // str3 = str1 + str2  =>  str3.set(str1.bglAppendCopy(str2))
+    emitter string operator + (stringLiteral v) { $self.bglAppendCopy(v) }
+    emitter string operator + (string v)        { $self.bglAppendCopy(v) }
+
+    // Equality
+    emitter eBool operator == (stringLiteral v) { $self.equals(v) }
+    emitter eBool operator == (string v)        { $self.equals(v) }
+
+    // Methods (non-emitter: type-system declarations; I6 methods live on bglString)
+    string  print();
+    string  append(var v);
+    string  prepend(var v);
+    string  upper();
+    string  lower();
+    string  trim();
+    string  trimLeft();
+    string  trimRight();
+    string  reverse();
+    string  mid(int start, int count);
+    string  left(int count);
+    string  right(int count);
+    string  insert(int pos, var source);
+    string  delete(int pos, int count);
+    string  replace(var searchText, var replaceText);
+    string  replaceAll(var searchText, var replaceText);
+    string  format(var pattern);
+    string  format(var pattern, var p1);
+    string  format(var pattern, var p1, var p2);
+    int     length();
+    int     indexOf(var searchText);
+    eBool   startsWith(var prefix);
+    eBool   endsWith(var suffix);
+    eBool   contains(var searchText);
+    eBool   isEmpty();
+    void    capture();
+    void    release();
+    void    captureOutput(object obj, var prop);
+}
+
+emitter void print(string str) { str.print() }

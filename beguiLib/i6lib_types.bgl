@@ -1,0 +1,185 @@
+//-----------------------------------------------------------------------------
+// parser.bgl - extern declarations for the Inform 6 standard library parser.h
+//      Include this file to get typed access to parser globals and objects.
+//      Corresponds to: #includeI6 "parser"
+//-----------------------------------------------------------------------------
+
+//-- Standard I6 library attributes ------------------------------------------
+extern attribute light;         // object is a light source
+extern attribute worn;          // clothing item is currently worn
+extern attribute clothing;      // can be worn
+extern attribute scenery;       // not listed in room descriptions / inventory
+extern attribute static;        // cannot be taken or moved
+extern attribute enterable;     // player can enter this object
+extern attribute container;     // can hold objects inside it
+extern attribute supporter;     // can hold objects on top of it
+extern attribute open;          // container/door is currently open
+extern attribute openable;      // can be opened and closed
+extern attribute locked;        // container/door is locked
+extern attribute lockable;      // can be locked and unlocked
+extern attribute transparent;   // see through even when closed
+extern attribute animate;       // is an NPC or animate object
+extern attribute talkable;      // can be addressed directly
+extern attribute proper;        // name needs no "the" prefix
+extern attribute plural;        // name is grammatically plural
+extern attribute female;        // animate: use she/her pronouns
+extern attribute male;          // animate: use he/him pronouns
+extern attribute neuter;        // animate: use it/its pronouns
+extern attribute concealed;     // hidden from normal room listing
+extern attribute visited;       // room has been entered before
+extern attribute general;       // general-purpose flag
+extern attribute edible;        // can be eaten
+extern attribute door;          // is a door between locations
+extern attribute absent;        // object is currently out of scope
+
+//-- Game state ---------------------------------------------------------------
+extern object location;             // current room (must be first global)
+extern object real_location;        // actual location when in darkness
+extern object prev_location;        // previous real_location
+extern object player;               // object the human controls
+extern object actor;                // who was asked to do something
+extern object actors_location;      // actor's current location
+extern object visibility_ceiling;   // highest visible object in tree
+extern int    deadflag;             // 0=alive, 1=dead, 2+=custom death
+extern int    lightflag;            // is there light to see by?
+extern int    score;                // current score
+extern int    last_score;           // score from last turn
+extern int    turns;                // number of game turns elapsed
+extern int    the_time;             // time in minutes since midnight
+extern int    time_rate;            // how often time updates
+extern int    time_step;            // time update increment
+
+//-- Parser results -----------------------------------------------------------
+extern var    noun;                 // first noun or numerical value (object or int)
+extern var    second;               // second noun or numerical value (object or int)
+extern const int    action;               // current action being performed
+extern const int    inp1;                 // first input (0, 1, or object)
+extern const int    inp2;                 // second input (0, 1, or object)
+extern const int    meta;                 // true if verb is a meta-command
+extern const int    multiflag;            // multiple-object flag
+extern int    keep_silent;          // suppress action output
+extern const int    reason_code;          // reason for "life" rule
+extern const int    receive_action;       // ##PutOn or ##Insert
+extern int    parsed_number;        // user-supplied parsing result
+extern const int    consult_from;         // start word of consult topic
+extern const int    consult_words;        // number of words in topic
+extern const int    special_word;         // dictionary address for "special" token
+extern const int    special_number;       // number typed for "special" token
+extern const int    verb_word;            // the verb word (e.g. 'take')
+extern const int    verb_wordnum;         // verb position in input
+extern int    wn;                   // word number currently being parsed
+extern const int    num_words;            // number of words typed
+
+//-- Pronoun tracking ---------------------------------------------------------
+extern object itobj;                // object currently referred to as "it"
+extern object himobj;               // object currently referred to as "him"
+extern object herobj;               // object currently referred to as "her"
+
+//-- Notifications and modes --------------------------------------------------
+extern int    notify_mode;          // score notification on/off
+extern int    lookmode;             // verbosity: 1=brief, 2=verbose, 3=superbrief
+extern int    transcript_mode;      // game scripting on/off
+extern int    pretty_flag;          // use character graphics for room descriptions
+extern int    before_first_turn;    // true before first LOOK
+
+//-- Glulx windows ------------------------------------------------------------
+extern var    gg_mainwin;           // main window handle
+extern var    gg_statuswin;         // status window handle
+extern var    gg_quotewin;          // quote window handle
+
+//-- Objects ------------------------------------------------------------------
+extern object thedark;              // the darkness object (in-scope when no light)
+extern object selfobj;              // the player self object
+
+extern class informLibraryType {
+    emitter void play() {
+        $self.play()
+    }
+    emitter void end_turn_sequence() {
+        $self.end_turn_sequence()
+    }
+    emitter void begin_action(int a, var n, var s, int source) {
+        $self.begin_action(a, n, s, source)
+    }
+    emitter void actor_act(object p, int a, var n, var s) {
+        $self.actor_act(p, a, n, s)
+    }
+}
+extern informLibraryType InformLibrary;
+
+extern object InformParser;         // parser object
+
+extern class libraryExtensionsType {
+    emitter void RunAll(var prop, var a1, var a2, var a3) {
+        $self.RunAll(prop, a1, a2, a3)
+    }
+    emitter void RunUntil(var prop, var exitval, var a1, var a2, var a3) {
+        $self.RunUntil(prop, exitval, a1, a2, a3)
+    }
+    emitter void RunWhile(var prop, var exitval, var a1, var a2, var a3) {
+        $self.RunWhile(prop, exitval, a1, a2, a3)
+    }
+    // Note: ext_* hook properties not yet supported as class members (no property declarations in extern classes)
+}
+extern libraryExtensionsType LibraryExtensions;
+
+//-- Parser error constants ---------------------------------------------------
+extern const int STUCK_PE;          // parser couldn't understand input
+extern const int UPTO_PE;           // only understood part of input
+extern const int NUMBER_PE;         // number out of range
+extern const int CANTSEE_PE;        // object not visible
+extern const int TOOLIT_PE;         // too many objects matched
+extern const int NOTHELD_PE;        // object not held
+extern const int MULTI_PE;          // multiple objects not allowed here
+extern const int MMULTI_PE;         // multiple matches but only one allowed
+extern const int VAGUE_PE;          // "it" etc. not clear
+extern const int EXCEPT_PE;         // exception object not present
+extern const int ANIMA_PE;          // not an animate object
+extern const int VERB_PE;           // verb not recognised
+extern const int SCENERY_PE;        // object is scenery
+extern const int ITGONE_PE;         // pronoun target no longer present
+extern const int JUNKAFTER_PE;      // junk after valid command
+extern const int TOOFEW_PE;         // too few objects matched
+extern const int NOTHING_PE;        // nothing matched
+extern const int ASKSCOPE_PE;       // scope routine asked for help
+
+//-- Scope search reasons -----------------------------------------------------
+extern const int PARSING_REASON;    // normal parsing
+extern const int TALKING_REASON;    // NPC conversation
+extern const int EACH_TURN_REASON;  // each-turn daemon
+extern const int REACT_BEFORE_REASON; // react_before property
+extern const int REACT_AFTER_REASON;  // react_after property
+extern const int LOOPOVERSCOPE_REASON; // LoopOverScope() call
+extern const int TESTSCOPE_REASON;  // TestScope() call
+
+//-- Color constants ----------------------------------------------------------
+extern const int CLR_CURRENT;       // keep current color
+extern const int CLR_DEFAULT;       // default color
+extern const int CLR_BLACK;
+extern const int CLR_RED;
+extern const int CLR_GREEN;
+extern const int CLR_YELLOW;
+extern const int CLR_BLUE;
+extern const int CLR_MAGENTA;
+extern const int CLR_CYAN;
+extern const int CLR_WHITE;
+extern const int CLR_PURPLE;        // alias for CLR_MAGENTA
+extern const int CLR_AZURE;         // alias for CLR_CYAN
+
+//-- Window constants ---------------------------------------------------------
+extern const int WIN_ALL;           // both windows
+extern const int WIN_STATUS;        // status bar
+extern const int WIN_MAIN;          // main game window
+
+//-- Debug trace flags --------------------------------------------------------
+extern const int DEBUG_MESSAGES;
+extern const int DEBUG_ACTIONS;
+extern const int DEBUG_TIMERS;
+extern const int DEBUG_CHANGES;
+extern const int DEBUG_VERBOSE;
+
+//-- Miscellaneous constants --------------------------------------------------
+extern const int START_MOVE;        // initial move counter
+extern const int MAX_TIMERS;        // max concurrent timers/daemons
+extern const int PRESENT_TENSE;
+extern const int PAST_TENSE;
