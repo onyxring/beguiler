@@ -11,6 +11,7 @@ class i6Emitter{
     public:
         stringstream out;
         vector<pair<string,string>>* currentCleanups = nullptr; // set during emitFunction; used by emitStatement for return
+        vector<tuple<int,string,int>> sourceMap;  // (i6Line, bglFile, bglLine)
         void to(ostream&);
 
         void emit(vector<typeDef*>&);
@@ -24,6 +25,8 @@ class i6Emitter{
         void emitGlobal(variableDeclaration*);
         void emitFunction(functionDef*);
         void emitStatement(statement*, string indent);
+        int currentLine();
+        void writeSourceMap(const string& path);
 
 };
 
