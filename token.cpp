@@ -53,7 +53,7 @@ const token _nullToken;
         return true;
     }
     bool token::isValidIdentifier(){
-        if(!(isalpha(value[0])&&value[0]!='_')) return false;
+        if(!(isalpha(value[0]) || value[0]=='_')) return false;
         for (int i = 0; value[i] != '\0'; ++i){
             if(isalnum(value[i]==false&&value[i]!='_')) return false;   
         }

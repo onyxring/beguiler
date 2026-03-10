@@ -15,6 +15,21 @@ extern enum eBool{ //--literal values used by the bool type.  Declared as extern
 }
 
 
+extern class attribute{ //--an I6 attribute, declared as external because attributes are defined in I6
+}
+
+extern class attributeCollection{ //--a compile-time proxy for an object's attribute set
+    emitter void give(attribute attr){
+        give $self attr
+    }
+    emitter void ungive(attribute attr){
+        give $self ~attr
+    }
+    emitter eBool has(attribute attr){
+        $self has attr
+    }
+}
+
 extern class object{ //--the base I6 object, declared as external because it is defined in the I6 compiler
     emitter void print(){
         print $self;
@@ -22,12 +37,41 @@ extern class object{ //--the base I6 object, declared as external because it is 
     emitter eBool operator == (var v){
         $self == v
     }
+    emitter void give(attribute attr){
+        give $self attr
+    }
+    emitter void ungive(attribute attr){
+        give $self ~attr
+    }
+    emitter eBool has(attribute attr){
+        $self has attr
+    }
+    emitter void move(object parent){
+        move $self to parent
+    }
+    emitter void remove(){
+        remove $self
+    }
+    emitter object parent(){
+        parent($self)
+    }
+    emitter object child(){
+        child($self)
+    }
+    emitter object sibling(){
+        sibling($self)
+    }
 }
 
 extern class int { //--base type integer, declared as external because it wraps the type-less I6 type
     emitter int operator = (intLiteral v){
         $self=v;
     }
+    emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
+}
+
+//-- type char -----------------------------------------------------------------
+extern class char{ //--a single ZSCII character value; extended by char.bgl
     emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
 }
 
@@ -59,6 +103,23 @@ extern class string{
     }
     emitter stringLiteral operator(){} //--declares I6 compatibility with stringLiteral
 }
+// array<T> — the Beguile array type, backed by an I6 helper object.
+// $self = array name (global) or owning object (property)
+// $prop = 0 (global) or property name (property)
+extern class array {
+    emitter var get(int i) {
+        arrayHelper.get($self, $prop, i)
+    }
+    emitter void set(int i, var v) {
+        arrayHelper.set($self, $prop, i, v)
+    }
+    emitter int length() {
+        arrayHelper.length($self, $prop)
+    }
+}
+
+extern object arrayHelper;  // I6 helper object defined in system.inf
+
 //-- The print() routine, and all overloads ----------------
 emitter void print(var val){
     print val;
