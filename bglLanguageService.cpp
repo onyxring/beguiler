@@ -16,18 +16,19 @@ typeDef emptyTDef;
 bglLanguageService::bglLanguageService(){
     registerType("void");
     registerType("var");
-    registerType("intLiteral");
-    registerType("stringLiteral");
+    registerType("intliteral");
+    registerType("stringliteral");
 }
 bool bglLanguageService::isObjectType(string name){ 
     if(getType(name)==emptyTDef) return false;
     return true;
 }
 typeDef& bglLanguageService::getType(string name){
+    transform(name.begin(), name.end(), name.begin(), ::tolower);
     for (typeDef* ot : objectTypes) {
-        if(ot->name ==name) return *ot;
+        if(ot->name == name) return *ot;
     }
-    return emptyTDef; 
+    return emptyTDef;
 }
 
 // typeDef& bglLanguageService::registerType(string name){
@@ -49,6 +50,7 @@ typeDef& bglLanguageService::getType(string name){
 //     return getType(typeVal.name);  //return a reference to the copy we just made in the vector, so that the caller can modify it if they want to add members etc.
 // }
 typeDef& bglLanguageService::registerType(string name){
+    transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)) throw runtime_error(format("Declared type '{0}' already exists.", name));
     typeDef& baseType=*(new typeDef());
     baseType.name=name;
@@ -58,6 +60,7 @@ typeDef& bglLanguageService::registerType(string name){
     return retval; 
 }
 enumDef& bglLanguageService::registerEnum(string name, bool isExternal){
+    transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)) throw runtime_error(format("Declared type '{0}' already exists.", name));
     enumDef& newType=*(new enumDef());
     newType.name=name;
@@ -68,6 +71,7 @@ enumDef& bglLanguageService::registerEnum(string name, bool isExternal){
     return retval;
 }
 classDef& bglLanguageService::registerClass(string name, bool isExternal){
+    transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)) throw runtime_error(format("Declared type '{0}' already exists.", name));
     classDef& newType=*(new classDef());
     newType.name=name;
@@ -78,6 +82,7 @@ classDef& bglLanguageService::registerClass(string name, bool isExternal){
     return retval;
 }
 objectDef& bglLanguageService::registerObject(string name, bool isExternal){
+    transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)) throw runtime_error(format("Declared type '{0}' already exists.", name));
     objectDef& newType=*(new objectDef());
     newType.name=name;
@@ -97,6 +102,7 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
 }
 
 string bglLanguageService::getEnumType(string valueName){
+    transform(valueName.begin(), valueName.end(), valueName.begin(), ::tolower);
     for(typeDef* t : objectTypes){
         enumDef* e = dynamic_cast<enumDef*>(t);
         if(e != nullptr){

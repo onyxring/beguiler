@@ -11,7 +11,8 @@ class bglLanguageService{
     public:
         
     vector<typeDef*> objectTypes;  //used to store named object definitions; both classes and object instances.
-    vector<typeDef*> globals;  
+    vector<typeDef*> globals;
+    vector<pair<string,string>> globalInits;  // {varName, initBody} — populated for globals with init emitters
     
     bglLanguageService();
         typeDef& getType(string);

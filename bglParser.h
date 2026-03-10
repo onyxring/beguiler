@@ -3,6 +3,7 @@
 #include <sstream>
 #include <deque>
 #include <set>
+#include <map>
 
 #include "types.h"
 #include "helpers.h"
@@ -44,12 +45,14 @@ class bglParser {
         bool processObjectDeclaration(token, token, bool);
 
         bool processVariableDeclaration(token, token, token, abstractObject& = emptyContainer, bool = false, bool = false);
+        bool processArrayDeclaration(token, token, std::string, token, abstractObject& = emptyContainer, bool = false);
         bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false);
         bool processStatement(token, abstractObject& = emptyContainer);
         bool processDirective(token, abstractObject& = emptyContainer);
 
         expression* parseExpression(token firstToken, std::vector<std::string> terminators, functionDef* func, statementBlock* body);
         std::string resolveIdentifierType(std::string name, functionDef* func, statementBlock* body);
+        std::string resolvePathType(std::string path, functionDef* func, statementBlock* body);
         std::string qualifyIdentifier(std::string name, functionDef* func, statementBlock* body);
         bool isTypeCompatible(std::string argType, std::string paramType);
         void applyArgConversions(std::vector<expression*>& args, functionDef* fd);
@@ -57,6 +60,10 @@ class bglParser {
         objectDef* currentObject = nullptr;
         classDef* currentClass = nullptr;    // set when parsing inside a class declaration
         functionDef* currentFunc = nullptr;  // outermost function being parsed (not changed for nested if/while blocks)
+
+        std::map<std::string,std::string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value
+        bool evaluateCondition(const std::string& expr);  // evaluates a #if boolean expression
+        void skipConditionalBlock(abstractObject& ctx);   // skips tokens until #elif/#else/#endif at depth 0
 
 };
 

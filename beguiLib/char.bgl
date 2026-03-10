@@ -1,0 +1,36 @@
+//-----------------------------------------------------------------------------
+// char.bgl - Beguile char type extension.
+//            Wraps the bglChar* routines (defined in buf.bgl) as Beguile
+//            emitter methods, giving the char type a clean OO interface.
+//
+// Usage:
+//   #include <char>   in your .bgl file to activate char support.
+//   (Also pulled in automatically when you #include <string>.)
+//-----------------------------------------------------------------------------
+
+#include <buf>
+
+extend extern class char {
+    // Case inspection
+    emitter eBool isLower()        { bglCharIsLower($self) }
+    emitter eBool isUpper()        { bglCharIsUpper($self) }
+    emitter eBool isAlpha()        { bglCharIsAlpha($self) }
+    emitter eBool isNumeric()      { bglCharIsNumeric($self) }
+    emitter eBool isAlphaNumeric() { bglCharIsAlphaNumeric($self) }
+    emitter eBool isVowel()        { bglCharIsVowel($self) }
+    emitter eBool isConsonant()    { bglCharIsConsonant($self) }
+    emitter eBool isWhitespace()   { bglCharIsWhitespace($self) }
+
+    // Case conversion — return the converted character value
+    emitter char toLower() { bglCharToLower($self) }
+    emitter char toUpper() { bglCharToUpper($self) }
+
+    // Print the character
+    emitter void print() { print (char)$self; }
+
+    // Assignment and equality from int/intLiteral (char is an integer at I6 level)
+    emitter char operator = (intLiteral v) { $self=v; }
+    emitter char operator = (char v)       { $self=v; }
+    emitter eBool operator == (char v)     { $self==v }
+    emitter eBool operator == (intLiteral v){ $self==v }
+}

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 
 #include "i6Emitter.h"
 #include "bglParser.h"
@@ -9,8 +10,18 @@
 using namespace std;
 
 //The emitter writes to a standard output stream.  We can reassign this if we want...
-void i6Emitter::to(ostream& strm){ 
-    out.std::ios::rdbuf(strm.rdbuf()); 
+void i6Emitter::to(ostream& strm){
+    out.std::ios::rdbuf(strm.rdbuf());
+}
+int i6Emitter::currentLine(){
+    const string& s = out.str();
+    return (int)count(s.begin(), s.end(), '\n') + 1;
+}
+void i6Emitter::writeSourceMap(const string& path){
+    ofstream f(path);
+    if(!f.is_open()) return;
+    for(auto& [i6Line, bglFile, bglLine] : sourceMap)
+        f << i6Line << "\t" << bglFile << "\t" << bglLine << "\n";
 }
 void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Pass 1: emit ICL !% directives at the very top (Inform reads these before parsing)
@@ -27,6 +38,14 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     for(typeDef* node : nodeList)
         if(typeid(*node) != typeid(beguilerSettingsDef))
             generateI6(node);
+
+    // Pass 4: synthesise initBeguile — only emitted if there are global inits
+    if(!languageService.globalInits.empty()){
+        out << "[initBeguile;\n";
+        for(auto& [varName, body] : languageService.globalInits)
+            out << "    " << body << "\n";
+        out << "];\n";
+    }
 }
 void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     if(cfg->target == "Glulx")     out << "!% -G\n";
@@ -35,7 +54,7 @@ void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     else if(cfg->target == "Z8")   out << "!% -v8\n";
     if(!cfg->errorFormat.empty())  out << format("!% -E{0}\n", cfg->errorFormat);
     if(cfg->release > 0)           out << format("!% Release {0};\n", cfg->release);
-    if(!cfg->serial.empty())       out << format("!% Serial \"{0}\";\n", cfg->serial);
+
     if(!cfg->includePaths.empty()){
         out << "!% +include_path=";
         for(size_t i=0; i<cfg->includePaths.size(); i++){
@@ -46,14 +65,12 @@ void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     }
 }
 void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
-    if(!cfg->story.empty())    out << format("Constant Story \"{0}\";\n", cfg->story);
-    if(!cfg->headline.empty()) out << format("Constant Headline \"^{0}^\";\n", cfg->headline);
 }
 void i6Emitter::generateI6(typeDef* node){
      if (typeid(*node) == typeid(enumDef))  emitEnum((enumDef*)node);
      else if (typeid(*node) == typeid(classDef)) emitClass((classDef*)node);
      else if (typeid(*node) == typeid(objectDef)) emitObject((objectDef*)node);
-     else if (typeid(*node) == typeid(variableDeclaration)) emitGlobal((variableDeclaration*)node);
+     else if (auto* vd = dynamic_cast<variableDeclaration*>(node)) emitGlobal(vd);
      else if (typeid(*node) == typeid(functionDef)) emitFunction((functionDef*)node);
      else if (typeid(*node) == typeid(i6RawNode)) out << ((i6RawNode*)node)->text << "\n";
 }
@@ -124,6 +141,8 @@ void i6Emitter::emitMember(typeMember* member){
 }
 void i6Emitter::emitFunction(functionDef* funcNode){
     if(funcNode->isEmitter || funcNode->isExternal) return;
+    if(!funcNode->src.file.empty())
+        sourceMap.push_back({currentLine(), funcNode->src.file, funcNode->src.line});
     out << format("[{0}", funcNode->name);
     for(paramDef* param : funcNode->params)
         out << format(" {0}", param->name);
@@ -138,8 +157,11 @@ void i6Emitter::emitFunction(functionDef* funcNode){
 
     currentCleanups = funcNode->cleanups.empty() ? nullptr : &funcNode->cleanups;
     if(body != nullptr)
-        for(statement* stmt : body->statements)
+        for(statement* stmt : body->statements){
+            if(!stmt->src.file.empty())
+                sourceMap.push_back({currentLine(), stmt->src.file, stmt->src.line});
             emitStatement(stmt, "    ");
+        }
     // emit deinit cleanups at implicit end of function (fall-through path)
     if(currentCleanups != nullptr)
         for(auto& [varName, body] : *currentCleanups)
@@ -220,6 +242,27 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             out << indent << "}\n";
         }
     }
+    else if(typeid(*stmt) == typeid(doStatement)){
+        doStatement* doNode = (doStatement*)stmt;
+        string cond = doNode->condition != nullptr ? doNode->condition->text() : "";
+        out << indent << "do {\n";
+        if(doNode->body != nullptr)
+            for(statement* s : doNode->body->statements)
+                emitStatement(s, indent + "    ");
+        // do-while negates the condition: loop while expr → until ~~(expr)
+        if(doNode->isWhile)
+            out << indent << "} until (~~(" << cond << "));\n";
+        else
+            out << indent << "} until (" << cond << ");\n";
+    }
+    else if(typeid(*stmt) == typeid(whileStatement)){
+        whileStatement* whileNode = (whileStatement*)stmt;
+        out << indent << "while (" << (whileNode->condition != nullptr ? whileNode->condition->text() : "") << ") {\n";
+        if(whileNode->body != nullptr)
+            for(statement* s : whileNode->body->statements)
+                emitStatement(s, indent + "    ");
+        out << indent << "}\n";
+    }
     else if(typeid(*stmt) == typeid(forStatement)){
         forStatement* forNode = (forStatement*)stmt;
         out << indent << "for (" << forNode->initText << " : ";
@@ -249,10 +292,32 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     }
 }
 void i6Emitter::emitGlobal(variableDeclaration* varNode){
+    if(varNode->isExternal) return;  // extern declarations are type-system only
+
+    // Array declarations emit as I6 Array directives
+    if(auto* arr = dynamic_cast<arrayDeclaration*>(varNode)){
+        if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+            // Initialized: Array name --> count v1 v2 ...
+            // Count is auto-prepended (table semantics: element 0 holds length)
+            out << format("Array {0} --> {1}", arr->name, list->elements.size());
+            for(expression* elem : list->elements) out << " " << elem->text();
+            out << ";\n";
+        } else if(arr->arraySize > 0) {
+            // Sized: Array name table N  (I6 sets element 0 = N automatically)
+            out << format("Array {0} table {1};\n", arr->name, arr->arraySize);
+        }
+        return;
+    }
+
     if(varNode->isConst){
         out << format("Constant {0}", varNode->name);
         if(varNode->declaredExpressionValue != nullptr)
             out << format(" = {0}", varNode->declaredExpressionValue->text());
+        out << ";\n";
+        return;
+    }
+    if(varNode->type.name == "attribute"){
+        out << format("Attribute {0}", varNode->name);
         out << ";\n";
         return;
     }
@@ -271,13 +336,26 @@ void i6Emitter::emitObject(objectDef* obj){
     // collect property members and raw i6 members
     bool hasProps = false;
     for(typeMember* m : obj->members)
-        if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
-            { hasProps = true; break; }
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+            if(vd->type.name != "attributecollection") { hasProps = true; break; }
+        } else if(dynamic_cast<functionDef*>(m)){ hasProps = true; break; }
 
     if(hasProps){
         bool first = true;
         for(typeMember* m : obj->members){
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+            if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
+                // Property array: emit as inline I6 property values
+                out << (first ? "  with " : ",\n       ");
+                out << arr->name << " ";
+                if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+                    for(expression* elem : list->elements) out << elem->text() << " ";
+                } else {
+                    // N zero slots (size is encoded via obj.#prop, not in element 0)
+                    for(int k = 0; k < arr->arraySize; k++) out << "0 ";
+                }
+                first = false;
+            } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+                if(vd->type.name == "attributecollection") continue; // handled separately below
                 out << (first ? "  with " : ",\n       ");
                 out << vd->name << " ";
                 if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
@@ -297,6 +375,18 @@ void i6Emitter::emitObject(objectDef* obj){
             }
         }
         if(!first) out << "\n";
+    }
+
+    // emit attributeCollection members as I6 'has' line
+    for(typeMember* m : obj->members){
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+            if(vd->type.name != "attributecollection") continue;
+            if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
+                out << "  has";
+                for(expression* elem : list->elements) out << " " << elem->text();
+                out << "\n";
+            }
+        }
     }
 
     // emit raw i6 blocks (attribute lines etc.)

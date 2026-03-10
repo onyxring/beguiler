@@ -4,6 +4,7 @@
 #include <sstream>
 #include <stack>
 #include "token.h"
+#include "typeDef.h"
 
 using namespace std;
 
@@ -32,6 +33,7 @@ class fileLexer{
         token peekToken(int);
         
         string getRawTextThroughClosingBrace();
+        sourceLocation currentLocation();
         //token getRunTokenEol(); 
         //token getRunTokenBraceClose(); 
 };

@@ -136,15 +136,18 @@ token fileLexer::getBasicToken(bool suppressBleed){
         }
         
         if(retval.tokenType==eTokenType::quote){
-            retval.value+=c;
-            readChar(); //dispose of the character we previewed    
-            
-            if(c=='\\')  { //if we are processing an escape character, just add the next character no matter what it is
-                c=peekChar(); 
-                retval.value+=c;
-                readChar(); 
+            readChar(); //dispose of the character we previewed
+
+            if(c=='\\')  { //translate Beguile escape sequences to I6 equivalents
+                c=peekChar();
+                readChar();
+                if     (c=='n')  retval.value+='^';   // \n -> ^ (I6 newline)
+                else if(c=='"')  retval.value+='~';   // \" -> ~ (I6 double-quote)
+                else if(c=='\\') retval.value+='\\';  // \\ -> backslash
+                else           { retval.value+='\\'; retval.value+=c; } // unknown: pass through
             }
             else{
+                retval.value+=c;
                 if(c=='\"')  break; //closing quote
             }
             c=peekChar(); //peek at the next character to process
@@ -197,6 +200,11 @@ string fileLexer::getRawTextThroughClosingBrace(){
      return retval;
 }
 
+sourceLocation fileLexer::currentLocation(){
+    if(files.empty()) return {};
+    auto [stream, fileName, curLine, curCol] = files.top();
+    return {fileName, curLine};
+}
 
 // token fileLexer::getRunTokenEol(){
 //     token retval;
@@ -258,11 +266,15 @@ token fileLexer::getToken(){
     }while(retval.tokenType==eTokenType::comment);
     
     if(retval.isOneOf({eTokenType::eof, eTokenType::quote})) return retval; //just return tokens which we know we can't expand
-    
-    //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones 
-    if(retval.is("#")){ 
+
+    // normalize to lowercase for case-insensitive parsing (string literals excluded above)
+    transform(retval.value.begin(), retval.value.end(), retval.value.begin(), ::tolower);
+
+    //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones
+    if(retval.is("#")){
         next=getBasicToken(true); //to make sense, this MUST be a name directly connected to the # with no whitespaces in between
         if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid directive name '"+next.value+"'.");
+        transform(next.value.begin(), next.value.end(), next.value.begin(), ::tolower);
         retval.value+=next.value;
         retval.tokenType=eTokenType::directive;
         return retval;
@@ -280,7 +292,7 @@ token fileLexer::getToken(){
     return retval; 
 }
 token fileLexer::peekToken(){
-    return peekToken(0);
+    return peekToken(1);
 }
 token fileLexer::peekToken(int tokNum){
     token retval;
