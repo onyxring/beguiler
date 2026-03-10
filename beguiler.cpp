@@ -117,7 +117,6 @@ string beguiler::getPath(string filename){
 
 //When we're all done, commit the final transpiled text to the output file.
 bool beguiler::writeFile(string filename) {
-    stringstream bodyText;
     std::ofstream outFileStream(filename);
 
     if (!outFileStream.is_open()) {
@@ -125,10 +124,10 @@ bool beguiler::writeFile(string filename) {
         return true; // Indicate an error
     }
 
-    emitter.to(bodyText);
     emitter.emit(languageService.globals);
-    outFileStream << bodyText.str();
+    outFileStream << emitter.out.str();
     outFileStream.close();
+    emitter.writeSourceMap(filename + ".map");
     return false;
 
 }

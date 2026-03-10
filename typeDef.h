@@ -8,6 +8,13 @@
 
 using namespace std;
 
+// Source location — Beguile file and line number where an AST node was parsed.
+// Used to build the source map for the debugger.
+struct sourceLocation {
+    string file;
+    int line = 0;  // 0 = unknown/not set
+};
+
 //base class for all elements in the language.
 class abstractObject{
     public:
@@ -63,6 +70,8 @@ class i6Block:public codeBlock{
 };  
 //a base clase for an individual statement which appears in blocks of code
 class statement:virtual public abstractObject{
+    public:
+        sourceLocation src;
 };
 
 //a block of statements, essentiall the body of a function
@@ -74,6 +83,7 @@ class statementBlock:public codeBlock{
 // emitted verbatim to I6; type is used for operator/emitter dispatch.
 class expression {
     public:
+        virtual ~expression() = default;
         vector<string> tokens;     // raw token strings making up the expression
         string resolvedType;       // inferred Beguile type name, or "" if unknown
         string terminator;         // which terminator token ended this expression
@@ -83,6 +93,13 @@ class expression {
             for(const string& t : tokens) result += t;
             return result;
         }
+};
+
+// an initializer list: { expr, expr, ... }
+// stored as declaredExpressionValue on a variableDeclaration; emitted type-dependently.
+class initializerList : public expression {
+    public:
+        vector<expression*> elements;
 };
 //a type of statement which assigns a value to a variable
 class assignmentStatement:public statement{
@@ -121,6 +138,7 @@ class functionCallStatement:public statement{
 //the declaration of a function.  This may be a global function, or an object member
 class functionDef:public typeMember, public typeDef{
     public:
+        sourceLocation src;
         bool isEmitter;
         typeDef returnType;
         vector<paramDef*> params;
@@ -164,6 +182,22 @@ class switchStatement : public statement {
         vector<switchCase*> cases;
 };
 
+// a do-until / do-while loop: do { body } until(cond) or do { body } while(cond)
+// isWhile=true means the condition is negated before emitting as I6 do...until
+class doStatement : public statement {
+    public:
+        expression* condition = nullptr;
+        statementBlock* body = nullptr;
+        bool isWhile = false;  // true → negate condition (do-while semantics)
+};
+
+// a while loop: while(condition) { body }
+class whileStatement : public statement {
+    public:
+        expression* condition = nullptr;
+        statementBlock* body = nullptr;
+};
+
 // a for loop: for(init; condition; increment) { body }
 class forStatement : public statement {
     public:
@@ -179,11 +213,17 @@ class i6RawNode : public typeDef, public statement, public typeMember {
         string text;
 };
 
+// An array<T> declaration — global emits as I6 Array directive; property emits inline values
+class arrayDeclaration : public variableDeclaration {
+    public:
+        string elementType;  // the T in array<T>
+        int arraySize = 0;   // N in array<T> name[N]; 0 if list-initialized
+};
+
 // compile-time settings declared in source via a beguilerSettings { } block.
 // Fields split into three categories:
 //   - beguiler paths: applied immediately at parse time, not emitted to I6
 //   - ICL directives: emitted as !% lines at the very top of the I6 output
-//   - I6 constants:   emitted as Constant declarations (Story, Headline)
 class beguilerSettingsDef : public typeDef {
     public:
         // beguiler paths (not emitted)
@@ -193,13 +233,8 @@ class beguilerSettingsDef : public typeDef {
         // ICL directives (!% lines)
         string target;              // !% -G (Glulx), !% -v3, !% -v5, !% -v8
         int release = 0;            // !% Release N;  (0 = not set)
-        string serial;              // !% Serial "...";
         string errorFormat;         // !% -EN  (e.g. "1" → -E1)
         vector<string> includePaths;// !% +include_path=...  (one line per path)
-
-        // I6 Constants
-        string story;               // Constant Story "...";
-        string headline;            // Constant Headline "^...^";
 };
 
 extern typeDef emptyTDef;
