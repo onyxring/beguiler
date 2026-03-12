@@ -90,7 +90,12 @@ class expression {
 
         string text() const {
             string result;
-            for(const string& t : tokens) result += t;
+            for(const string& t : tokens){
+                // Translate Beguile/C operators to I6 equivalents.
+                // In I6, '!' is the line-comment character, so '!=' must become '~=' (not-equal).
+                if(t == "!=") result += "~=";
+                else result += t;
+            }
             return result;
         }
 };
@@ -108,6 +113,7 @@ class assignmentStatement:public statement{
         expression* assignedExpression = nullptr;
         string emitterBody;   // raw i6 body text if operator is an emitter, else ""
         string emitterParam;  // parameter name to substitute in the body
+        string emitterSelf;   // value to substitute for $self; defaults to variableLeft if empty
 };
 //a type of statement which returns a value from a function
 class returnStatement:public statement{
@@ -168,10 +174,10 @@ class ifStatement : public statement {
         statementBlock* elseBlock = nullptr;
 };
 
-// one arm of a switch statement; value==nullptr means default:
+// one arm of a switch statement; empty values means default:
 class switchCase : public abstractObject {
     public:
-        expression* value = nullptr;   // nullptr for default:
+        vector<expression*> values;    // empty for default:
         statementBlock* body = nullptr;
 };
 
@@ -218,6 +224,27 @@ class arrayDeclaration : public variableDeclaration {
     public:
         string elementType;  // the T in array<T>
         int arraySize = 0;   // N in array<T> name[N]; 0 if list-initialized
+};
+
+// a single grammar line: verbWord is the player's trigger word; patternTokens are I6-ready strings
+struct grammarLine {
+    string verbWord;                // raw word without quotes, e.g. "put" (emitter adds them)
+    vector<string> patternTokens;   // I6-ready: "'on'", "noun", "'up/p'", etc.
+};
+
+// a verb declaration — holds optional action body and optional inline grammar
+class verbDef : public typeDef {
+    public:
+        bool isExternal = false;
+        functionDef* doFunc = nullptr;      // action routine; I6 name = verbName + "sub"
+        vector<grammarLine> grammarLines;   // inline grammar (from verb { ... })
+};
+
+// a standalone grammar block — adds grammar lines to an already-declared verb
+class grammarBlock : public typeDef {
+    public:
+        string verbName;                    // the verb action name (lowercase)
+        vector<grammarLine> grammarLines;
 };
 
 // compile-time settings declared in source via a beguilerSettings { } block.

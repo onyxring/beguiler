@@ -73,16 +73,18 @@ void i6Emitter::generateI6(typeDef* node){
      else if (auto* vd = dynamic_cast<variableDeclaration*>(node)) emitGlobal(vd);
      else if (typeid(*node) == typeid(functionDef)) emitFunction((functionDef*)node);
      else if (typeid(*node) == typeid(i6RawNode)) out << ((i6RawNode*)node)->text << "\n";
+     else if (typeid(*node) == typeid(verbDef))    emitVerb((verbDef*)node);
+     else if (typeid(*node) == typeid(grammarBlock)) emitGrammarBlock((grammarBlock*)node);
 }
 
 void i6Emitter::emitEnum(enumDef* enumNode){    
     for(enumValueDef* val : enumNode->namedValues)
-        out<<format("Constant _{0}_{1} = {2};\n", enumNode->name, val->name, val->value);    
+        out<<format("constant _{0}_{1} = {2};\n", enumNode->name, val->name, val->value);    
 }
 void i6Emitter::emitClass(classDef* classNode){
     if(classNode->isExternal) return;
 
-    out << format("Class {0}\n", classNode->name);
+    out << format("class {0}\n", classNode->name);
 
     if(classNode->baseClasses.size() > 0){
         out << "  class";
@@ -192,9 +194,10 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             string b = assign->emitterBody;
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
-            b=replaceWord(b,"$self",assign->variableLeft);
+            b=replaceWord(b,"$self", assign->emitterSelf.empty() ? assign->variableLeft : assign->emitterSelf);
             b=replaceWord(b,assign->emitterParam, assign->assignedExpression != nullptr ? assign->assignedExpression->text() : "");
-            out << indent << b << "\n";
+            while(!b.empty() && b.back()==';') b.pop_back(); // strip body-trailing ';' before we add our own
+            out << indent << b << ";\n";
         } else {
             out << format("{0}{1} = {2};\n", indent, assign->variableLeft, assign->assignedExpression != nullptr ? assign->assignedExpression->text() : "");
         }
@@ -205,7 +208,9 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         if(currentCleanups != nullptr)
             for(auto& [varName, body] : *currentCleanups)
                 out << indent << body << "\n";
-        if(ret->returnExpression != "")
+        if(ret->returnExpression == "rtrue" || ret->returnExpression == "rfalse")
+            out << format("{0}{1};\n", indent, ret->returnExpression);
+        else if(ret->returnExpression != "")
             out << format("{0}return {1};\n", indent, ret->returnExpression);
         else
             out << indent << "return;\n";
@@ -218,7 +223,8 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
             for(size_t i=0; i<call->emitterParams.size() && i<call->args.size(); i++)
                 b=replaceWord(b, call->emitterParams[i], call->args[i]->text());
-            out << indent << b << "\n";
+            while(!b.empty() && b.back()==';') b.pop_back(); // strip body-trailing ';' before we add our own
+            out << indent << b << ";\n";
         } else {
             out << indent << call->functionName << token::parenOpen;
             for(size_t i=0; i<call->args.size(); i++){
@@ -277,10 +283,20 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         switchStatement* sw = (switchStatement*)stmt;
         out << indent << "switch (" << (sw->condition != nullptr ? sw->condition->text() : "") << ") {\n";
         for(switchCase* sc : sw->cases){
-            if(sc->value != nullptr)
-                out << indent << "    " << sc->value->text() << ":\n";
-            else
+            if(!sc->values.empty()){
+                out << indent << "    ";
+                for(size_t i = 0; i < sc->values.size(); i++){
+                    if(i > 0) out << ", ";
+                    // verb-typed case values are action constants → emit as ##VerbName
+                    if(sc->values[i]->resolvedType == "verb")
+                        out << "##" << sc->values[i]->text();
+                    else
+                        out << sc->values[i]->text();
+                }
+                out << ":\n";
+            } else {
                 out << indent << "    default:\n";
+            }
             if(sc->body != nullptr)
                 for(statement* s : sc->body->statements)
                     emitStatement(s, indent + "        ");
@@ -299,12 +315,12 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
             // Initialized: Array name --> count v1 v2 ...
             // Count is auto-prepended (table semantics: element 0 holds length)
-            out << format("Array {0} --> {1}", arr->name, list->elements.size());
+            out << format("array {0} --> {1}", arr->name, list->elements.size());
             for(expression* elem : list->elements) out << " " << elem->text();
             out << ";\n";
         } else if(arr->arraySize > 0) {
             // Sized: Array name table N  (I6 sets element 0 = N automatically)
-            out << format("Array {0} table {1};\n", arr->name, arr->arraySize);
+            out << format("array {0} table {1};\n", arr->name, arr->arraySize);
         }
         return;
     }
@@ -331,14 +347,26 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
     out<<";\n";
 }
 void i6Emitter::emitObject(objectDef* obj){
-    out << format("Object {0}\n", obj->name);
+    // find initial parent member, if set
+    string parentValue;
+    for(typeMember* m : obj->members)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+            if(vd->name == "parent" && vd->declaredExpressionValue)
+                { parentValue = vd->declaredExpressionValue->text(); break; }
 
-    // collect property members and raw i6 members
+    if(parentValue.empty())
+        out << format("Object {0}\n", obj->name);
+    else
+        out << format("Object {0} {1}\n", obj->name, parentValue);
+
+    // collect property members (includes raw i6 blocks, which emit as 'with' properties)
+    // 'parent' is excluded — it's emitted as a positional argument, not a 'with' property
     bool hasProps = false;
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-            if(vd->type.name != "attributecollection") { hasProps = true; break; }
+            if(vd->type.name != "attributecollection" && vd->name != "parent") { hasProps = true; break; }
         } else if(dynamic_cast<functionDef*>(m)){ hasProps = true; break; }
+          else if(dynamic_cast<i6RawNode*>(m))  { hasProps = true; break; }
 
     if(hasProps){
         bool first = true;
@@ -356,6 +384,7 @@ void i6Emitter::emitObject(objectDef* obj){
                 first = false;
             } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 if(vd->type.name == "attributecollection") continue; // handled separately below
+                if(vd->name == "parent") continue; // emitted as positional argument, not 'with' property
                 out << (first ? "  with " : ",\n       ");
                 out << vd->name << " ";
                 if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
@@ -371,6 +400,15 @@ void i6Emitter::emitObject(objectDef* obj){
                     for(statement* s : body->statements)
                         emitStatement(s, "    ");
                 out << "  ]";
+                first = false;
+            } else if(auto* raw = dynamic_cast<i6RawNode*>(m)){
+                // raw i6 property block — emitted verbatim inside 'with'
+                string text = raw->text;
+                size_t s = text.find_first_not_of(" \t\n\r");
+                size_t e = text.find_last_not_of(" \t\n\r");
+                if(s != string::npos) text = text.substr(s, e - s + 1);
+                out << (first ? "  with " : ",\n       ");
+                out << text;
                 first = false;
             }
         }
@@ -389,18 +427,55 @@ void i6Emitter::emitObject(objectDef* obj){
         }
     }
 
-    // emit raw i6 blocks (attribute lines etc.)
-    for(typeMember* m : obj->members){
-        if(auto* raw = dynamic_cast<i6RawNode*>(m)){
-            string text = raw->text;
-            size_t s = text.find_first_not_of(" \t\n\r");
-            size_t e = text.find_last_not_of(" \t\n\r");
-            if(s != string::npos) text = text.substr(s, e - s + 1);
-            out << "  " << text << "\n";
-        }
+    out << ";\n";
+}
+
+//===============================================================================================================================
+// Verb and grammar emission
+//===============================================================================================================================
+
+void i6Emitter::emitVerb(verbDef* vd){
+    if(vd->isExternal) return;
+    if(vd->doFunc != nullptr) emitFunction(vd->doFunc);
+    if(!vd->grammarLines.empty()) emitGrammarLines(vd->name, vd->grammarLines);
+}
+
+void i6Emitter::emitGrammarBlock(grammarBlock* gb){
+    emitGrammarLines(gb->verbName, gb->grammarLines);
+}
+
+// Group grammar lines by verb trigger word; emit one Verb/Extend block per unique trigger word.
+// First occurrence of a trigger word → Verb 'word'; subsequent → Extend 'word' first.
+void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLine>& lines){
+    vector<string> wordOrder;
+    map<string, vector<vector<string>>> byWord;
+    for(const grammarLine& line : lines){
+        if(byWord.find(line.verbWord) == byWord.end())
+            wordOrder.push_back(line.verbWord);
+        byWord[line.verbWord].push_back(line.patternTokens);
     }
 
-    out << ";\n";
+    auto toI6Word = [](const string& w) -> string {
+        return (w.size() == 1) ? ("'" + w + "//'") : ("'" + w + "'");
+    };
+
+    for(const string& word : wordOrder){
+        bool isFirst = declaredVerbWords.find(word) == declaredVerbWords.end();
+        if(isFirst){
+            declaredVerbWords.insert(word);
+            out << format("Verb {0}\n", toI6Word(word));
+        } else {
+            out << format("Extend {0} first\n", toI6Word(word));
+        }
+        const auto& patterns = byWord[word];
+        for(size_t i = 0; i < patterns.size(); i++){
+            out << "    *";
+            for(const string& pt : patterns[i]) out << " " << pt;
+            out << format(" -> {0}", verbName);
+            if(i + 1 == patterns.size()) out << ";";
+            out << "\n";
+        }
+    }
 }
 
 i6Emitter emitter;

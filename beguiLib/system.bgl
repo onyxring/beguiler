@@ -30,9 +30,28 @@ extern class attributeCollection{ //--a compile-time proxy for an object's attri
     }
 }
 
+extern class grammarToken{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
+}
+
+extern class dictionaryWord{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
+    emitter dictionaryWord operator = (dictionaryWord v){
+        $self = v;
+    }
+    emitter void print(){
+        print (address) $self
+    }
+}
+
+extern class parentProp{} //--forward declaration; emitter added below after 'object' is defined
+
 extern class object{ //--the base I6 object, declared as external because it is defined in the I6 compiler
+    parentProp parent;           //--initial parent object; emitted as I6 third positional argument
+    attributeCollection attributes;  //--initial attribute set; emitted as I6 'has' clause
     emitter void print(){
         print $self;
+    }
+    emitter object operator = (object v){
+        $self = v
     }
     emitter eBool operator == (var v){
         $self == v
@@ -45,6 +64,9 @@ extern class object{ //--the base I6 object, declared as external because it is 
     }
     emitter eBool has(attribute attr){
         $self has attr
+    }
+    emitter eBool hasnt(attribute attr){
+        $self hasnt attr
     }
     emitter void move(object parent){
         move $self to parent
@@ -63,8 +85,17 @@ extern class object{ //--the base I6 object, declared as external because it is 
     }
 }
 
+extend class parentProp{ //--add operator= emitter now that 'object' is defined
+    emitter parentProp operator = (object v){
+        move $self to v
+    }
+}
+
 extern class int { //--base type integer, declared as external because it wraps the type-less I6 type
     emitter int operator = (intLiteral v){
+        $self=v;
+    }
+    emitter int operator = (int v){
         $self=v;
     }
     emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
@@ -72,7 +103,11 @@ extern class int { //--base type integer, declared as external because it wraps 
 
 //-- type char -----------------------------------------------------------------
 extern class char{ //--a single ZSCII character value; extended by char.bgl
+    emitter char operator = (charLiteral v){
+        $self=v;
+    }
     emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
+    emitter void print(){ print (char)$self; }
 }
 
 //-- type bool -----------------------------------------------------------------
@@ -118,12 +153,16 @@ extern class array {
     }
 }
 
+extern class verb{ //--an I6 action constant; verb identifiers emit as ##Name in comparison context
+    emitter eBool operator == (verb v){ $self == ##v }
+}
+
 extern object arrayHelper;  // I6 helper object defined in system.inf
 
+var _bgl_temp;  //-- scratch variable for ternary expression lowering
+
 //-- The print() routine, and all overloads ----------------
-emitter void print(var val){
-    print val;
-}
-emitter void print(stringLiteral str){
-    print (string)str;
-}
+emitter void print(var val){ print val; } //the default, which will be used for all data types not defined 
+emitter void print(stringLiteral str){ print (string)str; }
+emitter void print(string str){ print (string)str; }
+emitter void print(char c){ print (char)c; }

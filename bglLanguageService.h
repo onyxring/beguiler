@@ -13,6 +13,7 @@ class bglLanguageService{
     vector<typeDef*> objectTypes;  //used to store named object definitions; both classes and object instances.
     vector<typeDef*> globals;
     vector<pair<string,string>> globalInits;  // {varName, initBody} — populated for globals with init emitters
+    vector<verbDef*> verbs;        // all verb declarations (extern and non-extern) for action-constant lookup
     
     bglLanguageService();
         typeDef& getType(string);
@@ -24,6 +25,7 @@ class bglLanguageService{
         objectDef& registerObject(string name, bool isExternal=false);
         
         variableDeclaration& registerInstance(variableDeclaration&);
+        verbDef& registerVerb(string name, bool isExternal=false);
         string getEnumType(string valueName); //returns the enum type name for a given enum value name, or "" if not found
         
         

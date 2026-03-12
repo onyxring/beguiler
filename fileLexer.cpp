@@ -113,9 +113,9 @@ token fileLexer::getBasicToken(bool suppressBleed){
             
             if(twoChars=="//" || twoChars=="/*") 
                 retval.tokenType=eTokenType::comment;
-            else if(c=='\"')  
+            else if(c=='\"')
                 retval.tokenType=eTokenType::quote;
-            else if(isValidIdentifierChar(c))  
+            else if(isValidIdentifierChar(c))
                 retval.tokenType=eTokenType::unclassifiedText;
             else {                
                 if(find(languageService.operators.begin(), languageService.operators.end(), retval.value)!=languageService.operators.end()){
@@ -265,9 +265,10 @@ token fileLexer::getToken(){
         retval=getBasicToken();
     }while(retval.tokenType==eTokenType::comment);
     
-    if(retval.isOneOf({eTokenType::eof, eTokenType::quote})) return retval; //just return tokens which we know we can't expand
+    if(retval.isOneOf({eTokenType::eof, eTokenType::quote, eTokenType::charLiteral})){ prevTokenType = retval.tokenType; return retval; } //just return tokens which we know we can't expand
 
     // normalize to lowercase for case-insensitive parsing (string literals excluded above)
+    retval.originalValue = retval.value; // save pre-lowercase value for case-sensitive I6 emission
     transform(retval.value.begin(), retval.value.end(), retval.value.begin(), ::tolower);
 
     //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones
@@ -277,7 +278,56 @@ token fileLexer::getToken(){
         transform(next.value.begin(), next.value.end(), next.value.begin(), ::tolower);
         retval.value+=next.value;
         retval.tokenType=eTokenType::directive;
+        prevTokenType = eTokenType::directive;
         return retval;
+    }
+
+    // Character literals: 'x'  (single character, with escape support)
+    if(retval.is("'")){
+        char c = peekChar(); readChar();
+        string charVal;
+        if(c == '\\'){
+            c = peekChar(); readChar();
+            if     (c == 'n')  charVal += '^';   // \n -> ^ (I6 newline)
+            else if(c == '\'') charVal += '\'';  // \' -> literal quote
+            else if(c == '\\') charVal += '\\';  // \\ -> backslash
+            else             { charVal += '\\'; charVal += c; } // unknown: pass through
+        } else {
+            charVal += c;
+        }
+        // consume closing '
+        if(peekChar() == '\'') readChar();
+        retval.value = charVal;
+        retval.tokenType = eTokenType::charLiteral;
+        prevTokenType = eTokenType::charLiteral;
+        return retval;
+    }
+
+    // Dictionary word literals: .word (singular) and ..word (plural)
+    // Only recognised when NOT immediately after an identifier (which would be dot-access).
+    if(retval.is(".") && prevTokenType != eTokenType::identifier && prevTokenType != eTokenType::dataType){
+        char c1 = peekChar();
+        if(c1 == '.'){
+            auto savepos = currentStream()->tellg();
+            readChar(); // consume the second '.'
+            char c2 = peekChar();
+            if(isalpha(c2)){
+                token word = getBasicToken(true);
+                transform(word.value.begin(), word.value.end(), word.value.begin(), ::tolower);
+                retval.value = word.value;
+                retval.tokenType = eTokenType::dictionaryWordPlural;
+                prevTokenType = eTokenType::dictionaryWordPlural;
+                return retval;
+            }
+            currentStream()->seekg(savepos); // not a plural dict word; restore stream
+        } else if(isalpha(c1)){
+            token word = getBasicToken(true);
+            transform(word.value.begin(), word.value.end(), word.value.begin(), ::tolower);
+            retval.value = word.value;
+            retval.tokenType = eTokenType::dictionaryWord;
+            prevTokenType = eTokenType::dictionaryWord;
+            return retval;
+        }
     }
     
     if(retval.isValidIdentifier()) retval.tokenType=eTokenType::identifier; //if it meets the identifier format, default classification an identifier; however, 
@@ -289,18 +339,21 @@ token fileLexer::getToken(){
         retval.tokenType=eTokenType::oper;
     }
 
-    return retval; 
+    prevTokenType = retval.tokenType;
+    return retval;
 }
 token fileLexer::peekToken(){
     return peekToken(1);
 }
 token fileLexer::peekToken(int tokNum){
     token retval;
-    auto savepos=currentStream()->tellg(); 
+    auto savepos=currentStream()->tellg();
+    eTokenType savedPrev = prevTokenType;
     for(int i=0;i<tokNum;i++){
         retval=getToken();
     }
     currentStream()->seekg(savepos);
+    prevTokenType = savedPrev;
     return retval;
 }
 //Get tokens, limited to specific types or values. Throw a compile-time error if the next token does not match the requirements.
