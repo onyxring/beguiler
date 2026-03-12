@@ -77,6 +77,7 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
     bool isEmitter=false;
     bool isConst=false;
     bool isExtend=false;
+    bool isReplace=false;
     token tok=file.getToken();
     sourceLocation stmtLoc = file.currentLocation();
 
@@ -86,6 +87,10 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
     //decide what to do with this token----------------------------------------------------------------------------
     if(tok.is(eTokenType::directive)) return processDirective(tok, contextObject); //handle preprocessor directives
 
+    if(tok.is(token::replace)) { //replace qualifier: replace an existing global function with this definition
+        isReplace=true;
+        tok=file.getToken();
+    }
     if(tok.is(token::extend)) { //extend qualifier: add members to an existing class definition
         isExtend=true;
         tok=file.getToken();
@@ -109,6 +114,15 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
     if(tok.isOneOf({token::enumDeclaration, token::bnumDeclaration})) return processEnumDeclaration(tok, isExtern);       //handle the enumeration types
     if(tok.is(token::classDeclaration)) return processClassDeclaration(tok, isExtern, isExtend);                          //handle type declarations
 
+    // A declared object's name is both its type and its singleton instance reference.
+    // In non-global context it can never appear as a type, so route directly to
+    // processStatement where it will be re-classified as an identifier.
+    if(!isExtern && getCurrentCompileContext() != eCompileContext::global && tok.isDataType())
+        if(dynamic_cast<objectDef*>(&languageService.getType(tok.value)) != nullptr){
+            processStatement(tok, contextObject);
+            return false;
+        }
+
     if(tok.isDataType()) { //if the token is a datatype, then this is the start of either a variable declaration or a global routine declaration.  We need to look ahead a little bit to decide which one it is.
         // Handle array<T> generic type
         string arrayElementType;
@@ -126,7 +140,7 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
         token symbol=file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
 
         if(symbol.is(token::parenOpen))
-            processRoutineDeclaration(tok, name, contextObject, isExtern, isEmitter);
+            processRoutineDeclaration(tok, name, contextObject, isExtern, isEmitter, isReplace);
         else if(symbol.is(token::braceOpen))
             processObjectDeclaration(tok, name, isExtern);
         else
@@ -134,7 +148,9 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
         return false;
     }
 
-    if(tok.is("beguilersettings")) return processBeguilerSettings();
+    // beguilerSettings is now a directive (#beguilerSettings); handled in processDirective
+    if(tok.is("verb"))    return processVerbDeclaration(isExtern);
+    if(tok.is("grammar")) return processGrammarDeclaration();
 
     //that's all we allow in the global context.  Throw an error otherwise...
     if(getCurrentCompileContext()==eCompileContext::global) parsingError(format("Illegal global identifier:'{0}'", (string) tok));
@@ -151,6 +167,22 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
 // Routines to parser larger blocks of the source code
 //-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 #pragma region Parsing functions
+// Returns true if the statement block contains a returnStatement anywhere (recursive).
+static bool hasReturn(statementBlock* blk){
+    if(blk == nullptr) return false;
+    for(statement* s : blk->statements){
+        if(dynamic_cast<returnStatement*>(s)) return true;
+        if(auto* is = dynamic_cast<ifStatement*>(s))
+            if(hasReturn(is->thenBlock) || hasReturn(is->elseBlock)) return true;
+        if(auto* ws = dynamic_cast<whileStatement*>(s))   if(hasReturn(ws->body))  return true;
+        if(auto* ds = dynamic_cast<doStatement*>(s))      if(hasReturn(ds->body))  return true;
+        if(auto* fs = dynamic_cast<forStatement*>(s))     if(hasReturn(fs->body))  return true;
+        if(auto* sw = dynamic_cast<switchStatement*>(s))
+            for(switchCase* c : sw->cases) if(hasReturn(c->body)) return true;
+    }
+    return false;
+}
+
 bool bglParser::processEnumDeclaration(token tok, bool isExternal){
     if(getCurrentCompileContext()!=eCompileContext::global) parsingError(format("Enumerations are only allowed in global context:'{0}'", (string) tok));
     bool isBnum=false;
@@ -237,6 +269,8 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             funcDef.returnType=languageService.getType((string) returnType);
             funcDef.isEmitter=isEmitter;
             processParameterList(funcDef);
+            if(isEmitter && !funcDef.params.empty() && (funcDef.name == "init" || funcDef.name == "deinit"))
+                parsingError(format("Emitter '{0}' cannot accept parameters", funcDef.name));
             if(isExternal && !isEmitter){
                 // extern class non-emitter: declaration only, no body allowed
                 token next = file.getToken({token::endStatement, token::braceOpen});
@@ -256,6 +290,8 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                     while(processNextStatement(funcDef) == false){}
                     closeCompileContext(eCompileContext::codeBlock);
                     currentFunc = savedFunc;
+                    if(funcDef.returnType.name != "void" && !hasReturn(dynamic_cast<statementBlock*>(funcDef.body)))
+                        parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
                 }
             }
             if(isExtend){
@@ -365,7 +401,14 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         if(g->name == name){
             if(auto* vd = dynamic_cast<variableDeclaration*>(g)) return vd->type.name;
             if(auto* fd = dynamic_cast<functionDef*>(g)) return fd->returnType.name;
+            if(dynamic_cast<objectDef*>(g)) return "object"; // singleton object — method dispatch via extern class object
         }
+    }
+    // Action constants (extern verb Take etc.) → type "verb"
+    for(verbDef* vd : languageService.verbs){
+        string lower = vd->name;
+        transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        if(lower == name) return "verb";
     }
     return "";
 }
@@ -376,6 +419,15 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
 //   - found in enum values or globals → name (unqualified)
 //   - not found → "" (caller should report an error)
 std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, statementBlock* body){
+    // Handle dot-path: qualify the head, then append the tail
+    size_t dot = name.find('.');
+    if(dot != string::npos){
+        string head = name.substr(0, dot);
+        string tail = name.substr(dot + 1);
+        string qualifiedHead = qualifyIdentifier(head, func, body);
+        if(qualifiedHead.empty()) return "";
+        return qualifiedHead + "." + tail;
+    }
     // Tier 1a: params of current (possibly nested) context
     if(func != nullptr)
         for(paramDef* p : func->params)
@@ -406,6 +458,12 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     if(!languageService.getEnumType(name).empty()) return name;
     for(typeDef* g : languageService.globals)
         if(g->name == name) return name;
+    // Tier 4: verb names (action constants and verb variables)
+    for(verbDef* vd : languageService.verbs){
+        string lower = vd->name;
+        transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        if(lower == name) return vd->name;
+    }
     return "";
 }
 
@@ -504,7 +562,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             if(expr->resolvedType.empty()) expr->resolvedType = "stringliteral";
             expr->tokens.push_back(cur.value);
         }
-        else if(cur.is(eTokenType::identifier)){
+        else if(cur.is(eTokenType::name)){
             token next = getNext();
             if(parenDepth == 0 && next.is(token::bracketOpen)){
                 // Subscript access in expression: identifier[i]
@@ -590,8 +648,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // find best matching method
                         functionDef* method = nullptr;
                         functionDef* varFallback = nullptr;
+                        bool nameMatch=false;
                         for(typeMember* m : cls->members)
-                            if(auto* fd = dynamic_cast<functionDef*>(m))
+                            if(auto* fd = dynamic_cast<functionDef*>(m)){
+                                if(fd->name == methName) nameMatch=true;
+
                                 if(fd->name == methName && fd->params.size() == callArgs.size()){
                                     bool usesVar = false, argsOk = true;
                                     for(size_t i = 0; i < callArgs.size(); i++){
@@ -605,8 +666,14 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                         else { method = fd; break; }
                                     }
                                 }
+                            }
                         if(method == nullptr) method = varFallback;
-                        if(method == nullptr) parsingError(format("No method '{0}' on type '{1}' matches arguments", methName, objType));
+                        if(method == nullptr) {
+                            if(nameMatch==false)
+                                parsingError(format("No method '{0}' defined on type '{1}'", methName, objType));
+                            else
+                                parsingError(format("No method '{0}' on type '{1}' matches arguments", methName, objType));
+                        }
 
                         if(expr->resolvedType.empty()) expr->resolvedType = method->returnType.name;
 
@@ -658,24 +725,37 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 expr->tokens.push_back(b);
                             }
                     } else {
-                        // Qualified enum: TypeName.memberName → _TypeName_memberName in I6
                         prefetched = afterMember;
-                        if(expr->resolvedType.empty()) expr->resolvedType = cur.value;
-                        expr->tokens.push_back("_" + cur.value + "_" + member.value);
+                        // Distinguish enum-qualified access (EnumType.value → _EnumType_value)
+                        // from object/variable property access (obj.prop → obj.prop)
+                        bool isEnum = dynamic_cast<enumDef*>(&languageService.getType(cur.value)) != nullptr;
+                        if(isEnum){
+                            if(expr->resolvedType.empty()) expr->resolvedType = cur.value;
+                            expr->tokens.push_back("_" + cur.value + "_" + member.value);
+                        } else {
+                            // Object property access: emit as obj.prop
+                            string propType = resolvePathType(cur.value + "." + member.value, func, body);
+                            if(expr->resolvedType.empty() && !propType.empty()) expr->resolvedType = propType;
+                            expr->tokens.push_back(cur.value + "." + member.value);
+                        }
                     }
                 }
             }
             else {
                 prefetched = next;
-                if(func != nullptr){
-                    string qualified = qualifyIdentifier(cur.value, func, body);
-                    if(qualified.empty())
-                        parsingError(format("Undeclared identifier '{0}'", cur.value));
+                // Resolve identifier: variables/params/globals take priority over verb action constants.
+                // Only emit ##VerbName if the identifier doesn't resolve as a declared variable.
+                // qualifyIdentifier handles: params/locals → name, object members → self.name,
+                // globals → name, action constants (verbDefs) → ##VerbName.
+                // It works correctly with func==nullptr (skips param/local tiers gracefully).
+                string qualified = qualifyIdentifier(cur.value, func, body);
+                if(!qualified.empty()){
                     if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body);
                     expr->tokens.push_back(qualified);
+                } else if(func != nullptr){
+                    parsingError(format("Undeclared identifier '{0}'", cur.value));
                 } else {
-                    if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body);
-                    expr->tokens.push_back(cur.value);
+                    expr->tokens.push_back(cur.value); // global-context passthrough for unknown identifiers
                 }
             }
         }
@@ -689,17 +769,19 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     string rhsType, rhsText;
                     if(rhs.is(eTokenType::integer))         { rhsType="intliteral";    rhsText=rhs.value; }
                     else if(rhs.is(eTokenType::quote))      { rhsType="stringliteral"; rhsText=rhs.value; }
-                    else if(rhs.is(eTokenType::identifier)) {
+                    else if(rhs.is(eTokenType::charLiteral)){ rhsType="charliteral";   rhsText="'"+rhs.value+"'"; }
+                    else if(rhs.is(eTokenType::name)) {
                         rhsType=resolveIdentifierType(rhs.value,func,body);
                         rhsText = (func != nullptr) ? qualifyIdentifier(rhs.value,func,body) : rhs.value;
-                        if(func != nullptr && rhsText.empty()){ rhsText=rhs.value; } // fallback; type error will catch it
+                        if(rhsText.empty()){ rhsText=rhs.value; } // fallback; type error will catch it
                     }
 
                     functionDef* matchedOp = nullptr;
                     for(typeMember* m : cls->members)
                         if(auto* opFn = dynamic_cast<functionDef*>(m))
                             if(opFn->name==opName && !opFn->params.empty() &&
-                               (rhsType.empty() || opFn->params[0]->type.name==rhsType))
+                               (rhsType.empty() || opFn->params[0]->type.name==rhsType
+                                || opFn->params[0]->type.name=="var"))
                                 { matchedOp=opFn; break; }
 
                     // Conversion fallback: if no exact operator match, check if LHS class has
@@ -729,7 +811,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // rhs already consumed; nothing to put back
                     } else if(blk != nullptr){
                         // For identifier RHS, check if it's a function call and collect full text
-                        if(rhs.is(eTokenType::identifier)){
+                        if(rhs.is(eTokenType::name)){
                             token rhsNext = getNext();
                             if(rhsNext.is(token::parenOpen)){
                                 rhsText = rhs.value + token::parenOpen;
@@ -767,6 +849,122 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             } else {
                 expr->tokens.push_back(cur.value);
             }
+        }
+        else if(cur.is(eTokenType::dictionaryWord)){
+            if(expr->resolvedType.empty()) expr->resolvedType = "dictionaryword";
+            string w = cur.value;
+            string i6form = (w.size() == 1) ? ("'" + w + "//'") : ("'" + w + "'");
+            expr->tokens.push_back(i6form);
+        }
+        else if(cur.is(eTokenType::dictionaryWordPlural)){
+            if(expr->resolvedType.empty()) expr->resolvedType = "dictionaryword";
+            expr->tokens.push_back("'" + cur.value + "/p'");
+        }
+        else if(cur.is(eTokenType::charLiteral)){
+            if(expr->resolvedType.empty()) expr->resolvedType = "charliteral";
+            expr->tokens.push_back("'" + cur.value + "'");
+        }
+        else if(cur.value == "." && !expr->tokens.empty() && !expr->resolvedType.empty()){
+            // Chained method call on result of prior expression: <expr>.method(args)
+            token member = file.getToken(eTokenType::identifier);
+            token afterMember = getNext();
+            if(!afterMember.is(token::parenOpen)){
+                // Not a method call (e.g. struct member) — emit '.' and re-process member
+                prefetched = afterMember;
+                expr->tokens.push_back(".");
+                cur = member;
+                continue;
+            }
+
+            string selfText;
+            for(const auto& t : expr->tokens) selfText += t;
+
+            string chainTypeName = expr->resolvedType;
+            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(chainTypeName));
+            if(cls == nullptr)
+                parsingError(format("Type '{0}' has no methods", chainTypeName));
+
+            string methName = member.value;
+            vector<expression*> callArgs;
+            token firstArg = file.getToken();
+            while(firstArg.isNot(token::parenClose)){
+                expression* arg = parseExpression(firstArg, {token::comma, token::parenClose}, func, body);
+                callArgs.push_back(arg);
+                if(arg->terminator == token::parenClose) break;
+                firstArg = file.getToken();
+            }
+
+            functionDef* method = nullptr;
+            functionDef* varFallback = nullptr;
+            bool nameMatch = false;
+            for(typeMember* m : cls->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m)){
+                    if(fd->name == methName) nameMatch = true;
+                    if(fd->name == methName && fd->params.size() == callArgs.size()){
+                        bool usesVar = false, argsOk = true;
+                        for(size_t i = 0; i < callArgs.size(); i++){
+                            string at = callArgs[i]->resolvedType;
+                            string pt = fd->params[i]->type.name;
+                            if(pt == "var") usesVar = true;
+                            else if(!at.empty() && !isTypeCompatible(at, pt)){ argsOk = false; break; }
+                        }
+                        if(argsOk){
+                            if(usesVar){ if(!varFallback) varFallback = fd; }
+                            else { method = fd; break; }
+                        }
+                    }
+                }
+            if(method == nullptr) method = varFallback;
+            if(method == nullptr){
+                if(!nameMatch)
+                    parsingError(format("No method '{0}' defined on type '{1}'", methName, chainTypeName));
+                else
+                    parsingError(format("No method '{0}' on type '{1}' matches arguments", methName, chainTypeName));
+            }
+
+            expr->tokens.clear();
+            expr->resolvedType = method->returnType.name;
+
+            if(method->isEmitter){
+                if(auto* blk = dynamic_cast<i6Block*>(method->body)){
+                    string b = blk->i6Body;
+                    size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+                    size_t e = b.find_last_not_of(" \t\n\r"); if(e != string::npos) b = b.substr(0, e+1);
+                    b = replaceWord(b, "$self", selfText);
+                    b = replaceWord(b, "$prop", "<$prop undefined>");
+                    for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
+                        b = replaceWord(b, method->params[i]->name, callArgs[i]->text());
+                    expr->tokens.push_back(b);
+                }
+            } else {
+                string call = selfText + "." + methName + "(";
+                for(size_t i = 0; i < callArgs.size(); i++){
+                    if(i > 0) call += ", ";
+                    call += callArgs[i]->text();
+                }
+                call += ")";
+                expr->tokens.push_back(call);
+            }
+        }
+        else if(cur.value == "?" && parenDepth == 0) {
+            // Ternary expression: condition already accumulated in expr->tokens.
+            // Lower to: if (cond) _bgl_temp = trueExpr; else _bgl_temp = falseExpr;
+            // then replace this expression with just _bgl_temp.
+            string condText = expr->text();
+            expression* trueExpr  = parseExpression(file.getToken(), {":"}, func, body);
+            expression* falseExpr = parseExpression(file.getToken(), terminators, func, body);
+
+            string injText = "if (" + condText + ") _bgl_temp = " + trueExpr->text()
+                           + "; else _bgl_temp = " + falseExpr->text() + ";";
+            i6RawNode* inj = new i6RawNode();
+            inj->text = injText;
+            pendingInjections.push_back(inj);
+
+            expr->tokens.clear();
+            expr->tokens.push_back("_bgl_temp");
+            expr->resolvedType = !trueExpr->resolvedType.empty() ? trueExpr->resolvedType : falseExpr->resolvedType;
+            expr->terminator = falseExpr->terminator;
+            break;
         }
         else {
             expr->tokens.push_back(cur.value);
@@ -929,6 +1127,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             swStmt.src = stmtLoc;
             file.getToken(token::parenOpen);
             swStmt.condition = parseExpression(file.getToken(), {token::parenClose}, func, body);
+            string conditionType = swStmt.condition->resolvedType;
             file.getToken(token::braceOpen);
             // parse cases until closing brace
             while(true){
@@ -936,12 +1135,26 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 if(t.is(token::braceClose)) break;
                 switchCase& sc = *(new switchCase());
                 if(t.is("default")){
-                    sc.value = nullptr;
+                    // sc.values stays empty; consume the colon after "default"
+                    file.getToken(":");
                 } else {
                     t.assert("case", "Expected 'case' or 'default' inside switch.");
-                    sc.value = parseExpression(file.getToken(), {":"}, func, body);
+                    auto parseCaseValue = [&]() -> expression* {
+                        expression* val = parseExpression(file.getToken(), {":", ","}, func, body);
+                        // Type-check case value against switch condition type.
+                        // verb case values are int-compatible (action constants are integer values).
+                        if(!conditionType.empty() && !val->resolvedType.empty()
+                           && val->resolvedType != conditionType
+                           && val->resolvedType != "verb")   // ##VerbName is always int-compatible
+                            parsingError(format("Switch case type '{0}' does not match condition type '{1}'",
+                                               val->resolvedType, conditionType));
+                        return val;
+                    };
+                    sc.values.push_back(parseCaseValue());
+                    while(sc.values.back()->terminator == ",")
+                        sc.values.push_back(parseCaseValue());
+                    // colon was already consumed by parseExpression as its terminator
                 }
-                file.getToken(":"); // consume the colon
                 sc.body = new statementBlock();
                 functionDef caseCtx;
                 if(func != nullptr){ caseCtx.returnType = func->returnType; caseCtx.params = func->params; }
@@ -960,12 +1173,26 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(body != nullptr) body->statements.push_back(&swStmt);
             return false;
         }
-        case chk("rtrue"):
+        case chk("rtrue"): {
+            file.getToken(token::endStatement);
+            if(func != nullptr && func->returnType.name == "void")
+                parsingError(format("Cannot use 'rtrue' in void routine '{0}'", func->name));
+            returnStatement& rt = *(new returnStatement());
+            rt.src = stmtLoc;
+            rt.returnExpression = "rtrue";
+            if(body != nullptr) body->statements.push_back(&rt);
             return false;
-            break;
-        case chk("rfalse"):
+        }
+        case chk("rfalse"): {
+            file.getToken(token::endStatement);
+            if(func != nullptr && func->returnType.name == "void")
+                parsingError(format("Cannot use 'rfalse' in void routine '{0}'", func->name));
+            returnStatement& rf = *(new returnStatement());
+            rf.src = stmtLoc;
+            rf.returnExpression = "rfalse";
+            if(body != nullptr) body->statements.push_back(&rf);
             return false;
-            break;
+        }
         case chk("return"):
             returnStatement& returnStmnt=*(new returnStatement());
             returnStmnt.src = stmtLoc;
@@ -985,6 +1212,12 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             return false;
             break;
     }
+
+    // A declared object's name is both its type and its singleton instance reference.
+    // Re-classify it as an identifier so dot-access and assignment work in statement context.
+    if(tok.is(eTokenType::dataType))
+        if(dynamic_cast<objectDef*>(&languageService.getType(tok.value)) != nullptr)
+            tok.tokenType = eTokenType::identifier;
 
     if(tok.is(eTokenType::identifier)==false) return parsingError(format("Unrecognized statement starting with token '{0}'", (string) tok));
 
@@ -1070,27 +1303,46 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
 
         // look up the left-hand variable's type using original (unqualified) name
         typeDef* leftType = nullptr;
-        if(func != nullptr){
-            for(paramDef* p : func->params)
-                if(p->name == lhsOriginal){ leftType = &p->type; break; }
-            if(leftType == nullptr && body != nullptr)
-                for(statement* s : body->statements)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == lhsOriginal){ leftType = &vd->type; break; }
-            if(leftType == nullptr && currentObject != nullptr)
-                for(typeMember* m : currentObject->members)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+        string emitterSelfForLhs = lhsOriginal;  // $self value for emitter substitution
+
+        size_t lhsDot = lhsOriginal.rfind('.');
+        if(lhsDot != string::npos){
+            // dot-path LHS: resolve owner type, then find property type in its class
+            string ownerPath = lhsOriginal.substr(0, lhsDot);
+            string propName  = lhsOriginal.substr(lhsDot + 1);
+            string ownerType = resolvePathType(ownerPath, func, body);
+            if(!ownerType.empty()){
+                classDef* ownerCls = dynamic_cast<classDef*>(&languageService.getType(ownerType));
+                if(ownerCls != nullptr)
+                    for(typeMember* m : ownerCls->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                            if(vd->name == propName){ leftType = &vd->type; break; }
+            }
+            emitterSelfForLhs = ownerPath;  // $self = the owner object, not the full obj.prop path
+        } else {
+            if(func != nullptr){
+                for(paramDef* p : func->params)
+                    if(p->name == lhsOriginal){ leftType = &p->type; break; }
+                if(leftType == nullptr && body != nullptr)
+                    for(statement* s : body->statements)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                            if(vd->name == lhsOriginal){ leftType = &vd->type; break; }
+                if(leftType == nullptr && currentObject != nullptr)
+                    for(typeMember* m : currentObject->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                            if(vd->name == lhsOriginal){ leftType = &vd->type; break; }
+            }
+            if(leftType == nullptr)
+                for(typeDef* g : languageService.globals)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(g))
                         if(vd->name == lhsOriginal){ leftType = &vd->type; break; }
         }
-        if(leftType == nullptr)
-            for(typeDef* g : languageService.globals)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                    if(vd->name == lhsOriginal){ leftType = &vd->type; break; }
 
         classDef* classType = leftType != nullptr ? dynamic_cast<classDef*>(&languageService.getType(leftType->name)) : nullptr;
 
         // helper: apply operator= emitter lookup to an assignment node for a given rhs expression
         auto resolveEmitter = [&](assignmentStatement& a, expression* val){
+            a.emitterSelf = emitterSelfForLhs;  // always record $self for this assignment
             if(classType != nullptr && val != nullptr){
                 string valueTypeName = val->resolvedType;
                 if(!valueTypeName.empty()){
@@ -1143,6 +1395,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         assignExpr.assignedExpression = rhs;
         resolveEmitter(assignExpr, rhs);
 
+        for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+        pendingInjections.clear();
         if(body != nullptr) body->statements.push_back(&assignExpr);
         return false;
     }
@@ -1159,8 +1413,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(arg->terminator == token::parenClose) break;
             firstArgTok = file.getToken();
         }
-        file.getToken(token::endStatement);
 
+        string chainReturnType;
         size_t dotPos = callStmt.functionName.rfind('.');  // use LAST dot for method name
         if(dotPos != string::npos){
             // method call: validate and resolve emitter
@@ -1248,11 +1502,14 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     for(paramDef* p : method->params)
                         callStmt.emitterParams.push_back(p->name);
                 }
+            chainReturnType = method->returnType.name;
         } else {
             // global function call: find by name, enforce arity/types, resolve emitter
+            // Resolution priority: exact type match > conversion match > var fallback
             functionDef* globalNameMatch = nullptr;
             functionDef* globalArityMatch = nullptr;
             functionDef* globalMatch = nullptr;
+            functionDef* globalConversionMatch = nullptr;
             functionDef* globalVarFallback = nullptr;
             for(typeDef* g : languageService.globals){
                 if(auto* fd = dynamic_cast<functionDef*>(g))
@@ -1264,20 +1521,24 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             if(globalArityMatch == nullptr) globalArityMatch = fd;
                             bool argsOk = true;
                             bool usesVar = false;
+                            bool needsConversion = false;
                             for(size_t i = 0; i < callStmt.args.size() && argsOk; i++){
                                 string argType = callStmt.args[i]->resolvedType;
                                 string paramType = fd->params[i]->type.name;
                                 if(paramType == "var") usesVar = true;
-                                else if(!argType.empty() && !isTypeCompatible(argType, paramType))
-                                    argsOk = false;
+                                else if(argType.empty() || argType == paramType) {} // exact or unknown
+                                else if(isTypeCompatible(argType, paramType)) needsConversion = true;
+                                else argsOk = false;
                             }
                             if(argsOk){
                                 if(usesVar){ if(globalVarFallback == nullptr) globalVarFallback = fd; }
-                                else { globalMatch = fd; break; }
+                                else if(!needsConversion){ globalMatch = fd; break; }
+                                else if(globalConversionMatch == nullptr) globalConversionMatch = fd;
                             }
                         }
                     }
             }
+            if(globalMatch == nullptr) globalMatch = globalConversionMatch;
             if(globalMatch == nullptr) globalMatch = globalVarFallback;
             if(globalNameMatch == nullptr)
                 parsingError(format("Undeclared function '{0}'", callStmt.functionName));
@@ -1306,8 +1567,83 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     callStmt.emitterBody = blk->i6Body;
                     for(paramDef* p : globalMatch->params) callStmt.emitterParams.push_back(p->name);
                 }
+            chainReturnType = globalMatch->returnType.name;
         }
 
+        // method chaining: handle optional ".method()" suffixes before the final ";"
+        auto replaceWordChain = [](string str, const string& from, const string& to) -> string {
+            size_t pos=0;
+            while((pos=str.find(from,pos))!=string::npos){
+                bool lOk = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
+                bool rOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
+                if(lOk && rOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
+                else pos+=from.size();
+            }
+            return str;
+        };
+        auto resolveEmitterText = [&](functionCallStatement& cs) -> string {
+            string b = cs.emitterBody;
+            for(size_t i=0; i<cs.emitterParams.size() && i<cs.args.size(); i++)
+                b = replaceWordChain(b, cs.emitterParams[i], cs.args[i]->text());
+            size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+            size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
+            return b;
+        };
+        token chainTok = file.getToken();
+        while(chainTok.is(token::period) || chainTok.is(eTokenType::dictionaryWord)){
+            // After ')' the lexer returns '.method' as a dictionaryWord; after an identifier it returns '.' + identifier separately.
+            token chainMember;
+            if(chainTok.is(token::period))
+                chainMember = file.getToken(eTokenType::identifier);
+            else
+                chainMember = chainTok;  // dictionaryWord already holds the method name
+            file.getToken(token::parenOpen);
+            vector<expression*> chainArgs;
+            token chainArgTok = file.getToken();
+            while(chainArgTok.isNot(token::parenClose)){
+                expression* arg = parseExpression(chainArgTok, {token::comma, token::parenClose}, func, body);
+                chainArgs.push_back(arg);
+                if(arg->terminator == token::parenClose) break;
+                chainArgTok = file.getToken();
+            }
+            classDef* chainCls = dynamic_cast<classDef*>(&languageService.getType(chainReturnType));
+            if(chainCls == nullptr)
+                parsingError(format("Type '{0}' is not a class (cannot chain method '{1}')", chainReturnType, chainMember.value));
+            string chainMethodName = chainMember.value;
+            functionDef* chainMethod = nullptr;
+            functionDef* chainNameMatch = nullptr;
+            for(typeMember* m : chainCls->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->name == chainMethodName){
+                        if(chainNameMatch == nullptr) chainNameMatch = fd;
+                        size_t req=0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+                        if(chainArgs.size() >= req && chainArgs.size() <= fd->params.size()){
+                            chainMethod = fd; break;
+                        }
+                    }
+            if(chainNameMatch == nullptr)
+                parsingError(format("No method '{0}' on type '{1}'", chainMethodName, chainReturnType));
+            if(chainMethod == nullptr)
+                parsingError(format("Method '{0}' on type '{1}' has wrong arity for {2} argument(s)",
+                    chainMethodName, chainReturnType, chainArgs.size()));
+            if(!chainMethod->isEmitter || !dynamic_cast<i6Block*>(chainMethod->body))
+                parsingError(format("Chained method '{0}' on type '{1}' is not an emitter", chainMethodName, chainReturnType));
+            string selfText = resolveEmitterText(callStmt);
+            i6Block* chainBlk = dynamic_cast<i6Block*>(chainMethod->body);
+            string b = chainBlk->i6Body;
+            b = replaceWordChain(b, "$self", selfText);
+            for(size_t i=0; i<chainMethod->params.size() && i<chainArgs.size(); i++)
+                b = replaceWordChain(b, chainMethod->params[i]->name, chainArgs[i]->text());
+            callStmt.emitterBody = b;
+            callStmt.emitterParams.clear();
+            callStmt.args.clear();
+            chainReturnType = chainMethod->returnType.name;
+            chainTok = file.getToken();
+        }
+        chainTok.assert(token::endStatement);
+
+        for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+        pendingInjections.clear();
         if(body != nullptr) body->statements.push_back(&callStmt);
         return false;
     }
@@ -1809,10 +2145,13 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             // consumed as a no-op (skipConditionalBlock handles it, but a stray #endif is harmless)
             return false;
         }
+        case chk("#beguilersettings"):{
+            return processBeguilerSettings();
+        }
     }
     return parsingError("Unrecognized directive '"+tok.value+"'.");
 }
-bool bglParser::processRoutineDeclaration(token returnType, token name, abstractObject& contextObject, bool isExternal, bool isEmitter){
+bool bglParser::processRoutineDeclaration(token returnType, token name, abstractObject& contextObject, bool isExternal, bool isEmitter, bool isReplace){
     functionDef& funcDef=*(new functionDef());
     funcDef.name=(string) name;
     funcDef.src = file.currentLocation();
@@ -1837,10 +2176,185 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         }
         closeCompileContext(eCompileContext::codeBlock);
         currentFunc = savedFunc;
+        if(funcDef.returnType.name != "void" && !hasReturn(dynamic_cast<statementBlock*>(funcDef.body)))
+            parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
+    }
+
+    if(isReplace){
+        // Find existing global function with same name and param types; replace its body.
+        for(typeDef* g : languageService.globals){
+            if(auto* existing = dynamic_cast<functionDef*>(g)){
+                if(existing->name != funcDef.name) continue;
+                if(existing->params.size() != funcDef.params.size()) continue;
+                bool paramsMatch = true;
+                for(size_t i = 0; i < funcDef.params.size() && paramsMatch; i++)
+                    if(funcDef.params[i]->type.name != existing->params[i]->type.name)
+                        paramsMatch = false;
+                if(paramsMatch){
+                    existing->body = funcDef.body;
+                    existing->isEmitter = funcDef.isEmitter;
+                    existing->returnType = funcDef.returnType;
+                    return false;
+                }
+            }
+        }
+        parsingError(format("replace: no existing global function '{0}' with matching parameter types", funcDef.name));
     }
 
     languageService.globals.push_back(&funcDef);
     return false;
+}
+
+void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
+    token first = file.getToken();
+    if(first.is(token::braceOpen)){
+        initializerList* list = new initializerList();
+        token t = file.getToken();
+        while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+            expression* elem = parseExpression(t, {",", token::braceClose}, nullptr, nullptr);
+            list->elements.push_back(elem);
+            if(elem->terminator == token::braceClose) break;
+            t = file.getToken();
+        }
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        classDef* listClass = dynamic_cast<classDef*>(&languageService.getType(typeName));
+        string expectedElemType;
+        if(listClass != nullptr)
+            for(typeMember* m : listClass->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->params.size() == 1){ expectedElemType = fd->params[0]->type.name; break; }
+        for(size_t i = 0; i < list->elements.size(); i++){
+            expression* elem = list->elements[i];
+            if(elem->resolvedType.empty())
+                parsingError(format("Undeclared identifier in initializer list (element {0})", i));
+            else if(!expectedElemType.empty() && !isTypeCompatible(elem->resolvedType, expectedElemType))
+                parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
+        }
+        prop.declaredExpressionValue = list;
+    } else {
+        expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+        if(!typeName.empty() && typeName != "var" && !expr->resolvedType.empty()
+           && !isTypeCompatible(expr->resolvedType, typeName))
+            parsingError(format("Cannot assign value of type '{0}' to property '{1}' of type '{2}'",
+                expr->resolvedType, prop.name, typeName));
+        prop.declaredExpressionValue = expr;
+    }
+}
+
+void bglParser::processI6InlineMember(objectDef& obj){
+    token t = file.getToken();
+    i6RawNode& node = *(new i6RawNode());
+    if(t.is(token::braceOpen)){
+        deque<char> closeChar;
+        closeChar.push_back('}');
+        t = file.getBasicToken(true);
+        while(closeChar.size() > 0){
+            if(t.value[0] == closeChar.back()){
+                closeChar.pop_back();
+                if(closeChar.size() == 0) break;
+            }
+            node.text = node.text + t.value;
+            if(closeChar.back() != '\n'){
+                if(t.value[0] == '{') closeChar.push_back('}');
+                if(t.value[0] == '!') closeChar.push_back('\n');
+            }
+            t = file.getBasicToken(true);
+        }
+    } else {
+        while(t.isNot("\n")){
+            node.text = node.text + t.value;
+            t = file.getBasicToken(true);
+        }
+    }
+    obj.members.push_back((typeMember*)&node);
+}
+
+void bglParser::processArrayMember(objectDef& obj){
+    file.getToken("<");
+    string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+    file.getToken(">");
+    token propName = file.getToken(eTokenType::identifier);
+    token sym = file.getToken({token::bracketOpen, token::assignment, token::endStatement});
+    arrayDeclaration& arrDecl = *(new arrayDeclaration());
+    arrDecl.name = (string)propName;
+    arrDecl.type = languageService.getType("array");
+    arrDecl.elementType = elemType;
+    if(sym.is(token::bracketOpen)){
+        token sizeTok = file.getToken(eTokenType::integer);
+        arrDecl.arraySize = stoi(sizeTok.value);
+        file.getToken(token::bracketClose);
+        file.getToken(token::endStatement);
+    } else if(sym.is(token::assignment)){
+        file.getToken(token::braceOpen);
+        initializerList* list = new initializerList();
+        token t = file.getToken();
+        while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+            expression* elem = parseExpression(t, {",", token::braceClose}, nullptr, nullptr);
+            list->elements.push_back(elem);
+            if(elem->terminator == token::braceClose) break;
+            t = file.getToken();
+        }
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        arrDecl.declaredExpressionValue = list;
+    }
+    obj.members.push_back((typeMember*)&arrDecl);
+}
+
+void bglParser::processMemberMethod(objectDef& obj, token returnType, token name){
+    functionDef& funcDef = *(new functionDef());
+    funcDef.name = (string)name;
+    funcDef.returnType = languageService.getType((string)returnType);
+    processParameterList(funcDef);
+    file.getToken(token::braceOpen);
+    funcDef.body = new statementBlock();
+    functionDef* savedFunc = currentFunc;
+    currentFunc = &funcDef;
+    openCompileContext(eCompileContext::codeBlock);
+    while(processNextStatement(funcDef) == false){}
+    closeCompileContext(eCompileContext::codeBlock);
+    currentFunc = savedFunc;
+    if(funcDef.returnType.name != "void" && !hasReturn(dynamic_cast<statementBlock*>(funcDef.body)))
+        parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
+    obj.members.push_back((typeMember*)&funcDef);
+}
+
+void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue){
+    variableDeclaration& prop = *(new variableDeclaration());
+    prop.name = name;
+    prop.type = languageService.getType(typeName);
+    if(hasValue) parsePropertyValue(prop, typeName);
+    obj.members.push_back((typeMember*)&prop);
+}
+
+void bglParser::processTypedMember(objectDef& obj, token typeTok){
+    token propName = file.getToken(eTokenType::identifier);
+    if(propName.is("operator")){
+        token opTok = file.getToken();
+        if(opTok.is(token::parenOpen))
+            propName.value = "operator()";
+        else {
+            opTok.assert(eTokenType::oper);
+            propName.value = "operator " + opTok.value;
+        }
+    }
+    token sym = file.getToken({token::assignment, token::endStatement, token::parenOpen});
+    if(sym.is(token::parenOpen))
+        processMemberMethod(obj, typeTok, propName);
+    else
+        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment));
+}
+
+void bglParser::processInheritedMember(objectDef& obj, token nameTok){
+    string propTypeName;
+    classDef* baseObj = dynamic_cast<classDef*>(&languageService.getType("object"));
+    if(baseObj != nullptr)
+        for(typeMember* m : baseObj->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(vd->name == nameTok.value){ propTypeName = vd->type.name; break; }
+    if(propTypeName.empty())
+        parsingError(format("'{0}' is not a property defined on the base object class", nameTok.value));
+    bool hasValue = file.getToken({token::assignment, token::endStatement}).is(token::assignment);
+    processMemberVariable(obj, propTypeName, nameTok.value, hasValue);
 }
 
 bool bglParser::processObjectDeclaration(token objectType, token name, bool isExternal){
@@ -1849,142 +2363,19 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     currentObject = &newObj;
     openCompileContext(eCompileContext::objectDef);
 
-    token tok = file.getToken(); // already consumed '{' before this call
+    token tok = file.getToken();
     while(tok.isNot(token::braceClose)){
         if(tok.is(eTokenType::directive)){
-            if(tok.is("#i6")){
-                token t = file.getToken();
-                i6RawNode& node = *(new i6RawNode());
-                if(t.is(token::braceOpen)){
-                    deque<char> closeChar;
-                    closeChar.push_back('}');
-                    t = file.getBasicToken(true);
-                    while(closeChar.size() > 0){
-                        if(t.value[0] == closeChar.back()){
-                            closeChar.pop_back();
-                            if(closeChar.size() == 0) break;
-                        }
-                        node.text = node.text + t.value;
-                        if(closeChar.back() != '\n'){
-                            if(t.value[0] == '{') closeChar.push_back('}');
-                            if(t.value[0] == '!') closeChar.push_back('\n');
-                        }
-                        t = file.getBasicToken(true);
-                    }
-                } else {
-                    while(t.isNot("\n")){
-                        node.text = node.text + t.value;
-                        t = file.getBasicToken(true);
-                    }
-                }
-                newObj.members.push_back((typeMember*)&node);
-            } else {
-                parsingError(format("Unsupported directive in object body: '{0}'", tok.value));
-            }
-        } else if(tok.isDataType()){
-            // Handle array<T> property declarations
-            if(tok.value == "array") {
-                file.getToken("<");
-                string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
-                file.getToken(">");
-                token propName = file.getToken(eTokenType::identifier);
-                token sym = file.getToken({token::bracketOpen, token::assignment, token::endStatement});
-                arrayDeclaration& arrDecl = *(new arrayDeclaration());
-                arrDecl.name = (string)propName;
-                arrDecl.type = languageService.getType("array");
-                arrDecl.elementType = elemType;
-                if(sym.is(token::bracketOpen)) {
-                    token sizeTok = file.getToken(eTokenType::integer);
-                    arrDecl.arraySize = stoi(sizeTok.value);
-                    file.getToken(token::bracketClose);
-                    file.getToken(token::endStatement);
-                } else if(sym.is(token::assignment)) {
-                    file.getToken(token::braceOpen);
-                    initializerList* list = new initializerList();
-                    token t = file.getToken();
-                    while(!t.is(token::braceClose) && !t.is(eTokenType::eof)) {
-                        expression* elem = parseExpression(t, {",", token::braceClose}, nullptr, nullptr);
-                        list->elements.push_back(elem);
-                        if(elem->terminator == token::braceClose) break;
-                        t = file.getToken();
-                    }
-                    if(file.peekToken().is(token::endStatement)) file.getToken();
-                    arrDecl.declaredExpressionValue = list;
-                }
-                newObj.members.push_back((typeMember*)&arrDecl);
-                tok = file.getToken();
-                continue;
-            }
-
-            token propName = file.getToken(eTokenType::identifier);
-            if(propName.is("operator")){
-                token opTok = file.getToken();
-                if(opTok.is(token::parenOpen))
-                    propName.value = "operator()";
-                else {
-                    opTok.assert(eTokenType::oper);
-                    propName.value = "operator " + opTok.value;
-                }
-            }
-            token sym = file.getToken({token::assignment, token::endStatement, token::parenOpen});
-            if(sym.is(token::parenOpen)){
-                // method on object
-                functionDef& funcDef = *(new functionDef());
-                funcDef.name = (string)propName;
-                funcDef.returnType = languageService.getType((string)tok);
-                processParameterList(funcDef);
-                file.getToken(token::braceOpen);
-                funcDef.body = new statementBlock();
-                functionDef* savedFunc = currentFunc;
-                currentFunc = &funcDef;
-                openCompileContext(eCompileContext::codeBlock);
-                while(processNextStatement(funcDef) == false){}
-                closeCompileContext(eCompileContext::codeBlock);
-                currentFunc = savedFunc;
-                newObj.members.push_back((typeMember*)&funcDef);
-            } else if(sym.is(token::assignment)){
-                variableDeclaration& prop = *(new variableDeclaration());
-                prop.name = (string)propName;
-                prop.type = languageService.getType((string)tok);
-                token first = file.getToken();
-                if(first.is(token::braceOpen)){
-                    initializerList* list = new initializerList();
-                    token t = file.getToken();
-                    while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
-                        expression* elem = parseExpression(t, {",", token::braceClose}, nullptr, nullptr);
-                        list->elements.push_back(elem);
-                        if(elem->terminator == token::braceClose) break;
-                        t = file.getToken();
-                    }
-                    if(file.peekToken().is(token::endStatement)) file.getToken();
-                    // type-check each element against the class's first single-param method
-                    classDef* listClass = dynamic_cast<classDef*>(&languageService.getType((string)tok));
-                    string expectedElemType;
-                    if(listClass != nullptr)
-                        for(typeMember* m : listClass->members)
-                            if(auto* fd = dynamic_cast<functionDef*>(m))
-                                if(fd->params.size() == 1){ expectedElemType = fd->params[0]->type.name; break; }
-                    for(size_t i = 0; i < list->elements.size(); i++){
-                        expression* elem = list->elements[i];
-                        if(elem->resolvedType.empty())
-                            parsingError(format("Undeclared identifier in initializer list (element {0})", i));
-                        else if(!expectedElemType.empty() && !isTypeCompatible(elem->resolvedType, expectedElemType))
-                            parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
-                    }
-                    prop.declaredExpressionValue = list;
-                } else {
-                    prop.declaredExpressionValue = parseExpression(first, {token::endStatement}, nullptr, nullptr);
-                }
-                newObj.members.push_back((typeMember*)&prop);
-            } else {
-                variableDeclaration& prop = *(new variableDeclaration());
-                prop.name = (string)propName;
-                prop.type = languageService.getType((string)tok);
-                newObj.members.push_back((typeMember*)&prop);
-            }
-        } else {
+            if(tok.is("#i6")) processI6InlineMember(newObj);
+            else parsingError(format("Unsupported directive in object body: '{0}'", tok.value));
+        } else if(tok.value == "array")
+            processArrayMember(newObj);
+        else if(tok.isDataType())
+            processTypedMember(newObj, tok);
+        else if(tok.is(eTokenType::identifier))
+            processInheritedMember(newObj, tok);
+        else
             parsingError(format("Unexpected token '{0}' in object body", tok.value));
-        }
         tok = file.getToken();
     }
 
@@ -2003,13 +2394,22 @@ bool bglParser::processBeguilerSettings(){
     file.getToken(token::braceOpen);
     token tok = file.getToken();
     while(!tok.is(token::braceClose) && !tok.is(eTokenType::eof)){
-        // each entry: <type> <name> = <value> ;
-        // type is accepted as any identifier (beguilerSettings is parsed before includes register types)
-        if(!tok.is(eTokenType::identifier) && !tok.isDataType()){
-            parsingError(format("Expected type in beguilerSettings, got '{0}'", tok.value));
+        // each entry: [<type>] <name> = <value> ;
+        // Type is optional: read two tokens to determine the pattern.
+        // If the second token is '=', the first is the property name (type omitted).
+        // Otherwise the first is the type and the second is the property name.
+        token propName;
+        token second = file.getToken();
+        if(second.is(token::assignment)){
+            // type omitted — tok is the property name; '=' already consumed
+            propName = tok;
+        } else {
+            // tok is the type, second is the property name; read '=' next
+            if(!tok.is(eTokenType::identifier) && !tok.isDataType())
+                parsingError(format("Expected type or property name in #beguilerSettings, got '{0}'", tok.value));
+            propName = second;
+            file.getToken(token::assignment);
         }
-        token propName = file.getToken(eTokenType::identifier);
-        file.getToken(token::assignment);
         token val = file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::integer});
         file.getToken(token::endStatement);
 
@@ -2019,11 +2419,31 @@ bool bglParser::processBeguilerSettings(){
         if(val.is(eTokenType::quote) && strVal.size() >= 2 && strVal.front() == '"' && strVal.back() == '"')
             strVal = strVal.substr(1, strVal.size() - 2);
 
-        if(key == "errorformat") cfg.errorFormat = strVal;
-        else if(key == "beguilibpath")  cfg.beguiLibPath = strVal;
-        else if(key == "informpath")    cfg.informBinaryPath = strVal;
-        else if(key == "includepath") cfg.includePaths.push_back(strVal);
-        else if(key == "release")     cfg.release = stoi(strVal);
+        if(key == "errorformat"){
+            if(!val.is(eTokenType::quote))
+                parsingError(format("beguilerSettings property 'errorformat' expects a string literal, got '{0}'", strVal));
+            cfg.errorFormat = strVal;
+        }
+        else if(key == "beguilibpath"){
+            if(!val.is(eTokenType::quote))
+                parsingError(format("beguilerSettings property 'beguilibpath' expects a string literal, got '{0}'", strVal));
+            cfg.beguiLibPath = strVal;
+        }
+        else if(key == "informpath"){
+            if(!val.is(eTokenType::quote))
+                parsingError(format("beguilerSettings property 'informpath' expects a string literal, got '{0}'", strVal));
+            cfg.informBinaryPath = strVal;
+        }
+        else if(key == "includepath"){
+            if(!val.is(eTokenType::quote))
+                parsingError(format("beguilerSettings property 'includepath' expects a string literal, got '{0}'", strVal));
+            cfg.includePaths.push_back(strVal);
+        }
+        else if(key == "release"){
+            if(!val.is(eTokenType::integer))
+                parsingError(format("beguilerSettings property 'release' expects an integer, got '{0}'", strVal));
+            cfg.release = stoi(strVal);
+        }
         else if(key == "target"){
             if(languageService.getEnumType(strVal) != "etarget")
                 parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z3, Z5, or Z8).", strVal));
@@ -2127,5 +2547,127 @@ eCompileContext bglParser::getCurrentCompileContext(){
 //     //if(getCurrentCompileContext()==eCompileContext::global) globals.push_back(el);
 //     return emptyTDef;
 // }
+
+//===============================================================================================================================
+// Verb and grammar declarations
+//===============================================================================================================================
+
+bool bglParser::processVerbDeclaration(bool isExtern){
+    if(getCurrentCompileContext() != eCompileContext::global)
+        parsingError("'verb' declarations are only allowed in global context");
+
+    token name = file.getToken(eTokenType::identifier);
+
+    string origName = name.originalValue.empty() ? name.value : name.originalValue;
+    verbDef& vd = languageService.registerVerb(origName, isExtern);
+
+    if(isExtern){
+        file.getToken(token::endStatement);   // extern verb Take;
+        return false;
+    }
+
+    file.getToken(token::braceOpen);
+    token tok = file.getToken();
+    while(tok.isNot(token::braceClose)){
+        if(tok.is("do")){
+            file.getToken(token::parenOpen);
+            file.getToken(token::parenClose);
+            file.getToken(token::braceOpen);
+
+            functionDef& doFunc = *(new functionDef());
+            doFunc.name = name.value + "sub";   // I6 action routine: verbNameSub
+            doFunc.src = file.currentLocation();
+            doFunc.returnType = languageService.getType("void");
+            doFunc.isExternal = false;
+            doFunc.isEmitter = false;
+            doFunc.body = new statementBlock();
+
+            functionDef* savedFunc = currentFunc;
+            currentFunc = &doFunc;
+            openCompileContext(eCompileContext::codeBlock);
+            while(processNextStatement(doFunc) == false){}
+            closeCompileContext(eCompileContext::codeBlock);
+            currentFunc = savedFunc;
+
+            vd.doFunc = &doFunc;
+        } else {
+            parsingError(format("Unexpected token '{0}' in verb body (expected 'do')", tok.value));
+        }
+        tok = file.getToken();
+    }
+    return false;
+}
+
+bool bglParser::processGrammarDeclaration(){
+    if(getCurrentCompileContext() != eCompileContext::global)
+        parsingError("'grammar' declarations are only allowed in global context");
+
+    token name = file.getToken(eTokenType::identifier);
+    grammarBlock& gb = *(new grammarBlock());
+    gb.verbName = name.originalValue.empty() ? name.value : name.originalValue;
+    gb.grammarLines = parseGrammarLines();
+    languageService.globals.push_back(&gb);
+    return false;
+}
+
+// Parse a grammar line list: { {.put, held, .on, noun}, {.hang, held, .on, noun} }
+// First token of each line is the verb trigger word (must be a dictionaryWord).
+// Remaining tokens are pattern tokens: dict words become I6 'word', identifiers stay as-is.
+vector<grammarLine> bglParser::parseGrammarLines(){
+    vector<grammarLine> result;
+
+    auto dictWordI6 = [](const string& w) -> string {
+        return (w.size() == 1) ? ("'" + w + "//'") : ("'" + w + "'");
+    };
+
+    file.getToken(token::braceOpen);   // outer {
+    token tok = file.getToken();
+    while(tok.isNot(token::braceClose)){
+        tok.assert(token::braceOpen, "Expected '{' to start a grammar line");
+
+        grammarLine line;
+
+        // First token: the verb trigger word — must be a singular dict word
+        token trigger = file.getToken(eTokenType::dictionaryWord);
+        line.verbWord = trigger.value;   // raw word, e.g. "put"
+
+        // Remaining pattern tokens, comma-separated until }
+        tok = file.getToken({token::comma, token::braceClose});
+        while(tok.is(token::comma)){
+            token pt = file.getToken({eTokenType::dictionaryWord, eTokenType::dictionaryWordPlural, eTokenType::identifier, eTokenType::dataType});
+            if(pt.is(eTokenType::dictionaryWord))
+                line.patternTokens.push_back(dictWordI6(pt.value));
+            else if(pt.is(eTokenType::dictionaryWordPlural))
+                line.patternTokens.push_back("'" + pt.value + "/p'");
+            else {
+                // identifier or dataType: check for noun=Routine / scope=Routine forms
+                string tokenStr = pt.value;
+                token next = file.peekToken();
+                if(next.is("=")){
+                    file.getToken();  // consume '='
+                    token routine = file.getToken({eTokenType::identifier, eTokenType::dataType});
+                    // validate: routine must be a declared global function
+                    bool found = false;
+                    for(typeDef* g : languageService.globals)
+                        if(auto* fd = dynamic_cast<functionDef*>(g))
+                            if(fd->name == routine.value){ found = true; break; }
+                    if(!found)
+                        parsingError(format("'{0}' in '{1}={0}' does not name a declared global function", routine.value, pt.value));
+                    tokenStr = pt.value + "=" + routine.value;
+                }
+                line.patternTokens.push_back(tokenStr);
+            }
+            tok = file.getToken({token::comma, token::braceClose});
+        }
+        // tok is now }
+        result.push_back(line);
+
+        // After }, expect , (more lines) or } (end of list)
+        tok = file.getToken({token::comma, token::braceClose});
+        if(tok.is(token::comma))
+            tok = file.getToken();   // either { for next line, or } for end
+    }
+    return result;
+}
 
 bglParser parser;
