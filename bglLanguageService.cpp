@@ -18,6 +18,7 @@ bglLanguageService::bglLanguageService(){
     registerType("var");
     registerType("intliteral");
     registerType("stringliteral");
+    registerType("charliteral");
 }
 bool bglLanguageService::isObjectType(string name){ 
     if(getType(name)==emptyTDef) return false;
@@ -99,6 +100,15 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
     //if(parser.getCurrentCompileContext()==eCompileContext::global&& variableDeclaration.isExternal==false) 
     globals.push_back(&varDef);
     return varDef;
+}
+
+verbDef& bglLanguageService::registerVerb(string name, bool isExternal){
+    verbDef& vd = *(new verbDef());
+    vd.name = name;
+    vd.isExternal = isExternal;
+    verbs.push_back(&vd);
+    if(!isExternal) globals.push_back(&vd);
+    return vd;
 }
 
 string bglLanguageService::getEnumType(string valueName){

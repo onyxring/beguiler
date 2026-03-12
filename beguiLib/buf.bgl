@@ -6,104 +6,11 @@
 //             - _bglBuf object (all buffer manipulation routines)
 //           Included automatically by string.bgl and char.bgl.
 //-----------------------------------------------------------------------------
+#include <char>
 
 #i6 {
 
 Default bglStringDefaultSize 500;   ! default max string length in characters
-
-!------------------------------------------------------------------------------
-! Character utility routines (ported from orUtilChar)
-!------------------------------------------------------------------------------
-
-[ bglCharIsLower c;
-    if(c>='a' && c<='z') rtrue;
-    if((c>=155 && c<=157) || (c>=164 && c<=166)) rtrue; ! diaeresis lower
-    if(c>=169 && c<=174) rtrue;  ! acute lower
-    if(c>=181 && c<=185) rtrue;  ! grave lower
-    if(c>=191 && c<=195) rtrue;  ! circumflex lower
-    if(c==201) rtrue;             ! angstrom lower
-    if(c==203) rtrue;             ! slashed o lower
-    if(c>=205 && c<=207) rtrue;  ! tilde lower
-    if(c==211) rtrue;             ! ae lower
-    if(c==213) rtrue;             ! cedilla lower
-    if(c==215) rtrue;             ! th lower
-    if(c==216) rtrue;             ! eth lower
-    if(c==220) rtrue;             ! oe lower
-    rfalse;
-];
-
-[ bglCharIsUpper c;
-    if(c>='A' && c<='Z') rtrue;
-    if((c>=158 && c<=159) || (c>=167 && c<=168)) rtrue; ! diaeresis upper
-    if(c>=175 && c<=180) rtrue;  ! acute upper
-    if(c>=186 && c<=190) rtrue;  ! grave upper
-    if(c>=196 && c<=200) rtrue;  ! circumflex upper
-    if(c==202) rtrue;             ! angstrom upper
-    if(c==204) rtrue;             ! slashed o upper
-    if(c>=208 && c<=210) rtrue;  ! tilde upper
-    if(c==212) rtrue;             ! ae upper
-    if(c==214) rtrue;             ! cedilla upper
-    if(c==217) rtrue;             ! th upper
-    if(c==218) rtrue;             ! eth upper
-    if(c==221) rtrue;             ! oe upper
-    rfalse;
-];
-
-[ bglCharToLower c;
-    if(bglCharIsUpper(c)==false) return c;
-    if(c<155) return LowerCase(c);
-    if((c>=158 && c<=160) || (c>=167 && c<=168) || (c>=208 && c<=210)) return c-3; ! diaeresis, tilde
-    if(c>=175 && c<=180) return c-6;                      ! acute
-    if((c>=186 && c<=190) || (c>=196 && c<=200)) return c-5; ! circumflex, grave
-    if(c==217 || c==218) return c-2;                      ! th, eth
-    if(c==202 || c==204 || c==212 || c==214 || c==221) return c-1; ! angstrom, slashed o, ae, cedilla, oe
-    return c;
-];
-
-[ bglCharToUpper c;
-    if(bglCharIsLower(c)==false) return c;
-    if(c<155) return UpperCase(c);
-    if((c>=155 && c<=157) || (c>=164 && c<=165) || (c>=205 && c<=207)) return c+3; ! diaeresis, tilde
-    if(c>=169 && c<=174) return c+6;                      ! acute
-    if((c>=181 && c<=185) || (c>=191 && c<=195)) return c+5; ! circumflex, grave
-    if(c==215 || c==216) return c+2;                      ! th, eth
-    if(c==201 || c==203 || c==211 || c==213 || c==220) return c+1; ! angstrom, slashed o, ae, cedilla, oe
-    return c;
-];
-
-[ bglCharIsAlpha c;
-    if(bglCharIsLower(c)) rtrue;
-    if(bglCharIsUpper(c)) rtrue;
-    rfalse;
-];
-
-[ bglCharIsNumeric c;
-    if(c>='0' && c<='9') rtrue;
-    rfalse;
-];
-
-[ bglCharIsAlphaNumeric c;
-    if(bglCharIsAlpha(c)) rtrue;
-    if(bglCharIsNumeric(c)) rtrue;
-    rfalse;
-];
-
-[ bglCharIsVowel c;
-    if(c=='a' or 'e' or 'i' or 'o' or 'u') rtrue;
-    if(c=='A' or 'E' or 'I' or 'O' or 'U') rtrue;
-    rfalse;
-];
-
-[ bglCharIsConsonant c;
-    if(bglCharIsVowel(c)) rfalse;
-    if(bglCharIsAlpha(c)==false) rfalse;
-    rtrue;
-];
-
-[ bglCharIsWhitespace c;
-    if(c==' ' || c==9 || c==10 || c==13) rtrue;  ! space, tab, LF, CR
-    rfalse;
-];
 
 !------------------------------------------------------------------------------
 ! _bglBuf: buffer utility object (ported from orUtilBuf)
