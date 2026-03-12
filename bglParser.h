@@ -43,10 +43,20 @@ class bglParser {
         bool processBeguilerSettings();
         
         bool processObjectDeclaration(token, token, bool);
+        void parsePropertyValue(variableDeclaration& prop, std::string typeName);
+        void processI6InlineMember(objectDef& obj);
+        void processArrayMember(objectDef& obj);
+        void processTypedMember(objectDef& obj, token typeTok);
+        void processMemberMethod(objectDef& obj, token returnType, token name);
+        void processMemberVariable(objectDef& obj, std::string typeName, std::string name, bool hasValue);
+        void processInheritedMember(objectDef& obj, token nameTok);
+        bool processVerbDeclaration(bool isExtern=false);
+        bool processGrammarDeclaration();
+        std::vector<grammarLine> parseGrammarLines();
 
         bool processVariableDeclaration(token, token, token, abstractObject& = emptyContainer, bool = false, bool = false);
         bool processArrayDeclaration(token, token, std::string, token, abstractObject& = emptyContainer, bool = false);
-        bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false);
+        bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false);
         bool processStatement(token, abstractObject& = emptyContainer);
         bool processDirective(token, abstractObject& = emptyContainer);
 
@@ -64,6 +74,8 @@ class bglParser {
         std::map<std::string,std::string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value
         bool evaluateCondition(const std::string& expr);  // evaluates a #if boolean expression
         void skipConditionalBlock(abstractObject& ctx);   // skips tokens until #elif/#else/#endif at depth 0
+
+        std::vector<statement*> pendingInjections;  // pre-statements to emit before next main statement (e.g. from ternary lowering)
 
 };
 
