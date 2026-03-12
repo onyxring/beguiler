@@ -63,9 +63,9 @@ s = "hello";
 
 ---
 
-## 4. `extend class` and `replace` Keywords
+## 4. `extend class` and `replace` for Class Members
 
-The `extend` keyword adds members to a previously defined class without redefining it. Inside an extend block, the `replace` keyword replaces an existing member. A compile error is thrown for duplicate members without `replace`; a warning is issued if `replace` targets a member that does not exist.
+The `extend` keyword adds members to a previously defined class without redefining it. Any member type is supported: emitter functions, non-emitter functions, and variable properties.
 
 ```bgl
 extern class string {
@@ -78,7 +78,28 @@ extend extern class string {
 }
 ```
 
+### `replace` inside `extend class`
+
+The `replace` qualifier is used inside an `extend class` block to replace an existing member. It is **required** when the new member would duplicate an existing one; adding a duplicate without `replace` is a compile error.
+
+- **For functions:** matching is by name and full parameter-type signature (arity + each param type in order). The old entry is removed from the member list and the new one appended.
+- **For variable properties:** matching is by name alone. The old entry is removed and the new one appended.
+- **`replace` on a non-existent member** — issues a compiler warning and adds the member as new (no error).
+- **`replace` outside `extend class`** — compile error.
+
+```bgl
+extend extern class string {
+    // function replace: must match name + param types exactly
+    replace emitter void print() { str.print() }
+
+    // property replace: matches by name
+    replace int capacity = 256;
+}
+```
+
 Note: `extend class` requires the class name as a `dataType` token (already registered), while a plain `class` declaration requires an `identifier` token (not yet registered).
+
+See also: §35 for `replace` applied to global functions (same semantics, different scope).
 
 ---
 
@@ -525,3 +546,193 @@ enum myPhase {
 If a member has `= <integer>` after its name, that value is used directly and the auto-counter continues from there. Members without `=` continue incrementing (or bit-shifting for `bnum`) from the previous value, whether that was auto or explicit.
 
 Only the parser was changed (`processEnumDeclaration` in `bglParser.cpp`). The `enumValueDef` struct and `emitEnum` in `i6Emitter.cpp` were already value-based and required no modification.
+
+---
+
+## 31. Property-Type-Inheritance in Object Bodies
+
+Inside an object body, a property can now be set without repeating the type, provided the property is declared on the base `object` class:
+
+```bgl
+object foyer {
+    string short_name = "Foyer of the Opera House";
+    attributes = {light};    // type inferred from base object class
+}
+```
+
+Previously this required:
+```bgl
+    attributeCollection attributes = {light};
+```
+
+**How it works:**
+- `attributeCollection attributes;` was added to `extern class object` in `system.bgl`, registering `attributes` as a base object property.
+- In `processObjectDeclaration`, when the first token is an `identifier` (not a registered data type), the parser looks up the name in the `object` class's member list to find the type.
+- If found, parsing continues normally using the inherited type — including initializer list type-checking.
+- If not found, a compile error is raised: `'name' is not a property defined on the base object class`.
+
+This extends naturally to any future properties added to `extern class object` in `system.bgl` or library files via `extend extern class object`.
+
+---
+
+## 32. Statement-Level Method Chaining
+
+Method calls can now be chained as a statement: `c.toLower().print()`. Previously only single method calls worked as standalone statements; a trailing `.method()` would cause a parse error.
+
+```bgl
+c.toLower().print();    // toLower() returns char, .print() called on result
+str.trim().print();     // works across any chain of emitter methods
+```
+
+**Implementation:** After parsing the argument list of a method call statement, the parser checks for a trailing `.` or `dictionaryWord` token (after `)`, the lexer classifies `.method` as a single `dictionaryWord` token because `prevTokenType` is `symbol`). Each chained call resolves its method on the return type of the previous call, substitutes `$self` with the fully-resolved body of the accumulated chain, and collapses everything into a single `functionCallStatement`. Chains of arbitrary depth are supported.
+
+---
+
+## 33. `init`/`deinit` Parameter Rule
+
+A compile-time error is now raised if an `emitter init` or `emitter deinit` declares any parameters. These lifecycle emitters are called implicitly by the compiler and cannot accept arguments.
+
+```bgl
+emitter void init(int x) { ... }   // error: Emitter 'init' cannot accept parameters
+emitter void deinit()    { ... }   // ok
+```
+
+---
+
+## 34. Global Function Overload Resolution — Exact Match Priority
+
+The global function overload resolver now uses three priority tiers:
+
+1. **Exact type match** — all param types equal arg types (no conversion needed); first match wins and short-circuits the search.
+2. **Conversion match** — arg is compatible via a `operator()` conversion; recorded but search continues in case an exact match appears later.
+3. **`var` fallback** — overload uses `var` for the matching param.
+
+Previously, only tiers 1 and 3 existed (no separation between exact and conversion matches), so a conversion-compatible overload from a file loaded earlier could shadow an exact-match overload from a file loaded later. This caused `print(str)` (where `str` is `string`) to match `print(stringLiteral str)` via the `emitter stringLiteral operator(){}` conversion, producing empty arg text at emit time.
+
+```bgl
+// system.bgl — loaded first
+emitter void print(stringLiteral str){ print (string)str; }
+emitter void print(string str){ print (string)str; }   // conversion match for string args
+emitter void print(var val){ print val; }              // var fallback
+
+// string.bgl — loaded later (after #include <string>)
+replace emitter void print(string str){ str.print() }  // exact match — now correctly wins
+```
+
+---
+
+## 35. `replace` Qualifier for Global Functions
+
+The `replace` qualifier can precede a global function declaration to patch the body of an already-registered function with the same name and parameter types, rather than adding a new overload.
+
+```bgl
+// In system.bgl:
+emitter void print(string str){ print (string)str; }
+
+// In string.bgl (loaded later via #include <string>):
+replace emitter void print(string str){ str.print() }
+// The existing print(string) entry in globals has its body replaced in-place.
+```
+
+This is used when a library file wants to provide a better implementation of a function that was declared with a placeholder body in `system.bgl`. The replaced entry keeps its original position in the globals list, so emission order is unchanged. A compile error is raised if no matching function is found to replace.
+
+See also: §4 for `replace` applied to class members inside `extend class` (same semantics, different scope).
+
+---
+
+## 36. Ternary `?:` as a General Expression
+
+The `?:` operator can now appear as an argument to a function call or on the RHS of an assignment, not only as a top-level assignment (which was already supported — see §7).
+
+```bgl
+print(cloak.parent() == hook ? "with a cloak hanging on it." : "screwed to the wall.");
+```
+
+**Implementation:** A global scratch variable `_bgl_temp` (declared as `var` in `system.bgl`) is used as a staging register. When `parseExpression` encounters `?` at paren depth 0, it:
+
+1. Captures the already-accumulated condition text
+2. Parses the true-branch (terminated by `:`) and false-branch (terminated by the outer terminator)
+3. Builds a pre-statement: `if (cond) _bgl_temp = trueExpr; else _bgl_temp = falseExpr;`
+4. Queues it in `bglParser::pendingInjections`
+5. Replaces the expression with just `_bgl_temp`, carrying the true-branch's resolved type forward
+
+Before each function-call or assignment statement is pushed to the statement block, any queued injections are drained first, so the pre-statement is emitted immediately before the containing statement:
+
+```inform6
+if (parent(cloak)==hook) _bgl_temp = "with a cloak hanging on it."; else _bgl_temp = "screwed to the wall.";
+print (string)_bgl_temp;
+```
+
+The resolved type carried forward from the true branch drives overload resolution on the containing call (e.g., `print(stringLiteral str)` is selected above, correctly emitting `print (string)_bgl_temp`).
+
+**Known limitations:**
+
+- **Both branches must be the same type.** If one branch is a `stringLiteral` and the other is a `string` object, the two assignments store fundamentally different I6 values into `_bgl_temp` (a packed string address vs. an object handle). Downstream code expecting one will fail on the other. The `emitter stringLiteral operator(){}` conversion declared on `string` is a body-less compatibility declaration — no conversion code is generated — so it cannot bridge this gap in the ternary context. It is theoretically possible to convert a string literal to a string object when the other branch is an object, but this is not currently implemented.
+- **Nested ternaries sharing `_bgl_temp`.** A ternary inside another ternary's condition would overwrite `_bgl_temp` before the outer ternary consumes it. The safe scope is: one ternary per statement.
+- **Ternary as argument to a function that is itself an argument.** The injection mechanism operates at the statement level; ternaries inside a sub-expression that is itself an argument to another call cannot inject a pre-statement. Ternaries must appear as direct arguments to a top-level statement-level call.
+
+---
+
+## 37. `rtrue`/`rfalse` in Void Routines — Compile Error
+
+Using `rtrue` or `rfalse` inside a routine declared with return type `void` is now a compile-time error.
+
+```bgl
+void short_name(){
+    rtrue;   // error: Cannot use 'rtrue' in void routine 'short_name'
+}
+```
+
+---
+
+## 38. Non-Void Routine with No Return — Compile Error
+
+A routine declared with a non-`void` return type that has no `return` statement anywhere in its body (including inside `if`/`while`/`for`/`do`/`switch` branches) is now a compile-time error.
+
+```bgl
+bool check(){
+    // no return statement → error: Non-void routine 'check' has no return statement
+}
+```
+
+The check is performed by a recursive `hasReturn()` helper that walks the entire statement block tree after the body is parsed.
+
+---
+
+## 39. Variable Priority Over Verb Names in Identifier Resolution
+
+When an identifier matches both a declared variable and a verb name, the variable always wins. The verb-name `##VerbName` interpretation is only reached if no variable, parameter, local, or global declaration matches.
+
+This fixes a bug where `score = ##Score + 1;` was incorrectly emitting `##Score = ##Score + 1;` because the verb lookup ran before the variable lookup.
+
+The priority order in `qualifyIdentifier` and `resolveIdentifierType` is:
+1. Function parameters
+2. Local variables (current block)
+3. Enclosing function body locals
+4. Object/class members → `self.name`
+5. Enum values and globals
+6. Verb names (Tier 4, new) — plain name returned; `##` is added only by emitter bodies or switch case emission
+
+---
+
+## 40. `verb` Type — Action Constant Comparisons
+
+A `verb` type class is declared in `system.bgl` with a `==` emitter that correctly generates `##VerbName` for the RHS action constant in comparisons:
+
+```bgl
+extern class verb{
+    emitter eBool operator == (verb v){ $self == ##v }
+}
+```
+
+The `action` library variable is declared as `extern verb action` (changed from `extern const int action`), giving it type `verb` so that comparisons against action constants use the emitter above.
+
+**Emission rules:**
+- `action == Take` → LHS type `verb`, fires `operator ==(verb v)` → `action == ##Take` ✓
+- `switch(action) { case Take: ... }` → case value type `verb` → i6Emitter prepends `##` → `##Take:` ✓
+- `score.go()` → verb identifier used as plain name, no `##` → `scoreSub()` ✓
+- `int == verb` — no emitter defined → compile error ✓
+
+**Switch case type enforcement:** The switch parser validates that case value types match the condition type, with a special exemption that `verb` case values are always permitted (since they resolve to integer action constants compatible with any integer switch condition).
+
+**Implementation:** Verb names resolve to their plain I6 name via `qualifyIdentifier` Tier 4. The `##` prefix is applied only by the `operator ==` emitter body (`##v`) and by the i6Emitter switch case emission path (which prepends `##` when `sc->values[i]->resolvedType == "verb"`). The `verb` type is registered naturally when `extern class verb { ... }` is processed in `system.bgl`, not pre-registered in the language service constructor.

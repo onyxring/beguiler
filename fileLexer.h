@@ -10,7 +10,8 @@ using namespace std;
 
 class fileLexer{
     public:
-        std::stack<std::tuple<std::ifstream*, std::string, int, int>> files; 
+        std::stack<std::tuple<std::ifstream*, std::string, int, int>> files;
+        eTokenType prevTokenType = eTokenType::unknown; // tracks last token returned by getToken()
         
         void open(std::string);
         void close();

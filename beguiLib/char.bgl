@@ -1,32 +1,112 @@
 //-----------------------------------------------------------------------------
-// char.bgl - Beguile char type extension.
-//            Wraps the bglChar* routines (defined in buf.bgl) as Beguile
-//            emitter methods, giving the char type a clean OO interface.
+// char.bgl - A standard Beguile extension for manipulating characters.
+//	Borrows heaviliy from the orLibrary's orUtilChar extension.
+//
 //
 // Usage:
-//   #include <char>   in your .bgl file to activate char support.
-//   (Also pulled in automatically when you #include <string>.)
+//   #include <char> in your .bgl file to activate char support.
 //-----------------------------------------------------------------------------
+#i6{
+	array __vowels string "aeiouAEIOU@:a@:o@:uo@:eo@:io@:y@:A@:O@:U@:E@:I@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~n@~o@~A@~N@~O@ae@AE@et@Et@/o@/O";
 
-#include <buf>
+    object _orChar
+		with isAlpha[c;
+				if(self.isLower(c)) rtrue;
+				if(self.isUpper(c)) rtrue;
+				rfalse;
+			]
+		,	isNumeric[c;
+				if(c>='0' && c<='9') rtrue; rfalse;
+			]
+		,	isAlphaNumeric[c;
+				if(self.isAlpha(c)==true) rtrue;
+				if(self.isNumeric(c)==true) rtrue;
+				rfalse;
+			]
+		,	isVowel[c
+					t;
+				for(t=1:t<=__vowels->0:t++) if(c==__vowels->t) rtrue;
+				rfalse;
+			]
+		,	isConsonant[c;
+				if(self.isVowel(c)==true) rfalse;
+				if(self.isAlpha(c)==false) rfalse;
+				rtrue;
+			]
+		,	isLower[c;
+				if(c>='a' && c<='z') rtrue; 
+				
+				if((c>=155 && c<=157) || (c>=164 && c<=166)) rtrue; !diaeresis +3 (except for 166 which does not convert)
 
-extend extern class char {
+				if(c>=169 && c<=174) rtrue; !acute +6
+				if(c>=181 && c<=185) rtrue; !grave +5
+				if(c>=191 && c<=195) rtrue; !circumflex +5
+				if(c==201) rtrue; ! +1 angstrom
+				if(c==203) rtrue; ! +1 slashed o				
+				if(c>=205 && c<=207) rtrue; !tilde +3
+				if(c==211) rtrue; ! +1 ae
+				if(c==213) rtrue; ! +1 cedilla
+				if(c==215) rtrue; ! +2 th
+				if(c==216) rtrue; ! +2 eth
+				if(c==220) rtrue; ! +1 oe
+
+				rfalse;
+			]
+		,	isUpper[c;
+				if(c>='A' && c<='Z') rtrue; 
+				if((c>=158 && c<=159) || (c>=167 && c<=168)) rtrue; !diaeresis
+				if(c>=175 && c<=180) rtrue; !acute 
+				if(c>=186 && c<=190) rtrue; !grave 
+				if(c>=196 && c<=200) rtrue; !circumflex 
+				if(c==202) rtrue; ! angstrom
+				if(c==204) rtrue; ! slashed o				
+				if(c>=208 && c<=210) rtrue; !tilde 
+				if(c==212) rtrue; ! ae
+				if(c==214) rtrue; ! cedilla
+				if(c==217) rtrue; ! th
+				if(c==218) rtrue; ! eth
+				if(c==221) rtrue; ! oe
+
+				rfalse;
+			]
+		,	toUpper[c;
+				if(self.isLower(c)==false) return c;			
+				if(c<155) return UpperCase(c);
+				
+				if((c>=155 && c<=157) || (c>=164 && c<=165) || (c>=205 && c<=207) ) return c+3; !diaeresis, tilde 			
+				if(c>=169 && c<=174) return c+6; !acute 
+				if((c>=181 && c<=185) || (c>=191 && c<=195)) return c+5; !circumflex, grave 			
+				if(c==215 or 216) return c+2;  ! th, eth
+				if(c==201 or 203 or 211 or 213 or 220) return c+1; !--angrstrom, slashed o, ae, cedilla, oe
+				return c;
+			]
+		,	toLower[c;
+				if(self.isUpper(c)==false) return c; 
+				if(c<155) return LowerCase(c);
+				
+				if((c>=158 && c<=160) || (c>=167 && c<=168) || (c>=208 && c<=210) ) return c-3; !diaeresis, tilde 			
+				if(c>=175 && c<=180) return c-6; !acute 
+				if((c>=186 && c<=190) || (c>=196 && c<=200)) return c-5; !circumflex, grave 			
+				if(c==217 or 218) return c-2;  ! th, eth
+				if(c==202 or 204 or 212 or 214 or 221) return c-1; !--angrstrom, slashed o, ae, cedilla, oe
+				return c;
+			]
+	;
+}
+extend extern class char { //This is "extern" because this type is managed by the compiler and the class should not be declared in the output I6 file.
     // Case inspection
-    emitter eBool isLower()        { bglCharIsLower($self) }
-    emitter eBool isUpper()        { bglCharIsUpper($self) }
-    emitter eBool isAlpha()        { bglCharIsAlpha($self) }
-    emitter eBool isNumeric()      { bglCharIsNumeric($self) }
-    emitter eBool isAlphaNumeric() { bglCharIsAlphaNumeric($self) }
-    emitter eBool isVowel()        { bglCharIsVowel($self) }
-    emitter eBool isConsonant()    { bglCharIsConsonant($self) }
-    emitter eBool isWhitespace()   { bglCharIsWhitespace($self) }
+    emitter eBool isLower()        { _orChar.isLower($self) }
+    emitter eBool isUpper()        { _orChar.isUpper($self) }
+    emitter eBool isAlpha()        { _orChar.isAlpha($self) }
+    emitter eBool isNumeric()      { _orChar.isNumeric($self) }
+    emitter eBool isAlphaNumeric() { _orChar.isAlphaNumeric($self) }
+    emitter eBool isVowel()        { _orChar.isVowel($self) }
+    emitter eBool isConsonant()    { _orChar.isConsonant($self) }
+    emitter eBool isWhitespace()   { _orChar.isWhitespace($self) }
 
     // Case conversion — return the converted character value
-    emitter char toLower() { bglCharToLower($self) }
-    emitter char toUpper() { bglCharToUpper($self) }
-
-    // Print the character
-    emitter void print() { print (char)$self; }
+    emitter char toLower() { _orChar.toLower($self) }
+    emitter char toUpper() { _orChar.toUpper($self) }
 
     // Assignment and equality from int/intLiteral (char is an integer at I6 level)
     emitter char operator = (intLiteral v) { $self=v; }
