@@ -315,8 +315,9 @@ token fileLexer::getToken(){
                 token word = getBasicToken(true);
                 transform(word.value.begin(), word.value.end(), word.value.begin(), ::tolower);
                 retval.value = word.value;
-                retval.tokenType = eTokenType::dictionaryWordPlural;
-                prevTokenType = eTokenType::dictionaryWordPlural;
+                retval.tokenType = eTokenType::dictionaryWord;
+                retval.isPlural = true;
+                prevTokenType = eTokenType::dictionaryWord;
                 return retval;
             }
             currentStream()->seekg(savepos); // not a plural dict word; restore stream
@@ -325,6 +326,7 @@ token fileLexer::getToken(){
             transform(word.value.begin(), word.value.end(), word.value.begin(), ::tolower);
             retval.value = word.value;
             retval.tokenType = eTokenType::dictionaryWord;
+            retval.isPlural = false;
             prevTokenType = eTokenType::dictionaryWord;
             return retval;
         }

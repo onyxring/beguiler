@@ -6,6 +6,7 @@
 //             - _bglBuf object (all buffer manipulation routines)
 //           Included automatically by string.bgl and char.bgl.
 //-----------------------------------------------------------------------------
+#once
 #include <char>
 
 #i6 {

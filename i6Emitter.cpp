@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 #include "i6Emitter.h"
 #include "bglParser.h"
@@ -13,6 +14,164 @@ using namespace std;
 void i6Emitter::to(ostream& strm){
     out.std::ios::rdbuf(strm.rdbuf());
 }
+
+// Load built-in I6 templates from beguilib/_builtins.i6b.
+// Format: [templateName $param1 $param2 ...] on its own line, then body lines.
+// Lines starting with // are comments; blank template headers are skipped.
+void i6Emitter::loadBuiltinTemplates(string path){
+    ifstream f(path);
+    if(!f.is_open()) return;
+
+    string currentName;
+    vector<string> currentParams;
+    string currentBody;
+
+    auto flush = [&](){
+        if(!currentName.empty())
+            builtinTemplates[currentName] = {currentParams, currentBody};
+        currentName = "";
+        currentParams.clear();
+        currentBody = "";
+    };
+
+    string line;
+    while(getline(f, line)){
+        // strip trailing CR/spaces
+        while(!line.empty() && (line.back()=='\r'||line.back()==' '||line.back()=='\t'))
+            line.pop_back();
+        // skip comment lines
+        if(line.size()>=2 && line[0]=='/' && line[1]=='/') continue;
+        // template header: [name $p1 $p2 ...]
+        if(!line.empty() && line[0]=='['){
+            flush();
+            size_t end = line.find(']');
+            if(end==string::npos) continue;
+            istringstream ss(line.substr(1, end-1));
+            string word; bool first=true;
+            while(ss >> word){
+                if(first){ currentName=word; first=false; }
+                else if(!word.empty() && word[0]=='$')
+                    currentParams.push_back(word.substr(1));
+            }
+            continue;
+        }
+        if(!currentName.empty()) currentBody += line + "\n";
+    }
+    flush();
+}
+
+// Emit a named built-in template with $param substitution and indentation applied.
+void i6Emitter::applyTemplate(string name, map<string,string> args, string indent){
+    auto it = builtinTemplates.find(name);
+    if(it == builtinTemplates.end()){
+        out << indent << "! [missing builtin template: " << name << "]\n";
+        return;
+    }
+    string body = it->second.second;
+    // substitute $param tokens (word-boundary aware)
+    for(auto& [param, val] : args){
+        string from = "$" + param;
+        size_t pos = 0;
+        while((pos = body.find(from, pos)) != string::npos){
+            bool leftOk  = pos==0 || !(isalnum(body[pos-1]) || body[pos-1]=='_');
+            bool rightOk = pos+from.size()>=body.size() || !(isalnum(body[pos+from.size()]) || body[pos+from.size()]=='_');
+            if(leftOk && rightOk){ body.replace(pos, from.size(), val); pos+=val.size(); }
+            else pos+=from.size();
+        }
+    }
+    // emit each non-blank line with indent prefix
+    istringstream ss(body);
+    string line;
+    while(getline(ss, line)){
+        if(line.empty() || line.find_first_not_of(" \t")==string::npos) continue;
+        out << indent << line << "\n";
+    }
+}
+
+// Static word-boundary replacement (also used in emitStatement via call instead of lambda)
+string i6Emitter::replaceWord(string str, const string& from, const string& to){
+    size_t pos=0;
+    while((pos=str.find(from,pos))!=string::npos){
+        bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
+        bool rightOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
+        if(leftOk && rightOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
+        else pos+=from.size();
+    }
+    return str;
+}
+
+// Resolve whether the named target is a Z-machine variant
+static bool isZTarget(const string& t){ return t=="z3"||t=="z5"||t=="z8"; }
+
+// Check if a function would overflow Z-machine's 15-local limit (needs _bglFrm slot too → 14)
+// Returns true if the function needs the frame pool (body locals overflow I6's 14-slot limit).
+// Param overflow (>5 params) is handled separately via _bglXPn globals.
+bool i6Emitter::funcNeedsSpill(functionDef* fd){
+    if(!isZTarget(currentTarget)) return false;
+    int effectiveParams = min((int)fd->params.size(), 5);
+    statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
+    int locals = 0;
+    if(body) for(statement* s : body->statements)
+        if(dynamic_cast<variableDeclaration*>(s)) locals++;
+    return (effectiveParams + locals) > 14;
+}
+
+// Build spill map for fd:
+//   - excess params  (params[5+])  → _bglXPn globals
+//   - overflow body locals          → _bglFrm-->N frame slots
+void i6Emitter::buildSpillMap(functionDef* fd){
+    clearSpillMap();
+    if(!isZTarget(currentTarget)) return;
+    const int maxParams = 5;
+    // Map excess params to _bglXPn globals
+    for(int i = maxParams; i < (int)fd->params.size(); i++)
+        currentSpillAliases[fd->params[i]->name] = format("_bglXP{0}", i - maxParams);
+    // Count only the params that fit in I6 locals
+    int effectiveParams = min((int)fd->params.size(), maxParams);
+    statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
+    vector<variableDeclaration*> locals;
+    if(body) for(statement* s : body->statements)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(s)) locals.push_back(vd);
+    int total = effectiveParams + (int)locals.size();
+    if(total <= 14) return;
+    int excess = total - 14;
+    for(int i = (int)locals.size() - excess; i < (int)locals.size(); i++)
+        currentSpillAliases[locals[i]->name] = format("_bglFrm-->{0}", currentSpillCount++);
+}
+
+void i6Emitter::clearSpillMap(){
+    currentSpillAliases.clear();
+    currentSpillCount = 0;
+}
+
+// Like expr->text() but substitutes spilled variable names token-by-token
+string i6Emitter::exprText(expression* expr){
+    if(!expr) return "";
+    if(currentSpillAliases.empty()) return expr->text();
+    string result;
+    for(const string& t : expr->tokens){
+        string tok = (t=="!=") ? "~=" : t;
+        auto it = currentSpillAliases.find(tok);
+        result += (it != currentSpillAliases.end()) ? it->second : tok;
+    }
+    return result;
+}
+
+// Single name lookup — returns alias if spilled, else the name unchanged
+string i6Emitter::spillName(const string& name){
+    auto it = currentSpillAliases.find(name);
+    return (it != currentSpillAliases.end()) ? it->second : name;
+}
+
+// Word-boundary substitution of all spill aliases in a raw string (for initText/incrementText)
+string i6Emitter::spillWord(const string& text){
+    if(currentSpillAliases.empty()) return text;
+    string result = text;
+    for(auto& [from, to] : currentSpillAliases)
+        result = replaceWord(result, from, to);
+    return result;
+}
+
 int i6Emitter::currentLine(){
     const string& s = out.str();
     return (int)count(s.begin(), s.end(), '\n') + 1;
@@ -25,14 +184,47 @@ void i6Emitter::writeSourceMap(const string& path){
 }
 void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Pass 1: emit ICL !% directives at the very top (Inform reads these before parsing)
+    // Also capture currentTarget (lowercase) for spill decisions later.
     for(typeDef* node : nodeList)
-        if(typeid(*node) == typeid(beguilerSettingsDef))
-            emitICL((beguilerSettingsDef*)node);
+        if(typeid(*node) == typeid(beguilerSettingsDef)){
+            auto* cfg = (beguilerSettingsDef*)node;
+            emitICL(cfg);
+            currentTarget = cfg->target;
+            for(char& c : currentTarget) c = (char)tolower(c);
+            framePoolSize = cfg->framePoolSize;
+        }
 
-    // Pass 2: emit Story/Headline constants from beguilerSettings
+    // Pass 2: emit any settings-derived constants
     for(typeDef* node : nodeList)
         if(typeid(*node) == typeid(beguilerSettingsDef))
             emitSettingsConstants((beguilerSettingsDef*)node);
+
+    // Pass 2b: if Z-machine target, scan all functions/methods for spill and XP needs.
+    if(isZTarget(currentTarget)){
+        bool needsPool = false;
+        int maxXP = 0;
+        auto scanFd = [&](functionDef* fd){
+            if(fd->isEmitter || fd->isExternal) return;
+            if(funcNeedsSpill(fd)) needsPool = true;
+            maxXP = max(maxXP, max(0, (int)fd->params.size() - 5));
+        };
+        for(typeDef* node : nodeList){
+            if(auto* fd = dynamic_cast<functionDef*>(node)) scanFd(fd);
+            else if(auto* cd = dynamic_cast<classDef*>(node))
+                for(typeMember* m : cd->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m)) scanFd(fd);
+            else if(auto* obj = dynamic_cast<objectDef*>(node))
+                for(typeMember* m : obj->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m)) scanFd(fd);
+        }
+        if(needsPool){
+            applyTemplate("framePool", {{"size", to_string(framePoolSize)}}, "");
+            frameAllocEmitted = true;
+        }
+        for(int i = 0; i < maxXP; i++)
+            out << format("Global _bglXP{0};\n", i);
+        xpGlobalsNeeded = maxXP;
+    }
 
     // Pass 3: emit everything else
     for(typeDef* node : nodeList)
@@ -82,13 +274,13 @@ void i6Emitter::emitEnum(enumDef* enumNode){
         out<<format("constant _{0}_{1} = {2};\n", enumNode->name, val->name, val->value);    
 }
 void i6Emitter::emitClass(classDef* classNode){
-    if(classNode->isExternal) return;
+    if(classNode->isExternal || classNode->isEmitterClass) return;
 
-    out << format("class {0}\n", classNode->name);
+    out << format("class {0}\n", classNode->i6Name());
 
     if(classNode->baseClasses.size() > 0){
         out << "  class";
-        for(classDef* base : classNode->baseClasses) out << format(" {0}", base->name);
+        for(classDef* base : classNode->baseClasses) out << format(" {0}", base->i6Name());
         out << "\n";
     }
 
@@ -113,19 +305,29 @@ void i6Emitter::emitClass(classDef* classNode){
                 out << sep << "\n";
             }
             else if(auto* fd = dynamic_cast<functionDef*>(m)){
+                buildSpillMap(fd);
                 out << format("    {0}[", fd->name);
                 string sp;
-                for(paramDef* p : fd->params) { out << sp << p->name; sp=" "; }
+                for(paramDef* p : fd->params)
+                    if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
+                        { out << sp << p->name; sp=" "; }
                 statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
                 if(body != nullptr)
                     for(statement* s : body->statements)
-                        if(typeid(*s) == typeid(variableDeclaration))
-                            { out << sp << ((variableDeclaration*)s)->name; sp=" "; }
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                            if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
+                                { out << sp << vd->name; sp=" "; }
+                if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
                 out << ";\n";
+                if(currentSpillCount > 0)
+                    out << format("        _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
                 if(body != nullptr)
                     for(statement* s : body->statements)
                         emitStatement(s, "        ");
+                if(currentSpillCount > 0)
+                    out << format("        _bglFrameFree({0});\n", currentSpillCount);
                 out << "    ]" << sep << "\n";
+                clearSpillMap();
             }
         }
     }
@@ -143,19 +345,25 @@ void i6Emitter::emitMember(typeMember* member){
 }
 void i6Emitter::emitFunction(functionDef* funcNode){
     if(funcNode->isEmitter || funcNode->isExternal) return;
+    buildSpillMap(funcNode);
     if(!funcNode->src.file.empty())
         sourceMap.push_back({currentLine(), funcNode->src.file, funcNode->src.line});
     out << format("[{0}", funcNode->name);
     for(paramDef* param : funcNode->params)
-        out << format(" {0}", param->name);
+        if(currentSpillAliases.find(param->name) == currentSpillAliases.end())
+            out << format(" {0}", param->name);
 
     statementBlock* body = dynamic_cast<statementBlock*>(funcNode->body);
     if(body != nullptr){
         for(statement* stmt : body->statements)
-            if(typeid(*stmt) == typeid(variableDeclaration))
-                out << format(" {0}", ((variableDeclaration*)stmt)->name);
+            if(auto* vd = dynamic_cast<variableDeclaration*>(stmt))
+                if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
+                    out << format(" {0}", vd->name);
     }
+    if(currentSpillCount > 0) out << " _bglFrm";
     out << ";\n";
+    if(currentSpillCount > 0)
+        out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
 
     currentCleanups = funcNode->cleanups.empty() ? nullptr : &funcNode->cleanups;
     if(body != nullptr)
@@ -168,25 +376,18 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     if(currentCleanups != nullptr)
         for(auto& [varName, body] : *currentCleanups)
             out << "    " << body << "\n";
+    if(currentSpillCount > 0)
+        out << format("    _bglFrameFree({0});\n", currentSpillCount);
     currentCleanups = nullptr;
+    clearSpillMap();
     out << "];\n";
 }
 void i6Emitter::emitStatement(statement* stmt, string indent){
-    auto replaceWord=[](string str, const string& from, const string& to){
-        size_t pos=0;
-        while((pos=str.find(from,pos))!=string::npos){
-            bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
-            bool rightOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
-            if(leftOk && rightOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
-            else pos+=from.size();
-        }
-        return str;
-    };
-
     if(typeid(*stmt) == typeid(variableDeclaration)){
         variableDeclaration* var = (variableDeclaration*)stmt;
+        // spilled vars have no I6 local slot — only emit the initializer assignment if they have one
         if(var->declaredExpressionValue != nullptr && !var->declaredExpressionValue->text().empty())
-            out << format("{0}{1} = {2};\n", indent, var->name, var->declaredExpressionValue->text());
+            out << format("{0}{1} = {2};\n", indent, spillName(var->name), exprText(var->declaredExpressionValue));
     }
     else if(typeid(*stmt) == typeid(assignmentStatement)){
         assignmentStatement* assign = (assignmentStatement*)stmt;
@@ -194,12 +395,12 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             string b = assign->emitterBody;
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
-            b=replaceWord(b,"$self", assign->emitterSelf.empty() ? assign->variableLeft : assign->emitterSelf);
-            b=replaceWord(b,assign->emitterParam, assign->assignedExpression != nullptr ? assign->assignedExpression->text() : "");
-            while(!b.empty() && b.back()==';') b.pop_back(); // strip body-trailing ';' before we add our own
+            b=replaceWord(b,"$self", assign->emitterSelf.empty() ? spillName(assign->variableLeft) : spillName(assign->emitterSelf));
+            b=replaceWord(b,assign->emitterParam, assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "");
+            while(!b.empty() && b.back()==';') b.pop_back();
             out << indent << b << ";\n";
         } else {
-            out << format("{0}{1} = {2};\n", indent, assign->variableLeft, assign->assignedExpression != nullptr ? assign->assignedExpression->text() : "");
+            out << format("{0}{1} = {2};\n", indent, spillName(assign->variableLeft), assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "");
         }
     }
     else if(typeid(*stmt) == typeid(returnStatement)){
@@ -208,10 +409,12 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         if(currentCleanups != nullptr)
             for(auto& [varName, body] : *currentCleanups)
                 out << indent << body << "\n";
+        if(currentSpillCount > 0)
+            out << format("{0}_bglFrameFree({1});\n", indent, currentSpillCount);
         if(ret->returnExpression == "rtrue" || ret->returnExpression == "rfalse")
             out << format("{0}{1};\n", indent, ret->returnExpression);
         else if(ret->returnExpression != "")
-            out << format("{0}return {1};\n", indent, ret->returnExpression);
+            out << format("{0}return {1};\n", indent, spillWord(ret->returnExpression));
         else
             out << indent << "return;\n";
     }
@@ -222,21 +425,25 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
             for(size_t i=0; i<call->emitterParams.size() && i<call->args.size(); i++)
-                b=replaceWord(b, call->emitterParams[i], call->args[i]->text());
-            while(!b.empty() && b.back()==';') b.pop_back(); // strip body-trailing ';' before we add our own
+                b=replaceWord(b, call->emitterParams[i], exprText(call->args[i]));
+            while(!b.empty() && b.back()==';') b.pop_back();
             out << indent << b << ";\n";
         } else {
-            out << indent << call->functionName << token::parenOpen;
-            for(size_t i=0; i<call->args.size(); i++){
+            // On Z-machine, args beyond the 5th are passed via _bglXPn globals
+            size_t maxDirectArgs = (isZTarget(currentTarget) && call->args.size() > 5) ? 5 : call->args.size();
+            for(size_t i = maxDirectArgs; i < call->args.size(); i++)
+                out << format("{0}_bglXP{1} = {2};\n", indent, i - 5, exprText(call->args[i]));
+            out << indent << spillWord(call->functionName) << token::parenOpen;
+            for(size_t i = 0; i < maxDirectArgs; i++){
                 if(i>0) out << ", ";
-                out << call->args[i]->text();
+                out << exprText(call->args[i]);
             }
             out << token::parenClose << ";\n";
         }
     }
     else if(typeid(*stmt) == typeid(ifStatement)){
         ifStatement* ifNode = (ifStatement*)stmt;
-        out << indent << "if (" << (ifNode->condition != nullptr ? ifNode->condition->text() : "") << ") {\n";
+        out << indent << "if (" << (ifNode->condition != nullptr ? exprText(ifNode->condition) : "") << ") {\n";
         if(ifNode->thenBlock != nullptr)
             for(statement* s : ifNode->thenBlock->statements)
                 emitStatement(s, indent + "    ");
@@ -250,7 +457,7 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     }
     else if(typeid(*stmt) == typeid(doStatement)){
         doStatement* doNode = (doStatement*)stmt;
-        string cond = doNode->condition != nullptr ? doNode->condition->text() : "";
+        string cond = doNode->condition != nullptr ? exprText(doNode->condition) : "";
         out << indent << "do {\n";
         if(doNode->body != nullptr)
             for(statement* s : doNode->body->statements)
@@ -263,7 +470,7 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     }
     else if(typeid(*stmt) == typeid(whileStatement)){
         whileStatement* whileNode = (whileStatement*)stmt;
-        out << indent << "while (" << (whileNode->condition != nullptr ? whileNode->condition->text() : "") << ") {\n";
+        out << indent << "while (" << (whileNode->condition != nullptr ? exprText(whileNode->condition) : "") << ") {\n";
         if(whileNode->body != nullptr)
             for(statement* s : whileNode->body->statements)
                 emitStatement(s, indent + "    ");
@@ -271,17 +478,27 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     }
     else if(typeid(*stmt) == typeid(forStatement)){
         forStatement* forNode = (forStatement*)stmt;
-        out << indent << "for (" << forNode->initText << " : ";
-        out << (forNode->condition != nullptr ? forNode->condition->text() : "") << " : ";
-        out << forNode->incrementText << ") {\n";
+        out << indent << "for (" << spillWord(forNode->initText) << " : ";
+        out << (forNode->condition != nullptr ? exprText(forNode->condition) : "") << " : ";
+        out << spillWord(forNode->incrementText) << ") {\n";
         if(forNode->body != nullptr)
             for(statement* s : forNode->body->statements)
                 emitStatement(s, indent + "    ");
         out << indent << "}\n";
     }
+    else if(typeid(*stmt) == typeid(forInStatement)){
+        forInStatement* fi = (forInStatement*)stmt;
+        applyTemplate("forIn.open",
+            {{"counter", spillName(fi->counterVar)}, {"array", spillName(fi->arrayVar)}, {"element", spillName(fi->elementVar)}},
+            indent);
+        if(fi->body != nullptr)
+            for(statement* s : fi->body->statements)
+                emitStatement(s, indent + "    ");
+        applyTemplate("forIn.close", {}, indent);
+    }
     else if(typeid(*stmt) == typeid(switchStatement)){
         switchStatement* sw = (switchStatement*)stmt;
-        out << indent << "switch (" << (sw->condition != nullptr ? sw->condition->text() : "") << ") {\n";
+        out << indent << "switch (" << (sw->condition != nullptr ? exprText(sw->condition) : "") << ") {\n";
         for(switchCase* sc : sw->cases){
             if(!sc->values.empty()){
                 out << indent << "    ";
@@ -338,8 +555,11 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         return;
     }
     bool isObject = dynamic_cast<objectDef*>(&languageService.getType(varNode->type.name)) != nullptr;
-    if(isObject)
-        out<<format("{0} {1}", varNode->type.name, varNode->name);
+    if(isObject){
+        string typeName = varNode->type.name;
+        if(auto* cd = dynamic_cast<classDef*>(&languageService.getType(typeName))) typeName = cd->i6Name();
+        out<<format("{0} {1}", typeName, varNode->name);
+    }
     else
         out<<format("Global {0}", varNode->name);
     if(varNode->declaredExpressionValue != nullptr)
@@ -390,16 +610,30 @@ void i6Emitter::emitObject(objectDef* obj){
                 if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
                 first = false;
             } else if(auto* fd = dynamic_cast<functionDef*>(m)){
+                buildSpillMap(fd);
                 out << (first ? "  with " : ",\n       ");
                 out << fd->name << " [";
-                // emit params as I6 locals
-                for(paramDef* p : fd->params) out << " " << p->name;
-                out << ";\n";
+                string sp;
+                for(paramDef* p : fd->params)
+                    if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
+                        { out << sp << p->name; sp=" "; }
                 statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
                 if(body)
                     for(statement* s : body->statements)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                            if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
+                                { out << sp << vd->name; sp=" "; }
+                if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
+                out << ";\n";
+                if(currentSpillCount > 0)
+                    out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+                if(body)
+                    for(statement* s : body->statements)
                         emitStatement(s, "    ");
+                if(currentSpillCount > 0)
+                    out << format("    _bglFrameFree({0});\n", currentSpillCount);
                 out << "  ]";
+                clearSpillMap();
                 first = false;
             } else if(auto* raw = dynamic_cast<i6RawNode*>(m)){
                 // raw i6 property block — emitted verbatim inside 'with'

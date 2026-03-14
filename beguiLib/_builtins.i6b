@@ -1,0 +1,53 @@
+// Built-in I6 code templates for the Beguile transpiler.
+// These are NOT part of the user-facing Beguile language.
+//
+// Format: [templateName $param1 $param2 ...]  followed by template lines.
+// Parameters use $name substitution, consistent with emitter syntax.
+// Lines starting with // are comments and are ignored.
+//
+// Edit this file to change how Beguile generates I6 for built-in constructs.
+// The transpiler must be restarted (but not recompiled) to pick up changes.
+
+// ---------------------------------------------------------------------------
+// Z-machine frame pool: emitted once when any function overflows 14 locals.
+//
+//   $size  — pool slot count (configurable via beguilerSettings framePoolSize)
+//
+// Routines use _bglFrameAlloc(n) to claim n slots from the pool and
+// _bglFrameFree(n) to release them.  Pool exhaustion prints an error and quits.
+// ---------------------------------------------------------------------------
+
+[framePool $size]
+Array _bglFramePool --> $size;
+Global _bglFrameTop = 0;
+ [ _bglFrameAlloc size r;
+    if (_bglFrameTop + size > $size) {
+        print "^[Beguile runtime error: frame pool exhausted]^";
+        quit;
+    }
+    r = _bglFrameTop;
+    _bglFrameTop = _bglFrameTop + size;
+    return _bglFramePool + (r * 2);
+ ];
+ [ _bglFrameFree size;
+    _bglFrameTop = _bglFrameTop - size;
+ ];
+
+// ---------------------------------------------------------------------------
+// for-in loop:  for(TYPE item in array) { }
+//
+//   $counter  — unique loop index variable (e.g. _bglfi0)
+//   $array    — name of the array being iterated
+//   $element  — iteration variable receiving each element
+//
+// forIn.open  is emitted before the body statements.
+// forIn.close is emitted after  the body statements.
+// ---------------------------------------------------------------------------
+
+[forIn.open $counter $array $element]
+$counter = 0;
+for (: $counter < arrayHelper.length($array, 0) : $counter++) {
+    $element = arrayHelper.get($array, 0, $counter);
+
+[forIn.close]
+}
