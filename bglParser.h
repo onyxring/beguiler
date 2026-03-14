@@ -4,6 +4,7 @@
 #include <deque>
 #include <set>
 #include <map>
+#include <functional>
 
 #include "types.h"
 #include "helpers.h"
@@ -32,13 +33,17 @@ class bglParser {
     private:
         std::deque<eCompileLanguage> compileLanguageStack;   //of course, these aren't really stacks, but we use them that way
         std::deque<eCompileContext> compileContextStack;
-        std::set<std::string> loadedFiles;  // tracks absolute paths of already-loaded files (include guard)
+        std::set<std::string> onceFiles;    // absolute paths of files that declared #once
+        int includeDepth = 0;               // current include nesting depth
+        static constexpr int maxIncludeDepth = 255;
+        int forInCounter = 0;               // counter for unique _bglfiN variable names
+        int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
 
-        bool processNextStatement(abstractObject& =emptyContainer); 
+        bool processNextStatement(abstractObject& =emptyContainer);
         //bool processDataType(token);
         bool processParameterList(functionDef&);
 
-        bool processClassDeclaration(token, bool, bool isExtend=false);
+        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false);
         bool processEnumDeclaration(token, bool);
         bool processBeguilerSettings();
         
@@ -54,6 +59,9 @@ class bglParser {
         bool processGrammarDeclaration();
         std::vector<grammarLine> parseGrammarLines();
 
+        string parseFuncType();             // reads <ReturnType,ParamType,...> from stream; returns "func<...>"
+        string parseLambdaExpr(functionDef* func, statementBlock* body);  // parses lambda, lifts to global, returns lifted name
+
         bool processVariableDeclaration(token, token, token, abstractObject& = emptyContainer, bool = false, bool = false);
         bool processArrayDeclaration(token, token, std::string, token, abstractObject& = emptyContainer, bool = false);
         bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false);
@@ -61,6 +69,7 @@ class bglParser {
         bool processDirective(token, abstractObject& = emptyContainer);
 
         expression* parseExpression(token firstToken, std::vector<std::string> terminators, functionDef* func, statementBlock* body);
+        typeMember* findMemberInHierarchy(classDef* cls, std::function<bool(typeMember*)> pred);
         std::string resolveIdentifierType(std::string name, functionDef* func, statementBlock* body);
         std::string resolvePathType(std::string path, functionDef* func, statementBlock* body);
         std::string qualifyIdentifier(std::string name, functionDef* func, statementBlock* body);

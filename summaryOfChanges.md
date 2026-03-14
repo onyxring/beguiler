@@ -673,15 +673,19 @@ The resolved type carried forward from the true branch drives overload resolutio
 
 ---
 
-## 37. `rtrue`/`rfalse` in Void Routines — Compile Error
+## 37. Returning a Value from a Void Routine — Compile Error
 
-Using `rtrue` or `rfalse` inside a routine declared with return type `void` is now a compile-time error.
+Any attempt to return a value from a `void` routine is a compile-time error. This covers all three forms:
 
 ```bgl
 void short_name(){
-    rtrue;   // error: Cannot use 'rtrue' in void routine 'short_name'
+    rtrue;            // error: Cannot use 'rtrue' in void routine 'short_name'
+    rfalse;           // error: Cannot use 'rfalse' in void routine 'short_name'
+    return someVal;   // error: Cannot return a value from void routine 'short_name'
 }
 ```
+
+A bare `return;` (no value) is still permitted in void routines.
 
 ---
 
@@ -736,3 +740,132 @@ The `action` library variable is declared as `extern verb action` (changed from 
 **Switch case type enforcement:** The switch parser validates that case value types match the condition type, with a special exemption that `verb` case values are always permitted (since they resolve to integer action constants compatible with any integer switch condition).
 
 **Implementation:** Verb names resolve to their plain I6 name via `qualifyIdentifier` Tier 4. The `##` prefix is applied only by the `operator ==` emitter body (`##v`) and by the i6Emitter switch case emission path (which prepends `##` when `sc->values[i]->resolvedType == "verb"`). The `verb` type is registered naturally when `extern class verb { ... }` is processed in `system.bgl`, not pre-registered in the language service constructor.
+
+---
+
+## 41. `break` and `continue`
+
+`break` and `continue` are valid statements inside `while`, `for`, `do-while`, and `switch` bodies.
+
+```bgl
+while(n < 10){
+    if(n == 5) break;
+    if(n == 3) continue;
+    n++;
+}
+```
+
+`break` exits the enclosing loop or switch immediately. `continue` skips the remainder of the current loop iteration and re-evaluates the loop condition. Both require a terminating semicolon.
+
+---
+
+## 42. Compound Assignment Operators
+
+The compound assignment operators `+=`, `-=`, `*=`, `/=`, `%=`, `|=`, and `&=` are supported as statements.
+
+```bgl
+n += 2;
+score -= penalty;
+```
+
+**Emitter override:** If the LHS variable's type defines a matching emitter for the operator, that emitter body is used, with `$self` substituted for the LHS variable and the parameter name substituted for the RHS expression. This is the same mechanism as `operator =`.
+
+```bgl
+extern class score {
+    emitter score operator += (int v){ $self = $self + v }
+}
+```
+
+**Fallback:** If no emitter is defined, the compound form is expanded to its equivalent simple assignment, since I6 does not natively support compound assignment operators:
+
+```
+n += 2        →   n = n + 2;
+score -= pen  →   score = score - pen;
+```
+
+---
+
+## 43. Increment and Decrement Operators
+
+The `++` and `--` operators are supported as standalone statements in both postfix and prefix forms.
+
+```bgl
+n++;   // postfix increment
+n--;   // postfix decrement
+++n;   // prefix increment
+--n;   // prefix decrement
+```
+
+**Emitter override:** A type may define separate emitters for the postfix and prefix forms. The operator name used when declaring the emitter distinguishes them:
+
+| Form | Emitter name |
+|---|---|
+| `n++` | `operator ++` |
+| `n--` | `operator --` |
+| `++n` | `operator prefix++` |
+| `--n` | `operator prefix--` |
+
+Example:
+
+```bgl
+extern class counter {
+    emitter counter operator ++      (){ $self + 1 }
+    emitter counter operator prefix++(){ $self + 1 }
+}
+```
+
+**Fallback:** If no emitter is defined for the form used, the statement is emitted directly to I6 as `n++;`, `--n;`, etc.
+
+---
+
+## 44. `null` Keyword
+
+`null` is a reserved keyword representing the null object reference. It maps to the I6 value `nothing`.
+
+```bgl
+object o = null;
+if(parent(o) == null) print("no parent");
+```
+
+`null` has the resolved type `object`, allowing it to be used anywhere an object-typed value is expected without a type error. It cannot be used as an integer or string value.
+
+---
+
+## 45. Implicit Type Conversion at Assignment
+
+When assigning a value of type `A` to a variable of type `B`, the compiler applies implicit conversion using the following priority:
+
+1. **LHS `operator =`** — if type `B` defines `emitter B operator = (A v){ ... }`, that emitter is used.
+2. **RHS `operator()`** — if type `A` defines `emitter B operator(){ ... }` (a no-parameter conversion operator returning `B`), the RHS expression is rewritten using that emitter body with `$self` substituted, and a plain assignment is emitted.
+3. **Error** — if neither applies, a compile-time type mismatch error is reported.
+
+This applies to both assignment statements (`x = expr;`) and variable declaration initialisers (`B x = expr;`).
+
+```bgl
+extern class celsius {
+    emitter fahrenheit operator(){ $self * 9 / 5 + 32 }
+}
+
+fahrenheit f = someTemp;   // fires celsius.operator() if someTemp is celsius
+f = anotherTemp;           // same rule applies to plain assignment
+```
+
+The LHS `operator =` always takes precedence over the RHS `operator()`. Implicit conversion also applies to function call arguments (unchanged from prior behaviour). The priority is consistent across all three contexts.
+
+---
+
+## 46. Global Variable Shadowing — Prohibited
+
+A local variable declared inside a routine **may not share a name with any global variable**. If a local declaration would shadow a global of the same name, the compiler reports a compile-time error and halts translation.
+
+```bgl
+global int score = 0;
+
+routine foo(){
+    int score = 5;   // ERROR: local 'score' shadows global variable of the same name
+}
+```
+
+**Rationale:** Because Beguile compiles to I6, and I6 provides no syntax to access a global variable that has been shadowed by a local, the Beguile compiler disallows the condition entirely. Rename the local variable to avoid the conflict.
+
+This restriction applies to variable declarations inside routines, methods, and emitters. It does not apply to function parameters, which are handled separately (see §10).

@@ -35,17 +35,20 @@ class typeMember:virtual public abstractObject{
     public:        
 };
 
-//class definitions 
+//class definitions
 class classDef:public typeDef{
     public:
+        sourceLocation src;
+        std::string alias;           // I6 name used in emitted output; empty = use `name`
+        bool isEmitterClass = false; // true for 'emitter class': no I6 backing, emitter members only
+        std::string i6Name() const { return alias.empty() ? name : alias; }
         vector<typeMember*> members;
         vector<classDef*> baseClasses;
-
-        //void registerNewMember(typeMember);
 };
 //instances of classes, including overrides
 class objectDef: public typeDef{
     public:
+        sourceLocation src;
         vector<typeDef*> baseClasses;
         vector<typeMember*> members;
 };
@@ -163,7 +166,8 @@ class enumValueDef:public abstractObject{
 //the declaration of an enum type
 class enumDef:public typeDef{
     public:
-        vector<enumValueDef*> namedValues;        
+        sourceLocation src;
+        vector<enumValueDef*> namedValues;
 };
 
 // an if statement, with a condition expression and a then-block, and an optional else-block
@@ -213,6 +217,15 @@ class forStatement : public statement {
         statementBlock* body = nullptr;
 };
 
+// a for-in loop: for(item in array) or for(TYPE item in array)
+class forInStatement : public statement {
+    public:
+        string elementVar;   // iteration variable name, e.g. "item"
+        string arrayVar;     // array name, e.g. "scores"
+        string counterVar;   // unique index variable, e.g. "_bglfi0"
+        statementBlock* body = nullptr;
+};
+
 // a raw block of I6 text emitted directly, usable at global scope, within a function body, or as an object member
 class i6RawNode : public typeDef, public statement, public typeMember {
     public:
@@ -235,6 +248,7 @@ struct grammarLine {
 // a verb declaration — holds optional action body and optional inline grammar
 class verbDef : public typeDef {
     public:
+        sourceLocation src;
         bool isExternal = false;
         functionDef* doFunc = nullptr;      // action routine; I6 name = verbName + "sub"
         vector<grammarLine> grammarLines;   // inline grammar (from verb { ... })
@@ -262,6 +276,9 @@ class beguilerSettingsDef : public typeDef {
         int release = 0;            // !% Release N;  (0 = not set)
         string errorFormat;         // !% -EN  (e.g. "1" → -E1)
         vector<string> includePaths;// !% +include_path=...  (one line per path)
+
+        // runtime options (affect generated I6, not ICL)
+        int framePoolSize = 64;     // Z-machine frame pool slot count (default 64)
 };
 
 extern typeDef emptyTDef;
