@@ -2,6 +2,7 @@
 // System.bgl - the core system file for the Beguile language, included
 //      automatically by the compiler.
 //-----------------------------------------------------------------------------
+#once
 extern enum eTarget{ //--used to specify the target in the beguilerSettings object.  Declared as external, since these are defined in Beguile compiler
     Glulx,
     Z3,
@@ -162,7 +163,12 @@ extern object arrayHelper;  // I6 helper object defined in system.inf
 var _bgl_temp;  //-- scratch variable for ternary expression lowering
 
 //-- The print() routine, and all overloads ----------------
-emitter void print(var val){ print val; } //the default, which will be used for all data types not defined 
+emitter void print(var val){ print val; } //the default, which will be used for all data types not defined
 emitter void print(stringLiteral str){ print (string)str; }
 emitter void print(string str){ print (string)str; }
 emitter void print(char c){ print (char)c; }
+
+//-- log() — debug-conditional print; compiled out unless DEBUG is #defined ----
+emitter void log(stringLiteral msg){ #ifdef DEBUG; print (string)msg; #endif }
+emitter void log(string msg){ #ifdef DEBUG; print (string)msg; #endif }
+emitter void log(var msg){ #ifdef DEBUG; print msg; #endif }

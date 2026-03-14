@@ -191,8 +191,6 @@ string token::tokenTypeToString(eTokenType type){
             break;
         case eTokenType::dictionaryWord: return "dictionary word";
             break;
-        case eTokenType::dictionaryWordPlural: return "plural dictionary word";
-            break;
         case eTokenType::charLiteral: return "character literal";
             break;
     }

@@ -9,6 +9,7 @@
 // Pool size can be overridden before including this file:
 //   Default bglStringPoolReserve 20;   ! number of simultaneous strings
 //-----------------------------------------------------------------------------
+#once
 
 #include <buf>
 
