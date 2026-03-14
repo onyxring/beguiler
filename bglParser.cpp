@@ -18,7 +18,25 @@
 
 using namespace std;
 
-bglParser::bglParser(){ 
+// Case-insensitive file lookup: returns the first directory entry whose
+// lowercased filename equals the lowercased form of `target`. Falls back
+// to `target` itself (which will produce a normal "file not found" error)
+// if nothing matches. If multiple entries match, one is chosen arbitrarily.
+static filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& target){
+    string lower = target;
+    transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    if(filesystem::exists(dir)){
+        for(const auto& entry : filesystem::directory_iterator(dir)){
+            string fname = entry.path().filename().string();
+            string flwr = fname;
+            transform(flwr.begin(), flwr.end(), flwr.begin(), ::tolower);
+            if(flwr == lower) return entry.path();
+        }
+    }
+    return dir / target; // not found; return as-is so the error surfaces normally
+}
+
+bglParser::bglParser(){
     openCompileContext(eCompileContext::global);
     //emit.to(cout);  //write the result to the terminal window for now
 }
@@ -26,19 +44,19 @@ bglParser::bglParser(){
 // Open an input file, process each statement.  This is the entry point to this whole parsing process
 bool bglParser::parseFile(string filename){
     string absPath = filesystem::absolute(filename).string();
-    // Duplicate include: error (future: #define guards will allow conditional re-inclusion)
-    if(loadedFiles.count(absPath)){
-        parsingError(format("File '{0}' has already been included.", filename));
-        return false;
-    }
-    loadedFiles.insert(absPath);
+    // If this file declared #once, silently skip subsequent inclusions.
+    if(onceFiles.count(absPath)) return false;
+    // Guard against runaway or circular includes.
+    if(includeDepth > maxIncludeDepth)
+        return parsingError(format("Maximum include nesting depth ({0}) exceeded while including '{1}'", maxIncludeDepth, filename));
+    includeDepth++;
 
     try{
         file.open(absPath);
     }
     catch(runtime_error& e){
+        includeDepth--;
         return parsingError(e.what());
-        return true;
     }
 
     if(file.getNumberOfOpenFiles()==1){ //this is the first file, so let's do a little inspection and try to determine our default mode
@@ -57,6 +75,9 @@ bool bglParser::parseFile(string filename){
         // Always load the system library first so built-in types (eBool, eTarget, etc.) are available
         filesystem::path systemPath = filesystem::path(settings.libPath) / "system.bgl";
         parseFile(systemPath.string());
+        // Load built-in I6 templates (for-in loop etc.) from beguilib/_builtins.i6b
+        filesystem::path builtinsPath = filesystem::path(settings.libPath) / "_builtins.i6b";
+        emitter.loadBuiltinTemplates(builtinsPath.string());
     }
 
     //process all statements in the file one by one.  This may include recursive calls for included files.
@@ -65,6 +86,7 @@ bool bglParser::parseFile(string filename){
     }
     //emit.out<<endl;
     file.close();
+    includeDepth--;
     return false;
 }
 
@@ -112,7 +134,7 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
         tok=file.getToken();
     }
     if(tok.isOneOf({token::enumDeclaration, token::bnumDeclaration})) return processEnumDeclaration(tok, isExtern);       //handle the enumeration types
-    if(tok.is(token::classDeclaration)) return processClassDeclaration(tok, isExtern, isExtend);                          //handle type declarations
+    if(tok.is(token::classDeclaration)) return processClassDeclaration(tok, isExtern, isExtend, isEmitter);               //handle type declarations
 
     // A declared object's name is both its type and its singleton instance reference.
     // In non-global context it can never appear as a type, so route directly to
@@ -130,6 +152,10 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
             file.getToken("<");
             arrayElementType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
             file.getToken(">");
+        }
+        // Handle func<ReturnType, ParamTypes...> generic type
+        if(tok.value == "func") {
+            tok.value = parseFuncType();
         }
         token name=file.getToken(eTokenType::identifier);
         if(!arrayElementType.empty()) {
@@ -210,8 +236,9 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal){
     return false;
 }
 
-bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend){
+bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass){
     if(getCurrentCompileContext()!=eCompileContext::global) parsingError(format("Class declarations are only allowed in global context:'{0}'", (string) tok));
+    if(isExternal && isEmitterClass) parsingError("'extern' and 'emitter' are mutually exclusive on a class declaration");
 
     token nameTok = file.getToken(isExtend ? eTokenType::dataType : eTokenType::identifier);
     classDef* classPtr = nullptr;
@@ -224,11 +251,33 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     }
     classDef& newClass = *classPtr;
 
+    // Optional alias clause (new declarations only): class Foo alias I6Name { ... }
+    if(!isExtend){
+        if(isEmitterClass) newClass.isEmitterClass = true;
+        token peek = file.peekToken();
+        if(peek.is("alias")){
+            file.getToken(); // consume "alias"
+            token aliasTok = file.getToken(eTokenType::identifier);
+            newClass.alias = aliasTok.originalValue; // preserve original casing for I6
+        }
+    }
+
     classDef* savedClass = currentClass;
     currentClass = &newClass;
     openCompileContext(eCompileContext::objectDef);
 
-    file.getToken(token::braceOpen);
+    // Optional inheritance clause: class Child : Parent1, Parent2 { ... }
+    tok = file.getToken();
+    if(tok.is(":")){
+        do {
+            token parentTok = file.getToken(eTokenType::dataType);
+            classDef* parent = dynamic_cast<classDef*>(&languageService.getType(parentTok.value));
+            if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
+            else newClass.baseClasses.push_back(parent);
+            tok = file.getToken();
+        } while(tok.is(","));
+    }
+    tok.assert(token::braceOpen);
     tok=file.getToken();
     while(tok.isNot(token::braceClose)){
         bool isEmitter=false;
@@ -245,6 +294,8 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             isEmitter=true;
             tok=file.getToken();
         }
+        if(newClass.isEmitterClass && !isEmitter)
+            parsingError(format("'emitter class' members must be emitters; non-emitter member not allowed in '{0}'", newClass.name));
         returnType=tok.assertDataType();
         name=file.getToken(eTokenType::identifier);
         if(name.is("operator")){
@@ -254,6 +305,11 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 // conversion operator: emitter <type> operator()
                 name.value = "operator()";
                 tok = opTok; // the ( is already consumed; reuse it
+            } else if(opTok.is(eTokenType::identifier)){
+                // qualified operator: e.g. "prefix++" — read qualifier then oper symbol
+                token opSym = file.getToken(eTokenType::oper);
+                name.value = opTok.value + opSym.value;  // e.g. "prefix++"
+                tok = file.getToken(eTokenType::symbol);
             } else {
                 opTok.assert(eTokenType::oper);
                 name = opTok;
@@ -352,12 +408,100 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     closeCompileContext(eCompileContext::objectDef);
     return false;
 }
+// Reads <ReturnType, ParamType, ...> from stream and returns the full "func<...>" type string.
+// Called after the "func" token has been consumed.
+string bglParser::parseFuncType(){
+    file.getToken("<");
+    string result = "func<";
+    bool first = true;
+    while(true){
+        token t = file.getToken({eTokenType::dataType, eTokenType::identifier});
+        string typeName = t.value;
+        if(typeName == "func") typeName = parseFuncType();
+        if(!first) result += ",";
+        result += typeName;
+        first = false;
+        token sep = file.getToken();
+        if(sep.is(">")) break;
+        // else sep is "," — continue
+    }
+    result += ">";
+    return result;
+}
+
+// Parse a lambda expression. The opening '(' has already been consumed.
+// Builds a lifted global functionDef, adds it to languageService.globals, returns its name.
+string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerBody){
+    functionDef& fd = *(new functionDef());
+    fd.name = format("_bglLambda_{0}", lambdaCounter++);
+    fd.isEmitter = false;
+    fd.isExternal = false;
+    fd.src = file.currentLocation();
+
+    // Parse parameter list: (type name, type name, ...) or ()
+    token t = file.getToken(); // first type token or ')'
+    while(t.isNot(token::parenClose)){
+        paramDef& p = *(new paramDef());
+        string typeName = t.value;
+        if(typeName == "func") typeName = parseFuncType();
+        p.type = languageService.getType(typeName);
+        if(p.type.name.empty()) p.type.name = typeName; // for func<...> or unknown types
+        token nameTok = file.getToken(eTokenType::identifier);
+        p.name = nameTok.value;
+        fd.params.push_back(&p);
+        t = file.getToken(); // ',' or ')'
+        if(t.is(",")) t = file.getToken(); // advance to next type
+    }
+
+    // Consume =>
+    file.getToken("=>");
+
+    statementBlock* lambdaBody = new statementBlock();
+    fd.body = lambdaBody;
+
+    token bodyStart = file.getToken();
+    if(bodyStart.is(token::braceOpen)){
+        // Block body
+        functionDef* savedFunc = currentFunc;
+        currentFunc = &fd;
+        openCompileContext(eCompileContext::codeBlock);
+        while(processNextStatement(fd) == false){}
+        closeCompileContext(eCompileContext::codeBlock);
+        currentFunc = savedFunc;
+        fd.returnType.name = hasReturn(lambdaBody) ? "var" : "void";
+    } else {
+        // Single-expression body (terminates at ';').
+        // Only works cleanly when ';' is the terminator (e.g. assignment RHS).
+        // For use as a function argument, use block syntax: () => { return expr; }
+        expression* retExpr = parseExpression(bodyStart, {token::endStatement}, &fd, lambdaBody);
+        returnStatement& ret = *(new returnStatement());
+        ret.src = fd.src;
+        ret.returnExpression = retExpr->text();
+        lambdaBody->statements.push_back(&ret);
+        fd.returnType.name = retExpr->resolvedType.empty() ? "var" : retExpr->resolvedType;
+    }
+
+    // Lift: register as a global function inserted at beginning so it precedes all call sites
+    languageService.globals.insert(languageService.globals.begin(), &fd);
+    return fd.name;
+}
+
 bool bglParser::processParameterList(functionDef& funcDef){
     token tok=file.getToken(); // first type, or ")" for empty list
     while(tok.isNot(token::parenClose)){
         paramDef& param=*new paramDef();
         tok.assertDataType();
-        param.type=languageService.getType((string) tok);
+        string paramTypeName = tok.value;
+        if(paramTypeName == "func") paramTypeName = parseFuncType();
+        else if(paramTypeName == "array") {
+            // consume <ElementType> and store full "array<ElementType>" for for-in resolution
+            file.getToken("<");
+            string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+            file.getToken(">");
+            paramTypeName = format("array<{0}>", elemType);
+        }
+        param.type=languageService.getType(paramTypeName);
+        if(param.type.name.empty()) param.type.name = paramTypeName; // for func<...> types
         tok=file.getToken(); // name, "=", ",", or ")"
         if(tok.is(eTokenType::identifier)){
             param.name=(string) tok;
@@ -379,7 +523,20 @@ bool bglParser::processParameterList(functionDef& funcDef){
     return false;
 }
 
+// Depth-first search through a class and its base classes (first-listed wins).
+// Returns the first typeMember* for which pred returns true, or nullptr.
+typeMember* bglParser::findMemberInHierarchy(classDef* cls, std::function<bool(typeMember*)> pred){
+    for(typeMember* m : cls->members)
+        if(pred(m)) return m;
+    for(classDef* base : cls->baseClasses){
+        typeMember* found = findMemberInHierarchy(base, pred);
+        if(found) return found;
+    }
+    return nullptr;
+}
+
 std::string bglParser::resolveIdentifierType(std::string name, functionDef* func, statementBlock* body){
+    if(name == "null") return "object";
     if(func != nullptr)
         for(paramDef* p : func->params)
             if(p->name == name) return p->type.name;
@@ -419,6 +576,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
 //   - found in enum values or globals → name (unqualified)
 //   - not found → "" (caller should report an error)
 std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, statementBlock* body){
+    if(name == "null") return "nothing";
     // Handle dot-path: qualify the head, then append the tail
     size_t dot = name.find('.');
     if(dot != string::npos){
@@ -470,20 +628,24 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
 bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     if(paramType == "var") return true;  // var accepts any type without checking
     if(argType == paramType) return true;
+    // func<...> compatibility: a func value is compatible with any func<...> param type
+    if(argType == "func" && paramType.rfind("func<", 0) == 0) return true;
+    if(argType.rfind("func<", 0) == 0 && paramType.rfind("func<", 0) == 0) return true;
+    // array<T> compatibility: array is compatible with array<T> param
+    if(argType == "array" && paramType.rfind("array<", 0) == 0) return true;
+    if(argType.rfind("array<", 0) == 0 && paramType.rfind("array<", 0) == 0) return true;
     // Check target type's operator = (argType)
     classDef* cls = dynamic_cast<classDef*>(&languageService.getType(paramType));
-    if(cls != nullptr)
-        for(typeMember* m : cls->members)
-            if(auto* fn = dynamic_cast<functionDef*>(m))
-                if(fn->name == "=" && !fn->params.empty() && fn->params[0]->type.name == argType)
-                    return true;
+    if(cls != nullptr && findMemberInHierarchy(cls, [&](typeMember* m){
+        auto* fn = dynamic_cast<functionDef*>(m);
+        return fn && fn->name == "=" && !fn->params.empty() && fn->params[0]->type.name == argType;
+    })) return true;
     // Check source type's conversion operator: emitter <paramType> operator()
     classDef* argCls = dynamic_cast<classDef*>(&languageService.getType(argType));
-    if(argCls != nullptr)
-        for(typeMember* m : argCls->members)
-            if(auto* fn = dynamic_cast<functionDef*>(m))
-                if(fn->name == "operator()" && fn->params.empty() && fn->returnType.name == paramType)
-                    return true;
+    if(argCls != nullptr && findMemberInHierarchy(argCls, [&](typeMember* m){
+        auto* fn = dynamic_cast<functionDef*>(m);
+        return fn && fn->name == "operator()" && fn->params.empty() && fn->returnType.name == paramType;
+    })) return true;
     return false;
 }
 
@@ -495,23 +657,20 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
         // Look for conversion operator on arg's class
         classDef* argCls = dynamic_cast<classDef*>(&languageService.getType(argType));
         if(argCls == nullptr) continue;
-        for(typeMember* m : argCls->members){
-            if(auto* fn = dynamic_cast<functionDef*>(m))
-                if(fn->name == "operator()" && fn->params.empty() && fn->isEmitter && fn->returnType.name == paramType)
-                    if(auto* blk = dynamic_cast<i6Block*>(fn->body)){
-                        string body = blk->i6Body;
-                        string argText = args[i]->text();
-                        size_t pos = 0;
-                        while((pos = body.find("$self", pos)) != string::npos){
-                            body.replace(pos, 5, argText);
-                            pos += argText.size();
-                        }
-                        // Replace the arg expression tokens with the converted body
-                        args[i]->tokens.clear();
-                        args[i]->tokens.push_back(body);
-                        args[i]->resolvedType = paramType;
-                        break;
-                    }
+        typeMember* found = findMemberInHierarchy(argCls, [&](typeMember* m){
+            auto* fn = dynamic_cast<functionDef*>(m);
+            return fn && fn->name == "operator()" && fn->params.empty() && fn->isEmitter && fn->returnType.name == paramType && dynamic_cast<i6Block*>(fn->body) != nullptr;
+        });
+        if(found){
+            auto* fn = dynamic_cast<functionDef*>(found);
+            auto* blk = dynamic_cast<i6Block*>(fn->body);
+            string b = blk->i6Body;
+            string argText = args[i]->text();
+            size_t pos = 0;
+            while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
+            args[i]->tokens.clear();
+            args[i]->tokens.push_back(b);
+            args[i]->resolvedType = paramType;
         }
     }
 }
@@ -521,6 +680,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     int parenDepth = 0;
     token cur = firstToken;
     optional<token> prefetched = nullopt;
+    string castType;  // set when a (TypeName) cast prefix is detected
 
     auto isTerminator = [&](const token& t) -> bool {
         if(parenDepth != 0) return false;
@@ -547,6 +707,29 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         if(isTerminator(cur)){ expr->terminator = cur.value; break; }
 
         if(cur.is(token::parenOpen)){
+            // Lambda detection: () => ... OR (type name, ...) => ...
+            {
+                bool isLambda = false;
+                token p1 = file.peekToken(1);
+                if(p1.is(")") && file.peekToken(2).is("=>"))
+                    isLambda = true;
+                else if((p1.is(eTokenType::dataType) || p1.is(eTokenType::identifier)) && file.peekToken(2).is(eTokenType::identifier))
+                    isLambda = true;
+                if(isLambda){
+                    string lambdaName = parseLambdaExpr(func, body);
+                    expr->tokens.push_back(lambdaName);
+                    expr->resolvedType = "func";
+                    cur = getNext();
+                    continue;
+                }
+            }
+            // Check for cast expression: (TypeName)expr
+            if(file.peekToken(1).is(eTokenType::dataType) && file.peekToken(2).is(token::parenClose)){
+                castType = file.getToken(eTokenType::dataType).value;
+                file.getToken(token::parenClose);
+                cur = getNext();
+                continue;  // re-process the token after the cast with castType set
+            }
             parenDepth++;
             expr->tokens.push_back(cur.value);
         }
@@ -630,7 +813,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // method call in expression context: obj.method(args)
                         string objName = cur.value;
                         string methName = member.value;
-                        string objType = resolveIdentifierType(objName, func, body);
+                        string objType = !castType.empty() ? castType : resolveIdentifierType(objName, func, body);
+                        castType = "";  // consume the cast
                         if(objType.empty()) parsingError(format("Unknown variable '{0}'", objName));
                         classDef* cls = dynamic_cast<classDef*>(&languageService.getType(objType));
                         if(cls == nullptr) parsingError(format("Type '{0}' has no methods", objType));
@@ -645,28 +829,32 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             firstArg = file.getToken();
                         }
 
-                        // find best matching method
+                        // find best matching method, walking inheritance hierarchy
                         functionDef* method = nullptr;
                         functionDef* varFallback = nullptr;
                         bool nameMatch=false;
-                        for(typeMember* m : cls->members)
-                            if(auto* fd = dynamic_cast<functionDef*>(m)){
-                                if(fd->name == methName) nameMatch=true;
-
-                                if(fd->name == methName && fd->params.size() == callArgs.size()){
-                                    bool usesVar = false, argsOk = true;
-                                    for(size_t i = 0; i < callArgs.size(); i++){
-                                        string at = callArgs[i]->resolvedType;
-                                        string pt = fd->params[i]->type.name;
-                                        if(pt == "var") usesVar = true;
-                                        else if(!at.empty() && !isTypeCompatible(at, pt)){ argsOk = false; break; }
-                                    }
-                                    if(argsOk){
-                                        if(usesVar){ if(!varFallback) varFallback = fd; }
-                                        else { method = fd; break; }
+                        std::function<void(classDef*)> searchExprHierarchy = [&](classDef* c){
+                            for(typeMember* m : c->members)
+                                if(auto* fd = dynamic_cast<functionDef*>(m)){
+                                    if(fd->name == methName) nameMatch=true;
+                                    if(fd->name == methName && fd->params.size() == callArgs.size()){
+                                        bool usesVar = false, argsOk = true;
+                                        for(size_t i = 0; i < callArgs.size(); i++){
+                                            string at = callArgs[i]->resolvedType;
+                                            string pt = fd->params[i]->type.name;
+                                            if(pt == "var") usesVar = true;
+                                            else if(!at.empty() && !isTypeCompatible(at, pt)){ argsOk = false; break; }
+                                        }
+                                        if(argsOk){
+                                            if(usesVar){ if(!varFallback) varFallback = fd; }
+                                            else { method = fd; return; }
+                                        }
                                     }
                                 }
-                            }
+                            if(method == nullptr)
+                                for(classDef* base : c->baseClasses){ searchExprHierarchy(base); if(method) return; }
+                        };
+                        searchExprHierarchy(cls);
                         if(method == nullptr) method = varFallback;
                         if(method == nullptr) {
                             if(nameMatch==false)
@@ -750,7 +938,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 // It works correctly with func==nullptr (skips param/local tiers gracefully).
                 string qualified = qualifyIdentifier(cur.value, func, body);
                 if(!qualified.empty()){
-                    if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body);
+                    if(!castType.empty()){ expr->resolvedType = castType; castType = ""; }
+                    else if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body);
                     expr->tokens.push_back(qualified);
                 } else if(func != nullptr){
                     parsingError(format("Undeclared identifier '{0}'", cur.value));
@@ -777,23 +966,22 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     }
 
                     functionDef* matchedOp = nullptr;
-                    for(typeMember* m : cls->members)
-                        if(auto* opFn = dynamic_cast<functionDef*>(m))
-                            if(opFn->name==opName && !opFn->params.empty() &&
-                               (rhsType.empty() || opFn->params[0]->type.name==rhsType
-                                || opFn->params[0]->type.name=="var"))
-                                { matchedOp=opFn; break; }
+                    if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* m){
+                        auto* opFn = dynamic_cast<functionDef*>(m);
+                        return opFn && opFn->name==opName && !opFn->params.empty() &&
+                               (rhsType.empty() || opFn->params[0]->type.name==rhsType || opFn->params[0]->type.name=="var");
+                    })) matchedOp = dynamic_cast<functionDef*>(m);
 
                     // Conversion fallback: if no exact operator match, check if LHS class has
                     // emitter <rhsType> operator(){} (a no-param conversion operator returning rhsType).
                     // If so, the RHS is I6-compatible with the LHS — emit raw lhsText op rhsText.
                     bool useRawFallback = false;
                     if(!matchedOp && !rhsType.empty()){
-                        for(typeMember* m : cls->members)
-                            if(auto* opFn = dynamic_cast<functionDef*>(m))
-                                if(opFn->name=="operator()" && opFn->params.empty() &&
-                                   opFn->isEmitter && opFn->returnType.name==rhsType)
-                                    { useRawFallback=true; break; }
+                        if(findMemberInHierarchy(cls, [&](typeMember* m){
+                            auto* opFn = dynamic_cast<functionDef*>(m);
+                            return opFn && opFn->name=="operator()" && opFn->params.empty() &&
+                                   opFn->isEmitter && opFn->returnType.name==rhsType;
+                        })) useRawFallback = true;
                     }
 
                     if(!matchedOp && !useRawFallback && !rhsType.empty())
@@ -853,12 +1041,9 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         else if(cur.is(eTokenType::dictionaryWord)){
             if(expr->resolvedType.empty()) expr->resolvedType = "dictionaryword";
             string w = cur.value;
-            string i6form = (w.size() == 1) ? ("'" + w + "//'") : ("'" + w + "'");
+            string i6form = cur.isPlural ? ("'" + w + "/p'")
+                                         : (w.size() == 1) ? ("'" + w + "//'") : ("'" + w + "'");
             expr->tokens.push_back(i6form);
-        }
-        else if(cur.is(eTokenType::dictionaryWordPlural)){
-            if(expr->resolvedType.empty()) expr->resolvedType = "dictionaryword";
-            expr->tokens.push_back("'" + cur.value + "/p'");
         }
         else if(cur.is(eTokenType::charLiteral)){
             if(expr->resolvedType.empty()) expr->resolvedType = "charliteral";
@@ -980,44 +1165,247 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
     sourceLocation stmtLoc = file.currentLocation();
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+    string stmtCastType; // set when statement begins with (TypeName) cast prefix
 
     switch(tok.chk()){
         case chk("for"): {
-            forStatement& forStmt = *(new forStatement());
-            forStmt.src = stmtLoc;
             file.getToken(token::parenOpen);
 
-            // init: raw tokens until ;
-            string initText;
-            token t = file.getToken();
-            while(t.isNot(token::endStatement)){
-                if(!initText.empty()) initText += " ";
-                initText += t.value;
-                t = file.getToken();
+            // Peek at the first token inside '(' to disambiguate:
+            //   dataType         → for(TYPE name in array)   [Form 2: inline declaration]
+            //   identifier "in"  → for(name in array)         [Form 1: pre-declared variable]
+            //   anything else    → for(init; cond; incr)      [C-style]
+            bool isForIn = false;
+            string elemVarName, elemVarType;
+
+            token peek = file.peekToken();
+            if(peek.isDataType()){
+                token typeTok = file.getToken(eTokenType::dataType);
+                token nameTok = file.getToken(eTokenType::identifier);
+                if(file.peekToken().is("in")){
+                    // Form 2: for(TYPE name in array) — for-in loop
+                    isForIn = true;
+                    elemVarName = nameTok.value;
+                    elemVarType = typeTok.value;
+                    // declare the element variable as a function local, but only if not already declared
+                    bool alreadyDeclared = false;
+                    if(body != nullptr)
+                        for(statement* s : body->statements)
+                            if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                                if(vd->name == elemVarName){
+                                    if(vd->type.name != elemVarType)
+                                        parsingError(format("Loop variable '{0}' redeclared with different type '{1}' (was '{2}')",
+                                            elemVarName, elemVarType, vd->type.name));
+                                    alreadyDeclared = true;
+                                    break;
+                                }
+                    if(!alreadyDeclared){
+                        variableDeclaration& elemDecl = *(new variableDeclaration());
+                        elemDecl.name = elemVarName;
+                        elemDecl.type = languageService.getType(elemVarType);
+                        if(body != nullptr) body->statements.push_back(&elemDecl);
+                    }
+                } else {
+                    // C-style for with typed init: for(TYPE name = init; cond; incr)
+                    // Declare the loop variable as a local, but only if not already declared
+                    bool alreadyDeclared = false;
+                    if(body != nullptr)
+                        for(statement* s : body->statements)
+                            if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                                if(vd->name == nameTok.value){
+                                    if(vd->type.name != typeTok.value)
+                                        parsingError(format("Loop variable '{0}' redeclared with different type '{1}' (was '{2}')",
+                                            nameTok.value, typeTok.value, vd->type.name));
+                                    alreadyDeclared = true;
+                                    break;
+                                }
+                    if(!alreadyDeclared){
+                        variableDeclaration& loopVar = *(new variableDeclaration());
+                        loopVar.name = nameTok.value;
+                        loopVar.type = languageService.getType(typeTok.value);
+                        if(body != nullptr) body->statements.push_back(&loopVar);
+                    }
+                    // Build initText: strip the type, keep "name rest..."
+                    forStatement& forStmt = *(new forStatement());
+                    forStmt.src = stmtLoc;
+                    string initText = nameTok.value;
+                    token t = file.getToken();
+                    while(t.isNot(token::endStatement)){
+                        if(!initText.empty()) initText += " ";
+                        initText += t.value;
+                        t = file.getToken();
+                    }
+                    forStmt.initText = initText;
+                    forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
+                    string incrText;
+                    t = file.getToken();
+                    while(t.isNot(token::parenClose)){
+                        if(!incrText.empty()) incrText += " ";
+                        incrText += t.value;
+                        t = file.getToken();
+                    }
+                    forStmt.incrementText = incrText;
+                    forStmt.body = new statementBlock();
+                    functionDef forCtx;
+                    if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
+                    forCtx.body = forStmt.body;
+                    token next = file.getToken();
+                    if(next.is(token::braceOpen)){
+                        openCompileContext(eCompileContext::codeBlock);
+                        while(processNextStatement(forCtx) == false){}
+                        closeCompileContext(eCompileContext::codeBlock);
+                    } else {
+                        processStatement(next, forCtx);
+                    }
+                    if(body != nullptr) body->statements.push_back(&forStmt);
+                    return false;
+                }
+            } else if(peek.is(eTokenType::identifier)){
+                token nameTok = file.getToken(eTokenType::identifier);
+                if(file.peekToken().is("in")){
+                    // Form 1: pre-declared variable
+                    isForIn = true;
+                    elemVarName = nameTok.value;
+                    // look up the variable's type from params, body locals, then globals
+                    if(func != nullptr)
+                        for(paramDef* p : func->params)
+                            if(p->name == elemVarName){ elemVarType = p->type.name; break; }
+                    if(elemVarType.empty() && body != nullptr)
+                        for(statement* s : body->statements)
+                            if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                                if(vd->name == elemVarName){ elemVarType = vd->type.name; break; }
+                    if(elemVarType.empty())
+                        for(typeDef* g : languageService.globals)
+                            if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                                if(vd->name == elemVarName){ elemVarType = vd->type.name; break; }
+                    if(elemVarType.empty())
+                        parsingError(format("'for in': iteration variable '{0}' is not declared", elemVarName));
+                } else {
+                    // C-style for — nameTok was the first token of the init expression
+                    forStatement& forStmt = *(new forStatement());
+                    forStmt.src = stmtLoc;
+                    string initText = nameTok.value;
+                    token t = file.getToken();
+                    while(t.isNot(token::endStatement)){
+                        if(!initText.empty()) initText += " ";
+                        initText += t.value;
+                        t = file.getToken();
+                    }
+                    forStmt.initText = initText;
+                    forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
+                    string incrText;
+                    t = file.getToken();
+                    while(t.isNot(token::parenClose)){
+                        if(!incrText.empty()) incrText += " ";
+                        incrText += t.value;
+                        t = file.getToken();
+                    }
+                    forStmt.incrementText = incrText;
+                    forStmt.body = new statementBlock();
+                    functionDef forCtx;
+                    if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
+                    forCtx.body = forStmt.body;
+                    token next = file.getToken();
+                    if(next.is(token::braceOpen)){
+                        openCompileContext(eCompileContext::codeBlock);
+                        while(processNextStatement(forCtx) == false){}
+                        closeCompileContext(eCompileContext::codeBlock);
+                    } else {
+                        processStatement(next, forCtx);
+                    }
+                    if(body != nullptr) body->statements.push_back(&forStmt);
+                    return false;
+                }
             }
-            forStmt.initText = initText;
 
-            // condition: expression terminated by ;
-            forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
-
-            // increment: raw tokens until )
-            string incrText;
-            t = file.getToken();
-            while(t.isNot(token::parenClose)){
-                if(!incrText.empty()) incrText += " ";
-                incrText += t.value;
+            if(!isForIn){
+                // C-style for — init starts with a non-identifier token (or empty)
+                forStatement& forStmt = *(new forStatement());
+                forStmt.src = stmtLoc;
+                string initText;
+                token t = file.getToken();
+                while(t.isNot(token::endStatement)){
+                    if(!initText.empty()) initText += " ";
+                    initText += t.value;
+                    t = file.getToken();
+                }
+                forStmt.initText = initText;
+                forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
+                string incrText;
                 t = file.getToken();
+                while(t.isNot(token::parenClose)){
+                    if(!incrText.empty()) incrText += " ";
+                    incrText += t.value;
+                    t = file.getToken();
+                }
+                forStmt.incrementText = incrText;
+                forStmt.body = new statementBlock();
+                functionDef forCtx;
+                if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
+                forCtx.body = forStmt.body;
+                token next = file.getToken();
+                if(next.is(token::braceOpen)){
+                    openCompileContext(eCompileContext::codeBlock);
+                    while(processNextStatement(forCtx) == false){}
+                    closeCompileContext(eCompileContext::codeBlock);
+                } else {
+                    processStatement(next, forCtx);
+                }
+                if(body != nullptr) body->statements.push_back(&forStmt);
+                return false;
             }
-            forStmt.incrementText = incrText;
 
-            // body: braced block or single statement
-            forStmt.body = new statementBlock();
+            // for-in shared code (reached from Form 1 and Form 2)
+            file.getToken("in");
+            token arrTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            string arrName = arrTok.value;
+            file.getToken(token::parenClose);
+
+            // resolve the array's element type
+            string arrElemType = "";
+            if(body != nullptr)
+                for(statement* s : body->statements)
+                    if(auto* ad = dynamic_cast<arrayDeclaration*>(s))
+                        if(ad->name == arrName){ arrElemType = ad->elementType; break; }
+            if(arrElemType.empty())
+                for(typeDef* g : languageService.globals)
+                    if(auto* ad = dynamic_cast<arrayDeclaration*>(g))
+                        if(ad->name == arrName){ arrElemType = ad->elementType; break; }
+            if(arrElemType.empty() && func != nullptr)
+                for(paramDef* p : func->params)
+                    if(p->name == arrName){
+                        string tn = p->type.name;
+                        if(tn.size() > 6 && tn.substr(0,6) == "array<")
+                            arrElemType = tn.substr(6, tn.size()-7);
+                        else
+                            arrElemType = "var";
+                        break;
+                    }
+            if(arrElemType.empty())
+                parsingError(format("'for in': '{0}' is not a declared array", arrName));
+
+            // type check: iteration variable must match element type (or be 'var')
+            if(elemVarType != arrElemType && elemVarType != "var")
+                parsingError(format("'for in': variable '{0}' has type '{1}' but '{2}' has element type '{3}'",
+                    elemVarName, elemVarType, arrName, arrElemType));
+
+            // generate a unique index counter and declare it as a function local
+            string counterName = format("_bglfi{0}", forInCounter++);
+            variableDeclaration& counterDecl = *(new variableDeclaration());
+            counterDecl.name = counterName;
+            counterDecl.type = languageService.getType("var");
+            if(body != nullptr) body->statements.push_back(&counterDecl);
+
+            // build the forInStatement node and parse the body
+            forInStatement& fi = *(new forInStatement());
+            fi.src = stmtLoc;
+            fi.elementVar = elemVarName;
+            fi.arrayVar   = arrName;
+            fi.counterVar = counterName;
+            fi.body = new statementBlock();
             functionDef forCtx;
-            if(func != nullptr){
-                forCtx.returnType = func->returnType;
-                forCtx.params = func->params;
-            }
-            forCtx.body = forStmt.body;
+            if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
+            forCtx.body = fi.body;
             token next = file.getToken();
             if(next.is(token::braceOpen)){
                 openCompileContext(eCompileContext::codeBlock);
@@ -1026,8 +1414,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             } else {
                 processStatement(next, forCtx);
             }
-
-            if(body != nullptr) body->statements.push_back(&forStmt);
+            if(body != nullptr) body->statements.push_back(&fi);
             return false;
         }
         case chk("while"): {
@@ -1173,6 +1560,20 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(body != nullptr) body->statements.push_back(&swStmt);
             return false;
         }
+        case chk("break"): {
+            file.getToken(token::endStatement);
+            i6RawNode& brk = *(new i6RawNode());
+            brk.text = "break;";
+            if(body != nullptr) body->statements.push_back(&brk);
+            return false;
+        }
+        case chk("continue"): {
+            file.getToken(token::endStatement);
+            i6RawNode& cont = *(new i6RawNode());
+            cont.text = "continue;";
+            if(body != nullptr) body->statements.push_back(&cont);
+            return false;
+        }
         case chk("rtrue"): {
             file.getToken(token::endStatement);
             if(func != nullptr && func->returnType.name == "void")
@@ -1213,11 +1614,54 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             break;
     }
 
+    // Cast prefix: (TypeName)obj.method(args); — overrides type used for method dispatch
+    if(tok.is(token::parenOpen) && file.peekToken(1).is(eTokenType::dataType) && file.peekToken(2).is(token::parenClose)){
+        stmtCastType = file.getToken(eTokenType::dataType).value;
+        file.getToken(token::parenClose);
+        tok = file.getToken();  // the actual object identifier
+    }
+
     // A declared object's name is both its type and its singleton instance reference.
     // Re-classify it as an identifier so dot-access and assignment work in statement context.
     if(tok.is(eTokenType::dataType))
         if(dynamic_cast<objectDef*>(&languageService.getType(tok.value)) != nullptr)
             tok.tokenType = eTokenType::identifier;
+
+    // Prefix ++ / --
+    if(tok.is(eTokenType::oper) && (tok.value == "++" || tok.value == "--")){
+        token varName = file.getToken(eTokenType::identifier);
+        string lhs = func != nullptr ? qualifyIdentifier(varName.value, func, body) : varName.value;
+        if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", varName.value));
+        file.getToken(token::endStatement);
+        // Try emitter lookup for "prefix++" / "prefix--" on the LHS type
+        string lhsTypeName = resolveIdentifierType(varName.value, func, body);
+        classDef* lhsClass = dynamic_cast<classDef*>(&languageService.getType(lhsTypeName));
+        bool emitterFound = false;
+        string prefixOpName = "prefix" + tok.value;  // e.g. "prefix++"
+        if(lhsClass != nullptr){
+            if(typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
+                auto* opFunc = dynamic_cast<functionDef*>(m);
+                return opFunc && opFunc->name==prefixOpName && opFunc->isEmitter
+                       && opFunc->params.empty() && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+            })){
+                auto* opFunc = dynamic_cast<functionDef*>(m);
+                auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                string b = blk->i6Body;
+                size_t pos = 0;
+                while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, lhs); pos += lhs.size(); }
+                i6RawNode& node = *(new i6RawNode());
+                node.text = b + ";";
+                if(body != nullptr) body->statements.push_back(&node);
+                emitterFound = true;
+            }
+        }
+        if(!emitterFound){
+            i6RawNode& node = *(new i6RawNode());
+            node.text = tok.value + lhs + ";";
+            if(body != nullptr) body->statements.push_back(&node);
+        }
+        return false;
+    }
 
     if(tok.is(eTokenType::identifier)==false) return parsingError(format("Unrecognized statement starting with token '{0}'", (string) tok));
 
@@ -1347,15 +1791,38 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 string valueTypeName = val->resolvedType;
                 if(!valueTypeName.empty()){
                     bool found = false;
-                    for(typeMember* member : classType->members)
-                        if(auto* opFunc = dynamic_cast<functionDef*>(member))
-                            if(opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1 && opFunc->params[0]->type.name==valueTypeName)
-                                if(auto* blk = dynamic_cast<i6Block*>(opFunc->body)){
-                                    a.emitterBody=blk->i6Body;
-                                    a.emitterParam=opFunc->params[0]->name;
-                                    found = true;
-                                    break;
-                                }
+                    if(typeMember* m = findMemberInHierarchy(classType, [&](typeMember* m){
+                        auto* opFunc = dynamic_cast<functionDef*>(m);
+                        return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
+                               && opFunc->params[0]->type.name==valueTypeName && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+                    })){
+                        auto* opFunc = dynamic_cast<functionDef*>(m);
+                        auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                        a.emitterBody = blk->i6Body;
+                        a.emitterParam = opFunc->params[0]->name;
+                        found = true;
+                    }
+                    if(!found){
+                        // Fallback: check if RHS type has emitter LhsType operator(){}
+                        classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(valueTypeName));
+                        if(rhsCls != nullptr)
+                            if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
+                                auto* opFn = dynamic_cast<functionDef*>(m);
+                                return opFn && opFn->name=="operator()" && opFn->params.empty() && opFn->isEmitter
+                                       && opFn->returnType.name==leftType->name && dynamic_cast<i6Block*>(opFn->body)!=nullptr;
+                            })){
+                                auto* opFn = dynamic_cast<functionDef*>(m);
+                                auto* blk = dynamic_cast<i6Block*>(opFn->body);
+                                string b = blk->i6Body;
+                                string argText = val->text();
+                                size_t pos = 0;
+                                while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
+                                val->tokens.clear();
+                                val->tokens.push_back(b);
+                                val->resolvedType = leftType->name;
+                                found = true;
+                            }
+                    }
                     if(!found)
                         parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'", valueTypeName, leftType->name));
                 }
@@ -1400,6 +1867,81 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         if(body != nullptr) body->statements.push_back(&assignExpr);
         return false;
     }
+    // Compound assignment: +=, -=, *=, /=, %=, |=, &=
+    static const vector<string> compoundOps = {"+=","-=","*=","/=","%=","|=","&="};
+    if(symbol.is(eTokenType::oper) && find(compoundOps.begin(), compoundOps.end(), symbol.value) != compoundOps.end()){
+        string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
+        if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
+        expression* rhs = parseExpression(file.getToken(), {token::endStatement}, func, body);
+
+        // Try emitter lookup for this compound operator on the LHS type
+        string lhsTypeName = resolveIdentifierType(tok.value, func, body);
+        classDef* lhsClass = dynamic_cast<classDef*>(&languageService.getType(lhsTypeName));
+        bool emitterFound = false;
+        if(lhsClass != nullptr && rhs != nullptr && !rhs->resolvedType.empty()){
+            string rhsType = rhs->resolvedType;
+            if(typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
+                auto* opFunc = dynamic_cast<functionDef*>(m);
+                return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
+                       && opFunc->params.size()==1 && opFunc->params[0]->type.name==rhsType
+                       && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+            })){
+                auto* opFunc = dynamic_cast<functionDef*>(m);
+                auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                assignmentStatement& a = *(new assignmentStatement());
+                a.src = stmtLoc;
+                a.variableLeft = lhs;
+                a.assignedExpression = rhs;
+                a.emitterBody = blk->i6Body;
+                a.emitterParam = opFunc->params[0]->name;
+                a.emitterSelf = lhs;
+                if(body != nullptr) body->statements.push_back(&a);
+                emitterFound = true;
+            }
+        }
+        if(!emitterFound){
+            // No emitter: expand to I6 form: x op= y  →  x = x op y;
+            // (I6 does not support compound assignment operators)
+            string op = symbol.value.substr(0, symbol.value.size() - 1); // strip trailing '='
+            string rhsText = rhs != nullptr ? rhs->text() : "";
+            i6RawNode& node = *(new i6RawNode());
+            node.text = lhs + " = " + lhs + " " + op + " " + rhsText + ";";
+            if(body != nullptr) body->statements.push_back(&node);
+        }
+        return false;
+    }
+    if(symbol.is(eTokenType::oper) && (symbol.value == "++" || symbol.value == "--")){
+        file.getToken(token::endStatement);
+        string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
+        if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
+        // Try emitter lookup for this operator on the LHS type
+        string lhsTypeName = resolveIdentifierType(tok.value, func, body);
+        classDef* lhsClass = dynamic_cast<classDef*>(&languageService.getType(lhsTypeName));
+        bool emitterFound = false;
+        if(lhsClass != nullptr){
+            if(typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
+                auto* opFunc = dynamic_cast<functionDef*>(m);
+                return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
+                       && opFunc->params.empty() && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+            })){
+                auto* opFunc = dynamic_cast<functionDef*>(m);
+                auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                string b = blk->i6Body;
+                size_t pos = 0;
+                while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, lhs); pos += lhs.size(); }
+                i6RawNode& node = *(new i6RawNode());
+                node.text = b + ";";
+                if(body != nullptr) body->statements.push_back(&node);
+                emitterFound = true;
+            }
+        }
+        if(!emitterFound){
+            i6RawNode& node = *(new i6RawNode());
+            node.text = lhs + symbol.value + ";";
+            if(body != nullptr) body->statements.push_back(&node);
+        }
+        return false;
+    }
     if(symbol.is(token::parenOpen))  { //then this is a function call.
         functionCallStatement& callStmt = *(new functionCallStatement());
         callStmt.src = stmtLoc;
@@ -1421,7 +1963,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             string objectPath = callStmt.functionName.substr(0, dotPos);  // may be "obj" or "obj.prop"
             string methodName = callStmt.functionName.substr(dotPos + 1);
             string objectName = objectPath;  // kept for backward compat in non-emitter emit path
-            string objectType = resolvePathType(objectPath, func, body);
+            string objectType = !stmtCastType.empty() ? stmtCastType : resolvePathType(objectPath, func, body);
+            stmtCastType = "";  // consume the cast
             if(objectType.empty())
                 parsingError(format("Unknown variable '{0}'", objectPath));
             // Compute $self and $prop for emitter substitution
@@ -1437,29 +1980,35 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             functionDef* varFallback = nullptr;
             functionDef* nameMatch = nullptr;
             functionDef* arityMatch = nullptr;
-            for(typeMember* m : cls->members)
-                if(auto* fd = dynamic_cast<functionDef*>(m))
-                    if(fd->name == methodName){
-                        if(nameMatch == nullptr) nameMatch = fd;
-                        size_t req = 0;
-                        for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-                        if(callStmt.args.size() >= req && callStmt.args.size() <= fd->params.size()){
-                            if(arityMatch == nullptr) arityMatch = fd;
-                            bool argsOk = true;
-                            bool usesVar = false;
-                            for(size_t i = 0; i < callStmt.args.size() && argsOk; i++){
-                                string argType = callStmt.args[i]->resolvedType;
-                                string paramType = fd->params[i]->type.name;
-                                if(paramType == "var") usesVar = true;
-                                else if(!argType.empty() && !isTypeCompatible(argType, paramType))
-                                    argsOk = false;
-                            }
-                            if(argsOk){
-                                if(usesVar){ if(varFallback == nullptr) varFallback = fd; }
-                                else { method = fd; break; }
+            // Walk the full class hierarchy for method lookup
+            std::function<void(classDef*)> searchHierarchy = [&](classDef* c){
+                for(typeMember* m : c->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m))
+                        if(fd->name == methodName){
+                            if(nameMatch == nullptr) nameMatch = fd;
+                            size_t req = 0;
+                            for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+                            if(callStmt.args.size() >= req && callStmt.args.size() <= fd->params.size()){
+                                if(arityMatch == nullptr) arityMatch = fd;
+                                bool argsOk = true;
+                                bool usesVar = false;
+                                for(size_t i = 0; i < callStmt.args.size() && argsOk; i++){
+                                    string argType = callStmt.args[i]->resolvedType;
+                                    string paramType = fd->params[i]->type.name;
+                                    if(paramType == "var") usesVar = true;
+                                    else if(!argType.empty() && !isTypeCompatible(argType, paramType))
+                                        argsOk = false;
+                                }
+                                if(argsOk){
+                                    if(usesVar){ if(varFallback == nullptr) varFallback = fd; }
+                                    else { method = fd; return; }
+                                }
                             }
                         }
-                    }
+                if(method == nullptr)
+                    for(classDef* base : c->baseClasses){ searchHierarchy(base); if(method) return; }
+            };
+            searchHierarchy(cls);
             if(method == nullptr) method = varFallback;
             if(nameMatch == nullptr)
                 parsingError(format("No method '{0}' on type '{1}'", methodName, objectType));
@@ -1540,34 +2089,51 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             }
             if(globalMatch == nullptr) globalMatch = globalConversionMatch;
             if(globalMatch == nullptr) globalMatch = globalVarFallback;
-            if(globalNameMatch == nullptr)
-                parsingError(format("Undeclared function '{0}'", callStmt.functionName));
-            if(globalArityMatch == nullptr){
-                size_t req = 0; for(paramDef* p : globalNameMatch->params) if(p->defaultValue.empty()) req++;
-                size_t tot = globalNameMatch->params.size();
-                if(req == tot)
-                    parsingError(format("Function '{0}' expects {1} argument(s), but {2} were supplied",
-                        callStmt.functionName, tot, callStmt.args.size()));
-                else
-                    parsingError(format("Function '{0}' expects {1}-{2} argument(s), but {3} were supplied",
-                        callStmt.functionName, req, tot, callStmt.args.size()));
-            }
-            if(globalMatch == nullptr)
-                parsingError(format("No overload of function '{0}' accepts these argument types", callStmt.functionName));
-            // fill in defaults for unspecified trailing arguments
-            for(size_t i = callStmt.args.size(); i < globalMatch->params.size(); i++){
-                expression* defExpr = new expression();
-                defExpr->tokens.push_back(globalMatch->params[i]->defaultValue);
-                callStmt.args.push_back(defExpr);
-            }
-            // apply source-type conversion operators for mismatched arg types
-            applyArgConversions(callStmt.args, globalMatch);
-            if(globalMatch->isEmitter)
-                if(auto* blk = dynamic_cast<i6Block*>(globalMatch->body)){
-                    callStmt.emitterBody = blk->i6Body;
-                    for(paramDef* p : globalMatch->params) callStmt.emitterParams.push_back(p->name);
+            bool isFuncVar = false;
+            if(globalNameMatch == nullptr) {
+                // Check if it's a func<> variable (call by address)
+                string varType = resolveIdentifierType(callStmt.functionName, func, body);
+                if(varType.rfind("func<", 0) == 0) {
+                    isFuncVar = true;
+                    // Extract return type from "func<ReturnType,...>"
+                    size_t lt = varType.find('<');
+                    size_t sep = varType.find(',', lt);
+                    size_t gt = varType.rfind('>');
+                    chainReturnType = (sep != string::npos && sep < gt)
+                        ? varType.substr(lt+1, sep-lt-1)
+                        : varType.substr(lt+1, gt-lt-1);
+                } else {
+                    parsingError(format("Undeclared function '{0}'", callStmt.functionName));
                 }
-            chainReturnType = globalMatch->returnType.name;
+            }
+            if(!isFuncVar){
+                if(globalArityMatch == nullptr){
+                    size_t req = 0; for(paramDef* p : globalNameMatch->params) if(p->defaultValue.empty()) req++;
+                    size_t tot = globalNameMatch->params.size();
+                    if(req == tot)
+                        parsingError(format("Function '{0}' expects {1} argument(s), but {2} were supplied",
+                            callStmt.functionName, tot, callStmt.args.size()));
+                    else
+                        parsingError(format("Function '{0}' expects {1}-{2} argument(s), but {3} were supplied",
+                            callStmt.functionName, req, tot, callStmt.args.size()));
+                }
+                if(globalMatch == nullptr)
+                    parsingError(format("No overload of function '{0}' accepts these argument types", callStmt.functionName));
+                // fill in defaults for unspecified trailing arguments
+                for(size_t i = callStmt.args.size(); i < globalMatch->params.size(); i++){
+                    expression* defExpr = new expression();
+                    defExpr->tokens.push_back(globalMatch->params[i]->defaultValue);
+                    callStmt.args.push_back(defExpr);
+                }
+                // apply source-type conversion operators for mismatched arg types
+                applyArgConversions(callStmt.args, globalMatch);
+                if(globalMatch->isEmitter)
+                    if(auto* blk = dynamic_cast<i6Block*>(globalMatch->body)){
+                        callStmt.emitterBody = blk->i6Body;
+                        for(paramDef* p : globalMatch->params) callStmt.emitterParams.push_back(p->name);
+                    }
+                chainReturnType = globalMatch->returnType.name;
+            } // end if(!isFuncVar)
         }
 
         // method chaining: handle optional ".method()" suffixes before the final ";"
@@ -1706,10 +2272,13 @@ std::string bglParser::resolvePathType(std::string path, functionDef* func, stat
         for(typeMember* m : od->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(vd->name == tail) return vd->type.name;
-    if(auto* cd = dynamic_cast<classDef*>(&td))
-        for(typeMember* m : cd->members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->name == tail) return vd->type.name;
+    if(auto* cd = dynamic_cast<classDef*>(&td)){
+        typeMember* found = findMemberInHierarchy(cd, [&](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            return vd != nullptr && vd->name == tail;
+        });
+        if(found) return dynamic_cast<variableDeclaration*>(found)->type.name;
+    }
     return "";
 }
 
@@ -1770,9 +2339,23 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     varDecl.type=languageService.getType((string) dataType);
     varDecl.isExternal=isExternal;
     varDecl.isConst=isConst;
+    // For func<...> types, getType returns the base "func" type. Set the full parameterized name.
+    {
+        string dtLower = (string)dataType;
+        transform(dtLower.begin(), dtLower.end(), dtLower.begin(), ::tolower);
+        if(dtLower.rfind("func<", 0) == 0) varDecl.type.name = dtLower;
+    }
 
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+
+    // Disallow local variable names that shadow a global
+    if(func != nullptr){
+        for(typeDef* g : languageService.globals){
+            if(g->name == varDecl.name)
+                parsingError("Local variable '" + varDecl.name + "' shadows global variable of the same name. Rename the local.");
+        }
+    }
 
     if(symbol.value==token::assignment){
         token first = file.getToken();
@@ -1816,12 +2399,30 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             if(classType != nullptr && rhs != nullptr){
                 string valueTypeName = rhs->resolvedType;
                 if(!valueTypeName.empty()){
-                    bool found=false;
-                    for(typeMember* member : classType->members){
-                        functionDef* fn=dynamic_cast<functionDef*>(member);
-                        if(fn != nullptr && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name==valueTypeName){
-                            found=true; break;
-                        }
+                    bool found = findMemberInHierarchy(classType, [&](typeMember* m){
+                        auto* fn = dynamic_cast<functionDef*>(m);
+                        return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name==valueTypeName;
+                    }) != nullptr;
+                    if(!found){
+                        // Fallback: check if RHS type has emitter DeclaredType operator(){}
+                        classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(valueTypeName));
+                        if(rhsCls != nullptr)
+                            if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
+                                auto* opFn = dynamic_cast<functionDef*>(m);
+                                return opFn && opFn->name=="operator()" && opFn->params.empty() && opFn->isEmitter
+                                       && opFn->returnType.name==(string)dataType && dynamic_cast<i6Block*>(opFn->body)!=nullptr;
+                            })){
+                                auto* opFn = dynamic_cast<functionDef*>(m);
+                                auto* blk = dynamic_cast<i6Block*>(opFn->body);
+                                string b = blk->i6Body;
+                                string argText = rhs->text();
+                                size_t pos = 0;
+                                while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
+                                rhs->tokens.clear();
+                                rhs->tokens.push_back(b);
+                                rhs->resolvedType = (string)dataType;
+                                found = true;
+                            }
                     }
                     if(!found) parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'", valueTypeName, (string)dataType));
                 }
@@ -2039,12 +2640,19 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             } else if(next.is("<")){
                 token name=file.getToken(eTokenType::name);
                 file.getToken(">");
-                filesystem::path libPath=filesystem::path(settings.libPath) / (name.value+".bgl");
+                filesystem::path libPath=findCaseInsensitive(settings.libPath, name.value+".bgl");
                 parseFile(libPath.string());
             }
             return false;
             break;
         }    
+        case chk("#once"):{
+            // Register the current file so that any future #include of it is silently skipped.
+            string curFile = filesystem::absolute(file.currentLocation().file).string();
+            onceFiles.insert(curFile);
+            return false;
+            break;
+        }
         case chk("#includei6"):{
             token filename=file.getToken(eTokenType::quote);
             i6RawNode& node=*(new i6RawNode());
@@ -2181,24 +2789,26 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     }
 
     if(isReplace){
-        // Find existing global function with same name and param types; replace its body.
+        // Emitters: match by name + full parameter-type signature (overloading is possible).
+        // Regular functions: match by name only (I6 has no overloading; only one routine per name).
         for(typeDef* g : languageService.globals){
             if(auto* existing = dynamic_cast<functionDef*>(g)){
                 if(existing->name != funcDef.name) continue;
-                if(existing->params.size() != funcDef.params.size()) continue;
-                bool paramsMatch = true;
-                for(size_t i = 0; i < funcDef.params.size() && paramsMatch; i++)
-                    if(funcDef.params[i]->type.name != existing->params[i]->type.name)
-                        paramsMatch = false;
-                if(paramsMatch){
-                    existing->body = funcDef.body;
-                    existing->isEmitter = funcDef.isEmitter;
-                    existing->returnType = funcDef.returnType;
-                    return false;
+                if(isEmitter){
+                    if(existing->params.size() != funcDef.params.size()) continue;
+                    bool paramsMatch = true;
+                    for(size_t i = 0; i < funcDef.params.size() && paramsMatch; i++)
+                        if(funcDef.params[i]->type.name != existing->params[i]->type.name)
+                            paramsMatch = false;
+                    if(!paramsMatch) continue;
                 }
+                existing->body = funcDef.body;
+                existing->isEmitter = funcDef.isEmitter;
+                existing->returnType = funcDef.returnType;
+                return false;
             }
         }
-        parsingError(format("replace: no existing global function '{0}' with matching parameter types", funcDef.name));
+        parsingError(format("replace: no existing global function '{0}' found", funcDef.name));
     }
 
     languageService.globals.push_back(&funcDef);
@@ -2444,6 +3054,13 @@ bool bglParser::processBeguilerSettings(){
                 parsingError(format("beguilerSettings property 'release' expects an integer, got '{0}'", strVal));
             cfg.release = stoi(strVal);
         }
+        else if(key == "framepoolsize"){
+            if(!val.is(eTokenType::integer))
+                parsingError(format("beguilerSettings property 'framePoolSize' expects an integer, got '{0}'", strVal));
+            int sz = stoi(strVal);
+            if(sz < 1) parsingError("beguilerSettings property 'framePoolSize' must be at least 1");
+            cfg.framePoolSize = sz;
+        }
         else if(key == "target"){
             if(languageService.getEnumType(strVal) != "etarget")
                 parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z3, Z5, or Z8).", strVal));
@@ -2634,11 +3251,9 @@ vector<grammarLine> bglParser::parseGrammarLines(){
         // Remaining pattern tokens, comma-separated until }
         tok = file.getToken({token::comma, token::braceClose});
         while(tok.is(token::comma)){
-            token pt = file.getToken({eTokenType::dictionaryWord, eTokenType::dictionaryWordPlural, eTokenType::identifier, eTokenType::dataType});
+            token pt = file.getToken({eTokenType::dictionaryWord, eTokenType::identifier, eTokenType::dataType});
             if(pt.is(eTokenType::dictionaryWord))
-                line.patternTokens.push_back(dictWordI6(pt.value));
-            else if(pt.is(eTokenType::dictionaryWordPlural))
-                line.patternTokens.push_back("'" + pt.value + "/p'");
+                line.patternTokens.push_back(pt.isPlural ? ("'" + pt.value + "/p'") : dictWordI6(pt.value));
             else {
                 // identifier or dataType: check for noun=Routine / scope=Routine forms
                 string tokenStr = pt.value;

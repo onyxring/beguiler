@@ -17,8 +17,7 @@ enum class eTokenType{
     symbol,
     quote,
     oper,
-    dictionaryWord,        // .word  → I6 'word'
-    dictionaryWordPlural,  // ..word → I6 'word/p'
+    dictionaryWord,        // .word (isPlural=false) or ..word (isPlural=true)
     charLiteral,           // 'x'   → I6 'x'  (integer character value)
     //expression,
 };
@@ -29,6 +28,7 @@ class token {
         eTokenType tokenType=eTokenType::unknown;
         std::string value;
         std::string originalValue; // pre-lowercase value, for case-sensitive I6 emission (e.g. verb/grammar names)
+        bool isPlural=false;       // true for ..word dictionary word literals
 
         static constexpr std::string endStatement=";"; 
         static constexpr std::string assignment ="="; 

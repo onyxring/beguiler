@@ -6,6 +6,7 @@
 // Usage:
 //   #include <char> in your .bgl file to activate char support.
 //-----------------------------------------------------------------------------
+#once
 #i6{
 	array __vowels string "aeiouAEIOU@:a@:o@:uo@:eo@:io@:y@:A@:O@:U@:E@:I@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~n@~o@~A@~N@~O@ae@AE@et@Et@/o@/O";
 

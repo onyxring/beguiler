@@ -29,7 +29,7 @@ class bglLanguageService{
         string getEnumType(string valueName); //returns the enum type name for a given enum value name, or "" if not found
         
         
-        vector<string> operators={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^="};
+        vector<string> operators={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^=","=>"};
 };
 
 extern bglLanguageService languageService;

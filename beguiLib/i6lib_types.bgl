@@ -3,6 +3,7 @@
 //      Include this file to get typed access to parser globals and objects.
 //      Corresponds to: #includeI6 "parser"
 //-----------------------------------------------------------------------------
+#once
 
 //-- Standard I6 library attributes ------------------------------------------
 extern attribute light;         // object is a light source
