@@ -51,7 +51,7 @@ extern int    time_rate;            // how often time updates
 extern int    time_step;            // time update increment
 
 //-- Parser results -----------------------------------------------------------
-extern var    noun;                 // first noun or numerical value (object or int)
+extern grammarToken noun;           // first noun — grammar pattern token and runtime result variable
 extern var    second;               // second noun or numerical value (object or int)
 extern verb         action;               // current action being performed (type verb for action constant comparisons)
 extern const int    inp1;                 // first input (0, 1, or object)
@@ -199,17 +199,21 @@ extern const int PAST_TENSE;
 
 //-- Standard grammar tokens --------------------------------------------------
 // These appear in grammar line patterns inside grammar { } blocks.
-// noun and second are already declared as var above (usable in game code too).
-extern grammarToken held;           // object currently held by the actor
-extern grammarToken creature;       // an animate object (has 'animate' attribute)
-extern grammarToken topic;          // a conversational topic (any text)
-extern grammarToken multi;          // one or more nouns
-extern grammarToken multiheld;      // one or more held nouns
-extern grammarToken multiexcept;    // multiple nouns except one
-extern grammarToken multiinside;    // multiple nouns inside a container
-extern grammarToken special;        // a special token (number or dictionary word)
-extern grammarToken number;         // a number typed by the player
-extern grammarToken scope;          // placeholder; use scope=Routine form in grammar lines
+// By convention, grammar tokens are written in ALL_CAPS at their use sites to
+// distinguish them visually from dictionary word literals (.word).
+// noun and second are declared as var above (runtime variables); write them
+// as NOUN and SECOND by convention when used in grammar patterns.
+extern grammarToken ANYNUMBER;      // any number typed by the player (no range check)
+extern grammarToken HELD;           // object currently held by the actor
+extern grammarToken CREATURE;       // an animate object (has 'animate' attribute)
+extern grammarToken TOPIC;          // a conversational topic (any text)
+extern grammarToken MULTI;          // one or more nouns
+extern grammarToken MULTIHELD;      // one or more held nouns
+extern grammarToken MULTIEXCEPT;    // multiple nouns except one
+extern grammarToken MULTIINSIDE;    // multiple nouns inside a container
+extern grammarToken SPECIAL;        // a special token (number or dictionary word)
+extern grammarToken NUMBER;         // a number typed by the player
+extern grammarToken SCOPE;          // placeholder; use scope=Routine form in grammar lines
 
 //-- Standard game actions ----------------------------------------------------
 // Use these in before() / after() switch(action) blocks.

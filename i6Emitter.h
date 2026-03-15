@@ -49,7 +49,7 @@ class i6Emitter{
         void emitGlobal(variableDeclaration*);
         void emitFunction(functionDef*);
         void emitStatement(statement*, string indent);
-        void emitVerb(verbDef*);
+        void emitVerbObject(verbObjectDef*);
         void emitGrammarBlock(grammarBlock*);
         void emitGrammarLines(const string& verbName, const vector<grammarLine>& lines);
         int currentLine();

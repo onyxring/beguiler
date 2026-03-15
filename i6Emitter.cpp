@@ -184,20 +184,17 @@ void i6Emitter::writeSourceMap(const string& path){
 }
 void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Pass 1: emit ICL !% directives at the very top (Inform reads these before parsing)
-    // Also capture currentTarget (lowercase) for spill decisions later.
-    for(typeDef* node : nodeList)
-        if(typeid(*node) == typeid(beguilerSettingsDef)){
-            auto* cfg = (beguilerSettingsDef*)node;
-            emitICL(cfg);
-            currentTarget = cfg->target;
-            for(char& c : currentTarget) c = (char)tolower(c);
-            framePoolSize = cfg->framePoolSize;
-        }
+    emitICL(&beguilerSettings);
+    currentTarget = beguilerSettings.target;
+    for(char& c : currentTarget) c = (char)tolower(c);
+    framePoolSize = beguilerSettings.framePoolSize;
 
     // Pass 2: emit any settings-derived constants
-    for(typeDef* node : nodeList)
-        if(typeid(*node) == typeid(beguilerSettingsDef))
-            emitSettingsConstants((beguilerSettingsDef*)node);
+    emitSettingsConstants(&beguilerSettings);
+
+    // Emit ternary scratch variable only when actually used
+    if(languageService.ternaryTempNeeded)
+        out << "global _bgl_temp;\n";
 
     // Pass 2b: if Z-machine target, scan all functions/methods for spill and XP needs.
     if(isZTarget(currentTarget)){
@@ -213,7 +210,9 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             else if(auto* cd = dynamic_cast<classDef*>(node))
                 for(typeMember* m : cd->members)
                     if(auto* fd = dynamic_cast<functionDef*>(m)) scanFd(fd);
-            else if(auto* obj = dynamic_cast<objectDef*>(node))
+            else if(auto* vobj = dynamic_cast<verbObjectDef*>(node)){
+                if(vobj->doFunc) scanFd(vobj->doFunc);
+            } else if(auto* obj = dynamic_cast<objectDef*>(node))
                 for(typeMember* m : obj->members)
                     if(auto* fd = dynamic_cast<functionDef*>(m)) scanFd(fd);
         }
@@ -222,14 +221,13 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             frameAllocEmitted = true;
         }
         for(int i = 0; i < maxXP; i++)
-            out << format("Global _bglXP{0};\n", i);
+            out << format("global _bglXP{0};\n", i);
         xpGlobalsNeeded = maxXP;
     }
 
     // Pass 3: emit everything else
     for(typeDef* node : nodeList)
-        if(typeid(*node) != typeid(beguilerSettingsDef))
-            generateI6(node);
+        generateI6(node);
 
     // Pass 4: synthesise initBeguile — only emitted if there are global inits
     if(!languageService.globalInits.empty()){
@@ -240,18 +238,18 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     }
 }
 void i6Emitter::emitICL(beguilerSettingsDef* cfg){
-    if(cfg->target == "Glulx")     out << "!% -G\n";
-    else if(cfg->target == "Z3")   out << "!% -v3\n";
-    else if(cfg->target == "Z5")   out << "!% -v5\n";
-    else if(cfg->target == "Z8")   out << "!% -v8\n";
+    if(cfg->target == "glulx")     out << "!% -G\n";
+    else if(cfg->target == "z3")   out << "!% -v3\n";
+    else if(cfg->target == "z5")   out << "!% -v5\n";
+    else if(cfg->target == "z8")   out << "!% -v8\n";
     if(!cfg->errorFormat.empty())  out << format("!% -E{0}\n", cfg->errorFormat);
     if(cfg->release > 0)           out << format("!% Release {0};\n", cfg->release);
 
-    if(!cfg->includePaths.empty()){
+    if(!cfg->i6IncludePaths.empty()){
         out << "!% +include_path=";
-        for(size_t i=0; i<cfg->includePaths.size(); i++){
+        for(size_t i=0; i<cfg->i6IncludePaths.size(); i++){
             if(i>0) out << ",";
-            out << cfg->includePaths[i];
+            out << cfg->i6IncludePaths[i];
         }
         out << "\n";
     }
@@ -265,7 +263,7 @@ void i6Emitter::generateI6(typeDef* node){
      else if (auto* vd = dynamic_cast<variableDeclaration*>(node)) emitGlobal(vd);
      else if (typeid(*node) == typeid(functionDef)) emitFunction((functionDef*)node);
      else if (typeid(*node) == typeid(i6RawNode)) out << ((i6RawNode*)node)->text << "\n";
-     else if (typeid(*node) == typeid(verbDef))    emitVerb((verbDef*)node);
+     else if (typeid(*node) == typeid(verbObjectDef)) emitVerbObject((verbObjectDef*)node);
      else if (typeid(*node) == typeid(grammarBlock)) emitGrammarBlock((grammarBlock*)node);
 }
 
@@ -274,7 +272,7 @@ void i6Emitter::emitEnum(enumDef* enumNode){
         out<<format("constant _{0}_{1} = {2};\n", enumNode->name, val->name, val->value);    
 }
 void i6Emitter::emitClass(classDef* classNode){
-    if(classNode->isExternal || classNode->isEmitterClass) return;
+    if(classNode->isExternal || classNode->isEmitterClass || classNode->isAlias) return;
 
     out << format("class {0}\n", classNode->i6Name());
 
@@ -543,14 +541,14 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
     }
 
     if(varNode->isConst){
-        out << format("Constant {0}", varNode->name);
+        out << format("constant {0}", varNode->name);
         if(varNode->declaredExpressionValue != nullptr)
             out << format(" = {0}", varNode->declaredExpressionValue->text());
         out << ";\n";
         return;
     }
     if(varNode->type.name == "attribute"){
-        out << format("Attribute {0}", varNode->name);
+        out << format("attribute {0}", varNode->name);
         out << ";\n";
         return;
     }
@@ -561,7 +559,7 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         out<<format("{0} {1}", typeName, varNode->name);
     }
     else
-        out<<format("Global {0}", varNode->name);
+        out<<format("global {0}", varNode->name);
     if(varNode->declaredExpressionValue != nullptr)
         out<<format(" = {0}", varNode->declaredExpressionValue->text());
     out<<";\n";
@@ -574,10 +572,13 @@ void i6Emitter::emitObject(objectDef* obj){
             if(vd->name == "parent" && vd->declaredExpressionValue)
                 { parentValue = vd->declaredExpressionValue->text(); break; }
 
+    // Use the declared class name (if any) as the I6 object prefix; fall back to 'Object'
+    string i6ClassName = (obj->objectClass && obj->objectClass->name != "object")
+                         ? obj->objectClass->i6Name() : "object";
     if(parentValue.empty())
-        out << format("Object {0}\n", obj->name);
+        out << format("{0} {1}\n", i6ClassName, obj->name);
     else
-        out << format("Object {0} {1}\n", obj->name, parentValue);
+        out << format("{0} {1} {2}\n", i6ClassName, obj->name, parentValue);
 
     // collect property members (includes raw i6 blocks, which emit as 'with' properties)
     // 'parent' is excluded — it's emitted as a positional argument, not a 'with' property
@@ -662,15 +663,25 @@ void i6Emitter::emitObject(objectDef* obj){
     }
 
     out << ";\n";
+
+    // If the object's class has a globalDeclaration emitter, emit it now with $self/$selfsub substituted
+    if(obj->objectClass && !obj->objectClass->globalDeclarationBody.empty()){
+        string body = obj->objectClass->globalDeclarationBody;
+        size_t s = body.find_first_not_of(" \t\n\r"); if(s != string::npos) body = body.substr(s);
+        size_t e = body.find_last_not_of(" \t\n\r");  if(e != string::npos) body = body.substr(0, e+1);
+        body = replaceWord(body, "$selfsub", obj->name + "sub");
+        body = replaceWord(body, "$self",    obj->name);
+        out << body << "\n";
+    }
 }
 
 //===============================================================================================================================
 // Verb and grammar emission
 //===============================================================================================================================
 
-void i6Emitter::emitVerb(verbDef* vd){
+void i6Emitter::emitVerbObject(verbObjectDef* vd){
     if(vd->isExternal) return;
-    if(vd->doFunc != nullptr) emitFunction(vd->doFunc);
+    emitObject(vd);   // also fires globalDeclaration emitter if defined on the verb class
     if(!vd->grammarLines.empty()) emitGrammarLines(vd->name, vd->grammarLines);
 }
 
@@ -690,16 +701,17 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
     }
 
     auto toI6Word = [](const string& w) -> string {
-        return (w.size() == 1) ? ("'" + w + "//'") : ("'" + w + "'");
+        string e; for(char ch : w) e += (ch == '\'') ? '^' : ch;
+        return (e.size() == 1) ? ("'" + e + "//'") : ("'" + e + "'");
     };
 
     for(const string& word : wordOrder){
         bool isFirst = declaredVerbWords.find(word) == declaredVerbWords.end();
         if(isFirst){
             declaredVerbWords.insert(word);
-            out << format("Verb {0}\n", toI6Word(word));
+            out << format("verb {0}\n", toI6Word(word));
         } else {
-            out << format("Extend {0} first\n", toI6Word(word));
+            out << format("extend {0} first\n", toI6Word(word));
         }
         const auto& patterns = byWord[word];
         for(size_t i = 0; i < patterns.size(); i++){

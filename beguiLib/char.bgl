@@ -71,30 +71,30 @@
 				rfalse;
 			]
 		,	toUpper[c;
-				if(self.isLower(c)==false) return c;			
-				if(c<155) return UpperCase(c);
-				
-				if((c>=155 && c<=157) || (c>=164 && c<=165) || (c>=205 && c<=207) ) return c+3; !diaeresis, tilde 			
-				if(c>=169 && c<=174) return c+6; !acute 
-				if((c>=181 && c<=185) || (c>=191 && c<=195)) return c+5; !circumflex, grave 			
-				if(c==215 or 216) return c+2;  ! th, eth
-				if(c==201 or 203 or 211 or 213 or 220) return c+1; !--angrstrom, slashed o, ae, cedilla, oe
+				switch (c) {
+					'a' to 'z':                            c = c - 32;
+					201, 203, 211, 213, 220:               c++;
+					215, 216:                              c = c + 2;
+					155 to 157, 164, 165, 205 to 207:      c = c + 3;
+					181 to 185, 191 to 195:                c = c + 5 ;
+					169 to 174:                            c = c + 6;
+				}
 				return c;
 			]
 		,	toLower[c;
-				if(self.isUpper(c)==false) return c; 
-				if(c<155) return LowerCase(c);
-				
-				if((c>=158 && c<=160) || (c>=167 && c<=168) || (c>=208 && c<=210) ) return c-3; !diaeresis, tilde 			
-				if(c>=175 && c<=180) return c-6; !acute 
-				if((c>=186 && c<=190) || (c>=196 && c<=200)) return c-5; !circumflex, grave 			
-				if(c==217 or 218) return c-2;  ! th, eth
-				if(c==202 or 204 or 212 or 214 or 221) return c-1; !--angrstrom, slashed o, ae, cedilla, oe
-				return c;
+				switch (c) {
+					'A' to 'Z':                            c = c + 32;
+					202, 204, 212, 214, 221:               c--;
+					217, 218:                              c = c - 2;
+					158 to 160, 167, 168, 208 to 210:      c = c - 3;
+					186 to 190, 196 to 200:                c = c - 5 ;
+					175 to 180:                            c = c - 6;
+				}
+				return c;				
 			]
 	;
 }
-extend extern class char { //This is "extern" because this type is managed by the compiler and the class should not be declared in the output I6 file.
+extend class char { 
     // Case inspection
     emitter eBool isLower()        { _orChar.isLower($self) }
     emitter eBool isUpper()        { _orChar.isUpper($self) }
@@ -109,9 +109,17 @@ extend extern class char { //This is "extern" because this type is managed by th
     emitter char toLower() { _orChar.toLower($self) }
     emitter char toUpper() { _orChar.toUpper($self) }
 
-    // Assignment and equality from int/intLiteral (char is an integer at I6 level)
-    emitter char operator = (intLiteral v) { $self=v; }
-    emitter char operator = (char v)       { $self=v; }
-    emitter eBool operator == (char v)     { $self==v }
-    emitter eBool operator == (intLiteral v){ $self==v }
+    // Assignment operators
+    // emitter char operator = (char v)        { $self=v; }
+    // emitter char operator = (intliteral v)  { $self=v; }
+    // emitter char operator = (int v)         { $self=v; }
+
+    // // Equality operators
+    // emitter eBool operator == (charliteral v) { $self==v }
+    // emitter eBool operator == (char v)        { $self==v }
+    // emitter eBool operator == (intliteral v)  { $self==v }
+    // emitter eBool operator == (int v)         { $self==v }
+    // emitter eBool operator != (charliteral v) { $self~=v }
+    // emitter eBool operator != (char v)        { $self~=v }
+    // emitter eBool operator != (int v)         { $self~=v }
 }

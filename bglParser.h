@@ -18,8 +18,8 @@ using namespace std;
 class bglParser {
     public:
         fileLexer file;    //what the parser reads from.  Tokens are produced by the filelexer.
-        
-        bglParser();        
+        bglParser();
+        void preScanFile(std::string filename);  // pass 1: register type/object stubs for forward-reference resolution
         bool parseFile(std::string);    //the main entry point: given a file, read it in, parse it, and store it in the parse tree
         bool parsingError(std::string);   //called when there is an error, to output the error message and the place in the code where it appeared
         
@@ -43,11 +43,11 @@ class bglParser {
         //bool processDataType(token);
         bool processParameterList(functionDef&);
 
-        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false);
+        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false);
         bool processEnumDeclaration(token, bool);
         bool processBeguilerSettings();
         
-        bool processObjectDeclaration(token, token, bool);
+        bool processObjectDeclaration(token, token, bool, std::string className = "");
         void parsePropertyValue(variableDeclaration& prop, std::string typeName);
         void processI6InlineMember(objectDef& obj);
         void processArrayMember(objectDef& obj);
@@ -81,8 +81,19 @@ class bglParser {
         functionDef* currentFunc = nullptr;  // outermost function being parsed (not changed for nested if/while blocks)
 
         std::map<std::string,std::string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value
-        bool evaluateCondition(const std::string& expr);  // evaluates a #if boolean expression
-        void skipConditionalBlock(abstractObject& ctx);   // skips tokens until #elif/#else/#endif at depth 0
+        bool evaluateCondition(const std::string& expr);   // evaluates a #if boolean expression
+        std::string processBglConditionals(const std::string& text); // evaluates ##ifdef/##ifndef/##else/##endif in raw emitter body text
+        void skipConditionalBlock(abstractObject& ctx);    // skips tokens until #elif/#else/#endif at depth 0
+        void skipBglConditionalBlock(abstractObject& ctx); // skips tokens until ##else/##endif at depth 0
+
+        // Pre-scanner state
+        std::set<std::string> preScanOnceFiles;
+        int preScanDepth = 0;
+        void preScanDirective(token tok);
+        void preScanSkipBody();           // consumes opening '{' and everything through matching '}'
+        void preScanSkipBodyContents();   // assumes '{' already consumed; skips to matching '}'
+        void preScanSkipToSemicolon();    // consumes tokens up to and including ';'
+        void preScanSkipParens();         // assumes '(' already consumed; skips to matching ')'
 
         std::vector<statement*> pendingInjections;  // pre-statements to emit before next main statement (e.g. from ternary lowering)
 

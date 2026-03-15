@@ -12,6 +12,7 @@
 using namespace std;
 
 typeDef emptyTDef;
+beguilerSettingsDef beguilerSettings;
 
 bglLanguageService::bglLanguageService(){
     registerType("void");
@@ -81,6 +82,12 @@ enumDef& bglLanguageService::registerEnum(string name, bool isExternal){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)){
         enumDef* existing = dynamic_cast<enumDef*>(&getType(name));
+        // Allow full pass to claim a pre-pass stub (values already populated by pre-scan)
+        if(existing && existing->isPrePassStub){
+            existing->isPrePassStub = false;
+            existing->isExternal = isExternal;
+            return *existing;
+        }
         string loc = existing ? fmtSrc(existing->src) : "unknown location";
         parser.parsingError(format("'{0}' is already defined (originally declared at {1})", name, loc));
     }
@@ -97,6 +104,12 @@ classDef& bglLanguageService::registerClass(string name, bool isExternal){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)){
         classDef* existing = dynamic_cast<classDef*>(&getType(name));
+        // Allow full pass to claim a pre-pass stub and populate its members
+        if(existing && existing->isPrePassStub){
+            existing->isPrePassStub = false;
+            existing->isExternal = isExternal;
+            return *existing;
+        }
         string loc = existing ? fmtSrc(existing->src) : "unknown location";
         parser.parsingError(format("'{0}' is already defined (originally declared at {1})", name, loc));
     }
@@ -113,6 +126,17 @@ objectDef& bglLanguageService::registerObject(string name, bool isExternal){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)){
         objectDef* existing = dynamic_cast<objectDef*>(&getType(name));
+        // Allow full pass to claim a pre-pass stub and populate its members;
+        // the stub is already in globals so don't push again
+        if(existing && existing->isPrePassStub){
+            existing->isPrePassStub = false;
+            existing->isExternal = isExternal;
+            existing->src = parser.file.currentLocation();
+            if(!isExternal && !existing->isExternal){
+                // already in globals from pre-pass — don't push again
+            }
+            return *existing;
+        }
         string loc = existing ? fmtSrc(existing->src) : "unknown location";
         parser.parsingError(format("'{0}' is already defined (originally declared at {1})", name, loc));
     }
@@ -128,10 +152,26 @@ objectDef& bglLanguageService::registerObject(string name, bool isExternal){
 variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& varDef){
     string lowerName = varDef.name;
     transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-    // Check for collision with a previously registered global variable
+    // Check for collision with a previously registered global variable.
+    // Exception: verb-typed globals are exempt from collision checks against any other global
+    // because I6 action routines are accessed as ##VerbName and live in a completely separate
+    // I6 namespace from regular globals (e.g. 'score' int vs 'Score' verb, 'open' attr vs 'Open' verb).
     if(variableDeclaration* existing = findGlobal(globals, lowerName)){
-        string loc = fmtSrc(existing->src);
-        parser.parsingError(format("'{0}' is already defined (originally declared at {1})", varDef.name, loc));
+        string existingType = existing->type.name;
+        string newType      = varDef.type.name;
+        bool eitherIsVerb   = (existingType == "verb" || newType == "verb");
+        // Allow full pass to claim a pre-pass stub — replace the pointer so subclass info
+        // (e.g. arrayDeclaration::elementType) is preserved in the emitted output
+        if(existing->isPrePassStub && !eitherIsVerb){
+            for(typeDef*& g : globals)
+                if(g == existing){ g = &varDef; break; }
+            varDef.isPrePassStub = false;
+            return varDef;
+        }
+        if(!eitherIsVerb){
+            string loc = fmtSrc(existing->src);
+            parser.parsingError(format("'{0}' is already defined (originally declared at {1})", varDef.name, loc));
+        }
     }
     // Check for collision with a registered type (class/object/enum) of the same name
     if(isObjectType(lowerName)){
@@ -146,11 +186,25 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
     return varDef;
 }
 
-verbDef& bglLanguageService::registerVerb(string name, bool isExternal){
-    verbDef& vd = *(new verbDef());
-    vd.name = name;
+verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExternal){
+    // Allow full pass to claim a pre-pass stub
+    string lower = name; transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    for(verbObjectDef* v : verbs){
+        if(v->name == lower && v->isPrePassStub){
+            v->isPrePassStub = false;
+            v->isExternal = isExternal;
+            v->src = parser.file.currentLocation();
+            if(classDef* vc = dynamic_cast<classDef*>(&getType("verb")))
+                v->objectClass = vc;
+            return *v;
+        }
+    }
+    verbObjectDef& vd = *(new verbObjectDef());
+    vd.name = lower;
     vd.isExternal = isExternal;
     vd.src = parser.file.currentLocation();
+    if(classDef* vc = dynamic_cast<classDef*>(&getType("verb")))
+        vd.objectClass = vc;
     verbs.push_back(&vd);
     if(!isExternal) globals.push_back(&vd);
     return vd;
