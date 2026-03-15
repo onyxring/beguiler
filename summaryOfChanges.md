@@ -392,7 +392,7 @@ class Room {
 }
 ```
 
-The `array` class is declared in `system.bgl` with three emitter methods — `get`, `set`, and `length` — each taking two context tokens:
+The `array` class is declared in `_beguileCore.bgl` with three emitter methods — `get`, `set`, and `length` — each taking two context tokens:
 
 - **`$self`** — the array name (global) or the owning object (property)
 - **`$prop`** — `0` for global arrays, the property name for property arrays, or `"<$prop undefined>"` if used outside an array context
@@ -476,7 +476,7 @@ Map file format (tab-separated):
 
 ## 27. `extern attribute` and Native `attributeCollection` Syntax
 
-The `i6lib_types.bgl` library file (renamed from `i6Lib_types.bgl` — the `#include` resolver lowercases names) now declares all 26 standard Inform library attributes using a new `extern attribute` declaration:
+The `i6StandardLibrary.bgl` library file (renamed from `i6Lib_types.bgl` — the `#include` resolver lowercases names) now declares all 26 standard Inform library attributes using a new `extern attribute` declaration:
 
 ```bgl
 extern attribute light;
@@ -513,9 +513,9 @@ The `isConst` and `isExternal` flags are both forwarded to `processVariableDecla
 
 ---
 
-## 29. Mutable vs. Constant Extern Globals in `i6lib_types.bgl`
+## 29. Mutable vs. Constant Extern Globals in `i6StandardLibrary.bgl`
 
-Following the addition of `extern const int` support, the extern declarations in `i6lib_types.bgl` were audited and split into two categories:
+Following the addition of `extern const int` support, the extern declarations in `i6StandardLibrary.bgl` were audited and split into two categories:
 
 **`extern int` (mutable — game code may write these):**
 - Game state: `deadflag`, `lightflag`, `score`, `last_score`, `turns`, `the_time`, `time_rate`, `time_step`
@@ -566,12 +566,12 @@ Previously this required:
 ```
 
 **How it works:**
-- `attributeCollection attributes;` was added to `extern class object` in `system.bgl`, registering `attributes` as a base object property.
+- `attributeCollection attributes;` was added to `extern class object` in `_beguileCore.bgl`, registering `attributes` as a base object property.
 - In `processObjectDeclaration`, when the first token is an `identifier` (not a registered data type), the parser looks up the name in the `object` class's member list to find the type.
 - If found, parsing continues normally using the inherited type — including initializer list type-checking.
 - If not found, a compile error is raised: `'name' is not a property defined on the base object class`.
 
-This extends naturally to any future properties added to `extern class object` in `system.bgl` or library files via `extend extern class object`.
+This extends naturally to any future properties added to `extern class object` in `_beguileCore.bgl` or library files via `extend extern class object`.
 
 ---
 
@@ -610,7 +610,7 @@ The global function overload resolver now uses three priority tiers:
 Previously, only tiers 1 and 3 existed (no separation between exact and conversion matches), so a conversion-compatible overload from a file loaded earlier could shadow an exact-match overload from a file loaded later. This caused `print(str)` (where `str` is `string`) to match `print(stringLiteral str)` via the `emitter stringLiteral operator(){}` conversion, producing empty arg text at emit time.
 
 ```bgl
-// system.bgl — loaded first
+// _beguileCore.bgl — loaded first
 emitter void print(stringLiteral str){ print (string)str; }
 emitter void print(string str){ print (string)str; }   // conversion match for string args
 emitter void print(var val){ print val; }              // var fallback
@@ -626,7 +626,7 @@ replace emitter void print(string str){ str.print() }  // exact match — now co
 The `replace` qualifier can precede a global function declaration to patch the body of an already-registered function with the same name and parameter types, rather than adding a new overload.
 
 ```bgl
-// In system.bgl:
+// In _beguileCore.bgl:
 emitter void print(string str){ print (string)str; }
 
 // In string.bgl (loaded later via #include <string>):
@@ -634,7 +634,7 @@ replace emitter void print(string str){ str.print() }
 // The existing print(string) entry in globals has its body replaced in-place.
 ```
 
-This is used when a library file wants to provide a better implementation of a function that was declared with a placeholder body in `system.bgl`. The replaced entry keeps its original position in the globals list, so emission order is unchanged. A compile error is raised if no matching function is found to replace.
+This is used when a library file wants to provide a better implementation of a function that was declared with a placeholder body in `_beguileCore.bgl`. The replaced entry keeps its original position in the globals list, so emission order is unchanged. A compile error is raised if no matching function is found to replace.
 
 See also: §4 for `replace` applied to class members inside `extend class` (same semantics, different scope).
 
@@ -648,7 +648,7 @@ The `?:` operator can now appear as an argument to a function call or on the RHS
 print(cloak.parent() == hook ? "with a cloak hanging on it." : "screwed to the wall.");
 ```
 
-**Implementation:** A global scratch variable `_bgl_temp` (declared as `var` in `system.bgl`) is used as a staging register. When `parseExpression` encounters `?` at paren depth 0, it:
+**Implementation:** A global scratch variable `_bgl_temp` (declared as `var` in `_beguileCore.bgl`) is used as a staging register. When `parseExpression` encounters `?` at paren depth 0, it:
 
 1. Captures the already-accumulated condition text
 2. Parses the true-branch (terminated by `:`) and false-branch (terminated by the outer terminator)
@@ -721,7 +721,7 @@ The priority order in `qualifyIdentifier` and `resolveIdentifierType` is:
 
 ## 40. `verb` Type — Action Constant Comparisons
 
-A `verb` type class is declared in `system.bgl` with a `==` emitter that correctly generates `##VerbName` for the RHS action constant in comparisons:
+A `verb` type class is declared in `_beguileCore.bgl` with a `==` emitter that correctly generates `##VerbName` for the RHS action constant in comparisons:
 
 ```bgl
 extern class verb{
@@ -739,7 +739,7 @@ The `action` library variable is declared as `extern verb action` (changed from 
 
 **Switch case type enforcement:** The switch parser validates that case value types match the condition type, with a special exemption that `verb` case values are always permitted (since they resolve to integer action constants compatible with any integer switch condition).
 
-**Implementation:** Verb names resolve to their plain I6 name via `qualifyIdentifier` Tier 4. The `##` prefix is applied only by the `operator ==` emitter body (`##v`) and by the i6Emitter switch case emission path (which prepends `##` when `sc->values[i]->resolvedType == "verb"`). The `verb` type is registered naturally when `extern class verb { ... }` is processed in `system.bgl`, not pre-registered in the language service constructor.
+**Implementation:** Verb names resolve to their plain I6 name via `qualifyIdentifier` Tier 4. The `##` prefix is applied only by the `operator ==` emitter body (`##v`) and by the i6Emitter switch case emission path (which prepends `##` when `sc->values[i]->resolvedType == "verb"`). The `verb` type is registered naturally when `extern class verb { ... }` is processed in `_beguileCore.bgl`, not pre-registered in the language service constructor.
 
 ---
 
