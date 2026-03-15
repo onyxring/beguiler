@@ -46,8 +46,8 @@ Global _bglFrameTop = 0;
 
 [forIn.open $counter $array $element]
 $counter = 0;
-for (: $counter < arrayHelper.length($array, 0) : $counter++) {
-    $element = arrayHelper.get($array, 0, $counter);
+for (: $counter < _orArray.getLength($array, 0) : $counter++) {
+    $element = _orArray.get($array, 0, $counter);
 
 [forIn.close]
 }
