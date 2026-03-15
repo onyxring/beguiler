@@ -20,14 +20,11 @@ void beguiler::go(int argc, char* argv[]) {
 
    cout << "Beguiler: The Beguile-Inform Transpiler" << endl<<"version .1a"<<endl;
     if(parseArgs(argc, argv)) return;
+    parser.preScanFile(settings.inFile);  // pass 1: register all type/object stubs for forward-reference resolution
     if(parser.parseFile(settings.inFile)) return;
 
-    // Warn if no beguilerSettings block was declared
-    bool hasSettings = false;
-    for(typeDef* g : languageService.globals)
-        if(typeid(*g) == typeid(beguilerSettingsDef)) { hasSettings = true; break; }
-    if(!hasSettings)
-        cout << "warning: no beguilerSettings declared; defaulting target to Glulx.\n";
+    // Default target to Glulx if neither CLI nor #beguilerSettings set it
+    if(beguilerSettings.target.empty()) beguilerSettings.target = "glulx";
 
     if(writeFile(settings.tmpFile)) return;
 
@@ -56,19 +53,32 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
     }
 
     for(int i=1; i<argc; i++){
-        if(argv[i][0]=='-'){ //switch
-            if(string(argv[i]).substr(1,7)=="inform="){
-                settings.informName=argv[i]+8;
-                continue;
+        string arg = argv[i];
+        if(arg[0]=='-'){ //switch
+            if(arg.substr(1,7)=="inform="){
+                settings.informName = arg.substr(8);
+            } else if(arg == "-G" || arg == "-g") {
+                beguilerSettings.target = "glulx";
+            } else if(arg == "-v3" || arg == "-z3") {
+                beguilerSettings.target = "z3";
+            } else if(arg == "-v5" || arg == "-z5") {
+                beguilerSettings.target = "z5";
+            } else if(arg == "-v6" || arg == "-z6") {
+                beguilerSettings.target = "z6";
+            } else if(arg == "-v8" || arg == "-z8") {
+                beguilerSettings.target = "z8";
+            } else if(arg.size() >= 3 && arg[1] == 'E' && isdigit(arg[2])) {
+                beguilerSettings.errorFormat = arg.substr(2);
+            } else {
+                settings.switches = settings.switches + " " + arg;
             }
-            settings.switches=settings.switches+" "+argv[i];
         }
         else{
             if(settings.inFile=="")
-                settings.inFile=argv[i];
+                settings.inFile=arg;
             else {
                 if(settings.outFile=="")
-                    settings.outFile=argv[i];
+                    settings.outFile=arg;
                 else{
                     cerr << "Too many file names specified." << endl;
                     return true;
@@ -78,16 +88,14 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
     }
 
     if(settings.outFile=="") {
-        string extension="ulx";
-
+        string extension = "ulx";
         fs::path p(settings.inFile);
-
-        if(settings.switches.contains("-v3")) extension="z3";
-        if(settings.switches.contains("-v5")) extension="z5";
-        if(settings.switches.contains("-v6")) extension="z6";
-        if(settings.switches.contains("-v8")) extension="z8";
-
-        settings.outFile=format("{0}.{1}",p.stem().c_str(),extension);
+        const string& t = beguilerSettings.target;
+        if(t == "z3") extension = "z3";
+        else if(t == "z5") extension = "z5";
+        else if(t == "z6") extension = "z6";
+        else if(t == "z8") extension = "z8";
+        settings.outFile = format("{0}.{1}", p.stem().c_str(), extension);
     }
 
     #if defined(_WIN32) || defined(_WIN64)

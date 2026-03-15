@@ -21,6 +21,7 @@ class abstractObject{
         string name;
         bool operator == (abstractObject);
         bool isExternal;
+        bool isPrePassStub = false; // true when registered by the pre-scanner; cleared when full pass processes the declaration
         virtual void dummy(){}  //typeid requires at lease one virtual function in the base class to work
 };
 //things defined at the global level, such as type definitions, objects, enums, and functions and global variables.
@@ -39,11 +40,17 @@ class typeMember:virtual public abstractObject{
 class classDef:public typeDef{
     public:
         sourceLocation src;
-        std::string alias;           // I6 name used in emitted output; empty = use `name`
         bool isEmitterClass = false; // true for 'emitter class': no I6 backing, emitter members only
-        std::string i6Name() const { return alias.empty() ? name : alias; }
+        bool isAlias = false;        // true for 'alias Foo : Parent { }': Beguile type that dissolves to parent for emission
+        // Walk the alias chain to find the I6 class name used in emitted output.
+        // Alias classes delegate to their first base class; all others use their own name.
+        std::string i6Name() const {
+            if(isAlias && !baseClasses.empty()) return baseClasses[0]->i6Name();
+            return name;
+        }
         vector<typeMember*> members;
         vector<classDef*> baseClasses;
+        std::string globalDeclarationBody; // raw I6 body of 'emitter void globalDeclaration()'; emitted after each instance
 };
 //instances of classes, including overrides
 class objectDef: public typeDef{
@@ -51,6 +58,7 @@ class objectDef: public typeDef{
         sourceLocation src;
         vector<typeDef*> baseClasses;
         vector<typeMember*> members;
+        classDef* objectClass = nullptr; // the Beguile class this object is an instance of (if known)
 };
 
 //a parameter of a function
@@ -245,13 +253,12 @@ struct grammarLine {
     vector<string> patternTokens;   // I6-ready: "'on'", "noun", "'up/p'", etc.
 };
 
-// a verb declaration — holds optional action body and optional inline grammar
-class verbDef : public typeDef {
+// a verb declaration — an objectDef of class 'verb'; holds optional action body and inline grammar
+class verbObjectDef : public objectDef {
     public:
-        sourceLocation src;
         bool isExternal = false;
         functionDef* doFunc = nullptr;      // action routine; I6 name = verbName + "sub"
-        vector<grammarLine> grammarLines;   // inline grammar (from verb { ... })
+        vector<grammarLine> grammarLines;   // inline grammar (from verb { grammar { } })
 };
 
 // a standalone grammar block — adds grammar lines to an already-declared verb
@@ -275,7 +282,8 @@ class beguilerSettingsDef : public typeDef {
         string target;              // !% -G (Glulx), !% -v3, !% -v5, !% -v8
         int release = 0;            // !% Release N;  (0 = not set)
         string errorFormat;         // !% -EN  (e.g. "1" → -E1)
-        vector<string> includePaths;// !% +include_path=...  (one line per path)
+        vector<string> i6IncludePaths; // !% +include_path=...  passed to I6 compiler
+        vector<string> bglIncludePaths;// search paths for #include "file" resolution in Beguile source
 
         // runtime options (affect generated I6, not ICL)
         int framePoolSize = 64;     // Z-machine frame pool slot count (default 64)

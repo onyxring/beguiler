@@ -141,9 +141,12 @@ token fileLexer::getBasicToken(bool suppressBleed){
             if(c=='\\')  { //translate Beguile escape sequences to I6 equivalents
                 c=peekChar();
                 readChar();
-                if     (c=='n')  retval.value+='^';   // \n -> ^ (I6 newline)
-                else if(c=='"')  retval.value+='~';   // \" -> ~ (I6 double-quote)
-                else if(c=='\\') retval.value+='\\';  // \\ -> backslash
+                if     (c=='n')  retval.value+='^';          // \n  -> ^ (I6 newline)
+                else if(c=='"')  retval.value+='~';          // \"  -> ~ (I6 double-quote)
+                else if(c=='\\') retval.value+="@@92";        // \\  -> @@92 (literal backslash)
+                else if(c=='^')  retval.value+="@@94";       // \^  -> @@94 (literal caret)
+                else if(c=='~')  retval.value+="@@126";      // \~  -> @@126 (literal tilde)
+                else if(c=='@')  retval.value+="@@64";       // \@  -> @@64 (literal at-sign)
                 else           { retval.value+='\\'; retval.value+=c; } // unknown: pass through
             }
             else{
@@ -273,6 +276,17 @@ token fileLexer::getToken(){
 
     //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones
     if(retval.is("#")){
+        if(peekChar() == '#'){
+            // ## prefix — Beguile compile-time directive (evaluated by the transpiler, not passed to I6)
+            readChar(); // consume second '#'
+            next=getBasicToken(true);
+            if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid Beguile directive name '"+next.value+"'.");
+            transform(next.value.begin(), next.value.end(), next.value.begin(), ::tolower);
+            retval.value = "##" + next.value;
+            retval.tokenType=eTokenType::directive;
+            prevTokenType = eTokenType::directive;
+            return retval;
+        }
         next=getBasicToken(true); //to make sense, this MUST be a name directly connected to the # with no whitespaces in between
         if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid directive name '"+next.value+"'.");
         transform(next.value.begin(), next.value.end(), next.value.begin(), ::tolower);
@@ -307,14 +321,30 @@ token fileLexer::getToken(){
     // Only recognised when NOT immediately after an identifier (which would be dot-access).
     if(retval.is(".") && prevTokenType != eTokenType::identifier && prevTokenType != eTokenType::dataType){
         char c1 = peekChar();
+        // Helper lambda: read dict-word chars (identifier chars + apostrophe).
+        // A trailing '.' triggers a warning and is discarded.
+        auto readDictWord = [&]() -> string {
+            string w;
+            char ch = peekChar();
+            while(isValidIdentifierChar(ch) || ch == '\''){
+                w += (char)tolower(ch);
+                readChar();
+                ch = peekChar();
+            }
+            if(ch == '.'){
+                auto loc = currentLocation();
+                cerr << loc.file << ":" << loc.line << ": warning: character '.' is not valid for dictionary words. ignoring.\n";
+                readChar(); // discard the period
+            }
+            return w;
+        };
+
         if(c1 == '.'){
             auto savepos = currentStream()->tellg();
             readChar(); // consume the second '.'
             char c2 = peekChar();
             if(isalpha(c2)){
-                token word = getBasicToken(true);
-                transform(word.value.begin(), word.value.end(), word.value.begin(), ::tolower);
-                retval.value = word.value;
+                retval.value = readDictWord();
                 retval.tokenType = eTokenType::dictionaryWord;
                 retval.isPlural = true;
                 prevTokenType = eTokenType::dictionaryWord;
@@ -322,9 +352,7 @@ token fileLexer::getToken(){
             }
             currentStream()->seekg(savepos); // not a plural dict word; restore stream
         } else if(isalpha(c1)){
-            token word = getBasicToken(true);
-            transform(word.value.begin(), word.value.end(), word.value.begin(), ::tolower);
-            retval.value = word.value;
+            retval.value = readDictWord();
             retval.tokenType = eTokenType::dictionaryWord;
             retval.isPlural = false;
             prevTokenType = eTokenType::dictionaryWord;
