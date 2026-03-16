@@ -1546,9 +1546,13 @@ while(n < 10) {
 Exits the current function and optionally returns a value:
 
 ```bgl
-return;           // valid in void functions
-return someValue; // valid in non-void functions
+return;                    // valid in void functions
+return someValue;          // identifier
+return obj.method(arg);    // call expression
+return a + b * c;          // arithmetic expression
 ```
+
+The return value may be any expression — identifier, method call, arithmetic, or ternary. The expression is type-checked against the function's declared return type.
 
 Returning a value from a `void` function is a compile-time error. A non-`void` function must have at least one reachable `return` statement; its absence is a compile-time error.
 
