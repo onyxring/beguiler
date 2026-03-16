@@ -234,6 +234,19 @@ class forInStatement : public statement {
         statementBlock* body = nullptr;
 };
 
+// a print($"...") or log($"...") statement with interpolated expressions
+// string segments hold I6-ready literal text (no outer quotes); expression segments hold a parsed expression
+class interpolatedPrintStatement : public statement {
+    public:
+        struct Segment {
+            bool isExpr = false;
+            string text;           // string segments: I6-ready literal text (no outer quotes)
+            expression* expr = nullptr; // expression segments: fully parsed Beguile expression
+        };
+        bool isLog = false;        // true → only emitted when DEBUG is defined
+        vector<Segment> segments;
+};
+
 // a raw block of I6 text emitted directly, usable at global scope, within a function body, or as an object member
 class i6RawNode : public typeDef, public statement, public typeMember {
     public:
