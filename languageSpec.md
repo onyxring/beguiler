@@ -129,6 +129,30 @@ The following escape sequences are recognized:
 "Press \^ to continue."
 ```
 
+### 2.5.2a Interpolated String Literals
+
+An **interpolated string** is prefixed with `$` and may contain embedded Beguile expressions inside `{` `}` spans. It is only valid as the argument to `print()` or `log()`.
+
+```bgl
+print($"The {obj.name} weighs {obj.weight} stone.");
+print($"Score: {score}  Turns: {turns}");
+log($"Entering handler for {actor.name}");
+```
+
+Each segment is emitted as a separate I6 `print` statement. String segments are emitted as string literals; expression segments are emitted with an appropriate I6 type cast derived from the expression's resolved type.
+
+**Escape sequences** inside interpolated strings follow the same rules as plain string literals. To include a literal `{` character, write `\{`:
+
+```bgl
+print($"Press \{enter} to continue.");   // prints: Press {enter} to continue.
+```
+
+**Constraints:**
+
+- Only valid as the sole argument to `print()` or `log()` — cannot be stored in a variable or passed to other functions (Z-Machine strings are static; no runtime concatenation).
+- `log($"...")` is compiled out entirely unless the `DEBUG` symbol is defined, matching the behavior of `log(string)`.
+- Nested `{...}` inside an expression span (e.g. initializer lists) is not supported.
+
 ### 2.5.3 Character Literals
 
 A single character enclosed in single quotes. Escape sequences follow the same rules as string literals.
@@ -1712,7 +1736,6 @@ An inline lambda in an argument position is lifted and passed by address, just l
 
 - **No captures.** A lambda body may not reference local variables from the enclosing scope. Globals and parameters of the lambda itself are accessible; locals of the enclosing function are not.
 - **No immediate invocation.** The syntax `((int n) => { print(n); })(42)` is not supported. Assign to a variable or pass as an argument first.
-- **`#i6raw` blocks.** Variable references inside raw I6 (`#i6raw { ... }`) are not rewritten by the lambda mechanism.
 
 ---
 

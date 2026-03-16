@@ -2484,6 +2484,83 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         return false;
     }
     if(symbol.is(token::parenOpen))  { //then this is a function call.
+
+        // Interpolated string: print($"...") or log($"...")
+        // Detected by peeking: next token is '$', and the token after that is a quote.
+        // We read the string character-by-character so that {expr} segments feed directly
+        // into parseExpression() from the live file stream (correct tokenisation, lowercasing, etc.)
+        string funcNameLower = tok.value;
+        if((funcNameLower == "print" || funcNameLower == "log") &&
+            file.peekToken(1).is("$") && file.peekToken(2).is(eTokenType::quote)) {
+
+            bool isLog = (funcNameLower == "log");
+
+            // For log(), skip entirely unless DEBUG is defined
+            if(isLog && definedSymbols.count("debug") == 0) {
+                file.getToken();                        // consume '$'
+                file.getToken(eTokenType::quote);       // consume the string token
+                file.getToken(token::parenClose);       // consume ')'
+                file.getToken(token::endStatement);     // consume ';'
+                return false;
+            }
+
+            file.getToken();                            // consume '$'
+            // Instead of consuming the whole quote token (which already has escapes translated),
+            // we consume just the opening '"' directly so we can read raw chars for the segments.
+            file.readChar();  // opening '"'
+
+            interpolatedPrintStatement& ps = *(new interpolatedPrintStatement());
+            ps.src = stmtLoc;
+            ps.isLog = isLog;
+
+            string currentStr;
+            char c = file.readChar();
+            while(c != '"' && c != EOF) {
+                if(c == '\\') {
+                    char nc = file.readChar();
+                    if     (nc == 'n')  currentStr += '^';      // \n  → I6 newline
+                    else if(nc == '"')  currentStr += '~';      // \"  → I6 double-quote
+                    else if(nc == '\\') currentStr += "@@92";   // \\  → literal backslash
+                    else if(nc == '^')  currentStr += "@@94";   // \^  → literal caret
+                    else if(nc == '~')  currentStr += "@@126";  // \~  → literal tilde
+                    else if(nc == '@')  currentStr += "@@64";   // \@  → literal at-sign
+                    else if(nc == '{')  currentStr += '{';       // \{  → literal brace (not an expression)
+                    else { currentStr += '\\'; currentStr += nc; }
+                } else if(c == '{') {
+                    // Flush accumulated string segment
+                    if(!currentStr.empty()) {
+                        interpolatedPrintStatement::Segment seg;
+                        seg.isExpr = false;
+                        seg.text = currentStr;
+                        ps.segments.push_back(seg);
+                        currentStr = "";
+                    }
+                    // Parse the expression from the live stream until the matching '}'
+                    token exprFirst = file.getToken();
+                    expression* exprNode = parseExpression(exprFirst, {"}"}, func, body);
+                    interpolatedPrintStatement::Segment seg;
+                    seg.isExpr = true;
+                    seg.expr = exprNode;
+                    ps.segments.push_back(seg);
+                } else {
+                    currentStr += c;
+                }
+                c = file.readChar();
+            }
+            // Flush final string segment
+            if(!currentStr.empty()) {
+                interpolatedPrintStatement::Segment seg;
+                seg.isExpr = false;
+                seg.text = currentStr;
+                ps.segments.push_back(seg);
+            }
+
+            file.getToken(token::parenClose);       // consume ')'
+            file.getToken(token::endStatement);     // consume ';'
+            if(body != nullptr) body->statements.push_back(&ps);
+            return false;
+        }
+
         functionCallStatement& callStmt = *(new functionCallStatement());
         callStmt.src = stmtLoc;
         callStmt.functionName = (string)tok;
