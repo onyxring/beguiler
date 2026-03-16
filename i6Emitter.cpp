@@ -416,6 +416,62 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         else
             out << indent << "return;\n";
     }
+    else if(typeid(*stmt) == typeid(interpolatedPrintStatement)){
+        interpolatedPrintStatement* ps = (interpolatedPrintStatement*)stmt;
+        // isLog case: DEBUG guard is handled at parse time (non-DEBUG calls are dropped entirely)
+        for(auto& seg : ps->segments){
+            if(!seg.isExpr){
+                // String segment: emit as I6 string literal
+                if(!seg.text.empty())
+                    out << indent << "print \"" << seg.text << "\";\n";
+            } else {
+                string rt = seg.expr->resolvedType;
+                string exprStr = exprText(seg.expr);
+
+                // For class types, look for a no-arg print() emitter on the class and inline it.
+                // This lets $"Score: {scoreObj}" honour a custom print emitter on the class.
+                classDef* cls = dynamic_cast<classDef*>(&languageService.getType(rt));
+                if(cls != nullptr){
+                    functionDef* printFn = nullptr;
+                    std::function<void(classDef*)> findPrint = [&](classDef* c){
+                        for(typeMember* m : c->members)
+                            if(auto* fd = dynamic_cast<functionDef*>(m))
+                                if(fd->name == "print" && fd->params.empty()){
+                                    printFn = fd;
+                                    return;
+                                }
+                        if(printFn == nullptr)
+                            for(classDef* base : c->baseClasses){ findPrint(base); if(printFn) return; }
+                    };
+                    findPrint(cls);
+
+                    if(printFn != nullptr && printFn->isEmitter){
+                        if(auto* blk = dynamic_cast<i6Block*>(printFn->body)){
+                            string b = parser.processBglConditionals(blk->i6Body);
+                            b = replaceWord(b, "$self", exprStr);
+                            // trim and strip trailing semicolons so we can re-add one cleanly
+                            size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+                            size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
+                            out << indent << b << ";\n";
+                            continue;
+                        }
+                    }
+                    if(printFn != nullptr && !printFn->isEmitter){
+                        // Regular method: emit as a call
+                        out << indent << exprStr << ".print();\n";
+                        continue;
+                    }
+                    // No print() on this class — fall through to generic emit below
+                }
+
+                // Primitive / unknown type: add I6 cast based on resolved type
+                string cast;
+                if(rt == "string" || rt == "stringliteral") cast = "(string)";
+                else if(rt == "char" || rt == "charliteral") cast = "(char)";
+                out << indent << "print " << cast << exprStr << ";\n";
+            }
+        }
+    }
     else if(typeid(*stmt) == typeid(functionCallStatement)){
         functionCallStatement* call = (functionCallStatement*)stmt;
         if(!call->emitterBody.empty()){

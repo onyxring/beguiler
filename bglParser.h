@@ -29,7 +29,8 @@ class bglParser {
         void openCompileContext(eCompileContext);   //entering a new context
         void closeCompileContext(eCompileContext);  //closing out the current context and returning to the previous
         eCompileContext getCurrentCompileContext(); //what is the the current context?
-        
+        std::string processBglConditionals(const std::string& text); // evaluates ##ifdef/##ifndef/##else/##endif in raw emitter body text
+
     private:
         std::deque<eCompileLanguage> compileLanguageStack;   //of course, these aren't really stacks, but we use them that way
         std::deque<eCompileContext> compileContextStack;
@@ -82,7 +83,6 @@ class bglParser {
 
         std::map<std::string,std::string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value
         bool evaluateCondition(const std::string& expr);   // evaluates a #if boolean expression
-        std::string processBglConditionals(const std::string& text); // evaluates ##ifdef/##ifndef/##else/##endif in raw emitter body text
         void skipConditionalBlock(abstractObject& ctx);    // skips tokens until #elif/#else/#endif at depth 0
         void skipBglConditionalBlock(abstractObject& ctx); // skips tokens until ##else/##endif at depth 0
 
