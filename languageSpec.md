@@ -508,7 +508,7 @@ Beguile has four class declaration forms. Each is introduced by a different keyw
 | Emitter class | `emitter class Foo` | No | Emitter methods only (`emitter` keyword optional) |
 | Alias class | `alias class Foo : Parent` | No | Typed variable declarations (no values), emitter methods |
 
-All four forms support inheritance via `: Parent` (see §5.6) and extension via `extend class` (see §5.7), except that alias class requires exactly one parent and extern/alias classes do not allow non-emitter methods.
+All four forms support inheritance via `: Parent` (see §5.6) and extension via `extend class` (see §5.7). Alias class requires exactly one parent; extern/alias classes do not allow non-emitter methods.
 
 ## 5.2.1 `extern class`
 
@@ -699,7 +699,7 @@ To explicitly dispatch to a specific parent's version of a member, use the type-
 
 ## 5.7 `extend class` and `replace`
 
-`extend class` adds new members to any already-declared class — extern or otherwise. It is commonly used to augment `extern class` types defined in the standard library, but it applies equally to user-defined classes.
+`extend class` adds new members to any already-declared class. If augmenting an `extern class` type, only emitters may be added.  Classes defined in Beguile code may be extended will actual members as well.
 
 ```bgl
 extend class Counter {
@@ -755,16 +755,16 @@ object foyer {
 }
 ```
 
-The object name becomes a globally visible identifier that can be used wherever an `object`-typed value is expected.
+The object name becomes a globally visible identifier that can be used wherever an `object`-typed value is expected. An object declaration may optionally carry an `as i6name` clause to specify a different name in the emitted I6 — see §8.7.
 
-## 6.3 Object Class
+## 6.3 Object Types
 
 An object may be associated with a class in two equivalent ways:
 
 **Using the class name as the type keyword** (preferred when the class is the primary type):
 
 ```bgl
-alias class worldObject : object {
+class worldObject : object {
     string description;
 }
 
@@ -773,20 +773,23 @@ worldObject foyer {
 }
 ```
 
-**Using `: ClassName` after the object name** (preferred for plain `object` declarations gaining a class):
+**Using `: ClassName1, ClassName2` after the object name** (preferred when the object/classes inherits from more than one base type):
 
 ```bgl
+class Robot {
+    int power;
+}
 class Animal {
     string short_name;
     void describe() { print(short_name); }
 }
 
-object dog : Animal {
+object dog : Animal, Robot{
     string short_name = "shaggy dog";
+    int power=10;
 }
 ```
-
-Both forms produce identical I6 output. The class name must be registered before the object declaration. The object will be an I6 instance of that class, inheriting its default property values and methods.
+TODO: double check that this multiple inheritance still works with type instances
 
 If no class is specified (`object name { }`), the object is a plain I6 object with no class membership beyond the base `object` type.
 
@@ -847,7 +850,9 @@ object cloak {
 }
 ```
 
-Attribute names must be declared with `extern attribute` (typically via `#include <i6Lib_types>`).
+TODO: the following shouldn't be correct.  Attributes need not be external.  That should be declarable in Beguile code as well.  This may need to be fixed in code.
+
+Attribute names must be declared with `extern attribute` (typically via `#include <i6StandardLibrary>`).
 
 ## 6.5 Array Properties
 
@@ -879,29 +884,7 @@ object bar {
 
 Method properties are emitted in I6 method-property format (`name[; locals; body]`) and are called by the library when the relevant event fires.
 
-## 6.7 Forward Declarations
-
-An object may be referenced before it is defined, provided an `extern object` declaration appears first:
-
-```bgl
-extern object message;   // forward declaration
-
-object hook {
-    bool description() {
-        print(cloak.parent() == hook ? "A cloak hangs here." : "Just a hook.");
-        rtrue;
-    }
-}
-
-object message {         // full definition later in the file
-    string short_name = "scrawled message";
-    // ...
-}
-```
-
-`extern object` produces no I6 output; it only registers the name in Beguile's type system so that subsequent references are valid.
-
-## 6.8 Complete Example
+## 6.7 Complete Example
 
 The following is a representative object from the Cloak of Darkness demonstration:
 
@@ -1003,7 +986,35 @@ emitter void print(var val)          { print val; }
 
 Global emitters participate in overload resolution by the same rules as regular global functions (see §8.3). `$self` is not meaningful for global emitters — the receiver concept does not apply.
 
-## 7.5 `print()` and `log()`
+## 7.5 Emitter Namespaces
+
+An **emitter namespace** groups related emitter methods under a single name without creating a class, instances, or any I6 backing. It is declared with `emitter` followed directly by the namespace name and a body block — no `class` keyword:
+
+```bgl
+emitter style {
+    void italics() { style underline; }
+    void roman()   { style roman; }
+}
+```
+
+Methods are called using dot syntax on the namespace name:
+
+```bgl
+style.italics();
+print($"{style.italics()}Italic text{style.roman()}");
+```
+
+Rules:
+- All members are implicitly emitters. The `emitter` keyword on individual members is optional.
+- No I6 class definition or object is generated.
+- The namespace name cannot be used as a variable type — it exists solely to group emitter methods.
+- Inheritance and `extend` are not supported.
+
+Emitter namespaces are distinguished from `emitter class` by the absence of the `class` keyword. An `emitter class` requires instances of a named type; an emitter namespace is a singleton with no associated type.
+
+The standard library defines `style` as an emitter namespace to provide I6 style directives (`style.italics()`, `style.roman()`) without requiring an instance variable.
+
+## 7.6 `print()` and `log()`
 
 `print()` and `log()` are the two core output routines.
 
@@ -1015,10 +1026,10 @@ print(score);         // int or var
 print(c);             // char
 ```
 
-`log()` has an identical signature to `print()` but is a debug-only output routine. Any call to `log()` is entirely absent from a non-debug build — it is not simply suppressed at runtime, it is not present in the compiled output at all. To enable `log()` output, define the `DEBUG` symbol before including any IF library files:
+`log()` has an identical signature to `print()` but is a debug-only output routine. Any call to `log()` is entirely absent from a non-debug build — it is not simply suppressed at runtime, it is not present in the compiled output at all. To enable `log()` output, define the `DEBUG` compiler value:
 
 ```bgl
-#i6 Constant DEBUG;
+#define DEBUG;
 ```
 
 ```bgl
@@ -1026,21 +1037,29 @@ log("entering handler");   // present only in debug builds
 log(score);
 ```
 
-When `DEBUG` is not defined, `log()` calls produce zero output — no code is emitted at the call site at all, not even a conditional check.
+When `DEBUG` is not defined, `log(...)` calls produce zero output — no code is emitted at the call site at all, not even a conditional check.
 
-## 7.6 Operator Emitters
+## 7.7 Operator Emitters
 
 An operator emitter defines how a built-in operator is compiled when the left-hand operand is of the declaring class. The operator symbol replaces the function name. Operator emitters may be declared on any class:
 
 ```bgl
 class Counter {
     int value = 0;
-    emitter bool operator == (Counter v){ $self.value == v.value }
+    emitter bool operator == (int v){ $self.value == v }
     emitter Counter operator = (Counter v){ $self.value = v.value }
 }
 ```
 
-When the compiler encounters `a == b` and `a` has type `bool`, it looks for an `operator ==` emitter on `bool` whose parameter type matches the type of `b`. If found, the body is inlined with `$self` = `a` and `v` = `b`.
+When the compiler encounters `a == b` it looks for an `operator ==` emitter on type `a` whose parameter type matches the type of `b`. If found, the emitter body is inlined with `$self` replaced by `a` and the first parameter replaced by `b`.  With the above `==` operator defined...
+
+```bgl
+if(c==4) ... //assuming c is of type Counter
+```
+...will emit as...
+```
+if(c.value == 4) ...
+```
 
 ### Supported Operators
 
@@ -1083,7 +1102,7 @@ n++;    →    n++;
 ++n;    →    ++n;
 ```
 
-## 7.6 Conversion Operator
+## 7.8 Conversion Operator
 
 A zero-parameter emitter named `operator()` declares that the class is I6-compatible with the return type. It enables implicit type conversion and allows the compiler to use an existing operator overload when the exact type match is absent.
 
@@ -1103,7 +1122,7 @@ extern class celsius {
 
 See §12 for the full rules governing when conversion operators are applied.
 
-## 7.7 Lifecycle Emitters: `init` and `deinit`
+## 7.9 Lifecycle Emitters: `init` and `deinit`
 
 A class may declare `init` and `deinit` emitters to run code automatically when a local variable of that type comes into and out of scope.
 
@@ -1130,7 +1149,7 @@ void doSomething() {
 }                       // deinit also fires here on fall-through
 ```
 
-## 7.8 Emitters vs. Regular Functions
+## 7.10 Emitters vs. Regular Functions
 
 | | Regular function | Emitter |
 |---|---|---|
@@ -1244,6 +1263,23 @@ extern attribute clothing;
 Attributes are declared in `i6StandardLibrary.bgl` for the standard Inform library set. User-defined I6 attributes may be declared the same way.
 
 Once declared, attributes are available as identifiers of type `attribute` and can be passed to the `give`, `ungive`, and `has` methods defined on `object` and `attributeCollection`.
+
+## 8.7 I6 Name Aliasing — the `as` Clause
+
+Any global instance declaration may carry an optional `as i6name` clause that specifies the name to emit in the generated I6. The Beguile name is used throughout `.bgl` source for type-checking and identifier resolution; the alias is substituted transparently at every emission site.
+
+```bgl
+extern grammarToken OBJ as noun;   // Beguile name: OBJ  →  I6 name: noun
+object myHook as hook { ... }      // Beguile name: myHook  →  I6 name: hook
+```
+
+The `as` clause is valid on:
+- `T Name as i6name;` — any typed instance declaration
+- `object Name as i6name { ... }` — a named object definition (including instances of subclasses such as `room Name as place { }`)
+
+It is **not** valid on type declarations (`extern class`, `alias class`, etc.) or function declarations.
+
+This is available any time a chosen Beguile name must differ from the underlying I6 name — for example, when the I6 name conflicts with a Beguile keyword, or when a more descriptive Beguile name is preferred in source while the I6 name must remain unchanged for compatibility.
 
 ---
 
@@ -1471,7 +1507,7 @@ for(int i = 0; i < 10; i++) {
 }
 ```
 
-All three parts are required. The initializer may declare a new variable (scoped to the loop) or assign to an existing one.
+All three parts are required. The initializer may declare a new variable (scoped to the loop) or assign to an existing one.  The initializer may not declare a type to an existing variable, even if it was declared in a the initializer of a previous `for` loop.
 
 ### 10.8.1 `for-in` Loop
 
@@ -1704,15 +1740,7 @@ func<int, int>  doubler  = (int n) => { return n * 2; };
 func<void>      greet    = () => { print("hello"); };
 ```
 
-### 11.6.3 Lifting
-
-The compiler lifts each lambda to a named global routine behind the scenes. The variable is then assigned the address of that routine. This is fully transparent to the caller.
-
-```bgl
-func<void, int> printer = (int n) => { print(n); };
-```
-
-### 11.6.4 Passing Lambdas as Arguments
+### 11.6.3 Passing Lambdas as Arguments
 
 Lambdas are most useful as callbacks passed to other functions. A function that accepts a callback declares its parameter as `func<...>`:
 
@@ -1732,7 +1760,7 @@ void main() {
 
 An inline lambda in an argument position is lifted and passed by address, just like a named lambda variable.
 
-### 11.6.5 Constraints
+### 11.6.4 Constraints
 
 - **No captures.** A lambda body may not reference local variables from the enclosing scope. Globals and parameters of the lambda itself are accessible; locals of the enclosing function are not.
 - **No immediate invocation.** The syntax `((int n) => { print(n); })(42)` is not supported. Assign to a variable or pass as an argument first.
@@ -1970,7 +1998,7 @@ Each element of a pattern is one of:
 | `.word` | Dictionary word literal — matches the player typing that exact word |
 | `..words` | Plural dictionary word |
 | `.word1 \| .word2` | Alternative dictionary words — matches any one of them; may be wrapped in optional parentheses |
-| `NOUN` | Matches any in-scope object |
+| `OBJ` | Matches any in-scope object (emits as the I6 `noun` grammar token via `as noun`) |
 | `HELD` | Matches a held object |
 | `CREATURE` | Matches a creature or actor |
 | `TOPIC` | Matches a topic phrase |
@@ -1980,13 +2008,14 @@ Each element of a pattern is one of:
 | `ANYNUMBER` | Matches any number (no range check) |
 | `SPECIAL` | Matches a number or dictionary word |
 | `attributeName` | Matches objects that have that attribute |
+| `variableName` | Any declared global variable — emits its I6 name (respecting `as` aliases) |
 | `RoutineName` | Calls routine as a general token filter (must be a declared global function) |
-| `NOUN(Routine)` | Filters noun matches through Routine |
+| `OBJ(Routine)` | Filters noun matches through Routine |
 | `SCOPE(Routine)` | Sets scope via Routine |
 
-Grammar tokens (`NOUN`, `HELD`, `CREATURE`, etc.) are written in ALL_CAPS by convention to distinguish them visually from dictionary word literals (`.word`). Since Beguile identifiers are case-insensitive, this is a matter of style, not enforced by the compiler. So `NOUN` is appropriate in a grammar pattern, while `noun` is more appropriate for the runtime variable.
+`OBJ` is used instead of the I6 name `noun` because `noun` is also declared as a runtime variable in Beguile (`extern object noun`). Using `OBJ` avoids this collision — `OBJ` is declared as `extern grammarToken OBJ as noun`, so it carries the Beguile-facing name `OBJ` and emits as the I6 grammar token `noun`. Grammar tokens (`OBJ`, `HELD`, `CREATURE`, etc.) are written in ALL_CAPS by convention to distinguish them visually from dictionary word literals (`.word`). Since Beguile identifiers are case-insensitive, this is a matter of style, not enforced by the compiler.
 
-The compiler validates that bare identifiers in grammar patterns are declared as `grammarToken`, `attribute`, or a global function — unrecognized names are a compile error.
+The compiler validates that bare identifiers in grammar patterns are declared as `grammarToken`, `attribute`, or a global function. Plain object or variable declarations (such as the runtime variable `noun`) are not valid in this position — use the corresponding `grammarToken` alias instead (e.g. `OBJ`). The identifier emits as its I6 name, respecting any `as` alias on the declaration. Unrecognized or wrong-typed names are a compile error.
 
 ## 14.5 The `_bglGlobalDeclaration` Mechanism
 
@@ -2037,6 +2066,8 @@ Beguile is built on top of I6, and several mechanisms allow Beguile code to use 
 | `extern var Name;` | Untyped I6 variable (when type is unknowable) |
 
 None of these produce any I6 output. They exist solely to make I6-defined names available in Beguile source with proper typing.
+
+Extern variable declarations may also carry an `as i6name` alias clause — see §8.7.
 
 ## 15.3 `#includeI6`
 
