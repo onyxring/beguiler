@@ -4,7 +4,7 @@ using namespace std;
 
 class beguiler {
     public:
-        void go(int, char*[]);                      //entry point.  Main is just a shell which passes its args to this class member
+        bool go(int, char*[]);                      //entry point.  Returns true on error (non-zero exit code).
     private:
         bool parseArgs(int, char*[]);               //parse command line args and place them into the global settings struct
         std::string getPath(std::string filename);  //determine the path of a given filename
