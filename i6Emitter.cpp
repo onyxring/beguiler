@@ -207,9 +207,10 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
         };
         for(typeDef* node : nodeList){
             if(auto* fd = dynamic_cast<functionDef*>(node)) scanFd(fd);
-            else if(auto* cd = dynamic_cast<classDef*>(node))
+            else if(auto* cd = dynamic_cast<classDef*>(node)) {
                 for(typeMember* m : cd->members)
                     if(auto* fd = dynamic_cast<functionDef*>(m)) scanFd(fd);
+            }
             else if(auto* vobj = dynamic_cast<verbObjectDef*>(node)){
                 if(vobj->doFunc) scanFd(vobj->doFunc);
             } else if(auto* obj = dynamic_cast<objectDef*>(node))
@@ -464,6 +465,13 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                     // No print() on this class — fall through to generic emit below
                 }
 
+                // Void emitter (e.g. style calls): parseExpression already inlined the body
+                // into exprStr. Emit as a raw statement — no print prefix, no extra semicolon.
+                if(rt == "void"){
+                    out << indent << exprStr << "\n";
+                    continue;
+                }
+
                 // Primitive / unknown type: add I6 cast based on resolved type
                 string cast;
                 if(rt == "string" || rt == "stringliteral") cast = "(string)";
@@ -608,14 +616,15 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         out << ";\n";
         return;
     }
+    const string& varI6Name = varNode->i6name.empty() ? varNode->name : varNode->i6name;
     bool isObject = dynamic_cast<objectDef*>(&languageService.getType(varNode->type.name)) != nullptr;
     if(isObject){
         string typeName = varNode->type.name;
         if(auto* cd = dynamic_cast<classDef*>(&languageService.getType(typeName))) typeName = cd->i6Name();
-        out<<format("{0} {1}", typeName, varNode->name);
+        out<<format("{0} {1}", typeName, varI6Name);
     }
     else
-        out<<format("global {0}", varNode->name);
+        out<<format("global {0}", varI6Name);
     if(varNode->declaredExpressionValue != nullptr)
         out<<format(" = {0}", varNode->declaredExpressionValue->text());
     out<<";\n";
@@ -631,10 +640,11 @@ void i6Emitter::emitObject(objectDef* obj){
     // Use the declared class name (if any) as the I6 object prefix; fall back to 'Object'
     string i6ClassName = (obj->objectClass && obj->objectClass->name != "object")
                          ? obj->objectClass->i6Name() : "object";
+    const string& objI6Name = obj->i6name.empty() ? obj->name : obj->i6name;
     if(parentValue.empty())
-        out << format("{0} {1}\n", i6ClassName, obj->name);
+        out << format("{0} {1}\n", i6ClassName, objI6Name);
     else
-        out << format("{0} {1} {2}\n", i6ClassName, obj->name, parentValue);
+        out << format("{0} {1} {2}\n", i6ClassName, objI6Name, parentValue);
 
     // collect property members (includes raw i6 blocks, which emit as 'with' properties)
     // 'parent' is excluded — it's emitted as a positional argument, not a 'with' property
@@ -725,8 +735,8 @@ void i6Emitter::emitObject(objectDef* obj){
         string body = obj->objectClass->globalDeclarationBody;
         size_t s = body.find_first_not_of(" \t\n\r"); if(s != string::npos) body = body.substr(s);
         size_t e = body.find_last_not_of(" \t\n\r");  if(e != string::npos) body = body.substr(0, e+1);
-        body = replaceWord(body, "$selfsub", obj->name + "sub");
-        body = replaceWord(body, "$self",    obj->name);
+        body = replaceWord(body, "$selfsub", objI6Name + "sub");
+        body = replaceWord(body, "$self",    objI6Name);
         out << body << "\n";
     }
 }

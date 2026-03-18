@@ -6,7 +6,6 @@
 #include <tuple> 
 #include <optional>
 
-#include "types.h"
 #include "helpers.h"
 #include "bglLanguageService.h"
 #include "fileLexer.h"

@@ -51,25 +51,25 @@ extern int    time_rate;            // how often time updates
 extern int    time_step;            // time update increment
 
 //-- Parser results -----------------------------------------------------------
-extern grammarToken noun;           // first noun — grammar pattern token and runtime result variable
-extern var    second;               // second noun or numerical value (object or int)
-extern verb         action;               // current action being performed (type verb for action constant comparisons)
-extern const int    inp1;                 // first input (0, 1, or object)
-extern const int    inp2;                 // second input (0, 1, or object)
-extern const int    meta;                 // true if verb is a meta-command
-extern const int    multiflag;            // multiple-object flag
+extern object       noun;           // first noun 
+extern object       second;         // second noun  
+extern verb         action;         // current action being performed (type verb for action constant comparisons)
+extern int    inp1;                 // first input (0, 1, or object)
+extern int    inp2;                 // second input (0, 1, or object)
+extern int    meta;                 // true if verb is a meta-command
+extern int    multiflag;            // multiple-object flag
 extern int    keep_silent;          // suppress action output
-extern const int    reason_code;          // reason for "life" rule
-extern const int    receive_action;       // ##PutOn or ##Insert
+extern int    reason_code;          // reason for "life" rule
+extern int    receive_action;       // ##PutOn or ##Insert
 extern int    parsed_number;        // user-supplied parsing result
-extern const int    consult_from;         // start word of consult topic
-extern const int    consult_words;        // number of words in topic
-extern const int    special_word;         // dictionary address for "special" token
-extern const int    special_number;       // number typed for "special" token
-extern const int    verb_word;            // the verb word (e.g. 'take')
-extern const int    verb_wordnum;         // verb position in input
+extern int    consult_from;         // start word of consult topic
+extern int    consult_words;        // number of words in topic
+extern int    special_word;         // dictionary address for "special" token
+extern int    special_number;       // number typed for "special" token
+extern int    verb_word;            // the verb word (e.g. 'take')
+extern int    verb_wordnum;         // verb position in input
 extern int    wn;                   // word number currently being parsed
-extern const int    num_words;            // number of words typed
+extern int    num_words;            // number of words typed
 
 //-- Pronoun tracking ---------------------------------------------------------
 extern object itobj;                // object currently referred to as "it"
@@ -84,9 +84,9 @@ extern int    pretty_flag;          // use character graphics for room descripti
 extern int    before_first_turn;    // true before first LOOK
 
 //-- Glulx windows ------------------------------------------------------------
-extern var    gg_mainwin;           // main window handle
-extern var    gg_statuswin;         // status window handle
-extern var    gg_quotewin;          // quote window handle
+extern int    gg_mainwin;           // main window handle
+extern int    gg_statuswin;         // status window handle
+extern int    gg_quotewin;          // quote window handle
 
 //-- Objects ------------------------------------------------------------------
 extern object thedark;              // the darkness object (in-scope when no light)
@@ -201,8 +201,7 @@ extern const int PAST_TENSE;
 // These appear in grammar line patterns inside grammar { } blocks.
 // By convention, grammar tokens are written in ALL_CAPS at their use sites to
 // distinguish them visually from dictionary word literals (.word).
-// noun and second are declared as var above (runtime variables); write them
-// as NOUN and SECOND by convention when used in grammar patterns.
+extern grammarToken OBJ as noun;    // a noun object; 'as noun' causes it to emit as the I6 'noun' grammar token
 extern grammarToken ANYNUMBER;      // any number typed by the player (no range check)
 extern grammarToken HELD;           // object currently held by the actor
 extern grammarToken CREATURE;       // an animate object (has 'animate' attribute)
