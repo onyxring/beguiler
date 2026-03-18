@@ -25,8 +25,8 @@ extern class attributeCollection{ //--a compile-time proxy for an object's attri
     emitter void ungive(attribute attr){
         give $self ~attr
     }
-    emitter eBool has(attribute attr){
-        $self has attr
+    emitter bool has(attribute attr){
+        ($self has attr)
     }
 }
 
@@ -60,17 +60,20 @@ extern class object{ //--the base I6 object, declared as external because it is 
     emitter eBool operator == (var v){
         $self == v
     }
+    emitter eBool operator != (var v){
+        $self ~= v
+    }
     emitter void give(attribute attr){
         give $self attr
     }
     emitter void ungive(attribute attr){
         give $self ~attr
     }
-    emitter eBool has(attribute attr){
-        $self has attr
+    emitter bool has(attribute attr){
+        ($self has attr)
     }
-    emitter eBool hasnt(attribute attr){
-        $self hasnt attr
+    emitter bool hasnt(attribute attr){
+        ($self hasnt attr)
     }
     emitter void move(object parent){
         move $self to parent
@@ -275,15 +278,23 @@ object bglWorld
 ;
 }
 
-//-- _bgl_temp synthesised by the emitter only when a ternary expression is present
+//-- _bgl_temp synthesized by the emitter only when a ternary expression is present
 
 //-- The print() routine, and all overloads ----------------
 emitter void print(var val){ print val; } //the default, which will be used for all data types not defined
-emitter void print(stringLiteral str){ print (string)str; }
-emitter void print(string str){ print (string)str; }
+emitter void print(string str){ print (string)str; } 
 emitter void print(char c){ print (char)c; }
 
 //-- log() — debug-conditional print; compiled out unless DEBUG is #defined ----
 emitter void log(stringLiteral msg){ ##ifdef DEBUG print (string)msg; ##endif }
 emitter void log(string msg){ ##ifdef DEBUG print (string)msg; ##endif }
 emitter void log(var msg){ ##ifdef DEBUG print msg; ##endif }
+
+emitter style{
+    void italics(){
+        style underline;
+    }
+    void roman(){
+        style roman;
+    }
+}

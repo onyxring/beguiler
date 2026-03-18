@@ -16,56 +16,75 @@ namespace fs = std::filesystem;
 
 settingsStruct settings;
 
-void beguiler::go(int argc, char* argv[]) {
+bool beguiler::go(int argc, char* argv[]) {
 
-   cout << "Beguiler: The Beguile-Inform Transpiler" << endl<<"version .1a"<<endl;
-    if(parseArgs(argc, argv)) return;
+   cout << "Beguiler 0.1b : The Beguile-Inform6 Transpiler (" << __DATE__ << ")" << endl;
+    if(parseArgs(argc, argv)) return true;
     parser.preScanFile(settings.inFile);  // pass 1: register all type/object stubs for forward-reference resolution
-    if(parser.parseFile(settings.inFile)) return;
+    if(parser.parseFile(settings.inFile)) return true;
 
     // Default target to Glulx if neither CLI nor #beguilerSettings set it
     if(beguilerSettings.target.empty()) beguilerSettings.target = "glulx";
 
-    if(writeFile(settings.tmpFile)) return;
+    // Compute default output path now that beguilerSettings may have set outputPath
+    if(settings.outFile.empty()) {
+        string extension = "ulx";
+        const string& t = beguilerSettings.target;
+        if(t == "z3") extension = "z3";
+        else if(t == "z5") extension = "z5";
+        else if(t == "z6") extension = "z6";
+        else if(t == "z8") extension = "z8";
+        fs::path p(settings.inFile);
+        fs::path outDir = settings.outputPath.empty() ? p.parent_path()
+                        : fs::path(settings.outputPath).is_absolute() ? fs::path(settings.outputPath)
+                        : p.parent_path() / fs::path(settings.outputPath);
+        settings.outFile = (outDir / (p.stem().string() + "." + extension)).string();
+    }
 
-    cout<<endl<<"Transpile successful. ";
+    if(writeFile(settings.tmpFile)) return true;
+
+    cout<<"Compilation successful. ";
     if(settings.informName=="none"){
         cout<<"Skipping I6 handoff."<<endl;
-        return;
+        return false;
     }else{
         cout<<"Handing off to I6..."<<endl;
         cout<<(settings.informPath+" "+settings.switches+" "+settings.tmpFile+" "+settings.outFile).c_str()<<endl<<endl;
         if(system((settings.informPath+" "+settings.switches+" "+settings.tmpFile+" "+settings.outFile).c_str())){
             cerr<<"Error running I6!"<<endl;
-            return;
+            return true;
         }
     }
 
     cout<<endl;
+    return false;
 };
 
 bool beguiler::parseArgs(int argc, char* argv[]) {
     if(argc==1){
-        cout << "   Usage: beguile [Inform6 switches] [-inform=none|<execname>] <sourcefilepath> [<outputfilepath>]" << endl;
+        cout << "   Usage: beguiler [-G|-z3|-z5|-z6|-z8] [-E1|-E2] [-inform=none|<execname>] [-o <outputdir>] <sourcefilepath> [<outputfilepath>]" << endl;
         cout << "   This program should be placed in the same folder as the I6 compiler."<<endl;
-        cout << "   The sourcefile will be processed and the resulting source passed to Inform to generate the final game.\n" << endl;
+        cout << "   The Beguile source  will be processed and the resulting I6 source passed to Inform to generate the final game.\n" << endl;
         return true;
     }
 
     for(int i=1; i<argc; i++){
         string arg = argv[i];
         if(arg[0]=='-'){ //switch
-            if(arg.substr(1,7)=="inform="){
+            if(arg == "-o") {
+                if(++i >= argc) { cerr << "Missing argument for -o." << endl; return true; }
+                settings.outputPath = argv[i];
+            } else if(arg.substr(1,7)=="inform="){
                 settings.informName = arg.substr(8);
             } else if(arg == "-G" || arg == "-g") {
                 beguilerSettings.target = "glulx";
-            } else if(arg == "-v3" || arg == "-z3") {
+            } else if(arg == "-z3" || arg == "-z3") {
                 beguilerSettings.target = "z3";
-            } else if(arg == "-v5" || arg == "-z5") {
+            } else if(arg == "-z5" || arg == "-z5") {
                 beguilerSettings.target = "z5";
-            } else if(arg == "-v6" || arg == "-z6") {
+            } else if(arg == "-z6" || arg == "-z6") {
                 beguilerSettings.target = "z6";
-            } else if(arg == "-v8" || arg == "-z8") {
+            } else if(arg == "-z8" || arg == "-z8") {
                 beguilerSettings.target = "z8";
             } else if(arg.size() >= 3 && arg[1] == 'E' && isdigit(arg[2])) {
                 beguilerSettings.errorFormat = arg.substr(2);
@@ -85,17 +104,6 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
                 }
             }
         }
-    }
-
-    if(settings.outFile=="") {
-        string extension = "ulx";
-        fs::path p(settings.inFile);
-        const string& t = beguilerSettings.target;
-        if(t == "z3") extension = "z3";
-        else if(t == "z5") extension = "z5";
-        else if(t == "z6") extension = "z6";
-        else if(t == "z8") extension = "z8";
-        settings.outFile = format("{0}.{1}", p.stem().c_str(), extension);
     }
 
     #if defined(_WIN32) || defined(_WIN64)
