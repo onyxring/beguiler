@@ -5,6 +5,7 @@ struct settingsStruct{
     std::string inFile;
     std::string tmpFile;
     std::string outFile;
+    std::string outputPath;
     std::string switches;
     std::string informName="inform";
     std::string informPath;

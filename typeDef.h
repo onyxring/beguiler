@@ -8,6 +8,9 @@
 
 using namespace std;
 
+enum class eCompileContext {noContext, global, objectDef, codeBlock};
+enum class eCompileLanguage {beguile, i6};
+
 // Source location — Beguile file and line number where an AST node was parsed.
 // Used to build the source map for the debugger.
 struct sourceLocation {
@@ -19,6 +22,7 @@ struct sourceLocation {
 class abstractObject{
     public:
         string name;
+        string i6name;  // optional I6 alias: if non-empty, emitted under this name instead of 'name'
         bool operator == (abstractObject);
         bool isExternal;
         bool isPrePassStub = false; // true when registered by the pre-scanner; cleared when full pass processes the declaration
@@ -40,8 +44,9 @@ class typeMember:virtual public abstractObject{
 class classDef:public typeDef{
     public:
         sourceLocation src;
-        bool isEmitterClass = false; // true for 'emitter class': no I6 backing, emitter members only
-        bool isAlias = false;        // true for 'alias Foo : Parent { }': Beguile type that dissolves to parent for emission
+        bool isEmitterClass = false;        // true for 'emitter class': no I6 backing, emitter members only
+        bool isGlobalEmitterObject = false; // true for 'emitter Foo { }': singleton emitter namespace; accessed as Foo.method(), no instances
+        bool isAlias = false;               // true for 'alias Foo : Parent { }': Beguile type that dissolves to parent for emission
         // Walk the alias chain to find the I6 class name used in emitted output.
         // Alias classes delegate to their first base class; all others use their own name.
         std::string i6Name() const {
@@ -290,6 +295,7 @@ class beguilerSettingsDef : public typeDef {
         // beguiler paths (not emitted)
         string beguiLibPath;        // overrides BEGUILE_LIB / binary-adjacent lookup
         string informBinaryPath;    // overrides the inform6 binary path
+        string outputPath;             // overrides the output directory (CLI -o wins)
 
         // ICL directives (!% lines)
         string target;              // !% -G (Glulx), !% -v3, !% -v5, !% -v8

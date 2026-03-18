@@ -7,7 +7,6 @@
 #include <optional>
 #include <string_view>
 
-#include "types.h"
 #include "helpers.h"
 #include "settings.h"
 #include "typeDef.h"
@@ -66,7 +65,7 @@ bool bglParser::parseFile(string filename){
         }
         else{
             compileLanguageStack.push_front(eCompileLanguage::beguile); //use default mode
-            cout<<format("Beguiling file \"{0}\"\n",filename);
+            cout<<format("Beguiling file \"{0}\"...\n",filename);
         }
 
         //now that we've checked for that convention, rewind the stream pointer to the beginning for actual processing.
@@ -218,6 +217,23 @@ void bglParser::preScanFile(string filename){
             file.getToken(); // class name
             preScanSkipBody();
             continue;
+        }
+
+        // global emitter object: 'emitter Foo { }' — identifier immediately followed by '{'
+        // Distinct from emitter class (requires 'class' keyword) and emitter functions (require a return type).
+        if(isEmitter && tok.is(eTokenType::identifier)){
+            token peek = file.peekToken();
+            if(peek.is(token::braceOpen)){
+                string nameStr = tok.value;
+                if(!languageService.isObjectType(nameStr)){
+                    classDef& stub = languageService.registerClass(nameStr, false);
+                    stub.isPrePassStub = true;
+                    stub.isEmitterClass = true;
+                    stub.isGlobalEmitterObject = true;
+                }
+                preScanSkipBody();
+                continue;
+            }
         }
 
         bool isAliasClass = false;
@@ -465,6 +481,13 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
         tok=file.getToken();
     }
     if(tok.isOneOf({token::enumDeclaration, token::bnumDeclaration})) return processEnumDeclaration(tok, isExtern);
+
+    // Global emitter object: 'emitter Foo { }' — emitter modifier followed by bare identifier then '{'
+    if(isEmitter && (tok.is(eTokenType::identifier) || tok.is(eTokenType::dataType)) && file.peekToken().is(token::braceOpen)){
+        // Re-use processClassDeclaration; pass tok as nameOverride since we've already consumed the name.
+        return processClassDeclaration(tok, false, isExtend, true, false, tok);
+    }
+
     bool isAliasClass = false;
     if(tok.is("alias")) { isAliasClass = true; tok = file.getToken(); } // consume 'class'
     if(tok.is(token::classDeclaration)) return processClassDeclaration(tok, isExtern, isExtend, isEmitter, isAliasClass);
@@ -507,14 +530,21 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
             token classNameTok = file.getToken(eTokenType::dataType);
             objectClassName = classNameTok.value;
         }
+        // Check for optional 'as i6name' I6 alias on global instance declarations
+        string i6alias;
+        if(file.peekToken().is("as")){
+            file.getToken(); // consume 'as'
+            token aliasTok = file.getToken(eTokenType::identifier);
+            i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
+        }
         token symbol=file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
 
         if(symbol.is(token::parenOpen))
             processRoutineDeclaration(tok, name, contextObject, isExtern, isEmitter, isReplace);
         else if(symbol.is(token::braceOpen))
-            processObjectDeclaration(tok, name, isExtern, objectClassName);
+            processObjectDeclaration(tok, name, isExtern, objectClassName, i6alias);
         else
-            processVariableDeclaration(tok, name, symbol, contextObject, isExtern, isConst);
+            processVariableDeclaration(tok, name, symbol, contextObject, isExtern, isConst, i6alias);
         return false;
     }
 
@@ -589,13 +619,13 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal){
     return false;
 }
 
-bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias){
+bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride){
     if(getCurrentCompileContext()!=eCompileContext::global) parsingError(format("Class declarations are only allowed in global context:'{0}'", (string) tok));
     if(isExternal && isEmitterClass) parsingError("'extern' and 'emitter' are mutually exclusive on a class declaration");
     if(isAlias && isExternal)        parsingError("'alias' and 'extern' are mutually exclusive on a class declaration");
     if(isAlias && isEmitterClass)    parsingError("'alias' and 'emitter' are mutually exclusive on a class declaration");
 
-    token nameTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+    token nameTok = nameOverride.tokenType != eTokenType::unknown ? nameOverride : file.getToken({eTokenType::identifier, eTokenType::dataType});
     classDef* classPtr = nullptr;
     if(isExtend){
         classPtr = dynamic_cast<classDef*>(&languageService.getType((string)nameTok));
@@ -898,6 +928,13 @@ typeMember* bglParser::findMemberInHierarchy(classDef* cls, std::function<bool(t
 
 std::string bglParser::resolveIdentifierType(std::string name, functionDef* func, statementBlock* body){
     if(name == "null") return "object";
+    if(name == "self"){
+        if(currentObject != nullptr)
+            return currentObject->objectClass ? currentObject->objectClass->name : "object";
+        if(currentClass != nullptr)
+            return currentClass->name;
+        return "object";
+    }
     if(func != nullptr)
         for(paramDef* p : func->params)
             if(p->name == name) return p->type.name;
@@ -928,6 +965,13 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         string lower = vd->name;
         transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
         if(lower == name) return "verb";
+    }
+    // Global emitter objects (emitter bglStyle { }) → resolve to their own class name
+    {
+        typeDef& td = languageService.getType(name);
+        if(auto* cd = dynamic_cast<classDef*>(&td))
+            if(cd->isGlobalEmitterObject)
+                return name;
     }
     return "";
 }
@@ -982,12 +1026,19 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         return "_" + enumTypeName + "_" + name;
     }
     for(typeDef* g : languageService.globals)
-        if(g->name == name) return name;
+        if(g->name == name) return g->i6name.empty() ? name : g->i6name;
     // Tier 4: verb names (action constants and verb variables)
     for(verbObjectDef* vd : languageService.verbs){
         string lower = vd->name;
         transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
         if(lower == name) return vd->name;
+    }
+    // Tier 5: global emitter objects (emitter bglStyle { }) — no instance, qualify as-is
+    {
+        typeDef& td = languageService.getType(name);
+        if(auto* cd = dynamic_cast<classDef*>(&td))
+            if(cd->isGlobalEmitterObject)
+                return name;
     }
     return "";
 }
@@ -1175,8 +1226,9 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 for(typeDef* g : languageService.globals)
                     if(auto* fd = dynamic_cast<functionDef*>(g))
                         if(fd->name == cur.value){ retType = fd->returnType.name; break; }
-                if(retType == "void")
+                if(retType == "void"){
                     parsingError(format("Cannot use void function '{0}' in an expression", cur.value));
+                }
                 if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
                 expr->tokens.push_back(cur.value);
                 expr->tokens.push_back(token::parenOpen);
@@ -1206,8 +1258,12 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             }
             else if(parenDepth == 0 && next.is(token::period)){
                 token member = file.getToken(eTokenType::identifier);
-                if(cur.value == "self"){
-                    // self.member → look up member type in current class/object
+                // Read afterMember here so both self and non-self paths share it.
+                // For the self property-access case, put it back via prefetched.
+                token afterMember = getNext();
+                if(cur.value == "self" && !afterMember.is(token::parenOpen)){
+                    // Property access: self.property — look up type in current class/object
+                    prefetched = afterMember;
                     string memberType;
                     if(currentClass != nullptr)
                         for(typeMember* m : currentClass->members)
@@ -1220,7 +1276,9 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     if(expr->resolvedType.empty() && !memberType.empty()) expr->resolvedType = memberType;
                     expr->tokens.push_back("self." + member.value);
                 } else {
-                    token afterMember = getNext();
+                    // Non-self identifier, or self.method(args).
+                    // afterMember was already read above; resolveIdentifierType("self",...)
+                    // now returns the current object/class type, so self.method() works here too.
                     if(afterMember.is(token::parenOpen)){
                         // method call in expression context: obj.method(args)
                         string objName = cur.value;
@@ -1423,16 +1481,17 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(rhsText.empty()){ rhsText=rhs.value; } // fallback; type error will catch it
                     }
                     else if(rhs.is(token::parenOpen)){
-                        // Parenthesized RHS expression — collect tokens until matching close paren
-                        rhsText = "(";
-                        int depth = 1;
-                        while(depth > 0){
-                            token t = file.getToken();
-                            if(t.is(token::parenOpen))       depth++;
-                            else if(t.is(token::parenClose)){ depth--; if(depth == 0){ rhsText += ")"; break; } }
-                            if(depth > 0) rhsText += t.value;
-                        }
+                        // Parenthesized RHS expression — parse fully so operator translation runs
+                        expression* rhsExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
+                        rhsText = "(" + rhsExpr->text() + ")";
                         // rhsType left empty — matchedOp lookup uses empty-rhsType fallback (always matches)
+                    }
+                    else if(rhs.is(eTokenType::directive)){
+                        if(rhs.value.rfind("##", 0) == 0){
+                            string verbName = rhs.value.substr(2);
+                            parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
+                        }
+                        parsingError(format("Directive '{0}' is not valid in an expression.", rhs.value));
                     }
 
                     functionDef* matchedOp = nullptr;
@@ -1655,6 +1714,14 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             expr->resolvedType = !trueExpr->resolvedType.empty() ? trueExpr->resolvedType : falseExpr->resolvedType;
             expr->terminator = falseExpr->terminator;
             break;
+        }
+        else if(cur.is(eTokenType::directive)){
+            // ##VerbName is not valid in Beguile expressions; the ## prefix is emitted automatically.
+            if(cur.value.rfind("##", 0) == 0){
+                string verbName = cur.value.substr(2);
+                parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
+            }
+            parsingError(format("Directive '{0}' is not valid in an expression.", cur.value));
         }
         else {
             expr->tokens.push_back(cur.value);
@@ -2984,11 +3051,12 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
 //--      int myParam)
 //--      int myParam=5) 
 //--      int myParam=5, ...
-bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst){
+bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst, string i6alias){
     variableDeclaration& varDecl = *new variableDeclaration();
     varDecl.src = file.currentLocation();
     varDecl.name=(string) variableName;
     varDecl.type=languageService.getType((string) dataType);
+    if(!i6alias.empty()) varDecl.i6name = i6alias;
     varDecl.isExternal=isExternal;
     varDecl.isConst=isConst;
     // For func<...> types, getType returns the base "func" type. Set the full parameterized name.
@@ -3208,8 +3276,11 @@ string bglParser::processBglConditionals(const string& text){
                 }
             } else if(dir == "endif"){
                 if(stk.size() > 1) stk.pop_back();
+            } else {
+                // Not a known directive — pass ##identifier through verbatim (e.g. ##VerbName in emitter bodies)
+                if(stk.back().shouldEmit) result += "##" + dir;
             }
-            // directive text is never forwarded to output
+            // known directive text is never forwarded to output
         } else {
             if(stk.back().shouldEmit) result += text[pos];
             pos++;
@@ -3568,7 +3639,12 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             return processBeguilerSettings();
         }
     }
-    return parsingError("Unrecognized directive '"+tok.value+"'.");
+    // ##VerbName is an I6 action-constant syntax that Beguile handles automatically.
+    if(directive.value.rfind("##", 0) == 0){
+        string verbName = directive.value.substr(2);
+        return parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
+    }
+    return parsingError("Unrecognized directive '" + directive.value + "'.");
 }
 bool bglParser::processRoutineDeclaration(token returnType, token name, abstractObject& contextObject, bool isExternal, bool isEmitter, bool isReplace){
     functionDef& funcDef=*(new functionDef());
@@ -3796,8 +3872,9 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
     processMemberVariable(obj, propTypeName, nameTok.value, hasValue);
 }
 
-bool bglParser::processObjectDeclaration(token objectType, token name, bool isExternal, string className){
+bool bglParser::processObjectDeclaration(token objectType, token name, bool isExternal, string className, string i6alias){
     objectDef& newObj = languageService.registerObject((string)name, isExternal);
+    if(!i6alias.empty()) newObj.i6name = i6alias;
     // Resolve objectClass: prefer explicit ': ClassName' annotation, otherwise use the
     // declared type token (e.g. 'worldObject foyer { }' where worldObject is a classDef)
     string resolvedClassName = !className.empty() ? className : objectType.value;
@@ -3886,7 +3963,12 @@ bool bglParser::processBeguilerSettings(){
                 parsingError(format("beguilerSettings property 'informpath' expects a string literal, got '{0}'", strVal));
             if(cfg.informBinaryPath.empty()) cfg.informBinaryPath = strVal;
         }
-        else if(key == "i6includepath"){
+        else if(key == "outputpath"){
+            if(!val.is(eTokenType::quote))
+                parsingError(format("beguilerSettings property 'outputpath' expects a string literal, got '{0}'", strVal));
+            if(cfg.outputPath.empty()) cfg.outputPath = strVal;
+        }
+        else if(key == "i6includepath"){ 
             if(!val.is(eTokenType::quote))
                 parsingError(format("beguilerSettings property 'i6includepath' expects a string literal, got '{0}'", strVal));
             cfg.i6IncludePaths.push_back(strVal);  // always accumulate
@@ -3924,6 +4006,7 @@ bool bglParser::processBeguilerSettings(){
     // Apply path overrides immediately so subsequent includes use them
     if(!cfg.beguiLibPath.empty())     settings.libPath     = cfg.beguiLibPath;
     if(!cfg.informBinaryPath.empty()) settings.informPath  = cfg.informBinaryPath;
+    if(!cfg.outputPath.empty() && settings.outputPath.empty()) settings.outputPath = cfg.outputPath;
 
     return false;
 }
@@ -4134,11 +4217,15 @@ vector<grammarLine> bglParser::parseGrammarLines(){
                 string tokenStr = pt.value;
                 string display = pt.originalValue.empty() ? pt.value : pt.originalValue;
 
-                // resolve declared type
+                // resolve declared type; apply i6name alias if present
                 string resolvedType;
                 for(typeDef* g : languageService.globals){
                     if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                        if(vd->name == tokenStr){ resolvedType = vd->type.name; break; }
+                        if(vd->name == tokenStr){
+                            resolvedType = vd->type.name;
+                            if(!vd->i6name.empty()) tokenStr = vd->i6name;
+                            break;
+                        }
                     if(auto* fd = dynamic_cast<functionDef*>(g))
                         if(fd->name == tokenStr){ resolvedType = "function"; break; }
                 }
