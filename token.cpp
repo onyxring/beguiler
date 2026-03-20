@@ -46,6 +46,9 @@ const token _nullToken;
     bool token::isDataType(){
         return languageService.isObjectType(value);    
     }
+    bool token::isString(){
+        return tokenType == eTokenType::quote || tokenType == eTokenType::rawQuote;
+    }
     bool token::isNumeric(){
         for(char c:value){
             if(isnumber(c)==false) return false;
@@ -63,7 +66,7 @@ const token _nullToken;
 
 #pragma region Conversion operators
     token::operator string(){
-        if(tokenType==eTokenType::quote) return unescape(value);
+        if(isString()) return unescape(value);
         return value;
     }
 #pragma endregion
@@ -93,8 +96,8 @@ const token _nullToken;
     }        
 
     string token::assertFailedMessage(vector<eTokenType> types){
-        string retval=format("Unexpected {0} '{1}'.  Expected ",(tokenType==eTokenType::quote)?"literal string":"token", value);
-        
+        string retval=format("Unexpected {0} '{1}'.  Expected ",isString()?"literal string":"token", value);
+
         types.erase(std::remove(types.begin(), types.end(), eTokenType::eof), types.end()); 
         types.erase(std::remove(types.begin(), types.end(), eTokenType::unknown), types.end()); 
 
@@ -114,7 +117,7 @@ const token _nullToken;
         return retval;
     }
     string token::assertFailedMessage(vector<string> vals){
-        string retval=format("Unexpected {0} '{1}'.  Expected ",(tokenType==eTokenType::quote)?"literal string":"token", value);
+        string retval=format("Unexpected {0} '{1}'.  Expected ",isString()?"literal string":"token", value);
 
         for(int t=0;t<vals.size();t++){
             if(t>0) {
@@ -167,7 +170,9 @@ string token::tokenTypeToString(eTokenType type){
     switch(type){
         case eTokenType::identifier: return "identifier";
             break;
-        case eTokenType::quote: return "literal string";
+        case eTokenType::quote:    return "literal string";
+            break;
+        case eTokenType::rawQuote: return "raw string literal";
             break;
         case eTokenType::symbol: return "symbol";
             break;

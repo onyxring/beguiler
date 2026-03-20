@@ -12,6 +12,7 @@ class fileLexer{
     public:
         std::stack<std::tuple<std::ifstream*, std::string, int, int>> files;
         eTokenType prevTokenType = eTokenType::unknown; // tracks last token returned by getToken()
+        std::string prevTokenValue;                      // tracks last token's value (for symbol disambiguation)
         
         void open(std::string);
         void close();

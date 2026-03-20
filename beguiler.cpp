@@ -23,8 +23,27 @@ bool beguiler::go(int argc, char* argv[]) {
     parser.preScanFile(settings.inFile);  // pass 1: register all type/object stubs for forward-reference resolution
     if(parser.parseFile(settings.inFile)) return true;
 
-    // Default target to Glulx if neither CLI nor #beguilerSettings set it
-    if(beguilerSettings.target.empty()) beguilerSettings.target = "glulx";
+    // Apply defaults declared on beguilerSettingsType schema members for any unset fields
+    parser.applySchemaDefaults();
+    // Safety fallbacks if schema was not loaded
+    if(beguilerSettings.target.empty())      beguilerSettings.target = "glulx";
+    if(beguilerSettings.framePoolSize == -1) beguilerSettings.framePoolSize = 64;
+
+    // Resolve the I6 binary.  Precedence (highest to lowest):
+    //   1. CLI -inform=name   (settings.informName non-empty)
+    //   2. #beguilerSettings informPath = "..."  (full path from file)
+    //   3. #beguilerSettings informName = "..."  (filename from file)
+    //   4. Default: "inform" (relative to compiler binary)
+    if(!settings.informName.empty()){
+        // CLI wins — build path from the CLI-supplied name
+        settings.informPath = getPath(argv[0]) + settings.informName;
+    } else if(!beguilerSettings.informBinaryPath.empty()){
+        settings.informPath = beguilerSettings.informBinaryPath;
+        settings.informName = fs::path(settings.informPath).filename().string();
+    } else {
+        settings.informName = beguilerSettings.informName.empty() ? "inform" : beguilerSettings.informName;
+        settings.informPath = getPath(argv[0]) + settings.informName;
+    }
 
     // Compute default output path now that beguilerSettings may have set outputPath
     if(settings.outFile.empty()) {
@@ -113,7 +132,6 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
     #endif
 
     settings.tmpFile = fs::absolute(settings.inFile).string()+".transpiled.inf";
-    settings.informPath = getPath(argv[0])+settings.informName;
     const char* envLib = getenv("BEGUILE_LIB");
     settings.libPath = envLib ? string(envLib) : getPath(argv[0])+"beguilib";
 
