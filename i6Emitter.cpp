@@ -226,17 +226,17 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
         xpGlobalsNeeded = maxXP;
     }
 
-    // Pass 3: emit everything else
-    for(typeDef* node : nodeList)
-        generateI6(node);
-
-    // Pass 4: synthesise initBeguile — only emitted if there are global inits
+    // Synthesise bglInit before all user globals so any routine that calls it can resolve it
     if(!languageService.globalInits.empty()){
-        out << "[initBeguile;\n";
+        out << "[bglInit;\n";
         for(auto& [varName, body] : languageService.globalInits)
             out << "    " << body << "\n";
         out << "];\n";
     }
+
+    // Pass 3: emit everything else
+    for(typeDef* node : nodeList)
+        generateI6(node);
 }
 void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     if(cfg->target == "glulx")     out << "!% -G\n";
@@ -426,6 +426,10 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                 if(!seg.text.empty())
                     out << indent << "print \"" << seg.text << "\";\n";
             } else {
+                // Emit any ternary-lowering injections before this expression segment
+                for(statement* inj : seg.injections)
+                    emitStatement(inj, indent);
+
                 string rt = seg.expr->resolvedType;
                 string exprStr = exprText(seg.expr);
 
@@ -651,7 +655,7 @@ void i6Emitter::emitObject(objectDef* obj){
     bool hasProps = false;
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-            if(vd->type.name != "attributecollection" && vd->name != "parent") { hasProps = true; break; }
+            if(vd->type.name != "attributelist" && vd->name != "parent") { hasProps = true; break; }
         } else if(dynamic_cast<functionDef*>(m)){ hasProps = true; break; }
           else if(dynamic_cast<i6RawNode*>(m))  { hasProps = true; break; }
 
@@ -670,7 +674,7 @@ void i6Emitter::emitObject(objectDef* obj){
                 }
                 first = false;
             } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-                if(vd->type.name == "attributecollection") continue; // handled separately below
+                if(vd->type.name == "attributelist") continue; // handled separately below
                 if(vd->name == "parent") continue; // emitted as positional argument, not 'with' property
                 out << (first ? "  with " : ",\n       ");
                 out << vd->name << " ";
@@ -716,10 +720,10 @@ void i6Emitter::emitObject(objectDef* obj){
         if(!first) out << "\n";
     }
 
-    // emit attributeCollection members as I6 'has' line
+    // emit attributeList members as I6 'has' line
     for(typeMember* m : obj->members){
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-            if(vd->type.name != "attributecollection") continue;
+            if(vd->type.name != "attributelist") continue;
             if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
                 out << "  has";
                 for(expression* elem : list->elements) out << " " << elem->text();

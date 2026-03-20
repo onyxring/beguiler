@@ -17,6 +17,17 @@
 
 using namespace std;
 
+// Normalize path separators to the OS path separator unless rewritePaths is explicitly false.
+// Treats unset (nullopt) as true — rewriting is the default.
+static string rewritePathSeps(const string& path){
+    if(beguilerSettings.rewritePaths.has_value() && !beguilerSettings.rewritePaths.value())
+        return path;
+    string result = path;
+    for(char& c : result)
+        if(c == '/' || c == '\\') c = settings.pathSep;
+    return result;
+}
+
 // Case-insensitive file lookup: returns the first directory entry whose
 // lowercased filename equals the lowercased form of `target`. Falls back
 // to `target` itself (which will produce a normal "file not found" error)
@@ -80,8 +91,12 @@ bool bglParser::parseFile(string filename){
     }
 
     //process all statements in the file one by one.  This may include recursive calls for included files.
-    while(processNextStatement()==false){
-        //cout<<"Block processed."<<endl;
+    try{
+        while(processNextStatement()==false){
+            //cout<<"Block processed."<<endl;
+        }
+    } catch(exitFileSignal&){
+        // #exit directive: treat as end-of-file, discarding any open directive nesting
     }
     //emit.out<<endl;
     file.close();
@@ -131,7 +146,7 @@ void bglParser::preScanDirective(token tok){
         preScanOnceFiles.insert(filesystem::absolute(name).string());
     } else if(tok.is("#include")){
         token next = file.getToken();
-        if(next.is(eTokenType::quote)){
+        if(next.isString()){
             string includeName = next.value;
             if(includeName.size() >= 2 && includeName.front()=='"' && includeName.back()=='"')
                 includeName = includeName.substr(1, includeName.size()-2);
@@ -164,8 +179,11 @@ void bglParser::preScanDirective(token tok){
         preScanSkipBody(); // skip { target = Glulx; ... } so the closing } doesn't corrupt the token stream
     } else if(tok.value == "#includei6"){
         token filename = file.getToken(); // consume the quoted filename
+        string innerPath = filename.value;
+        if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
+            innerPath = '"' + rewritePathSeps(innerPath.substr(1, innerPath.size()-2)) + '"';
         i6RawNode& stub = *(new i6RawNode());
-        stub.text = format("#include {0};", filename.value);
+        stub.text = format("#include {0};", innerPath);
         stub.isPrePassStub = true;
         languageService.globals.push_back(&stub);
     } else if(tok.value == "#i6"){
@@ -405,6 +423,11 @@ void bglParser::preScanFile(string filename){
                 if(!languageService.isObjectType(nameStr)){
                     objectDef& stub = languageService.registerObject(nameStr, isExtern);
                     stub.isPrePassStub = true;
+                    // Record the declared class so forward references resolve correctly
+                    if(!typeName.empty() && typeName != "object"){
+                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(typeName));
+                        if(cls != nullptr) stub.objectClass = cls;
+                    }
                 }
                 preScanSkipBodyContents();
             } else if(sym.is(token::endStatement) || sym.is(token::assignment) ||
@@ -645,11 +668,20 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     currentClass = &newClass;
     openCompileContext(eCompileContext::objectDef);
 
-    // Inheritance clause: required for alias ('alias Foo : Parent'), optional for others
+    // Inheritance clause:
+    //   alias class requires 'for Parent'
+    //   other classes use optional ': Parent [, Parent2 ...]'
     tok = file.getToken();
-    if(isAlias && !tok.is(":"))
-        parsingError(format("'alias {0}' requires a parent class: use 'alias {0} : ParentClass'", (string)nameTok));
-    if(tok.is(":")){
+    if(isAlias && !tok.is("for"))
+        parsingError(format("'alias {0}' requires a parent class: use 'alias {0} for ParentClass'", (string)nameTok));
+    if(tok.is("for")){
+        // alias class single-parent clause
+        token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
+        classDef* parent = dynamic_cast<classDef*>(&languageService.getType(parentTok.value));
+        if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
+        else newClass.baseClasses.push_back(parent);
+        tok = file.getToken();
+    } else if(tok.is(":")){
         do {
             token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
             classDef* parent = dynamic_cast<classDef*>(&languageService.getType(parentTok.value));
@@ -657,8 +689,6 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             else newClass.baseClasses.push_back(parent);
             tok = file.getToken();
         } while(tok.is(","));
-        if(isAlias && newClass.baseClasses.size() != 1)
-            parsingError(format("'alias' class '{0}' must have exactly one parent", (string)nameTok));
     }
     tok.assert(token::braceOpen);
     tok=file.getToken();
@@ -710,7 +740,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             processParameterList(funcDef);
             if(isEmitter && !funcDef.params.empty() && (funcDef.name == "init" || funcDef.name == "deinit"))
                 parsingError(format("Emitter '{0}' cannot accept parameters", funcDef.name));
-            if((isExternal || newClass.isAlias) && !isEmitter){
+            if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter){
                 // extern/alias class non-emitter methods not allowed
                 parsingError(format("Non-emitter function '{0}' is not allowed in an extern or alias class", funcDef.name));
             } else {
@@ -766,8 +796,8 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(newClass.isEmitterClass) parsingError(format("Variable members are not allowed in 'emitter class {0}'", newClass.name));
             if(tok.isNot(token::endStatement) && tok.isNot(token::assignment))
                 parsingError(format("Expected '=' or ';' after member '{0}'", (string)name));
-            if((isExternal || newClass.isAlias) && tok.is(token::assignment))
-                parsingError(format("Member '{0}' in an extern or alias class may not have a definition (value); declarations only", (string)name));
+            if(newClass.isAlias && tok.is(token::assignment))
+                parsingError(format("Member '{0}' in an alias class may not have a definition (value); declarations only", (string)name));
             variableDeclaration& varDef=*(new variableDeclaration());
             varDef.name=(string) name;
             varDef.type=languageService.getType((string) returnType);
@@ -896,6 +926,21 @@ bool bglParser::processParameterList(functionDef& funcDef){
         tok=file.getToken(); // name, "=", ",", or ")"
         if(tok.is(eTokenType::identifier)){
             param.name=(string) tok;
+            // Disallow parameter names that shadow a global, a class member, or an object member.
+            // Emitters are skipped: their parameter names are template substitution keys, not I6 locals.
+            if(!funcDef.isEmitter){
+                for(typeDef* g : languageService.globals)
+                    if(g->name == param.name)
+                        parsingError("Parameter '" + param.name + "' shadows global variable of the same name. Rename the parameter.");
+                if(currentClass != nullptr)
+                    for(typeMember* m : currentClass->members)
+                        if(m->name == param.name)
+                            parsingError("Parameter '" + param.name + "' shadows a member of class '" + currentClass->name + "'. Rename the parameter.");
+                if(currentObject != nullptr)
+                    for(typeMember* m : currentObject->members)
+                        if(m->name == param.name)
+                            parsingError("Parameter '" + param.name + "' shadows a member of object '" + currentObject->name + "'. Rename the parameter.");
+            }
             tok=file.getToken(); // "=", ",", or ")"
         }
         if(tok.is(token::assignment)){
@@ -1009,15 +1054,17 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                     if(vd->name == name) return name;
     }
-    // Tier 2: current object/class member variables → qualify with self
+    // Tier 2: current object/class members (variables and methods) → qualify with self
     if(currentObject != nullptr)
         for(typeMember* m : currentObject->members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->name == name) return "self." + name;
+            if(m->name == name)
+                if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
+                    return "self." + name;
     if(currentClass != nullptr)
         for(typeMember* m : currentClass->members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->name == name) return "self." + name;
+            if(m->name == name)
+                if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
+                    return "self." + name;
     // Tier 3: enum values and globals
     if(!languageService.getEnumType(name).empty()){
         string enumTypeName = languageService.getEnumType(name);
@@ -1046,12 +1093,6 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
 bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     if(paramType == "var") return true;  // var accepts any type without checking
     if(argType == paramType) return true;
-    // Integer literals are compatible with int
-    if((argType == "intliteral" || argType == "int") &&
-       (paramType == "intliteral" || paramType == "int")) return true;
-    // String literals are compatible with string
-    if((argType == "stringliteral" && paramType == "string") ||
-       (argType == "string" && paramType == "stringliteral")) return true;
     // func<...> compatibility: a func value is compatible with any func<...> param type
     if(argType == "func" && paramType.rfind("func<", 0) == 0) return true;
     if(argType.rfind("func<", 0) == 0 && paramType.rfind("func<", 0) == 0) return true;
@@ -1074,6 +1115,21 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
                 return false;
             };
             if(inheritsFrom(argCls2)) return true;
+        }
+    }
+    // Block implicit upcast: if argType is an ancestor of paramType, object-level operator= inherited
+    // from the base should not be used to allow assigning a less-specific type to a more-specific one.
+    // e.g. assigning an 'object' to a 'room' variable must fail even though room inherits object's operator=.
+    {
+        classDef* argCls3  = dynamic_cast<classDef*>(&languageService.getType(argType));
+        classDef* paramCls3 = dynamic_cast<classDef*>(&languageService.getType(paramType));
+        if(argCls3 && paramCls3 && argCls3 != paramCls3){
+            std::function<bool(classDef*)> isAncestorOf = [&](classDef* c) -> bool {
+                for(classDef* base : c->baseClasses)
+                    if(base == argCls3 || isAncestorOf(base)) return true;
+                return false;
+            };
+            if(isAncestorOf(paramCls3)) return false;
         }
     }
     // Check target type's operator = (argType)
@@ -1190,7 +1246,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             if(expr->resolvedType.empty()) expr->resolvedType = "intliteral";
             expr->tokens.push_back(cur.value);
         }
-        else if(cur.is(eTokenType::quote)){
+        else if(cur.isString()){
             if(expr->resolvedType.empty()) expr->resolvedType = "stringliteral";
             expr->tokens.push_back(cur.value);
         }
@@ -1473,7 +1529,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     token rhs = getNext();
                     string rhsType, rhsText;
                     if(rhs.is(eTokenType::integer))         { rhsType="intliteral";    rhsText=rhs.value; }
-                    else if(rhs.is(eTokenType::quote))      { rhsType="stringliteral"; rhsText=rhs.value; }
+                    else if(rhs.isString())                 { rhsType="stringliteral"; rhsText=rhs.value; }
                     else if(rhs.is(eTokenType::charLiteral)){ rhsType="charliteral";   rhsText="'"+rhs.value+"'"; }
                     else if(rhs.is(eTokenType::name)) {
                         rhsType=resolveIdentifierType(rhs.value,func,body);
@@ -1734,7 +1790,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
 
 bool bglParser::processStatement(token tok, abstractObject& contextObj){
     token nextToken=_nullToken;
-    sourceLocation stmtLoc = file.currentLocation();
+    sourceLocation stmtLoc = tok.src.line > 0 ? tok.src : file.currentLocation();
+    currentStatementSrc = stmtLoc;
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
     string stmtCastType; // set when statement begins with (TypeName) cast prefix
@@ -2381,9 +2438,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(classType != nullptr && val != nullptr){
                 string valueTypeName = val->resolvedType;
                 if(!valueTypeName.empty()){
-                    bool found = isTypeCompatible(valueTypeName, leftType->name);
-                    if(!found){
-                        // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all
+                    // Two-pass emitter lookup first — explicit operator= emitters always beat raw type compatibility
+                    bool found = false;
+                    {
                         typeMember* m = findMemberInHierarchy(classType, [&](typeMember* m){
                             auto* opFunc = dynamic_cast<functionDef*>(m);
                             return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
@@ -2402,6 +2459,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             found = true;
                         }
                     }
+                    if(!found) found = isTypeCompatible(valueTypeName, leftType->name);
                     if(!found){
                         // Fallback: check if RHS type has emitter LhsType operator(){}
                         classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(valueTypeName));
@@ -2608,6 +2666,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     interpolatedPrintStatement::Segment seg;
                     seg.isExpr = true;
                     seg.expr = exprNode;
+                    // Capture any ternary injections so they emit before this segment's print
+                    seg.injections = pendingInjections;
+                    pendingInjections.clear();
                     ps.segments.push_back(seg);
                 } else {
                     currentStr += c;
@@ -2630,7 +2691,17 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
 
         functionCallStatement& callStmt = *(new functionCallStatement());
         callStmt.src = stmtLoc;
-        callStmt.functionName = (string)tok;
+        // Qualify bare function name: if inside an instance and the name matches an instance
+        // member method, prepend "self." so it routes to the method call path below.
+        {
+            string rawName = (string)tok;
+            if(func != nullptr && rawName.find('.') == string::npos){
+                string qualified = qualifyIdentifier(rawName, func, body);
+                callStmt.functionName = qualified.empty() ? rawName : qualified;
+            } else {
+                callStmt.functionName = (string)tok;
+            }
+        }
 
         // parse argument list using parseExpression
         token firstArgTok = file.getToken();
@@ -3069,12 +3140,19 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
 
-    // Disallow local variable names that shadow a global
+    // Disallow local variable names that shadow a global, a class member, or an object member
     if(func != nullptr){
-        for(typeDef* g : languageService.globals){
+        for(typeDef* g : languageService.globals)
             if(g->name == varDecl.name)
                 parsingError("Local variable '" + varDecl.name + "' shadows global variable of the same name. Rename the local.");
-        }
+        if(currentClass != nullptr)
+            for(typeMember* m : currentClass->members)
+                if(m->name == varDecl.name)
+                    parsingError("Local variable '" + varDecl.name + "' shadows a member of class '" + currentClass->name + "'. Rename the local.");
+        if(currentObject != nullptr)
+            for(typeMember* m : currentObject->members)
+                if(m->name == varDecl.name)
+                    parsingError("Local variable '" + varDecl.name + "' shadows a member of object '" + currentObject->name + "'. Rename the local.");
     }
 
     if(symbol.value==token::assignment){
@@ -3167,7 +3245,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
 
     // init / deinit: if the variable's type is a class with init/deinit emitters, inject them
     // For local variables: inject init as an i6RawNode and register deinit in func->cleanups.
-    // For global variables: record init in languageService.globalInits for the synthesised initBeguile routine.
+    // For global variables: record init in languageService.globalInits for the synthesised bglInit routine.
     if(!isConst && body != nullptr && func != nullptr){
         classDef* cls = dynamic_cast<classDef*>(&languageService.getType(varDecl.type.name));
         if(cls != nullptr){
@@ -3205,7 +3283,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
         }
     }
 
-    // Global scope: record init body in globalInits for initBeguile
+    // Global scope: record init body in globalInits for bglInit
     if(!isConst && body == nullptr && func == nullptr){
         classDef* cls = dynamic_cast<classDef*>(&languageService.getType(varDecl.type.name));
         if(cls != nullptr){
@@ -3432,13 +3510,14 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
     switch(directive.chk()){
         case chk("#include"):{
             token next=file.getToken();
-            if(next.is(eTokenType::quote)){
+            if(next.isString()){
                 // quoted form: first check for a local .bgl file relative to the current source file.
                 // If found, parse it as Beguile. Otherwise pass through as a raw I6 include directive.
                 string includeName = next.value;
                 // Strip surrounding quotes if present
                 if(includeName.size() >= 2 && includeName.front()=='"' && includeName.back()=='"')
                     includeName = includeName.substr(1, includeName.size()-2);
+                includeName = rewritePathSeps(includeName);
                 filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
                 filesystem::path candidate = curDir / (includeName + ".bgl");
                 if(!filesystem::exists(candidate))
@@ -3479,8 +3558,12 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             break;
         }
         case chk("#includei6"):{
-            token filename=file.getToken(eTokenType::quote);
-            string nodeText = format("#include {0};", filename.value);
+            token filename=file.getToken({eTokenType::quote, eTokenType::rawQuote});
+            // Normalize path separators inside the quoted filename
+            string innerPath = filename.value;
+            if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
+                innerPath = '"' + rewritePathSeps(innerPath.substr(1, innerPath.size()-2)) + '"';
+            string nodeText = format("#include {0};", innerPath);
             // Claim the pre-scan stub if present (preserves source ordering in output)
             bool claimed = false;
             for(typeDef* g : languageService.globals){
@@ -3637,6 +3720,22 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
 
         case chk("#beguilersettings"):{
             return processBeguilerSettings();
+        }
+        case chk("#message"):{
+            token msg = file.getToken({eTokenType::quote, eTokenType::rawQuote});
+            string text = msg.value;
+            if(text.size()>=2 && text.front()=='"' && text.back()=='"') text = text.substr(1,text.size()-2);
+            cout << text << endl;
+            return false;
+        }
+        case chk("#error"):{
+            token msg = file.getToken({eTokenType::quote, eTokenType::rawQuote});
+            string text = msg.value;
+            if(text.size()>=2 && text.front()=='"' && text.back()=='"') text = text.substr(1,text.size()-2);
+            return parsingError(text);
+        }
+        case chk("#exit"):{
+            throw exitFileSignal{};
         }
     }
     // ##VerbName is an I6 action-constant syntax that Beguile handles automatically.
@@ -3916,12 +4015,14 @@ bool bglParser::processBeguilerSettings(){
     // Use the global singleton — CLI-set fields take precedence; source block fills gaps.
     beguilerSettingsDef& cfg = beguilerSettings;
 
+    // Look up the schema class for property name/type validation
+    classDef* schema = dynamic_cast<classDef*>(&languageService.getType("beguilerSettingstype"));
+
     file.getToken(token::braceOpen);
     token tok = file.getToken();
     while(!tok.is(token::braceClose) && !tok.is(eTokenType::eof)){
         // each entry: [<type>] <name> = <value> ;
-        // Type is optional: read two tokens to determine the pattern.
-        // If the second token is '=', the first is the property name (type omitted).
+        // Type is optional: if the second token is '=', the first is the property name.
         // Otherwise the first is the type and the second is the property name.
         token propName;
         token second = file.getToken();
@@ -3933,96 +4034,146 @@ bool bglParser::processBeguilerSettings(){
             propName = second;
             file.getToken(token::assignment);
         }
-        token val = file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::integer});
+
+        string key = propName.value; // already lowercase (lexer normalises identifiers)
+
+        // Validate property name and look up its declared type from the schema class
+        string memberType;
+        if(schema){
+            typeMember* m = findMemberInHierarchy(schema, [&](typeMember* tm){ return tm->name == key; });
+            if(!m)
+                parsingError(format("Unknown beguilerSettings property '{0}'", key));
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                memberType = vd->type.name;
+        }
+
+        token val = file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::rawQuote, eTokenType::integer});
+        // Allow optional qualified enum form: EnumType.Member — consume the dot and member, use member as value
+        if(val.is(eTokenType::identifier) && file.peekToken().is(".")){
+            file.getToken(".");
+            token member = file.getToken(eTokenType::identifier);
+            // Validate that qualifier matches the declared member type
+            if(!memberType.empty() && val.value != memberType)
+                parsingError(format("beguilerSettings property '{0}' expects a {1} value, got '{2}'", key, memberType, val.value));
+            val = member;
+        }
         file.getToken(token::endStatement);
 
-        string key = propName.value;
-        string strVal = (val.is(eTokenType::quote)) ? val.unescape(val.value) : val.value;
-        if(val.is(eTokenType::quote) && strVal.size() >= 2 && strVal.front() == '"' && strVal.back() == '"')
-            strVal = strVal.substr(1, strVal.size() - 2);
+        // Type-check the value against the schema-declared member type
+        if(!memberType.empty()){
+            bool expectInt = (memberType == "int");
+            bool expectStr = (memberType == "string");
+            if(expectInt && !val.is(eTokenType::integer))
+                parsingError(format("beguilerSettings property '{0}' expects an int, got '{1}'", key, val.value));
+            if(expectStr && !val.isString())
+                parsingError(format("beguilerSettings property '{0}' expects a string, got '{1}'", key, val.value));
+            if(!expectInt && !expectStr && !val.is(eTokenType::identifier))
+                parsingError(format("beguilerSettings property '{0}' expects a {1} value, got '{2}'", key, memberType, val.value));
+        }
 
+        string strVal = val.value;
+        if(val.isString()){
+            strVal = val.unescape(val.value);
+            if(strVal.size() >= 2 && strVal.front() == '"' && strVal.back() == '"')
+                strVal = strVal.substr(1, strVal.size() - 2);
+        }
+
+        // Per-property storage and semantic validation
         if(key == "errorformat"){
-            if(!val.is(eTokenType::quote))
-                parsingError(format("beguilerSettings property 'errorformat' expects a string literal, got '{0}'", strVal));
-            if(cfg.errorFormat.empty()){
-                // Require E1 or E2 form (case-insensitive); bare digits are not accepted
-                string upper = strVal;
-                transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
-                if(upper != "E1" && upper != "E2")
-                    parsingError(format("beguilerSettings property 'errorformat' must be \"E1\" or \"E2\", got '{0}'", strVal));
-                cfg.errorFormat = upper.substr(1); // store just the digit for the emitter
-            }
+            string upper = strVal;
+            transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+            if(upper != "E1" && upper != "E2")
+                parsingError(format("beguilerSettings property 'errorformat' must be E1 or E2, got '{0}'", strVal));
+            if(cfg.errorFormat.empty()) cfg.errorFormat = upper.substr(1); // store just the digit
         }
-        else if(key == "beguilibpath"){
-            if(!val.is(eTokenType::quote))
-                parsingError(format("beguilerSettings property 'beguilibpath' expects a string literal, got '{0}'", strVal));
-            if(cfg.beguiLibPath.empty()) cfg.beguiLibPath = strVal;
-        }
-        else if(key == "informpath"){
-            if(!val.is(eTokenType::quote))
-                parsingError(format("beguilerSettings property 'informpath' expects a string literal, got '{0}'", strVal));
-            if(cfg.informBinaryPath.empty()) cfg.informBinaryPath = strVal;
-        }
-        else if(key == "outputpath"){
-            if(!val.is(eTokenType::quote))
-                parsingError(format("beguilerSettings property 'outputpath' expects a string literal, got '{0}'", strVal));
-            if(cfg.outputPath.empty()) cfg.outputPath = strVal;
-        }
-        else if(key == "i6includepath"){ 
-            if(!val.is(eTokenType::quote))
-                parsingError(format("beguilerSettings property 'i6includepath' expects a string literal, got '{0}'", strVal));
-            cfg.i6IncludePaths.push_back(strVal);  // always accumulate
-        }
-        else if(key == "bglincludepath"){
-            if(!val.is(eTokenType::quote))
-                parsingError(format("beguilerSettings property 'bglincludepath' expects a string literal, got '{0}'", strVal));
-            cfg.bglIncludePaths.push_back(strVal);  // always accumulate
-        }
-        else if(key == "release"){
-            if(!val.is(eTokenType::integer))
-                parsingError(format("beguilerSettings property 'release' expects an integer, got '{0}'", strVal));
-            if(cfg.release == 0) cfg.release = stoi(strVal);        // CLI wins
-        }
+        else if(key == "beguilibpath"){ if(cfg.beguiLibPath.empty())    cfg.beguiLibPath = rewritePathSeps(strVal); }
+        else if(key == "informpath"){   if(cfg.informBinaryPath.empty()) cfg.informBinaryPath = rewritePathSeps(strVal); }
+        else if(key == "informname"){   if(cfg.informName.empty())       cfg.informName = rewritePathSeps(strVal); }
+        else if(key == "outputpath"){   if(cfg.outputPath.empty())       cfg.outputPath = rewritePathSeps(strVal); }
+        else if(key == "i6includepath"){ cfg.i6IncludePaths.push_back(rewritePathSeps(strVal)); }   // additive
+        else if(key == "bglincludepath"){ cfg.bglIncludePaths.push_back(rewritePathSeps(strVal)); } // additive
+        else if(key == "release"){ if(cfg.release == 0) cfg.release = stoi(strVal); }
         else if(key == "framepoolsize"){
-            if(!val.is(eTokenType::integer))
-                parsingError(format("beguilerSettings property 'framePoolSize' expects an integer, got '{0}'", strVal));
             int sz = stoi(strVal);
             if(sz < 1) parsingError("beguilerSettings property 'framePoolSize' must be at least 1");
-            if(cfg.framePoolSize == 64) cfg.framePoolSize = sz;      // CLI wins (64 = default)
+            if(cfg.framePoolSize == -1) cfg.framePoolSize = sz;  // -1 = unset sentinel
         }
         else if(key == "target"){
             if(languageService.getEnumType(strVal) != "etarget")
                 parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z3, Z5, or Z8).", strVal));
-            if(cfg.target.empty()) cfg.target = strVal;              // CLI wins
+            if(cfg.target.empty()) cfg.target = strVal;
         }
-        else parsingError(format("Unknown beguilerSettings property '{0}'", key));
+        else if(key == "rewritepaths"){
+            if(!cfg.rewritePaths.has_value()){
+                if(strVal == "true")       cfg.rewritePaths = true;
+                else if(strVal == "false") cfg.rewritePaths = false;
+                else parsingError(format("beguilerSettings property 'rewritePaths' expects true or false, got '{0}'", strVal));
+            }
+        }
 
         tok = file.getToken();
     }
 
-    // Default target to Glulx if nothing set it
-    if(cfg.target.empty()) cfg.target = "glulx";
-
     // Apply path overrides immediately so subsequent includes use them
-    if(!cfg.beguiLibPath.empty())     settings.libPath     = cfg.beguiLibPath;
-    if(!cfg.informBinaryPath.empty()) settings.informPath  = cfg.informBinaryPath;
+    // (informBinaryPath is intentionally excluded here — resolved after all parsing in beguiler.cpp)
+    if(!cfg.beguiLibPath.empty()) settings.libPath = cfg.beguiLibPath;
     if(!cfg.outputPath.empty() && settings.outputPath.empty()) settings.outputPath = cfg.outputPath;
 
     return false;
 }
+
+// Apply default values declared on beguilerSettingsType members to any settings fields
+// that were never set by a #beguilerSettings block.  Called once after all parsing is done.
+void bglParser::applySchemaDefaults(){
+    beguilerSettingsDef& cfg = beguilerSettings;
+    classDef* schema = dynamic_cast<classDef*>(&languageService.getType("beguilerSettingstype"));
+    if(!schema) return;
+
+    for(typeMember* m : schema->members){
+        variableDeclaration* vd = dynamic_cast<variableDeclaration*>(m);
+        if(!vd || !vd->declaredExpressionValue) continue;
+
+        string key = vd->name; // already lowercase
+        string defVal = vd->declaredExpressionValue->text();
+        // Strip surrounding quotes if the default is a string literal
+        if(defVal.size() >= 2 && defVal.front()=='"' && defVal.back()=='"')
+            defVal = defVal.substr(1, defVal.size()-2);
+
+        if(key == "target"        && cfg.target.empty())       cfg.target = defVal;
+        else if(key == "framepoolsize" && cfg.framePoolSize == -1) cfg.framePoolSize = stoi(defVal);
+        else if(key == "errorformat"  && cfg.errorFormat.empty()){
+            string upper = defVal;
+            transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+            if(upper == "E1" || upper == "E2") cfg.errorFormat = upper.substr(1);
+        }
+        else if(key == "release"      && cfg.release == 0)         cfg.release = stoi(defVal);
+        else if(key == "rewritepaths" && !cfg.rewritePaths.has_value()) cfg.rewritePaths = (defVal == "true");
+    }
+}
 #pragma endregion
 
 //-------------------------------------------------------------------------------------------------------------------------------
-// Throw an error, formatting the output to point to the current line 
+// Throw an error, formatting the output to point to the current line
 bool bglParser::parsingError(string msg){
     string errorMessage;
     if(file.getNumberOfOpenFiles()>0) {
-        auto [inputFileStream, fileName, curLine, curCol]=file.getCurrentFileDetail(); 
-        //errorMessage=format("\033[1m{0}:{1}:{2}: \x1b[31merror:\x1b[0m {3}",fileName,curLine,curCol,msg); 
-        errorMessage=format("{0}:{1}:{2}: error: {3}",fileName,curLine,curCol,msg); 
+        // Prefer the statement-start location if set; fall back to current stream position.
+        string fileName;
+        int curLine, curCol;
+        if(currentStatementSrc.line > 0){
+            fileName = currentStatementSrc.file;
+            curLine  = currentStatementSrc.line;
+            curCol   = 1;
+        } else {
+            auto detail = file.getCurrentFileDetail();
+            fileName = get<1>(detail);
+            curLine  = get<2>(detail);
+            curCol   = get<3>(detail);
+        }
+        errorMessage=format("{0}:{1}:{2}: error: {3}",fileName,curLine,curCol,msg);
     }
     else{
-        errorMessage=msg; 
+        errorMessage=msg;
     }
     
     throw runtime_error(errorMessage); 

@@ -9,6 +9,23 @@ extern enum eTarget{ //--used to specify the target in the beguilerSettings obje
     Z5,
     Z8
 }
+extern enum eErrorFormat{ //--used to specify the errorFormat in the beguilerSettings object.  Declared as external, since these are defined in Beguile compiler
+    E1,
+    E2
+}
+extern class beguilerSettingsType { //--schema for #beguilerSettings directive blocks; provides property IntelliSense
+    eTarget         target         = Glulx;         // compilation target: Glulx (default), Z3, Z5, or Z8
+    string          informPath;                     // full path to the Inform 6 compiler binary (overrides informName)
+    string          informName     = "inform";      // I6 binary filename (default "inform"); use "none" to skip I6 handoff
+    string          beguiLibPath   = "beguiLib";    // path to the Beguile language extensions directory
+    string          outputPath     = "output";      // output directory for compiled files
+    eErrorFormat    errorFormat    = E1;            // error format: "E1" (Microsoft) or "E2" (Macintosh)
+    int             release        = 0;             // story release number
+    int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
+    string          i6IncludePath;                  // adds one directory to the I6 compiler include search path (additive)
+    string          bglIncludePath;                 // adds one directory to the Beguile include search path (additive)
+    bool            rewritePaths   = true;          // substitute path separators to match OS
+}
 
 extern enum eBool{ //--literal values used by the bool type.  Declared as external, since these values are defined in the I6 compiler
     true,
@@ -18,7 +35,7 @@ extern enum eBool{ //--literal values used by the bool type.  Declared as extern
 extern class attribute{ //--an I6 attribute, declared as external because attributes are defined in I6
 }
 
-extern class attributeCollection{ //--a compile-time proxy for an object's attribute set
+extern class attributeList{ //--a compile-time proxy for an object's attribute set
     emitter void give(attribute attr){
         give $self attr
     }
@@ -30,6 +47,7 @@ extern class attributeCollection{ //--a compile-time proxy for an object's attri
     }
 }
 
+//TODO: assuming the above tests correctly, change the below to an emitter class 
 extern class grammarToken{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
     emitter var operator(){}              //--declares I6 compatibility with var, enabling mixed expressions
     emitter eBool operator == (var v){ $self == v }
@@ -37,6 +55,7 @@ extern class grammarToken{ //--an I6 grammar token (noun, held, creature, etc.);
     emitter grammarToken operator = (var v){ $self = v }
 }
 
+//TODO: assuming the above tests correctly, change the below to an emitter class 
 extern class dictionaryWord{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
     emitter dictionaryWord operator = (dictionaryWord v){
         $self = v;
@@ -50,7 +69,7 @@ extern class parentProp{} //--forward declaration; emitter added below after 'ob
 
 extern class object{ //--the base I6 object, declared as external because it is defined in the I6 compiler
     parentProp parent;           //--initial parent object; emitted as I6 third positional argument
-    attributeCollection attributes;  //--initial attribute set; emitted as I6 'has' clause
+    attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
     emitter void print(){
         print $self;
     }
@@ -180,7 +199,7 @@ extern class array {
     }
 }
 
-alias class verb : object { //--an I6 action constant; verb identifiers emit as ##Name in comparison context
+alias class verb for object { //--an I6 action constant; verb identifiers emit as ##Name in comparison context
     emitter eBool operator == (verb v){ $self == ##v }
     emitter void _bglGlobalDeclaration() {
         [$selfsub;
@@ -298,3 +317,4 @@ emitter style{
         style roman;
     }
 }
+extern void bglInit(){}

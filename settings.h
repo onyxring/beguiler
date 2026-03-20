@@ -7,9 +7,9 @@ struct settingsStruct{
     std::string outFile;
     std::string outputPath;
     std::string switches;
-    std::string informName="inform";
+    std::string informName;   // set by -inform= CLI flag; empty means not set by CLI
     std::string informPath;
-    std::string libPath;   // path to the beguile standard library folder (beguilib), alongside the compiler binary
+    std::string libPath;   // path to the beguile language extensions folder (beguilib), alongside the compiler binary
     char   pathSep;
 };
 extern settingsStruct settings;
