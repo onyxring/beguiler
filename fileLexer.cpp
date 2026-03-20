@@ -14,7 +14,6 @@
 
 using namespace std;
 
-//vector<string> operatorList={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^="};  //TODO: this should be moved to a language-specific global location, which will probably need to be shared by the parser
 //----------------------------------------------------------------------------------------
 //--Opening and closing files, and managing which of these is the "current file" 
 void fileLexer::open(string filename){
@@ -110,10 +109,15 @@ token fileLexer::getBasicToken(bool suppressBleed){
             string twoChars=retval.value + nc; /*   we do a lot of two character checks, so let's just build this string once and use it repeatedly; we will 
                                                     readChar() to dispose of the nc if we end up using it, but for now we just want to peek at it without consuming it*/
             
-            if(twoChars=="//" || twoChars=="/*") 
+            if(twoChars=="//" || twoChars=="/*")
                 retval.tokenType=eTokenType::comment;
             else if(c=='\"')
                 retval.tokenType=eTokenType::quote;
+            else if(c=='@' && nc=='"') {
+                retval.tokenType=eTokenType::rawQuote;
+                retval.value="\""; // adopt the same outer-quote format as regular quote tokens
+                readChar();        // consume the '"'
+            }
             else if(isValidIdentifierChar(c))
                 retval.tokenType=eTokenType::unclassifiedText;
             else {                
@@ -155,6 +159,16 @@ token fileLexer::getBasicToken(bool suppressBleed){
             c=peekChar(); //peek at the next character to process
             continue;
         } 
+        if(retval.tokenType==eTokenType::rawQuote){
+            readChar(); // consume the peeked character
+            // No Beguile escape processing — but translate I6-special chars so they stay literal
+            if     (c=='"')   { retval.value+=c; break; }  // closing quote
+            else if(c=='~')   retval.value+="@@126";        // literal tilde
+            else if(c=='^')   retval.value+="@@94";         // literal caret
+            else              retval.value+=c;
+            c=peekChar();
+            continue;
+        }
         if(retval.tokenType==eTokenType::comment){
             retval.value+=c;
             readChar(); //dispose of the character we previewed    
@@ -267,7 +281,7 @@ token fileLexer::getToken(){
         retval=getBasicToken();
     }while(retval.tokenType==eTokenType::comment);
     
-    if(retval.isOneOf({eTokenType::eof, eTokenType::quote, eTokenType::charLiteral})){ prevTokenType = retval.tokenType; return retval; } //just return tokens which we know we can't expand
+    if(retval.isOneOf({eTokenType::eof, eTokenType::quote, eTokenType::rawQuote, eTokenType::charLiteral})){ prevTokenType = retval.tokenType; return retval; } //just return tokens which we know we can't expand
 
     // normalize to lowercase for case-insensitive parsing (string literals excluded above)
     retval.originalValue = retval.value; // save pre-lowercase value for case-sensitive I6 emission
@@ -317,8 +331,10 @@ token fileLexer::getToken(){
     }
 
     // Dictionary word literals: .word (singular) and ..word (plural)
-    // Only recognised when NOT immediately after an identifier (which would be dot-access).
-    if(retval.is(".") && prevTokenType != eTokenType::identifier && prevTokenType != eTokenType::dataType){
+    // Not recognised after an identifier, data type, or closing paren/bracket (dot-access on expression).
+    bool prevIsExprEnd = (prevTokenType == eTokenType::identifier || prevTokenType == eTokenType::dataType
+                          || (prevTokenType == eTokenType::symbol && (prevTokenValue == ")" || prevTokenValue == "]")));
+    if(retval.is(".") && !prevIsExprEnd){
         char c1 = peekChar();
         // Helper lambda: read dict-word chars (identifier chars + apostrophe).
         // A trailing '.' triggers a warning and is discarded.
@@ -369,6 +385,8 @@ token fileLexer::getToken(){
     }
 
     prevTokenType = retval.tokenType;
+    prevTokenValue = retval.value;
+    retval.src = currentLocation();
     return retval;
 }
 token fileLexer::peekToken(){
@@ -378,11 +396,19 @@ token fileLexer::peekToken(int tokNum){
     token retval;
     auto savepos=currentStream()->tellg();
     eTokenType savedPrev = prevTokenType;
+    string savedPrevValue = prevTokenValue;
+    // Save line/col from the current file's tuple (stream seek doesn't reset these)
+    auto& [pStream, pName, pLine, pCol] = files.top();
+    int saveLine = pLine;
+    int saveCol  = pCol;
     for(int i=0;i<tokNum;i++){
         retval=getToken();
     }
     currentStream()->seekg(savepos);
     prevTokenType = savedPrev;
+    prevTokenValue = savedPrevValue;
+    pLine = saveLine;
+    pCol  = saveCol;
     return retval;
 }
 //Get tokens, limited to specific types or values. Throw a compile-time error if the next token does not match the requirements.
