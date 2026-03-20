@@ -14,6 +14,8 @@
 
 using namespace std;
 
+struct exitFileSignal {};   // thrown by #exit to unwind to the enclosing parseFile loop
+
 class bglParser {
     public:
         fileLexer file;    //what the parser reads from.  Tokens are produced by the filelexer.
@@ -21,6 +23,7 @@ class bglParser {
         void preScanFile(string filename);  // pass 1: register type/object stubs for forward-reference resolution
         bool parseFile(string);    //the main entry point: given a file, read it in, parse it, and store it in the parse tree
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
+        void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
         
         string contextToString(eCompileContext);
 
@@ -78,6 +81,7 @@ class bglParser {
         objectDef* currentObject = nullptr;
         classDef* currentClass = nullptr;    // set when parsing inside a class declaration
         functionDef* currentFunc = nullptr;  // outermost function being parsed (not changed for nested if/while blocks)
+        sourceLocation currentStatementSrc;  // location of the first token of the current statement
 
         map<string,string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value
         bool evaluateCondition(const string& expr);   // evaluates a #if boolean expression

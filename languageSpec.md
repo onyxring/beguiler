@@ -1,14 +1,13 @@
 # Beguile Language Specification
 
 ---
-
 # Chapter 1 — Introduction
 
 ## 1.1 What Is Beguile?
 
 Beguile is a statically-typed, compiled language designed for authoring interactive fiction (IF). It provides a structured, C-like syntax that transpiles to Inform 6 (I6), a low-level language traditionally used to target the Z-Machine and Glulx virtual machines — the runtime platforms used by most modern IF interpreters.
 
-Beguile is not a general-purpose language. Its type system, object model, and standard library are shaped by the needs of interactive fiction: rooms, objects, attributes, verbs, and the grammar that connects player input to game logic.
+Beguile is not a general-purpose language. Its type system and object model are shaped by the needs of interactive fiction: rooms, objects, attributes, verbs, and the grammar that connects player input to game logic.
 
 ## 1.2 Design Goals
 
@@ -129,7 +128,22 @@ The following escape sequences are recognized:
 "Press \^ to continue."
 ```
 
-### 2.5.2a Interpolated String Literals
+### 2.5.2a Raw String Literals
+
+A **raw string literal** is prefixed with `@` and disables all Beguile escape processing. Every character between the delimiters is passed through to the generated I6 string as-is, except that `~` and `^` are escaped to their I6 ZSCII equivalents (`@@126` and `@@94`) so they remain literal rather than being interpreted by I6 as quote/newline.
+
+Raw strings are useful for Windows-style file paths or any string that contains many backslashes.
+
+```bgl
+string path = @"C:\Users\jim\documents\game.bgl";
+string regex = @"\d+\.\d+";
+```
+
+The closing `"` terminates the raw string; there is no way to embed a literal `"` inside a raw string (use an escaped string `"\""` for that).
+
+Raw strings may be used anywhere a regular string literal is valid — in assignments, as function arguments, and in `#beguilerSettings` property values.
+
+### 2.5.2b Interpolated String Literals
 
 An **interpolated string** is prefixed with `$` and may contain embedded Beguile expressions inside `{` `}` spans. It is only valid as the argument to `print()` or `log()`.
 
@@ -197,7 +211,7 @@ Tokens beginning with `#` immediately followed (with no whitespace) by an identi
 | Directive | Purpose |
 |-----------|---------|
 | `#once` | Mark the current file so it is processed only once, even if included multiple times |
-| `#include <name>` | Include a standard library file from `beguilib/` |
+| `#include <name>` | Include a Beguile language extension from `beguilib/` |
 | `#include "path"` | Include a Beguile source file by relative path |
 | `#includeI6 "name"` | Emit an I6 `#include` directly into the generated output |
 | `#define NAME` | Define a boolean compilation flag |
@@ -206,6 +220,9 @@ Tokens beginning with `#` immediately followed (with no whitespace) by an identi
 | `#elif expr` | Alternative branch in a conditional block |
 | `#else` | Final alternative branch |
 | `#endif` | Close a conditional block |
+| `#message "text"` | Print a message to the terminal during compilation |
+| `#error "text"` | Emit a compile-time error with file and line information |
+| `#exit` | Stop processing the current file as though end-of-file was reached |
 
 Directives are described in full in Chapter 3.
 
@@ -232,7 +249,7 @@ Declarations at the outermost level of a file — types, classes, enums, variabl
 
 ### 3.2.1 `#include <name>`
 
-Includes a file from the Beguile standard library (`beguilib/` directory). The `.bgl` extension is appended automatically. The compiler performs a case-insensitive search of the library directory, so `#include <String>` and `#include <string>` are equivalent regardless of the file system. If two files in the library directory differ only by case, the compiler will select one arbitrarily.
+Includes a file from the Beguile language extensions (`beguilib/` directory). The `.bgl` extension is appended automatically. The compiler performs a case-insensitive search of the library directory, so `#include <String>` and `#include <string>` are equivalent regardless of the file system. If two files in the library directory differ only by case, the compiler will select one arbitrarily.
 
 ```bgl
 #include <string>
@@ -297,17 +314,23 @@ Nesting is supported. The compiler skips tokens in excluded branches without par
 
 ## 3.4 `#beguilerSettings`
 
-The `#beguilerSettings` block configures the transpiler and the downstream Inform 6 invocation. It appears at most once per compilation and is not a function or class.
+The `#beguilerSettings` block configures the transpiler and the downstream Inform 6 invocation. Multiple `#beguilerSettings` blocks are allowed; properties follow **first-writer-wins** semantics (the first block to set a property wins; later blocks are ignored for that property), except for `i6IncludePath` and `bglIncludePath`, which are **additive** — every occurrence adds a directory to the respective search path.
 
-Each property may optionally be prefixed with a type name (which the parser ignores):
+The schema for this directive is declared as `extern class beguilerSettingsType` in `_beguileCore.bgl`. The parser validates property names and value types against this class, and the VS Code extension uses it to offer IntelliSense inside `#beguilerSettings` blocks.
+
+Enum-typed properties accept either the bare value name or the optionally qualified `EnumType.Value` form — both are equivalent:
 
 ```bgl
 #beguilerSettings {
-    eTarget target        = Z5;
-    string informPath     = "/usr/local/bin/inform6";
-    string i6includePath  = "/inform6/lib";
-    string bglincludePath = "/myproject/bgl";
-    int    release        = 3;
+    target         = Z5;           // bare form
+    target         = eTarget.Z5;   // qualified form — equivalent
+    informName     = "inform6";
+    outputPath     = "output";
+    i6IncludePath  = "/inform6/lib";
+    bglIncludePath = "/myproject/bgl";
+    errorFormat    = E2;
+    release        = 3;
+    rewritePaths   = true;
 }
 ```
 
@@ -315,22 +338,24 @@ Each property may optionally be prefixed with a type name (which the parser igno
 
 These settings tell the transpiler where to find external tools. They are not written to the generated output.
 
-| Setting | Type | Description |
-|---------|------|-------------|
-| `informPath` | string | Path to the Inform 6 compiler binary. Overrides the default binary-adjacent search. |
-| `beguiLibPath` | string | Path to the Beguile standard library directory. Overrides the default binary-adjacent search. |
-| `bglincludePath` | string | Adds a directory to the search path for `#include "file"` resolution. May be specified multiple times. |
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `informPath` | string | — | Full path to the Inform 6 compiler binary. Takes precedence over `informName`. |
+| `informName` | string | `"inform"` | Filename of the Inform 6 binary (looked up adjacent to the `beguiler` binary). Use `"none"` to skip the I6 handoff entirely. CLI `-inform=` overrides this. |
+| `beguiLibPath` | string | `"beguiLib"` | Path to the Beguile language extensions directory. Overrides the default binary-adjacent search. |
+| `bglIncludePath` | string | — | Adds a directory to the search path for `#include "file"` resolution. May be specified multiple times (additive). |
 
 ### Compilation settings
 
 These settings control the compilation target and output characteristics.
 
-| Setting | Type | Description |
-|---------|------|-------------|
-| `target` | `eTarget` | Compilation target: `Glulx` (default), `Z3`, `Z5`, or `Z8`. Defaults to `Glulx` if omitted. |
-| `i6includePath` | string | Adds a directory to the I6 compiler's library search path. May be specified multiple times. |
-| `release` | int | Sets the story release number. Omit to leave unset. |
-| `errorFormat` | string | Sets the error format style. `"E1"` selects Microsoft-style errors; `"E2"` selects Macintosh-style. |
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `target` | `eTarget` | `Glulx` | Compilation target: `Glulx`, `Z3`, `Z5`, or `Z8`. |
+| `outputPath` | string | `"output"` | Directory for the compiled story file. Relative paths are resolved from the source file's directory. CLI `-o` overrides this. |
+| `i6IncludePath` | string | — | Adds a directory to the I6 compiler's library search path. May be specified multiple times (additive). |
+| `release` | int | `0` | Sets the story release number. `0` means unset. |
+| `errorFormat` | `eErrorFormat` | `E1` | Error reporting style passed to the I6 compiler. `E1` = Microsoft-style; `E2` = Macintosh-style. |
 
 ### Runtime settings
 
@@ -339,6 +364,43 @@ These settings affect the generated code.
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `framePoolSize` | int | `64` | Number of slots in the Z-machine local-variable overflow pool. Active only on Z3/Z5/Z8 targets. See §10.2.1. |
+| `rewritePaths` | bool | `true` | When `true` (the default), path separators (`/` and `\`) in all file path settings and `#include`/`#includeI6` paths are rewritten to the OS path separator at parse time. Set to `false` to disable this normalization. |
+
+## 3.5 Diagnostic and Control Directives
+
+### 3.5.1 `#message`
+
+Prints a string literal to the terminal during compilation. The message is written to standard output and does not affect the generated output or compilation result.
+
+```bgl
+#message "Loading custom library..."
+```
+
+Useful for progress notes or tracing include chains during development.
+
+### 3.5.2 `#error`
+
+Halts compilation with a user-defined error message. The message is reported in the standard compiler error format, including file name and line number, and is indistinguishable in appearance from a parser error.
+
+```bgl
+#if !PLATFORM_DEFINED
+    #error "You must define PLATFORM_DEFINED before including this file."
+#endif
+```
+
+### 3.5.3 `#exit`
+
+Stops processing the current file immediately, as though end-of-file had been reached. Any open directive nesting (`#if`/`##ifdef` blocks) accumulated in that file is discarded cleanly. Code nesting — open `{` blocks in parsed Beguile source — is not affected, so `#exit` should only be used at the top level of a file.
+
+```bgl
+#once
+#if !FEATURE_ENABLED
+    #exit
+#endif
+// ... feature implementation follows ...
+```
+
+`#exit` is primarily useful in library files that want to skip their body entirely when a required symbol is not defined.
 
 ---
 
@@ -366,12 +428,12 @@ Literal pseudo-types are not declared by user code. They are inferred automatica
 
 | Pseudo-type | Example | Notes |
 |-------------|---------|-------|
-| `intliteral` | `42` | Built-in compatible with `int` (see §12.2) |
-| `stringliteral` | `"hello"` | Built-in compatible with `string` (see §12.2) |
-| `charliteral` | `'a'` | Distinct from `char`; compatible only via declared operators on the `char` class |
+| `intliteral` | `42` | Compatible with `int` via `operator =` on the `int` class |
+| `stringliteral` | `"hello"`, `@"raw"` | Compatible with `string` via `operator =` on the `string` class; both regular and raw string literals share this pseudo-type |
+| `charliteral` | `'a'` | Compatible with `char` via `operator =` on the `char` class |
 | `dictionaryWord` | `.cloak`, `..cloaks` | Dictionary word; plural form (`..`) sets an internal flag that emits `'word/p'` in I6 |
 
-`intliteral` and `int` are mutually compatible by a built-in compiler rule — no conversion operator is required. The same applies to `stringliteral` and `string`. `charliteral`, by contrast, is treated as a fully independent type; compatibility with `char` is established through `operator =` and `operator ==` declarations on the `char` class (see §16.5), following the same operator-driven model as any user-defined type.
+All three literal pseudo-types (`intliteral`, `stringliteral`, `charliteral`) are compatible with their corresponding concrete types (`int`, `string`, `char`) exclusively through declared operators — specifically `operator =` on the target class. No built-in compatibility rule exists for any of them.
 
 ## 4.4 The `null` Keyword
 
@@ -430,9 +492,10 @@ Individual members may be assigned an explicit starting value; auto-assignment r
 
 ```bgl
 extern enum eBool { true, false }
+extern enum eErrorFormat { E1, E2 }
 ```
 
-Enum and bnum values are referenced by name directly (not qualified by the enumeration type name): `true`, `false`, `north`, `portable`, etc.
+Enum and bnum values are referenced by name directly (not qualified by the enumeration type name): `true`, `false`, `north`, `portable`, etc. The one exception is `#beguilerSettings` blocks, where the optional `EnumType.Value` qualified form is also accepted — see §3.4.
 
 ## 4.6 The `var` Type
 
@@ -504,11 +567,11 @@ Beguile has four class declaration forms. Each is introduced by a different keyw
 | Form | Syntax | I6 class emitted | Members allowed |
 |---|---|---|---|
 | Normal class | `class Foo` | Yes | Variables (with or without values), emitter methods, regular methods |
-| Extern class | `extern class Foo` | No | Typed variable declarations (no values), emitter methods |
+| Extern class | `extern class Foo` | No | Typed variable declarations (initializers allowed but ignored), emitter methods |
 | Emitter class | `emitter class Foo` | No | Emitter methods only (`emitter` keyword optional) |
-| Alias class | `alias class Foo : Parent` | No | Typed variable declarations (no values), emitter methods |
+| Alias class | `alias class Foo for Parent` | No | Typed variable declarations (no values), emitter methods |
 
-All four forms support inheritance via `: Parent` (see §5.6) and extension via `extend class` (see §5.7). Alias class requires exactly one parent; extern/alias classes do not allow non-emitter methods.
+Normal, extern, and emitter classes support optional inheritance via `: Parent` (see §5.6). Alias classes use `for Parent` instead (see §5.2.3). All forms support extension via `extend class` (see §5.7). Alias class requires exactly one parent; extern/alias classes do not allow non-emitter methods.
 
 ## 5.2.1 `extern class`
 
@@ -517,7 +580,7 @@ All four forms support inheritance via `: Parent` (see §5.6) and extension via 
 ```bgl
 extern class object {
     parentProp parent;
-    attributeCollection attributes;
+    attributeList attributes;
     emitter void give(attribute attr){ give $self attr }
     emitter eBool has(attribute attr){ $self has attr }
 }
@@ -527,7 +590,7 @@ Rules for `extern class` members:
 - **Emitter methods** are allowed and require the `emitter` keyword.
 - **Non-emitter methods** are not allowed — a compile-time error.
 - **Variable declarations** (type and name only, no `=` initializer) are allowed and contribute to type inference on object instances.
-- **Variable definitions** (with `=`) are not allowed — a compile-time error.
+- **Variable definitions** (with `=` initializer) are syntactically valid but the initializer value is ignored at runtime — no code is generated for it. The value exists solely as metadata and is invisible to normal Beguile programs. Certain compiler-internal classes (such as `beguilerSettingsType`) treat these initializers as default values for directive properties.
 
 ## 5.2.2 `emitter class`
 
@@ -549,23 +612,25 @@ Rules for `emitter class` members:
 `alias class` declares a Beguile type that dissolves to an existing type for I6 emission. No I6 class declaration is generated. Instances of an alias class emit using the I6 name resolved by walking the alias chain to its root.
 
 ```bgl
-alias class worldObject : object {
+alias class worldObject for object {
     string description;
 }
 
 worldObject foyer {
     description = "A grand hall.";   // type inferred: string (from worldObject)
-    attributes = {light};            // type inferred: attributeCollection (from object)
+    attributes = {light};            // type inferred: attributeList (from object)
 }
 ```
+
+The `for` keyword rather than `:` signals that the RHS is the I6 type being dissolved to — not a superclass being extended. No I6 class declaration is generated for the alias; instances emit using the I6 name of the root non-alias type.
 
 The primary use of alias classes is **type inference**: typed member declarations on the alias class let instances omit the type specifier when setting those properties. The instance body still resolves members against both the alias class and the base `object` class.
 
 **I6 name resolution** — the emitted class prefix for instances is determined by walking the parent chain until a non-alias type is found:
 
 ```bgl
-alias class worldObject : object { ... }    // chain: worldObject → object → "Object"
-alias class heavyObject : worldObject { }   // chain: heavyObject → worldObject → object → "Object"
+alias class worldObject for object { ... }    // chain: worldObject → object → "Object"
+alias class heavyObject for worldObject { }   // chain: heavyObject → worldObject → object → "Object"
 ```
 
 Both `worldObject` and `heavyObject` instances emit using I6's `Object` keyword.
@@ -575,7 +640,7 @@ Rules for `alias class` members:
 - **Non-emitter methods** are not allowed — a compile-time error.
 - **Variable declarations** (type and name only, no `=` initializer) are allowed for type inference.
 - **Variable definitions** (with `=`) are not allowed — a compile-time error.
-- Exactly one parent class is required after `:`. Multiple parents are not allowed.
+- Exactly one parent class is required after `for`. Multiple parents are not allowed.
 
 `alias` and `extern` are mutually exclusive. `alias` and `emitter` are mutually exclusive.
 
@@ -810,13 +875,13 @@ object hook {
 When an object is associated with a class (via either syntax in §6.3), typed member declarations on that class and on `extern class object` may be set without repeating the type. The compiler searches the object's declared class first, then walks the parent chain, and finally checks the base `object` class.
 
 ```bgl
-alias class worldObject : object {
+alias class worldObject for object {
     string description;     // declared on worldObject
 }
 
 worldObject foyer {
     description = "A grand hall.";  // type inferred: string (from worldObject)
-    attributes = {light};           // type inferred: attributeCollection (from object)
+    attributes = {light};           // type inferred: attributeList (from object)
 }
 ```
 
@@ -850,9 +915,12 @@ object cloak {
 }
 ```
 
-TODO: the following shouldn't be correct.  Attributes need not be external.  That should be declarable in Beguile code as well.  This may need to be fixed in code.
+Attribute names used in `attributes` initializer lists must be declared before use. Two forms are available:
 
-Attribute names must be declared with `extern attribute` (typically via `#include <i6StandardLibrary>`).
+```bgl
+attribute myNewAttr;           // declares a new attribute; emits 'Attribute myNewAttr;' to I6
+extern attribute light;        // references an attribute already declared in the I6 library; no I6 declaration emitted
+```
 
 ## 6.5 Array Properties
 
@@ -1012,7 +1080,7 @@ Rules:
 
 Emitter namespaces are distinguished from `emitter class` by the absence of the `class` keyword. An `emitter class` requires instances of a named type; an emitter namespace is a singleton with no associated type.
 
-The standard library defines `style` as an emitter namespace to provide I6 style directives (`style.italics()`, `style.roman()`) without requiring an instance variable.
+`style` is a built-in emitter namespace providing I6 style directives (`style.italics()`, `style.roman()`) without requiring an instance variable.
 
 ## 7.6 `print()` and `log()`
 
@@ -1252,17 +1320,16 @@ Mutable `extern` variables may be read and assigned. `extern const` variables ar
 
 ## 8.6 Attributes
 
-An `extern attribute` declaration registers an I6 attribute name so that it can be used in `attributes` initializer lists and in attribute tests.
+Two forms of attribute declaration are available:
 
 ```bgl
-extern attribute light;
-extern attribute worn;
-extern attribute clothing;
+attribute myAttr;              // declares a new attribute; emits 'Attribute myAttr;' to I6
+extern attribute light;        // references an existing I6 attribute; no declaration emitted
 ```
 
-Attributes are declared in `i6StandardLibrary.bgl` for the standard Inform library set. User-defined I6 attributes may be declared the same way.
+Use `extern attribute` for attributes already declared externally (e.g. via an IF library binding). Use plain `attribute` for new attributes defined in Beguile code.
 
-Once declared, attributes are available as identifiers of type `attribute` and can be passed to the `give`, `ungive`, and `has` methods defined on `object` and `attributeCollection`.
+Once declared, attributes are available as identifiers of type `attribute` and can be passed to the `give`, `ungive`, and `has` methods defined on `object` and `attributeList`.
 
 ## 8.7 I6 Name Aliasing — the `as` Clause
 
@@ -1583,7 +1650,7 @@ switch(expr) {
 
 Multiple values may share a case by listing them comma-separated. I6 cases do not fall through by default; the `break` keyword is accepted inside `switch` but is not required and has no effect (I6 handles the non-fall-through behavior natively).
 
-Case values are type-checked against the switch condition type using the full compatibility rules of §12.2. In particular, `intliteral` case values are compatible with an `int` condition without any operator declaration, and enum case values are matched by exact type. When the switch expression is of type `verb`, case values are emitted as `##VerbName` action constants automatically.
+Case values are type-checked against the switch condition type using the full compatibility rules of §12.2. In particular, `intliteral` case values are compatible with an `int` condition via the `operator =` declared on the `int` class, and enum case values are matched by exact type. When the switch expression is of type `verb`, case values are emitted as `##VerbName` action constants automatically.
 
 ## 10.11 `break` and `continue`
 
@@ -1778,15 +1845,11 @@ Beguile checks type compatibility at every assignment, variable declaration init
 A value of type `A` is compatible with a target of type `B` if any of the following hold, checked in order:
 
 1. **Exact match** — `A == B`.
-2. **Built-in primitive compatibility** — the compiler treats the following pairs as mutually compatible without any operator declaration:
-   - `intliteral` ↔ `int` (integer literals freely mix with integer variables)
-   - `stringliteral` ↔ `string`
-   `charliteral` is **not** in this list; it is compatible with `char` only via declared operators.
-3. **Object subtyping** — any class instance (normal class, extern class, or alias class) is compatible with the base `object` type. This reflects that all I6 objects are ultimately `Object`s.
-4. **Class hierarchy** — if `A` is a class that inherits from (or is an alias of) `B`, `A` is compatible with `B`. The check walks the full parent chain, including alias chains.
-5. **Assignment operator** — type `B` defines `emitter B operator = (A v)` (the target type accepts the source type).
-6. **Conversion operator** — type `A` defines `emitter B operator()` (the source type converts itself to the target type).
-7. **I6 compatibility** — type `A` defines `emitter C operator(){}` where `C` is I6-compatible with `B` (an empty-body conversion, meaning both types share the same underlying I6 representation).
+2. **Object subtyping** — any class instance (normal class, extern class, or alias class) is compatible with the base `object` type. This reflects that all I6 objects are ultimately `Object`s.
+3. **Class hierarchy** — if `A` is a class that inherits from (or is an alias of) `B`, `A` is compatible with `B`. The check walks the full parent chain, including alias chains.
+4. **Assignment operator** — type `B` defines `emitter B operator = (A v)` (the target type accepts the source type).
+5. **Conversion operator** — type `A` defines `emitter B operator()` (the source type converts itself to the target type).
+6. **I6 compatibility** — type `A` defines `emitter C operator(){}` where `C` is I6-compatible with `B` (an empty-body conversion, meaning both types share the same underlying I6 representation).
 
 If none apply, the assignment or call is a compile-time type mismatch error.
 
@@ -1887,7 +1950,7 @@ When an identifier matches both a declared variable and a declared verb name, th
 The compiler detects collisions between global declarations and reports them as compile-time errors. The error message always includes the file and line of the *original* declaration so both sites of the conflict are visible:
 
 ```
-myGame.bgl:42:5: error: 'score' is already defined (originally declared at beguilib/i6StandardLibrary.bgl:17)
+myGame.bgl:42:5: error: 'score' is already defined (originally declared at myLibrary.bgl:17)
 ```
 
 Collisions detected at global scope:
@@ -1900,12 +1963,12 @@ Collisions detected at global scope:
 | Object vs. object or class | detected; error cites original declaration |
 | Enum vs. enum or other type | detected; error cites original declaration |
 
-**Beguile vs. raw I6 collisions** (symbols declared via `#includeI6` or `#i6` blocks) are invisible to the Beguile parser and will surface as I6 compiler errors instead. Using `extern` declarations in a bridging file (such as `i6StandardLibrary.bgl`) is the recommended way to make I6 symbols known to the Beguile type system and prevent silent conflicts.
+**Beguile vs. raw I6 collisions** (symbols declared via `#includeI6` or `#i6` blocks) are invisible to the Beguile parser and will surface as I6 compiler errors instead. Using `extern` declarations in a bridging file is the recommended way to make I6 symbols known to the Beguile type system and prevent silent conflicts.
 
 **Naming conventions to avoid collisions:**
 - Compiler-generated symbols use the `_bgl` prefix (reserved — see §2.4.1)
 - Standard library internal symbols use the `or` prefix (e.g., `orString`, `orBufferWrapper`)
-- User code should use application-specific prefixes for any global variables or types intended to coexist with the standard library
+- User code should use application-specific prefixes for any global variables or types intended to coexist with included library files
 
 ---
 
@@ -2028,7 +2091,7 @@ Within a `_bglGlobalDeclaration` emitter body, two substitution variables are av
 | `$self` | The object's I6 name (e.g., `examine`) |
 | `$selfsub` | The object's name with `sub` appended (e.g., `examinesub`) |
 
-The standard library's `verb` class uses this to generate the wrapper routine:
+The built-in `verb` class uses this to generate the wrapper routine:
 
 ```bgl
 extern class verb {
@@ -2060,12 +2123,14 @@ Beguile is built on top of I6, and several mechanisms allow Beguile code to use 
 | `extern enum Name { ... }` | I6 enum; registers member names globally |
 | `extern object Name;` | Forward-declares an I6 object |
 | `extern verb Name;` | Registers a library verb name |
-| `extern attribute Name;` | Registers an I6 attribute |
+| `extern attribute Name;` | Registers an existing I6 attribute (no declaration emitted) |
 | `extern int Name;` | Mutable I6 global variable |
 | `extern const int Name;` | Read-only I6 constant |
 | `extern var Name;` | Untyped I6 variable (when type is unknowable) |
 
 None of these produce any I6 output. They exist solely to make I6-defined names available in Beguile source with proper typing.
+
+To declare a new attribute in Beguile (emitting an I6 `Attribute` declaration), use the non-extern form: `attribute Name;` (see §8.6).
 
 Extern variable declarations may also carry an `as i6name` alias clause — see §8.7.
 
@@ -2106,43 +2171,56 @@ This supports future debugger and IDE tooling that needs to navigate between the
 
 ---
 
-# Chapter 16 — Standard Library
+# Chapter 16 — Beguile Language Extensions
 
 ## 16.1 Overview
 
-The Beguile library ecosystem is divided into two distinct categories: the **Beguile Standard Library** and **IF Library Bindings**. The standard library (`beguiLib/`) provides the core language primitives and utilities that are independent of any particular IF engine library. IF Library Bindings, kept in `beguiLib/bindings/`, are a separate category of files that expose a specific external IF library's symbols — attributes, globals, actions, and so on — to Beguile's type system. These are inherently target-dependent: a project using the Inform 6 standard library needs one set of bindings; a project using PunyInform would need a different one.
+The Beguile language extensions (`beguiLib/`) provide opt-in language features that are independent of any particular IF engine library. None are built into the compiler; each is included by the author as needed.
 
-Neither category is built into the compiler. Both are included by the author as needed.
+A separate category of files, **IF Library Bindings** (`beguiLib/bindings/`), expose a specific external IF library's symbols — attributes, globals, actions, and so on — to Beguile's type system using `extern` declarations. These are inherently target-dependent and entirely optional; projects that manage their own I6 bindings or use a different library do not need them.
 
-## 16.2 Standard Library Files
+## 16.2 Language Extension Files
 
 Core files in `beguiLib/`. These are library-agnostic and work with any IF target.
 
 ### File Overview
 
-**`_beguileCore.bgl`** — The foundation of the Beguile language, included automatically by the compiler. Declares the core primitive types, the base object hierarchy, and fundamental emitters like `print()` and `log()`.
-
-**`_beguileCore.bgl` — `bglWorld`** — The core file also declares the `bglWorld` object, which provides typed iteration over the Inform 6 object tree via `for...in`. See §16.4 below.
-
-**`string.bgl`** — The full string runtime. Provides a pool-based string type with methods covering assignment, concatenation, comparison, mutation, transformation, substring extraction, search, and formatted output.
+**`string.bgl`** — The full string runtime. Provides a pool-based string type with methods covering assignment, concatenation, comparison, mutation, transformation, substring extraction, search, and formatted output. Requires `bglInit()` (see §16.2.1).
 
 **`char.bgl`** — Extends the built-in `char` type with character-testing, case transformation, and support for extended characters including diacritics and other Z-machine character set entries.
+
+## 16.2.1 `bglInit()` — Runtime Initialization
+
+Some language extensions allocate runtime resources (memory pools, buffers, etc.) that must be set up before use. These extensions register an initialization hook automatically when included; all registered hooks are called by `bglInit()`.
+
+`bglInit()` is always available — it is a no-op if no extensions that need it have been included. Call it once, early in your game's startup routine:
+
+```bgl
+void Initialise() {
+    bglInit();
+    // ... rest of setup
+}
+```
+
+**Which extensions require it:** `string.bgl` requires `bglInit()` to initialize the string pool. Extensions that do not allocate runtime resources (such as `char.bgl`) do not require it but are unaffected by the call.
+
+If you use `string` and forget to call `bglInit()`, strings will not function correctly. The call is harmless to include unconditionally whenever any language extension is in use.
 
 ## 16.3 IF Library Bindings
 
 Files in `beguiLib/bindings/`. Each binding file is a Beguile declaration layer over one particular external IF library, giving Beguile code typed, name-checked access to that library's attributes, globals, and actions. Binding files do not define behavior — they map existing I6 names into the Beguile type system using `extern` declarations.
 
-A project using the Inform 6 standard library includes `i6StandardLibrary.bgl`. A hypothetical project using PunyInform would include a separate `punyInform.bgl` that declared PunyInform's (smaller) attribute and action sets. The two binding files would not be used together.
+Different IF libraries require different binding files and would not be used together. An example binding file is provided for the Inform 6 standard library.
 
 ### File Overview
 
-**`i6StandardLibrary.bgl`** — Bindings for the Inform 6 standard library. Declares standard world-model attributes, mutable library globals, parser variables, and the full set of standard IF actions as typed verbs.
+**`i6StandardLibrary.bgl`** — Example bindings for the Inform 6 standard library. Declares standard world-model attributes, mutable library globals, parser variables, and the full set of standard IF actions as typed verbs.
 
 ---
 
 ## 16.4 `bglWorld` — Object Tree Iteration
 
-`bglWorld` is a built-in object declared in `_beguileCore.bgl` that provides structured iteration over the Inform 6 object tree. It is available without any `#include`.
+`bglWorld` is a built-in object that provides structured iteration over the Inform 6 object tree. It is available without any `#include`.
 
 All methods fill a shared internal scratch buffer and return it as an `array`. The buffer is reused on every call — do not store the result across turns or nest two `bglWorld` calls.
 

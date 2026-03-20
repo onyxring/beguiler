@@ -5,6 +5,7 @@
 #include <stack>
 #include <vector>
 #include <memory>
+#include <optional>
 
 using namespace std;
 
@@ -247,6 +248,7 @@ class interpolatedPrintStatement : public statement {
             bool isExpr = false;
             string text;           // string segments: I6-ready literal text (no outer quotes)
             expression* expr = nullptr; // expression segments: fully parsed Beguile expression
+            vector<statement*> injections; // ternary lowerings to emit before this expression segment
         };
         bool isLog = false;        // true → only emitted when DEBUG is defined
         vector<Segment> segments;
@@ -293,19 +295,21 @@ class grammarBlock : public typeDef {
 class beguilerSettingsDef : public typeDef {
     public:
         // beguiler paths (not emitted)
-        string beguiLibPath;        // overrides BEGUILE_LIB / binary-adjacent lookup
-        string informBinaryPath;    // overrides the inform6 binary path
+        string beguiLibPath;           // overrides BEGUILE_LIB / binary-adjacent lookup
+        string informBinaryPath;       // full path override for the I6 binary (from informPath property)
+        string informName;             // binary filename only (from informName property); empty = use settingsStruct default
         string outputPath;             // overrides the output directory (CLI -o wins)
 
         // ICL directives (!% lines)
-        string target;              // !% -G (Glulx), !% -v3, !% -v5, !% -v8
-        int release = 0;            // !% Release N;  (0 = not set)
-        string errorFormat;         // !% -EN  (e.g. "1" → -E1)
+        string target;                 // !% -G (Glulx), !% -v3, !% -v5, !% -v8
+        int release = 0;               // !% Release N;  (0 = not set)
+        string errorFormat;            // !% -EN  (e.g. "1" → -E1)
         vector<string> i6IncludePaths; // !% +include_path=...  passed to I6 compiler
         vector<string> bglIncludePaths;// search paths for #include "file" resolution in Beguile source
 
         // runtime options (affect generated I6, not ICL)
-        int framePoolSize = 64;     // Z-machine frame pool slot count (default 64)
+        int framePoolSize = -1;        // Z-machine frame pool slot count (-1 = unset; default 64 from schema)
+        optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)
 };
 
 extern typeDef emptyTDef;

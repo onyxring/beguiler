@@ -3,6 +3,7 @@
 #include <string_view>
 #include <stack>
 #include <vector>
+#include "typeDef.h"
 
 enum class eTokenType{
     unknown,
@@ -16,6 +17,7 @@ enum class eTokenType{
     integer,
     symbol,
     quote,
+    rawQuote,              // @"..."  raw string literal — no Beguile escape processing
     oper,
     dictionaryWord,        // .word (isPlural=false) or ..word (isPlural=true)
     charLiteral,           // 'x'   → I6 'x'  (integer character value)
@@ -29,6 +31,7 @@ class token {
         std::string value;
         std::string originalValue; // pre-lowercase value, for case-sensitive I6 emission (e.g. verb/grammar names)
         bool isPlural=false;       // true for ..word dictionary word literals
+        sourceLocation src;        // file and line where this token was read
 
         static constexpr std::string endStatement=";"; 
         static constexpr std::string assignment ="="; 
@@ -59,6 +62,7 @@ class token {
         bool isDataType();
         bool isValidIdentifier();
         bool isNumeric();
+        bool isString();   // true for both quote and rawQuote
 
         token assert(eTokenType, std::string="");
         token assert(std::string, std::string="");
