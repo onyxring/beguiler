@@ -54,6 +54,9 @@ class i6Emitter{
         void emitGrammarLines(const string& verbName, const vector<grammarLine>& lines);
         int currentLine();
         void writeSourceMap(const string& path);
+        void writeSymbolTable(const string& path);
+        void writeTypesFile(const string& path);
+        void writeDebugBundle(const string& path);
 
 };
 

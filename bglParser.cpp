@@ -48,6 +48,12 @@ static filesystem::path findCaseInsensitive(const filesystem::path& dir, const s
 
 bglParser::bglParser(){
     openCompileContext(eCompileContext::global);
+    // Pre-defined compiler symbols (read-only; calculated from BEGUILER_VERSION in settings.h)
+    // beguiler encodes major*1000 + minor*10 + patch (e.g. 1.0.0 = 1000, 1.1.0 = 1010)
+    definedSymbols["beguiler"] = to_string(BEGUILER_VERSION);
+    definedSymbols["beguilermajor"]   = to_string(BEGUILER_VERSION / 1000);
+    definedSymbols["beguilerminor"]   = to_string((BEGUILER_VERSION % 1000) / 10);
+    definedSymbols["beguilerpatch"]   = to_string(BEGUILER_VERSION % 10);
     //emit.to(cout);  //write the result to the terminal window for now
 }
 
@@ -2299,6 +2305,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, lhs); pos += lhs.size(); }
                 i6RawNode& node = *(new i6RawNode());
                 node.text = b + ";";
+                node.src = stmtLoc;
                 if(body != nullptr) body->statements.push_back(&node);
                 emitterFound = true;
             }
@@ -2306,6 +2313,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         if(!emitterFound){
             i6RawNode& node = *(new i6RawNode());
             node.text = tok.value + lhs + ";";
+            node.src = stmtLoc;
             if(body != nullptr) body->statements.push_back(&node);
         }
         return false;
@@ -2572,6 +2580,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             string rhsText = rhs != nullptr ? rhs->text() : "";
             i6RawNode& node = *(new i6RawNode());
             node.text = lhs + " = " + lhs + " " + op + " " + rhsText + ";";
+            node.src = stmtLoc;
             if(body != nullptr) body->statements.push_back(&node);
         }
         return false;
@@ -2597,6 +2606,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, lhs); pos += lhs.size(); }
                 i6RawNode& node = *(new i6RawNode());
                 node.text = b + ";";
+                node.src = stmtLoc;
                 if(body != nullptr) body->statements.push_back(&node);
                 emitterFound = true;
             }
@@ -2604,6 +2614,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         if(!emitterFound){
             i6RawNode& node = *(new i6RawNode());
             node.text = lhs + symbol.value + ";";
+            node.src = stmtLoc;
             if(body != nullptr) body->statements.push_back(&node);
         }
         return false;

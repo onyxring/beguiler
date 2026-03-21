@@ -57,10 +57,15 @@ bool beguiler::go(int argc, char* argv[]) {
         fs::path outDir = settings.outputPath.empty() ? p.parent_path()
                         : fs::path(settings.outputPath).is_absolute() ? fs::path(settings.outputPath)
                         : p.parent_path() / fs::path(settings.outputPath);
+        if(!fs::exists(outDir))
+            fs::create_directories(outDir);
         settings.outFile = (outDir / (p.stem().string() + "." + extension)).string();
     }
 
     if(writeFile(settings.tmpFile)) return true;
+    if(settings.debugMode){
+        emitter.writeDebugBundle(settings.tmpFile + ".bgldbg");
+    }
 
     cout<<"Compilation successful. ";
     if(settings.informName=="none"){
@@ -68,10 +73,16 @@ bool beguiler::go(int argc, char* argv[]) {
         return false;
     }else{
         cout<<"Handing off to I6..."<<endl;
-        cout<<(settings.informPath+" "+settings.switches+" "+settings.tmpFile+" "+settings.outFile).c_str()<<endl<<endl;
-        if(system((settings.informPath+" "+settings.switches+" "+settings.tmpFile+" "+settings.outFile).c_str())){
+        string debugSwitch = settings.debugMode ? " -k" : "";  // -k: write debug info to gameinfo.dbg
+        cout<<(settings.informPath+debugSwitch+" "+settings.switches+" "+settings.tmpFile+" "+settings.outFile).c_str()<<endl<<endl;
+        if(system((settings.informPath+debugSwitch+" "+settings.switches+" "+settings.tmpFile+" "+settings.outFile).c_str())){
             cerr<<"Error running I6!"<<endl;
             return true;
+        }
+        // -k writes gameinfo.dbg to cwd; move it alongside the other debug files
+        if(settings.debugMode){
+            fs::path dbgDest = fs::path(settings.tmpFile).parent_path() / (fs::path(settings.tmpFile).filename().string() + ".dbg");
+            fs::rename("gameinfo.dbg", dbgDest);
         }
     }
 
@@ -81,7 +92,7 @@ bool beguiler::go(int argc, char* argv[]) {
 
 bool beguiler::parseArgs(int argc, char* argv[]) {
     if(argc==1){
-        cout << "   Usage: beguiler [-G|-z3|-z5|-z6|-z8] [-E1|-E2] [-inform=none|<execname>] [-o <outputdir>] <sourcefilepath> [<outputfilepath>]" << endl;
+        cout << "   Usage: beguiler [--debug] [-G|-z3|-z5|-z6|-z8] [-E1|-E2] [-inform=none|<execname>] [-o <outputdir>] <sourcefilepath> [<outputfilepath>]" << endl;
         cout << "   This program should be placed in the same folder as the I6 compiler."<<endl;
         cout << "   The Beguile source  will be processed and the resulting I6 source passed to Inform to generate the final game.\n" << endl;
         return true;
@@ -107,6 +118,8 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
                 beguilerSettings.target = "z8";
             } else if(arg.size() >= 3 && arg[1] == 'E' && isdigit(arg[2])) {
                 beguilerSettings.errorFormat = arg.substr(2);
+            } else if(arg == "--debug") {
+                settings.debugMode = true;
             } else {
                 settings.switches = settings.switches + " " + arg;
             }
