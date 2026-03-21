@@ -26,7 +26,7 @@ A Beguile source file (`.bgl`) is processed in two passes by the Beguile compile
 3. **Emits** an Inform 6 source file (`.inf`) that is semantically equivalent to the Beguile source.
 4. **Invokes the Inform 6 compiler** (`inform`) on the generated `.inf` file to produce the final story file (`.ulx` for Glulx or `.z8`, `.z5`, or `.z3` for Z-Machine).
 
-The intermediate `.inf` file is retained alongside the story file. Source maps (`bgl.transpiled.inf.map`) are also produced, correlating positions in the generated I6 back to lines in the original `.bgl` source.
+The intermediate `.inf` file is retained alongside the story file. When compiled with `--debug`, a debug bundle (`<filename>.bgl.transpiled.inf.bgldbg`) and an Inform 6 debug database (`<filename>.bgl.transpiled.inf.dbg`) are also produced, supporting source-level debugging in the VS Code extension.
 
 ## 1.4 Relationship to Inform 6
 
@@ -298,7 +298,36 @@ Defines a named compilation symbol. The symbol may be a boolean flag or carry a 
 
 Symbols defined with `#define` can be tested with `#if`. A value-bearing symbol can be used as a literal wherever the language accepts a constant.
 
-### 3.3.2 Conditional Compilation
+### 3.3.2 Pre-Defined Symbols
+
+The compiler pre-defines the following symbols before any source file is parsed:
+
+| Symbol | Value | Description |
+|--------|-------|-------------|
+| `beguiler` | `1000` | Full version encoded as `major*1000 + minor*10 + patch` (e.g. 1.0.0 = `1000`, 1.1.0 = `1010`). Safe on Z-machine (16-bit signed max 32,767 → major up to 32). |
+| `beguilerMajor` | `1` | Major version component only. |
+| `beguilerMinor` | `0` | Minor version component only. |
+| `beguilerPatch` | `0` | Patch version component only. |
+
+These are read-only — they cannot be overridden with `#define` — and are calculated automatically from the compiler's internal version constant. They behave identically to user-defined `#define` symbols in `#if` expressions:
+
+```bgl
+#if beguiler >= 1010
+    // requires Beguile 1.1.0 or later
+#endif
+
+#if beguilerMajor >= 2
+    // major version 2+
+#endif
+```
+
+All four are also emitted into the generated I6 output as `Constant` declarations, making them available to runtime Beguile code:
+
+```bgl
+if(beguiler >= 1010) { ... }
+```
+
+### 3.3.3 Conditional Compilation
 
 `#if`, `#elif`, `#else`, and `#endif` conditionally include or exclude blocks of source text. The expression following `#if` or `#elif` is evaluated at compile time against the currently defined symbols.
 
@@ -2159,15 +2188,34 @@ extern class object {
 
 This is the primary path for I6 capabilities that have no Beguile syntax equivalent.
 
-## 15.5 Source Maps
+## 15.5 Debug Bundle
 
-The compiler produces a source map file alongside the generated `.inf`, at `<filename>.transpiled.inf.map`. Each line maps an I6 output line number back to the originating Beguile source file and line number:
+When compiled with `--debug`, beguiler produces two debug files alongside the story file:
+
+**`<filename>.bgl.transpiled.inf.bgldbg`** — a plain-text bundle containing three sections:
 
 ```
+[map]
 <i6LineNumber>\t<bglSourceFile>\t<bglLineNumber>
+...
+[sym]
+<bglName>\t<i6Name>\t<kind>
+...
+[types]
+type <TypeName>
+  prop <bglPropName> <i6PropName> <valueType>
+routine <i6FunctionName>
+  local <varName> <valueType>
+global <varName> <valueType>
 ```
 
-This supports future debugger and IDE tooling that needs to navigate between the Beguile source and the generated I6.
+- **`[map]`** — correlates each I6 source line number back to its originating Beguile source file and line. Used by the debugger to navigate between Beguile source and generated I6.
+- **`[sym]`** — symbol table mapping Beguile names to their I6 identifiers and declaration kind (`global`, `object`, `function`, `property`).
+- **`[types]`** — Beguile type information for all declared variables, enabling rich display of typed values (including object properties) in the debugger's Variables pane.
+
+**`<filename>.bgl.transpiled.inf.dbg`** — the Inform 6 XML debug database, produced by `inform6 -k`. Contains VM bytecode addresses mapped to I6 source line numbers, routine definitions with local variable frame offsets, global variable addresses, and property numbers. Its format is fixed by the Inform 6 compiler.
+
+Together these two files give the VS Code extension everything it needs for source-level debugging: the chain `VM address → I6 line → .bgl file + line`, full call stack reconstruction, and typed variable display.
 
 ---
 
