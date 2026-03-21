@@ -3,6 +3,7 @@
 #include <sstream>
 
 #include "i6Emitter.h"
+#include "settings.h"
 #include "bglParser.h"
 #include "beguiler.h"
 #include "helpers.h"
@@ -182,6 +183,205 @@ void i6Emitter::writeSourceMap(const string& path){
     for(auto& [i6Line, bglFile, bglLine] : sourceMap)
         f << i6Line << "\t" << bglFile << "\t" << bglLine << "\n";
 }
+void i6Emitter::writeSymbolTable(const string& path){
+    ofstream f(path);
+    if(!f.is_open()) return;
+    // Format: bglName <tab> i6Name <tab> kind
+    // Walk languageService.globals; emit variables, objects, functions (non-emitter, non-extern)
+    for(typeDef* node : languageService.globals){
+        if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
+            if(vd->isExternal) continue;
+            f << vd->name << "\t" << vd->name << "\tglobal\n";
+        } else if(auto* od = dynamic_cast<objectDef*>(node)){
+            if(od->isExternal) continue;
+            f << od->name << "\t" << od->name << "\tobject\n";
+            for(typeMember* m : od->members){
+                if(auto* mv = dynamic_cast<variableDeclaration*>(m))
+                    f << od->name << "." << mv->name << "\t" << mv->name << "\tproperty\n";
+            }
+        } else if(auto* fd = dynamic_cast<functionDef*>(node)){
+            if(fd->isEmitter || fd->isExternal) continue;
+            f << fd->name << "\t" << fd->name << "\tfunction\n";
+        }
+    }
+}
+void i6Emitter::writeTypesFile(const string& path){
+    ofstream f(path);
+    if(!f.is_open()) return;
+
+    // ── Type definitions (class declarations) ─────────────────────────────────
+    // One 'type' block per Beguile class; one 'prop' line per property member.
+    for(typeDef* node : languageService.globals){
+        auto* cd = dynamic_cast<classDef*>(node);
+        if(!cd || cd->isEmitterClass || cd->isExternal) continue;
+        f << "type " << cd->name << "\n";
+        for(typeMember* m : cd->members){
+            auto* mv = dynamic_cast<variableDeclaration*>(m);
+            if(!mv || mv->isExternal || mv->type.name.empty()) continue;
+            const string& i6n = mv->i6name.empty() ? mv->name : mv->i6name;
+            f << "  prop " << mv->name << " " << i6n << " " << mv->type.name << "\n";
+        }
+    }
+
+    // ── Routine local variables ───────────────────────────────────────────────
+    // One 'routine' block per compiled function; 'local' lines for params + locals.
+    // Uses the same I6 name the function is emitted under so the adapter can
+    // match against the .dbg <routine> <identifier>.
+    for(typeDef* node : languageService.globals){
+        auto* fd = dynamic_cast<functionDef*>(node);
+        if(!fd || fd->isEmitter || fd->isExternal) continue;
+        const string& funcI6n = fd->i6name.empty() ? fd->name : fd->i6name;
+        f << "routine " << funcI6n << "\n";
+        for(paramDef* p : fd->params){
+            if(p->type.name.empty() || p->type.name == "void") continue;
+            f << "  local " << p->name << " " << p->type.name << "\n";
+        }
+        auto* body = dynamic_cast<statementBlock*>(fd->body);
+        if(body){
+            for(statement* s : body->statements){
+                auto* vd = dynamic_cast<variableDeclaration*>(s);
+                if(!vd || vd->type.name.empty()) continue;
+                f << "  local " << vd->name << " " << vd->type.name << "\n";
+            }
+        }
+    }
+
+    // ── Global variables ──────────────────────────────────────────────────────
+    for(typeDef* node : languageService.globals){
+        if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
+            if(vd->isExternal || vd->type.name.empty()) continue;
+            f << "global " << vd->name << " " << vd->type.name << "\n";
+        } else if(auto* od = dynamic_cast<objectDef*>(node)){
+            if(od->isExternal || !od->objectClass) continue;
+            f << "global " << od->name << " " << od->objectClass->name << "\n";
+        }
+    }
+}
+
+/**
+ * writeDebugBundle — writes a single .bgldbg file containing the source map,
+ * symbol table, and type information that the VS Code extension needs for
+ * source-level debugging.  Format is section-delimited plain text:
+ *
+ *   [map]
+ *   <source-map lines>
+ *   [sym]
+ *   <symbol-table lines>
+ *   [types]
+ *   <type-info lines>
+ *
+ * The I6 compiler writes its own debug file (.dbg) separately; this bundle
+ * collects everything beguiler itself knows about the compiled program.
+ */
+void i6Emitter::writeDebugBundle(const string& path){
+    ofstream f(path);
+    if(!f.is_open()) return;
+
+    // ── [map] section ─────────────────────────────────────────────────────────
+    f << "[map]\n";
+    for(auto& [i6Line, bglFile, bglLine] : sourceMap)
+        f << i6Line << "\t" << bglFile << "\t" << bglLine << "\n";
+
+    // ── [sym] section ─────────────────────────────────────────────────────────
+    f << "[sym]\n";
+    for(typeDef* node : languageService.globals){
+        if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
+            if(vd->isExternal) continue;
+            f << vd->name << "\t" << vd->name << "\tglobal\n";
+        } else if(auto* od = dynamic_cast<objectDef*>(node)){
+            if(od->isExternal) continue;
+            f << od->name << "\t" << od->name << "\tobject\n";
+            for(typeMember* m : od->members){
+                if(auto* mv = dynamic_cast<variableDeclaration*>(m)){
+                    if(mv->name == "parent") continue; // positional arg, not a real property
+                    f << od->name << "." << mv->name << "\t" << mv->name << "\tproperty\n";
+                }
+            }
+        } else if(auto* fd = dynamic_cast<functionDef*>(node)){
+            if(fd->isEmitter || fd->isExternal) continue;
+            f << fd->name << "\t" << fd->name << "\tfunction\n";
+        }
+    }
+
+    // ── [types] section ───────────────────────────────────────────────────────
+    f << "[types]\n";
+    // Enum declarations
+    for(typeDef* node : languageService.globals){
+        auto* ed = dynamic_cast<enumDef*>(node);
+        if(!ed) continue;
+        f << "enum " << ed->name << "\n";
+        for(enumValueDef* v : ed->namedValues)
+            f << "  value " << v->name << " " << v->value << "\n";
+    }
+    // Helper lambda: resolve the debug type string for a member variable.
+    // arrayDeclaration nodes emit "array<elementType>" so the debugger can
+    // distinguish e.g. array<dictionaryWord> from plain int arrays.
+    auto propTypeName = [](variableDeclaration* mv) -> string {
+        if(auto* arr = dynamic_cast<arrayDeclaration*>(mv); arr && !arr->elementType.empty())
+            return "array<" + arr->elementType + ">";
+        return mv->type.name;
+    };
+
+    // Class declarations
+    for(typeDef* node : languageService.globals){
+        auto* cd = dynamic_cast<classDef*>(node);
+        if(!cd || cd->isEmitterClass || cd->isExternal) continue;
+        f << "type " << cd->name << "\n";
+        for(typeMember* m : cd->members){
+            auto* mv = dynamic_cast<variableDeclaration*>(m);
+            if(!mv || mv->isExternal || mv->type.name.empty()) continue;
+            if(mv->name == "parent") continue; // positional arg, not a real property
+            const string& i6n = mv->i6name.empty() ? mv->name : mv->i6name;
+            f << "  prop " << mv->name << " " << i6n << " " << propTypeName(mv) << "\n";
+        }
+    }
+    // Bare object instances (no Beguile class) — each gets a synthetic type using its own name
+    for(typeDef* node : languageService.globals){
+        auto* od = dynamic_cast<objectDef*>(node);
+        if(!od || od->isExternal || od->objectClass) continue;
+        f << "type " << od->name << "\n";
+        for(typeMember* m : od->members){
+            auto* mv = dynamic_cast<variableDeclaration*>(m);
+            if(!mv || mv->isExternal || mv->type.name.empty()) continue;
+            if(mv->name == "parent") continue; // positional arg, not a real property
+            const string& i6n = mv->i6name.empty() ? mv->name : mv->i6name;
+            f << "  prop " << mv->name << " " << i6n << " " << propTypeName(mv) << "\n";
+        }
+    }
+    // Routine locals
+    for(typeDef* node : languageService.globals){
+        auto* fd = dynamic_cast<functionDef*>(node);
+        if(!fd || fd->isEmitter || fd->isExternal) continue;
+        const string& funcI6n = fd->i6name.empty() ? fd->name : fd->i6name;
+        f << "routine " << funcI6n << "\n";
+        for(paramDef* p : fd->params){
+            if(p->type.name.empty() || p->type.name == "void") continue;
+            f << "  local " << p->name << " " << p->type.name << "\n";
+        }
+        auto* body = dynamic_cast<statementBlock*>(fd->body);
+        if(body){
+            for(statement* s : body->statements){
+                auto* vd = dynamic_cast<variableDeclaration*>(s);
+                if(!vd || vd->type.name.empty()) continue;
+                f << "  local " << vd->name << " " << vd->type.name << "\n";
+            }
+        }
+    }
+    // Global variables
+    for(typeDef* node : languageService.globals){
+        if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
+            if(vd->isExternal || vd->type.name.empty()) continue;
+            f << "global " << vd->name << " " << vd->type.name << "\n";
+        } else if(auto* od = dynamic_cast<objectDef*>(node)){
+            if(od->isExternal) continue;
+            if(od->objectClass)
+                f << "global " << od->name << " " << od->objectClass->name << "\n";
+            else
+                f << "global " << od->name << " " << od->name << "\n";
+        }
+    }
+}
+
 void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Pass 1: emit ICL !% directives at the very top (Inform reads these before parsing)
     emitICL(&beguilerSettings);
@@ -256,6 +456,12 @@ void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     }
 }
 void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
+    // Expose the compiler version to I6 code as a Constant
+    // Encoding: major*1000 + minor*10 + patch  (e.g. 1.0.0 = 1000, fits in Z-machine 16-bit signed)
+    out << "Constant beguiler       = " << BEGUILER_VERSION               << ";\n";
+    out << "Constant beguilerMajor  = " << BEGUILER_VERSION / 1000          << ";\n";
+    out << "Constant beguilerMinor  = " << (BEGUILER_VERSION % 1000) / 10   << ";\n";
+    out << "Constant beguilerPatch  = " << BEGUILER_VERSION % 10            << ";\n";
 }
 void i6Emitter::generateI6(typeDef* node){
      if (typeid(*node) == typeid(enumDef))  emitEnum((enumDef*)node);
@@ -366,11 +572,8 @@ void i6Emitter::emitFunction(functionDef* funcNode){
 
     currentCleanups = funcNode->cleanups.empty() ? nullptr : &funcNode->cleanups;
     if(body != nullptr)
-        for(statement* stmt : body->statements){
-            if(!stmt->src.file.empty())
-                sourceMap.push_back({currentLine(), stmt->src.file, stmt->src.line});
+        for(statement* stmt : body->statements)
             emitStatement(stmt, "    ");
-        }
     // emit deinit cleanups at implicit end of function (fall-through path)
     if(currentCleanups != nullptr)
         for(auto& [varName, body] : *currentCleanups)
@@ -382,6 +585,8 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     out << "];\n";
 }
 void i6Emitter::emitStatement(statement* stmt, string indent){
+    if(!stmt->src.file.empty())
+        sourceMap.push_back({currentLine(), stmt->src.file, stmt->src.line});
     if(typeid(*stmt) == typeid(variableDeclaration)){
         variableDeclaration* var = (variableDeclaration*)stmt;
         // spilled vars have no I6 local slot — only emit the initializer assignment if they have one
