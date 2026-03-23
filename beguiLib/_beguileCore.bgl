@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------------------
-// _beguilerCore.bgl - the core system file for the Beguile language, included
-//      automatically by the compiler.
+// _beguilerCore.bgl - the standard language extensions for the Beguile 
+//      language, included automatically by the compiler.
 //-----------------------------------------------------------------------------
 #once
 extern enum eTarget{ //--used to specify the target in the beguilerSettings object.  Declared as external, since these are defined in Beguile compiler
@@ -32,6 +32,11 @@ extern enum eBool{ //--literal values used by the bool type.  Declared as extern
     false
 }
 
+emitter class _bglObject{
+    void print(){
+        print $self;    
+    }
+}
 extern class attribute{ //--an I6 attribute, declared as external because attributes are defined in I6
 }
 
@@ -67,12 +72,10 @@ extern class dictionaryWord{ //--an I6 dictionary word; literals use .word (sing
 
 extern class parentProp{} //--forward declaration; emitter added below after 'object' is defined
 
-extern class object{ //--the base I6 object, declared as external because it is defined in the I6 compiler
+extern class object:_bglObject{ //--the base I6 object, declared as external because it is defined in the I6 compiler
     parentProp parent;           //--initial parent object; emitted as I6 third positional argument
     attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
-    emitter void print(){
-        print $self;
-    }
+    
     emitter object operator = (object v){
         $self = v
     }
@@ -115,6 +118,12 @@ extend class parentProp{ //--add operator= emitter now that 'object' is defined
     emitter parentProp operator = (object v){
         move $self to v
     }
+}
+
+extern class intLiteral:_bglObject{}      //--an integer literal value; e.g. 42
+extern class stringLiteral:_bglObject{}   //--a string literal value; e.g. "hello"
+extern class charLiteral:_bglObject{      //--a character literal value; e.g. 'x'
+    emitter void print(){ print (char)$self; }  //--override: print as character, not numeric code
 }
 
 extern class int { //--base type integer, declared as external because it wraps the type-less I6 type
