@@ -6,7 +6,6 @@
 // Lines starting with // are comments and are ignored.
 //
 // Edit this file to change how Beguile generates I6 for built-in constructs.
-// The transpiler must be restarted (but not recompiled) to pick up changes.
 
 // ---------------------------------------------------------------------------
 // Z-machine frame pool: emitted once when any function overflows 14 locals.
