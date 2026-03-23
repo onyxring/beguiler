@@ -2319,7 +2319,27 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         return false;
     }
 
-    if(tok.is(eTokenType::identifier)==false) return parsingError(format("Unrecognized statement starting with token '{0}'", (string) tok));
+    // Determine if this token is a literal with a registered class (e.g. intLiteral, stringLiteral).
+    // If so, it may head a method call: "hello".print() or 42.someMethod().
+    // literalSelfText holds the I6 text to substitute for $self in emitter bodies.
+    string literalTypeName, literalSelfText;
+    {
+        auto resolveLiteralType = [&]() -> pair<string,string> {
+            if(tok.is(eTokenType::integer))       return {"intliteral",    tok.value};
+            if(tok.isString())                    return {"stringliteral", tok.value};
+            if(tok.is(eTokenType::charLiteral))   return {"charliteral",   "'" + tok.value + "'"};
+            return {"",""};
+        };
+        auto [tn, st] = resolveLiteralType();
+        // Only treat as a typed literal if a classDef is actually registered for it.
+        if(!tn.empty() && dynamic_cast<classDef*>(&languageService.getType(tn)) != nullptr){
+            literalTypeName = tn;
+            literalSelfText = st;
+        }
+    }
+    bool tokIsLiteral = !literalTypeName.empty();
+    if(!tok.is(eTokenType::identifier) && !tokIsLiteral)
+        return parsingError(format("Unrecognized statement starting with token '{0}'", (string) tok));
 
     //make sure the identifier is complete, including any member access paths (chain all dots)
     token symbol = file.getToken({eTokenType::symbol, eTokenType::oper});
@@ -2327,6 +2347,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         tok.value += "." + file.getToken(eTokenType::identifier).value;
         symbol = file.getToken({eTokenType::symbol, eTokenType::oper});
     }
+
+    // A literal with no chained method call is meaningless as a statement.
+    if(tokIsLiteral && tok.value.find('.') == string::npos)
+        return parsingError(format("Literal value cannot appear as a statement without a method call"));
+
 
     //----------------------------------------------------------------------
     //We've encountered an identifier, which could be a variable assignment,
@@ -2730,13 +2755,18 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             string objectPath = callStmt.functionName.substr(0, dotPos);  // may be "obj" or "obj.prop"
             string methodName = callStmt.functionName.substr(dotPos + 1);
             string objectName = objectPath;  // kept for backward compat in non-emitter emit path
-            string objectType = !stmtCastType.empty() ? stmtCastType : resolvePathType(objectPath, func, body);
+            string objectType = !stmtCastType.empty() ? stmtCastType
+                              : !literalTypeName.empty() ? literalTypeName
+                              : resolvePathType(objectPath, func, body);
             stmtCastType = "";  // consume the cast
             if(objectType.empty())
                 parsingError(format("Unknown variable '{0}'", objectPath));
-            // Compute $self and $prop for emitter substitution
+            // Compute $self and $prop for emitter substitution.
+            // For literals, $self is the raw literal text (e.g. "hello", 42, 'x'), not the path.
             size_t innerDot = objectPath.rfind('.');
-            string selfValue = (innerDot == string::npos) ? objectPath : objectPath.substr(0, innerDot);
+            string selfValue = (!literalSelfText.empty() && innerDot == string::npos)
+                              ? literalSelfText
+                              : (innerDot == string::npos) ? objectPath : objectPath.substr(0, innerDot);
             string propValue = (innerDot == string::npos)
                 ? (objectType == "array" ? "0" : "<$prop undefined>")
                 : objectPath.substr(innerDot + 1);

@@ -370,10 +370,10 @@ void i6Emitter::writeDebugBundle(const string& path){
     // Global variables
     for(typeDef* node : languageService.globals){
         if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
-            if(vd->isExternal || vd->type.name.empty()) continue;
+            if(vd->type.name.empty()) continue;
             f << "global " << vd->name << " " << vd->type.name << "\n";
         } else if(auto* od = dynamic_cast<objectDef*>(node)){
-            if(od->isExternal) continue;
+            if(od->isExternal) continue;  // object stubs have no properties to expand
             if(od->objectClass)
                 f << "global " << od->name << " " << od->objectClass->name << "\n";
             else
@@ -681,10 +681,9 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                     continue;
                 }
 
-                // Primitive / unknown type: add I6 cast based on resolved type
+                // Primitive / unknown type: string variables need an I6 (string) cast to print correctly.
                 string cast;
-                if(rt == "string" || rt == "stringliteral") cast = "(string)";
-                else if(rt == "char" || rt == "charliteral") cast = "(char)";
+                if(rt == "string") cast = "(string)";
                 out << indent << "print " << cast << exprStr << ";\n";
             }
         }

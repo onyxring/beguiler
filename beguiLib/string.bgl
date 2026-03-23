@@ -1,10 +1,10 @@
 //-----------------------------------------------------------------------------
-// string.bgl - Beguile string runtime, backed by bglString / bglStringPool.
-//              Ported from orString / orUtilStr (Jim Fisher, Public Domain).
+// string.bgl - Beguile string runtime, backed by _orString / bglStringPool.
 //
 // Usage:
-//   #include <string>          in your .bgl file to activate string support.
-//   bglInit();             call from your initialise() routine.
+//   #include <string>      in your .bgl file to activate string support.
+//   bglInit();             call from your starting routine (either main or
+//                          initialise).
 //
 // Pool size can be overridden before including this file:
 //   Default bglStringPoolReserve 20;   ! number of simultaneous strings
@@ -19,6 +19,10 @@
 // When _bglRuntimeInit is declared as a global, its init emitter body
 // is added to languageService.globalInits, which causes
 // the compiler to emit it as the first statement in bglInit().
+//
+// TODO: replace this concept.  Add some directive to declare a line to be added 
+//  to the generated bglInit automatically.
+//
 //------------------------------------------------------------------------------
 class _bglRuntimeInitType {
     emitter void init() {
@@ -30,6 +34,9 @@ _bglRuntimeInitType _bglRuntimeInit;
 
 //------------------------------------------------------------------------------
 // Beguile string class extension
+// TODO: unify this with the orString class.  Right now, there's i6 which 
+//  handles strings and this is just syntax sugar,  But I think its possible to
+//  have just one class.
 //------------------------------------------------------------------------------
 extend class string {
     // Lifecycle
@@ -41,7 +48,7 @@ extend class string {
     emitter string operator = (string v)                { $self.set(v); }
 
     // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
-    // str3 = str1 + str2  =>  str3.set(str1.bglAppendCopy(str2))
+    // str3 = str1 + str2  =>  str3.set(str1.append(str2))
     emitter string operator + (stringLiteral v) { $self.append(v) }
     emitter string operator + (string v)        { $self.append(v) }
 
@@ -80,4 +87,7 @@ extend class string {
     emitter void    captureOutput(object obj, var prop)   { $self.captureOutput(obj, prop) }
 }
 
+extend class stringLiteral {
+    emitter string operator + (string v) { _orStr.new($self).append(v) }
+}
 replace emitter void print(string str) { _orStr.print(str) }

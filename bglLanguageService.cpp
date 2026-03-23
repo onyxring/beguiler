@@ -18,9 +18,7 @@ bglLanguageService::bglLanguageService(){
     registerType("void");
     registerType("var");
     registerType("func");
-    registerType("intliteral");
-    registerType("stringliteral");
-    registerType("charliteral");
+    // intliteral, stringliteral, charliteral are now declared as extern class in _beguileCore.bgl
 }
 bool bglLanguageService::isObjectType(string name){ 
     if(getType(name)==emptyTDef) return false;
