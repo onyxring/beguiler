@@ -464,6 +464,16 @@ Literal pseudo-types are not declared by user code. They are inferred automatica
 
 All three literal pseudo-types (`intliteral`, `stringliteral`, `charliteral`) are compatible with their corresponding concrete types (`int`, `string`, `char`) exclusively through declared operators — specifically `operator =` on the target class. No built-in compatibility rule exists for any of them.
 
+Literal pseudo-types are first-class types: they are declared as `extern class` in the core library and can have operators and methods defined against them via `extend class`. This means method calls are valid directly on literal values:
+
+```bgl
+"hello".print();       // calls print() on stringLiteral
+42.someMethod();       // calls someMethod() on intLiteral
+'x'.someMethod();      // calls someMethod() on charLiteral
+```
+
+The literal value is substituted for `$self` in the emitter body.
+
 ## 4.4 The `null` Keyword
 
 `null` represents a null object reference. It maps to the I6 value `nothing` and has the resolved type `object`.
@@ -1726,9 +1736,9 @@ Expressions appear as conditions in `if` and loop statements, as initializers in
 
 An expression is built from one or more operands joined by operators. Operands are:
 
-- **Integer literals** — resolved type `intLiteral`
-- **String literals** — resolved type `stringLiteral`
-- **Character literals** — resolved type `charLiteral`
+- **Integer literals** — resolved type `intLiteral`; may have methods called directly: `42.someMethod()`
+- **String literals** — resolved type `stringLiteral`; may have methods called directly: `"hello".print()`
+- **Character literals** — resolved type `charLiteral`; may have methods called directly: `'x'.someMethod()`
 - **Dictionary word literals** — resolved type `dictionaryWord` (both singular `.word` and plural `..word` forms)
 - **Identifiers** — resolved by scope lookup (see Chapter 13); type is the declared type of the variable, parameter, or enum value
 - **`null`** — resolved type `object`

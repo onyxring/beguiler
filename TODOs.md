@@ -1,3 +1,4 @@
 ## Current TODOs
 
-(none)
+1. create a blorbifier function in beguiler
+2. test and validate that the glulx interpreter can display images

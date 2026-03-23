@@ -333,6 +333,8 @@ token fileLexer::getToken(){
     // Dictionary word literals: .word (singular) and ..word (plural)
     // Not recognised after an identifier, data type, or closing paren/bracket (dot-access on expression).
     bool prevIsExprEnd = (prevTokenType == eTokenType::identifier || prevTokenType == eTokenType::dataType
+                          || prevTokenType == eTokenType::quote || prevTokenType == eTokenType::rawQuote
+                          || prevTokenType == eTokenType::integer || prevTokenType == eTokenType::charLiteral
                           || (prevTokenType == eTokenType::symbol && (prevTokenValue == ")" || prevTokenValue == "]")));
     if(retval.is(".") && !prevIsExprEnd){
         char c1 = peekChar();
