@@ -395,6 +395,65 @@ These settings affect the generated code.
 | `framePoolSize` | int | `64` | Number of slots in the Z-machine local-variable overflow pool. Active only on Z3/Z5/Z8 targets. See §10.2.1. |
 | `rewritePaths` | bool | `true` | When `true` (the default), path separators (`/` and `\`) in all file path settings and `#include`/`#includeI6` paths are rewritten to the OS path separator at parse time. Set to `false` to disable this normalization. |
 
+### Game metadata settings
+
+These settings carry game identity information. They feed blorb packaging directly (see §3.4.1) and can be surfaced as Beguile constants — see §3.4.2.
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `story` | string | `""` | Game title. |
+| `author` | string | `""` | Game author. |
+| `headline` | string | `""` | Game subtitle or tagline. |
+| `release` | int | `0` | Story release number. `0` means unset. |
+
+None of these are auto-emitted to I6 output. To expose them as I6 constants (e.g. for library integration) declare them explicitly in Beguile source — see §3.4.2.
+
+### 3.4.1 Blorb packaging
+
+When `generateBlorb = true`, the transpiler runs two additional steps:
+
+1. **Before parsing** — scans `blorbAssetPath` for image and audio files, writes `_blorbAssets.bgl` containing a single `eAssets` enum. Add `#include "_blorbAssets.bgl"` to your source once after the first run generates it.
+2. **After I6 succeeds** — assembles a `.zblorb` (Z-Machine) or `.gblorb` (Glulx) file containing the story file and all discovered assets.
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `generateBlorb` | bool | `false` | Master switch. Both steps are skipped unless this is `true`. |
+| `blorbAssetPath` | string | `"assets"` | Directory to scan for assets, relative to the source file. |
+
+Asset files are discovered non-recursively. PNG, JPG, and JPEG files become picture resources; AIFF/AIF files become sound resources. Member names in `eAssets` are derived from the filename: stem in camelCase with a capitalised extension suffix (`priest.png` → `priestPng`, `theme.aiff` → `themeAiff`). IDs are globally sequential starting at 1, pictures first then sounds, sorted alphabetically within each group.
+
+```bgl
+#beguilerSettings {
+    generateBlorb  = true;
+    blorbAssetPath = "assets";   // default — may be omitted
+    story          = "Unwelcomed";
+    author         = "Jim Fisher";
+    release        = 1;
+}
+```
+
+### 3.4.2 Referencing settings values in Beguile source
+
+Any `#beguilerSettings` property can be read as a compile-time expression using the syntax `#beguilerSettings.propertyName`. The result is a string or integer literal substituted inline — string properties become `stringliteral` typed, integer properties become `intliteral` typed.
+
+```bgl
+const string story    = #beguilerSettings.story;
+const string author   = #beguilerSettings.author;
+const string headline = #beguilerSettings.headline;
+const int    ver      = #beguilerSettings.release;
+```
+
+**Why use this instead of `const string story = "My Game";`?**
+
+Both produce identical I6 output. The difference is where the value lives:
+
+- `const string story = "My Game";` — the value is defined only in Beguile source. To use it in a `#beguilerSettings` blorb context (where the compiler reads it for metadata packaging), you would have to duplicate it.
+- `const string story = #beguilerSettings.story;` — the value is defined once in `#beguilerSettings`, where it serves both the blorb packager and the compiled output. The Beguile constant is a *reference* to that single definition, not a second copy.
+
+In short: if a value only needs to exist as an I6 constant and never participates in blorb packaging, declare it directly. If the value needs to be consumed by beguiler tooling (blorb, future toolchain features) *and* referenced in compiled code, define it in `#beguilerSettings` and surface it with `#beguilerSettings.propertyName`.
+
+Supported properties: `story`, `author`, `headline`, `target`, `outputPath`, `blorbAssetPath`, `informName` (string); `release`, `framePoolSize` (int).
+
 ## 3.5 Diagnostic and Control Directives
 
 ### 3.5.1 `#message`
@@ -561,19 +620,15 @@ array<int> scores[5];                    // sized, zero-initialized
 array<int> primes = {2, 3, 5, 7, 11};   // initialized with values
 ```
 
-At global scope, arrays emit I6 `Array` directives. As class members, they emit inline property value lists. Array operations use `get`, `set`, and `length` methods:
+At global scope, arrays emit I6 `Array` directives. As class members, they emit inline property value lists. Array elements are accessed using subscript syntax:
 
 ```bgl
-int x = scores.get(2);
-scores.set(0, 99);
-int n = scores.length();
+int x = scores[2];       // read element 2
+scores[0] = 99;          // write element 0
+int n = scores.length(); // number of elements
 ```
 
-Subscript syntax is equivalent to `get`:
-
-```bgl
-int x = scores[2];   // same as scores.get(2)
-```
+The `.length()` method is also available as a direct call. Subscript read and write are backed by `operator[]` and `operator[]=` emitters on the `array` class — see §5.5.4.
 
 ---
 
@@ -740,7 +795,7 @@ class Counter {
 
 The full list of operators that may have emitters:
 `=` `+` `-` `*` `/` `%` `==` `!=` `<` `>` `<=` `>=` `?=` `&` `|` `^` `<<` `>>`
-`+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=` `++` `--` `prefix++` `prefix--`
+`+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=` `++` `--` `prefix++` `prefix--` `[]` `[]=`
 
 ### 5.5.2 `init` and `deinit` Emitters
 
@@ -771,6 +826,29 @@ class celsius {
 ```
 
 When no body is provided (empty braces), the value passes through unchanged. When a body is provided, it is substituted with `$self` replaced by the source expression.
+
+### 5.5.4 Subscript Operators
+
+`operator[]` and `operator[]=` allow a class to support subscript read and write syntax (`obj[n]` and `obj[n] = v`). Any class may define them — not just `array<T>`.
+
+```bgl
+extern class myBuf {
+    emitter var  operator[]  (int i)        { $self-->i }
+    emitter void operator[]= (int i, var v) { $self-->i = v }
+}
+```
+
+With these defined:
+
+```bgl
+myBuf buf;
+var x  = buf[3];    // calls operator[]  — emits: buf-->3
+buf[3] = x + 1;    // calls operator[]= — emits: buf-->3 = x + 1
+```
+
+`operator[]` takes one parameter (the index) and returns the element type. `operator[]=` takes two parameters — the index first, then the value — and returns `void`. Both are looked up via the class hierarchy, so a subclass inherits subscript support from a parent.
+
+The built-in `array<T>` class defines both operators, delegating to the `_orArray` helper object.
 
 ## 5.6 Class Inheritance
 
@@ -1180,6 +1258,7 @@ The full set of operators that may be overloaded via emitters:
 | Bitwise / logical | `&` `\|` `^` `<<` `>>` `&&` `\|\|` |
 | Compound assignment | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` |
 | Increment / decrement | `++` `--` `prefix++` `prefix--` |
+| Subscript | `[]` `[]=` |
 
 The `prefix++` and `prefix--` names distinguish prefix forms (`++n`) from postfix forms (`n++`). This allows a class to provide different behavior for each:
 
