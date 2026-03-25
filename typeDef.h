@@ -143,6 +143,8 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         typeDef type;
         bool isConst = false;
         expression* declaredExpressionValue = nullptr;
+        string initEmitterBody;  // raw i6 body if operator= is an emitter, else ""
+        string initEmitterParam; // parameter name to substitute in the body
     //virtual std::unique_ptr<typeMember> clone() const override { return std::make_unique<variableDeclaration>(*this); }
 };
 //a type of statement which represents a function call.
@@ -310,6 +312,13 @@ class beguilerSettingsDef : public typeDef {
         // runtime options (affect generated I6, not ICL)
         int framePoolSize = -1;        // Z-machine frame pool slot count (-1 = unset; default 64 from schema)
         optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)
+
+        // blorb packaging
+        bool   blorbEnabled  = false;  // true = run asset scan + blorb build
+        string blorbAssetPath;         // directory to scan; default "assets" applied by schema
+        string author;                 // game author → Constant Author + blorb AUTH
+        string story;                  // game title  → Constant Story
+        string headline;               // game subtitle → Constant Headline
 };
 
 extern typeDef emptyTDef;

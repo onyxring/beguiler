@@ -724,6 +724,17 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 // conversion operator: emitter <type> operator()
                 name.value = "operator()";
                 tok = opTok; // the ( is already consumed; reuse it
+            } else if(opTok.is(token::bracketOpen)){
+                // subscript operator: operator[] (read) or operator[]= (write)
+                file.getToken(token::bracketClose);
+                token maybeAssign = file.getToken();
+                if(maybeAssign.is(token::assignment)){
+                    name.value = "[]=";
+                    tok = file.getToken(eTokenType::symbol);
+                } else {
+                    name.value = "[]";
+                    tok = maybeAssign;  // already consumed the next symbol
+                }
             } else if(opTok.is(eTokenType::identifier)){
                 // qualified operator: e.g. "prefix++" — read qualifier then oper symbol
                 token opSym = file.getToken(eTokenType::oper);
@@ -793,6 +804,17 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 i6Block* body = dynamic_cast<i6Block*>(funcDef.body);
                 if(body) newClass.globalDeclarationBody = body->i6Body;
             } else {
+                if(!isExtend){
+                    for(typeMember* m : newClass.members){
+                        functionDef* fd = dynamic_cast<functionDef*>(m);
+                        if(fd && fd->name == funcDef.name && fd->params.size() == funcDef.params.size()){
+                            bool match = true;
+                            for(size_t i=0; i<funcDef.params.size(); i++)
+                                if(fd->params[i]->type.name != funcDef.params[i]->type.name){ match=false; break; }
+                            if(match) parsingError(format("class '{0}': method '{1}' with the same signature is already defined", newClass.name, funcDef.name));
+                        }
+                    }
+                }
                 newClass.members.push_back(&funcDef);
             }
         }
@@ -822,6 +844,11 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 if(existing)
                     for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
                         if(*it==existing){ newClass.members.erase(it); break; }
+            } else {
+                for(typeMember* m : newClass.members)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                        if(vd->name == varDef.name)
+                            parsingError(format("class '{0}': member '{1}' is already defined", newClass.name, varDef.name));
             }
             newClass.members.push_back((typeMember*)&varDef);
         }
@@ -993,6 +1020,14 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         for(statement* s : body->statements)
             if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                 if(vd->name == name) return vd->type.name;
+    // Tier 1c: locals in the enclosing function's outer body (mirrors qualifyIdentifier)
+    if(currentFunc != nullptr && currentFunc->body != nullptr){
+        statementBlock* outerBody = dynamic_cast<statementBlock*>(currentFunc->body);
+        if(outerBody != nullptr && outerBody != body)
+            for(statement* s : outerBody->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                    if(vd->name == name) return vd->type.name;
+    }
     if(currentObject != nullptr)
         for(typeMember* m : currentObject->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -1266,10 +1301,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
                 functionDef* getMethod = nullptr;
                 if(arrCls != nullptr)
-                    for(typeMember* m : arrCls->members)
-                        if(auto* fd = dynamic_cast<functionDef*>(m))
-                            if(fd->name == "get") { getMethod = fd; break; }
-                if(getMethod == nullptr) parsingError(format("No 'get' method on type '{0}'", arrType));
+                    getMethod = dynamic_cast<functionDef*>(findMemberInHierarchy(arrCls, [](typeMember* m){
+                        auto* fd = dynamic_cast<functionDef*>(m);
+                        return fd && fd->name == "[]" && fd->params.size() == 1;
+                    }));
+                if(getMethod == nullptr) parsingError(format("Type '{0}' does not support subscript read (no operator[])", arrType));
                 if(expr->resolvedType.empty()) expr->resolvedType = getMethod->returnType.name;
                 if(getMethod->isEmitter)
                     if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)) {
@@ -1424,7 +1460,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 parsingError(format("No method '{0}' on type '{1}' matches arguments", methName, objType));
                         }
 
-                        if(expr->resolvedType.empty()) expr->resolvedType = method->returnType.name;
+                        expr->resolvedType = method->returnType.name;
 
                         // ofClass guard: validate first argument is a real I6-backed class or object
                         if(objType == "bglworldtype" && methName == "ofclass" && !callArgs.empty()){
@@ -1476,10 +1512,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
                         functionDef* getMethod = nullptr;
                         if(arrCls != nullptr)
-                            for(typeMember* m : arrCls->members)
-                                if(auto* fd = dynamic_cast<functionDef*>(m))
-                                    if(fd->name == "get") { getMethod = fd; break; }
-                        if(getMethod == nullptr) parsingError(format("No 'get' method on type '{0}'", propType));
+                            getMethod = dynamic_cast<functionDef*>(findMemberInHierarchy(arrCls, [](typeMember* m){
+                                auto* fd = dynamic_cast<functionDef*>(m);
+                                return fd && fd->name == "[]" && fd->params.size() == 1;
+                            }));
+                        if(getMethod == nullptr) parsingError(format("Type '{0}' does not support subscript read (no operator[])", propType));
                         if(expr->resolvedType.empty()) expr->resolvedType = getMethod->returnType.name;
                         if(getMethod->isEmitter)
                             if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)) {
@@ -1531,12 +1568,20 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 classDef* cls = dynamic_cast<classDef*>(&languageService.getType(expr->resolvedType));
                 if(cls != nullptr){
                     string opName = cur.value;
-                    // Peek at RHS (single token; complex RHS like function calls not yet supported)
+                    // Peek at RHS
                     token rhs = getNext();
                     string rhsType, rhsText;
                     if(rhs.is(eTokenType::integer))         { rhsType="intliteral";    rhsText=rhs.value; }
                     else if(rhs.isString())                 { rhsType="stringliteral"; rhsText=rhs.value; }
                     else if(rhs.is(eTokenType::charLiteral)){ rhsType="charliteral";   rhsText="'"+rhs.value+"'"; }
+                    else if(rhs.is(eTokenType::name) && (file.peekToken().is(token::period) || file.peekToken().is(token::parenOpen))){
+                        // Complex RHS (method call chain or function call) — parse as full sub-expression
+                        expression* rhsExpr = parseExpression(rhs, terminators, func, body);
+                        token terminatorTok; terminatorTok.value = rhsExpr->terminator;
+                        prefetched = terminatorTok;  // put back the consumed terminator for the outer loop
+                        rhsType = rhsExpr->resolvedType;
+                        rhsText = rhsExpr->text();
+                    }
                     else if(rhs.is(eTokenType::name)) {
                         rhsType=resolveIdentifierType(rhs.value,func,body);
                         rhsText = (func != nullptr) ? qualifyIdentifier(rhs.value,func,body) : rhs.value;
@@ -1782,6 +1827,35 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             if(cur.value.rfind("##", 0) == 0){
                 string verbName = cur.value.substr(2);
                 parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
+            }
+            // #beguilerSettings.propName — resolve to a compile-time literal
+            if(cur.value == "#beguilersettings"){
+                file.getToken(token::period);
+                token prop = file.getToken(eTokenType::identifier);
+                string key = prop.value; // already lowercase
+                string strVal;
+                bool   isInt = false;
+                int    intVal = 0;
+                if     (key == "story")         strVal = beguilerSettings.story;
+                else if(key == "author")        strVal = beguilerSettings.author;
+                else if(key == "headline")      strVal = beguilerSettings.headline;
+                else if(key == "target")        strVal = beguilerSettings.target;
+                else if(key == "outputpath")    strVal = beguilerSettings.outputPath;
+                else if(key == "blorbassetpath")strVal = beguilerSettings.blorbAssetPath;
+                else if(key == "informname")    strVal = beguilerSettings.informName;
+                else if(key == "release")     { isInt = true; intVal = beguilerSettings.release; }
+                else if(key == "framepoolsize"){ isInt = true; intVal = beguilerSettings.framePoolSize < 0 ? 0 : beguilerSettings.framePoolSize; }
+                else parsingError(format("#beguilerSettings.{0}: unknown or unsupported property", prop.value));
+
+                if(isInt){
+                    expr->tokens.push_back(to_string(intVal));
+                    if(expr->resolvedType.empty()) expr->resolvedType = "intliteral";
+                } else {
+                    expr->tokens.push_back("\"" + strVal + "\"");
+                    if(expr->resolvedType.empty()) expr->resolvedType = "stringliteral";
+                }
+                cur = getNext();
+                continue;
             }
             parsingError(format("Directive '{0}' is not valid in an expression.", cur.value));
         }
@@ -2369,12 +2443,25 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         classDef* arrCls = dynamic_cast<classDef*>(&languageService.getType(arrType));
         if(arrCls == nullptr) parsingError(format("Type '{0}' does not support subscript access", arrType));
 
-        // Find 'set' method
+        // Find operator[]= method — two-pass: exact value type match, then var wildcard
+        string valType = valExpr ? valExpr->resolvedType : "";
         functionDef* setMethod = nullptr;
-        for(typeMember* m : arrCls->members)
-            if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(fd->name == "set") { setMethod = fd; break; }
-        if(setMethod == nullptr) parsingError(format("No 'set' method on array type '{0}'", arrType));
+        if(!valType.empty())
+            setMethod = dynamic_cast<functionDef*>(findMemberInHierarchy(arrCls, [&](typeMember* m){
+                auto* fd = dynamic_cast<functionDef*>(m);
+                return fd && fd->name == "[]=" && fd->params.size() == 2 && fd->params[1]->type.name == valType;
+            }));
+        if(setMethod == nullptr)
+            setMethod = dynamic_cast<functionDef*>(findMemberInHierarchy(arrCls, [](typeMember* m){
+                auto* fd = dynamic_cast<functionDef*>(m);
+                return fd && fd->name == "[]=" && fd->params.size() == 2 && fd->params[1]->type.name == "var";
+            }));
+        if(setMethod == nullptr){
+            if(valType.empty())
+                parsingError(format("Type '{0}' does not support subscript write (no operator[]=)", arrType));
+            else
+                parsingError(format("Type '{0}' does not support subscript write with value type '{1}' (no compatible operator[]=)", arrType, valType));
+        }
 
         // Compute $self and $prop
         size_t innerDot = arrPath.rfind('.');
@@ -3009,15 +3096,16 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             string chainMethodName = chainMember.value;
             functionDef* chainMethod = nullptr;
             functionDef* chainNameMatch = nullptr;
-            for(typeMember* m : chainCls->members)
-                if(auto* fd = dynamic_cast<functionDef*>(m))
-                    if(fd->name == chainMethodName){
-                        if(chainNameMatch == nullptr) chainNameMatch = fd;
-                        size_t req=0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-                        if(chainArgs.size() >= req && chainArgs.size() <= fd->params.size()){
-                            chainMethod = fd; break;
-                        }
-                    }
+            findMemberInHierarchy(chainCls, [&](typeMember* m) -> bool {
+                auto* fd = dynamic_cast<functionDef*>(m);
+                if(!fd || fd->name != chainMethodName) return false;
+                if(chainNameMatch == nullptr) chainNameMatch = fd;
+                size_t req=0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+                if(chainArgs.size() >= req && chainArgs.size() <= fd->params.size()){
+                    chainMethod = fd; return true;
+                }
+                return false;
+            });
             if(chainNameMatch == nullptr)
                 parsingError(format("No method '{0}' on type '{1}'", chainMethodName, chainReturnType));
             if(chainMethod == nullptr)
@@ -3181,8 +3269,15 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
 
-    // Disallow local variable names that shadow a global, a class member, or an object member
+    // Disallow local variable names that shadow a global, a class member, or an object member;
+    // also disallow duplicate declarations within the same scope.
     if(func != nullptr){
+        // Duplicate in same scope
+        if(body != nullptr)
+            for(statement* s : body->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                    if(vd->name == varDecl.name)
+                        parsingError(format("Variable '{0}' is already declared in this scope", varDecl.name));
         for(typeDef* g : languageService.globals)
             if(g->name == varDecl.name)
                 parsingError("Local variable '" + varDecl.name + "' shadows global variable of the same name. Rename the local.");
@@ -3238,16 +3333,24 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             if(classType != nullptr && rhs != nullptr){
                 string valueTypeName = rhs->resolvedType;
                 if(!valueTypeName.empty()){
-                    // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all
-                    bool found = isTypeCompatible(valueTypeName, (string)dataType);
-                    if(!found) found = findMemberInHierarchy(classType, [&](typeMember* m){
+                    // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all.
+                    // Always run findMemberInHierarchy so we can capture the emitter body if found.
+                    functionDef* assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
                         auto* fn = dynamic_cast<functionDef*>(m);
                         return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name==valueTypeName;
-                    }) != nullptr;
-                    if(!found) found = findMemberInHierarchy(classType, [&](typeMember* m){
+                    }));
+                    if(!assignOp) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
                         auto* fn = dynamic_cast<functionDef*>(m);
                         return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name=="var";
-                    }) != nullptr;
+                    }));
+                    bool found = assignOp != nullptr || isTypeCompatible(valueTypeName, (string)dataType);
+                    // If operator= is an emitter, capture its body so the emitter uses it instead of plain assignment
+                    if(assignOp && assignOp->isEmitter){
+                        if(auto* blk = dynamic_cast<i6Block*>(assignOp->body)){
+                            varDecl.initEmitterBody  = processBglConditionals(blk->i6Body);
+                            varDecl.initEmitterParam = assignOp->params[0]->name;
+                        }
+                    }
                     if(!found){
                         // Fallback: check if RHS type has emitter DeclaredType operator(){}
                         classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(valueTypeName));
@@ -3943,6 +4046,9 @@ void bglParser::processArrayMember(objectDef& obj){
         if(file.peekToken().is(token::endStatement)) file.getToken();
         arrDecl.declaredExpressionValue = list;
     }
+    for(typeMember* m : obj.members)
+        if(m->name == arrDecl.name)
+            parsingError(format("object '{0}': member '{1}' is already defined", obj.name, arrDecl.name));
     obj.members.push_back((typeMember*)&arrDecl);
 }
 
@@ -3961,6 +4067,10 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
     currentFunc = savedFunc;
     if(funcDef.returnType.name != "void" && !hasReturn(dynamic_cast<statementBlock*>(funcDef.body)))
         parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
+    for(typeMember* m : obj.members)
+        if(auto* fd = dynamic_cast<functionDef*>(m))
+            if(fd->name == funcDef.name && fd->params.size() == funcDef.params.size())
+                parsingError(format("object '{0}': method '{1}' with the same signature is already defined", obj.name, funcDef.name));
     obj.members.push_back((typeMember*)&funcDef);
 }
 
@@ -3969,6 +4079,9 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     prop.name = name;
     prop.type = languageService.getType(typeName);
     if(hasValue) parsePropertyValue(prop, typeName);
+    for(typeMember* m : obj.members)
+        if(m->name == prop.name)
+            parsingError(format("object '{0}': member '{1}' is already defined", obj.name, prop.name));
     obj.members.push_back((typeMember*)&prop);
 }
 
@@ -4151,6 +4264,15 @@ bool bglParser::processBeguilerSettings(){
                 else parsingError(format("beguilerSettings property 'rewritePaths' expects true or false, got '{0}'", strVal));
             }
         }
+        else if(key == "generateblorb"){
+            if(strVal == "true")       cfg.blorbEnabled = true;
+            else if(strVal == "false") cfg.blorbEnabled = false;
+            else parsingError(format("beguilerSettings property 'generateBlorb' expects true or false, got '{0}'", strVal));
+        }
+        else if(key == "blorbassetpath"){ if(cfg.blorbAssetPath.empty()) cfg.blorbAssetPath = rewritePathSeps(strVal); }
+        else if(key == "author"){         if(cfg.author.empty())         cfg.author   = strVal; }
+        else if(key == "story"){          if(cfg.story.empty())          cfg.story    = strVal; }
+        else if(key == "headline"){       if(cfg.headline.empty())       cfg.headline = strVal; }
 
         tok = file.getToken();
     }
@@ -4189,6 +4311,7 @@ void bglParser::applySchemaDefaults(){
         }
         else if(key == "release"      && cfg.release == 0)         cfg.release = stoi(defVal);
         else if(key == "rewritepaths" && !cfg.rewritePaths.has_value()) cfg.rewritePaths = (defVal == "true");
+        else if(key == "blorbassetpath" && cfg.blorbAssetPath.empty()) cfg.blorbAssetPath = defVal;
     }
 }
 #pragma endregion
