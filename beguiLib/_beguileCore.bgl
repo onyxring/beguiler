@@ -25,6 +25,11 @@ extern class beguilerSettingsType { //--schema for #beguilerSettings directive b
     string          i6IncludePath;                  // adds one directory to the I6 compiler include search path (additive)
     string          bglIncludePath;                 // adds one directory to the Beguile include search path (additive)
     bool            rewritePaths   = true;          // substitute path separators to match OS
+    bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)
+    string          blorbAssetPath = "assets";      // asset directory relative to source .bgl file
+    string          author         = "";            // game author → Constant Author in I6 + blorb AUTH chunk
+    string          story          = "";            // game title  → Constant Story  in I6
+    string          headline       = "";            // subtitle    → Constant Headline in I6
 }
 
 extern enum eBool{ //--literal values used by the bool type.  Declared as external, since these values are defined in the I6 compiler
@@ -126,7 +131,7 @@ extern class charLiteral:_bglObject{      //--a character literal value; e.g. 'x
     emitter void print(){ print (char)$self; }  //--override: print as character, not numeric code
 }
 
-extern class int { //--base type integer, declared as external because it wraps the type-less I6 type
+extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
     emitter int operator = (intLiteral v){ $self=v; }
     emitter int operator = (int v){ $self=v; }
     emitter int operator = (char v){ $self=v; }
@@ -197,10 +202,10 @@ extern class string{
 // $self = array name (global) or owning object (property)
 // $prop = 0 (global) or property name (property)
 extern class array {
-    emitter var get(int i) {
+    emitter var operator[](int i) {
         _orArray.get($self, $prop, i)
     }
-    emitter void set(int i, var v) {
+    emitter void operator[]=(int i, var v) {
         _orArray.set($self, $prop, i, v)
     }
     emitter int length() {

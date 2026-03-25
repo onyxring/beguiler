@@ -232,6 +232,13 @@
 				_orBuf.append(retval.getBuf(), _orStr.toAmbiguousBuffer(text));
 				return retval.free();
 			]
+		,	appendChar[c 
+		 			retval buf;
+		 		retval=self.clone();
+				retval.setChar(retval.getLength(),c);
+				retval.setLength(retval.getLength()+1);
+		 		return retval.free();
+		 	]
 		,	prepend[text
 					retval;
 				retval=self.clone();

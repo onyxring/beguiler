@@ -335,6 +335,7 @@ token fileLexer::getToken(){
     bool prevIsExprEnd = (prevTokenType == eTokenType::identifier || prevTokenType == eTokenType::dataType
                           || prevTokenType == eTokenType::quote || prevTokenType == eTokenType::rawQuote
                           || prevTokenType == eTokenType::integer || prevTokenType == eTokenType::charLiteral
+                          || prevTokenType == eTokenType::directive
                           || (prevTokenType == eTokenType::symbol && (prevTokenValue == ")" || prevTokenValue == "]")));
     if(retval.is(".") && !prevIsExprEnd){
         char c1 = peekChar();

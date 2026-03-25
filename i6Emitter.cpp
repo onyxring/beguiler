@@ -444,7 +444,6 @@ void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     else if(cfg->target == "z5")   out << "!% -v5\n";
     else if(cfg->target == "z8")   out << "!% -v8\n";
     if(!cfg->errorFormat.empty())  out << format("!% -E{0}\n", cfg->errorFormat);
-    if(cfg->release > 0)           out << format("!% Release {0};\n", cfg->release);
 
     if(!cfg->i6IncludePaths.empty()){
         out << "!% +include_path=";
@@ -462,6 +461,13 @@ void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     out << "Constant beguilerMajor  = " << BEGUILER_VERSION / 1000          << ";\n";
     out << "Constant beguilerMinor  = " << (BEGUILER_VERSION % 1000) / 10   << ";\n";
     out << "Constant beguilerPatch  = " << BEGUILER_VERSION % 10            << ";\n";
+
+    // Note: release/story/author/headline are NOT auto-emitted here.
+    // Declare them explicitly in Beguile source using #beguilerSettings references:
+    //   const string story    = #beguilerSettings.story;
+    //   const string author   = #beguilerSettings.author;
+    //   const string headline = #beguilerSettings.headline;
+    //   const int gameRelease = #beguilerSettings.release;
 }
 void i6Emitter::generateI6(typeDef* node){
      if (typeid(*node) == typeid(enumDef))  emitEnum((enumDef*)node);
@@ -589,9 +595,19 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         sourceMap.push_back({currentLine(), stmt->src.file, stmt->src.line});
     if(typeid(*stmt) == typeid(variableDeclaration)){
         variableDeclaration* var = (variableDeclaration*)stmt;
-        // spilled vars have no I6 local slot — only emit the initializer assignment if they have one
-        if(var->declaredExpressionValue != nullptr && !var->declaredExpressionValue->text().empty())
-            out << format("{0}{1} = {2};\n", indent, spillName(var->name), exprText(var->declaredExpressionValue));
+        // emit initializer assignment if present
+        if(var->declaredExpressionValue != nullptr && !var->declaredExpressionValue->text().empty()){
+            if(!var->initEmitterBody.empty()){
+                string b = var->initEmitterBody;
+                b = replaceWord(b, "$self",              spillName(var->name));
+                b = replaceWord(b, var->initEmitterParam, exprText(var->declaredExpressionValue));
+                size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+                size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
+                out << format("{0}{1};\n", indent, b);
+            } else {
+                out << format("{0}{1} = {2};\n", indent, spillName(var->name), exprText(var->declaredExpressionValue));
+            }
+        }
     }
     else if(typeid(*stmt) == typeid(assignmentStatement)){
         assignmentStatement* assign = (assignmentStatement*)stmt;

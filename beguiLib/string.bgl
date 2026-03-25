@@ -56,9 +56,16 @@ extend class string {
     emitter eBool operator == (stringLiteral v) { $self.equals(v) }
     emitter eBool operator == (string v)        { $self.equals(v) }
 
+    //
+    emitter char operator[](int pos){ $self.getChar(pos) }
+    emitter char operator[]=(int pos, char c)         { $self.setChar(pos,c) }
+    emitter char operator[]=(int pos, charLiteral c)  { $self.setChar(pos,c) }
+
     // Methods
     emitter string  print()                               { $self.print() }
-    emitter string  append(var v)                         { $self.append(v) }
+    
+    emitter string  append(string v)                      { $self.append(v) }
+    emitter string  append(char v)                        { $self.append(_orStr.charToString(v)) }    
     emitter string  prepend(var v)                        { $self.prepend(v) }
     emitter string  toUpper()                             { $self.toUpper() }
     emitter string  toLower()                             { $self.toLower() }
@@ -76,7 +83,7 @@ extend class string {
     emitter string  format(var pattern)                   { $self.format(pattern) }
     emitter string  format(var pattern, var p1)           { $self.format(pattern, p1) }
     emitter string  format(var pattern, var p1, var p2)   { $self.format(pattern, p1, p2) }
-    emitter int     length()                              { $self.getLength() }
+    emitter int     getLength()                              { $self.getLength() }
     emitter int     indexOf(var searchText)               { $self.indexOf(searchText, 0) }
     emitter eBool   startsWith(var prefix)                { $self.startsWith(prefix, false) }
     emitter eBool   endsWith(var suffix)                  { $self.endsWith(suffix, false) }
@@ -89,5 +96,6 @@ extend class string {
 
 extend class stringLiteral {
     emitter string operator + (string v) { _orStr.new($self).append(v) }
+    emitter string operator + (charLiteral c) { _orStr.new($self).appendChar(c) }
 }
 replace emitter void print(string str) { _orStr.print(str) }

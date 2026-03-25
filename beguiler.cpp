@@ -10,16 +10,96 @@
 #include "helpers.h"
 #include "bglParser.h"
 #include "bglLanguageService.h"
+#include "blorb.h"
 
 using namespace std;
 namespace fs = std::filesystem;
 
 settingsStruct settings;
 
+// Simple pre-scan to extract blorb settings before the full parse.
+// Looks for #beguilerSettings { ... generateBlorb = true/false ... blorbAssetPath = "..." ... }
+// using basic string search — no lexer needed.
+void beguiler::extractBlorbSettings(const string& filename) {
+    ifstream f(filename);
+    if(!f.is_open()) return;
+    string content((istreambuf_iterator<char>(f)), istreambuf_iterator<char>());
+
+    // Find #beguilerSettings block by scanning for the keyword then braces
+    size_t pos = 0;
+    while(pos < content.size()) {
+        size_t found = content.find("#beguilerSettings", pos);
+        if(found == string::npos) break;
+        size_t open = content.find('{', found);
+        if(open == string::npos) break;
+        // Find matching close brace
+        int depth = 1;
+        size_t cur = open + 1;
+        while(cur < content.size() && depth > 0) {
+            if(content[cur] == '{') depth++;
+            else if(content[cur] == '}') depth--;
+            cur++;
+        }
+        string block = content.substr(open + 1, cur - open - 2);
+        // Lowercase the block for case-insensitive key matching
+        string blockLower = block;
+        transform(blockLower.begin(), blockLower.end(), blockLower.begin(), ::tolower);
+
+        // Extract: generateBlorb = true/false
+        auto extractBool = [&](const string& key, bool& target) {
+            size_t k = blockLower.find(key);
+            if(k == string::npos) return;
+            size_t eq = block.find('=', k + key.size());
+            if(eq == string::npos) return;
+            size_t valStart = block.find_first_not_of(" \t\r\n", eq + 1);
+            if(valStart == string::npos) return;
+            if(block.substr(valStart, 4) == "true")  target = true;
+            if(block.substr(valStart, 5) == "false") target = false;
+        };
+        // Extract: key = "value"  (search on lowercased block, extract value from original)
+        auto extractStr = [&](const string& key, string& target) {
+            if(!target.empty()) return;
+            size_t k = blockLower.find(key);
+            if(k == string::npos) return;
+            size_t eq = block.find('=', k + key.size());
+            if(eq == string::npos) return;
+            size_t q1 = block.find('"', eq + 1);
+            if(q1 == string::npos) return;
+            size_t q2 = block.find('"', q1 + 1);
+            if(q2 == string::npos) return;
+            target = block.substr(q1 + 1, q2 - q1 - 1);
+        };
+
+        extractBool("generateblorb",   beguilerSettings.blorbEnabled);
+        extractStr( "blorbassetpath", beguilerSettings.blorbAssetPath);
+
+        pos = cur;
+    }
+}
+
 bool beguiler::go(int argc, char* argv[]) {
 
    cout << "Beguiler 0.1b : The Beguile-Inform6 Transpiler (" << __DATE__ << ")" << endl;
     if(parseArgs(argc, argv)) return true;
+
+    // Pre-scan for blorb settings so asset scan can run before preScanFile
+    extractBlorbSettings(settings.inFile);
+
+    // Phase 1: asset scan — runs before preScanFile so _blorbAssets.bgl exists during parse
+    Blorb blorb;
+    vector<BlorbAsset> blorbAssets;
+    if(beguilerSettings.blorbEnabled) {
+        fs::path srcDir = fs::path(settings.inFile).parent_path();
+        string assetDir = beguilerSettings.blorbAssetPath.empty()
+            ? (srcDir / "assets").string()
+            : (fs::path(beguilerSettings.blorbAssetPath).is_absolute()
+                ? beguilerSettings.blorbAssetPath
+                : (srcDir / beguilerSettings.blorbAssetPath).string());
+        blorbAssets = blorb.scanAssets(assetDir);
+        string enumFile = (srcDir / "_blorbAssets.bgl").string();
+        blorb.writeEnumFile(blorbAssets, enumFile, fs::path(settings.inFile).filename().string());
+    }
+
     parser.preScanFile(settings.inFile);  // pass 1: register all type/object stubs for forward-reference resolution
     if(parser.parseFile(settings.inFile)) return true;
 
@@ -83,6 +163,16 @@ bool beguiler::go(int argc, char* argv[]) {
         if(settings.debugMode){
             fs::path dbgDest = fs::path(settings.tmpFile).parent_path() / (fs::path(settings.tmpFile).filename().string() + ".dbg");
             fs::rename("gameinfo.dbg", dbgDest);
+        }
+
+        // Phase 2: blorb packaging
+        if(beguilerSettings.blorbEnabled) {
+            fs::path outPath(settings.outFile);
+            bool isGlulx = (beguilerSettings.target == "glulx");
+            string ext = isGlulx ? ".gblorb" : ".zblorb";
+            string blorbOut = (outPath.parent_path() / (outPath.stem().string() + ext)).string();
+            blorb.build(settings.outFile, blorbOut, blorbAssets,
+                        "", beguilerSettings.author, isGlulx);
         }
     }
 
