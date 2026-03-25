@@ -1,0 +1,6 @@
+[map]
+[sym]
+[types]
+type verb
+global _orarray object
+global bglworld bglworldtype

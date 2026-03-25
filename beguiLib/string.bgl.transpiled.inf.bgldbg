@@ -1,0 +1,9 @@
+[map]
+[sym]
+_bglruntimeinit	_bglruntimeinit	global
+[types]
+type verb
+type _bglruntimeinittype
+global _orarray object
+global bglworld bglworldtype
+global _bglruntimeinit _bglruntimeinittype

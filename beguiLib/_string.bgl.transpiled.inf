@@ -1,5 +1,57 @@
-#once
-#i6 {
+!% -G
+!% -E1
+Constant beguiler       = 1000;
+Constant beguilerMajor  = 1;
+Constant beguilerMinor  = 0;
+Constant beguilerPatch  = 0;
+
+Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
+
+object bglWorld
+    with getAll [ o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            _bglWorldBuf-->i = o;
+            i++;
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    getFiltered [ pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            if (indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    inParent [ parent pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o in parent) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    ofClass [ cls pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o ofclass cls) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ]
+;
+
+
 	default orStringDefaultSize	500;
 	default orStringPoolReserve 10; !ephemeral, "unsafe" strings
 	default orBufferPoolReserve (orStringPoolReserve+2); !need to allocate enough buffers to cover all declared strings, plus a bit more to cover actively used temporary orStrings
@@ -81,6 +133,15 @@
 				if(metaclass(buf)==routine) return buf();
 				_orBuf.print(buf); !assume this is a character buffer of some kind
 			]
+		,	charToString[c 
+					retval;
+				retval=_orStr.new(" ");
+				retval.setChar(0,c);
+				print "--";
+				retval.print();
+				print "--";
+				return retval.free();
+			]		
 		;
 
 	class orString(orStringPoolReserve)
@@ -227,18 +288,14 @@
 				return retval.free();
 			]
 		,	append[text
-					retval;
-				retval=self.clone();
-				_orBuf.append(retval.getBuf(), _orStr.toAmbiguousBuffer(text));
+					tmp retval lck;
+				tmp=_orStr.toAmbiguousBuffer(text);  !ensure this is a buffer, not just a literal
+				lck=_orStr.ambiguousLock(tmp);		 !ensure it is safe from reallocation
+				retval=self.clone();				 !create a copy of the current string
+				_orBuf.append(retval.getBuf(), tmp);
+				_orStr.ambiguousFree(tmp,lck);
 				return retval.free();
-			]
-		,	appendChar[c 
-		 			retval buf;
-		 		retval=self.clone();
-				retval.setChar(retval.getLength(),c);
-				retval.setLength(retval.getLength()+1);
-		 		return retval.free();
-		 	]
+			]		
 		,	prepend[text
 					retval;
 				retval=self.clone();
@@ -469,5 +526,4 @@
 			move obj to orObjectHeap;
 		}
 	];
-}
 
