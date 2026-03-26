@@ -36,11 +36,13 @@ class bglParser {
     private:
         deque<eCompileLanguage> compileLanguageStack;   //of course, these aren't really stacks, but we use them that way
         deque<eCompileContext> compileContextStack;
-        set<string> onceFiles;    // absolute paths of files that declared #once
+        set<string> onceFiles;        // absolute paths of files that declared #once
+        set<string> startupFiles;     // absolute paths of files whose #startup blocks have been registered
         int includeDepth = 0;               // current include nesting depth
         static constexpr int maxIncludeDepth = 255;
         int forInCounter = 0;               // counter for unique _bglfiN variable names
         int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
+        int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
 
         bool processNextStatement(abstractObject& =emptyContainer);
         bool processParameterList(functionDef&);

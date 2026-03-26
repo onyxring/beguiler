@@ -13,6 +13,7 @@ class bglLanguageService{
     vector<typeDef*> objectTypes;  //used to store named object definitions; both classes and object instances.
     vector<typeDef*> globals;
     vector<pair<string,string>> globalInits;  // {varName, initBody} — populated for globals with init emitters
+    vector<string> startupBlocks;            // raw I6 bodies from #startup { } directives; emitted first in bglInit()
     vector<verbObjectDef*> verbs;  // all verb declarations (extern and non-extern) for action-constant lookup
     bool ternaryTempNeeded = false; // set true when any ternary is lowered; drives conditional _bgl_temp emission
     

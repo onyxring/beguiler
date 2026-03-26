@@ -181,6 +181,8 @@ void bglParser::preScanDirective(token tok){
         }
     } else if(tok.is("#define")){
         file.getToken(); // symbol name — skip rest of line handled naturally
+    } else if(tok.value == "#startup"){
+        preScanSkipBody(); // skip { ... } body; body is registered during main parse
     } else if(tok.value == "#beguilersettings"){
         preScanSkipBody(); // skip { target = Glulx; ... } so the closing } doesn't corrupt the token stream
     } else if(tok.value == "#includei6"){
@@ -480,7 +482,11 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
     sourceLocation stmtLoc = file.currentLocation();
 
     if(tok.is(token::braceClose)) return true;  //return true: signal to the calling routine that we've reached the end of the code/scope block.
-    if(tok.is(eTokenType::eof)) return true;    //return true: same as above; end of file is just another form of end of code block.  TODO: this approach may need to be re-evaluated since an unclosed code block at the end of a file is a common error condition that we may want to report differently than a properly closed code block.
+    if(tok.is(eTokenType::eof)){
+        if(getCurrentCompileContext() == eCompileContext::codeBlock)
+            parsingError("Unexpected end of file — missing closing '}'");
+        return true;
+    }
 
     //decide what to do with this token----------------------------------------------------------------------------
     if(tok.is(eTokenType::directive)) return processDirective(tok, contextObject); //handle preprocessor directives
@@ -596,18 +602,47 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
 // Routines to parser larger blocks of the source code
 //-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 #pragma region Parsing functions
-// Returns true if the statement block contains a returnStatement anywhere (recursive).
+// Returns true if the block contains a returnStatement on any path (used for lambda return-type inference).
 static bool hasReturn(statementBlock* blk){
     if(blk == nullptr) return false;
     for(statement* s : blk->statements){
         if(dynamic_cast<returnStatement*>(s)) return true;
         if(auto* is = dynamic_cast<ifStatement*>(s))
             if(hasReturn(is->thenBlock) || hasReturn(is->elseBlock)) return true;
-        if(auto* ws = dynamic_cast<whileStatement*>(s))   if(hasReturn(ws->body))  return true;
-        if(auto* ds = dynamic_cast<doStatement*>(s))      if(hasReturn(ds->body))  return true;
-        if(auto* fs = dynamic_cast<forStatement*>(s))     if(hasReturn(fs->body))  return true;
+        if(auto* ws = dynamic_cast<whileStatement*>(s))  if(hasReturn(ws->body))  return true;
+        if(auto* ds = dynamic_cast<doStatement*>(s))     if(hasReturn(ds->body))  return true;
+        if(auto* fs = dynamic_cast<forStatement*>(s))    if(hasReturn(fs->body))  return true;
         if(auto* sw = dynamic_cast<switchStatement*>(s))
             for(switchCase* c : sw->cases) if(hasReturn(c->body)) return true;
+    }
+    return false;
+}
+
+// Returns true if ALL execution paths through the block are guaranteed to return.
+// Criteria:
+//   - An unconditional returnStatement at the top level of the block
+//   - An if-else where both the then-block and else-block all-paths-return
+//   - A switch that has a default case and every case body all-paths-returns
+// Loops (for/while/do) are NOT treated as guaranteed — the body may not execute.
+static bool allPathsReturn(statementBlock* blk){
+    if(blk == nullptr) return false;
+    for(statement* s : blk->statements){
+        if(dynamic_cast<returnStatement*>(s)) return true;
+        if(auto* is = dynamic_cast<ifStatement*>(s)){
+            if(is->elseBlock != nullptr &&
+               allPathsReturn(is->thenBlock) && allPathsReturn(is->elseBlock))
+                return true;
+        }
+        if(auto* sw = dynamic_cast<switchStatement*>(s)){
+            bool hasDefault = false;
+            bool allReturn = true;
+            for(switchCase* c : sw->cases){
+                if(c->values.empty()) hasDefault = true;  // default: case
+                if(!allPathsReturn(c->body)) allReturn = false;
+            }
+            if(hasDefault && allReturn) return true;
+        }
+        // Loops do not guarantee return — body may not execute
     }
     return false;
 }
@@ -774,7 +809,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                     while(processNextStatement(funcDef) == false){}
                     closeCompileContext(eCompileContext::codeBlock);
                     currentFunc = savedFunc;
-                    if(funcDef.returnType.name != "void" && !hasReturn(dynamic_cast<statementBlock*>(funcDef.body)))
+                    if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
                         parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
                 }
             }
@@ -1707,7 +1742,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             }
         }
         else if(cur.is(eTokenType::dictionaryWord)){
-            if(expr->resolvedType.empty()) expr->resolvedType = "dictionaryword";
+            if(expr->resolvedType.empty()) expr->resolvedType = "dictionarywordliteral";
             // Replace apostrophes with ^ for I6 dictionary word encoding
             string w;
             for(char ch : cur.value) w += (ch == '\'') ? '^' : ch;
@@ -2015,6 +2050,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
                     forCtx.body = forStmt.body;
                     token next = file.getToken();
+                    loopDepth++;
                     if(next.is(token::braceOpen)){
                         openCompileContext(eCompileContext::codeBlock);
                         while(processNextStatement(forCtx) == false){}
@@ -2022,6 +2058,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     } else {
                         processStatement(next, forCtx);
                     }
+                    loopDepth--;
                     if(body != nullptr) body->statements.push_back(&forStmt);
                     return false;
                 }
@@ -2053,6 +2090,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
                 forCtx.body = forStmt.body;
                 token next = file.getToken();
+                loopDepth++;
                 if(next.is(token::braceOpen)){
                     openCompileContext(eCompileContext::codeBlock);
                     while(processNextStatement(forCtx) == false){}
@@ -2060,6 +2098,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 } else {
                     processStatement(next, forCtx);
                 }
+                loopDepth--;
                 if(body != nullptr) body->statements.push_back(&forStmt);
                 return false;
             }
@@ -2140,6 +2179,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             forCtx.params.push_back(&elemParam);
             forCtx.body = fi.body;
             token next = file.getToken();
+            loopDepth++;
             if(next.is(token::braceOpen)){
                 openCompileContext(eCompileContext::codeBlock);
                 while(processNextStatement(forCtx) == false){}
@@ -2147,6 +2187,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             } else {
                 processStatement(next, forCtx);
             }
+            loopDepth--;
             if(body != nullptr) body->statements.push_back(&fi);
             return false;
         }
@@ -2163,6 +2204,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             }
             whileCtx.body = whileStmt.body;
             token next = file.getToken();
+            loopDepth++;
             if(next.is(token::braceOpen)){
                 openCompileContext(eCompileContext::codeBlock);
                 while(processNextStatement(whileCtx) == false){}
@@ -2170,6 +2212,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             } else {
                 processStatement(next, whileCtx);
             }
+            loopDepth--;
             if(body != nullptr) body->statements.push_back(&whileStmt);
             return false;
         }
@@ -2184,9 +2227,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             }
             doCtx.body = doStmt.body;
             file.getToken(token::braceOpen);
+            loopDepth++;
             openCompileContext(eCompileContext::codeBlock);
             while(processNextStatement(doCtx) == false){}
             closeCompileContext(eCompileContext::codeBlock);
+            loopDepth--;
             // expect 'while' or 'until'
             token keyword = file.getToken({eTokenType::identifier, eTokenType::dataType});
             if(keyword.is("while")) doStmt.isWhile = true;
@@ -2302,6 +2347,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         }
         case chk("continue"): {
             file.getToken(token::endStatement);
+            if(loopDepth == 0)
+                parsingError("'continue' is only valid inside a loop (for, while, or do)");
             i6RawNode& cont = *(new i6RawNode());
             cont.text = "continue;";
             if(body != nullptr) body->statements.push_back(&cont);
@@ -3701,6 +3748,19 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             return false;
             break;
         }
+        case chk("#startup"):{
+            // Collect the raw I6 body for emission into bglInit().
+            // Deduplicated per source file so re-including a file doesn't register its blocks twice.
+            string curFile = filesystem::absolute(file.currentLocation().file).string();
+            file.getToken(token::braceOpen);
+            string body = file.getRawTextThroughClosingBrace();
+            if(!startupFiles.count(curFile)){
+                startupFiles.insert(curFile);
+                languageService.startupBlocks.push_back(body);
+            }
+            return false;
+            break;
+        }
         case chk("#includei6"):{
             token filename=file.getToken({eTokenType::quote, eTokenType::rawQuote});
             // Normalize path separators inside the quoted filename
@@ -3914,7 +3974,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         }
         closeCompileContext(eCompileContext::codeBlock);
         currentFunc = savedFunc;
-        if(funcDef.returnType.name != "void" && !hasReturn(dynamic_cast<statementBlock*>(funcDef.body)))
+        if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
             parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
     }
 
@@ -4065,7 +4125,7 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
     while(processNextStatement(funcDef) == false){}
     closeCompileContext(eCompileContext::codeBlock);
     currentFunc = savedFunc;
-    if(funcDef.returnType.name != "void" && !hasReturn(dynamic_cast<statementBlock*>(funcDef.body)))
+    if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
         parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
     for(typeMember* m : obj.members)
         if(auto* fd = dynamic_cast<functionDef*>(m))
