@@ -427,8 +427,11 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     }
 
     // Synthesise bglInit before all user globals so any routine that calls it can resolve it
-    if(!languageService.globalInits.empty()){
+    if(!languageService.globalInits.empty() || !languageService.startupBlocks.empty()){
         out << "[bglInit;\n";
+        // #startup blocks run first (runtime infrastructure before user-object inits)
+        for(const string& block : languageService.startupBlocks)
+            out << block << "\n";
         for(auto& [varName, body] : languageService.globalInits)
             out << "    " << body << "\n";
         out << "];\n";
