@@ -57,22 +57,18 @@ extern class attributeList{ //--a compile-time proxy for an object's attribute s
     }
 }
 
-//TODO: assuming the above tests correctly, change the below to an emitter class 
-extern class grammarToken{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
+emitter class grammarToken{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
     emitter var operator(){}              //--declares I6 compatibility with var, enabling mixed expressions
     emitter eBool operator == (var v){ $self == v }
     emitter eBool operator != (var v){ $self ~= v }
     emitter grammarToken operator = (var v){ $self = v }
 }
 
-//TODO: assuming the above tests correctly, change the below to an emitter class 
-extern class dictionaryWord{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
-    emitter dictionaryWord operator = (dictionaryWord v){
-        $self = v;
-    }
-    emitter void print(){
-        print (address) $self
-    }
+emitter class dictionaryWord{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
+    emitter dictionaryWordLiteral operator(){}                           //--I6 passthrough; enables mixed expressions
+    emitter dictionaryWord operator = (dictionaryWordLiteral v){ $self = v; }
+    emitter dictionaryWord operator = (dictionaryWord v){ $self = v; }
+    emitter void print(){ print (address) $self }
 }
 
 extern class parentProp{} //--forward declaration; emitter added below after 'object' is defined
@@ -129,6 +125,9 @@ extern class intLiteral:_bglObject{}      //--an integer literal value; e.g. 42
 extern class stringLiteral:_bglObject{}   //--a string literal value; e.g. "hello"
 extern class charLiteral:_bglObject{      //--a character literal value; e.g. 'x'
     emitter void print(){ print (char)$self; }  //--override: print as character, not numeric code
+}
+extern class dictionaryWordLiteral:_bglObject{ //--a dictionary word literal; e.g. .cloak or ..cloaks
+    emitter void print(){ print (address) $self }
 }
 
 extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type

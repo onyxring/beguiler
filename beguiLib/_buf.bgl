@@ -47,13 +47,8 @@
         ,    _stackLen [; return self._stackTop; ]
 
         ,    isSized [ buf;
-                !--TODO: I'm pretty sure I added the following, to address a run-time bug to skip literals; however, it seems to be giving a false negative in some cases
-                ! Safety check on Z-machine: skip if buf is a packed literal address
-                !#ifdef TARGET_ZCODE;
-                !    if (_UnsignedCompare(buf, $000E-->0) == -1) rfalse;  ! below dynamic memory
-                !    if (_UnsignedCompare(buf, #array__start) == 1) rfalse; ! above array area
-                !#endif;
-                    if (buf->(-WORDSIZE-2)==$90 && buf->(-WORDSIZE-1)==$84) rtrue;
+                if (buf == 0) rfalse;
+                if (buf->(-WORDSIZE-2)==$90 && buf->(-WORDSIZE-1)==$84) rtrue;
                 rfalse;
             ]
         ,    convertToSizedBuffer [ b size;
