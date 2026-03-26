@@ -32,24 +32,6 @@ typeDef& bglLanguageService::getType(string name){
     return emptyTDef;
 }
 
-// typeDef& bglLanguageService::registerType(string name){
-//     typeDef newType;
-//     newType.name=name;
-    
-//     //TODO
-//     return getType(newType.name);  //return a reference to the copy we just made in the vector, so that the caller can modify it if they want to add members etc.
-//     //return registerType(newType); //register a copy of the new type and return a reference to the copy
-// }
-// typeDef& bglLanguageService::registerType(objectDef typeVal){
-//     if(isObjectType(typeVal.name)) throw runtime_error(format("Declared type '{0}' already exists.", typeVal.name));
-//     //objectTypes.push_back(typeVal); //copy the passed in type into the vector of registered types
-//     return getType(typeVal.name);  //return a reference to the copy we just made in the vector, so that the caller can modify it if they want to add members etc.
-// }
-// typeDef& bglLanguageService::registerType(enumDef typeVal){
-//     if(isObjectType(typeVal.name)) throw runtime_error(format("Declared type '{0}' already exists.", typeVal.name));
-//     //objectTypes.push_back(typeVal); //copy the passed in type into the vector of registered types
-//     return getType(typeVal.name);  //return a reference to the copy we just made in the vector, so that the caller can modify it if they want to add members etc.
-// }
 // Format a source location for "originally defined at ..." messages.
 static string fmtSrc(const sourceLocation& src){
     if(src.file.empty()) return "unknown location";
