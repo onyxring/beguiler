@@ -14,29 +14,12 @@
 #include <buf>
 #include <_string>
 
-//------------------------------------------------------------------------------
-// Sentinel class: registers bglStringPoolInit() with bglInit automatically.
-// When _bglRuntimeInit is declared as a global, its init emitter body
-// is added to languageService.globalInits, which causes
-// the compiler to emit it as the first statement in bglInit().
-//
-// TODO: replace this concept.  Add some directive to declare a line to be added 
-//  to the generated bglInit automatically.
-//
-//------------------------------------------------------------------------------
-class _bglRuntimeInitType {
-    emitter void init() {
-        _initializeStringBuffers();
-    }
+#startup {
+    _initializeStringBuffers();
 }
-
-_bglRuntimeInitType _bglRuntimeInit; 
 
 //------------------------------------------------------------------------------
 // Beguile string class extension
-// TODO: unify this with the orString class.  Right now, there's i6 which 
-//  handles strings and this is just syntax sugar,  But I think its possible to
-//  have just one class.
 //------------------------------------------------------------------------------
 extend class string {
     // Lifecycle

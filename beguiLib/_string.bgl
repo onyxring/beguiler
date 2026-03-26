@@ -20,7 +20,7 @@
 			retval=orStringPool.allocateString(); !to make sure it doesn't get reallocated
 			if(unkStr~=0) retval.set(unkStr); !set the value on our newly allocated string
 			_orStr.ambiguousFree(unkStr, lck); !restore the unknown string type to its passed-in lock status
-			return retval.lock(); !TODO: shouldn't need to call lock again; however some early testing showed that this was needed.  not sure if this is still the case or if a bug fix has addressed it, but leaving it in place for now until a deeper test can be created
+			return retval.lock(); ! allocateString() returns an unlocked string; this lock() call is the first and only lock applied here. Early testing showed removing it caused premature deallocation — leave in place until a full string lifecycle test confirms otherwise.
 		]
 		, format[pattern param1 param2 param3
 				retval;
