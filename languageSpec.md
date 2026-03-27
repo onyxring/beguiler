@@ -2084,14 +2084,14 @@ If no tier matches, the identifier is undeclared — a compile-time error.
 
 ## 13.3 The `self` Keyword
 
-`self` explicitly refers to the receiver object within a method body. It may be used anywhere a member name appears:
+`self` explicitly refers to the receiver object within a method body. It may be used anywhere a member name appears; however, it is generally optional since beguile will resolve class members even if not qualified:
 
 ```bgl
 class Counter {
     int count = 0;
     void reset() {
         self.count = 0;   // explicit self
-        count = 0;        // identical — bare member names resolve via self
+        count = 0;        // identical — bare member names resolve automatically in Beguile
     }
 }
 ```
