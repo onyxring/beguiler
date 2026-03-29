@@ -73,6 +73,7 @@ class bglParser {
         bool processDirective(token, abstractObject& = emptyContainer);
 
         expression* parseExpression(token firstToken, vector<string> terminators, functionDef* func, statementBlock* body);
+        vector<interpolatedSegment> parseInterpolatedSegments(functionDef* func, statementBlock* body); // parses $"..." segments from the live stream (consumes $ and string)
         typeMember* findMemberInHierarchy(classDef* cls, function<bool(typeMember*)> pred);
         string resolveIdentifierType(string name, functionDef* func, statementBlock* body);
         string resolvePathType(string path, functionDef* func, statementBlock* body);
@@ -100,6 +101,7 @@ class bglParser {
         void preScanSkipParens();         // assumes '(' already consumed; skips to matching ')'
 
         vector<statement*> pendingInjections;  // pre-statements to emit before next main statement (e.g. from ternary lowering)
+        vector<statement*> postInjections;     // post-statements to emit after next main statement (e.g. closing braces for ?. guards)
 
 };
 

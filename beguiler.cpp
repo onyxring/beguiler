@@ -116,7 +116,10 @@ bool beguiler::go(int argc, char* argv[]) {
     //   4. Default: "inform" (relative to compiler binary)
     if(!settings.informName.empty()){
         // CLI wins — build path from the CLI-supplied name
-        settings.informPath = getPath(argv[0]) + settings.informName;
+        if(fs::path(settings.informName).is_absolute())
+            settings.informPath = settings.informName;
+        else
+            settings.informPath = getPath(argv[0]) + settings.informName;
     } else if(!beguilerSettings.informBinaryPath.empty()){
         settings.informPath = beguilerSettings.informBinaryPath;
         settings.informName = fs::path(settings.informPath).filename().string();
@@ -125,7 +128,13 @@ bool beguiler::go(int argc, char* argv[]) {
         settings.informPath = getPath(argv[0]) + settings.informName;
     }
 
-    // Compute default output path now that beguilerSettings may have set outputPath
+    // Merge beguilerSettings outputPath into settings (CLI -o wins)
+    if(settings.outputPath.empty() && !beguilerSettings.outputPath.empty())
+        settings.outputPath = beguilerSettings.outputPath;
+    if(settings.outputPath.empty())
+        settings.outputPath = "output";
+
+    // Compute output file path
     if(settings.outFile.empty()) {
         string extension = "ulx";
         const string& t = beguilerSettings.target;
@@ -144,7 +153,7 @@ bool beguiler::go(int argc, char* argv[]) {
 
     if(writeFile(settings.tmpFile)) return true;
     if(settings.debugMode){
-        emitter.writeDebugBundle(settings.tmpFile + ".bgldbg");
+        emitter.writeDebugBundle(settings.inFile + ".bgldbg");
     }
 
     cout<<"Compilation successful. ";
@@ -196,6 +205,8 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
                 settings.outputPath = argv[i];
             } else if(arg.substr(1,7)=="inform="){
                 settings.informName = arg.substr(8);
+            } else if(arg.substr(1,10)=="i6include="){
+                beguilerSettings.i6IncludePaths.push_back(arg.substr(11));
             } else if(arg == "-G" || arg == "-g") {
                 beguilerSettings.target = "glulx";
             } else if(arg == "-z3" || arg == "-z3") {

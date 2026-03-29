@@ -21,6 +21,7 @@ extern class beguilerSettingsType { //--schema for #beguilerSettings directive b
     string          outputPath     = "output";      // output directory for compiled files
     eErrorFormat    errorFormat    = E1;            // error format: "E1" (Microsoft) or "E2" (Macintosh)
     int             release        = 0;             // story release number
+    string          serial         = "";            // serial number: exactly 6 digits (e.g. "250328")
     int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
     string          i6IncludePath;                  // adds one directory to the I6 compiler include search path (additive)
     string          bglIncludePath;                 // adds one directory to the Beguile include search path (additive)
@@ -77,6 +78,7 @@ extern class object:_bglObject{ //--the base I6 object, declared as external bec
     parentProp parent;           //--initial parent object; emitted as I6 third positional argument
     attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
     
+    emitter eBool operator ?() { $self ~= nothing }
     emitter object operator = (object v){
         $self = v
     }
@@ -126,6 +128,7 @@ extern class stringLiteral:_bglObject{}   //--a string literal value; e.g. "hell
 extern class charLiteral:_bglObject{      //--a character literal value; e.g. 'x'
     emitter void print(){ print (char)$self; }  //--override: print as character, not numeric code
 }
+extern class interpolatedStringLiteral:_bglObject{} //--an interpolated string literal; e.g. $"hello {name}"
 extern class dictionaryWordLiteral:_bglObject{ //--a dictionary word literal; e.g. .cloak or ..cloaks
     emitter void print(){ print (address) $self }
 }
@@ -316,11 +319,13 @@ object bglWorld
 emitter void print(var val){ print val; } //the default, which will be used for all data types not defined
 emitter void print(string str){ print (string)str; } 
 emitter void print(char c){ print (char)c; }
+emitter void print(interpolatedStringLiteral v){ v; }
 
 //-- log() — debug-conditional print; compiled out unless DEBUG is #defined ----
 emitter void log(stringLiteral msg){ ##ifdef DEBUG print (string)msg; ##endif }
 emitter void log(string msg){ ##ifdef DEBUG print (string)msg; ##endif }
 emitter void log(var msg){ ##ifdef DEBUG print msg; ##endif }
+emitter void log(interpolatedStringLiteral v){ ##ifdef DEBUG v; ##endif }
 
 emitter style{
     void italics(){
