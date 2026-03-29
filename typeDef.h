@@ -4,6 +4,7 @@
 #include <sstream>
 #include <stack>
 #include <vector>
+#include <map>
 #include <memory>
 #include <optional>
 
@@ -123,6 +124,15 @@ class initializerList : public expression {
     public:
         vector<expression*> elements;
 };
+// A single segment of an interpolated string: either a literal text fragment or a parsed expression.
+// Used by assignment, variable declaration, and function call statements for $"..." handling.
+struct interpolatedSegment {
+    bool isExpr = false;
+    string text;           // string segments: I6-ready literal text (no outer quotes)
+    expression* expr = nullptr; // expression segments: fully parsed Beguile expression
+    vector<statement*> injections; // ternary lowerings to emit before this expression segment
+};
+
 //a type of statement which assigns a value to a variable
 class assignmentStatement:public statement{
     public:
@@ -131,6 +141,7 @@ class assignmentStatement:public statement{
         string emitterBody;   // raw i6 body text if operator is an emitter, else ""
         string emitterParam;  // parameter name to substitute in the body
         string emitterSelf;   // value to substitute for $self; defaults to variableLeft if empty
+        vector<interpolatedSegment> interpSegments; // non-empty when RHS is $"..."
 };
 //a type of statement which returns a value from a function
 class returnStatement:public statement{
@@ -142,9 +153,12 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
     public:
         typeDef type;
         bool isConst = false;
+        bool isReadonly = false;  // readonly members: can be initialized but not reassigned
+        bool isStatic = false;   // static members: class-level state, emitted as mangled I6 global
         expression* declaredExpressionValue = nullptr;
         string initEmitterBody;  // raw i6 body if operator= is an emitter, else ""
         string initEmitterParam; // parameter name to substitute in the body
+        vector<interpolatedSegment> interpSegments; // non-empty when initializer is $"..."
     //virtual std::unique_ptr<typeMember> clone() const override { return std::make_unique<variableDeclaration>(*this); }
 };
 //a type of statement which represents a function call.
@@ -157,8 +171,10 @@ class functionCallStatement:public statement{
     public:
         string functionName;
         vector<expression*> args;      // parsed argument expressions (type in args[i]->resolvedType)
+        vector<string> namedArgNames;  // parallel to args: non-empty when arg was passed as name:value
         string emitterBody;            // raw i6 body if an emitter was resolved, else ""
         vector<string> emitterParams;  // parameter names to substitute in the body
+        vector<vector<interpolatedSegment>> interpSegmentsPerArg; // per-argument interpolated segments; interpSegmentsPerArg[i] is non-empty when args[i] is $"..."
 };
 //the declaration of a function.  This may be a global function, or an object member
 class functionDef:public typeMember, public typeDef{
@@ -194,10 +210,18 @@ class ifStatement : public statement {
         statementBlock* elseBlock = nullptr;
 };
 
-// one arm of a switch statement; empty values means default:
+// one entry in a switch case: a single value, a range (low to high), or a comparison guard
+struct caseEntry {
+    expression* value = nullptr;       // single value match (null if range or guard)
+    expression* rangeLow = nullptr;    // range: low bound (null if not a range)
+    expression* rangeHigh = nullptr;   // range: high bound (null if not a range)
+    string guardCondition;             // comparison guard condition string using _bgl_sw (empty if not a guard)
+};
+
+// one arm of a switch statement; empty entries means default:
 class switchCase : public abstractObject {
     public:
-        vector<expression*> values;    // empty for default:
+        vector<caseEntry> entries;
         statementBlock* body = nullptr;
 };
 
@@ -206,6 +230,9 @@ class switchStatement : public statement {
     public:
         expression* condition = nullptr;
         vector<switchCase*> cases;
+        bool needsIfChain = false; // true if any case uses comparison guards or operator switch(); emit as if/else if
+        // operator switch() emitter bodies, keyed by parameter type name; used for if-chain comparisons
+        map<string, string> switchEmitters; // paramType → emitter body text (with $self and param name unsubstituted)
 };
 
 // a do-until / do-while loop: do { body } until(cond) or do { body } while(cond)
@@ -242,19 +269,6 @@ class forInStatement : public statement {
         statementBlock* body = nullptr;
 };
 
-// a print($"...") or log($"...") statement with interpolated expressions
-// string segments hold I6-ready literal text (no outer quotes); expression segments hold a parsed expression
-class interpolatedPrintStatement : public statement {
-    public:
-        struct Segment {
-            bool isExpr = false;
-            string text;           // string segments: I6-ready literal text (no outer quotes)
-            expression* expr = nullptr; // expression segments: fully parsed Beguile expression
-            vector<statement*> injections; // ternary lowerings to emit before this expression segment
-        };
-        bool isLog = false;        // true → only emitted when DEBUG is defined
-        vector<Segment> segments;
-};
 
 // a raw block of I6 text emitted directly, usable at global scope, within a function body, or as an object member
 class i6RawNode : public typeDef, public statement, public typeMember {
@@ -305,6 +319,7 @@ class beguilerSettingsDef : public typeDef {
         // ICL directives (!% lines)
         string target;                 // !% -G (Glulx), !% -v3, !% -v5, !% -v8
         int release = 0;               // !% Release N;  (0 = not set)
+        string serial;                 // Serial "YYMMDD"; (empty = not set; must be exactly 6 digits)
         string errorFormat;            // !% -EN  (e.g. "1" → -E1)
         vector<string> i6IncludePaths; // !% +include_path=...  passed to I6 compiler
         vector<string> bglIncludePaths;// search paths for #include "file" resolution in Beguile source
