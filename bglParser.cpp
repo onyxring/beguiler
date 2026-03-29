@@ -534,11 +534,17 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
     // A declared object's name is both its type and its singleton instance reference.
     // In non-global context it can never appear as a type, so route directly to
     // processStatement where it will be re-classified as an identifier.
-    if(!isExtern && getCurrentCompileContext() != eCompileContext::global && tok.isDataType())
+    if(!isExtern && getCurrentCompileContext() != eCompileContext::global && tok.isDataType()){
         if(dynamic_cast<objectDef*>(&languageService.getType(tok.value)) != nullptr){
             processStatement(tok, contextObject);
             return false;
         }
+        // Static member access: ClassName.member — route to processStatement
+        if(file.peekToken(1).is(token::period) || file.peekToken(1).is("?.")){
+            processStatement(tok, contextObject);
+            return false;
+        }
+    }
 
     if(tok.isDataType()) { //if the token is a datatype, then this is the start of either a variable declaration or a global routine declaration.  We need to look ahead a little bit to decide which one it is.
         // Handle array<T> generic type
@@ -637,7 +643,7 @@ static bool allPathsReturn(statementBlock* blk){
             bool hasDefault = false;
             bool allReturn = true;
             for(switchCase* c : sw->cases){
-                if(c->values.empty()) hasDefault = true;  // default: case
+                if(c->entries.empty()) hasDefault = true;  // default: case
                 if(!allPathsReturn(c->body)) allReturn = false;
             }
             if(hasDefault && allReturn) return true;
@@ -748,6 +754,10 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             isEmitter=true;
             tok=file.getToken();
         }
+        bool isMemberReadonly = false;
+        bool isMemberStatic = false;
+        if(tok.is("readonly")) { isMemberReadonly = true; tok = file.getToken(); }
+        if(tok.is("static"))   { isMemberStatic = true;   tok = file.getToken(); }
         // emitter class: 'emitter' keyword is optional — all members are implicitly emitters
         if(newClass.isEmitterClass && !isEmitter) isEmitter = true;
         returnType=tok.assertDataType();
@@ -770,10 +780,18 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                     name.value = "[]";
                     tok = maybeAssign;  // already consumed the next symbol
                 }
+            } else if(opTok.is("switch")){
+                // switch comparison operator: operator switch(type v)
+                name.value = "switch";
+                tok = file.getToken(eTokenType::symbol);
             } else if(opTok.is(eTokenType::identifier)){
                 // qualified operator: e.g. "prefix++" — read qualifier then oper symbol
                 token opSym = file.getToken(eTokenType::oper);
                 name.value = opTok.value + opSym.value;  // e.g. "prefix++"
+                tok = file.getToken(eTokenType::symbol);
+            } else if(opTok.is("?")){
+                // unary query operator: operator ?()
+                name.value = "?";
                 tok = file.getToken(eTokenType::symbol);
             } else {
                 opTok.assert(eTokenType::oper);
@@ -792,6 +810,10 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             processParameterList(funcDef);
             if(isEmitter && !funcDef.params.empty() && (funcDef.name == "init" || funcDef.name == "deinit"))
                 parsingError(format("Emitter '{0}' cannot accept parameters", funcDef.name));
+            if(!isEmitter && (funcDef.name == "switch" || funcDef.name == "?"))
+                parsingError(format("operator {0}() must be declared as an emitter", funcDef.name));
+            if(!isEmitter && (funcDef.name == "init" || funcDef.name == "deinit"))
+                parsingError(format("'{0}' must be declared as an emitter", funcDef.name));
             if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter){
                 // extern/alias class non-emitter methods not allowed
                 parsingError(format("Non-emitter function '{0}' is not allowed in an extern or alias class", funcDef.name));
@@ -861,9 +883,13 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 parsingError(format("Expected '=' or ';' after member '{0}'", (string)name));
             if(newClass.isAlias && tok.is(token::assignment))
                 parsingError(format("Member '{0}' in an alias class may not have a definition (value); declarations only", (string)name));
+            if(isMemberReadonly && isMemberStatic) parsingError("A member cannot be both 'readonly' and 'static'");
+            if(isMemberStatic && isEmitter) parsingError("A static member cannot be an emitter");
             variableDeclaration& varDef=*(new variableDeclaration());
             varDef.name=(string) name;
             varDef.type=languageService.getType((string) returnType);
+            varDef.isReadonly = isMemberReadonly;
+            varDef.isStatic = isMemberStatic;
             if(tok.is(token::assignment))
                 varDef.declaredExpressionValue = parseExpression(file.getToken(), {token::endStatement}, nullptr, nullptr);
             if(isExtend){
@@ -1230,6 +1256,62 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     return false;
 }
 
+// Reorder named arguments to match parameter positions. Validates that all named args match valid parameter names.
+void reorderNamedArgs(functionCallStatement& cs, functionDef* fd, function<bool(string)> errorFn){
+    bool hasNamed = false;
+    for(auto& n : cs.namedArgNames) if(!n.empty()){ hasNamed = true; break; }
+    if(!hasNamed) return;
+    // Build reordered args vector aligned to parameter positions
+    vector<expression*> reordered(fd->params.size(), nullptr);
+    vector<string> reorderedNames(fd->params.size());
+    vector<vector<interpolatedSegment>> reorderedInterp(fd->params.size());
+    // First pass: place positional args (unnamed) in order
+    size_t positionalIdx = 0;
+    for(size_t i = 0; i < cs.args.size(); i++){
+        if(cs.namedArgNames[i].empty()){
+            while(positionalIdx < reordered.size() && reordered[positionalIdx] != nullptr) positionalIdx++;
+            if(positionalIdx >= fd->params.size()) { errorFn("Too many positional arguments"); return; }
+            reordered[positionalIdx] = cs.args[i];
+            if(i < cs.interpSegmentsPerArg.size()) reorderedInterp[positionalIdx] = cs.interpSegmentsPerArg[i];
+            positionalIdx++;
+        }
+    }
+    // Second pass: place named args by matching parameter name
+    for(size_t i = 0; i < cs.args.size(); i++){
+        if(!cs.namedArgNames[i].empty()){
+            bool found = false;
+            for(size_t p = 0; p < fd->params.size(); p++){
+                if(fd->params[p]->name == cs.namedArgNames[i]){
+                    if(reordered[p] != nullptr){ errorFn(format("Parameter '{0}' specified more than once", cs.namedArgNames[i])); return; }
+                    reordered[p] = cs.args[i];
+                    if(i < cs.interpSegmentsPerArg.size()) reorderedInterp[p] = cs.interpSegmentsPerArg[i];
+                    found = true; break;
+                }
+            }
+            if(!found){ errorFn(format("No parameter named '{0}'", cs.namedArgNames[i])); return; }
+        }
+    }
+    // Replace args with reordered; leave nullptr slots for defaults to fill in later
+    cs.args.clear();
+    cs.interpSegmentsPerArg.clear();
+    for(size_t i = 0; i < reordered.size(); i++){
+        if(reordered[i] != nullptr){
+            cs.args.push_back(reordered[i]);
+            cs.interpSegmentsPerArg.push_back(reorderedInterp[i]);
+        } else if(!fd->params[i]->defaultValue.empty()){
+            // Leave a gap — the default-fill logic that follows will handle it
+            // Actually, we need to push something to maintain positional alignment
+            expression* defExpr = new expression();
+            defExpr->tokens.push_back(fd->params[i]->defaultValue);
+            cs.args.push_back(defExpr);
+            cs.interpSegmentsPerArg.push_back({});
+        } else {
+            errorFn(format("Required parameter '{0}' not provided", fd->params[i]->name)); return;
+        }
+    }
+    cs.namedArgNames.clear();
+}
+
 void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef* fd){
     for(size_t i = 0; i < args.size() && i < fd->params.size(); i++){
         string argType = args[i]->resolvedType;
@@ -1254,6 +1336,54 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
             args[i]->resolvedType = paramType;
         }
     }
+}
+
+// Parses the segments of an interpolated string from the live stream.
+// Assumes the '$' token has already been consumed; consumes the opening '"', segments, and closing '"'.
+vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* func, statementBlock* body){
+    file.readChar();  // consume opening '"'
+    vector<interpolatedSegment> segments;
+    string currentStr;
+    char c = file.readChar();
+    while(c != '"' && c != EOF) {
+        if(c == '\\') {
+            char nc = file.readChar();
+            if     (nc == 'n')  currentStr += '^';      // \n  → I6 newline
+            else if(nc == '"')  currentStr += '~';      // \"  → I6 double-quote
+            else if(nc == '\\') currentStr += "@@92";   // \\  → literal backslash
+            else if(nc == '^')  currentStr += "@@94";   // \^  → literal caret
+            else if(nc == '~')  currentStr += "@@126";  // \~  → literal tilde
+            else if(nc == '@')  currentStr += "@@64";   // \@  → literal at-sign
+            else if(nc == '{')  currentStr += '{';       // \{  → literal brace (not an expression)
+            else { currentStr += '\\'; currentStr += nc; }
+        } else if(c == '{') {
+            if(!currentStr.empty()) {
+                interpolatedSegment seg;
+                seg.isExpr = false;
+                seg.text = currentStr;
+                segments.push_back(seg);
+                currentStr = "";
+            }
+            token exprFirst = file.getToken();
+            expression* exprNode = parseExpression(exprFirst, {"}"}, func, body);
+            interpolatedSegment seg;
+            seg.isExpr = true;
+            seg.expr = exprNode;
+            seg.injections = pendingInjections;
+            pendingInjections.clear();
+            segments.push_back(seg);
+        } else {
+            currentStr += c;
+        }
+        c = file.readChar();
+    }
+    if(!currentStr.empty()) {
+        interpolatedSegment seg;
+        seg.isExpr = false;
+        seg.text = currentStr;
+        segments.push_back(seg);
+    }
+    return segments;
 }
 
 expression* bglParser::parseExpression(token firstToken, std::vector<std::string> terminators, functionDef* func, statementBlock* body){
@@ -1388,6 +1518,219 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     if(callDepth > 0) argTok = file.getToken();
                 }
                 expr->tokens.push_back(token::parenClose);
+            }
+            else if(parenDepth == 0 && next.is("?.")){
+                // Optional chaining: obj?.member or obj?.method(args)
+                // Lowers to: _bgl_temp = obj; if(nullTest) _bgl_temp = _bgl_temp.member;
+                string lhsName = cur.value;
+                string lhsType = !castType.empty() ? castType : resolveIdentifierType(lhsName, func, body);
+                castType = "";
+                if(lhsType.empty()) parsingError(format("Unknown variable '{0}' in optional chain", lhsName));
+                // Look up operator?() on LHS type for the null test
+                classDef* lhsCls = dynamic_cast<classDef*>(&languageService.getType(lhsType));
+                if(lhsCls == nullptr) parsingError(format("Type '{0}' does not support optional chaining (not a class)", lhsType));
+                functionDef* nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(lhsCls, [](typeMember* m){
+                    auto* fn = dynamic_cast<functionDef*>(m);
+                    return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
+                }));
+                if(nullTestFn == nullptr)
+                    parsingError(format("Type '{0}' does not support optional chaining (no operator?() emitter)", lhsType));
+                auto getNullTest = [&](functionDef* fn, const string& selfText) -> string {
+                    auto* blk = dynamic_cast<i6Block*>(fn->body);
+                    string b = processBglConditionals(blk->i6Body);
+                    b = replaceWord(b, "$self", selfText);
+                    size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+                    size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
+                    return b;
+                };
+                // Build the guarded chain
+                string injText = "_bgl_temp = " + lhsName + ";";
+                string currentType = lhsType;
+                // Process chain steps: each is ?.member, ?.method(), or a trailing .member/.method()
+                while(true){
+                    string nullTest = getNullTest(nullTestFn, "_bgl_temp");
+                    injText += " if (" + nullTest + ") {";
+                    token member = file.getToken(eTokenType::identifier);
+                    token afterMember = getNext();
+                    if(afterMember.is(token::parenOpen)){
+                        // ?.method(args) — find method, inline emitter or call
+                        string methName = member.value;
+                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                        vector<expression*> callArgs;
+                        token firstArg = file.getToken();
+                        while(firstArg.isNot(token::parenClose)){
+                            expression* arg = parseExpression(firstArg, {token::comma, token::parenClose}, func, body);
+                            callArgs.push_back(arg);
+                            if(arg->terminator == token::parenClose) break;
+                            firstArg = file.getToken();
+                        }
+                        functionDef* method = nullptr;
+                        functionDef* varFallback = nullptr;
+                        if(cls != nullptr){
+                            std::function<void(classDef*)> search = [&](classDef* c){
+                                for(typeMember* m : c->members)
+                                    if(auto* fd = dynamic_cast<functionDef*>(m))
+                                        if(fd->name == methName){
+                                            size_t req = 0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+                                            if(callArgs.size() >= req && callArgs.size() <= fd->params.size()){
+                                                bool argsOk = true, usesVar = false;
+                                                for(size_t i = 0; i < callArgs.size() && argsOk; i++){
+                                                    string pt = fd->params[i]->type.name;
+                                                    if(pt == "var") usesVar = true;
+                                                    else if(!callArgs[i]->resolvedType.empty() && !isTypeCompatible(callArgs[i]->resolvedType, pt)) argsOk = false;
+                                                }
+                                                if(argsOk){
+                                                    if(usesVar){ if(!varFallback) varFallback = fd; }
+                                                    else { method = fd; return; }
+                                                }
+                                            }
+                                        }
+                                if(!method) for(classDef* base : c->baseClasses){ search(base); if(method) return; }
+                            };
+                            search(cls);
+                        }
+                        if(!method) method = varFallback;
+                        if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, currentType));
+                        if(method->isEmitter){
+                            if(auto* blk = dynamic_cast<i6Block*>(method->body)){
+                                string b = processBglConditionals(blk->i6Body);
+                                size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+                                size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
+                                b = replaceWord(b, "$self", "_bgl_temp");
+                                for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
+                                    b = replaceWord(b, method->params[i]->name, callArgs[i]->text());
+                                injText += " _bgl_temp = " + b + ";";
+                            }
+                        } else {
+                            string call = "_bgl_temp." + methName + "(";
+                            for(size_t i = 0; i < callArgs.size(); i++){
+                                if(i > 0) call += ", ";
+                                call += callArgs[i]->text();
+                            }
+                            call += ")";
+                            injText += " _bgl_temp = " + call + ";";
+                        }
+                        currentType = method->returnType.name;
+                        afterMember = getNext();
+                    } else {
+                        // ?.property — simple property access
+                        string propType = resolvePathType("_x_." + member.value, func, body);
+                        // We can't resolve the runtime path, so check the class for a member
+                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                        if(cls != nullptr)
+                            for(typeMember* m : cls->members)
+                                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                                    if(vd->name == member.value){ propType = vd->type.name; break; }
+                        injText += " _bgl_temp = _bgl_temp." + member.value + ";";
+                        currentType = propType;
+                    }
+                    // Check for continuation: another ?. or regular .
+                    if(afterMember.is("?.")){
+                        // Another optional step: look up operator?() on the current type
+                        classDef* nextCls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                        nullTestFn = nullptr;
+                        if(nextCls != nullptr)
+                            nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(nextCls, [](typeMember* m){
+                                auto* fn = dynamic_cast<functionDef*>(m);
+                                return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
+                            }));
+                        if(nullTestFn == nullptr)
+                            parsingError(format("Type '{0}' does not support optional chaining (no operator?() emitter)", currentType));
+                        continue; // next chain step
+                    } else if(afterMember.is(token::period)){
+                        // Regular dot after optional chain: ?.parent().name — non-guarded step
+                        token nextMember = file.getToken(eTokenType::identifier);
+                        token afterNext = getNext();
+                        if(afterNext.is(token::parenOpen)){
+                            // .method(args) — build as non-guarded call
+                            string methName = nextMember.value;
+                            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                            vector<expression*> callArgs;
+                            token firstArg = file.getToken();
+                            while(firstArg.isNot(token::parenClose)){
+                                expression* arg = parseExpression(firstArg, {token::comma, token::parenClose}, func, body);
+                                callArgs.push_back(arg);
+                                if(arg->terminator == token::parenClose) break;
+                                firstArg = file.getToken();
+                            }
+                            functionDef* method = nullptr;
+                            functionDef* varFallback2 = nullptr;
+                            if(cls != nullptr){
+                                std::function<void(classDef*)> search2 = [&](classDef* c){
+                                    for(typeMember* m : c->members)
+                                        if(auto* fd = dynamic_cast<functionDef*>(m))
+                                            if(fd->name == methName){
+                                                size_t req=0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+                                                if(callArgs.size() >= req && callArgs.size() <= fd->params.size()){
+                                                    bool argsOk=true, usesVar=false;
+                                                    for(size_t i=0; i<callArgs.size()&&argsOk; i++){
+                                                        string pt=fd->params[i]->type.name;
+                                                        if(pt=="var") usesVar=true;
+                                                        else if(!callArgs[i]->resolvedType.empty()&&!isTypeCompatible(callArgs[i]->resolvedType,pt)) argsOk=false;
+                                                    }
+                                                    if(argsOk){ if(usesVar){if(!varFallback2)varFallback2=fd;} else{method=fd;return;} }
+                                                }
+                                            }
+                                    if(!method) for(classDef* base : c->baseClasses){search2(base);if(method)return;}
+                                };
+                                search2(cls);
+                            }
+                            if(!method) method = varFallback2;
+                            if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, currentType));
+                            if(method->isEmitter){
+                                if(auto* blk = dynamic_cast<i6Block*>(method->body)){
+                                    string b = processBglConditionals(blk->i6Body);
+                                    size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+                                    size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
+                                    b = replaceWord(b, "$self", "_bgl_temp");
+                                    for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
+                                        b = replaceWord(b, method->params[i]->name, callArgs[i]->text());
+                                    injText += " _bgl_temp = " + b + ";";
+                                }
+                            } else {
+                                string call = "_bgl_temp." + methName + "(";
+                                for(size_t i = 0; i < callArgs.size(); i++){ if(i > 0) call += ", "; call += callArgs[i]->text(); }
+                                call += ")";
+                                injText += " _bgl_temp = " + call + ";";
+                            }
+                            currentType = method->returnType.name;
+                            afterMember = getNext();
+                            // Could chain further — check again
+                            if(afterMember.is("?.") || afterMember.is(token::period)) { prefetched = afterMember; /* TODO: loop */ }
+                            else prefetched = afterMember;
+                        } else {
+                            // .property
+                            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                            string propType;
+                            if(cls != nullptr)
+                                for(typeMember* m : cls->members)
+                                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                                        if(vd->name == nextMember.value){ propType = vd->type.name; break; }
+                            injText += " _bgl_temp = _bgl_temp." + nextMember.value + ";";
+                            currentType = propType;
+                            prefetched = afterNext;
+                        }
+                        break; // end of chain
+                    } else {
+                        prefetched = afterMember;
+                        break; // end of chain
+                    }
+                }
+                // Close all open if-braces
+                {
+                    size_t opens = 0;
+                    for(size_t i = 0; i < injText.size(); i++)
+                        if(injText[i] == '{') opens++;
+                        else if(injText[i] == '}') opens--;
+                    for(size_t i = 0; i < opens; i++) injText += " }";
+                }
+                i6RawNode* inj = new i6RawNode();
+                inj->text = injText;
+                pendingInjections.push_back(inj);
+                languageService.ternaryTempNeeded = true;
+                expr->tokens.clear();
+                expr->tokens.push_back("_bgl_temp");
+                if(!currentType.empty()) expr->resolvedType = currentType;
             }
             else if(parenDepth == 0 && next.is(token::period)){
                 token member = file.getToken(eTokenType::identifier);
@@ -1564,13 +1907,25 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             }
                     } else {
                         prefetched = afterMember;
-                        // Distinguish enum-qualified access (EnumType.value → _EnumType_value)
+                        // Distinguish enum-qualified access (EnumType.value → _EnumType_value),
+                        // static member access (ClassName.staticMember → _bgl_ClassName_memberName),
                         // from object/variable property access (obj.prop → obj.prop)
                         bool isEnum = dynamic_cast<enumDef*>(&languageService.getType(cur.value)) != nullptr;
+                        classDef* maybeCls = dynamic_cast<classDef*>(&languageService.getType(cur.value));
+                        bool isStaticAccess = false;
+                        if(maybeCls != nullptr){
+                            for(typeMember* m : maybeCls->members)
+                                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                                    if(vd->isStatic && vd->name == member.value){
+                                        if(expr->resolvedType.empty()) expr->resolvedType = vd->type.name;
+                                        expr->tokens.push_back("_bgl_" + maybeCls->name + "_" + member.value);
+                                        isStaticAccess = true; break;
+                                    }
+                        }
                         if(isEnum){
                             if(expr->resolvedType.empty()) expr->resolvedType = cur.value;
                             expr->tokens.push_back("_" + cur.value + "_" + member.value);
-                        } else {
+                        } else if(!isStaticAccess) {
                             // Object property access: emit as obj.prop
                             string propType = resolvePathType(cur.value + "." + member.value, func, body);
                             if(expr->resolvedType.empty() && !propType.empty()) expr->resolvedType = propType;
@@ -1578,6 +1933,29 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         }
                     }
                 }
+            }
+            else if(next.is("?") && !file.peekToken(1).is(":")){
+                // Postfix query operator: v? — invokes operator?() on the identifier's type
+                string varName = cur.value;
+                string qualified = func != nullptr ? qualifyIdentifier(varName, func, body) : varName;
+                if(qualified.empty()) parsingError(format("Undeclared identifier '{0}'", varName));
+                string varType = resolveIdentifierType(varName, func, body);
+                classDef* cls = !varType.empty() ? dynamic_cast<classDef*>(&languageService.getType(varType)) : nullptr;
+                functionDef* queryFn = nullptr;
+                if(cls != nullptr)
+                    queryFn = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [](typeMember* m){
+                        auto* fn = dynamic_cast<functionDef*>(m);
+                        return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
+                    }));
+                if(queryFn == nullptr)
+                    parsingError(format("Type '{0}' does not support postfix ? (no operator?() emitter)", varType));
+                auto* blk = dynamic_cast<i6Block*>(queryFn->body);
+                string b = processBglConditionals(blk->i6Body);
+                b = replaceWord(b, "$self", qualified);
+                { size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+                  size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1); }
+                expr->tokens.push_back(b);
+                if(expr->resolvedType.empty()) expr->resolvedType = queryFn->returnType.name;
             }
             else {
                 prefetched = next;
@@ -1597,6 +1975,37 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     expr->tokens.push_back(cur.value); // global-context passthrough for unknown identifiers
                 }
             }
+        }
+        else if(cur.is(eTokenType::oper) && cur.value == "??" && parenDepth == 0){
+            // Null coalescing: lhs ?? fallback
+            // Lowers to: _bgl_temp = lhs; if(!(nullTest)) _bgl_temp = fallback;
+            string lhsText = expr->text();
+            string lhsType = expr->resolvedType;
+            classDef* lhsCls = !lhsType.empty() ? dynamic_cast<classDef*>(&languageService.getType(lhsType)) : nullptr;
+            functionDef* nullTestFn = nullptr;
+            if(lhsCls != nullptr)
+                nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(lhsCls, [](typeMember* m){
+                    auto* fn = dynamic_cast<functionDef*>(m);
+                    return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
+                }));
+            if(nullTestFn == nullptr)
+                parsingError(format("Type '{0}' does not support null coalescing (no operator?() emitter)", lhsType));
+            auto* blk = dynamic_cast<i6Block*>(nullTestFn->body);
+            string nullTest = processBglConditionals(blk->i6Body);
+            nullTest = replaceWord(nullTest, "$self", "_bgl_temp");
+            { size_t s=nullTest.find_first_not_of(" \t\n\r"); if(s!=string::npos) nullTest=nullTest.substr(s);
+              size_t e=nullTest.find_last_not_of(" \t\n\r;"); if(e!=string::npos) nullTest=nullTest.substr(0,e+1); }
+            expression* fallback = parseExpression(file.getToken(), terminators, func, body);
+            string injText = "_bgl_temp = " + lhsText + "; if (~~(" + nullTest + ")) _bgl_temp = " + fallback->text() + ";";
+            i6RawNode* inj = new i6RawNode();
+            inj->text = injText;
+            pendingInjections.push_back(inj);
+            languageService.ternaryTempNeeded = true;
+            expr->tokens.clear();
+            expr->tokens.push_back("_bgl_temp");
+            if(!fallback->resolvedType.empty()) expr->resolvedType = fallback->resolvedType;
+            expr->terminator = fallback->terminator;
+            break;
         }
         else if(cur.is(eTokenType::oper)){
             if(!expr->resolvedType.empty()){
@@ -1713,22 +2122,45 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     string opType = resolveIdentifierType(operand.value, func, body);
                     string opText = (func != nullptr) ? qualifyIdentifier(operand.value, func, body) : operand.value;
                     if(opText.empty()) opText = operand.value;
-                    classDef* cls = dynamic_cast<classDef*>(&languageService.getType(opType));
-                    if(cls){
-                        if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* tm){
-                            auto* fn = dynamic_cast<functionDef*>(tm);
-                            return fn && fn->name == "!" && fn->params.empty() && fn->isEmitter;
-                        })){
-                            functionDef* notOp = dynamic_cast<functionDef*>(m);
-                            i6Block* blk = dynamic_cast<i6Block*>(notOp->body);
-                            if(blk){
-                                string b = processBglConditionals(blk->i6Body);
-                                size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
-                                size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
-                                b = replaceWord(b, "$self", opText);
-                                expr->tokens.push_back(b);
-                                if(expr->resolvedType.empty()) expr->resolvedType = notOp->returnType.name;
-                                handled = true;
+                    // Check for !v? (negated postfix query) — the ? must not be followed by : (ternary)
+                    if(file.peekToken(1).is("?") && !file.peekToken(2).is(":")){
+                        file.getToken(); // consume '?'
+                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(opType));
+                        functionDef* queryFn = nullptr;
+                        if(cls != nullptr)
+                            queryFn = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [](typeMember* m){
+                                auto* fn = dynamic_cast<functionDef*>(m);
+                                return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
+                            }));
+                        if(queryFn != nullptr){
+                            auto* blk = dynamic_cast<i6Block*>(queryFn->body);
+                            string b = processBglConditionals(blk->i6Body);
+                            b = replaceWord(b, "$self", opText);
+                            { size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+                              size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1); }
+                            expr->tokens.push_back("~~(" + b + ")");
+                            if(expr->resolvedType.empty()) expr->resolvedType = queryFn->returnType.name;
+                            handled = true;
+                        }
+                    }
+                    if(!handled){
+                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(opType));
+                        if(cls){
+                            if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* tm){
+                                auto* fn = dynamic_cast<functionDef*>(tm);
+                                return fn && fn->name == "!" && fn->params.empty() && fn->isEmitter;
+                            })){
+                                functionDef* notOp = dynamic_cast<functionDef*>(m);
+                                i6Block* blk = dynamic_cast<i6Block*>(notOp->body);
+                                if(blk){
+                                    string b = processBglConditionals(blk->i6Body);
+                                    size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+                                    size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
+                                    b = replaceWord(b, "$self", opText);
+                                    expr->tokens.push_back(b);
+                                    if(expr->resolvedType.empty()) expr->resolvedType = notOp->returnType.name;
+                                    handled = true;
+                                }
                             }
                         }
                     }
@@ -1879,6 +2311,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 else if(key == "blorbassetpath")strVal = beguilerSettings.blorbAssetPath;
                 else if(key == "informname")    strVal = beguilerSettings.informName;
                 else if(key == "release")     { isInt = true; intVal = beguilerSettings.release; }
+                else if(key == "serial")       strVal = beguilerSettings.serial;
                 else if(key == "framepoolsize"){ isInt = true; intVal = beguilerSettings.framePoolSize < 0 ? 0 : beguilerSettings.framePoolSize; }
                 else parsingError(format("#beguilerSettings.{0}: unknown or unsupported property", prop.value));
 
@@ -2106,11 +2539,37 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             // for-in shared code (reached from Form 1 and Form 2)
             file.getToken("in");
 
-            // RHS may be a bare array name or a call expression (e.g. bglWorld.getFiltered(...)).
-            // Parse as a full expression, then try to resolve the text as a declared array name.
-            // If found, use the name directly (existing path). If not, the RHS is an expression:
-            // assign it to a synthesised temp var so the forIn template always receives a plain name.
-            expression* arrExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
+            // Check for range for-in: for(int i in 1 to 10) → for(i = 1; i <= 10; i++)
+            expression* arrExpr = parseExpression(file.getToken(), {token::parenClose, "to"}, func, body);
+            if(arrExpr->terminator == "to"){
+                expression* rangeEnd = parseExpression(file.getToken(), {token::parenClose}, func, body);
+                forStatement& forStmt = *(new forStatement());
+                forStmt.src = stmtLoc;
+                forStmt.initText = elemVarName + " = " + arrExpr->text();
+                expression* cond = new expression();
+                cond->tokens.push_back(elemVarName);
+                cond->tokens.push_back("<=");
+                cond->tokens.push_back(rangeEnd->text());
+                forStmt.condition = cond;
+                forStmt.incrementText = elemVarName + "++";
+                forStmt.body = new statementBlock();
+                functionDef forCtx;
+                if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
+                forCtx.body = forStmt.body;
+                token next = file.getToken();
+                loopDepth++;
+                if(next.is(token::braceOpen)){
+                    openCompileContext(eCompileContext::codeBlock);
+                    while(processNextStatement(forCtx) == false){}
+                    closeCompileContext(eCompileContext::codeBlock);
+                } else {
+                    processStatement(next, forCtx);
+                }
+                loopDepth--;
+                if(body != nullptr) body->statements.push_back(&forStmt);
+                return false;
+            }
+            // Not a range — arrExpr is the array expression; continue with array for-in
             string arrExprText = arrExpr ? arrExpr->text() : "";
             string arrName;
             string arrElemType = "";
@@ -2293,6 +2752,25 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             file.getToken(token::parenOpen);
             swStmt.condition = parseExpression(file.getToken(), {token::parenClose}, func, body);
             string conditionType = swStmt.condition->resolvedType;
+            // Check if the condition type has operator switch() — if so, lower to if-chain
+            classDef* condCls = !conditionType.empty() ? dynamic_cast<classDef*>(&languageService.getType(conditionType)) : nullptr;
+            if(condCls != nullptr){
+                std::function<void(classDef*)> findSwitchOps = [&](classDef* c){
+                    for(typeMember* m : c->members)
+                        if(auto* fn = dynamic_cast<functionDef*>(m))
+                            if(fn->name == "switch" && fn->isEmitter && fn->params.size() == 1)
+                                if(auto* blk = dynamic_cast<i6Block*>(fn->body)){
+                                    string paramType = fn->params[0]->type.name;
+                                    if(swStmt.switchEmitters.find(paramType) == swStmt.switchEmitters.end()){
+                                        string b = processBglConditionals(blk->i6Body);
+                                        swStmt.switchEmitters[paramType] = fn->params[0]->name + "\t" + b;
+                                    }
+                                }
+                    for(classDef* base : c->baseClasses) findSwitchOps(base);
+                };
+                findSwitchOps(condCls);
+                if(!swStmt.switchEmitters.empty()) swStmt.needsIfChain = true;
+            }
             file.getToken(token::braceOpen);
             // parse cases until closing brace
             while(true){
@@ -2304,20 +2782,49 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     file.getToken(":");
                 } else {
                     t.assert("case", "Expected 'case' or 'default' inside switch.");
-                    auto parseCaseValue = [&]() -> expression* {
-                        expression* val = parseExpression(file.getToken(), {":", ","}, func, body);
-                        // Type-check case value against switch condition type.
-                        // verb case values are int-compatible (action constants are integer values).
+                    auto parseCaseExpr = [&]() -> expression* {
+                        expression* val = parseExpression(file.getToken(), {":", ",", "to"}, func, body);
                         if(!conditionType.empty() && !val->resolvedType.empty()
                            && !isTypeCompatible(val->resolvedType, conditionType)
-                           && val->resolvedType != "verb")   // ##VerbName is always int-compatible
+                           && val->resolvedType != "verb")
                             parsingError(format("Switch case type '{0}' does not match condition type '{1}'",
                                                val->resolvedType, conditionType));
                         return val;
                     };
-                    sc.values.push_back(parseCaseValue());
-                    while(sc.values.back()->terminator == ",")
-                        sc.values.push_back(parseCaseValue());
+                    // Parse case entries: values, ranges (expr to expr), and comparison guards (> expr)
+                    auto parseNextEntry = [&](expression*& lastExpr) {
+                        token peek = file.peekToken(1);
+                        // Comparison guard: > expr, >= expr, < expr, <= expr
+                        if(peek.is(eTokenType::oper) && (peek.value==">"||peek.value==">="||peek.value=="<"||peek.value=="<=")){
+                            token op = file.getToken();
+                            expression* val = parseCaseExpr();
+                            caseEntry e;
+                            e.guardCondition = "_bgl_sw " + op.value + " " + val->text();
+                            sc.entries.push_back(e);
+                            swStmt.needsIfChain = true;
+                            lastExpr = val;
+                            return;
+                        }
+                        // Value, possibly followed by 'to' for a range
+                        expression* val = parseCaseExpr();
+                        if(val->terminator == "to"){
+                            expression* high = parseCaseExpr();
+                            caseEntry e;
+                            e.rangeLow = val;
+                            e.rangeHigh = high;
+                            sc.entries.push_back(e);
+                            lastExpr = high;
+                        } else {
+                            caseEntry e;
+                            e.value = val;
+                            sc.entries.push_back(e);
+                            lastExpr = val;
+                        }
+                    };
+                    expression* lastExpr = nullptr;
+                    parseNextEntry(lastExpr);
+                    while(lastExpr->terminator == ",")
+                        parseNextEntry(lastExpr);
                     // colon was already consumed by parseExpression as its terminator
                 }
                 sc.body = new statementBlock();
@@ -2335,6 +2842,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 }
                 swStmt.cases.push_back(&sc);
             }
+            if(swStmt.needsIfChain) languageService.switchTempNeeded = true;
             if(body != nullptr) body->statements.push_back(&swStmt);
             return false;
         }
@@ -2398,9 +2906,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
 
     // A declared object's name is both its type and its singleton instance reference.
     // Re-classify it as an identifier so dot-access and assignment work in statement context.
-    if(tok.is(eTokenType::dataType))
+    if(tok.is(eTokenType::dataType)){
         if(dynamic_cast<objectDef*>(&languageService.getType(tok.value)) != nullptr)
             tok.tokenType = eTokenType::identifier;
+        // Reclassify as identifier if followed by '.' (static member access: ClassName.member)
+        else if(file.peekToken(1).is(token::period) || file.peekToken(1).is("?."))
+            tok.tokenType = eTokenType::identifier;
+    }
 
     // Prefix ++ / --
     if(tok.is(eTokenType::oper) && (tok.value == "++" || tok.value == "--")){
@@ -2462,16 +2974,49 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
     if(!tok.is(eTokenType::identifier) && !tokIsLiteral)
         return parsingError(format("Unrecognized statement starting with token '{0}'", (string) tok));
 
-    //make sure the identifier is complete, including any member access paths (chain all dots)
+    //make sure the identifier is complete, including any member access paths (chain all dots and ?.)
     token symbol = file.getToken({eTokenType::symbol, eTokenType::oper});
-    while(symbol.is(token::period)) {
+    int optionalChainDepth = 0; // number of ?. guards opened
+    while(symbol.is(token::period) || symbol.is("?.")) {
+        if(symbol.is("?.")){
+            // Optional chaining at statement level: emit if(nullTest){ as pre-injection, } as post-injection
+            string pathSoFar = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
+            if(pathSoFar.empty()) pathSoFar = tok.value;
+            string pathType = resolveIdentifierType(tok.value, func, body);
+            if(pathType.empty()) pathType = resolvePathType(tok.value, func, body);
+            classDef* cls = !pathType.empty() ? dynamic_cast<classDef*>(&languageService.getType(pathType)) : nullptr;
+            functionDef* nullTestFn = nullptr;
+            if(cls != nullptr)
+                nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [](typeMember* m){
+                    auto* fn = dynamic_cast<functionDef*>(m);
+                    return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
+                }));
+            if(nullTestFn == nullptr)
+                parsingError(format("Type '{0}' does not support optional chaining (no operator?() emitter)", pathType));
+            auto* blk = dynamic_cast<i6Block*>(nullTestFn->body);
+            string guard = processBglConditionals(blk->i6Body);
+            guard = i6Emitter::replaceWord(guard, "$self", pathSoFar);
+            { size_t s=guard.find_first_not_of(" \t\n\r"); if(s!=string::npos) guard=guard.substr(s);
+              size_t e=guard.find_last_not_of(" \t\n\r;"); if(e!=string::npos) guard=guard.substr(0,e+1); }
+            i6RawNode* openNode = new i6RawNode();
+            openNode->text = "if (" + guard + ") {";
+            pendingInjections.push_back(openNode);
+            optionalChainDepth++;
+        }
         tok.value += "." + file.getToken(eTokenType::identifier).value;
         symbol = file.getToken({eTokenType::symbol, eTokenType::oper});
+    }
+    // Generate matching close braces as post-injections
+    for(int i = 0; i < optionalChainDepth; i++){
+        i6RawNode* closeNode = new i6RawNode();
+        closeNode->text = "}";
+        postInjections.push_back(closeNode);
     }
 
     // A literal with no chained method call is meaningless as a statement.
     if(tokIsLiteral && tok.value.find('.') == string::npos)
         return parsingError(format("Literal value cannot appear as a statement without a method call"));
+
 
 
     //----------------------------------------------------------------------
@@ -2544,6 +3089,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 callStmt.emitterBody = b;
             }
         if(body != nullptr) body->statements.push_back(&callStmt);
+        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+        postInjections.clear();
         return false;
     }
 
@@ -2569,15 +3116,33 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             // dot-path LHS: resolve owner type, then find property type in its class
             string ownerPath = lhsOriginal.substr(0, lhsDot);
             string propName  = lhsOriginal.substr(lhsDot + 1);
-            string ownerType = resolvePathType(ownerPath, func, body);
+            // Check for static member assignment: ClassName.staticMember
+            classDef* ownerAsCls = dynamic_cast<classDef*>(&languageService.getType(ownerPath));
+            if(ownerAsCls != nullptr){
+                for(typeMember* m : ownerAsCls->members)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                        if(vd->isStatic && vd->name == propName){
+                            if(vd->isReadonly) parsingError(format("Cannot assign to readonly member '{0}'", propName));
+                            string mangledName = "_bgl_" + ownerAsCls->name + "_" + propName;
+                            assignExpr.variableLeft = mangledName;
+                            emitterSelfForLhs = mangledName;  // $self should be the mangled global, not the owner
+                            leftType = &vd->type;
+                            break;
+                        }
+            }
+            string ownerType = leftType != nullptr ? "" : resolvePathType(ownerPath, func, body);
             if(!ownerType.empty()){
                 classDef* ownerCls = dynamic_cast<classDef*>(&languageService.getType(ownerType));
                 if(ownerCls != nullptr)
                     for(typeMember* m : ownerCls->members)
                         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                            if(vd->name == propName){ leftType = &vd->type; break; }
+                            if(vd->name == propName){
+                                if(vd->isReadonly) parsingError(format("Cannot assign to readonly member '{0}'", propName));
+                                leftType = &vd->type; break;
+                            }
             }
-            emitterSelfForLhs = ownerPath;  // $self = the owner object, not the full obj.prop path
+            if(!emitterSelfForLhs.starts_with("_bgl_"))  // don't override if already set by static member resolution
+                emitterSelfForLhs = ownerPath;  // $self = the owner object, not the full obj.prop path
         } else {
             if(func != nullptr){
                 for(paramDef* p : func->params)
@@ -2589,7 +3154,17 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 if(leftType == nullptr && currentObject != nullptr)
                     for(typeMember* m : currentObject->members)
                         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                            if(vd->name == lhsOriginal){ leftType = &vd->type; break; }
+                            if(vd->name == lhsOriginal){
+                                if(vd->isReadonly) parsingError(format("Cannot assign to readonly member '{0}'", lhsOriginal));
+                                leftType = &vd->type; break;
+                            }
+                if(leftType == nullptr && currentClass != nullptr)
+                    for(typeMember* m : currentClass->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                            if(vd->name == lhsOriginal){
+                                if(vd->isReadonly) parsingError(format("Cannot assign to readonly member '{0}'", lhsOriginal));
+                                leftType = &vd->type; break;
+                            }
             }
             if(leftType == nullptr)
                 for(typeDef* g : languageService.globals)
@@ -2654,6 +3229,22 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             }
         };
 
+        // Interpolated string literal on RHS: var = $"..."
+        if(file.peekToken(1).is("$") && file.peekToken(2).is(eTokenType::quote)){
+            file.getToken();  // consume '$'
+            assignExpr.interpSegments = parseInterpolatedSegments(func, body);
+            file.getToken(token::endStatement);  // consume ';'
+            // Create a dummy RHS expression typed as interpolatedstringliteral for emitter resolution
+            expression* rhs = new expression();
+            rhs->resolvedType = "interpolatedstringliteral";
+            assignExpr.assignedExpression = rhs;
+            resolveEmitter(assignExpr, rhs);
+            if(body != nullptr) body->statements.push_back(&assignExpr);
+            for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+            postInjections.clear();
+            return false;
+        }
+
         expression* rhs = parseExpression(file.getToken(), {token::endStatement, "?"}, func, body);
 
         if(rhs->terminator == "?"){
@@ -2681,6 +3272,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             ifStmt.elseBlock->statements.push_back(makeAssign(falseVal));
 
             if(body != nullptr) body->statements.push_back(&ifStmt);
+            for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+            postInjections.clear();
             return false;
         }
 
@@ -2690,6 +3283,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
         pendingInjections.clear();
         if(body != nullptr) body->statements.push_back(&assignExpr);
+        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+        postInjections.clear();
         return false;
     }
     // Compound assignment: +=, -=, *=, /=, %=, |=, &=
@@ -2742,6 +3337,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             node.src = stmtLoc;
             if(body != nullptr) body->statements.push_back(&node);
         }
+        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+        postInjections.clear();
         return false;
     }
     if(symbol.is(eTokenType::oper) && (symbol.value == "++" || symbol.value == "--")){
@@ -2776,88 +3373,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             node.src = stmtLoc;
             if(body != nullptr) body->statements.push_back(&node);
         }
+        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+        postInjections.clear();
         return false;
     }
     if(symbol.is(token::parenOpen))  { //then this is a function call.
-
-        // Interpolated string: print($"...") or log($"...")
-        // Detected by peeking: next token is '$', and the token after that is a quote.
-        // We read the string character-by-character so that {expr} segments feed directly
-        // into parseExpression() from the live file stream (correct tokenisation, lowercasing, etc.)
-        string funcNameLower = tok.value;
-        if((funcNameLower == "print" || funcNameLower == "log") &&
-            file.peekToken(1).is("$") && file.peekToken(2).is(eTokenType::quote)) {
-
-            bool isLog = (funcNameLower == "log");
-
-            // For log(), skip entirely unless DEBUG is defined
-            if(isLog && definedSymbols.count("debug") == 0) {
-                file.getToken();                        // consume '$'
-                file.getToken(eTokenType::quote);       // consume the string token
-                file.getToken(token::parenClose);       // consume ')'
-                file.getToken(token::endStatement);     // consume ';'
-                return false;
-            }
-
-            file.getToken();                            // consume '$'
-            // Instead of consuming the whole quote token (which already has escapes translated),
-            // we consume just the opening '"' directly so we can read raw chars for the segments.
-            file.readChar();  // opening '"'
-
-            interpolatedPrintStatement& ps = *(new interpolatedPrintStatement());
-            ps.src = stmtLoc;
-            ps.isLog = isLog;
-
-            string currentStr;
-            char c = file.readChar();
-            while(c != '"' && c != EOF) {
-                if(c == '\\') {
-                    char nc = file.readChar();
-                    if     (nc == 'n')  currentStr += '^';      // \n  → I6 newline
-                    else if(nc == '"')  currentStr += '~';      // \"  → I6 double-quote
-                    else if(nc == '\\') currentStr += "@@92";   // \\  → literal backslash
-                    else if(nc == '^')  currentStr += "@@94";   // \^  → literal caret
-                    else if(nc == '~')  currentStr += "@@126";  // \~  → literal tilde
-                    else if(nc == '@')  currentStr += "@@64";   // \@  → literal at-sign
-                    else if(nc == '{')  currentStr += '{';       // \{  → literal brace (not an expression)
-                    else { currentStr += '\\'; currentStr += nc; }
-                } else if(c == '{') {
-                    // Flush accumulated string segment
-                    if(!currentStr.empty()) {
-                        interpolatedPrintStatement::Segment seg;
-                        seg.isExpr = false;
-                        seg.text = currentStr;
-                        ps.segments.push_back(seg);
-                        currentStr = "";
-                    }
-                    // Parse the expression from the live stream until the matching '}'
-                    token exprFirst = file.getToken();
-                    expression* exprNode = parseExpression(exprFirst, {"}"}, func, body);
-                    interpolatedPrintStatement::Segment seg;
-                    seg.isExpr = true;
-                    seg.expr = exprNode;
-                    // Capture any ternary injections so they emit before this segment's print
-                    seg.injections = pendingInjections;
-                    pendingInjections.clear();
-                    ps.segments.push_back(seg);
-                } else {
-                    currentStr += c;
-                }
-                c = file.readChar();
-            }
-            // Flush final string segment
-            if(!currentStr.empty()) {
-                interpolatedPrintStatement::Segment seg;
-                seg.isExpr = false;
-                seg.text = currentStr;
-                ps.segments.push_back(seg);
-            }
-
-            file.getToken(token::parenClose);       // consume ')'
-            file.getToken(token::endStatement);     // consume ';'
-            if(body != nullptr) body->statements.push_back(&ps);
-            return false;
-        }
 
         functionCallStatement& callStmt = *(new functionCallStatement());
         callStmt.src = stmtLoc;
@@ -2876,10 +3396,36 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         // parse argument list using parseExpression
         token firstArgTok = file.getToken();
         while(firstArgTok.isNot(token::parenClose)){
-            expression* arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body);
-            callStmt.args.push_back(arg);
-            if(arg->terminator == token::parenClose) break;
-            firstArgTok = file.getToken();
+            // Named argument detection: identifier followed by ':'
+            string namedArgName;
+            if(firstArgTok.is(eTokenType::name) && file.peekToken(1).is(":")){
+                namedArgName = firstArgTok.value;
+                file.getToken(); // consume ':'
+                firstArgTok = file.getToken(); // read the value expression's first token
+            }
+            if(firstArgTok.is("$") && file.peekToken(1).is(eTokenType::quote)){
+                // Interpolated string literal argument: func($"...")
+                vector<interpolatedSegment> segs = parseInterpolatedSegments(func, body);
+                expression* arg = new expression();
+                arg->resolvedType = "interpolatedstringliteral";
+                // peek at what follows: comma or close-paren
+                token sep = file.getToken();
+                arg->terminator = sep.value;
+                callStmt.args.push_back(arg);
+                callStmt.namedArgNames.push_back(namedArgName);
+                // store segments for this argument position
+                while(callStmt.interpSegmentsPerArg.size() < callStmt.args.size() - 1)
+                    callStmt.interpSegmentsPerArg.push_back({});
+                callStmt.interpSegmentsPerArg.push_back(segs);
+                if(sep.is(token::parenClose)) break;
+                firstArgTok = file.getToken();
+            } else {
+                expression* arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body);
+                callStmt.args.push_back(arg);
+                callStmt.namedArgNames.push_back(namedArgName);
+                if(arg->terminator == token::parenClose) break;
+                firstArgTok = file.getToken();
+            }
         }
 
         string chainReturnType;
@@ -2990,6 +3536,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(method == nullptr)
                 parsingError(format("No overload of method '{0}' on type '{1}' accepts these argument types",
                     methodName, objectType));
+            // reorder named arguments to match parameter positions
+            reorderNamedArgs(callStmt, method, [&](string msg){ parsingError(msg); return false; });
             // fill in defaults for unspecified trailing arguments
             for(size_t i = callStmt.args.size(); i < method->params.size(); i++){
                 expression* defExpr = new expression();
@@ -3084,6 +3632,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 }
                 if(globalMatch == nullptr)
                     parsingError(format("No overload of function '{0}' accepts these argument types", callStmt.functionName));
+                // reorder named arguments to match parameter positions
+                reorderNamedArgs(callStmt, globalMatch, [&](string msg){ parsingError(msg); return false; });
                 // fill in defaults for unspecified trailing arguments
                 for(size_t i = callStmt.args.size(); i < globalMatch->params.size(); i++){
                     expression* defExpr = new expression();
@@ -3177,6 +3727,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
         pendingInjections.clear();
         if(body != nullptr) body->statements.push_back(&callStmt);
+        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+        postInjections.clear();
         return false;
     }
     return parsingError(format("Unhandled token '{0}'",tok.value));
@@ -3371,6 +3923,29 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             }
 
             varDecl.declaredExpressionValue = list;
+        } else if(first.is("$") && file.peekToken(1).is(eTokenType::quote)){
+            // Interpolated string literal initializer: string s = $"..."
+            varDecl.interpSegments = parseInterpolatedSegments(func, body);
+            file.getToken(token::endStatement);  // consume ';'
+            expression* rhs = new expression();
+            rhs->resolvedType = "interpolatedstringliteral";
+            varDecl.declaredExpressionValue = rhs;
+            // Emitter lookup for operator=(interpolatedstringliteral)
+            classDef* classType=dynamic_cast<classDef*>(&languageService.getType((string)dataType));
+            if(classType != nullptr){
+                functionDef* assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
+                    auto* fn = dynamic_cast<functionDef*>(m);
+                    return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name=="interpolatedstringliteral";
+                }));
+                if(assignOp && assignOp->isEmitter){
+                    if(auto* blk = dynamic_cast<i6Block*>(assignOp->body)){
+                        varDecl.initEmitterBody  = processBglConditionals(blk->i6Body);
+                        varDecl.initEmitterParam = assignOp->params[0]->name;
+                    }
+                }
+                if(!assignOp)
+                    parsingError(format("Type '{0}' has no operator=(interpolatedStringLiteral) emitter", (string)dataType));
+            }
         } else {
             expression* rhs = parseExpression(first, {token::endStatement}, func, body);
             varDecl.declaredExpressionValue = rhs;
@@ -4307,6 +4882,13 @@ bool bglParser::processBeguilerSettings(){
         else if(key == "i6includepath"){ cfg.i6IncludePaths.push_back(rewritePathSeps(strVal)); }   // additive
         else if(key == "bglincludepath"){ cfg.bglIncludePaths.push_back(rewritePathSeps(strVal)); } // additive
         else if(key == "release"){ if(cfg.release == 0) cfg.release = stoi(strVal); }
+        else if(key == "serial"){
+            if(cfg.serial.empty()){
+                if(strVal.size() != 6 || !all_of(strVal.begin(), strVal.end(), ::isdigit))
+                    parsingError("beguilerSettings property 'serial' must be exactly 6 digits (e.g. \"250328\")");
+                cfg.serial = strVal;
+            }
+        }
         else if(key == "framepoolsize"){
             int sz = stoi(strVal);
             if(sz < 1) parsingError("beguilerSettings property 'framePoolSize' must be at least 1");

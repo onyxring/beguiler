@@ -392,9 +392,11 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Pass 2: emit any settings-derived constants
     emitSettingsConstants(&beguilerSettings);
 
-    // Emit ternary scratch variable only when actually used
+    // Emit scratch variables only when actually used
     if(languageService.ternaryTempNeeded)
         out << "global _bgl_temp;\n";
+    if(languageService.switchTempNeeded)
+        out << "global _bgl_sw;\n";
 
     // Pass 2b: if Z-machine target, scan all functions/methods for spill and XP needs.
     if(isZTarget(currentTarget)){
@@ -465,7 +467,12 @@ void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     out << "Constant beguilerMinor  = " << (BEGUILER_VERSION % 1000) / 10   << ";\n";
     out << "Constant beguilerPatch  = " << BEGUILER_VERSION % 10            << ";\n";
 
-    // Note: release/story/author/headline are NOT auto-emitted here.
+    if(!cfg->serial.empty())
+        out << "Serial \"" << cfg->serial << "\";\n";
+    if(cfg->release > 0)
+        out << "Release " << cfg->release << ";\n";
+
+    // Note: story/author/headline are NOT auto-emitted here.
     // Declare them explicitly in Beguile source using #beguilerSettings references:
     //   const string story    = #beguilerSettings.story;
     //   const string author   = #beguilerSettings.author;
@@ -490,6 +497,16 @@ void i6Emitter::emitEnum(enumDef* enumNode){
 void i6Emitter::emitClass(classDef* classNode){
     if(classNode->isExternal || classNode->isEmitterClass || classNode->isAlias) return;
 
+    // emit static members as mangled globals before the class definition
+    for(typeMember* m : classNode->members)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+            if(vd->isStatic){
+                out << format("global _bgl_{0}_{1}", classNode->name, vd->name);
+                if(vd->declaredExpressionValue != nullptr && !vd->declaredExpressionValue->text().empty())
+                    out << format(" = {0}", vd->declaredExpressionValue->text());
+                out << ";\n";
+            }
+
     out << format("class {0}\n", classNode->i6Name());
 
     if(classNode->baseClasses.size() > 0){
@@ -498,11 +515,13 @@ void i6Emitter::emitClass(classDef* classNode){
         out << "\n";
     }
 
-    // collect emittable members (skip emitter-only functions)
+    // collect emittable members (skip emitter-only functions and static variables)
     vector<typeMember*> emittable;
     for(typeMember* m : classNode->members){
         if(auto* fd = dynamic_cast<functionDef*>(m))
             if(fd->isEmitter) continue;
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+            if(vd->isStatic) continue;
         emittable.push_back(m);
     }
 
@@ -600,7 +619,12 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         variableDeclaration* var = (variableDeclaration*)stmt;
         // emit initializer assignment if present
         if(var->declaredExpressionValue != nullptr && !var->declaredExpressionValue->text().empty()){
-            if(!var->initEmitterBody.empty()){
+            if(!var->interpSegments.empty() && !var->initEmitterBody.empty()){
+                // Interpolated string literal: split emitter body at parameter, splice print-block
+                string b = var->initEmitterBody;
+                b = replaceWord(b, "$self", spillName(var->name));
+                emitInterpolatedEmitterBody(b, var->initEmitterParam, var->interpSegments, indent);
+            } else if(!var->initEmitterBody.empty()){
                 string b = var->initEmitterBody;
                 b = replaceWord(b, "$self",              spillName(var->name));
                 b = replaceWord(b, var->initEmitterParam, exprText(var->declaredExpressionValue));
@@ -614,7 +638,12 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     }
     else if(typeid(*stmt) == typeid(assignmentStatement)){
         assignmentStatement* assign = (assignmentStatement*)stmt;
-        if(!assign->emitterBody.empty()){
+        if(!assign->interpSegments.empty() && !assign->emitterBody.empty()){
+            // Interpolated string literal: split emitter body at parameter, splice print-block
+            string b = assign->emitterBody;
+            b=replaceWord(b,"$self", assign->emitterSelf.empty() ? spillName(assign->variableLeft) : spillName(assign->emitterSelf));
+            emitInterpolatedEmitterBody(b, assign->emitterParam, assign->interpSegments, indent);
+        } else if(!assign->emitterBody.empty()){
             string b = assign->emitterBody;
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
@@ -641,82 +670,28 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         else
             out << indent << "return;\n";
     }
-    else if(typeid(*stmt) == typeid(interpolatedPrintStatement)){
-        interpolatedPrintStatement* ps = (interpolatedPrintStatement*)stmt;
-        // isLog case: DEBUG guard is handled at parse time (non-DEBUG calls are dropped entirely)
-        for(auto& seg : ps->segments){
-            if(!seg.isExpr){
-                // String segment: emit as I6 string literal
-                if(!seg.text.empty())
-                    out << indent << "print \"" << seg.text << "\";\n";
-            } else {
-                // Emit any ternary-lowering injections before this expression segment
-                for(statement* inj : seg.injections)
-                    emitStatement(inj, indent);
-
-                string rt = seg.expr->resolvedType;
-                string exprStr = exprText(seg.expr);
-
-                // For class types, look for a no-arg print() emitter on the class and inline it.
-                // This lets $"Score: {scoreObj}" honour a custom print emitter on the class.
-                classDef* cls = dynamic_cast<classDef*>(&languageService.getType(rt));
-                if(cls != nullptr){
-                    functionDef* printFn = nullptr;
-                    std::function<void(classDef*)> findPrint = [&](classDef* c){
-                        for(typeMember* m : c->members)
-                            if(auto* fd = dynamic_cast<functionDef*>(m))
-                                if(fd->name == "print" && fd->params.empty()){
-                                    printFn = fd;
-                                    return;
-                                }
-                        if(printFn == nullptr)
-                            for(classDef* base : c->baseClasses){ findPrint(base); if(printFn) return; }
-                    };
-                    findPrint(cls);
-
-                    if(printFn != nullptr && printFn->isEmitter){
-                        if(auto* blk = dynamic_cast<i6Block*>(printFn->body)){
-                            string b = parser.processBglConditionals(blk->i6Body);
-                            b = replaceWord(b, "$self", exprStr);
-                            // trim and strip trailing semicolons so we can re-add one cleanly
-                            size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
-                            size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
-                            out << indent << b << ";\n";
-                            continue;
-                        }
-                    }
-                    if(printFn != nullptr && !printFn->isEmitter){
-                        // Regular method: emit as a call
-                        out << indent << exprStr << ".print();\n";
-                        continue;
-                    }
-                    // No print() on this class — fall through to generic emit below
-                }
-
-                // Void emitter (e.g. style calls): parseExpression already inlined the body
-                // into exprStr. Emit as a raw statement — no print prefix, no extra semicolon.
-                if(rt == "void"){
-                    out << indent << exprStr << "\n";
-                    continue;
-                }
-
-                // Primitive / unknown type: string variables need an I6 (string) cast to print correctly.
-                string cast;
-                if(rt == "string") cast = "(string)";
-                out << indent << "print " << cast << exprStr << ";\n";
-            }
-        }
-    }
     else if(typeid(*stmt) == typeid(functionCallStatement)){
         functionCallStatement* call = (functionCallStatement*)stmt;
         if(!call->emitterBody.empty()){
             string b = call->emitterBody;
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
+            // Check if any argument is an interpolated string literal
+            int interpArgIdx = -1;
+            for(size_t i=0; i<call->interpSegmentsPerArg.size(); i++)
+                if(!call->interpSegmentsPerArg[i].empty()){ interpArgIdx = (int)i; break; }
+            // Substitute all non-interpolated parameters normally
             for(size_t i=0; i<call->emitterParams.size() && i<call->args.size(); i++)
-                b=replaceWord(b, call->emitterParams[i], exprText(call->args[i]));
-            while(!b.empty() && b.back()==';') b.pop_back();
-            out << indent << b << ";\n";
+                if((int)i != interpArgIdx)
+                    b=replaceWord(b, call->emitterParams[i], exprText(call->args[i]));
+            if(interpArgIdx >= 0){
+                // Splice interpolated print-block at the interpolated parameter's position
+                emitInterpolatedEmitterBody(b, call->emitterParams[interpArgIdx],
+                    call->interpSegmentsPerArg[interpArgIdx], indent);
+            } else {
+                while(!b.empty() && b.back()==';') b.pop_back();
+                out << indent << b << ";\n";
+            }
         } else {
             // On Z-machine, args beyond the 5th are passed via _bglXPn globals
             size_t maxDirectArgs = (isZTarget(currentTarget) && call->args.size() > 5) ? 5 : call->args.size();
@@ -787,30 +762,205 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     }
     else if(typeid(*stmt) == typeid(switchStatement)){
         switchStatement* sw = (switchStatement*)stmt;
-        out << indent << "switch (" << (sw->condition != nullptr ? exprText(sw->condition) : "") << ") {\n";
-        for(switchCase* sc : sw->cases){
-            if(!sc->values.empty()){
-                out << indent << "    ";
-                for(size_t i = 0; i < sc->values.size(); i++){
-                    if(i > 0) out << ", ";
-                    // verb-typed case values are action constants → emit as ##VerbName
-                    if(sc->values[i]->resolvedType == "verb")
-                        out << "##" << sc->values[i]->text();
-                    else
-                        out << sc->values[i]->text();
+        if(sw->needsIfChain){
+            // Emit as if/else if chain (required when any case uses comparison guards)
+            string condText = sw->condition != nullptr ? exprText(sw->condition) : "0";
+            out << indent << "_bgl_sw = " << condText << ";\n";
+            bool first = true;
+            for(switchCase* sc : sw->cases){
+                if(sc->entries.empty()){
+                    // default case → else
+                    out << indent << "else {\n";
+                } else {
+                    out << indent << (first ? "if (" : "else if (");
+                    bool firstCond = true;
+                    for(auto& e : sc->entries){
+                        if(!firstCond) out << " || ";
+                        if(!e.guardCondition.empty()){
+                            out << "(" << e.guardCondition << ")";
+                        } else if(e.rangeLow != nullptr){
+                            out << "(_bgl_sw >= " << e.rangeLow->text() << " && _bgl_sw <= " << e.rangeHigh->text() << ")";
+                        } else if(e.value != nullptr){
+                            // Check for operator switch() emitter matching this value's type
+                            string valType = e.value->resolvedType;
+                            string valText = (valType == "verb") ? ("##" + e.value->text()) : e.value->text();
+                            auto it = sw->switchEmitters.find(valType);
+                            if(it == sw->switchEmitters.end() && !valType.empty())
+                                it = sw->switchEmitters.find("var"); // fallback to var
+                            if(it != sw->switchEmitters.end()){
+                                // Inline the operator switch() emitter
+                                string b = it->second;
+                                b = replaceWord(b, "$self", "_bgl_sw");
+                                // Find the parameter name — stored as part of the emitter body placeholder
+                                // We need to substitute the first non-$self word. Use a generic approach:
+                                // The emitter body has one parameter; replace all non-$self param names.
+                                // Since we don't store param names here, use a simpler approach:
+                                // replace any word that isn't a known keyword or $self with the value.
+                                // Actually, we can just do a second replaceWord pass for common param names.
+                                // Better: store param name in switchEmitters. For now, use convention.
+                                // Let's store as "paramName\0body" and split here.
+                                // Actually simplest: just replace the first identifier-like word that isn't $self.
+                                // The emitter body after $self replacement looks like: _bgl_sw.equals(v)
+                                // We need to replace 'v' with the value. Let's find it by checking
+                                // what remains unresolved.
+                                // Simplest correct approach: store param name with the body.
+                                // switchEmitters stores "paramName:body"
+                                size_t colonPos = b.find('\t');
+                                if(colonPos != string::npos){
+                                    string paramName = b.substr(0, colonPos);
+                                    string body = b.substr(colonPos + 1);
+                                    body = replaceWord(body, "$self", "_bgl_sw");
+                                    body = replaceWord(body, paramName, valText);
+                                    size_t s = body.find_first_not_of(" \t\n\r"); if(s!=string::npos) body=body.substr(s);
+                                    size_t e2 = body.find_last_not_of(" \t\n\r;"); if(e2!=string::npos) body=body.substr(0,e2+1);
+                                    out << "(" << body << ")";
+                                } else {
+                                    out << "_bgl_sw == " << valText;
+                                }
+                            } else {
+                                out << "_bgl_sw == " << valText;
+                            }
+                        }
+                        firstCond = false;
+                    }
+                    out << ") {\n";
+                    first = false;
                 }
-                out << ":\n";
-            } else {
-                out << indent << "    default:\n";
+                if(sc->body != nullptr)
+                    for(statement* s : sc->body->statements)
+                        emitStatement(s, indent + "    ");
+                out << indent << "}\n";
             }
-            if(sc->body != nullptr)
-                for(statement* s : sc->body->statements)
-                    emitStatement(s, indent + "        ");
+        } else {
+            // Standard I6 switch — all entries are values or ranges (no comparison guards)
+            out << indent << "switch (" << (sw->condition != nullptr ? exprText(sw->condition) : "") << ") {\n";
+            for(switchCase* sc : sw->cases){
+                if(!sc->entries.empty()){
+                    out << indent << "    ";
+                    for(size_t i = 0; i < sc->entries.size(); i++){
+                        if(i > 0) out << ", ";
+                        auto& e = sc->entries[i];
+                        if(e.rangeLow != nullptr){
+                            out << e.rangeLow->text() << " to " << e.rangeHigh->text();
+                        } else if(e.value != nullptr){
+                            if(e.value->resolvedType == "verb")
+                                out << "##" << e.value->text();
+                            else
+                                out << e.value->text();
+                        }
+                    }
+                    out << ":\n";
+                } else {
+                    out << indent << "    default:\n";
+                }
+                if(sc->body != nullptr)
+                    for(statement* s : sc->body->statements)
+                        emitStatement(s, indent + "        ");
+            }
+            out << indent << "}\n";
         }
-        out << indent << "}\n";
     }
     else if(typeid(*stmt) == typeid(i6RawNode)){
         out << indent << ((i6RawNode*)stmt)->text << "\n";
+    }
+}
+void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segments, string indent){
+    for(auto& seg : segments){
+        if(!seg.isExpr){
+            if(!seg.text.empty())
+                out << indent << "print \"" << seg.text << "\";\n";
+        } else {
+            for(statement* inj : seg.injections)
+                emitStatement(inj, indent);
+
+            string rt = seg.expr->resolvedType;
+            string exprStr = exprText(seg.expr);
+
+            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(rt));
+            if(cls != nullptr){
+                functionDef* printFn = nullptr;
+                std::function<void(classDef*)> findPrint = [&](classDef* c){
+                    for(typeMember* m : c->members)
+                        if(auto* fd = dynamic_cast<functionDef*>(m))
+                            if(fd->name == "print" && fd->params.empty()){
+                                printFn = fd;
+                                return;
+                            }
+                    if(printFn == nullptr)
+                        for(classDef* base : c->baseClasses){ findPrint(base); if(printFn) return; }
+                };
+                findPrint(cls);
+
+                if(printFn != nullptr && printFn->isEmitter){
+                    if(auto* blk = dynamic_cast<i6Block*>(printFn->body)){
+                        string b = parser.processBglConditionals(blk->i6Body);
+                        b = replaceWord(b, "$self", exprStr);
+                        size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+                        size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
+                        out << indent << b << ";\n";
+                        continue;
+                    }
+                }
+                if(printFn != nullptr && !printFn->isEmitter){
+                    out << indent << exprStr << ".print();\n";
+                    continue;
+                }
+            }
+
+            if(rt == "void"){
+                out << indent << exprStr << "\n";
+                continue;
+            }
+
+            string cast;
+            if(rt == "string") cast = "(string)";
+            out << indent << "print " << cast << exprStr << ";\n";
+        }
+    }
+}
+// Emits an emitter body that contains an interpolatedStringLiteral parameter.
+// Splits the body at the parameter reference (word-boundary match) and splices in the print-block.
+// Emitter body lines before and after the parameter reference are emitted as I6 statements.
+void i6Emitter::emitInterpolatedEmitterBody(const string& body, const string& paramName, const vector<interpolatedSegment>& segments, string indent){
+    size_t pos = 0;
+    size_t paramPos = string::npos;
+    while(pos < body.size()){
+        size_t found = body.find(paramName, pos);
+        if(found == string::npos) break;
+        bool leftOk  = found == 0 || !(isalnum(body[found-1]) || body[found-1]=='_' || body[found-1]=='$');
+        bool rightOk = found+paramName.size() >= body.size() || !(isalnum(body[found+paramName.size()]) || body[found+paramName.size()]=='_');
+        if(leftOk && rightOk){ paramPos = found; break; }
+        pos = found + paramName.size();
+    }
+
+    if(paramPos == string::npos){
+        string b = body;
+        size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+        size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
+        if(!b.empty())
+            out << indent << b << ";\n";
+        return;
+    }
+
+    string before = body.substr(0, paramPos);
+    {
+        size_t s=before.find_first_not_of(" \t\n\r;");
+        size_t e=before.find_last_not_of(" \t\n\r;");
+        before = (s!=string::npos && e!=string::npos) ? before.substr(s, e-s+1) : "";
+        if(!before.empty())
+            out << indent << before << ";\n";
+    }
+
+    emitInterpolatedSegments(segments, indent);
+
+    size_t afterStart = paramPos + paramName.size();
+    string after = afterStart < body.size() ? body.substr(afterStart) : "";
+    {
+        size_t s=after.find_first_not_of(" \t\n\r;");
+        size_t e=after.find_last_not_of(" \t\n\r;");
+        after = (s!=string::npos && e!=string::npos) ? after.substr(s, e-s+1) : "";
+        if(!after.empty())
+            out << indent << after << ";\n";
     }
 }
 void i6Emitter::emitGlobal(variableDeclaration* varNode){
