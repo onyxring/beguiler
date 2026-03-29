@@ -16,6 +16,7 @@ class bglLanguageService{
     vector<string> startupBlocks;            // raw I6 bodies from #startup { } directives; emitted first in bglInit()
     vector<verbObjectDef*> verbs;  // all verb declarations (extern and non-extern) for action-constant lookup
     bool ternaryTempNeeded = false; // set true when any ternary is lowered; drives conditional _bgl_temp emission
+    bool switchTempNeeded = false;  // set true when any switch uses guards; drives conditional _bgl_sw emission
     
     bglLanguageService();
         typeDef& getType(string);
@@ -31,7 +32,7 @@ class bglLanguageService{
         string getEnumType(string valueName); //returns the enum type name for a given enum value name, or "" if not found
         
         
-        vector<string> operators={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^=","=>"};
+        vector<string> operators={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^=","=>","?.","??"};
 };
 
 extern bglLanguageService languageService;

@@ -39,6 +39,10 @@ extend class string {
     emitter eBool operator == (stringLiteral v) { $self.equals(v) }
     emitter eBool operator == (string v)        { $self.equals(v) }
 
+    // Switch comparison: enables switch(myString){ case "hello": ... }
+    emitter eBool operator switch(stringLiteral v) { $self.equals(v) }
+    emitter eBool operator switch(string v)        { $self.equals(v) }
+
     //
     emitter char operator[](int pos){ $self.getChar(pos) }
     emitter char operator[]=(int pos, char c)         { $self.setChar(pos,c) }
