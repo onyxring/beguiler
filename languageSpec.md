@@ -139,13 +139,22 @@ Raw strings may be used anywhere a regular string literal is valid — in assign
 
 ### 2.5.2b Interpolated String Literals
 
-An **interpolated string** is prefixed with `$` and may contain embedded Beguile expressions inside `{` `}` spans. It is only valid as the argument to `print()` or `log()`.
+An **interpolated string** is prefixed with `$` and may contain embedded Beguile expressions inside `{` `}` spans. An interpolated string literal has the pseudo-type `interpolatedStringLiteral` (see §4.3). It can be passed to any function or operator that declares an `interpolatedStringLiteral` parameter — it is not restricted to `print()` and `log()`.
 
 ```bgl
 print($"The {obj.name} weighs {obj.weight} stone.");
 print($"Score: {score}  Turns: {turns}");
 log($"Entering handler for {actor.name}");
 ```
+
+When the target type provides an `operator=(interpolatedStringLiteral)` emitter, interpolated strings can also appear in assignment and variable initialisation:
+
+```bgl
+string greeting = $"Hello, {name}!";
+greeting = $"Score: {score}  Turns: {turns}";
+```
+
+See §7.6 for how `print()`, `log()`, and `string` handle interpolated strings through emitters.
 
 **Escape sequences** inside interpolated strings follow the same rules as plain string literals. To include a literal `{` character, write `\{`:
 
@@ -155,7 +164,6 @@ print($"Press \{enter} to continue.");   // prints: Press {enter} to continue.
 
 **Constraints:**
 
-- Only valid as the sole argument to `print()` or `log()` — cannot be stored in a variable or passed to other functions.
 - Nested `{...}` inside an expression span (e.g. initializer lists) is not supported.
 
 ### 2.5.3 Character Literals
@@ -559,12 +567,15 @@ Literal pseudo-types are not declared by user code. They are inferred automatica
 
 | Pseudo-type | Example | Notes |
 |-------------|---------|-------|
-| `intliteral` | `42` | Compatible with `int` via `operator =` on the `int` class |
-| `stringliteral` | `"hello"`, `@"raw"` | Compatible with `string` via `operator =` on the `string` class; both regular and raw string literals share this pseudo-type |
-| `charliteral` | `'a'` | Compatible with `char` via `operator =` on the `char` class |
-| `dictionaryWord` | `.cloak`, `..cloaks` | Dictionary word; plural form (`..`) sets an internal plural flag |
+| `intLiteral` | `42` | Compatible with `int` via `operator =` on the `int` class |
+| `stringLiteral` | `"hello"`, `@"raw"` | Compatible with `string` via `operator =` on the `string` class; both regular and raw string literals share this pseudo-type |
+| `charLiteral` | `'a'` | Compatible with `char` via `operator =` on the `char` class |
+| `dictionaryWordLiteral` | `.cloak`, `..cloaks` | Dictionary word; plural form (`..`) sets an internal plural flag |
+| `interpolatedStringLiteral` | `$"hello {x}"` | An interpolated string (see §2.5.2b); expands to a block of statements rather than a single expression |
 
-The first three literal pseudo-types (`intliteral`, `stringliteral`, `charliteral`) are compatible with their corresponding concrete types (`int`, `string`, `char`) exclusively through declared operators — specifically `operator =` on the target class. No built-in compatibility rule exists for any of them. The `dictionaryWord` type follows the same pattern but uses only one name (unlike the `<type>literal` convention of the others), serving as both the literal token type and the type name used in operator declarations.
+Literal pseudo-types are compatible with their corresponding runtime types exclusively through declared operators — specifically `operator =` on the target class. No built-in compatibility rule exists for any of them.
+
+`interpolatedStringLiteral` is unique among the literal pseudo-types: because an interpolated string contains multiple segments that emit as separate statements, it cannot be reduced to a single expression value. Instead, when an emitter parameter has this type, the parameter reference in the emitter body expands to the full block of print statements for all segments. This is what enables both `print($"...")` (where the emitter body is just the parameter — the print-block is emitted directly) and `string s = $"..."` (where the emitter body wraps the print-block in `capture()`/`release()` calls). See §7.6 for details.
 
 Literal pseudo-types are first-class types: they are declared as `extern class` in the core library and can be extended to have operators and methods defined against them. This means method calls are valid directly on literal values, if defined in an emitter:
 
@@ -790,6 +801,41 @@ class Room {
     object parent;
 }
 ```
+
+### `readonly` Members
+
+A `readonly` member can be initialised in the object declaration but cannot be reassigned in code. The compiler enforces this at compile time; there is no runtime cost.
+
+```bgl
+class Config {
+    readonly int maxScore = 100;
+    readonly string title = "My Game";
+}
+```
+
+Attempting to assign to a `readonly` member produces a compile-time error:
+
+```bgl
+config.maxScore = 200;  // error: Cannot assign to readonly member 'maxScore'
+```
+
+### `static` Members
+
+A `static` member is class-level state shared across all instances. It is emitted as a mangled I6 global variable (`_bgl_ClassName_memberName`) rather than as a per-instance property.
+
+```bgl
+class Counter {
+    static int instanceCount = 0;
+
+    void increment(){
+        Counter.instanceCount = Counter.instanceCount + 1;
+    }
+}
+```
+
+Static members are accessed using `ClassName.memberName` syntax, both for reads and writes. Inside a class method, the class name must be used explicitly — bare `instanceCount` would look for an instance property.
+
+`readonly` and `static` are mutually exclusive.
 
 ## 5.4 Member Methods
 
@@ -1249,7 +1295,9 @@ Emitter namespaces are distinguished from `emitter class` by the absence of the 
 
 ## 7.6 `print()` and `log()`
 
-`print()` and `log()` are the two core output routines.
+`print()` and `log()` are global emitter functions defined in the core library (`_beguileCore.bgl`). They are not compiler built-ins — the compiler has no special knowledge of them.
+
+### `print()`
 
 `print()` is overloaded to accept any value type and outputs it immediately:
 
@@ -1259,18 +1307,50 @@ print(score);         // int or var
 print(c);             // char
 ```
 
-`log()` has an identical signature to `print()` but is a debug-only output routine. Any call to `log()` is entirely absent from a non-debug build.  To enable `log()` output, define the `DEBUG` compiler value:
+The standard overloads are defined as emitters:
 
 ```bgl
-#define DEBUG;
+emitter void print(var val)           { print val; }
+emitter void print(string str)        { print (string)str; }
+emitter void print(char c)            { print (char)c; }
 ```
+
+When the `string` extension is included, `print(string)` is replaced with `_orStr.print(str)` to support the managed string type.
+
+### `print()` with interpolated strings
+
+The interpolated string overload is also a library-defined emitter:
 
 ```bgl
-log("entering handler");   // present only in debug builds
-log(score);
+emitter void print(interpolatedStringLiteral v){ v; }
 ```
 
-When `DEBUG` is not defined, `log(...)` calls produce zero output — no code is emitted at the call site at all, not even a conditional check.
+Because the parameter type is `interpolatedStringLiteral`, the `v;` in the emitter body expands at compile time to the full print-block for all segments. For example, `print($"Score: {score}")` emits:
+
+```i6
+print "Score: ";
+print score;
+```
+
+Each expression segment is emitted using type-aware dispatch: if the expression's type has a `print()` emitter (such as `string`), that emitter is inlined; otherwise, a plain I6 `print` statement is used.
+
+### `log()`
+
+`log()` has the same overloads as `print()` but is a debug-only output routine. It is implemented using `##ifdef` conditional directives inside the emitter body:
+
+```bgl
+emitter void log(interpolatedStringLiteral v){ ##ifdef DEBUG v; ##endif }
+emitter void log(var msg){ ##ifdef DEBUG print msg; ##endif }
+```
+
+When `DEBUG` is not defined, the `##ifdef` strips the emitter body, so no code is emitted at the call site — not even a conditional check. The interpolated string segments are still parsed and type-checked in all builds, so errors inside `log()` expressions are caught even in release builds.
+
+To enable `log()` output, define the `DEBUG` symbol before the call:
+
+```bgl
+#define DEBUG
+log($"Entering handler for {actor.name}");
+```
 
 ## 7.7 Operator Emitters
 
@@ -1307,8 +1387,48 @@ The full set of operators that may be overloaded via emitters:
 | Compound assignment | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` |
 | Increment / decrement | `++` `--` `prefix++` `prefix--` |
 | Subscript | `[]` `[]=` |
+| Query | `?` |
+| Switch comparison | `switch` |
 
 The `prefix++` and `prefix--` names distinguish prefix forms (`++n`) from postfix forms (`n++`). This allows a class to provide different behavior for each — for example, postfix increment conventionally returns the value before modification, while prefix increment returns the value after.
+
+### Query Operator `?`
+
+The `operator ?()` emitter is a zero-parameter unary operator that defines what "present" (non-null) means for a type. It is used by three language features:
+
+- **Optional chaining** `?.` — the query operator is evaluated at each step of the chain
+- **Null coalescing** `??` — the query operator determines whether the fallback is needed
+- **Postfix query** `v?` — inlines the query operator directly in a boolean context
+
+```bgl
+extern class object {
+    emitter eBool operator ?() { $self ~= nothing }
+}
+```
+
+Types without `operator ?()` cannot use `?.`, `??`, or postfix `?`. Attempting to do so is a compile-time error. See §11.4b for the full description of these operators.
+
+### Switch Comparison Operator `switch`
+
+The `operator switch()` emitter defines how a type is compared in `switch` statements. When the switch condition's type declares `operator switch()`, the compiler lowers the switch to an `if`/`else if` chain using the emitter for each case comparison instead of native I6 `switch`.
+
+```bgl
+extend class string {
+    emitter eBool operator switch(stringLiteral v) { $self.equals(v) }
+    emitter eBool operator switch(string v)        { $self.equals(v) }
+}
+```
+
+Multiple overloads may be declared for different case value types. The compiler selects the overload matching each case value's resolved type, enabling mixed-type cases:
+
+```bgl
+switch(myString){
+    case "hello": ...   // uses operator switch(stringLiteral)
+    case otherStr: ...  // uses operator switch(string)
+}
+```
+
+Types without `operator switch()` use native I6 `switch`, which compares by value identity. See §10.10 for the full `switch` statement description.
 
 ### Compound Assignment Fallback
 
@@ -1328,6 +1448,19 @@ If no emitter is defined for `++` or `--`, the statement is emitted directly as 
 n++;    →    n++;
 ++n;    →    ++n;
 ```
+
+### Emitter-Required Operators
+
+Most operators may be declared as either emitters or regular functions. However, the following must always be declared as emitters (the compiler will error otherwise):
+
+| Declaration | Reason |
+|---|---|
+| `operator ?()` | Inlined as the null test in `?.`, `??`, and postfix `?` expressions |
+| `operator switch()` | Inlined as the comparison in `if`/`else if` chains lowered from `switch` |
+| `init()` | Inlined at variable declaration site; not callable as a method |
+| `deinit()` | Inlined at scope exit / `return` sites; not callable as a method |
+
+Declaring any of these without the `emitter` keyword is a compile-time error. Inside an `emitter class`, the `emitter` keyword is implicit as usual.
 
 ## 7.8 Conversion Operator
 
@@ -1368,7 +1501,7 @@ extend extern class string {
 - Before every explicit `return` statement in the enclosing routine
 - At the implicit end of the routine if it falls through without returning
 
-`init` and `deinit` must declare zero parameters. Declaring a parameter on either is a compile-time error.
+`init` and `deinit` must be declared as emitters and must declare zero parameters. Declaring a parameter on either, or omitting the `emitter` keyword, is a compile-time error.
 
 ```bgl
 void doSomething() {
@@ -1564,6 +1697,23 @@ greet("player", 3);     // times = 3
 ```
 
 Required parameters (no default) must appear before optional parameters (with defaults). The compiler validates call-site arity against the required-to-total range. Too few or too many arguments is a compile-time error.
+
+### Named Arguments
+
+Arguments may be passed by name at the call site using `name: value` syntax. Named arguments can appear in any order and are reordered by the compiler to match the parameter list:
+
+```bgl
+void spawn(string name, int x, int y, bool hostile = false) { ... }
+
+spawn(x: 10, y: 20, name: "goblin", hostile: true);
+// equivalent to: spawn("goblin", 10, 20, true);
+```
+
+Named and positional arguments may be mixed. Positional arguments fill the first unoccupied parameter slots; named arguments fill their target slots explicitly. It is an error to:
+
+- Name a parameter that does not exist on the function
+- Provide the same parameter both positionally and by name
+- Omit a required parameter
 
 ### Parameter Types in `extern class`
 
@@ -1789,6 +1939,26 @@ for(int row in rows) {
 }
 ```
 
+### Range form
+
+The `for-in` loop also supports numeric ranges using the `to` keyword:
+
+```bgl
+for(int i in 1 to 10) {
+    print(i);
+}
+```
+
+This is syntactic sugar for a C-style counted loop. The range is inclusive on both ends. The above is equivalent to `for(int i = 1; i <= 10; i++)`.
+
+The bounds may be any expression:
+
+```bgl
+for(int i in start to start + count - 1) {
+    // ...
+}
+```
+
 ## 10.9 `while` Loop
 
 ```bgl
@@ -1815,6 +1985,59 @@ switch(expr) {
 Multiple values may share a case by listing them comma-separated. Cases do not fall through by default; the `break` keyword is accepted inside `switch` but is not required and has no effect.
 
 Case values are type-checked against the switch condition type using the full compatibility rules of §12. Integer literals are compatible with `int` conditions; enum values must match the enum type exactly. When the switch expression is of type `verb`, case values are emitted as `##VerbName` action constants automatically.
+
+### Range Cases
+
+A case may specify an inclusive range using the `to` keyword:
+
+```bgl
+switch(score){
+    case 0: print("Nothing yet.");
+    case 1 to 5: print("Getting started.");
+    case 6 to 10: print("Making progress.");
+}
+```
+
+Ranges may be combined with individual values in the same case:
+
+```bgl
+case 1, 3, 5 to 10: ...   // matches 1, 3, or anything from 5 to 10
+```
+
+Range cases emit as native I6 `to` syntax, which compiles to an efficient range check.
+
+### Comparison Guards
+
+A case may use a comparison operator (`>`, `>=`, `<`, `<=`) instead of a value:
+
+```bgl
+switch(score){
+    case 0: print("Nothing.");
+    case 1 to 49: print("Keep going.");
+    case >= 50: print("Well done!");
+    case < 0: print("Invalid score.");
+}
+```
+
+When any case in a `switch` uses a comparison guard, the entire switch is lowered to an `if`/`else if` chain. The switch condition is evaluated once into a temporary variable, and each case becomes a conditional test. Values and ranges in the same switch are converted to equality and range checks in the chain.
+
+### `operator switch()` — Type-Driven Comparison
+
+When the switch condition's type declares `operator switch()` emitters, the compiler lowers the switch to an `if`/`else if` chain using those emitters for each case comparison instead of native I6 `switch`.
+
+This enables switching on types where I6 `==` is not the correct comparison — for example, managed strings:
+
+```bgl
+switch(command){
+    case "north": goNorth();
+    case "look": doLook();
+    default: print("I don't understand.");
+}
+```
+
+The `string` class defines `operator switch(stringLiteral v)` which emits `.equals(v)` — a content comparison rather than a handle comparison. See §7.7 for the operator declaration syntax.
+
+Multiple `operator switch()` overloads may be declared for different case value types, enabling mixed-type cases where each value is compared using the appropriate method.
 
 ## 10.11 `break` and `continue`
 
@@ -1913,6 +2136,77 @@ print(x > 0 ? "positive" : "non-positive");
 - Ternaries may not be nested inside another ternary's condition.
 
 A function call argument that is itself a ternary counts as the one permitted ternary for that statement. A ternary in the true or false branch of another ternary is therefore not supported.
+
+## 11.4b Optional Chaining, Null Coalescing, and Postfix Query
+
+These three operators provide safe navigation through potentially-null object references. They are type-driven: each requires the operand's type to declare an `operator ?()` emitter (see §7.7). Types without `operator ?()` cannot use these operators.
+
+### Optional Chaining `?.`
+
+The `?.` operator accesses a member or calls a method only if the left-hand operand is non-null. If the operand is null, the entire chain short-circuits to `0`/`nothing`.
+
+```bgl
+object parent = noun?.parent();         // null if noun is null
+string name = noun?.parent()?.name;     // null if either is null
+```
+
+In **expression context**, `?.` lowers to a guarded temporary variable chain. Each `?.` step evaluates the `operator ?()` emitter on the current value before proceeding:
+
+```bgl
+// Beguile:
+object y = x?.parent();
+// Emits as:
+// _bgl_temp = x; if (_bgl_temp ~= nothing) { _bgl_temp = parent(_bgl_temp); }
+// y = _bgl_temp;
+```
+
+In **statement context**, `?.` wraps the statement in an `if` guard:
+
+```bgl
+// Beguile:
+x?.remove();
+// Emits as:
+// if (x ~= nothing) { remove x; }
+```
+
+Optional chains may be mixed with regular `.` access. A regular `.` after a `?.` does not add a null guard — if the preceding `?.` short-circuited, the regular `.` executes on the null value (which may produce undefined behavior, just as a regular `.` on null would).
+
+### Null Coalescing `??`
+
+The `??` operator provides a fallback value when the left-hand operand is null. The right-hand operand is only evaluated if the left is null (short-circuit semantics).
+
+```bgl
+object dest = actor?.destination ?? location;
+```
+
+`??` is commonly combined with `?.` but works on its own:
+
+```bgl
+object target = customTarget ?? defaultTarget;
+```
+
+### Postfix Query `v?`
+
+The postfix `?` operator inlines the type's `operator ?()` emitter directly, producing a boolean result. It is primarily useful in `if` conditions:
+
+```bgl
+if(noun?) print("something is here");
+if(!noun?) print("nothing here");
+```
+
+`!v?` correctly negates the result using I6 `~~()` syntax.
+
+### The `operator ?()` Emitter
+
+All three operators delegate to a zero-parameter emitter declared on the operand's type. The `object` class in `_beguileCore.bgl` defines it as:
+
+```bgl
+extern class object {
+    emitter eBool operator ?() { $self ~= nothing }
+}
+```
+
+Other types may define their own semantics. For example, a managed string type might define `operator ?()` as `$self ~= 0` to test for a valid handle. The compiler has no built-in knowledge of what "null" means — it is entirely type-defined.
 
 ## 11.5 Type Cast
 
