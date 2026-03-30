@@ -153,7 +153,7 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
     public:
         typeDef type;
         bool isConst = false;
-        bool isReadonly = false;  // readonly members: can be initialized but not reassigned
+        // isConst: for globals, emits as I6 Constant; for class members, prevents reassignment (property still has runtime storage)
         bool isStatic = false;   // static members: class-level state, emitted as mangled I6 global
         expression* declaredExpressionValue = nullptr;
         string initEmitterBody;  // raw i6 body if operator= is an emitter, else ""
@@ -267,6 +267,7 @@ class forInStatement : public statement {
         string arrayVar;     // array name, e.g. "scores"
         string counterVar;   // unique index variable, e.g. "_bglfi0"
         statementBlock* body = nullptr;
+        vector<expression*> inlineElements; // non-empty when source is {a, b, c} initializer list
 };
 
 

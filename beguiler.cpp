@@ -40,7 +40,17 @@ void beguiler::extractBlorbSettings(const string& filename) {
             else if(content[cur] == '}') depth--;
             cur++;
         }
-        string block = content.substr(open + 1, cur - open - 2);
+        string rawBlock = content.substr(open + 1, cur - open - 2);
+        // Strip // comment lines before searching
+        string block;
+        istringstream lines(rawBlock);
+        string line;
+        while(getline(lines, line)){
+            size_t s = line.find_first_not_of(" \t");
+            if(s != string::npos && line.size() > s + 1 && line[s] == '/' && line[s+1] == '/')
+                continue; // skip comment lines
+            block += line + "\n";
+        }
         // Lowercase the block for case-insensitive key matching
         string blockLower = block;
         transform(blockLower.begin(), blockLower.end(), blockLower.begin(), ::tolower);

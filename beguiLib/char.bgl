@@ -7,21 +7,22 @@
 //   #include <char> in your .bgl file to activate char support.
 //-----------------------------------------------------------------------------
 #once
-#include <_char>
-extend class char { 
+//#include <_char>
+
+//extend class char { 
     // Case inspection
-    emitter eBool isLower()        { _orChar.isLower($self) }
-    emitter eBool isUpper()        { _orChar.isUpper($self) }
-    emitter eBool isAlpha()        { _orChar.isAlpha($self) }
-    emitter eBool isNumeric()      { _orChar.isNumeric($self) }
-    emitter eBool isAlphaNumeric() { _orChar.isAlphaNumeric($self) }
-    emitter eBool isVowel()        { _orChar.isVowel($self) }
-    emitter eBool isConsonant()    { _orChar.isConsonant($self) }
-    emitter eBool isWhitespace()   { _orChar.isWhitespace($self) }
+    // emitter eBool isLower()        { _orChar.isLower($self) }
+    // emitter eBool isUpper()        { _orChar.isUpper($self) }
+    // emitter eBool isAlpha()        { _orChar.isAlpha($self) }
+    // emitter eBool isNumeric()      { _orChar.isNumeric($self) }
+    // emitter eBool isAlphaNumeric() { _orChar.isAlphaNumeric($self) }
+    // emitter eBool isVowel()        { _orChar.isVowel($self) }
+    // emitter eBool isConsonant()    { _orChar.isConsonant($self) }
+    // emitter eBool isWhitespace()   { _orChar.isWhitespace($self) }
 
     // Case conversion — return the converted character value
-    emitter char toLower() { _orChar.toLower($self) }
-    emitter char toUpper() { _orChar.toUpper($self) }
+    //emitter char toLower() { _orChar.toLower($self) }
+    //emitter char toUpper() { _orChar.toUpper($self) }
 
     // Assignment operators
     // emitter char operator = (char v)        { $self=v; }
@@ -36,4 +37,23 @@ extend class char {
     // emitter eBool operator != (charliteral v) { $self~=v }
     // emitter eBool operator != (char v)        { $self~=v }
     // emitter eBool operator != (int v)         { $self~=v }
+//}
+
+object _orChar{
+	char _toUpper(char c){
+		switch (c) {
+			case 'a' to 'z':                            c -= 32;
+			case 201, 203, 211, 213, 220:               c += 1;
+			case 215, 216:                              c += 2;
+			case 155 to 157, 164, 165, 205 to 207:      c += 3;
+			case 181 to 185, 191 to 195:                c += 5 ;
+			case 169 to 174:                            c += 6;
+		}
+		return c;
+	}
+}
+extend class char { 
+    emitter char toUpper(){
+        _orChar._toUpper($self);
+    }
 }

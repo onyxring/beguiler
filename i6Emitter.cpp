@@ -428,16 +428,13 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
         xpGlobalsNeeded = maxXP;
     }
 
-    // Synthesise bglInit before all user globals so any routine that calls it can resolve it
-    if(!languageService.globalInits.empty() || !languageService.startupBlocks.empty()){
-        out << "[bglInit;\n";
-        // #startup blocks run first (runtime infrastructure before user-object inits)
-        for(const string& block : languageService.startupBlocks)
-            out << block << "\n";
-        for(auto& [varName, body] : languageService.globalInits)
-            out << "    " << body << "\n";
-        out << "];\n";
-    }
+    // Synthesise bglInit — always emitted, even if empty
+    out << "[bglInit;\n";
+    for(const string& block : languageService.startupBlocks)
+        out << block << "\n";
+    for(auto& [varName, body] : languageService.globalInits)
+        out << "    " << body << "\n";
+    out << "];\n";
 
     // Pass 3: emit everything else
     for(typeDef* node : nodeList)
@@ -515,13 +512,15 @@ void i6Emitter::emitClass(classDef* classNode){
         out << "\n";
     }
 
-    // collect emittable members (skip emitter-only functions and static variables)
+    // collect emittable members (skip emitter-only functions, static variables, and attributeList members)
     vector<typeMember*> emittable;
     for(typeMember* m : classNode->members){
         if(auto* fd = dynamic_cast<functionDef*>(m))
             if(fd->isEmitter) continue;
-        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
             if(vd->isStatic) continue;
+            if(vd->type.name == "attributelist") continue; // emitted separately as 'has' line
+        }
         emittable.push_back(m);
     }
 
@@ -564,6 +563,15 @@ void i6Emitter::emitClass(classDef* classNode){
             }
         }
     }
+    // emit attributeList members as I6 'has' line (same as emitObject)
+    for(typeMember* m : classNode->members)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+            if(vd->type.name == "attributelist")
+                if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
+                    out << "  has";
+                    for(expression* elem : list->elements) out << " " << elem->text();
+                    out << "\n";
+                }
     out << ";\n";
 }
 void i6Emitter::emitMember(typeMember* member){
@@ -752,6 +760,13 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     }
     else if(typeid(*stmt) == typeid(forInStatement)){
         forInStatement* fi = (forInStatement*)stmt;
+        // Inline initializer list: emit push/make templates before the loop
+        if(!fi->inlineElements.empty()){
+            for(auto* elem : fi->inlineElements)
+                applyTemplate("forInList.push", {{"element", exprText(elem)}}, indent);
+            applyTemplate("forInList.make",
+                {{"target", spillName(fi->arrayVar)}, {"count", to_string(fi->inlineElements.size())}}, indent);
+        }
         applyTemplate("forIn.open",
             {{"counter", spillName(fi->counterVar)}, {"array", spillName(fi->arrayVar)}, {"element", spillName(fi->elementVar)}},
             indent);
@@ -1029,7 +1044,7 @@ void i6Emitter::emitObject(objectDef* obj){
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
             if(vd->type.name != "attributelist" && vd->name != "parent") { hasProps = true; break; }
-        } else if(dynamic_cast<functionDef*>(m)){ hasProps = true; break; }
+        } else if(auto* fd = dynamic_cast<functionDef*>(m)){ if(!fd->isEmitter) { hasProps = true; break; } }
           else if(dynamic_cast<i6RawNode*>(m))  { hasProps = true; break; }
 
     if(hasProps){
@@ -1054,6 +1069,7 @@ void i6Emitter::emitObject(objectDef* obj){
                 if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
                 first = false;
             } else if(auto* fd = dynamic_cast<functionDef*>(m)){
+                if(fd->isEmitter) continue; // emitter methods are inlined at call sites, not emitted as properties
                 buildSpillMap(fd);
                 out << (first ? "  with " : ",\n       ");
                 out << fd->name << " [";

@@ -1,209 +1,248 @@
-//-----------------------------------------------------------------------------
-// _beguilerCore.bgl - the standard language extensions for the Beguile 
-//      language, included automatically by the compiler.
-//-----------------------------------------------------------------------------
+/*-----------------------------------------------------------------------------
+    _beguilerCore.bgl - the standard language extensions for the Beguile 
+        language, included automatically by the compiler.
+ -----------------------------------------------------------------------------*/
 #once
-extern enum eTarget{ //--used to specify the target in the beguilerSettings object.  Declared as external, since these are defined in Beguile compiler
-    Glulx,
-    Z3,
-    Z5,
-    Z8
-}
-extern enum eErrorFormat{ //--used to specify the errorFormat in the beguilerSettings object.  Declared as external, since these are defined in Beguile compiler
-    E1,
-    E2
-}
-extern class beguilerSettingsType { //--schema for #beguilerSettings directive blocks; provides property IntelliSense
-    eTarget         target         = Glulx;         // compilation target: Glulx (default), Z3, Z5, or Z8
-    string          informPath;                     // full path to the Inform 6 compiler binary (overrides informName)
-    string          informName     = "inform";      // I6 binary filename (default "inform"); use "none" to skip I6 handoff
-    string          beguiLibPath   = "beguiLib";    // path to the Beguile language extensions directory
-    string          outputPath     = "output";      // output directory for compiled files
-    eErrorFormat    errorFormat    = E1;            // error format: "E1" (Microsoft) or "E2" (Macintosh)
-    int             release        = 0;             // story release number
-    string          serial         = "";            // serial number: exactly 6 digits (e.g. "250328")
-    int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
-    string          i6IncludePath;                  // adds one directory to the I6 compiler include search path (additive)
-    string          bglIncludePath;                 // adds one directory to the Beguile include search path (additive)
-    bool            rewritePaths   = true;          // substitute path separators to match OS
-    bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)
-    string          blorbAssetPath = "assets";      // asset directory relative to source .bgl file
-    string          author         = "";            // game author → Constant Author in I6 + blorb AUTH chunk
-    string          story          = "";            // game title  → Constant Story  in I6
-    string          headline       = "";            // subtitle    → Constant Headline in I6
-}
-
-extern enum eBool{ //--literal values used by the bool type.  Declared as external, since these values are defined in the I6 compiler
-    true,
-    false
-}
-
-emitter class _bglObject{
-    void print(){
-        print $self;    
+//=============================================================================
+// beguilerSettings
+    extern class beguilerSettingsType { //--schema for #beguilerSettings directive blocks; provides property IntelliSense
+        eTarget         target         = Glulx;         // compilation target: Glulx (default), Z3, Z5, or Z8
+        string          informPath;                     // full path to the Inform 6 compiler binary (overrides informName)
+        string          informName     = "inform";      // I6 binary filename (default "inform"); use "none" to skip I6 handoff
+        string          beguiLibPath   = "beguiLib";    // path to the Beguile language extensions directory
+        string          outputPath     = "output";      // output directory for compiled files
+        eErrorFormat    errorFormat    = E1;            // error format: "E1" (Microsoft) or "E2" (Macintosh)
+        int             release        = 0;             // story release number
+        string          serial         = "";            // serial number: exactly 6 digits (e.g. "250328")
+        int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
+        string          i6IncludePath;                  // adds one directory to the I6 compiler include search path (additive)
+        string          bglIncludePath;                 // adds one directory to the Beguile include search path (additive)
+        bool            rewritePaths   = true;          // substitute path separators to match OS
+        bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)
+        string          blorbAssetPath = "assets";      // asset directory relative to source .bgl file
+        string          author         = "";            // used for blorb data
+        string          story          = "";            // used for blorb data
+        string          headline       = "";            // used for blorb data
     }
-}
-extern class attribute{ //--an I6 attribute, declared as external because attributes are defined in I6
-}
 
-extern class attributeList{ //--a compile-time proxy for an object's attribute set
-    emitter void give(attribute attr){
-        give $self attr
+    extern enum eTarget{
+        Glulx,
+        Z3,
+        Z5,
+        Z8
     }
-    emitter void ungive(attribute attr){
-        give $self ~attr
+    extern enum eErrorFormat{ 
+        E0,
+        E1,
+        E2
     }
-    emitter bool has(attribute attr){
-        ($self has attr)
+//=============================================================================
+// _bglObject - the base class for all Beguile objects
+    emitter class _bglObject{
+        void print(){
+            print $self;    
+        }
     }
-}
-
-emitter class grammarToken{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
-    emitter var operator(){}              //--declares I6 compatibility with var, enabling mixed expressions
-    emitter eBool operator == (var v){ $self == v }
-    emitter eBool operator != (var v){ $self ~= v }
-    emitter grammarToken operator = (var v){ $self = v }
-}
-
-emitter class dictionaryWord{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
-    emitter dictionaryWordLiteral operator(){}                           //--I6 passthrough; enables mixed expressions
-    emitter dictionaryWord operator = (dictionaryWordLiteral v){ $self = v; }
-    emitter dictionaryWord operator = (dictionaryWord v){ $self = v; }
-    emitter void print(){ print (address) $self }
-}
-
-extern class parentProp{} //--forward declaration; emitter added below after 'object' is defined
-
-extern class object:_bglObject{ //--the base I6 object, declared as external because it is defined in the I6 compiler
-    parentProp parent;           //--initial parent object; emitted as I6 third positional argument
-    attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
     
-    emitter eBool operator ?() { $self ~= nothing }
-    emitter object operator = (object v){
-        $self = v
+//=============================================================================
+// type bool
+    extern enum eBool{
+        true,
+        false
     }
-    emitter eBool operator == (var v){
-        $self == v
-    }
-    emitter eBool operator != (var v){
-        $self ~= v
-    }
-    emitter void give(attribute attr){
-        give $self attr
-    }
-    emitter void ungive(attribute attr){
-        give $self ~attr
-    }
-    emitter bool has(attribute attr){
-        ($self has attr)
-    }
-    emitter bool hasnt(attribute attr){
-        ($self hasnt attr)
-    }
-    emitter void move(object parent){
-        move $self to parent
-    }
-    emitter void remove(){
-        remove $self
-    }
-    emitter object parent(){
-        parent($self)
-    }
-    emitter object child(){
-        child($self)
-    }
-    emitter object sibling(){
-        sibling($self)
-    }
-}
+    extern class bool : _bglObject{ //--base type bool, declared as external because it wraps the type-less I6 type
+        emitter void print(){
+            if($self == true)
+                print "true";
+            else
+                print "false";
 
-extend class parentProp{ //--add operator= emitter now that 'object' is defined
-    emitter parentProp operator = (object v){
-        move $self to v
+        }
+        emitter eBool operator == (bool v){ $self == v }
+        emitter eBool operator == (eBool v){ $self == v }
+        emitter eBool operator != (bool v){ $self ~= v }
+        emitter eBool operator != (eBool v){ $self ~= v }
+        emitter bool operator = (bool v){ $self=v; }
+        emitter bool operator = (eBool v){ $self=v; }
+        emitter eBool operator && (bool v){ $self && v }
+        emitter eBool operator && (eBool v){ $self && v }
+        emitter eBool operator || (bool v){ $self || v }
+        emitter eBool operator || (eBool v){ $self || v }
+        emitter eBool operator ! (){ ~~$self }
     }
-}
 
-extern class intLiteral:_bglObject{}      //--an integer literal value; e.g. 42
-extern class stringLiteral:_bglObject{}   //--a string literal value; e.g. "hello"
-extern class charLiteral:_bglObject{      //--a character literal value; e.g. 'x'
-    emitter void print(){ print (char)$self; }  //--override: print as character, not numeric code
-}
-extern class interpolatedStringLiteral:_bglObject{} //--an interpolated string literal; e.g. $"hello {name}"
-extern class dictionaryWordLiteral:_bglObject{ //--a dictionary word literal; e.g. .cloak or ..cloaks
-    emitter void print(){ print (address) $self }
-}
+//=============================================================================
+// type int 
+    extern class intLiteral:_bglObject{}
 
-extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
-    emitter int operator = (intLiteral v){ $self=v; }
-    emitter int operator = (int v){ $self=v; }
-    emitter int operator = (char v){ $self=v; }
-    emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
-    // Arithmetic
-    emitter int operator + (int v){ $self + v }
-    emitter int operator + (intLiteral v){ $self + v }
-    emitter int operator - (int v){ $self - v }
-    emitter int operator - (intLiteral v){ $self - v }
-    emitter int operator * (int v){ $self * v }
-    emitter int operator * (intLiteral v){ $self * v }
-    emitter int operator / (int v){ $self / v }
-    emitter int operator / (intLiteral v){ $self / v }
-    emitter int operator % (int v){ $self % v }
-    emitter int operator % (intLiteral v){ $self % v }
-    // Comparison
-    emitter eBool operator == (int v){ $self == v }
-    emitter eBool operator == (intLiteral v){ $self == v }
-    emitter eBool operator == (char v){ $self == v }
-    emitter eBool operator != (int v){ $self ~= v }
-    emitter eBool operator != (intLiteral v){ $self ~= v }
-    emitter eBool operator != (char v){ $self ~= v }
-    emitter eBool operator < (int v){ $self < v }
-    emitter eBool operator < (intLiteral v){ $self < v }
-    emitter eBool operator <= (int v){ $self <= v }
-    emitter eBool operator <= (intLiteral v){ $self <= v }
-    emitter eBool operator > (int v){ $self > v }
-    emitter eBool operator > (intLiteral v){ $self > v }
-    emitter eBool operator >= (int v){ $self >= v }
-    emitter eBool operator >= (intLiteral v){ $self >= v }
-}
-
-//-- type char -----------------------------------------------------------------
-extern class char{ //--a single ZSCII character value; extended by char.bgl
-    emitter char operator = (charLiteral v){ $self=v; }
-    emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
-    emitter void print(){ print (char)$self; }
-}
-
-//-- type bool -----------------------------------------------------------------
-extern class bool{ //--base type bool, declared as external because it wraps the type-less I6 type
-    emitter void print(){
-        if($self == true)
-            print "true";
-        else
-            print "false";
+    extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
+        emitter int operator = (intLiteral v){ $self=v; }
+        emitter int operator = (int v){ $self=v; }
+        emitter int operator = (char v){ $self=v; }
+        emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
+        // Arithmetic
+        emitter int operator + (int v){ $self + v }
+        emitter int operator + (intLiteral v){ $self + v }
+        emitter int operator - (int v){ $self - v }
+        emitter int operator - (intLiteral v){ $self - v }
+        emitter int operator * (int v){ $self * v }
+        emitter int operator * (intLiteral v){ $self * v }
+        emitter int operator / (int v){ $self / v }
+        emitter int operator / (intLiteral v){ $self / v }
+        emitter int operator % (int v){ $self % v }
+        emitter int operator % (intLiteral v){ $self % v }
+        // Comparison
+        emitter eBool operator == (int v){ $self == v }
+        emitter eBool operator == (intLiteral v){ $self == v }
+        emitter eBool operator == (char v){ $self == v }
+        emitter eBool operator != (int v){ $self ~= v }
+        emitter eBool operator != (intLiteral v){ $self ~= v }
+        emitter eBool operator != (char v){ $self ~= v }
+        emitter eBool operator < (int v){ $self < v }
+        emitter eBool operator < (intLiteral v){ $self < v }
+        emitter eBool operator <= (int v){ $self <= v }
+        emitter eBool operator <= (intLiteral v){ $self <= v }
+        emitter eBool operator > (int v){ $self > v }
+        emitter eBool operator > (intLiteral v){ $self > v }
+        emitter eBool operator >= (int v){ $self >= v }
+        emitter eBool operator >= (intLiteral v){ $self >= v }
+    }
+    
+//=============================================================================
+// type char
+    extern class charLiteral:_bglObject{    
+        emitter void print(){ print (char)$self; }  //--override: print as character, not numeric code
+        emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
 
     }
-    emitter eBool operator == (bool v){ $self == v }
-    emitter eBool operator == (eBool v){ $self == v }
-    emitter eBool operator != (bool v){ $self ~= v }
-    emitter eBool operator != (eBool v){ $self ~= v }
-    emitter bool operator = (bool v){ $self=v; }
-    emitter bool operator = (eBool v){ $self=v; }
-    emitter eBool operator && (bool v){ $self && v }
-    emitter eBool operator && (eBool v){ $self && v }
-    emitter eBool operator || (bool v){ $self || v }
-    emitter eBool operator || (eBool v){ $self || v }
-    emitter eBool operator ! (){ ~~$self }
-}
-extern class string{
-    emitter string operator = (stringLiteral v){
-        $self=v;
+    extern class char : _bglObject{ //--a single ZSCII character value; extended by char.bgl
+        emitter char operator = (charLiteral v){ $self=v; }
+        emitter char operator = (intLiteral v){ $self=v; }
+        emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
+        emitter void print(){ print (char)$self; }
     }
-    emitter stringLiteral operator(){} //--declares I6 compatibility with stringLiteral
+
+//=============================================================================
+// type string
+    extern class stringLiteral:_bglObject{
+        emitter void print(){ print (string)$self; } //--override: print as string, not numeric code  
+    }   
+    extern class interpolatedStringLiteral:_bglObject{} 
+
+    extern class string : _bglObject{
+        emitter string operator = (stringLiteral v){
+            $self=v;
+        }
+        emitter stringLiteral operator(){} //--declares I6 compatibility with stringLiteral
+    }
+
+//=============================================================================
+// type dictionary word
+    extern class dictionaryWordLiteral:_bglObject{ 
+        emitter void print(){ print (address) $self }
+    }
+    emitter class dictionaryWord : _bglObject{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
+        emitter dictionaryWordLiteral operator(){}                           //--I6 passthrough; enables mixed expressions
+        emitter dictionaryWord operator = (dictionaryWordLiteral v){ $self = v; }
+        emitter dictionaryWord operator = (dictionaryWord v){ $self = v; }
+        emitter void print(){ print (address) $self }
+    }
+
+//=============================================================================
+// type attribute
+    extern class attribute : _bglObject{ }
+    
+    extern class attributeList : _bglObject{ 
+        emitter void give(attribute attr){
+            give $self attr
+        }
+        emitter void ungive(attribute attr){
+            give $self ~attr
+        }
+        emitter bool has(attribute attr){
+            ($self has attr)
+        }
+    }
+
+//=============================================================================
+// type grammarToken
+    emitter class grammarToken : _bglObject{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
+        emitter var operator(){}              //--declares I6 compatibility with var, enabling mixed expressions
+        emitter eBool operator == (var v){ $self == v }
+        emitter eBool operator != (var v){ $self ~= v }
+        emitter grammarToken operator = (var v){ $self = v }
+    }
+
+//=============================================================================
+// type verb
+    //--Note: verb identifiers emit as ##Name in comparison context in i6.  This is hardcoded in the compiler.  Consider a mechanism to wrap this in an new overload emitter instead.  That way, anything could go into a switch statement if it could emit an appropriate constant value.
+    alias class verb for object{ 
+        emitter eBool operator == (verb v){ $self == ##v }
+        emitter void _bglGlobalDeclaration() {
+            [$selfsub;
+                $self.perform();
+            ];
+        }
 }
-// array<T> — the Beguile array type, backed by _orArray (port of orUtilArray.h).
-// $self = array name (global) or owning object (property)
+
+//=============================================================================
+// type object
+    extern class object:_bglObject{ //--the base I6 object, declared as external because it is defined in the I6 compiler
+        parentProp parent;           //--initial parent object; emitted as I6 third positional argument
+        attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
+        
+        emitter eBool operator ?() { $self ~= nothing }
+        emitter object operator = (object v){
+            $self = v
+        }
+        emitter eBool operator == (var v){
+            $self == v
+        }
+        emitter eBool operator != (var v){
+            $self ~= v
+        }
+        emitter void give(attribute attr){
+            give $self attr
+        }
+        emitter void ungive(attribute attr){
+            give $self ~attr
+        }
+        emitter bool has(attribute attr){
+            ($self has attr)
+        }
+        emitter bool hasnt(attribute attr){
+            ($self hasnt attr)
+        }
+        emitter void move(object parent){
+            move $self to parent
+        }
+        emitter void remove(){
+            remove $self
+        }
+        emitter object parent(){
+            parent($self)
+        }
+        emitter object child(){
+            child($self)
+        }
+        emitter object sibling(){
+            sibling($self)
+        }
+    }
+    
+    //--Note to self: this pattern works as a mechanism to create c# like getters and setters...  Consider this for future patterns.
+    extern class parentProp{ 
+        emitter parentProp operator = (object v){
+            move $self to v
+        }
+    }
+
+//=============================================================================
+// type array<> NOTE: Should this move to an <array> language extension?
+//-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+// $self = array name (global) or owning object (if property)
 // $prop = 0 (global) or property name (property)
-extern class array {
+extern class array  : _bglObject{
     emitter var operator[](int i) {
         _orArray.get($self, $prop, i)
     }
@@ -214,18 +253,10 @@ extern class array {
         _orArray.getLength($self, $prop)
     }
 }
+extern object _orArray;   
 
-alias class verb for object { //--an I6 action constant; verb identifiers emit as ##Name in comparison context
-    emitter eBool operator == (verb v){ $self == ##v }
-    emitter void _bglGlobalDeclaration() {
-        [$selfsub;
-            $self.perform();
-        ];
-    }
-}
-
-extern object _orArray;  // I6 helper object — port of orUtilArray.h (see beguiLib port, deferred)
-
+//-----------------------------------------------------------------------------
+// TODO: revisit all of this theoretical stuff, when Arrays are dealt with
 //-----------------------------------------------------------------------------
 // bglWorld — iterate over the I6 object tree.
 //
@@ -243,7 +274,7 @@ extern object _orArray;  // I6 helper object — port of orUtilArray.h (see begu
 //   for(object o in bglWorld.getFiltered((object v)-->v.has(light))) { ... }
 //   for(object o in bglWorld.inParent(location)) { ... }
 //-----------------------------------------------------------------------------
-extern class bglWorldType {
+extern class bglWorldType  : _bglObject{
     emitter array getAll() {
         $self.getAll()
     }
@@ -313,20 +344,35 @@ object bglWorld
 ;
 }
 
-//-- _bgl_temp synthesized by the emitter only when a ternary expression is present
-
-//-- The print() routine, and all overloads ----------------
+//=============================================================================
+// Global print statements.  
+// TODO: Thoughts... can these be wrapped into an emitter class?  We can add a 
+//  using concept to allow namespace functionality to be assumed.  So...
+//
+//      system.print(...); 
+//
+//  could translate into...
+//
+//      using system; 
+//      print(...);
+//
+//  thereby avoiding globals.  Will have to think about this, and how the 
+//  standard library globals would align this this
+//
+//-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 emitter void print(var val){ print val; } //the default, which will be used for all data types not defined
 emitter void print(string str){ print (string)str; } 
 emitter void print(char c){ print (char)c; }
 emitter void print(interpolatedStringLiteral v){ v; }
 
-//-- log() — debug-conditional print; compiled out unless DEBUG is #defined ----
+//-- log() — debug-conditional print; never reaches i6 unless DEBUG is #defined 
 emitter void log(stringLiteral msg){ ##ifdef DEBUG print (string)msg; ##endif }
 emitter void log(string msg){ ##ifdef DEBUG print (string)msg; ##endif }
 emitter void log(var msg){ ##ifdef DEBUG print msg; ##endif }
 emitter void log(interpolatedStringLiteral v){ ##ifdef DEBUG v; ##endif }
 
+//=============================================================================
+// style emitter namespace.  TODO: add the rest of these.
 emitter style{
     void italics(){
         style underline;
@@ -335,4 +381,7 @@ emitter style{
         style roman;
     }
 }
+
+//=============================================================================
+// bglInit() is a special, compiler built routine
 extern void bglInit(){}

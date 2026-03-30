@@ -240,10 +240,10 @@ bool Blorb::build(const string& storyFile,
     uint32_t ridxDataSize  = 4 + 12 * resourceCount;
     uint32_t ridxChunkSize = 8 + ridxDataSize; // tag + length + data
 
-    // Compute absolute offsets for each chunk.
-    // Offsets are from byte 12 (start of FORM content, after "FORM <size> IFRS").
-    // Layout: RIdx chunk | other chunks...
-    uint32_t offset = ridxChunkSize; // first non-RIdx chunk starts after RIdx
+    // Compute absolute file offsets for each chunk.
+    // Blorb spec: RIdx offsets are byte positions from the start of the file.
+    // Layout: FORM header (12 bytes) | RIdx chunk | other chunks...
+    uint32_t offset = 12 + ridxChunkSize; // 12 = "FORM" + size + "IFRS"
     // Pad RIdx chunk itself to even
     if(ridxDataSize & 1) offset++;
 
@@ -257,7 +257,7 @@ bool Blorb::build(const string& storyFile,
 
     // Total FORM content size (after "FORM <size> IFRS"):
     // = ridxChunkSize (padded) + sum of all other chunks (padded)
-    uint32_t formContentSize = (ridxDataSize & 1) ? ridxChunkSize + 1 : ridxChunkSize;
+    uint32_t formContentSize = 4 + ((ridxDataSize & 1) ? ridxChunkSize + 1 : ridxChunkSize); // 4 = "IFRS"
     for(auto& info : infos)
         formContentSize += 8 + (uint32_t)pad(info.dataSize);
 

@@ -802,21 +802,21 @@ class Room {
 }
 ```
 
-### `readonly` Members
+### `const` Members
 
-A `readonly` member can be initialised in the object declaration but cannot be reassigned in code. The compiler enforces this at compile time; there is no runtime cost.
+A `const` member can be initialized in the object declaration but cannot be reassigned in code. The compiler enforces this at compile time; there is no runtime cost. Unlike global `const` declarations (which emit as I6 `Constant` with no runtime storage), a `const` class member is still an I6 property — it has runtime storage but the compiler prevents assignment.
 
 ```bgl
 class Config {
-    readonly int maxScore = 100;
-    readonly string title = "My Game";
+    const int maxScore = 100;
+    const string title = "My Game";
 }
 ```
 
-Attempting to assign to a `readonly` member produces a compile-time error:
+Attempting to assign to a `const` member produces a compile-time error:
 
 ```bgl
-config.maxScore = 200;  // error: Cannot assign to readonly member 'maxScore'
+config.maxScore = 200;  // error: Cannot assign to const member 'maxScore'
 ```
 
 ### `static` Members
@@ -835,7 +835,7 @@ class Counter {
 
 Static members are accessed using `ClassName.memberName` syntax, both for reads and writes. Inside a class method, the class name must be used explicitly — bare `instanceCount` would look for an instance property.
 
-`readonly` and `static` are mutually exclusive.
+`const` and `static` are mutually exclusive.
 
 ## 5.4 Member Methods
 
@@ -2230,7 +2230,7 @@ The cast applies to the immediately following identifier or method call. It does
 
 ## 11.6 Lambda Functions
 
-A lambeda function (also called an *anonymous* function) is a function literal that can be assigned to a variable, passed as an argument, or stored as a property. It has no name of its own.
+A lambda function (also called an *anonymous* function) is a function literal that can be assigned to a variable, passed as an argument, or stored as a property. It has no name of its own.
 
 ### 11.6.1 The `func<>` Type
 
