@@ -59,7 +59,7 @@ bglParser::bglParser(){
 
 // Open an input file, process each statement.  This is the entry point to this whole parsing process
 bool bglParser::parseFile(string filename){
-    string absPath = filesystem::absolute(filename).string();
+    string absPath = filesystem::canonical(filesystem::absolute(filename)).string();
     // If this file declared #once, silently skip subsequent inclusions.
     if(onceFiles.count(absPath)) return false;
     // Guard against runaway or circular includes.
@@ -149,7 +149,7 @@ void bglParser::preScanSkipParens(){
 void bglParser::preScanDirective(token tok){
     if(tok.is("#once")){
         auto [stream, name, line, col] = file.getCurrentFileDetail();
-        preScanOnceFiles.insert(filesystem::absolute(name).string());
+        preScanOnceFiles.insert(filesystem::canonical(filesystem::absolute(name)).string());
     } else if(tok.is("#include")){
         token next = file.getToken();
         if(next.isString()){
@@ -208,7 +208,7 @@ void bglParser::preScanDirective(token tok){
 }
 
 void bglParser::preScanFile(string filename){
-    string absPath = filesystem::absolute(filename).string();
+    string absPath = filesystem::canonical(filesystem::absolute(filename)).string();
     if(preScanOnceFiles.count(absPath)) return;
 
     try { file.open(absPath); }
@@ -754,14 +754,46 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             isEmitter=true;
             tok=file.getToken();
         }
-        bool isMemberReadonly = false;
+        bool isMemberConst = false;
         bool isMemberStatic = false;
-        if(tok.is("readonly")) { isMemberReadonly = true; tok = file.getToken(); }
+        if(tok.is("const")) { isMemberConst = true; tok = file.getToken(); }
         if(tok.is("static"))   { isMemberStatic = true;   tok = file.getToken(); }
         // emitter class: 'emitter' keyword is optional — all members are implicitly emitters
         if(newClass.isEmitterClass && !isEmitter) isEmitter = true;
-        returnType=tok.assertDataType();
-        name=file.getToken(eTokenType::identifier);
+        // Check for inherited member type inference: if the token is an identifier (not a data type)
+        // followed by '=' or ';', look up the member name in base classes to infer the type.
+        if(tok.is(eTokenType::identifier) && !tok.isDataType()){
+            token peek = file.peekToken(1);
+            if(peek.is(token::assignment) || peek.is(token::endStatement)){
+                string memberName = tok.value;
+                string inferredType;
+                // Search base classes for a member with this name
+                std::function<void(classDef*)> searchBases = [&](classDef* c){
+                    for(typeMember* m : c->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                            if(vd->name == memberName){ inferredType = vd->type.name; return; }
+                    for(classDef* base : c->baseClasses){ searchBases(base); if(!inferredType.empty()) return; }
+                };
+                for(classDef* base : newClass.baseClasses){ searchBases(base); if(!inferredType.empty()) break; }
+                if(!inferredType.empty()){
+                    // Inferred: treat tok as the member name, use the inherited type
+                    returnType.value = inferredType;
+                    returnType.tokenType = eTokenType::dataType;
+                    name = tok;
+                } else {
+                    tok.assertDataType(); // will error with a meaningful message
+                    returnType = tok;
+                    name = file.getToken(eTokenType::identifier);
+                }
+            } else {
+                tok.assertDataType();
+                returnType = tok;
+                name = file.getToken(eTokenType::identifier);
+            }
+        } else {
+            returnType=tok.assertDataType();
+            name=file.getToken(eTokenType::identifier);
+        }
         if(name.is("operator")){
             isOperator=true;
             token opTok = file.getToken();
@@ -883,15 +915,31 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 parsingError(format("Expected '=' or ';' after member '{0}'", (string)name));
             if(newClass.isAlias && tok.is(token::assignment))
                 parsingError(format("Member '{0}' in an alias class may not have a definition (value); declarations only", (string)name));
-            if(isMemberReadonly && isMemberStatic) parsingError("A member cannot be both 'readonly' and 'static'");
+            if(isMemberConst && isMemberStatic) parsingError("A member cannot be both 'const' and 'static'");
             if(isMemberStatic && isEmitter) parsingError("A static member cannot be an emitter");
             variableDeclaration& varDef=*(new variableDeclaration());
             varDef.name=(string) name;
             varDef.type=languageService.getType((string) returnType);
-            varDef.isReadonly = isMemberReadonly;
+            if(isMemberConst) varDef.isConst = true;
             varDef.isStatic = isMemberStatic;
-            if(tok.is(token::assignment))
-                varDef.declaredExpressionValue = parseExpression(file.getToken(), {token::endStatement}, nullptr, nullptr);
+            if(tok.is(token::assignment)){
+                token first = file.getToken();
+                if(first.is(token::braceOpen)){
+                    // initializer list: { expr, expr, ... }
+                    initializerList* list = new initializerList();
+                    token t2 = file.getToken();
+                    while(!t2.is(token::braceClose) && !t2.is(eTokenType::eof)){
+                        expression* elem = parseExpression(t2, {",", token::braceClose}, nullptr, nullptr);
+                        list->elements.push_back(elem);
+                        if(elem->terminator == token::braceClose) break;
+                        t2 = file.getToken();
+                    }
+                    file.getToken(token::endStatement);
+                    varDef.declaredExpressionValue = list;
+                } else {
+                    varDef.declaredExpressionValue = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+                }
+            }
             if(isExtend){
                 typeMember* existing = nullptr;
                 for(typeMember* m : newClass.members){
@@ -1201,10 +1249,8 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     // array<T> compatibility: array is compatible with array<T> param
     if(argType == "array" && paramType.rfind("array<", 0) == 0) return true;
     if(argType.rfind("array<", 0) == 0 && paramType.rfind("array<", 0) == 0) return true;
-    // Object subtyping: any class instance is compatible with 'object'
-    if(paramType == "object"){
-        if(dynamic_cast<classDef*>(&languageService.getType(argType)) != nullptr) return true;
-    }
+    // Object subtyping is handled by the class hierarchy check below —
+    // only classes that actually inherit from 'object' are compatible with it.
     // Class hierarchy: argType is compatible with paramType if argType inherits from paramType
     {
         classDef* argCls2 = dynamic_cast<classDef*>(&languageService.getType(argType));
@@ -2539,6 +2585,61 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             // for-in shared code (reached from Form 1 and Form 2)
             file.getToken("in");
 
+            // Check for inline initializer list: for(int j in {1, 2, 3})
+            if(file.peekToken(1).is(token::braceOpen)){
+                file.getToken(); // consume '{'
+                vector<expression*> elements;
+                token et = file.getToken();
+                while(!et.is(token::braceClose) && !et.is(eTokenType::eof)){
+                    expression* elem = parseExpression(et, {",", token::braceClose}, func, body);
+                    elements.push_back(elem);
+                    if(elem->terminator == token::braceClose) break;
+                    et = file.getToken();
+                }
+                file.getToken(token::parenClose); // consume ')'
+
+                // Synthesize temp array variable
+                string arrName = format("_bglfia{0}", forInCounter++);
+                variableDeclaration& tmpDecl = *(new variableDeclaration());
+                tmpDecl.name = arrName;
+                tmpDecl.type = languageService.getType("var");
+                if(body != nullptr) body->statements.push_back(&tmpDecl);
+
+                // Generate counter and build forInStatement (elements stored for template emission)
+                string counterName = format("_bglfi{0}", forInCounter++);
+                variableDeclaration& counterDecl = *(new variableDeclaration());
+                counterDecl.name = counterName;
+                counterDecl.type = languageService.getType("var");
+                if(body != nullptr) body->statements.push_back(&counterDecl);
+
+                forInStatement& fi = *(new forInStatement());
+                fi.src = stmtLoc;
+                fi.elementVar = elemVarName;
+                fi.arrayVar   = arrName;
+                fi.counterVar = counterName;
+                fi.inlineElements = elements;
+                fi.body = new statementBlock();
+                functionDef forCtx;
+                if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
+                forCtx.body = fi.body;
+                paramDef& elemParam = *(new paramDef());
+                elemParam.name = elemVarName;
+                elemParam.type = languageService.getType(elemVarType);
+                forCtx.params.push_back(&elemParam);
+                token next = file.getToken();
+                loopDepth++;
+                if(next.is(token::braceOpen)){
+                    openCompileContext(eCompileContext::codeBlock);
+                    while(processNextStatement(forCtx) == false){}
+                    closeCompileContext(eCompileContext::codeBlock);
+                } else {
+                    processStatement(next, forCtx);
+                }
+                loopDepth--;
+                if(body != nullptr) body->statements.push_back(&fi);
+                return false;
+            }
+
             // Check for range for-in: for(int i in 1 to 10) → for(i = 1; i <= 10; i++)
             expression* arrExpr = parseExpression(file.getToken(), {token::parenClose, "to"}, func, body);
             if(arrExpr->terminator == "to"){
@@ -3122,7 +3223,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 for(typeMember* m : ownerAsCls->members)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                         if(vd->isStatic && vd->name == propName){
-                            if(vd->isReadonly) parsingError(format("Cannot assign to readonly member '{0}'", propName));
+                            if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
                             string mangledName = "_bgl_" + ownerAsCls->name + "_" + propName;
                             assignExpr.variableLeft = mangledName;
                             emitterSelfForLhs = mangledName;  // $self should be the mangled global, not the owner
@@ -3137,7 +3238,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     for(typeMember* m : ownerCls->members)
                         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                             if(vd->name == propName){
-                                if(vd->isReadonly) parsingError(format("Cannot assign to readonly member '{0}'", propName));
+                                if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
                                 leftType = &vd->type; break;
                             }
             }
@@ -3155,14 +3256,14 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     for(typeMember* m : currentObject->members)
                         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                             if(vd->name == lhsOriginal){
-                                if(vd->isReadonly) parsingError(format("Cannot assign to readonly member '{0}'", lhsOriginal));
+                                if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
                                 leftType = &vd->type; break;
                             }
                 if(leftType == nullptr && currentClass != nullptr)
                     for(typeMember* m : currentClass->members)
                         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                             if(vd->name == lhsOriginal){
-                                if(vd->isReadonly) parsingError(format("Cannot assign to readonly member '{0}'", lhsOriginal));
+                                if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
                                 leftType = &vd->type; break;
                             }
             }
@@ -3830,6 +3931,14 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             t = file.getToken();
         }
         file.getToken(token::endStatement);
+        // type-check each element against the declared element type
+        if(!elementType.empty() && elementType != "var"){
+            for(size_t i = 0; i < list->elements.size(); i++){
+                expression* elem = list->elements[i];
+                if(!elem->resolvedType.empty() && !isTypeCompatible(elem->resolvedType, elementType))
+                    parsingError(format("Array element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, elementType));
+            }
+        }
         arrDecl.declaredExpressionValue = list;
     }
     // else symbol is endStatement: extern/forward declaration — no size or initializer
@@ -3905,14 +4014,19 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             // consume the trailing semicolon
             file.getToken(token::endStatement);
 
-            // type-check each element: determine expected element type from the class's single-param methods
-            classDef* listClass = dynamic_cast<classDef*>(&languageService.getType((string)dataType));
+            // type-check each element against the declared element type
+            string dtStr = (string)dataType;
             string expectedElemType;
-            if(listClass != nullptr){
-                for(typeMember* m : listClass->members){
-                    if(auto* fd = dynamic_cast<functionDef*>(m))
-                        if(fd->params.size() == 1){ expectedElemType = fd->params[0]->type.name; break; }
-                }
+            // For array<T>, extract T as the expected element type
+            if(dtStr.size() > 6 && dtStr.substr(0, 6) == "array<" && dtStr.back() == '>')
+                expectedElemType = dtStr.substr(6, dtStr.size() - 7);
+            // Fallback: infer from the class's single-param method
+            if(expectedElemType.empty()){
+                classDef* listClass = dynamic_cast<classDef*>(&languageService.getType(dtStr));
+                if(listClass != nullptr)
+                    for(typeMember* m : listClass->members)
+                        if(auto* fd = dynamic_cast<functionDef*>(m))
+                            if(fd->params.size() == 1){ expectedElemType = fd->params[0]->type.name; break; }
             }
             for(size_t i = 0; i < list->elements.size(); i++){
                 expression* elem = list->elements[i];
@@ -4137,6 +4251,153 @@ string bglParser::processBglConditionals(const string& text){
 // Supports: symbol, integer literal, !expr, expr&&expr, expr||expr, (expr),
 //           and comparison operators: == != < > <= >=
 // Precedence (low→high): || → && → ! → comparison → atom
+// (macro system removed — emitters with ##if cover the use case)
+#if 0  // dead code block
+    // On content lines, substitute parameter names with argument values.
+    string body = def.body;
+
+    auto substituteParams = [&](const string& text) -> string {
+        string result = text;
+        for(size_t i = 0; i < def.paramNames.size() && i < args.size(); i++){
+            string from = def.paramNames[i]; // already lowercased
+            string to = args[i];
+            size_t pos = 0;
+            while(pos < result.size()){
+                // Case-insensitive search: build a lowercased window to compare
+                if(pos + from.size() > result.size()) break;
+                string window = result.substr(pos, from.size());
+                transform(window.begin(), window.end(), window.begin(), ::tolower);
+                if(window == from){
+                    bool leftOk  = pos == 0 || !(isalnum(result[pos-1]) || result[pos-1] == '_');
+                    bool rightOk = pos+from.size() >= result.size() || !(isalnum(result[pos+from.size()]) || result[pos+from.size()] == '_');
+                    if(leftOk && rightOk){
+                        // Don't substitute inside quoted strings
+                        bool inQuote = false;
+                        for(size_t q = 0; q < pos; q++)
+                            if(result[q] == '"') inQuote = !inQuote;
+                        if(!inQuote){
+                            result.replace(pos, from.size(), to);
+                            pos += to.size();
+                            continue;
+                        }
+                    }
+                }
+                pos++;
+            }
+        }
+        return result;
+    };
+
+    // Step 2: process #if/#elif/#else/#endif directives; substitute params only on content lines
+    string result;
+    istringstream stream(body);
+    string line;
+    int depth = 0;       // nesting depth of #if blocks
+    bool active = true;  // is the current block active (should its content be included)?
+    bool satisfied = false; // has any branch at the current depth been satisfied?
+    vector<pair<bool,bool>> stack; // saved (active, satisfied) for each nesting level
+
+    while(getline(stream, line)){
+        // trim leading whitespace
+        size_t s = line.find_first_not_of(" \t");
+        string trimmed = (s != string::npos) ? line.substr(s) : "";
+
+        cerr << "  [line: active=" << active << " satisfied=" << satisfied << " trimmed=\"" << trimmed << "\"]" << endl;
+        if(trimmed.rfind("#if ", 0) == 0 || trimmed.rfind("#if\t", 0) == 0){
+            stack.push_back({active, satisfied});
+            if(active){
+                string cond = trimmed.substr(3);
+                cerr << "    [symbols: game_tense=" << definedSymbols["game_tense"] << " past=" << definedSymbols["past"] << " present=" << definedSymbols["present"] << "]" << endl;
+                bool eval = evaluateCondition(cond);
+                cerr << "    [#if cond=\"" << cond << "\" → " << eval << "]" << endl;
+                satisfied = eval;
+                active = eval;
+            } else {
+                satisfied = true; // outer block is inactive, so no branch matters
+                active = false;
+            }
+        }
+        else if(trimmed.rfind("#elif ", 0) == 0 || trimmed.rfind("#elif\t", 0) == 0){
+            if(stack.empty()) continue;
+            bool outerActive = stack.back().first;
+            if(outerActive){
+                if(satisfied){
+                    active = false; // a prior branch was taken
+                } else {
+                    string cond = trimmed.substr(5);
+                    bool eval = evaluateCondition(cond);
+                    active = eval;
+                    if(eval) satisfied = true;
+                }
+            }
+        }
+        else if(trimmed == "#else"){
+            if(stack.empty()) continue;
+            bool outerActive = stack.back().first;
+            if(outerActive){
+                active = !satisfied;
+                satisfied = true;
+            }
+        }
+        else if(trimmed == "#endif"){
+            if(!stack.empty()){
+                active = stack.back().first;
+                satisfied = stack.back().second;
+                stack.pop_back();
+            }
+        }
+        else if(active){
+            string expanded = substituteParams(trimmed);
+            if(!result.empty()) result += " ";
+            result += expanded;
+        }
+    }
+
+    // Step 3: check for nested macro calls in the result and expand them
+    // Simple approach: scan for macroName( patterns
+    for(auto& [mname, mdef] : macros){
+        size_t pos = 0;
+        while((pos = result.find(mname + "(", pos)) != string::npos){
+            // verify word boundary on left
+            if(pos > 0 && (isalnum(result[pos-1]) || result[pos-1] == '_')){ pos++; continue; }
+            // find matching )
+            size_t argStart = pos + mname.size() + 1;
+            int pdepth = 1;
+            size_t p = argStart;
+            while(p < result.size() && pdepth > 0){
+                if(result[p] == '(') pdepth++;
+                else if(result[p] == ')') pdepth--;
+                p++;
+            }
+            if(pdepth != 0) break;
+            // parse args (split by comma at depth 0)
+            string argStr = result.substr(argStart, p - argStart - 1);
+            vector<string> nestedArgs;
+            int ad = 0; string cur;
+            for(char c : argStr){
+                if(c == '(') ad++;
+                else if(c == ')') ad--;
+                else if(c == ',' && ad == 0){ nestedArgs.push_back(cur); cur = ""; continue; }
+                cur += c;
+            }
+            if(!cur.empty()) nestedArgs.push_back(cur);
+            // trim args
+            for(auto& a : nestedArgs){
+                size_t s2 = a.find_first_not_of(" \t"); if(s2 != string::npos) a = a.substr(s2);
+                size_t e = a.find_last_not_of(" \t"); if(e != string::npos) a = a.substr(0, e+1);
+            }
+            string expanded = expandMacro(mname, nestedArgs);
+            result.replace(pos, p - pos, expanded);
+            pos += expanded.size();
+        }
+    }
+
+    // Trim final result
+    { size_t s2 = result.find_first_not_of(" \t\n\r"); if(s2 != string::npos) result = result.substr(s2);
+      size_t e = result.find_last_not_of(" \t\n\r"); if(e != string::npos) result = result.substr(0, e+1); }
+
+#endif  // dead code block
+
 bool bglParser::evaluateCondition(const string& expr){
     struct Eval {
         const string& s;
@@ -4318,7 +4579,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         }    
         case chk("#once"):{
             // Register the current file so that any future #include of it is silently skipped.
-            string curFile = filesystem::absolute(file.currentLocation().file).string();
+            string curFile = filesystem::canonical(filesystem::absolute(file.currentLocation().file)).string();
             onceFiles.insert(curFile);
             return false;
             break;
@@ -4415,7 +4676,8 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         }
         case chk("#define"):{
             token sym = file.getToken(eTokenType::identifier);
-            // optional value on the same line (read raw so we see the newline)
+            // optional value on the same line — skip whitespace after symbol name, then read raw
+            file.bleedSpaces();
             token val = file.getBasicToken(true);
             string valStr;
             if(val.isNot("\n") && val.isNot(eTokenType::eof)){
@@ -4601,12 +4863,18 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             t = file.getToken();
         }
         if(file.peekToken().is(token::endStatement)) file.getToken();
-        classDef* listClass = dynamic_cast<classDef*>(&languageService.getType(typeName));
         string expectedElemType;
-        if(listClass != nullptr)
-            for(typeMember* m : listClass->members)
-                if(auto* fd = dynamic_cast<functionDef*>(m))
-                    if(fd->params.size() == 1){ expectedElemType = fd->params[0]->type.name; break; }
+        // For array<T>, extract T as the expected element type
+        if(typeName.size() > 6 && typeName.substr(0, 6) == "array<" && typeName.back() == '>')
+            expectedElemType = typeName.substr(6, typeName.size() - 7);
+        // Fallback: infer from the class's single-param method
+        if(expectedElemType.empty()){
+            classDef* listClass = dynamic_cast<classDef*>(&languageService.getType(typeName));
+            if(listClass != nullptr)
+                for(typeMember* m : listClass->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m))
+                        if(fd->params.size() == 1){ expectedElemType = fd->params[0]->type.name; break; }
+        }
         for(size_t i = 0; i < list->elements.size(); i++){
             expression* elem = list->elements[i];
             if(elem->resolvedType.empty())
@@ -4781,6 +5049,31 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
         if(tok.is(eTokenType::directive)){
             if(tok.is("#i6")) processI6InlineMember(newObj);
             else parsingError(format("Unsupported directive in object body: '{0}'", tok.value));
+        } else if(tok.is("emitter")){
+            // emitter method inside object body — parse as raw I6 body
+            token retType = file.getToken(eTokenType::dataType);
+            token propName = file.getToken(eTokenType::identifier);
+            if(propName.is("operator")){
+                token opTok = file.getToken();
+                if(opTok.is(token::parenOpen)) propName.value = "operator()";
+                else if(opTok.is("?")) propName.value = "?";
+                else if(opTok.is("switch")) propName.value = "switch";
+                else { opTok.assert(eTokenType::oper); propName.value = opTok.value; }
+            }
+            functionDef& funcDef = *(new functionDef());
+            funcDef.name = (string)propName;
+            funcDef.returnType = languageService.getType((string)retType);
+            funcDef.isEmitter = true;
+            token sym = file.getToken();
+            if(sym.is(token::parenOpen)){
+                processParameterList(funcDef);
+                file.getToken(token::braceOpen);
+            }
+            // else sym is braceOpen already (parameterless emitter)
+            i6Block& rawblock = *(new i6Block());
+            rawblock.i6Body = file.getRawTextThroughClosingBrace();
+            funcDef.body = &rawblock;
+            newObj.members.push_back((typeMember*)&funcDef);
         } else if(tok.value == "array")
             processArrayMember(newObj);
         else if(tok.isDataType())
