@@ -50,3 +50,23 @@ for (: $counter < _orArray.getLength($array, 0) : $counter++) {
 
 [forIn.close]
 }
+
+// ---------------------------------------------------------------------------
+// for-in with inline initializer list:  for(TYPE item in {a, b, c}) { }
+//
+// The compiler emits forInList.push once per element, then forInList.make
+// to produce an array reference, then uses forIn.open/close for the loop.
+//
+//   $element  — one element value to push
+//   $target   — variable to receive the array reference
+//   $count    — number of elements pushed
+//
+// The backing implementation (_orArray.pushStack / makeFromStack) is defined
+// in the orArray I6 library, not here.
+// ---------------------------------------------------------------------------
+
+[forInList.push $element]
+_orArray.pushStack($element);
+
+[forInList.make $target $count]
+$target = _orArray.makeFromStack($count);
