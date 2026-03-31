@@ -1,0 +1,33 @@
+/* test_directives.bgl — preprocessor directives, #startup, #beguilerSettings refs */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+    story = "Directive Test";
+    author = "Tester";
+    release = 42;
+    serial = "260330";
+}
+
+#define FEATURE_A
+#define MAX_ITEMS 10
+
+#startup {
+    ! startup block test
+}
+
+const string story = #beguilerSettings.story;
+const string author = #beguilerSettings.author;
+const int gameRelease = #beguilerSettings.release;
+
+void main(){
+    #if FEATURE_A
+    print("Feature A enabled");
+    #endif
+
+    #if MAX_ITEMS > 5
+    print("Many items");
+    #endif
+
+    print(story);
+}
