@@ -1,0 +1,21 @@
+/* test_interpolation.bgl — string interpolation, print, log */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#define DEBUG
+
+void main(){
+    int score = 42;
+
+    // Basic interpolation with non-string types
+    print($"Score: {score}\n");
+
+    // Escape sequences
+    print($"Use \{braces} for interpolation.\n");
+
+    // Log (debug-conditional)
+    log($"Debug score={score}\n");
+}

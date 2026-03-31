@@ -1,0 +1,27 @@
+/* test_switch_advanced.bgl — switch with comparison guards, operator switch() */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void main(){
+    int val = 7;
+
+    // Comparison guards → if/else if chain
+    switch(val){
+        case 0: print("zero");
+        case 1, 2, 3: print("low");
+        case 4 to 6: print("mid");
+        case 7 to 9: print("high");
+        case > 9: print("over nine");
+        default: print("negative");
+    }
+
+    // Pure range → native I6 switch
+    switch(val){
+        case 1, 2: print("one or two");
+        case 3 to 5: print("three to five");
+        case 6, 7 to 9: print("six or seven to nine");
+    }
+}

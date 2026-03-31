@@ -1,0 +1,19 @@
+/* test_optional_chain.bgl — optional chaining, null coalescing, postfix query */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void main(){
+    // Optional chaining in expression
+    object x = null;
+    object y = x?.parent() ?? x;
+
+    // Postfix query
+    if(x?) print("present");
+    if(!x?) print("absent");
+
+    // Statement-level optional chaining
+    x?.remove();
+}

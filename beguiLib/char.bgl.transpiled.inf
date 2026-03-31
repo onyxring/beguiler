@@ -1,0 +1,197 @@
+!% -G
+!% -E1
+Constant beguiler       = 1000;
+Constant beguilerMajor  = 1;
+Constant beguilerMinor  = 0;
+Constant beguilerPatch  = 0;
+[bglInit;
+];
+
+Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
+
+object bglWorld
+    with getAll [ o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            _bglWorldBuf-->i = o;
+            i++;
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    getFiltered [ pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            if (indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    inParent [ parent pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o in parent) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    ofClass [ cls pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o ofclass cls) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ]
+;
+
+global __vowels = "aeiouAEIOU@:a@:o@:uo@:eo@:io@:y@:A@:O@:U@:E@:I@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~n@~o@~A@~N@~O@ae@AE@et@Et@/o@/O";
+object _orchar
+  with isalpha [c;
+    return (islower(c));
+  ],
+       isnumeric [c;
+    return c>='0' && c<='9';
+  ],
+       isalphanumeric [c;
+    return islower(c) || isupper(c);
+  ],
+       islower [c;
+    if (c>='a' && c<='z') {
+        rtrue;
+    }
+    if ((c>=155&&c<=157)||(c>=164&&c<=166)) {
+        rtrue;
+    }
+    if (c>=169&&c<=174) {
+        rtrue;
+    }
+    if (c>=181&&c<=185) {
+        rtrue;
+    }
+    if (c>=191&&c<=195) {
+        rtrue;
+    }
+    if (c==201) {
+        rtrue;
+    }
+    if (c==203) {
+        rtrue;
+    }
+    if (c>=205&&c<=207) {
+        rtrue;
+    }
+    if (c==211) {
+        rtrue;
+    }
+    if (c==213) {
+        rtrue;
+    }
+    if (c==215) {
+        rtrue;
+    }
+    if (c==216) {
+        rtrue;
+    }
+    if (c==220) {
+        rtrue;
+    }
+    rfalse;
+  ],
+       isupper [c;
+    if (c>='A' && c<='Z') {
+        rtrue;
+    }
+    if ((c>=158&&c<=159)||(c>=167&&c<=168)) {
+        rtrue;
+    }
+    if (c>=175&&c<=180) {
+        rtrue;
+    }
+    if (c>=186&&c<=190) {
+        rtrue;
+    }
+    if (c>=196&&c<=200) {
+        rtrue;
+    }
+    if (c==202) {
+        rtrue;
+    }
+    if (c==204) {
+        rtrue;
+    }
+    if (c>=208&&c<=210) {
+        rtrue;
+    }
+    if (c==212) {
+        rtrue;
+    }
+    if (c==214) {
+        rtrue;
+    }
+    if (c==217) {
+        rtrue;
+    }
+    if (c==218) {
+        rtrue;
+    }
+    if (c==221) {
+        rtrue;
+    }
+    rfalse;
+  ],
+       tolower [c;
+    switch (c) {
+        'A' to 'Z':
+            c = c + 32;
+        202, 204, 212, 214, 221:
+            c = c - 1;
+        217, 218:
+            c = c - 2;
+        158 to 160, 167, 168, 208 to 210:
+            c = c - 3;
+        186 to 190, 196 to 200:
+            c = c - 5;
+        175 to 180:
+            c = c - 6;
+        'a' to 'z':
+            c = c - 32;
+        201, 203, 211, 213, 220:
+            c = c + 1;
+        215, 216:
+            c = c + 2;
+        155 to 157, 164, 165, 205 to 207:
+            c = c + 3;
+        181 to 185, 191 to 195:
+            c = c + 5;
+        169 to 174:
+            c = c + 6;
+    }
+    return c;
+  ],
+       toupper [c;
+    switch (c) {
+        'a' to 'z':
+            c = c - 32;
+        201, 203, 211, 213, 220:
+            c = c + 1;
+        215, 216:
+            c = c + 2;
+        155 to 157, 164, 165, 205 to 207:
+            c = c + 3;
+        181 to 185, 191 to 195:
+            c = c + 5;
+        169 to 174:
+            c = c + 6;
+    }
+    return c;
+  ]
+;

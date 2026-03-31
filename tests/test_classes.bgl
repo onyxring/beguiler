@@ -1,0 +1,60 @@
+/* test_classes.bgl — classes, objects, emitters, inheritance, static, const */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+extern class place : object {
+    string short_name;
+    string description;
+}
+
+class Animal : object {
+    string short_name;
+    string description;
+    const int maxAge = 20;
+    static int count = 0;
+
+    emitter eBool operator == (Animal v){ $self == v }
+
+    void speak(){
+        // method body
+    }
+}
+
+class Dog : Animal {
+    void speak(){
+        // override
+    }
+}
+
+// Alias class
+alias class room for object {}
+
+// Object with methods and emitters
+object myHelper {
+    int value = 0;
+
+    int getValue(){
+        return self.value;
+    }
+
+    emitter int doubled(){
+        $self.value * 2
+    }
+}
+
+// Object with inherited type inference
+place testRoom {
+    short_name = "Test Room";
+    description = "A room for testing.";
+    attributeList attributes = {light};
+}
+
+void main(){
+    Animal.count = Animal.count + 1;
+    // myHelper.getValue() uses self-resolution
+    int v = myHelper.getValue();
+    print(v);
+}
