@@ -52,6 +52,21 @@ for (: $counter < _orArray.getLength($array, 0) : $counter++) {
 }
 
 // ---------------------------------------------------------------------------
+// for-in loop (byte array):  for(char c in byteArray) { }
+//
+// Byte arrays store length at ->0 and elements at ->(i+1).
+// Used automatically when iterating over array<char>.
+// ---------------------------------------------------------------------------
+
+[forIn.openByte $counter $array $element]
+$counter = 0;
+for (: $counter < $array->0 : $counter++) {
+    $element = $array->($counter+1);
+
+[forIn.closeByte]
+}
+
+// ---------------------------------------------------------------------------
 // for-in with inline initializer list:  for(TYPE item in {a, b, c}) { }
 //
 // The compiler emits forInList.push once per element, then forInList.make

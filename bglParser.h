@@ -73,6 +73,14 @@ class bglParser {
         bool processDirective(token, abstractObject& = emptyContainer);
 
         expression* parseExpression(token firstToken, vector<string> terminators, functionDef* func, statementBlock* body);
+
+        // Binary operator resolution in expression context: reads RHS, finds matching operator emitter,
+        // applies conversion fallbacks, inlines emitter body into expr->tokens. Uses getNext/prefetched lambdas from parseExpression.
+        // Returns true if the operator was handled (expr modified); false if not (caller should push raw).
+        bool applyBinaryOperator(expression* expr, const string& opName, classDef* cls,
+            const vector<string>& terminators, int parenDepth,
+            function<token()> getNext, optional<token>& prefetched,
+            functionDef* func, statementBlock* body);
         vector<interpolatedSegment> parseInterpolatedSegments(functionDef* func, statementBlock* body); // parses $"..." segments from the live stream (consumes $ and string)
         typeMember* findMemberInHierarchy(classDef* cls, function<bool(typeMember*)> pred);
         string resolveIdentifierType(string name, functionDef* func, statementBlock* body);
@@ -80,6 +88,19 @@ class bglParser {
         string qualifyIdentifier(string name, functionDef* func, statementBlock* body);
         bool isTypeCompatible(string argType, string paramType);
         void applyArgConversions(vector<expression*>& args, functionDef* fd);
+
+        // Unified method resolution: searches class hierarchy, then objectDef members (with self→currentObject),
+        // handles pre-scan stubs, default params, var fallback. Returns nullptr if not found.
+        struct MethodMatch {
+            functionDef* method = nullptr;      // best matching method, or nullptr
+            functionDef* nameMatch = nullptr;    // first method with matching name (for error context)
+            functionDef* arityMatch = nullptr;   // first method with matching arity (for error context)
+            bool nameFound = false;              // true if any method with the name exists
+        };
+        MethodMatch resolveMethod(const string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args);
+
+        // Replace a pre-scan stub in a member list with the real definition. Returns true if replaced.
+        static bool replaceStubMember(vector<typeMember*>& members, functionDef& newDef);
 
         objectDef* currentObject = nullptr;
         classDef* currentClass = nullptr;    // set when parsing inside a class declaration
