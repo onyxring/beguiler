@@ -1,3 +1,41 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// bglParser.cpp — Beguile language parser
+//
+// Two-pass compilation:
+//   Pass 1 (preScanFile): registers type/class/object/function stubs so that
+//     forward references resolve. Stubs have isPrePassStub=true and are replaced
+//     during pass 2 via replaceStubMember().
+//   Pass 2 (parseFile → processNextStatement): full parse, type checking, AST
+//     construction. Statements are dispatched through processStatement() which
+//     handles keywords (if/for/while/switch/return), assignments, function calls,
+//     and compound operators.
+//
+// Key entry points:
+//   preScanFile()       — pass 1 stub registration
+//   parseFile()         — pass 2 main loop
+//   parseExpression()   — expression parser (900+ lines, section-commented)
+//   processStatement()  — statement-level dispatch
+//
+// Shared helpers (extracted to reduce duplication):
+//   resolveMethod()         — unified method lookup across class hierarchy + objectDef members
+//   replaceStubMember()     — replace pre-scan stub with real definition
+//   applyBinaryOperator()   — binary operator emitter resolution + RHS parsing
+//   findMemberInHierarchy() — recursive class member search
+//   isTypeCompatible()      — type compatibility check with operator/conversion fallbacks
+//   evaluateCondition()     — #if/#elif compile-time condition evaluator
+//
+// parseExpression() branch map (search for these section markers):
+//   PARENS          — open/close paren, lambda detection, cast prefix
+//   LITERALS        — int, string, char, dictionary word
+//   IDENTIFIER      — the largest block: subscript, function call, optional chain,
+//                     dot-access, postfix query, identifier fallback
+//   NULL COALESCING — ??
+//   BINARY OPERATOR — emitter dispatch via applyBinaryOperator()
+//   DOT CHAINING    — .method() / .property on resolved expression
+//   TERNARY         — ? : operator
+//   DIRECTIVE       — #beguilerSettings.property references
+// ═══════════════════════════════════════════════════════════════════════════════
+
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -131,7 +169,8 @@ void bglParser::preScanSkipToSemicolon(){
     while(true){
         token t = file.getToken();
         if(t.is(token::endStatement) || t.is(eTokenType::eof)) return;
-        if(t.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); return; }
+        if(t.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+        // After consuming a {…} block, continue reading to find the ';'
     }
 }
 void bglParser::preScanSkipParens(){
@@ -237,11 +276,68 @@ void bglParser::preScanFile(string filename){
         if(tok.is("replace")) { tok = file.getToken(); }
         if(tok.is("const"))   { tok = file.getToken(); }
 
-        // extend class — skip; full pass will find the existing class and add members
+        // extend class — register new members on the existing class during pre-scan
         if(tok.is("extend")){
-            file.getToken(); // "class"
-            file.getToken(); // class name
-            preScanSkipBody();
+            token classTok = file.getToken(); // "class" or "extern"
+            if(classTok.is("extern")) file.getToken(); // consume "class" after "extern"
+            token nameTok = file.getToken(); // class name
+            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(nameTok.value));
+            if(cls != nullptr){
+                // Skip inheritance clause if present
+                token t = file.getToken();
+                while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken();
+                // Scan body for member stubs
+                t = file.getToken();
+                while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+                    bool memberIsEmitter = false;
+                    bool memberIsReplace = false;
+                    if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
+                    if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
+                    if(t.isDataType()){
+                        token memberName = file.getToken();
+                        if(memberName.is("operator")){
+                            // operator declarations — just skip to body
+                            token opTok = file.getToken();
+                            if(opTok.is(token::parenOpen)){ memberName.value = "operator()"; }
+                            else if(opTok.is(token::bracketOpen)){ file.getToken(); memberName.value = "[]"; token ma = file.getToken(); if(ma.is("=")) memberName.value = "[]="; }
+                            else if(opTok.is("?")) memberName.value = "?";
+                            else if(opTok.is("switch")) memberName.value = "switch";
+                            else memberName.value = opTok.value;
+                        }
+                        token afterName = file.getToken();
+                        if(afterName.is(token::parenOpen)){
+                            // Method: register stub on the class
+                            functionDef& fd = *(new functionDef());
+                            fd.name = memberName.value;
+                            fd.returnType = languageService.getType(t.value);
+                            fd.isEmitter = memberIsEmitter;
+                            fd.isPrePassStub = true;
+                            preScanSkipParens();
+                            token bodyStart = file.getToken();
+                            if(bodyStart.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                            // Add if not already present (or if replace)
+                            bool exists = false;
+                            for(typeMember* m : cls->members)
+                                if(m->name == fd.name){ exists = true; break; }
+                            if(!exists || memberIsReplace) cls->members.push_back(&fd);
+                        } else {
+                            // Property — skip to ;
+                            while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
+                                if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
+                                afterName = file.getToken();
+                            }
+                            if(afterName.is(token::braceClose)) break;
+                        }
+                    } else {
+                        // Unrecognized — skip to ;
+                        while(!t.is(token::endStatement) && !t.is(token::braceClose) && !t.is(eTokenType::eof)) t = file.getToken();
+                        if(t.is(token::braceClose)) break;
+                    }
+                    t = file.getToken();
+                }
+            } else {
+                preScanSkipBody();
+            }
             continue;
         }
 
@@ -315,17 +411,75 @@ void bglParser::preScanFile(string filename){
         }
 
         // object keyword: 'object Name { }' is an objectDef; 'object Name;' / 'extern object Name;' is a variable stub
-        if(tok.is("object")){
+        if(tok.is("object") || (tok.isDataType() && file.peekToken(1).is(eTokenType::identifier)
+             && (file.peekToken(2).is(token::braceOpen) || file.peekToken(2).is(":")))){
+            // Could be: object Name { }, ClassName Name { }, or ClassName Name : Parent { }
+            string classType = tok.value;
             token nameTok = file.getToken();
             string nameStr = nameTok.value;
             transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
             token peek = file.peekToken();
-            if(peek.is(token::braceOpen) || peek.is(":")){ // object Name { } or object Name : Class { }
+            if(peek.is(token::braceOpen) || peek.is(":")){ // object body
+                objectDef* objStub = nullptr;
                 if(!languageService.isObjectType(nameStr)){
-                    objectDef& stub = languageService.registerObject(nameStr, isExtern);
-                    stub.isPrePassStub = true;
+                    objStub = &languageService.registerObject(nameStr, isExtern);
+                    objStub->isPrePassStub = true;
+                } else {
+                    // Already registered — find it
+                    for(typeDef* g : languageService.globals)
+                        if(auto* od = dynamic_cast<objectDef*>(g))
+                            if(od->name == nameStr){ objStub = od; break; }
                 }
-                preScanSkipBody();
+                // Skip inheritance clause to reach '{'
+                { token t = file.getToken();
+                  while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken(); }
+                // Scan body for member stubs: look for type name ( patterns → register as method stubs
+                if(objStub != nullptr){
+                    token t = file.getToken();
+                    while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+                        bool memberIsEmitter = false;
+                        if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
+                        if(t.isDataType()){
+                            token memberName = file.getToken();
+                            token afterName = file.getToken();
+                            if(afterName.is(token::parenOpen)){
+                                // Method: register a stub
+                                functionDef& fd = *(new functionDef());
+                                fd.name = memberName.value;
+                                fd.returnType = languageService.getType(t.value);
+                                fd.isEmitter = memberIsEmitter;
+                                fd.isPrePassStub = true;
+                                // Skip params and body
+                                preScanSkipParens();
+                                token bodyStart = file.getToken();
+                                if(bodyStart.is(token::braceOpen))
+                                    file.getRawTextThroughClosingBrace();
+                                // Only add if not already registered
+                                bool exists = false;
+                                for(typeMember* m : objStub->members)
+                                    if(m->name == fd.name){ exists = true; break; }
+                                if(!exists) objStub->members.push_back(&fd);
+                            } else {
+                                // Property — skip to ; or next member
+                                while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
+                                    if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
+                                    afterName = file.getToken();
+                                }
+                                if(afterName.is(token::braceClose)) break;
+                            }
+                        } else if(t.is("#i6")){
+                            // Raw I6 block inside object — skip
+                            token b = file.getToken();
+                            if(b.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                        } else {
+                            // Inherited member or unknown — skip to ;
+                            preScanSkipToSemicolon();
+                        }
+                        t = file.getToken();
+                    }
+                } else {
+                    file.getRawTextThroughClosingBrace();
+                }
             } else {
                 // extern object Name; or object Name = ...; — variable stub
                 bool alreadyReg = false;
@@ -880,11 +1034,20 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                         if(match){ existing = m; break; }
                     }
                 }
-                if(existing && !isReplace)
+                // If the existing member is a pre-scan stub, replace it silently
+                if(existing){
+                    auto* existFd = dynamic_cast<functionDef*>(existing);
+                    if(existFd && existFd->isPrePassStub){
+                        for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
+                            if(*it==existing){ *it = &funcDef; break; }
+                        existing = &funcDef; // replaced
+                    }
+                }
+                if(existing && existing != &funcDef && !isReplace)
                     parsingError(format("extend class '{0}': member '{1}' is already defined; use 'replace' to override", newClass.name, funcDef.name));
                 if(!existing && isReplace)
                     cerr << format("warning: replace '{0}' in class '{1}': no existing member with that signature\n", funcDef.name, newClass.name);
-                if(existing)
+                if(existing && existing != &funcDef)
                     for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
                         if(*it==existing){ newClass.members.erase(it); break; }
             }
@@ -900,6 +1063,9 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                             bool match = true;
                             for(size_t i=0; i<funcDef.params.size(); i++)
                                 if(fd->params[i]->type.name != funcDef.params[i]->type.name){ match=false; break; }
+                            // operator() can have multiple overloads with different return types (conversion operators)
+                            if(match && funcDef.name == "operator()" && fd->returnType.name != funcDef.returnType.name)
+                                match = false;
                             if(match) parsingError(format("class '{0}': method '{1}' with the same signature is already defined", newClass.name, funcDef.name));
                         }
                     }
@@ -1113,6 +1279,93 @@ typeMember* bglParser::findMemberInHierarchy(classDef* cls, std::function<bool(t
     return nullptr;
 }
 
+// Unified method resolution. Searches:
+//   1. Class hierarchy (via typeName → classDef)
+//   2. ObjectDef instance members (via objPath in globals, or currentObject if objPath is "self")
+// Handles: default parameters, var-fallback, pre-scan stub name-only matching.
+bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args){
+    MethodMatch result;
+    functionDef* varFallback = nullptr;
+
+    // Helper: check one function definition against the method name and args
+    auto checkMethod = [&](functionDef* fd) {
+        if(fd->name != methodName) return;
+        if(!result.nameMatch) result.nameMatch = fd;
+        result.nameFound = true;
+
+        // Pre-scan stubs have no params — match by name only
+        if(fd->isPrePassStub){ result.method = fd; return; }
+
+        // Check arity (accounting for default params)
+        size_t req = 0;
+        for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+        if(args.size() < req || args.size() > fd->params.size()) return;
+        if(!result.arityMatch) result.arityMatch = fd;
+
+        // Check arg types
+        bool argsOk = true, usesVar = false;
+        for(size_t i = 0; i < args.size() && argsOk; i++){
+            string argType = args[i]->resolvedType;
+            string paramType = fd->params[i]->type.name;
+            if(paramType == "var") usesVar = true;
+            else if(!argType.empty() && !isTypeCompatible(argType, paramType)) argsOk = false;
+        }
+        if(!argsOk) return;
+        if(usesVar){ if(!varFallback) varFallback = fd; }
+        else if(!result.method) result.method = fd;
+    };
+
+    // Step 1: search class hierarchy
+    classDef* cls = dynamic_cast<classDef*>(&languageService.getType(typeName));
+    if(cls != nullptr){
+        std::function<void(classDef*)> searchHierarchy = [&](classDef* c){
+            for(typeMember* m : c->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    checkMethod(fd);
+            if(!result.method)
+                for(classDef* base : c->baseClasses){ searchHierarchy(base); if(result.method) return; }
+        };
+        searchHierarchy(cls);
+    }
+    if(!result.method) result.method = varFallback;
+
+    // Step 2: fallback — search objectDef's own members
+    if(!result.method){
+        string lowerPath = objPath;
+        transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
+        objectDef* targetObj = nullptr;
+        if(lowerPath == "self" && currentObject != nullptr)
+            targetObj = currentObject;
+        // Also check when typeName is "object" and we're inside an object body
+        else if(typeName == "object" && currentObject != nullptr)
+            targetObj = currentObject;
+        else
+            for(typeDef* g : languageService.globals)
+                if(g->name == lowerPath)
+                    if(auto* od = dynamic_cast<objectDef*>(g)){ targetObj = od; break; }
+        if(targetObj != nullptr){
+            varFallback = nullptr;
+            for(typeMember* m : targetObj->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    checkMethod(fd);
+            if(!result.method) result.method = varFallback;
+        }
+    }
+
+    return result;
+}
+
+// Replace a pre-scan stub in a member list with the real definition.
+bool bglParser::replaceStubMember(vector<typeMember*>& members, functionDef& newDef){
+    for(auto it = members.begin(); it != members.end(); ++it)
+        if(auto* fd = dynamic_cast<functionDef*>(*it))
+            if(fd->name == newDef.name && fd->isPrePassStub){
+                *it = &newDef;
+                return true;
+            }
+    return false;
+}
+
 std::string bglParser::resolveIdentifierType(std::string name, functionDef* func, statementBlock* body){
     if(name == "null") return "object";
     if(name == "self"){
@@ -1178,6 +1431,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
 //   - not found → "" (caller should report an error)
 std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, statementBlock* body){
     if(name == "null") return "nothing";
+    if(name == "self") return "self";
     // Handle dot-path: qualify the head, then append the tail
     size_t dot = name.find('.');
     if(dot != string::npos){
@@ -1432,6 +1686,177 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
     return segments;
 }
 
+// Binary operator resolution: read RHS, find matching emitter, inline.
+// Returns true if handled; false if the operator should pass through as raw I6.
+bool bglParser::applyBinaryOperator(expression* expr, const string& opName, classDef* cls,
+    const vector<string>& terminators, int parenDepth,
+    function<token()> getNext, optional<token>& prefetched,
+    functionDef* func, statementBlock* body)
+{
+    auto replaceWord = [](string str, const string& from, const string& to) -> string {
+        size_t pos=0;
+        while((pos=str.find(from,pos))!=string::npos){
+            bool lOk = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
+            bool rOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
+            if(lOk && rOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
+            else pos+=from.size();
+        }
+        return str;
+    };
+
+    // Step 1: Read RHS token and determine its type and text
+    bool isLowPrecedence = (opName == "&&" || opName == "||");
+    token rhs = getNext();
+    string rhsType, rhsText;
+
+    if(isLowPrecedence){
+        vector<string> rhsTerminators = terminators;
+        rhsTerminators.push_back("&&");
+        rhsTerminators.push_back("||");
+        if(parenDepth > 0) rhsTerminators.push_back(token::parenClose);
+        expression* rhsExpr = parseExpression(rhs, rhsTerminators, func, body);
+        token terminatorTok; terminatorTok.value = rhsExpr->terminator;
+        prefetched = terminatorTok;
+        rhsType = rhsExpr->resolvedType;
+        rhsText = rhsExpr->text();
+    }
+    else if(rhs.is(eTokenType::integer))         { rhsType="intliteral";    rhsText=rhs.value; }
+    else if(rhs.isString())                      { rhsType="stringliteral"; rhsText=rhs.value; }
+    else if(rhs.is(eTokenType::charLiteral))     { rhsType="charliteral";   rhsText="'"+rhs.value+"'"; }
+    else if(rhs.is(eTokenType::name) && (file.peekToken().is(token::period) || file.peekToken().is(token::parenOpen))){
+        vector<string> rhsTerminators = terminators;
+        if(parenDepth > 0) rhsTerminators.push_back(token::parenClose);
+        expression* rhsExpr = parseExpression(rhs, rhsTerminators, func, body);
+        token terminatorTok; terminatorTok.value = rhsExpr->terminator;
+        prefetched = terminatorTok;
+        rhsType = rhsExpr->resolvedType;
+        rhsText = rhsExpr->text();
+    }
+    else if(rhs.is(eTokenType::name)) {
+        rhsType = resolveIdentifierType(rhs.value, func, body);
+        rhsText = (func != nullptr) ? qualifyIdentifier(rhs.value, func, body) : rhs.value;
+        if(rhsText.empty()) rhsText = rhs.value;
+    }
+    else if(rhs.is(token::parenOpen)){
+        expression* rhsExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
+        rhsText = "(" + rhsExpr->text() + ")";
+    }
+    else if(rhs.is(eTokenType::directive)){
+        if(rhs.value.rfind("##", 0) == 0)
+            parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly.", rhs.value.substr(2)));
+        parsingError(format("Directive '{0}' is not valid in an expression.", rhs.value));
+    }
+
+    // Step 2: Find matching operator emitter
+    functionDef* matchedOp = nullptr;
+    if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* m){
+        auto* opFn = dynamic_cast<functionDef*>(m);
+        if(!opFn || opFn->name != opName) return false;
+        // Pre-scan stubs have no params — match by name only
+        if(opFn->isPrePassStub) return true;
+        return !opFn->params.empty() &&
+               (rhsType.empty() || opFn->params[0]->type.name==rhsType || opFn->params[0]->type.name=="var");
+    })) matchedOp = dynamic_cast<functionDef*>(m);
+
+    // Conversion fallback: LHS has operator() returning rhsType → raw I6 compatible
+    bool useRawFallback = false;
+    if(!matchedOp && !rhsType.empty()){
+        if(findMemberInHierarchy(cls, [&](typeMember* m){
+            auto* opFn = dynamic_cast<functionDef*>(m);
+            return opFn && opFn->name=="operator()" && opFn->params.empty() &&
+                   opFn->isEmitter && opFn->returnType.name==rhsType;
+        })) useRawFallback = true;
+    }
+
+    // RHS conversion fallback: RHS type has operator() → type that LHS has the operator for
+    if(!matchedOp && !useRawFallback && !rhsType.empty()){
+        classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(rhsType));
+        if(rhsCls != nullptr){
+            for(typeMember* rm : rhsCls->members){
+                auto* convFn = dynamic_cast<functionDef*>(rm);
+                if(!convFn || convFn->name != "operator()" || !convFn->params.empty() || !convFn->isEmitter) continue;
+                string convertedType = convFn->returnType.name;
+                if(typeMember* m2 = findMemberInHierarchy(cls, [&](typeMember* m){
+                    auto* opFn = dynamic_cast<functionDef*>(m);
+                    return opFn && opFn->name == opName && !opFn->params.empty() && opFn->params[0]->type.name == convertedType;
+                })){
+                    matchedOp = dynamic_cast<functionDef*>(m2);
+                    if(auto* convBlk = dynamic_cast<i6Block*>(convFn->body)){
+                        string convBody = processBglConditionals(convBlk->i6Body);
+                        size_t s = convBody.find_first_not_of(" \t\n\r"); if(s != string::npos) convBody = convBody.substr(s);
+                        size_t e = convBody.find_last_not_of(" \t\n\r;"); if(e != string::npos) convBody = convBody.substr(0, e+1);
+                        if(!convBody.empty())
+                            rhsText = i6Emitter::replaceWord(convBody, "$self", rhsText);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    if(!matchedOp && !useRawFallback && !rhsType.empty())
+        parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'", opName, cls->name, rhsType));
+
+    if(matchedOp && !matchedOp->returnType.name.empty())
+        expr->resolvedType = matchedOp->returnType.name;
+    else if(matchedOp && matchedOp->isPrePassStub){
+        // Pre-scan stub: no return type info. Infer from operator category.
+        static const vector<string> comparisonOps = {"==","!=","<",">","<=",">=","?="};
+        static const vector<string> logicalOps = {"&&","||"};
+        if(find(comparisonOps.begin(), comparisonOps.end(), opName) != comparisonOps.end()) expr->resolvedType = "ebool";
+        else if(find(logicalOps.begin(), logicalOps.end(), opName) != logicalOps.end()) expr->resolvedType = "ebool";
+    }
+
+    // Step 3: Apply the result
+    i6Block* blk = (matchedOp && matchedOp->isEmitter && !matchedOp->isPrePassStub) ? dynamic_cast<i6Block*>(matchedOp->body) : nullptr;
+    if(useRawFallback){
+        // Comparison operators produce eBool; others preserve the LHS type
+        static const vector<string> comparisonOps = {"==","!=","<",">","<=",">=","?="};
+        if(find(comparisonOps.begin(), comparisonOps.end(), opName) != comparisonOps.end())
+            expr->resolvedType = "ebool";
+        string lhsText = expr->text();
+        expr->tokens.clear();
+        expr->tokens.push_back(lhsText + opName + rhsText);
+    } else if(blk != nullptr){
+        // For identifier RHS, check if it's a function call and collect full text
+        if(rhs.is(eTokenType::name)){
+            token rhsNext = getNext();
+            if(rhsNext.is(token::parenOpen)){
+                rhsText = rhs.value + token::parenOpen;
+                int callDepth = 1;
+                token argTok = file.getToken();
+                while(callDepth > 0){
+                    if(argTok.is(token::parenOpen)) callDepth++;
+                    else if(argTok.is(token::parenClose)){ callDepth--; if(callDepth==0) break; }
+                    rhsText += argTok.value;
+                    if(callDepth > 0) argTok = file.getToken();
+                }
+                rhsText += token::parenClose;
+            } else {
+                prefetched = rhsNext;
+            }
+        }
+        // Separate leading structural tokens (parens) from the actual operand
+        vector<string> prefix;
+        while(expr->tokens.size() > 1 && expr->tokens.front() == "(")
+            { prefix.push_back(expr->tokens.front()); expr->tokens.erase(expr->tokens.begin()); }
+        string lhsText = expr->text();
+        string b = processBglConditionals(blk->i6Body);
+        { size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+          size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1); }
+        b = replaceWord(b, "$self", lhsText);
+        b = replaceWord(b, matchedOp->params[0]->name, rhsText);
+        expr->tokens.clear();
+        for(auto& p : prefix) expr->tokens.push_back(p);
+        expr->tokens.push_back(b);
+    } else {
+        // Non-emitter operator: push op verbatim, put RHS back for normal loop processing
+        expr->tokens.push_back(opName);
+        prefetched = rhs;
+    }
+    return true;
+}
+
 expression* bglParser::parseExpression(token firstToken, std::vector<std::string> terminators, functionDef* func, statementBlock* body){
     expression* expr = new expression();
     int parenDepth = 0;
@@ -1460,9 +1885,14 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         return str;
     };
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // MAIN EXPRESSION LOOP — processes one token per iteration
+    // Branches by token type: parens, literals, identifiers, operators, etc.
+    // ═══════════════════════════════════════════════════════════════════════
     while(true){
         if(isTerminator(cur)){ expr->terminator = cur.value; break; }
 
+        // ─── PARENS: open paren, lambda detection, cast prefix ───────────
         if(cur.is(token::parenOpen)){
             // Lambda detection: () => ... OR (type name, ...) => ...
             {
@@ -1490,10 +1920,12 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             parenDepth++;
             expr->tokens.push_back(cur.value);
         }
+        // ─── CLOSE PAREN ──────────────────────────────────────────────────
         else if(cur.is(token::parenClose)){
             if(parenDepth > 0) parenDepth--;
             expr->tokens.push_back(cur.value);
         }
+        // ─── LITERALS: integer, string, char, dictionary word ─────────────
         else if(cur.is(eTokenType::integer)){
             if(expr->resolvedType.empty()) expr->resolvedType = "intliteral";
             expr->tokens.push_back(cur.value);
@@ -1502,10 +1934,15 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             if(expr->resolvedType.empty()) expr->resolvedType = "stringliteral";
             expr->tokens.push_back(cur.value);
         }
+        // ═── IDENTIFIER: the largest branch ═════════════════════════════
+        // Handles: subscript name[i], function call name(args), optional
+        // chain name?., dot-access name.member/name.method(), postfix
+        // query name?, and plain identifier fallback.
+        // ═════════════════════════════════════════════════════════════════
         else if(cur.is(eTokenType::name)){
             token next = getNext();
+            // ── name[i]: subscript access ──
             if(parenDepth == 0 && next.is(token::bracketOpen)){
-                // Subscript access in expression: identifier[i]
                 string arrName = cur.value;
                 string arrType = resolveIdentifierType(arrName, func, body);
                 classDef* arrCls = dynamic_cast<classDef*>(&languageService.getType(arrType));
@@ -1529,17 +1966,25 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         expr->tokens.push_back(b);
                     }
             }
+            // ── name(args): function call in expression ──
             else if(next.is(token::parenOpen)){
                 // Function call in expression context — emit as plain I6, use return type
                 string retType;
                 for(typeDef* g : languageService.globals)
                     if(auto* fd = dynamic_cast<functionDef*>(g))
                         if(fd->name == cur.value){ retType = fd->returnType.name; break; }
-                if(retType == "void"){
+                // Also check currentObject's own methods (for unqualified self-calls)
+                bool isSelfCall = false;
+                if(retType.empty() && currentObject != nullptr)
+                    for(typeMember* m : currentObject->members)
+                        if(auto* fd = dynamic_cast<functionDef*>(m))
+                            if(fd->name == cur.value){ retType = fd->returnType.name; isSelfCall = true; break; }
+                if(retType.empty() && func != nullptr)
+                    parsingError(format("Undeclared function '{0}'", cur.value));
+                if(retType == "void")
                     parsingError(format("Cannot use void function '{0}' in an expression", cur.value));
-                }
                 if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
-                expr->tokens.push_back(cur.value);
+                expr->tokens.push_back(isSelfCall ? "self." + cur.value : cur.value);
                 expr->tokens.push_back(token::parenOpen);
                 int callDepth = 1;
                 token argTok = file.getToken();
@@ -1565,6 +2010,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 }
                 expr->tokens.push_back(token::parenClose);
             }
+            // ── name?.: optional chaining (expression-level) ──
             else if(parenDepth == 0 && next.is("?.")){
                 // Optional chaining: obj?.member or obj?.method(args)
                 // Lowers to: _bgl_temp = obj; if(nullTest) _bgl_temp = _bgl_temp.member;
@@ -1610,32 +2056,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             if(arg->terminator == token::parenClose) break;
                             firstArg = file.getToken();
                         }
-                        functionDef* method = nullptr;
-                        functionDef* varFallback = nullptr;
-                        if(cls != nullptr){
-                            std::function<void(classDef*)> search = [&](classDef* c){
-                                for(typeMember* m : c->members)
-                                    if(auto* fd = dynamic_cast<functionDef*>(m))
-                                        if(fd->name == methName){
-                                            size_t req = 0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-                                            if(callArgs.size() >= req && callArgs.size() <= fd->params.size()){
-                                                bool argsOk = true, usesVar = false;
-                                                for(size_t i = 0; i < callArgs.size() && argsOk; i++){
-                                                    string pt = fd->params[i]->type.name;
-                                                    if(pt == "var") usesVar = true;
-                                                    else if(!callArgs[i]->resolvedType.empty() && !isTypeCompatible(callArgs[i]->resolvedType, pt)) argsOk = false;
-                                                }
-                                                if(argsOk){
-                                                    if(usesVar){ if(!varFallback) varFallback = fd; }
-                                                    else { method = fd; return; }
-                                                }
-                                            }
-                                        }
-                                if(!method) for(classDef* base : c->baseClasses){ search(base); if(method) return; }
-                            };
-                            search(cls);
-                        }
-                        if(!method) method = varFallback;
+                        MethodMatch mm = resolveMethod(currentType, "_bgl_temp", methName, callArgs);
+                        functionDef* method = mm.method;
                         if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, currentType));
                         if(method->isEmitter){
                             if(auto* blk = dynamic_cast<i6Block*>(method->body)){
@@ -1699,29 +2121,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 if(arg->terminator == token::parenClose) break;
                                 firstArg = file.getToken();
                             }
-                            functionDef* method = nullptr;
-                            functionDef* varFallback2 = nullptr;
-                            if(cls != nullptr){
-                                std::function<void(classDef*)> search2 = [&](classDef* c){
-                                    for(typeMember* m : c->members)
-                                        if(auto* fd = dynamic_cast<functionDef*>(m))
-                                            if(fd->name == methName){
-                                                size_t req=0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-                                                if(callArgs.size() >= req && callArgs.size() <= fd->params.size()){
-                                                    bool argsOk=true, usesVar=false;
-                                                    for(size_t i=0; i<callArgs.size()&&argsOk; i++){
-                                                        string pt=fd->params[i]->type.name;
-                                                        if(pt=="var") usesVar=true;
-                                                        else if(!callArgs[i]->resolvedType.empty()&&!isTypeCompatible(callArgs[i]->resolvedType,pt)) argsOk=false;
-                                                    }
-                                                    if(argsOk){ if(usesVar){if(!varFallback2)varFallback2=fd;} else{method=fd;return;} }
-                                                }
-                                            }
-                                    if(!method) for(classDef* base : c->baseClasses){search2(base);if(method)return;}
-                                };
-                                search2(cls);
-                            }
-                            if(!method) method = varFallback2;
+                            MethodMatch mm2 = resolveMethod(currentType, "_bgl_temp", methName, callArgs);
+                            functionDef* method = mm2.method;
                             if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, currentType));
                             if(method->isEmitter){
                                 if(auto* blk = dynamic_cast<i6Block*>(method->body)){
@@ -1778,6 +2179,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 expr->tokens.push_back("_bgl_temp");
                 if(!currentType.empty()) expr->resolvedType = currentType;
             }
+            // ── name.member: dot-access (property, method call, enum, static) ──
             else if(parenDepth == 0 && next.is(token::period)){
                 token member = file.getToken(eTokenType::identifier);
                 // Read afterMember here so both self and non-self paths share it.
@@ -1821,64 +2223,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             firstArg = file.getToken();
                         }
 
-                        // find best matching method, walking inheritance hierarchy
-                        functionDef* method = nullptr;
-                        functionDef* varFallback = nullptr;
-                        bool nameMatch=false;
-                        std::function<void(classDef*)> searchExprHierarchy = [&](classDef* c){
-                            for(typeMember* m : c->members)
-                                if(auto* fd = dynamic_cast<functionDef*>(m)){
-                                    if(fd->name == methName) nameMatch=true;
-                                    if(fd->name == methName && fd->params.size() == callArgs.size()){
-                                        bool usesVar = false, argsOk = true;
-                                        for(size_t i = 0; i < callArgs.size(); i++){
-                                            string at = callArgs[i]->resolvedType;
-                                            string pt = fd->params[i]->type.name;
-                                            if(pt == "var") usesVar = true;
-                                            else if(!at.empty() && !isTypeCompatible(at, pt)){ argsOk = false; break; }
-                                        }
-                                        if(argsOk){
-                                            if(usesVar){ if(!varFallback) varFallback = fd; }
-                                            else { method = fd; return; }
-                                        }
-                                    }
-                                }
-                            if(method == nullptr)
-                                for(classDef* base : c->baseClasses){ searchExprHierarchy(base); if(method) return; }
-                        };
-                        searchExprHierarchy(cls);
-                        if(method == nullptr) method = varFallback;
-                        // Also search the objectDef's own inline members (for plain object declarations)
+                        MethodMatch mm = resolveMethod(objType, objName, methName, callArgs);
+                        functionDef* method = mm.method;
                         if(method == nullptr){
-                            string lowerObjName = objName;
-                            transform(lowerObjName.begin(), lowerObjName.end(), lowerObjName.begin(), ::tolower);
-                            for(typeDef* g : languageService.globals){
-                                if(g->name != lowerObjName) continue;
-                                if(auto* od = dynamic_cast<objectDef*>(g)){
-                                    for(typeMember* m : od->members)
-                                        if(auto* fd = dynamic_cast<functionDef*>(m)){
-                                            if(fd->name == methName) nameMatch = true;
-                                            if(fd->name == methName && fd->params.size() == callArgs.size()){
-                                                bool usesVar = false, argsOk = true;
-                                                for(size_t i = 0; i < callArgs.size(); i++){
-                                                    string at = callArgs[i]->resolvedType;
-                                                    string pt = fd->params[i]->type.name;
-                                                    if(pt == "var") usesVar = true;
-                                                    else if(!at.empty() && !isTypeCompatible(at, pt)){ argsOk = false; break; }
-                                                }
-                                                if(argsOk){
-                                                    if(usesVar){ if(!varFallback) varFallback = fd; }
-                                                    else { method = fd; }
-                                                }
-                                            }
-                                        }
-                                    break;
-                                }
-                            }
-                            if(method == nullptr) method = varFallback;
-                        }
-                        if(method == nullptr) {
-                            if(nameMatch==false)
+                            if(!mm.nameFound)
                                 parsingError(format("No method '{0}' defined on type '{1}'", methName, objType));
                             else
                                 parsingError(format("No method '{0}' on type '{1}' matches arguments", methName, objType));
@@ -1980,6 +2328,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     }
                 }
             }
+            // ── name?: postfix query operator ──
             else if(next.is("?") && !file.peekToken(1).is(":")){
                 // Postfix query operator: v? — invokes operator?() on the identifier's type
                 string varName = cur.value;
@@ -2022,6 +2371,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 }
             }
         }
+        // ─── NULL COALESCING: ?? ──────────────────────────────────────────
         else if(cur.is(eTokenType::oper) && cur.value == "??" && parenDepth == 0){
             // Null coalescing: lhs ?? fallback
             // Lowers to: _bgl_temp = lhs; if(!(nullTest)) _bgl_temp = fallback;
@@ -2053,110 +2403,14 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             expr->terminator = fallback->terminator;
             break;
         }
+        // ─── BINARY OPERATOR: emitter dispatch via applyBinaryOperator() ─
         else if(cur.is(eTokenType::oper)){
             if(!expr->resolvedType.empty()){
                 classDef* cls = dynamic_cast<classDef*>(&languageService.getType(expr->resolvedType));
                 if(cls != nullptr){
                     string opName = cur.value;
                     // Peek at RHS
-                    token rhs = getNext();
-                    string rhsType, rhsText;
-                    if(rhs.is(eTokenType::integer))         { rhsType="intliteral";    rhsText=rhs.value; }
-                    else if(rhs.isString())                 { rhsType="stringliteral"; rhsText=rhs.value; }
-                    else if(rhs.is(eTokenType::charLiteral)){ rhsType="charliteral";   rhsText="'"+rhs.value+"'"; }
-                    else if(rhs.is(eTokenType::name) && (file.peekToken().is(token::period) || file.peekToken().is(token::parenOpen))){
-                        // Complex RHS (method call chain or function call) — parse as full sub-expression
-                        expression* rhsExpr = parseExpression(rhs, terminators, func, body);
-                        token terminatorTok; terminatorTok.value = rhsExpr->terminator;
-                        prefetched = terminatorTok;  // put back the consumed terminator for the outer loop
-                        rhsType = rhsExpr->resolvedType;
-                        rhsText = rhsExpr->text();
-                    }
-                    else if(rhs.is(eTokenType::name)) {
-                        rhsType=resolveIdentifierType(rhs.value,func,body);
-                        rhsText = (func != nullptr) ? qualifyIdentifier(rhs.value,func,body) : rhs.value;
-                        if(rhsText.empty()){ rhsText=rhs.value; } // fallback; type error will catch it
-                    }
-                    else if(rhs.is(token::parenOpen)){
-                        // Parenthesized RHS expression — parse fully so operator translation runs
-                        expression* rhsExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
-                        rhsText = "(" + rhsExpr->text() + ")";
-                        // rhsType left empty — matchedOp lookup uses empty-rhsType fallback (always matches)
-                    }
-                    else if(rhs.is(eTokenType::directive)){
-                        if(rhs.value.rfind("##", 0) == 0){
-                            string verbName = rhs.value.substr(2);
-                            parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
-                        }
-                        parsingError(format("Directive '{0}' is not valid in an expression.", rhs.value));
-                    }
-
-                    functionDef* matchedOp = nullptr;
-                    if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* m){
-                        auto* opFn = dynamic_cast<functionDef*>(m);
-                        return opFn && opFn->name==opName && !opFn->params.empty() &&
-                               (rhsType.empty() || opFn->params[0]->type.name==rhsType || opFn->params[0]->type.name=="var");
-                    })) matchedOp = dynamic_cast<functionDef*>(m);
-
-                    // Conversion fallback: if no exact operator match, check if LHS class has
-                    // emitter <rhsType> operator(){} (a no-param conversion operator returning rhsType).
-                    // If so, the RHS is I6-compatible with the LHS — emit raw lhsText op rhsText.
-                    bool useRawFallback = false;
-                    if(!matchedOp && !rhsType.empty()){
-                        if(findMemberInHierarchy(cls, [&](typeMember* m){
-                            auto* opFn = dynamic_cast<functionDef*>(m);
-                            return opFn && opFn->name=="operator()" && opFn->params.empty() &&
-                                   opFn->isEmitter && opFn->returnType.name==rhsType;
-                        })) useRawFallback = true;
-                    }
-
-                    if(!matchedOp && !useRawFallback && !rhsType.empty())
-                        parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'", opName, cls->name, rhsType));
-
-                    if(matchedOp) expr->resolvedType = matchedOp->returnType.name;
-
-                    i6Block* blk = (matchedOp && matchedOp->isEmitter) ? dynamic_cast<i6Block*>(matchedOp->body) : nullptr;
-                    if(useRawFallback){
-                        // Conversion fallback: LHS type has operator() returning rhsType, so the
-                        // types are I6-compatible. Emit lhsText op rhsText verbatim.
-                        string lhsText = expr->text();
-                        expr->tokens.clear();
-                        expr->tokens.push_back(lhsText + opName + rhsText);
-                        // rhs already consumed; nothing to put back
-                    } else if(blk != nullptr){
-                        // For identifier RHS, check if it's a function call and collect full text
-                        if(rhs.is(eTokenType::name)){
-                            token rhsNext = getNext();
-                            if(rhsNext.is(token::parenOpen)){
-                                rhsText = rhs.value + token::parenOpen;
-                                int callDepth = 1;
-                                token argTok = file.getToken();
-                                while(callDepth > 0){
-                                    if(argTok.is(token::parenOpen)) callDepth++;
-                                    else if(argTok.is(token::parenClose)){ callDepth--; if(callDepth==0) break; }
-                                    rhsText += argTok.value;
-                                    if(callDepth > 0) argTok = file.getToken();
-                                }
-                                rhsText += token::parenClose;
-                            } else {
-                                prefetched = rhsNext; // not a call; put the peeked token back
-                            }
-                        }
-                        // Inline emitter: substitute $self → LHS, param → RHS, replace token list
-                        string lhsText = expr->text();
-                        string b = processBglConditionals(blk->i6Body);
-                        size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
-                        size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
-                        b = replaceWord(b, "$self", lhsText);
-                        b = replaceWord(b, matchedOp->params[0]->name, rhsText);
-                        expr->tokens.clear();
-                        expr->tokens.push_back(b);
-                        // rhs (and its args if a call) consumed; prefetched set correctly above
-                    } else {
-                        // Non-emitter operator: push op verbatim, put RHS back for normal loop processing
-                        expr->tokens.push_back(opName);
-                        prefetched = rhs;
-                    }
+                    applyBinaryOperator(expr, opName, cls, terminators, parenDepth, getNext, prefetched, func, body);
                 } else {
                     expr->tokens.push_back(cur.value);
                 }
@@ -2212,13 +2466,14 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     }
                 }
                 if(!handled){
-                    expr->tokens.push_back("!");
+                    expr->tokens.push_back("~~");
                     prefetched = operand;
                 }
             } else {
                 expr->tokens.push_back(cur.value);
             }
         }
+        // ─── DICTIONARY WORD LITERAL ─────────────────────────────────────
         else if(cur.is(eTokenType::dictionaryWord)){
             if(expr->resolvedType.empty()) expr->resolvedType = "dictionarywordliteral";
             // Replace apostrophes with ^ for I6 dictionary word encoding
@@ -2228,10 +2483,12 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                          : (w.size() == 1) ? ("'" + w + "//'") : ("'" + w + "'");
             expr->tokens.push_back(i6form);
         }
+        // ─── CHAR LITERAL ─────────────────────────────────────────────────
         else if(cur.is(eTokenType::charLiteral)){
             if(expr->resolvedType.empty()) expr->resolvedType = "charliteral";
             expr->tokens.push_back("'" + cur.value + "'");
         }
+        // ─── DOT CHAINING on resolved expression: .method() or .property ─
         else if(cur.value == "." && !expr->tokens.empty() && !expr->resolvedType.empty()){
             // Chained method call on result of prior expression: <expr>.method(args)
             token member = file.getToken(eTokenType::identifier);
@@ -2262,29 +2519,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 firstArg = file.getToken();
             }
 
-            functionDef* method = nullptr;
-            functionDef* varFallback = nullptr;
-            bool nameMatch = false;
-            for(typeMember* m : cls->members)
-                if(auto* fd = dynamic_cast<functionDef*>(m)){
-                    if(fd->name == methName) nameMatch = true;
-                    if(fd->name == methName && fd->params.size() == callArgs.size()){
-                        bool usesVar = false, argsOk = true;
-                        for(size_t i = 0; i < callArgs.size(); i++){
-                            string at = callArgs[i]->resolvedType;
-                            string pt = fd->params[i]->type.name;
-                            if(pt == "var") usesVar = true;
-                            else if(!at.empty() && !isTypeCompatible(at, pt)){ argsOk = false; break; }
-                        }
-                        if(argsOk){
-                            if(usesVar){ if(!varFallback) varFallback = fd; }
-                            else { method = fd; break; }
-                        }
-                    }
-                }
-            if(method == nullptr) method = varFallback;
+            MethodMatch mm = resolveMethod(chainTypeName, selfText, methName, callArgs);
+            functionDef* method = mm.method;
             if(method == nullptr){
-                if(!nameMatch)
+                if(!mm.nameFound)
                     parsingError(format("No method '{0}' defined on type '{1}'", methName, chainTypeName));
                 else
                     parsingError(format("No method '{0}' on type '{1}' matches arguments", methName, chainTypeName));
@@ -2314,6 +2552,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 expr->tokens.push_back(call);
             }
         }
+        // ─── TERNARY OPERATOR: condition ? trueExpr : falseExpr ──────────
         else if(cur.value == "?" && parenDepth == 0) {
             // Ternary expression: condition already accumulated in expr->tokens.
             // Lower to: if (cond) _bgl_temp = trueExpr; else _bgl_temp = falseExpr;
@@ -2335,6 +2574,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             expr->terminator = falseExpr->terminator;
             break;
         }
+        // ─── DIRECTIVE: #beguilerSettings.property references ─────────────
         else if(cur.is(eTokenType::directive)){
             // ##VerbName is not valid in Beguile expressions; the ## prefix is emitted automatically.
             if(cur.value.rfind("##", 0) == 0){
@@ -2617,6 +2857,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 fi.elementVar = elemVarName;
                 fi.arrayVar   = arrName;
                 fi.counterVar = counterName;
+                fi.isByteArray = (elemVarType == "char");
                 fi.inlineElements = elements;
                 fi.body = new statementBlock();
                 functionDef forCtx;
@@ -2727,6 +2968,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             fi.elementVar = elemVarName;
             fi.arrayVar   = arrName;
             fi.counterVar = counterName;
+            fi.isByteArray = (arrElemType == "char");
             fi.body = new statementBlock();
             functionDef forCtx;
             if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
@@ -3554,79 +3796,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             classDef* cls = dynamic_cast<classDef*>(&languageService.getType(objectType));
             if(cls == nullptr)
                 parsingError(format("Type '{0}' is not a class", objectType));
-            functionDef* method = nullptr;
-            functionDef* varFallback = nullptr;
-            functionDef* nameMatch = nullptr;
-            functionDef* arityMatch = nullptr;
-            // Walk the full class hierarchy for method lookup
-            std::function<void(classDef*)> searchHierarchy = [&](classDef* c){
-                for(typeMember* m : c->members)
-                    if(auto* fd = dynamic_cast<functionDef*>(m))
-                        if(fd->name == methodName){
-                            if(nameMatch == nullptr) nameMatch = fd;
-                            size_t req = 0;
-                            for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-                            if(callStmt.args.size() >= req && callStmt.args.size() <= fd->params.size()){
-                                if(arityMatch == nullptr) arityMatch = fd;
-                                bool argsOk = true;
-                                bool usesVar = false;
-                                for(size_t i = 0; i < callStmt.args.size() && argsOk; i++){
-                                    string argType = callStmt.args[i]->resolvedType;
-                                    string paramType = fd->params[i]->type.name;
-                                    if(paramType == "var") usesVar = true;
-                                    else if(!argType.empty() && !isTypeCompatible(argType, paramType))
-                                        argsOk = false;
-                                }
-                                if(argsOk){
-                                    if(usesVar){ if(varFallback == nullptr) varFallback = fd; }
-                                    else { method = fd; return; }
-                                }
-                            }
-                        }
-                if(method == nullptr)
-                    for(classDef* base : c->baseClasses){ searchHierarchy(base); if(method) return; }
-            };
-            searchHierarchy(cls);
-            if(method == nullptr) method = varFallback;
-            // Also search the objectDef's own inline members (for plain object declarations)
-            if(nameMatch == nullptr){
-                string lowerObjPath = objectPath;
-                transform(lowerObjPath.begin(), lowerObjPath.end(), lowerObjPath.begin(), ::tolower);
-                for(typeDef* g : languageService.globals){
-                    if(g->name != lowerObjPath) continue;
-                    if(auto* od = dynamic_cast<objectDef*>(g)){
-                        for(typeMember* m : od->members)
-                            if(auto* fd = dynamic_cast<functionDef*>(m))
-                                if(fd->name == methodName){
-                                    if(nameMatch == nullptr) nameMatch = fd;
-                                    size_t req = 0;
-                                    for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-                                    if(callStmt.args.size() >= req && callStmt.args.size() <= fd->params.size()){
-                                        if(arityMatch == nullptr) arityMatch = fd;
-                                        bool argsOk = true, usesVar = false;
-                                        for(size_t i = 0; i < callStmt.args.size() && argsOk; i++){
-                                            string argType = callStmt.args[i]->resolvedType;
-                                            string paramType = fd->params[i]->type.name;
-                                            if(paramType == "var") usesVar = true;
-                                            else if(!argType.empty() && !isTypeCompatible(argType, paramType))
-                                                argsOk = false;
-                                        }
-                                        if(argsOk){
-                                            if(usesVar){ if(varFallback == nullptr) varFallback = fd; }
-                                            else { method = fd; }
-                                        }
-                                    }
-                                }
-                        break;
-                    }
-                }
-                if(method == nullptr) method = varFallback;
-            }
-            if(nameMatch == nullptr)
+            MethodMatch mm = resolveMethod(objectType, objectPath, methodName, callStmt.args);
+            functionDef* method = mm.method;
+            if(!mm.nameFound)
                 parsingError(format("No method '{0}' on type '{1}'", methodName, objectType));
-            if(arityMatch == nullptr){
-                size_t req = 0; for(paramDef* p : nameMatch->params) if(p->defaultValue.empty()) req++;
-                size_t tot = nameMatch->params.size();
+            if(mm.nameMatch && !mm.arityMatch){
+                size_t req = 0; for(paramDef* p : mm.nameMatch->params) if(p->defaultValue.empty()) req++;
+                size_t tot = mm.nameMatch->params.size();
                 if(req == tot)
                     parsingError(format("Method '{0}' on type '{1}' expects {2} argument(s), but {3} were supplied",
                         methodName, objectType, tot, callStmt.args.size()));
@@ -3906,9 +4082,10 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
     arrDecl.src = file.currentLocation();
     arrDecl.name = (string)name;
-    arrDecl.type = languageService.getType("array");
+    arrDecl.type = languageService.getType(elementType == "char" ? "bytearray" : "array");
     arrDecl.elementType = elementType;
     arrDecl.isExternal = isExternal;
+    if(elementType == "char") arrDecl.isByteArray = true;
 
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
@@ -3920,6 +4097,15 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         file.getToken(token::bracketClose);
         file.getToken(token::endStatement);
     } else if(symbol.is(token::assignment)) {
+        // Check for string initializer: array<char> name = "text";
+        token firstVal = file.peekToken(1);
+        if(firstVal.is(eTokenType::quote) || firstVal.is(eTokenType::rawQuote)){
+            if(elementType != "char" && elementType != "charliteral")
+                parsingError("String initializer is only valid for array<char>");
+            token strTok = file.getToken();
+            arrDecl.stringInitializer = strTok.value;
+            file.getToken(token::endStatement);
+        } else {
         // array<T> name = { v1, v2, ... };
         file.getToken(token::braceOpen);
         initializerList* list = new initializerList();
@@ -3940,6 +4126,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             }
         }
         arrDecl.declaredExpressionValue = list;
+        } // end brace initializer else
     }
     // else symbol is endStatement: extern/forward declaration — no size or initializer
 
@@ -4970,11 +5157,14 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
     currentFunc = savedFunc;
     if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
         parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
-    for(typeMember* m : obj.members)
-        if(auto* fd = dynamic_cast<functionDef*>(m))
-            if(fd->name == funcDef.name && fd->params.size() == funcDef.params.size())
-                parsingError(format("object '{0}': method '{1}' with the same signature is already defined", obj.name, funcDef.name));
-    obj.members.push_back((typeMember*)&funcDef);
+    if(!replaceStubMember(obj.members, funcDef)){
+        // No stub — check for duplicates
+        for(typeMember* m : obj.members)
+            if(auto* fd = dynamic_cast<functionDef*>(m))
+                if(fd->name == funcDef.name && fd->params.size() == funcDef.params.size())
+                    parsingError(format("object '{0}': method '{1}' with the same signature is already defined", obj.name, funcDef.name));
+        obj.members.push_back((typeMember*)&funcDef);
+    }
 }
 
 void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue){
@@ -5034,7 +5224,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     // Resolve objectClass: prefer explicit ': ClassName' annotation, otherwise use the
     // declared type token (e.g. 'worldObject foyer { }' where worldObject is a classDef)
     string resolvedClassName = !className.empty() ? className : objectType.value;
-    if(!resolvedClassName.empty() && resolvedClassName != "object"){
+    if(!resolvedClassName.empty()){
         if(classDef* cls = dynamic_cast<classDef*>(&languageService.getType(resolvedClassName)))
             newObj.objectClass = cls;
         else if(!className.empty())
@@ -5073,7 +5263,8 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
             i6Block& rawblock = *(new i6Block());
             rawblock.i6Body = file.getRawTextThroughClosingBrace();
             funcDef.body = &rawblock;
-            newObj.members.push_back((typeMember*)&funcDef);
+            if(!replaceStubMember(newObj.members, funcDef))
+                newObj.members.push_back((typeMember*)&funcDef);
         } else if(tok.value == "array")
             processArrayMember(newObj);
         else if(tok.isDataType())

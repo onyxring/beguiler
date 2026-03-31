@@ -1,0 +1,22 @@
+/* test_named_params.bgl — named parameters at call sites */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void greet(string name, int times = 1){
+    print(name);
+}
+
+void spawn(string name, int x, int y, bool hostile = false){
+    print(name);
+}
+
+void main(){
+    // Named parameters
+    greet(name: "Jim", times: 3);
+
+    // Mixed positional and named
+    spawn("goblin", y: 20, x: 10, hostile: true);
+}

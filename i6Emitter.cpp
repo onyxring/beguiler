@@ -767,13 +767,15 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             applyTemplate("forInList.make",
                 {{"target", spillName(fi->arrayVar)}, {"count", to_string(fi->inlineElements.size())}}, indent);
         }
-        applyTemplate("forIn.open",
+        string openTemplate  = fi->isByteArray ? "forIn.openByte"  : "forIn.open";
+        string closeTemplate = fi->isByteArray ? "forIn.closeByte" : "forIn.close";
+        applyTemplate(openTemplate,
             {{"counter", spillName(fi->counterVar)}, {"array", spillName(fi->arrayVar)}, {"element", spillName(fi->elementVar)}},
             indent);
         if(fi->body != nullptr)
             for(statement* s : fi->body->statements)
                 emitStatement(s, indent + "    ");
-        applyTemplate("forIn.close", {}, indent);
+        applyTemplate(closeTemplate, {}, indent);
     }
     else if(typeid(*stmt) == typeid(switchStatement)){
         switchStatement* sw = (switchStatement*)stmt;
@@ -983,15 +985,26 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
 
     // Array declarations emit as I6 Array directives
     if(auto* arr = dynamic_cast<arrayDeclaration*>(varNode)){
-        if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-            // Initialized: Array name --> count v1 v2 ...
-            // Count is auto-prepended (table semantics: element 0 holds length)
-            out << format("array {0} --> {1}", arr->name, list->elements.size());
-            for(expression* elem : list->elements) out << " " << elem->text();
-            out << ";\n";
+        if(!arr->stringInitializer.empty()){
+            // String initializer: Array name string "text";
+            out << format("Array {0} string {1};\n", arr->name, arr->stringInitializer);
+        } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+            if(arr->isByteArray){
+                // Byte array: Array name -> count v1 v2 ...
+                out << format("Array {0} -> {1}", arr->name, list->elements.size());
+                for(expression* elem : list->elements) out << " " << elem->text();
+                out << ";\n";
+            } else {
+                // Word array: Array name --> count v1 v2 ...
+                out << format("array {0} --> {1}", arr->name, list->elements.size());
+                for(expression* elem : list->elements) out << " " << elem->text();
+                out << ";\n";
+            }
         } else if(arr->arraySize > 0) {
-            // Sized: Array name table N  (I6 sets element 0 = N automatically)
-            out << format("array {0} table {1};\n", arr->name, arr->arraySize);
+            if(arr->isByteArray)
+                out << format("Array {0} -> {1};\n", arr->name, arr->arraySize);
+            else
+                out << format("array {0} table {1};\n", arr->name, arr->arraySize);
         }
         return;
     }

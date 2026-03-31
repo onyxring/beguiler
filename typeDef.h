@@ -266,6 +266,7 @@ class forInStatement : public statement {
         string elementVar;   // iteration variable name, e.g. "item"
         string arrayVar;     // array name, e.g. "scores"
         string counterVar;   // unique index variable, e.g. "_bglfi0"
+        bool isByteArray = false; // true when iterating array<char> — use byte for-in template
         statementBlock* body = nullptr;
         vector<expression*> inlineElements; // non-empty when source is {a, b, c} initializer list
 };
@@ -280,8 +281,10 @@ class i6RawNode : public typeDef, public statement, public typeMember {
 // An array<T> declaration — global emits as I6 Array directive; property emits inline values
 class arrayDeclaration : public variableDeclaration {
     public:
-        string elementType;  // the T in array<T>
-        int arraySize = 0;   // N in array<T> name[N]; 0 if list-initialized
+        string elementType;          // the T in array<T>
+        int arraySize = 0;           // N in array<T> name[N]; 0 if list-initialized
+        bool isByteArray = false;    // true for array<char> — emit with -> instead of -->
+        string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
 };
 
 // a single grammar line: verbWord is the player's trigger word; patternTokens are I6-ready strings

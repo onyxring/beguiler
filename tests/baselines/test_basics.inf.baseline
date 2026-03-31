@@ -1,0 +1,97 @@
+!% -v5
+!% -E1
+Constant beguiler       = 1000;
+Constant beguilerMajor  = 1;
+Constant beguilerMinor  = 0;
+Constant beguilerPatch  = 0;
+Release 1;
+[bglInit;
+];
+
+Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
+
+object bglWorld
+    with getAll [ o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            _bglWorldBuf-->i = o;
+            i++;
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    getFiltered [ pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            if (indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    inParent [ parent pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o in parent) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    ofClass [ cls pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o ofclass cls) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ]
+;
+
+constant title = "Test";
+[main a b c s ch flag i j;
+    a=5;
+    b=10;
+    c=a + b;
+    s="hello";
+    ch='x';
+    flag=true;
+    a = a + 3;
+    b = b - 1;
+    c = c * 2;
+    a++;
+    b--;
+    if (flag) {
+        print (string)"yes";
+    }
+    else {
+        print (string)"no";
+    }
+    for (i = 0 : i < 10 : i ++) {
+        print i;
+    }
+    while (a > 0) {
+        a--;
+    }
+    switch (c) {
+        0:
+            print (string)"zero";
+        1, 2, 3:
+            print (string)"low";
+        4 to 10:
+            print (string)"mid";
+        default:
+            print (string)"other";
+    }
+    for (j = 1 : j<=5 : j++) {
+        print j;
+    }
+    print (string)title;
+];
+constant max = 100;
