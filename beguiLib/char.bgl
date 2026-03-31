@@ -43,13 +43,13 @@
 array<char> __vowels = "aeiouAEIOU"; //@:a@:o@:uo@:eo@:io@:y@:A@:O@:U@:E@:I@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~n@~o@~A@~N@~O@ae@AE@et@Et@/o@/O";
 object _orChar{
     bool isAlpha(char c){ 
-         return (isLower(c));
+        return isLower(c) || isUpper(c);
  	}
     bool isNumeric(char c){
 	 	return c>='0' && c<='9'; 
 	}
     bool isAlphaNumeric(char c){
-	 	return isLower(c) || isUpper(c);
+	 	return isAlpha(c) || isNumeric(c);
 	}
     bool isLower(char c){
         if(c>='a' && c<='z') rtrue; 
@@ -86,7 +86,7 @@ object _orChar{
         rfalse;
     }
     bool isVowel(char c){
-        for(char v in __vowels) if(v==c)rtrue;
+        for(char v in __vowels) if(v==c) rtrue;
         rfalse;
     }
     bool isConsonant(char c){
@@ -95,30 +95,23 @@ object _orChar{
     }		
     char toLower(char c){
 		switch (c) {
-			case 'A' to 'Z':                            c += 32;
-			case 202, 204, 212, 214, 221:               c -= 1;
-			case 217, 218:                              c -= 2;
-            case 158 to 160, 167, 168, 208 to 210:      c -= 3;
-			case 186 to 190, 196 to 200:                c -= 5 ;
-            case 175 to 180:                            c -= 6;
-        
-            case 'a' to 'z':                            c -= 32;
-			case 201, 203, 211, 213, 220:               c += 1;
-			case 215, 216:                              c += 2;
-			case 155 to 157, 164, 165, 205 to 207:      c += 3;
-			case 181 to 185, 191 to 195:                c += 5 ;
-			case 169 to 174:                            c += 6;
+			case 'A' to 'Z':                            return c + 32;
+			case 202, 204, 212, 214, 221:               return c - 1;
+			case 217, 218:                              return c - 2;
+            case 158 to 160, 167, 168, 208 to 210:      return c - 3;
+			case 186 to 190, 196 to 200:                return c - 5;
+            case 175 to 180:                            return c - 6;
 		}
 		return c;
 	}
     char toUpper(char c){
 		switch (c) {
-			case 'a' to 'z':                            c -= 32;
-			case 201, 203, 211, 213, 220:               c += 1;
-			case 215, 216:                              c += 2;
-			case 155 to 157, 164, 165, 205 to 207:      c += 3;
-			case 181 to 185, 191 to 195:                c += 5 ;
-			case 169 to 174:                            c += 6;
+			case 'a' to 'z':                            return c - 32;
+			case 201, 203, 211, 213, 220:               return c + 1;
+			case 215, 216:                              return c + 2;
+			case 155 to 157, 164, 165, 205 to 207:      return c + 3;
+			case 181 to 185, 191 to 195:                return c + 5;
+			case 169 to 174:                            return c + 6;
 		}
 		return c;
 	}
