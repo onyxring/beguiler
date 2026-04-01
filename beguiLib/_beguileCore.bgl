@@ -51,12 +51,11 @@
         false
     }
     extern class bool : _bglObject{ //--base type bool, declared as external because it wraps the type-less I6 type
-        emitter void print(){
+        emitter void print(){  //TODO: shouldn't this be a replace?
             if($self == true)
                 print "true";
             else
                 print "false";
-
         }
         emitter eBool operator == (bool v){ $self == v }
         emitter eBool operator == (eBool v){ $self == v }
@@ -80,81 +79,87 @@
     extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
         emitter char operator(){}
         emitter int operator = (int v){ $self=v; }
-        emitter int operator = (char v){ $self=v; }
+        //emitter int operator = (char v){ $self=v; } //disallow.  int c = 'c';
         
         // Arithmetic
         emitter int operator + (int v){ $self + v }
-        emitter int operator + (intLiteral v){ $self + v }
+        //emitter int operator + (intLiteral v){ $self + v } //TODO: I think all the literals can go away now that intLiteral has a conversion operator.  Confirm this.
         emitter int operator - (int v){ $self - v }
-        emitter int operator - (intLiteral v){ $self - v }
+        //emitter int operator - (intLiteral v){ $self - v }
         emitter int operator * (int v){ $self * v }
-        emitter int operator * (intLiteral v){ $self * v }
+        //emitter int operator * (intLiteral v){ $self * v }
         emitter int operator / (int v){ $self / v }
-        emitter int operator / (intLiteral v){ $self / v }
+        //emitter int operator / (intLiteral v){ $self / v }
         emitter int operator % (int v){ $self % v }
-        emitter int operator % (intLiteral v){ $self % v }
+        //emitter int operator % (intLiteral v){ $self % v }
         
         // Comparison
-        emitter eBool operator == (char v){ $self == v } //TODO: do we need all these char operators?
         emitter eBool operator == (int v){ $self == v }
-        emitter eBool operator == (intLiteral v){ $self == v }
         
-        emitter eBool operator != (char v){ $self ~= v }
+        //TODO: do we need these char operators?  I'm not convinced.  intA == 'a' isn't as useful as as charA == 34.
+        //emitter eBool operator == (char v){ $self == v } // intA == 'a'
+        
+        //emitter eBool operator == (intLiteral v){ $self == v } //TODO: intliteral conversion op should cover this
+        
+        //emitter eBool operator != (char v){ $self ~= v } //intA != 'a'
         emitter eBool operator != (int v){ $self ~= v }
-        emitter eBool operator != (intLiteral v){ $self ~= v }
+        //emitter eBool operator != (intLiteral v){ $self ~= v } //TODO: intliteral conversion op should cover this
         
-        emitter eBool operator < (char v){ $self < v }
+        //emitter eBool operator < (char v){ $self < v }// intA < 'a'
         emitter eBool operator < (int v){ $self < v }
-        emitter eBool operator < (intLiteral v){ $self < v }
+        //emitter eBool operator < (intLiteral v){ $self < v } //TODO: intliteral conversion op should cover this
         
-        emitter eBool operator <= (char v){ $self <= v }
+        //emitter eBool operator <= (char v){ $self <= v }
         emitter eBool operator <= (int v){ $self <= v }
-        emitter eBool operator <= (intLiteral v){ $self <= v }
+        //emitter eBool operator <= (intLiteral v){ $self <= v } //TODO: intliteral conversion op should cover this
         
-        emitter eBool operator > (char v){ $self > v }
+        //emitter eBool operator > (char v){ $self > v }
         emitter eBool operator > (int v){ $self > v }
-        emitter eBool operator > (intLiteral v){ $self > v }
+        //emitter eBool operator > (intLiteral v){ $self > v } //TODO: intliteral conversion op should cover this
         
-        emitter eBool operator >= (char v){ $self >= v }
+        //emitter eBool operator >= (char v){ $self >= v }
         emitter eBool operator >= (int v){ $self >= v }
-        emitter eBool operator >= (intLiteral v){ $self >= v }
+        //emitter eBool operator >= (intLiteral v){ $self >= v } //TODO: intliteral conversion op should cover this
     }
     
 //=============================================================================
 // type char
     extern class charLiteral:_bglObject{    
+        emitter char operator(){}                   //implicitly converts to char type
         emitter void print(){ print (char)$self; }  //override: print as character, not numeric code
-        emitter char operator(){}                   //implicitly converts to char
     }
     extern class char : _bglObject{ 
-        emitter int operator(){}                    //converts to an int 
+        //emitter int operator(){}                    //no.  int i = 'a'; should not compile
         
-        emitter bool operator == (char c) { $self==c }
-        emitter bool operator == (int c) { $self==c }
+        emitter char operator = (char c){ $self=c; }  
+        //emitter char operator = (int v){ $self=v; } //we avoid:  char c = 45;  Enforce: char c ='\45'; 
         
-        emitter char operator = (char v){ $self=v; }
-        emitter char operator = (int v){ $self=v; }
+        emitter bool operator == (char c){ $self==c } //note that we do allow for comparisons to int though
+        emitter bool operator <= (char c){ $self<=c }
+        emitter bool operator >= (char c){ $self>=c }
         
-        emitter bool operator <= (char v){ $self<=v }
-        emitter bool operator >= (char v){ $self>=v }
-        emitter bool operator <= (int v){ $self<=v }
-        emitter bool operator >= (int v){ $self>=v }
+        emitter bool operator == (int i){ $self==i } 
+        emitter bool operator <= (int i){ $self<=i }  
+        emitter bool operator >= (int i){ $self>=i }
             
-        emitter void print(){ print (char)$self; }
+        emitter void print(){ print (char)$self; } //TODO: shouldn't this be a replace, since it inherits from _bglObject which implements print?  We don't currently enforce this on object instances, nor should we.  So this would be a class-only requirement.
     }
 
 //=============================================================================
 // type string
     extern class stringLiteral:_bglObject{
-        emitter void print(){ print (string)$self; } //--override: print as string, not numeric code  
-    }   
-    extern class interpolatedStringLiteral:_bglObject{} 
-
+        emiter string operator(){}
+        emitter void print(){ print (string)$self; } //--override: print as string, not numeric code  (TODO: shouldn't this line require replace?)
+    }       
+    
+    extern class interpolatedStringLiteral:_bglObject{} //interpolatedStrings are smoke and mirrors.  All functionality is implemented by the compiler. TODO: _bglObject has print which I don't think works here.  Either remove this inheritance, or make @"{actor} was here".print(); a thing, as it is for other literals.
+    
     extern class string : _bglObject{
         emitter string operator = (stringLiteral v){
-            $self=v;
+            $self=v
         }
-        emitter stringLiteral operator(){} //--declares I6 compatibility with stringLiteral
+        emitter void print(){ print (string)$self; } //--override: print as string, not numeric code  (shouldn't this enforce replace?)
+        //emitter stringLiteral operator(){} //--declares I6 compatibility with stringLiteral  //TODO: I'm not sure this gives us anything.  If stringLiteral converts to string, then all things accepting string would accept literalls.  We'd never assign a string to a literal, so I don't think this is right.
     }
 
 //=============================================================================
