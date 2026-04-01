@@ -1,0 +1,4 @@
+/* test arity check in statement context */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void greet(string name, int count){ }
+void main(){ greet("hi"); }
