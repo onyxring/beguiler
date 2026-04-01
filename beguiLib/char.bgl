@@ -1,6 +1,5 @@
 //-----------------------------------------------------------------------------
 // char.bgl - A standard Beguile extension for extended character functionality.
-//	Borrows heavily from the orLibrary's orUtilChar extension.
 //
 //
 // Usage:
@@ -35,38 +34,42 @@ object _orChar{
     bool isAlphaNumeric(char c){
 	 	return isAlpha(c) || isNumeric(c);
 	}
-    bool isLower(char c){
+    
+	//TODO: use actual diacrital shortcuts instead of ascii escapes
+	//TODO: model these with a switch statement
+	bool isLower(char c){
         if(c>='a' && c<='z') rtrue; 
         
-        if((c>=155 && c<=157) || (c>=164 && c<=166)) rtrue; //diaeresis +3 (except for 166 which does not convert)
-
-        if(c>=169 && c<=174) rtrue; //acute +6
-        if(c>=181 && c<=185) rtrue; //grave +5
-        if(c>=191 && c<=195) rtrue; //circumflex +5
-        if(c==201) rtrue; // +1 angstrom
-        if(c==203) rtrue; // +1 slashed o				
-        if(c>=205 && c<=207) rtrue; //tilde +3
-        if(c==211) rtrue; // +1 ae
-        if(c==213) rtrue; // +1 cedilla
-        if(c==215) rtrue; // +2 th
-        if(c==216) rtrue; // +2 eth
-        if(c==220) rtrue; // +1 oe
+        if((c>='\155' && c<='\157') || (c>='\164' && c<='\166')) rtrue; //diaeresis +3 (except for 166 which does not convert)
+        if(c>='\169' && c<='\174') rtrue; //acute +6
+        if(c>='\181' && c<='\185') rtrue; //grave +5
+        if(c>='\191' && c<='\195') rtrue; //circumflex +5
+        if(c=='\201') rtrue; // +1 angstrom
+        if(c=='\203') rtrue; // +1 slashed o				
+        if(c>='\205' && c<='\207') rtrue; //tilde +3
+        if(c=='\211') rtrue; // +1 ae
+        if(c=='\213') rtrue; // +1 cedilla
+        if(c=='\215') rtrue; // +2 th
+        if(c=='\216') rtrue; // +2 eth
+        if(c=='\220') rtrue; // +1 oe
         rfalse;
     }
+	//TODO: use actual diacrital shortcuts instead of ascii escapes
+	//TODO: model these with a switch statement
 	bool isUpper(char c){
         if(c>='A' && c<='Z') rtrue; 
-        if((c>=158 && c<=159) || (c>=167 && c<=168)) rtrue; //diaeresis
-        if(c>=175 && c<=180) rtrue; //acute 
-        if(c>=186 && c<=190) rtrue; //grave 
-        if(c>=196 && c<=200) rtrue; //circumflex 
-        if(c==202) rtrue; //angstrom
-        if(c==204) rtrue; //slashed o				
-        if(c>=208 && c<=210) rtrue; //tilde 
-        if(c==212) rtrue; //ae
-        if(c==214) rtrue; //cedilla
-        if(c==217) rtrue; //th
-        if(c==218) rtrue; //eth
-        if(c==221) rtrue; //oe
+        if((c>='\158' && c<='\159') || (c>='\167' && c<='\168')) rtrue; //diaeresis
+        if(c>='\175' && c<='\180') rtrue; //acute 
+        if(c>='\186' && c<='\190') rtrue; //grave 
+        if(c>='\196' && c<='\200') rtrue; //circumflex 
+        if(c=='\202') rtrue; //angstrom
+        if(c=='\204') rtrue; //slashed o				
+        if(c>='\208' && c<='\210') rtrue; //tilde 
+        if(c=='\212') rtrue; //ae
+        if(c=='\214') rtrue; //cedilla
+        if(c=='\217') rtrue; //th
+        if(c=='\218') rtrue; //eth
+        if(c=='\221') rtrue; //oe
         rfalse;
     }
     bool isVowel(char c){
@@ -79,23 +82,23 @@ object _orChar{
     }		
     char toLower(char c){
 		switch (c) {
-			case 'A' to 'Z':                            return c + 32;
-			case 202, 204, 212, 214, 221:               return c - 1;
-			case 217, 218:                              return c - 2;
-            case 158 to 160, 167, 168, 208 to 210:      return c - 3;
-			case 186 to 190, 196 to 200:                return c - 5;
-            case 175 to 180:                            return c - 6;
+			case 'A' to 'Z':                            			return c + 32;
+			case '\202', '\204', '\212', '\214', '\221':            return c - 1;
+			case '\217', '\218':                              		return c - 2;
+            case '\158' to '\160', '\167', '\168', '\208' to '\210':return c - 3;
+			case '\186' to '\190, '\196' to '\200':                	return c - 5;
+            case '\175' to '\180':                            		return c - 6;
 		}
 		return c;
 	}
     char toUpper(char c){
 		switch (c) {
-			case 'a' to 'z':                            return c - 32;
-			case 201, 203, 211, 213, 220:               return c + 1;
-			case 215, 216:                              return c + 2;
-			case 155 to 157, 164, 165, 205 to 207:      return c + 3;
-			case 181 to 185, 191 to 195:                return c + 5;
-			case 169 to 174:                            return c + 6;
+			case 'a' to 'z':                           				return c - 32;
+			case '\201', '\203', '\211', '\213', '\220':			return c + 1;
+			case '\215', '\216':                        			return c + 2;
+			case '\155' to '\157', '\164', '\165', '\205' to '\207':return c + 3;
+			case '\181' to '\185', '\191' to '\195':	         	return c + 5;
+			case '\169' to '\174':			                        return c + 6;
 		}
 		return c;
 	}
@@ -111,6 +114,9 @@ extend class char {
     emitter bool isVowel()          { _orChar.isVowel($self) }
     emitter bool isConsonant()      { _orChar.isConsonant($self) }
     emitter bool isWhitespace()     { _orChar.isWhitespace($self) }
+	
+	emitter bool operator =~ (char c){ _orChar.toLower($self)==_orChar.toLower(c)} //TODO: =~ operator needs to be added, I believe 
 
-    
+	//NOTE: other comparisons are part of the char class declared in the core file
+	
 }
