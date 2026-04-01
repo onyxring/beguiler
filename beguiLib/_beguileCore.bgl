@@ -134,13 +134,20 @@
         emitter char operator = (char c){ $self=c; }  
         //emitter char operator = (int v){ $self=v; } //we avoid:  char c = 45;  Enforce: char c ='\45'; 
         
-        emitter bool operator == (char c){ $self==c } //note that we do allow for comparisons to int though
-        emitter bool operator <= (char c){ $self<=c }
-        emitter bool operator >= (char c){ $self>=c }
-        
-        emitter bool operator == (int i){ $self==i } 
-        emitter bool operator <= (int i){ $self<=i }  
-        emitter bool operator >= (int i){ $self>=i }
+        emiter bool operator == (char c){ $self==c} 
+    	emiter bool operator != (char c){ $self~=c} 
+    	emiter bool operator < (char c)	{ $self<c} 
+    	emiter bool operator > (char c)	{ $self>c} 
+    	emiter bool operator <= (char c){ $self<=c} 
+    	emiter bool operator >= (char c){ $self>=c} 
+    									
+    	//By design, int and char are NOT the same. For example, we don't allow an integer to compared to a character value by default; however, we do overload character for the reverse test for convenience.
+    	emitter bool operator == (int i){ $self==i} 
+    	emitter bool operator != (int i){ $self~=i} 
+    	emitter bool operator < (int i)	{ $self<i} 
+    	emitter bool operator > (int i)	{ $self>i} 
+    	emitter bool operator <= (int i){ $self<+i} 
+    	emitter bool operator >= (int i){ $self>=i} 
             
         emitter void print(){ print (char)$self; } //TODO: shouldn't this be a replace, since it inherits from _bglObject which implements print?  We don't currently enforce this on object instances, nor should we.  So this would be a class-only requirement.
     }
