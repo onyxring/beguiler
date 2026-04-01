@@ -1,0 +1,56 @@
+/* test_replace.bgl — replace chaining with replaced() and dead code elimination */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+    release = 1;
+}
+
+// --- Test 1: Basic replace with replaced() call (chaining) ---
+int greet(int x){
+    return x + 1;
+}
+
+replace int greet(int x){
+    int r = replaced(x);
+    return r + 10;
+}
+
+// --- Test 2: Replace WITHOUT calling replaced() (dead code elimination) ---
+int compute(int a, int b){
+    return a + b;
+}
+
+replace int compute(int a, int b){
+    return a * b;
+}
+
+// --- Test 3: Multiple replaces chained ---
+int step(int n){
+    return n;
+}
+
+replace int step(int n){
+    return replaced(n) + 100;
+}
+
+replace int step(int n){
+    return replaced(n) + 200;
+}
+
+// --- Test 4: replaced() used inline in expression ---
+int calculate(int n){
+    return n + 1;
+}
+
+replace int calculate(int n){
+    return replaced(n) * 2;
+}
+
+// main entry point
+void main(){
+    int a = greet(1);
+    int b = compute(3, 4);
+    int c = step(5);
+    int d = calculate(5);
+}

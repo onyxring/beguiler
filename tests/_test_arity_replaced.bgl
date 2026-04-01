@@ -1,0 +1,5 @@
+/* test arity check on replaced() */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int compute(int a, int b, int c){ return a + b + c; }
+replace int compute(int x){ return replaced(x); }
+void main(){ int r = compute(1); }
