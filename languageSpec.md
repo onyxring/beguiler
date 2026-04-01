@@ -104,24 +104,81 @@ A sequence of decimal digits. Negative values are formed by prefixing the `-` sy
 
 A string literal is enclosed in double quotes. The following escape sequences are recognized:
 
+#### Basic escapes
+
 | Escape | Displayed character |
 |--------|---------------------|
 | `\n`   | Newline |
 | `\"`   | Double-quote (`"`) |
 | `\\`   | Backslash (`\`) |
-| `\^`   | Caret (`^`) |
-| `\~`   | Tilde (`~`) |
+| `\^`   | Caret (`^`) — see note below |
+| `\~`   | Tilde (`~`) — see note below |
 | `\@`   | At-sign (`@`) |
 
-
 ```bgl
-"Hello, world!" 
+"Hello, world!"
 "She said, \"well done.\""
 "Line one\nLine two"
 "Price: 5\~ off!"
 "Press \^ to continue."
 ```
 As a design decision, Beguile preserves most of Inform's conventions for embedding extended characters in strings.  As such, `^` and `~` pass through to I6 as written and should be escaped to print.
+
+#### Numeric character escapes
+
+Characters can be specified by their numeric code, using either decimal or hexadecimal (prefixed with `$`, consistent with I6's integer literal convention):
+
+| Escape | Meaning |
+|--------|---------|
+| `\NNN` | Decimal character code (e.g. `\228` → ä) |
+| `\$XX` | Hex character code (e.g. `\$E4` → ä) |
+
+Both forms consume all consecutive digits (or hex digits) after the prefix. They emit the I6 unicode escape `@{XXXX}`, which is supported on both Glulx and Z-machine.
+
+```bgl
+"na\$EFve"       // naïve (using hex)
+"na\239ve"       // naïve (using decimal)
+```
+
+#### Diacritical accent shorthands
+
+Common accented characters can be written using shorthand escape sequences that mirror the I6 `@` accent notation, using `\` as the escape prefix:
+
+| Escape | Applies to | Example | Result |
+|--------|-----------|---------|--------|
+| `\'X`  | a e i o u y A E I O U Y | `"caf\'e"` | café |
+| `` \`X `` | a e i o u y A E I O U Y | `` "cr\`eme" `` | crème |
+| `\^X`  | a e i o u y A E I O U Y | `"g\^ateau"` | gâteau |
+| `\:X`  | a e i o u y A E I O U Y | `"na\:ive"` | naïve |
+| `\~X`  | a n o A N O | `"se\~nor"` | señor |
+| `\/X`  | o O | `"sm\/orgåsbord"` | smørgåsbord |
+| `\cX`  | c C | `"gar\ccon"` | garçon |
+| `\oX`  | a A | `"\oAngstr\:om"` | Ångström |
+
+| Named escape | Result |
+|-------------|--------|
+| `\ss` | ß (eszett) |
+| `\ae` | æ (ae ligature) |
+| `\AE` | Æ |
+| `\oe` | œ (oe ligature) |
+| `\OE` | Œ |
+| `\th` | þ (thorn) |
+| `\et` | ð (eth) |
+| `\LL` | £ (pounds sterling) |
+| `\!!` | ¡ (inverted !) |
+| `\??` | ¿ (inverted ?) |
+| `\<<` | « (left guillemet) |
+| `\>>` | » (right guillemet) |
+
+**Context-sensitive `\^` and `\~`:** When `\^` or `\~` is followed by a character in its accent set, it produces the accented character. Otherwise it produces the literal caret or tilde. To force a literal caret or tilde before a character that would otherwise trigger an accent, double the character: `\^^` or `\~~`.
+
+```bgl
+"\^a"       // â  (circumflex a — auto-detected)
+"\^^a"      // ^a (forced literal caret, then a)
+"\~n"       // ñ  (tilde n — auto-detected)
+"\~~n"      // ~n (forced literal tilde, then n)
+"\^z"       // ^z (literal — z is not in the accent set)
+```
 
 ### 2.5.2a Raw String Literals
 
@@ -208,8 +265,9 @@ Tokens beginning with `#` immediately followed (with no whitespace) by an identi
 
 `#include "path"`
 `#define NAME value`
-`#if expr` 
+`#if expr`
 `#message "text"`
+`#warning "text"`
 
 The complete list of directives is described in Chapter 3.
 
@@ -228,6 +286,8 @@ Structural and type keywords unique to Beguile. They have no corresponding I6 ke
 | `extend` | Opens an extension block on an existing class |
 | `alias` | Declares a type alias |
 | `emitter` | Marks a function or class as containing inline I6 fragments |
+| `readonly` | Makes a member variable immutable after initialization |
+| `static` | Declares a class-level member shared across all instances |
 | `enum` | Enumeration type declaration |
 | `int` | Integer primitive type |
 | `bool` | Boolean primitive type |
@@ -239,7 +299,7 @@ Structural and type keywords unique to Beguile. They have no corresponding I6 ke
 
 Reserved by Beguile and transpile to I6 statements of the same or equivalent name:
 
-`if`  `else`  `for`  `while`  `switch`  `case`  `default`  `break`  `continue`  `return`  `rtrue`  `rfalse`
+`if`  `else`  `for`  `while`  `do`  `switch`  `case`  `default`  `to`  `break`  `continue`  `return`  `rtrue`  `rfalse`
 
 ### I6-significant keywords
 
@@ -499,7 +559,17 @@ Prints a string literal to the terminal during compilation. The message is writt
 
 Useful for progress notes or tracing include chains during development.
 
-### 3.5.2 `#error`
+### 3.5.2 `#warning`
+
+Emits a user-defined warning message in the standard compiler warning format (including file name and line number) and continues compilation.
+
+```bgl
+#if !FEATURE_XYZ
+    #warning "FEATURE_XYZ is not defined — some functionality will be disabled."
+#endif
+```
+
+### 3.5.3 `#error`
 
 Halts compilation with a user-defined error message. The message is reported in the standard compiler error format, including file name and line number, and is indistinguishable in appearance from a parser error.
 
@@ -509,7 +579,7 @@ Halts compilation with a user-defined error message. The message is reported in 
 #endif
 ```
 
-### 3.5.3 `#exit`
+### 3.5.4 `#exit`
 
 Stops processing the current file immediately, as though end-of-file had been reached. Any open directive nesting (`#if`/`##ifdef` blocks) accumulated in that file is discarded cleanly. Code nesting — open `{` blocks in parsed Beguile source — is not affected, so `#exit` should only be used at the top level of a file.
 
@@ -523,7 +593,7 @@ Stops processing the current file immediately, as though end-of-file had been re
 
 `#exit` is primarily useful in library files that want to skip their body entirely when a required symbol is not defined.
 
-### 3.5.4 `#startup`
+### 3.5.5 `#startup`
 
 Registers a block of I6 code to be executed at program startup, before any global variable initializers run. The body is emitted as the first statements inside the generated `bglInit()` routine.
 
@@ -652,11 +722,15 @@ Enum and bnum values are referenced by name directly (not qualified by the enume
 
 ## 4.6 The `var` Type
 
-`var` is a universal escape type that bypasses static type checking. A `var` variable or parameter accepts any value.
+`var` is a universal escape type that bypasses static type checking. It is bidirectional: any value can be assigned **to** a `var`, and a `var` can be assigned **to** any type. This mirrors I6's untyped semantics — all values are word-sized and interchangeable at runtime.
 
 ```bgl
-var x = 5;
+var x = 5;          // any value → var
+int y = x;          // var → int (no type check)
+object o = x;       // var → object (developer's responsibility)
 ```
+
+Because `var` opts out of type checking in both directions, the developer is responsible for ensuring that the underlying value is meaningful in context. The compiler will not catch type mismatches involving `var`.
 
 In overload resolution, overloads with `var` parameters are treated as a fallback: they are only selected if no typed overload matches. This prevents a catch-all `var` overload from shadowing more specific ones.
 
@@ -1589,9 +1663,9 @@ Overloading by parameter type is supported only for emitters (see §7.3).
 
 ### `replace` for Global Functions
 
-The `replace` qualifier replaces the body of an already-registered global function or emitter. The replaced entry keeps its position in the global list; emission order is unchanged.
+The `replace` qualifier replaces an already-registered global function or emitter.
 
-For **emitters**, matching is by name and full parameter-type signature (since emitters can be overloaded). For **regular functions**, matching is by name alone (since only one routine per name can exist in I6).
+For **emitters**, replace performs a simple body swap: the existing emitter's body is overwritten. Matching is by name, return type, and full parameter-type signature (since emitters can be overloaded). Chaining via `replaced()` is not supported for emitters — their bodies are small inline text fragments where chaining adds no practical value.
 
 ```bgl
 // initial definition
@@ -1601,7 +1675,41 @@ emitter void print(string str){ print (string)str; }
 replace emitter void print(string str){ str.print() }
 ```
 
-A compile-time error is reported if no matching function or emitter exists to replace.
+For **regular (non-emitter) functions**, replace supports **chaining**. The existing function is renamed to a mangled internal name, and the new definition takes its place. The replacement may call the previous version using the `replaced()` keyword:
+
+```bgl
+void DrawStatusLine(){
+    // original implementation
+}
+
+replace void DrawStatusLine(){
+    // new implementation; optionally call the original:
+    replaced();
+}
+```
+
+#### Chaining rules
+
+- **`replaced()`** resolves to the immediate predecessor in the chain. Arguments are passed explicitly and type-checked against the predecessor's signature.
+- **Multiple replaces** form a linked chain. Each replacement's `replaced()` calls the version it directly replaced, not the original:
+
+```bgl
+int step(int n){ return n; }
+
+replace int step(int n){
+    return replaced(n) + 100;   // calls original
+}
+
+replace int step(int n){
+    return replaced(n) + 200;   // calls first replacement
+}
+// step(5) → first replacement(5) + 200 → original(5) + 100 + 200 = 305
+```
+
+- **Signature flexibility**: the replacement's own signature may differ from the original. Each `replaced()` call is validated against its specific predecessor's parameter types and arity; a mismatch is a compile-time error with the expected signature shown.
+- **Dead code elimination**: if `replaced()` is not called anywhere in a replacement's body, the predecessor (and its entire backward chain) is pruned from the emitted I6. This avoids emitting unreachable routines.
+
+A compile-time warning is reported if no matching function exists to replace; the definition is treated as a new function.
 
 ## 8.5 Extern Variables
 

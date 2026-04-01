@@ -5,6 +5,8 @@
     outputPath = "tests/output";
 }
 
+attribute light;
+
 extern class place : object {
     string short_name;
     string description;

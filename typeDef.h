@@ -186,6 +186,12 @@ class functionDef:public typeMember, public typeDef{
         codeBlock* body = nullptr;
         // deinit cleanup entries: {varName, deinitBody} — emitted before every return and at end of function
         vector<pair<string,string>> cleanups;
+        // replace chaining: when this function replaces a previous definition,
+        // replaced() calls in the body resolve to replacedTarget (the mangled name).
+        string replacedTarget;               // mangled name of predecessor function (empty if not a replacement)
+        functionDef* replacedFunc = nullptr;  // pointer to predecessor functionDef
+        bool replacedWasCalled = false;       // set when replaced() is encountered during body parsing
+        bool isReplacedDead = false;          // true when this replaced version is unreachable (no successor calls replaced())
 
     using abstractObject::name;
 

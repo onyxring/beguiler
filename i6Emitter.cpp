@@ -585,7 +585,7 @@ void i6Emitter::emitMember(typeMember* member){
 
 }
 void i6Emitter::emitFunction(functionDef* funcNode){
-    if(funcNode->isEmitter || funcNode->isExternal) return;
+    if(funcNode->isEmitter || funcNode->isExternal || funcNode->isReplacedDead) return;
     buildSpillMap(funcNode);
     if(!funcNode->src.file.empty())
         sourceMap.push_back({currentLine(), funcNode->src.file, funcNode->src.line});

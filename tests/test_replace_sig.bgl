@@ -1,0 +1,27 @@
+/* test_replace_sig.bgl — verify replaced() type-checks against predecessor */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+    release = 1;
+}
+
+// Different signatures in the chain:
+// original: (int a, int b) → int
+// replace1: (int x) → int, calls replaced(x, 10)  — must match original's 2-arg sig
+// replace2: () → int, calls replaced(42) — must match replace1's 1-arg sig
+int add(int a, int b){
+    return a + b;
+}
+
+replace int add(int x){
+    return replaced(x, 10);
+}
+
+replace int add(){
+    return replaced(42);
+}
+
+void main(){
+    int result = add();
+}

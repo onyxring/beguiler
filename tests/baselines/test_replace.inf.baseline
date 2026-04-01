@@ -4,12 +4,8 @@ Constant beguiler       = 1000;
 Constant beguilerMajor  = 1;
 Constant beguilerMinor  = 0;
 Constant beguilerPatch  = 0;
-Serial "260330";
-Release 42;
+Release 1;
 [bglInit;
-
-    ! startup block test
-
 ];
 
 Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
@@ -58,11 +54,34 @@ object bglWorld
     ]
 ;
 
-constant author = "Tester";
-constant gamerelease = 42;
-[main;
-    print (string)"Feature A enabled";
-    print (string)"Many items";
-    print (string)story;
+[_bgl_replaced_greet_0 x;
+    return x + 1;
 ];
-constant story = "Directive Test";
+[_bgl_replaced_step_0 n;
+    return n;
+];
+[_bgl_replaced_calculate_0 n;
+    return n + 1;
+];
+[main a b c d;
+    a=greet(1);
+    b=compute(3,4);
+    c=step(5);
+    d=calculate(5);
+];
+[greet x r;
+    r=_bgl_replaced_greet_0(x);
+    return r + 10;
+];
+[compute a b;
+    return a * b;
+];
+[_bgl_replaced_step_1 n;
+    return _bgl_replaced_step_0(n) + 100;
+];
+[step n;
+    return _bgl_replaced_step_1(n) + 200;
+];
+[calculate n;
+    return _bgl_replaced_calculate_0(n) * 2;
+];

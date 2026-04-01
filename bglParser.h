@@ -23,6 +23,7 @@ class bglParser {
         void preScanFile(string filename);  // pass 1: register type/object stubs for forward-reference resolution
         bool parseFile(string);    //the main entry point: given a file, read it in, parse it, and store it in the parse tree
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
+        void parsingWarning(string); //like parsingError but continues parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
         
         string contextToString(eCompileContext);
@@ -73,6 +74,11 @@ class bglParser {
         bool processDirective(token, abstractObject& = emptyContainer);
 
         expression* parseExpression(token firstToken, vector<string> terminators, functionDef* func, statementBlock* body);
+        // parseExpression sub-functions (extracted for readability)
+        void parseExprTernary(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body);
+        void parseExprNullCoalescing(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body);
+        bool parseExprFunctionCall(expression* expr, const string& callName, bool isSelfCall, functionDef* func, statementBlock* body);
+        bool parseExprPrefixNot(expression* expr, token operand, optional<token>& prefetched, functionDef* func, statementBlock* body);
 
         // Binary operator resolution in expression context: reads RHS, finds matching operator emitter,
         // applies conversion fallbacks, inlines emitter body into expr->tokens. Uses getNext/prefetched lambdas from parseExpression.
@@ -98,6 +104,26 @@ class bglParser {
             bool nameFound = false;              // true if any method with the name exists
         };
         MethodMatch resolveMethod(const string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args);
+
+        // Shared argument list parsing: reads comma-separated expressions from stream (assumes '(' already consumed).
+        // Returns parsed args, named arg names, and per-arg interpolated segments.
+        struct ParsedArgList {
+            vector<expression*> args;
+            vector<string> namedArgNames;
+            vector<vector<interpolatedSegment>> interpSegmentsPerArg;
+        };
+        ParsedArgList parseCallArgList(functionDef* func, statementBlock* body);
+
+        // Global function resolution: finds the best matching global function for a call.
+        // Resolution priority: exact type match > conversion match > var fallback.
+        struct GlobalCallMatch {
+            functionDef* match = nullptr;            // best matching function
+            functionDef* nameMatch = nullptr;        // first function with matching name (for error messages)
+            functionDef* arityMatch = nullptr;       // first function with matching arity
+            string funcVarReturnType;                // non-empty if this is a func<> variable call
+        };
+        GlobalCallMatch resolveGlobalCall(const string& name, const vector<expression*>& args, functionDef* func, statementBlock* body);
+        string validateGlobalCall(GlobalCallMatch& gcm, const string& funcName, size_t argCount);
 
         // Replace a pre-scan stub in a member list with the real definition. Returns true if replaced.
         static bool replaceStubMember(vector<typeMember*>& members, functionDef& newDef);

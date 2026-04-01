@@ -73,13 +73,15 @@
 
 //=============================================================================
 // type int 
-    extern class intLiteral:_bglObject{}
+    extern class intLiteral:_bglObject{
+        emitter int operator(){}
+    }
 
     extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
-        emitter int operator = (intLiteral v){ $self=v; }
+        emitter char operator(){}
         emitter int operator = (int v){ $self=v; }
         emitter int operator = (char v){ $self=v; }
-        emitter intLiteral operator(){} //--declares I6 compatibility with intLiteral, enabling mixed operators like ==
+        
         // Arithmetic
         emitter int operator + (int v){ $self + v }
         emitter int operator + (intLiteral v){ $self + v }
@@ -121,18 +123,22 @@
 //=============================================================================
 // type char
     extern class charLiteral:_bglObject{    
-        emitter void print(){ print (char)$self; }  //--override: print as character, not numeric code
-        emitter intLiteral operator(){} 
-        emitter char operator(){} 
+        emitter void print(){ print (char)$self; }  //override: print as character, not numeric code
+        emitter char operator(){}                   //implicitly converts to char
     }
     extern class char : _bglObject{ 
-        emitter intLiteral operator(){} 
+        emitter int operator(){}                    //converts to an int 
+        
+        emitter bool operator == (char c) { $self==c }
+        emitter bool operator == (int c) { $self==c }
         
         emitter char operator = (char v){ $self=v; }
-        emitter char operator = (intLiteral v){ $self=v; }
+        emitter char operator = (int v){ $self=v; }
         
         emitter bool operator <= (char v){ $self<=v }
         emitter bool operator >= (char v){ $self>=v }
+        emitter bool operator <= (int v){ $self<=v }
+        emitter bool operator >= (int v){ $self>=v }
             
         emitter void print(){ print (char)$self; }
     }

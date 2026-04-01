@@ -1,0 +1,4 @@
+/* test arity check in expression context */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int add(int a, int b){ return a + b; }
+void main(){ int x = add(1); }
