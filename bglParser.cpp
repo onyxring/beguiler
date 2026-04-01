@@ -424,6 +424,10 @@ void bglParser::preScanFile(string filename){
                 if(!languageService.isObjectType(nameStr)){
                     objStub = &languageService.registerObject(nameStr, isExtern);
                     objStub->isPrePassStub = true;
+                    // Set objectClass from the declared type so forward references resolve correctly
+                    if(classType != "object")
+                        if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(classType)))
+                            objStub->objectClass = cls;
                 } else {
                     // Already registered — find it
                     for(typeDef* g : languageService.globals)
@@ -1429,6 +1433,146 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
 //   - found in current object's members → "self.name"
 //   - found in enum values or globals → name (unqualified)
 //   - not found → "" (caller should report an error)
+// Whole-word string replacement: replaces occurrences of 'from' in 'str' with 'to',
+// only when bounded by non-identifier characters (respects word boundaries).
+// Used throughout emitter body substitution ($self, $prop, parameter names).
+static string replaceWord(string str, const string& from, const string& to){
+    size_t pos = 0;
+    while((pos = str.find(from, pos)) != string::npos){
+        bool leftOk  = pos == 0 || !(isalnum(str[pos-1]) || str[pos-1] == '_' || str[pos-1] == '$');
+        bool rightOk = pos + from.size() >= str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()] == '_');
+        if(leftOk && rightOk){ str.replace(pos, from.size(), to); pos += to.size(); }
+        else pos += from.size();
+    }
+    return str;
+}
+
+// Format a function signature for error messages: "name(type1 p1, type2 p2) → returnType"
+static string formatSignature(functionDef* fd){
+    string sig = fd->name + "(";
+    for(size_t i = 0; i < fd->params.size(); i++){
+        if(i > 0) sig += ", ";
+        sig += fd->params[i]->type.name + " " + fd->params[i]->name;
+        if(!fd->params[i]->defaultValue.empty())
+            sig += " = " + fd->params[i]->defaultValue;
+    }
+    sig += ")";
+    if(!fd->returnType.name.empty() && fd->returnType.name != "void")
+        sig += " -> " + fd->returnType.name;
+    return sig;
+}
+
+// ── Shared: parse a function call's argument list ────────────────────────────
+// Assumes '(' has already been consumed.  Reads comma-separated expressions
+// (including named arguments and interpolated strings) until ')'.
+bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statementBlock* body){
+    ParsedArgList result;
+    token firstArgTok = file.getToken();
+    while(firstArgTok.isNot(token::parenClose)){
+        // Named argument detection: identifier followed by ':'
+        string namedArgName;
+        if(firstArgTok.is(eTokenType::name) && file.peekToken(1).is(":")){
+            namedArgName = firstArgTok.value;
+            file.getToken(); // consume ':'
+            firstArgTok = file.getToken(); // read the value expression's first token
+        }
+        if(firstArgTok.is("$") && file.peekToken(1).is(eTokenType::quote)){
+            // Interpolated string literal argument: func($"...")
+            vector<interpolatedSegment> segs = parseInterpolatedSegments(func, body);
+            expression* arg = new expression();
+            arg->resolvedType = "interpolatedstringliteral";
+            token sep = file.getToken();
+            arg->terminator = sep.value;
+            result.args.push_back(arg);
+            result.namedArgNames.push_back(namedArgName);
+            while(result.interpSegmentsPerArg.size() < result.args.size() - 1)
+                result.interpSegmentsPerArg.push_back({});
+            result.interpSegmentsPerArg.push_back(segs);
+            if(sep.is(token::parenClose)) break;
+            firstArgTok = file.getToken();
+        } else {
+            expression* arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body);
+            result.args.push_back(arg);
+            result.namedArgNames.push_back(namedArgName);
+            if(arg->terminator == token::parenClose) break;
+            firstArgTok = file.getToken();
+        }
+    }
+    return result;
+}
+
+// ── Shared: resolve a global function call ───────────────────────────────────
+// Given a function name and parsed argument expressions, finds the best matching
+// global function definition.  Priority: exact type > conversion > var fallback.
+bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, const vector<expression*>& args,
+                                                         functionDef* func, statementBlock* body){
+    GlobalCallMatch result;
+    functionDef* conversionMatch = nullptr;
+    functionDef* varFallback = nullptr;
+    for(typeDef* g : languageService.globals){
+        if(auto* fd = dynamic_cast<functionDef*>(g)){
+            if(fd->name != name) continue;
+            if(result.nameMatch == nullptr) result.nameMatch = fd;
+            size_t req = 0;
+            for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+            if(args.size() >= req && args.size() <= fd->params.size()){
+                if(result.arityMatch == nullptr) result.arityMatch = fd;
+                bool argsOk = true;
+                bool usesVar = false;
+                bool needsConversion = false;
+                for(size_t i = 0; i < args.size() && argsOk; i++){
+                    string argType = args[i]->resolvedType;
+                    string paramType = fd->params[i]->type.name;
+                    if(paramType == "var") usesVar = true;
+                    else if(argType.empty() || argType == paramType) {} // exact or unknown
+                    else if(isTypeCompatible(argType, paramType)) needsConversion = true;
+                    else argsOk = false;
+                }
+                if(argsOk){
+                    if(usesVar){ if(varFallback == nullptr) varFallback = fd; }
+                    else if(!needsConversion){ result.match = fd; return result; }
+                    else if(conversionMatch == nullptr) conversionMatch = fd;
+                }
+            }
+        }
+    }
+    if(result.match == nullptr) result.match = conversionMatch;
+    if(result.match == nullptr) result.match = varFallback;
+    // If no global found, check for func<> variable
+    if(result.nameMatch == nullptr){
+        string varType = resolveIdentifierType(name, func, body);
+        if(varType.rfind("func<", 0) == 0){
+            size_t lt = varType.find('<');
+            size_t sep = varType.find(',', lt);
+            size_t gt = varType.rfind('>');
+            result.funcVarReturnType = (sep != string::npos && sep < gt)
+                ? varType.substr(lt+1, sep-lt-1)
+                : varType.substr(lt+1, gt-lt-1);
+        }
+    }
+    return result;
+}
+
+// ── Shared: validate a global function call and report arity/type errors ─────
+// Called after resolveGlobalCall; issues parsingError if validation fails.
+// Returns the resolved function's return type name.
+string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcName, size_t argCount){
+    if(!gcm.funcVarReturnType.empty()) return gcm.funcVarReturnType;
+    if(gcm.nameMatch == nullptr)
+        parsingError(format("Undeclared function '{0}'", funcName));
+    if(gcm.arityMatch == nullptr){
+        size_t req = 0; for(paramDef* p : gcm.nameMatch->params) if(p->defaultValue.empty()) req++;
+        size_t tot = gcm.nameMatch->params.size();
+        parsingError(format("Function '{0}' expects {1} argument(s), but {2} were supplied.\n  Expected: {3}",
+            funcName,
+            (req == tot) ? to_string(tot) : to_string(req) + "-" + to_string(tot),
+            argCount, formatSignature(gcm.nameMatch)));
+    }
+    if(gcm.match == nullptr)
+        parsingError(format("No overload of function '{0}' accepts these argument types", funcName));
+    return gcm.match->returnType.name;
+}
+
 std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, statementBlock* body){
     if(name == "null") return "nothing";
     if(name == "self") return "self";
@@ -1496,6 +1640,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
 
 bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     if(paramType == "var") return true;  // var accepts any type without checking
+    if(argType == "var") return true;    // var is assignable to any type (untyped source)
     if(argType == paramType) return true;
     // func<...> compatibility: a func value is compatible with any func<...> param type
     if(argType == "func" && paramType.rfind("func<", 0) == 0) return true;
@@ -1651,10 +1796,82 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             if     (nc == 'n')  currentStr += '^';      // \n  → I6 newline
             else if(nc == '"')  currentStr += '~';      // \"  → I6 double-quote
             else if(nc == '\\') currentStr += "@@92";   // \\  → literal backslash
-            else if(nc == '^')  currentStr += "@@94";   // \^  → literal caret
-            else if(nc == '~')  currentStr += "@@126";  // \~  → literal tilde
             else if(nc == '@')  currentStr += "@@64";   // \@  → literal at-sign
             else if(nc == '{')  currentStr += '{';       // \{  → literal brace (not an expression)
+            else if(nc == '$') {                          // \$XX → @{XX} (hex character code)
+                string hex;
+                while(isxdigit(file.peekChar())) { hex += file.readChar(); }
+                currentStr += "@{" + hex + "}";
+            }
+            else if(isdigit(nc)) {                        // \NNN → @{hex} (decimal character code)
+                string dec; dec += nc;
+                while(isdigit(file.peekChar())) { dec += file.readChar(); }
+                char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "%X", stoi(dec));
+                currentStr += "@{"; currentStr += hexBuf; currentStr += "}";
+            }
+            // ── Diacritical accent shorthands (same as fileLexer.cpp) ──
+            // \^^ = forced literal caret, \~~ = forced literal tilde.
+            else if(nc == '^') {
+                char xc = file.peekChar();
+                if(xc == '^') { file.readChar(); currentStr += "@@94"; }
+                else if(string("aeiouyAEIOUY").find(xc) != string::npos) {
+                    file.readChar(); currentStr += "@^"; currentStr += xc;
+                } else { currentStr += "@@94"; }
+            }
+            else if(nc == '~') {
+                char xc = file.peekChar();
+                if(xc == '~') { file.readChar(); currentStr += "@@126"; }
+                else if(string("anoANO").find(xc) != string::npos) {
+                    file.readChar(); currentStr += "@~"; currentStr += xc;
+                } else { currentStr += "@@126"; }
+            }
+            else if(nc == '\'') {
+                char xc = file.peekChar();
+                if(string("aeiouyAEIOUY").find(xc) != string::npos) {
+                    file.readChar(); currentStr += "@'"; currentStr += xc;
+                } else { currentStr += '\''; }
+            }
+            else if(nc == '`') {
+                char xc = file.peekChar();
+                if(string("aeiouyAEIOUY").find(xc) != string::npos) {
+                    file.readChar(); currentStr += "@`"; currentStr += xc;
+                } else { currentStr += '`'; }
+            }
+            else if(nc == ':') {
+                char xc = file.peekChar();
+                if(string("aeiouyAEIOUY").find(xc) != string::npos) {
+                    file.readChar(); currentStr += "@:"; currentStr += xc;
+                } else { currentStr += ':'; }
+            }
+            else if(nc == '/') {
+                char xc = file.peekChar();
+                if(string("oO").find(xc) != string::npos) {
+                    file.readChar(); currentStr += "@\\"; currentStr += xc;
+                } else { currentStr += '/'; }
+            }
+            else if(nc == 'c') {
+                char xc = file.peekChar();
+                if(xc == 'c' || xc == 'C') {
+                    file.readChar(); currentStr += "@c"; currentStr += xc;
+                } else { currentStr += 'c'; }
+            }
+            else if(nc == 'o') {
+                char xc = file.peekChar();
+                if(xc == 'a' || xc == 'A') {
+                    file.readChar(); currentStr += "@o"; currentStr += xc;
+                } else { currentStr += 'o'; }
+            }
+            else if(nc == 's' && file.peekChar()=='s') { file.readChar(); currentStr += "@ss"; }
+            else if(nc == 'a' && file.peekChar()=='e') { file.readChar(); currentStr += "@ae"; }
+            else if(nc == 'A' && file.peekChar()=='E') { file.readChar(); currentStr += "@AE"; }
+            else if(nc == 'O' && file.peekChar()=='E') { file.readChar(); currentStr += "@OE"; }
+            else if(nc == 't' && file.peekChar()=='h') { file.readChar(); currentStr += "@th"; }
+            else if(nc == 'e' && file.peekChar()=='t') { file.readChar(); currentStr += "@et"; }
+            else if(nc == 'L' && file.peekChar()=='L') { file.readChar(); currentStr += "@LL"; }
+            else if(nc == '!' && file.peekChar()=='!') { file.readChar(); currentStr += "@!!"; }
+            else if(nc == '?' && file.peekChar()=='?') { file.readChar(); currentStr += "@??"; }
+            else if(nc == '<' && file.peekChar()=='<') { file.readChar(); currentStr += "@<<"; }
+            else if(nc == '>' && file.peekChar()=='>') { file.readChar(); currentStr += "@>>"; }
             else { currentStr += '\\'; currentStr += nc; }
         } else if(c == '{') {
             if(!currentStr.empty()) {
@@ -1693,16 +1910,6 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     function<token()> getNext, optional<token>& prefetched,
     functionDef* func, statementBlock* body)
 {
-    auto replaceWord = [](string str, const string& from, const string& to) -> string {
-        size_t pos=0;
-        while((pos=str.find(from,pos))!=string::npos){
-            bool lOk = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
-            bool rOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
-            if(lOk && rOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
-            else pos+=from.size();
-        }
-        return str;
-    };
 
     // Step 1: Read RHS token and determine its type and text
     bool isLowPrecedence = (opName == "&&" || opName == "||");
@@ -1857,6 +2064,158 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     return true;
 }
 
+// ── parseExpression sub-functions ─────────────────────────────────────────────
+
+// Ternary operator: condition ? trueExpr : falseExpr
+// Lowers to if/else injection using _bgl_temp. Replaces expr contents and sets terminator.
+void bglParser::parseExprTernary(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body){
+    string condText = expr->text();
+    expression* trueExpr  = parseExpression(file.getToken(), {":"}, func, body);
+    expression* falseExpr = parseExpression(file.getToken(), terminators, func, body);
+    string injText = "if (" + condText + ") _bgl_temp = " + trueExpr->text()
+                   + "; else _bgl_temp = " + falseExpr->text() + ";";
+    i6RawNode* inj = new i6RawNode();
+    inj->text = injText;
+    pendingInjections.push_back(inj);
+    languageService.ternaryTempNeeded = true;
+    expr->tokens.clear();
+    expr->tokens.push_back("_bgl_temp");
+    expr->resolvedType = !trueExpr->resolvedType.empty() ? trueExpr->resolvedType : falseExpr->resolvedType;
+    expr->terminator = falseExpr->terminator;
+}
+
+// Null coalescing: lhs ?? fallback
+// Lowers to if injection using _bgl_temp and operator?(). Replaces expr contents and sets terminator.
+void bglParser::parseExprNullCoalescing(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body){
+    string lhsText = expr->text();
+    string lhsType = expr->resolvedType;
+    classDef* lhsCls = !lhsType.empty() ? dynamic_cast<classDef*>(&languageService.getType(lhsType)) : nullptr;
+    functionDef* nullTestFn = nullptr;
+    if(lhsCls != nullptr)
+        nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(lhsCls, [](typeMember* m){
+            auto* fn = dynamic_cast<functionDef*>(m);
+            return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
+        }));
+    if(nullTestFn == nullptr)
+        parsingError(format("Type '{0}' does not support null coalescing (no operator?() emitter)", lhsType));
+    auto* blk = dynamic_cast<i6Block*>(nullTestFn->body);
+    string nullTest = processBglConditionals(blk->i6Body);
+    nullTest = replaceWord(nullTest, "$self", "_bgl_temp");
+    { size_t s=nullTest.find_first_not_of(" \t\n\r"); if(s!=string::npos) nullTest=nullTest.substr(s);
+      size_t e=nullTest.find_last_not_of(" \t\n\r;"); if(e!=string::npos) nullTest=nullTest.substr(0,e+1); }
+    expression* fallback = parseExpression(file.getToken(), terminators, func, body);
+    string injText = "_bgl_temp = " + lhsText + "; if (~~(" + nullTest + ")) _bgl_temp = " + fallback->text() + ";";
+    i6RawNode* inj = new i6RawNode();
+    inj->text = injText;
+    pendingInjections.push_back(inj);
+    languageService.ternaryTempNeeded = true;
+    expr->tokens.clear();
+    expr->tokens.push_back("_bgl_temp");
+    if(!fallback->resolvedType.empty()) expr->resolvedType = fallback->resolvedType;
+    expr->terminator = fallback->terminator;
+}
+
+// Function call in expression context: parses args, resolves global/self call,
+// validates arity+types, inlines emitters. Returns true if an emitter was inlined
+// (caller should 'continue' to skip getNext at loop bottom).
+bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, bool isSelfCall,
+                                       functionDef* func, statementBlock* body){
+    // Parse args as proper expressions (shared with statement-level path)
+    ParsedArgList pal = parseCallArgList(func, body);
+    // Resolve and validate
+    string retType;
+    if(isSelfCall){
+        if(currentObject != nullptr)
+            for(typeMember* m : currentObject->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->name == callName){ retType = fd->returnType.name; break; }
+    } else {
+        GlobalCallMatch gcm = resolveGlobalCall(callName, pal.args, func, body);
+        retType = validateGlobalCall(gcm, callName, pal.args.size());
+        // Emitter inlining: substitute params and push as single token
+        if(gcm.match && gcm.match->isEmitter){
+            if(auto* blk = dynamic_cast<i6Block*>(gcm.match->body)){
+                string b = processBglConditionals(blk->i6Body);
+                for(size_t i = 0; i < gcm.match->params.size() && i < pal.args.size(); i++)
+                    b = replaceWord(b, gcm.match->params[i]->name, pal.args[i]->text());
+                size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+                size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
+                expr->tokens.push_back(b);
+                if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
+                return true; // emitter inlined — caller should continue
+            }
+        }
+    }
+    if(retType == "void")
+        parsingError(format("Cannot use void function '{0}' in an expression", callName));
+    if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
+    // Flatten parsed args back to tokens for the enclosing expression
+    expr->tokens.push_back(isSelfCall ? "self." + callName : callName);
+    expr->tokens.push_back(token::parenOpen);
+    for(size_t i = 0; i < pal.args.size(); i++){
+        if(i > 0) expr->tokens.push_back(",");
+        expr->tokens.push_back(pal.args[i]->text());
+    }
+    expr->tokens.push_back(token::parenClose);
+    return false;
+}
+
+// Prefix logical-not: handles !name, !name? (negated query), and fallback to ~~.
+// operand is the token following '!'. Sets prefetched if the operand needs re-processing.
+bool bglParser::parseExprPrefixNot(expression* expr, token operand, optional<token>& prefetched,
+                                    functionDef* func, statementBlock* body){
+    if(operand.is(eTokenType::name)){
+        string opType = resolveIdentifierType(operand.value, func, body);
+        string opText = (func != nullptr) ? qualifyIdentifier(operand.value, func, body) : operand.value;
+        if(opText.empty()) opText = operand.value;
+        // Check for !v? (negated postfix query) — only if type has operator?()
+        if(file.peekToken(1).is("?")){
+            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(opType));
+            functionDef* queryFn = nullptr;
+            if(cls != nullptr)
+                queryFn = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [](typeMember* m){
+                    auto* fn = dynamic_cast<functionDef*>(m);
+                    return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
+                }));
+            if(queryFn != nullptr){
+                file.getToken(); // consume '?'
+                auto* blk = dynamic_cast<i6Block*>(queryFn->body);
+                string b = processBglConditionals(blk->i6Body);
+                b = replaceWord(b, "$self", opText);
+                { size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+                  size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1); }
+                expr->tokens.push_back("~~(" + b + ")");
+                if(expr->resolvedType.empty()) expr->resolvedType = queryFn->returnType.name;
+                return true;
+            }
+        }
+        // Try operator! emitter on the type
+        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(opType));
+        if(cls){
+            if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* tm){
+                auto* fn = dynamic_cast<functionDef*>(tm);
+                return fn && fn->name == "!" && fn->params.empty() && fn->isEmitter;
+            })){
+                functionDef* notOp = dynamic_cast<functionDef*>(m);
+                i6Block* blk = dynamic_cast<i6Block*>(notOp->body);
+                if(blk){
+                    string b = processBglConditionals(blk->i6Body);
+                    size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+                    size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
+                    b = replaceWord(b, "$self", opText);
+                    expr->tokens.push_back(b);
+                    if(expr->resolvedType.empty()) expr->resolvedType = notOp->returnType.name;
+                    return true;
+                }
+            }
+        }
+    }
+    // Fallback: emit ~~ (I6 NOT) and put operand back for normal processing
+    expr->tokens.push_back("~~");
+    prefetched = operand;
+    return true; // always handled (either emitter or fallback)
+}
+
 expression* bglParser::parseExpression(token firstToken, std::vector<std::string> terminators, functionDef* func, statementBlock* body){
     expression* expr = new expression();
     int parenDepth = 0;
@@ -1873,16 +2232,6 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     auto getNext = [&]() -> token {
         if(prefetched.has_value()){ token t = *prefetched; prefetched = nullopt; return t; }
         return file.getToken();
-    };
-    auto replaceWord = [](string str, const string& from, const string& to) -> string {
-        size_t pos=0;
-        while((pos=str.find(from,pos))!=string::npos){
-            bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
-            bool rightOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
-            if(leftOk && rightOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
-            else pos+=from.size();
-        }
-        return str;
     };
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1968,47 +2317,21 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             }
             // ── name(args): function call in expression ──
             else if(next.is(token::parenOpen)){
-                // Function call in expression context — emit as plain I6, use return type
-                string retType;
-                for(typeDef* g : languageService.globals)
-                    if(auto* fd = dynamic_cast<functionDef*>(g))
-                        if(fd->name == cur.value){ retType = fd->returnType.name; break; }
-                // Also check currentObject's own methods (for unqualified self-calls)
+                string callName = cur.value;
+                // replace chaining: replaced() resolves to the predecessor's mangled name
+                if(callName == "replaced" && currentFunc && !currentFunc->replacedTarget.empty()){
+                    callName = currentFunc->replacedTarget;
+                    currentFunc->replacedWasCalled = true;
+                }
+                // Self-call detection for object member methods
                 bool isSelfCall = false;
-                if(retType.empty() && currentObject != nullptr)
+                if(func != nullptr && callName.find('.') == string::npos && currentObject != nullptr)
                     for(typeMember* m : currentObject->members)
                         if(auto* fd = dynamic_cast<functionDef*>(m))
-                            if(fd->name == cur.value){ retType = fd->returnType.name; isSelfCall = true; break; }
-                if(retType.empty() && func != nullptr)
-                    parsingError(format("Undeclared function '{0}'", cur.value));
-                if(retType == "void")
-                    parsingError(format("Cannot use void function '{0}' in an expression", cur.value));
-                if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
-                expr->tokens.push_back(isSelfCall ? "self." + cur.value : cur.value);
-                expr->tokens.push_back(token::parenOpen);
-                int callDepth = 1;
-                token argTok = file.getToken();
-                while(callDepth > 0){
-                    if(argTok.is(token::parenOpen)){
-                        if(callDepth == 1){
-                            // Check for inline lambda: ( type name => ... ) or ( ) =>
-                            token p1 = file.peekToken(1);
-                            bool isLambda = (p1.is(")") && file.peekToken(2).is("=>")) ||
-                                            ((p1.is(eTokenType::dataType) || p1.is(eTokenType::identifier)) &&
-                                              file.peekToken(2).is(eTokenType::identifier));
-                            if(isLambda){
-                                string lambdaName = parseLambdaExpr(func, body);
-                                expr->tokens.push_back(lambdaName);
-                                argTok = file.getToken();
-                                continue;
-                            }
-                        }
-                        callDepth++;
-                    } else if(argTok.is(token::parenClose)){ callDepth--; if(callDepth==0) break; }
-                    expr->tokens.push_back(argTok.value);
-                    if(callDepth > 0) argTok = file.getToken();
-                }
-                expr->tokens.push_back(token::parenClose);
+                            if(fd->name == callName){ isSelfCall = true; break; }
+                // Note: '(' was already consumed by getNext() above
+                if(parseExprFunctionCall(expr, callName, isSelfCall, func, body))
+                    continue; // emitter was inlined — skip getNext at loop bottom
             }
             // ── name?.: optional chaining (expression-level) ──
             else if(parenDepth == 0 && next.is("?.")){
@@ -2329,11 +2652,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 }
             }
             // ── name?: postfix query operator ──
-            else if(next.is("?") && !file.peekToken(1).is(":")){
-                // Postfix query operator: v? — invokes operator?() on the identifier's type
+            // Only treat ? as postfix if the identifier's type has operator?().
+            // Otherwise fall through so ? is put back and handled as ternary.
+            else if(next.is("?")){
                 string varName = cur.value;
-                string qualified = func != nullptr ? qualifyIdentifier(varName, func, body) : varName;
-                if(qualified.empty()) parsingError(format("Undeclared identifier '{0}'", varName));
                 string varType = resolveIdentifierType(varName, func, body);
                 classDef* cls = !varType.empty() ? dynamic_cast<classDef*>(&languageService.getType(varType)) : nullptr;
                 functionDef* queryFn = nullptr;
@@ -2342,15 +2664,30 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         auto* fn = dynamic_cast<functionDef*>(m);
                         return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
                     }));
-                if(queryFn == nullptr)
-                    parsingError(format("Type '{0}' does not support postfix ? (no operator?() emitter)", varType));
-                auto* blk = dynamic_cast<i6Block*>(queryFn->body);
-                string b = processBglConditionals(blk->i6Body);
-                b = replaceWord(b, "$self", qualified);
-                { size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
-                  size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1); }
-                expr->tokens.push_back(b);
-                if(expr->resolvedType.empty()) expr->resolvedType = queryFn->returnType.name;
+                if(queryFn != nullptr){
+                    // Type supports postfix ? — inline the emitter
+                    string qualified = func != nullptr ? qualifyIdentifier(varName, func, body) : varName;
+                    if(qualified.empty()) parsingError(format("Undeclared identifier '{0}'", varName));
+                    auto* blk = dynamic_cast<i6Block*>(queryFn->body);
+                    string b = processBglConditionals(blk->i6Body);
+                    b = replaceWord(b, "$self", qualified);
+                    { size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+                      size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1); }
+                    expr->tokens.push_back(b);
+                    if(expr->resolvedType.empty()) expr->resolvedType = queryFn->returnType.name;
+                } else {
+                    // No operator?() — put ? back for ternary handling
+                    prefetched = next;
+                    string qualified = func != nullptr ? qualifyIdentifier(cur.value, func, body) : cur.value;
+                    if(!qualified.empty()){
+                        if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body);
+                        expr->tokens.push_back(qualified);
+                    } else if(func != nullptr){
+                        parsingError(format("Undeclared identifier '{0}'", cur.value));
+                    } else {
+                        expr->tokens.push_back(cur.value);
+                    }
+                }
             }
             else {
                 prefetched = next;
@@ -2373,34 +2710,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         }
         // ─── NULL COALESCING: ?? ──────────────────────────────────────────
         else if(cur.is(eTokenType::oper) && cur.value == "??" && parenDepth == 0){
-            // Null coalescing: lhs ?? fallback
-            // Lowers to: _bgl_temp = lhs; if(!(nullTest)) _bgl_temp = fallback;
-            string lhsText = expr->text();
-            string lhsType = expr->resolvedType;
-            classDef* lhsCls = !lhsType.empty() ? dynamic_cast<classDef*>(&languageService.getType(lhsType)) : nullptr;
-            functionDef* nullTestFn = nullptr;
-            if(lhsCls != nullptr)
-                nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(lhsCls, [](typeMember* m){
-                    auto* fn = dynamic_cast<functionDef*>(m);
-                    return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
-                }));
-            if(nullTestFn == nullptr)
-                parsingError(format("Type '{0}' does not support null coalescing (no operator?() emitter)", lhsType));
-            auto* blk = dynamic_cast<i6Block*>(nullTestFn->body);
-            string nullTest = processBglConditionals(blk->i6Body);
-            nullTest = replaceWord(nullTest, "$self", "_bgl_temp");
-            { size_t s=nullTest.find_first_not_of(" \t\n\r"); if(s!=string::npos) nullTest=nullTest.substr(s);
-              size_t e=nullTest.find_last_not_of(" \t\n\r;"); if(e!=string::npos) nullTest=nullTest.substr(0,e+1); }
-            expression* fallback = parseExpression(file.getToken(), terminators, func, body);
-            string injText = "_bgl_temp = " + lhsText + "; if (~~(" + nullTest + ")) _bgl_temp = " + fallback->text() + ";";
-            i6RawNode* inj = new i6RawNode();
-            inj->text = injText;
-            pendingInjections.push_back(inj);
-            languageService.ternaryTempNeeded = true;
-            expr->tokens.clear();
-            expr->tokens.push_back("_bgl_temp");
-            if(!fallback->resolvedType.empty()) expr->resolvedType = fallback->resolvedType;
-            expr->terminator = fallback->terminator;
+            parseExprNullCoalescing(expr, terminators, func, body);
             break;
         }
         // ─── BINARY OPERATOR: emitter dispatch via applyBinaryOperator() ─
@@ -2415,60 +2725,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     expr->tokens.push_back(cur.value);
                 }
             } else if(cur.value == "!"){
-                // Prefix logical-not — look up operator! on the operand and inline the emitter
-                token operand = getNext();
-                bool handled = false;
-                if(operand.is(eTokenType::name)){
-                    string opType = resolveIdentifierType(operand.value, func, body);
-                    string opText = (func != nullptr) ? qualifyIdentifier(operand.value, func, body) : operand.value;
-                    if(opText.empty()) opText = operand.value;
-                    // Check for !v? (negated postfix query) — the ? must not be followed by : (ternary)
-                    if(file.peekToken(1).is("?") && !file.peekToken(2).is(":")){
-                        file.getToken(); // consume '?'
-                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(opType));
-                        functionDef* queryFn = nullptr;
-                        if(cls != nullptr)
-                            queryFn = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [](typeMember* m){
-                                auto* fn = dynamic_cast<functionDef*>(m);
-                                return fn && fn->name == "?" && fn->isEmitter && fn->params.empty() && dynamic_cast<i6Block*>(fn->body) != nullptr;
-                            }));
-                        if(queryFn != nullptr){
-                            auto* blk = dynamic_cast<i6Block*>(queryFn->body);
-                            string b = processBglConditionals(blk->i6Body);
-                            b = replaceWord(b, "$self", opText);
-                            { size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
-                              size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1); }
-                            expr->tokens.push_back("~~(" + b + ")");
-                            if(expr->resolvedType.empty()) expr->resolvedType = queryFn->returnType.name;
-                            handled = true;
-                        }
-                    }
-                    if(!handled){
-                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(opType));
-                        if(cls){
-                            if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* tm){
-                                auto* fn = dynamic_cast<functionDef*>(tm);
-                                return fn && fn->name == "!" && fn->params.empty() && fn->isEmitter;
-                            })){
-                                functionDef* notOp = dynamic_cast<functionDef*>(m);
-                                i6Block* blk = dynamic_cast<i6Block*>(notOp->body);
-                                if(blk){
-                                    string b = processBglConditionals(blk->i6Body);
-                                    size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
-                                    size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
-                                    b = replaceWord(b, "$self", opText);
-                                    expr->tokens.push_back(b);
-                                    if(expr->resolvedType.empty()) expr->resolvedType = notOp->returnType.name;
-                                    handled = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                if(!handled){
-                    expr->tokens.push_back("~~");
-                    prefetched = operand;
-                }
+                parseExprPrefixNot(expr, getNext(), prefetched, func, body);
             } else {
                 expr->tokens.push_back(cur.value);
             }
@@ -2554,24 +2811,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         }
         // ─── TERNARY OPERATOR: condition ? trueExpr : falseExpr ──────────
         else if(cur.value == "?" && parenDepth == 0) {
-            // Ternary expression: condition already accumulated in expr->tokens.
-            // Lower to: if (cond) _bgl_temp = trueExpr; else _bgl_temp = falseExpr;
-            // then replace this expression with just _bgl_temp.
-            string condText = expr->text();
-            expression* trueExpr  = parseExpression(file.getToken(), {":"}, func, body);
-            expression* falseExpr = parseExpression(file.getToken(), terminators, func, body);
-
-            string injText = "if (" + condText + ") _bgl_temp = " + trueExpr->text()
-                           + "; else _bgl_temp = " + falseExpr->text() + ";";
-            i6RawNode* inj = new i6RawNode();
-            inj->text = injText;
-            pendingInjections.push_back(inj);
-            languageService.ternaryTempNeeded = true;
-
-            expr->tokens.clear();
-            expr->tokens.push_back("_bgl_temp");
-            expr->resolvedType = !trueExpr->resolvedType.empty() ? trueExpr->resolvedType : falseExpr->resolvedType;
-            expr->terminator = falseExpr->terminator;
+            parseExprTernary(expr, terminators, func, body);
             break;
         }
         // ─── DIRECTIVE: #beguilerSettings.property references ─────────────
@@ -3415,16 +3655,6 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(auto* blk = dynamic_cast<i6Block*>(setMethod->body)) {
                 string b = processBglConditionals(blk->i6Body);
                 size_t pos = 0;
-                auto replaceWord = [](string str, const string& from, const string& to) {
-                    size_t p = 0;
-                    while((p = str.find(from, p)) != string::npos) {
-                        bool lOk = p==0 || !(isalnum(str[p-1]) || str[p-1]=='_' || str[p-1]=='$');
-                        bool rOk = p+from.size()>=str.size() || !(isalnum(str[p+from.size()]) || str[p+from.size()]=='_');
-                        if(lOk && rOk) { str.replace(p, from.size(), to); p += to.size(); }
-                        else p += from.size();
-                    }
-                    return str;
-                };
                 b = replaceWord(b, "$self", selfValue);
                 b = replaceWord(b, "$prop", propValue);
                 for(size_t i = 0; i < setMethod->params.size() && i < callStmt.args.size(); i++)
@@ -3728,47 +3958,25 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         // member method, prepend "self." so it routes to the method call path below.
         {
             string rawName = (string)tok;
+            // replace chaining: replaced() resolves to the predecessor's mangled name
+            if(rawName == "replaced" && currentFunc && !currentFunc->replacedTarget.empty()){
+                rawName = currentFunc->replacedTarget;
+                currentFunc->replacedWasCalled = true;
+            }
             if(func != nullptr && rawName.find('.') == string::npos){
                 string qualified = qualifyIdentifier(rawName, func, body);
                 callStmt.functionName = qualified.empty() ? rawName : qualified;
             } else {
-                callStmt.functionName = (string)tok;
+                callStmt.functionName = rawName;
             }
         }
 
-        // parse argument list using parseExpression
-        token firstArgTok = file.getToken();
-        while(firstArgTok.isNot(token::parenClose)){
-            // Named argument detection: identifier followed by ':'
-            string namedArgName;
-            if(firstArgTok.is(eTokenType::name) && file.peekToken(1).is(":")){
-                namedArgName = firstArgTok.value;
-                file.getToken(); // consume ':'
-                firstArgTok = file.getToken(); // read the value expression's first token
-            }
-            if(firstArgTok.is("$") && file.peekToken(1).is(eTokenType::quote)){
-                // Interpolated string literal argument: func($"...")
-                vector<interpolatedSegment> segs = parseInterpolatedSegments(func, body);
-                expression* arg = new expression();
-                arg->resolvedType = "interpolatedstringliteral";
-                // peek at what follows: comma or close-paren
-                token sep = file.getToken();
-                arg->terminator = sep.value;
-                callStmt.args.push_back(arg);
-                callStmt.namedArgNames.push_back(namedArgName);
-                // store segments for this argument position
-                while(callStmt.interpSegmentsPerArg.size() < callStmt.args.size() - 1)
-                    callStmt.interpSegmentsPerArg.push_back({});
-                callStmt.interpSegmentsPerArg.push_back(segs);
-                if(sep.is(token::parenClose)) break;
-                firstArgTok = file.getToken();
-            } else {
-                expression* arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body);
-                callStmt.args.push_back(arg);
-                callStmt.namedArgNames.push_back(namedArgName);
-                if(arg->terminator == token::parenClose) break;
-                firstArgTok = file.getToken();
-            }
+        // parse argument list
+        {
+            ParsedArgList pal = parseCallArgList(func, body);
+            callStmt.args = pal.args;
+            callStmt.namedArgNames = pal.namedArgNames;
+            callStmt.interpSegmentsPerArg = pal.interpSegmentsPerArg;
         }
 
         string chainReturnType;
@@ -3803,12 +4011,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(mm.nameMatch && !mm.arityMatch){
                 size_t req = 0; for(paramDef* p : mm.nameMatch->params) if(p->defaultValue.empty()) req++;
                 size_t tot = mm.nameMatch->params.size();
-                if(req == tot)
-                    parsingError(format("Method '{0}' on type '{1}' expects {2} argument(s), but {3} were supplied",
-                        methodName, objectType, tot, callStmt.args.size()));
-                else
-                    parsingError(format("Method '{0}' on type '{1}' expects {2}-{3} argument(s), but {4} were supplied",
-                        methodName, objectType, req, tot, callStmt.args.size()));
+                parsingError(format("Method '{0}' on type '{1}' expects {2} argument(s), but {3} were supplied.\n  Expected: {4}",
+                    methodName, objectType,
+                    (req == tot) ? to_string(tot) : to_string(req) + "-" + to_string(tot),
+                    callStmt.args.size(), formatSignature(mm.nameMatch)));
             }
             if(method == nullptr)
                 parsingError(format("No overload of method '{0}' on type '{1}' accepts these argument types",
@@ -3843,106 +4049,33 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 }
             chainReturnType = method->returnType.name;
         } else {
-            // global function call: find by name, enforce arity/types, resolve emitter
-            // Resolution priority: exact type match > conversion match > var fallback
-            functionDef* globalNameMatch = nullptr;
-            functionDef* globalArityMatch = nullptr;
-            functionDef* globalMatch = nullptr;
-            functionDef* globalConversionMatch = nullptr;
-            functionDef* globalVarFallback = nullptr;
-            for(typeDef* g : languageService.globals){
-                if(auto* fd = dynamic_cast<functionDef*>(g))
-                    if(fd->name == callStmt.functionName){
-                        if(globalNameMatch == nullptr) globalNameMatch = fd;
-                        size_t req = 0;
-                        for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-                        if(callStmt.args.size() >= req && callStmt.args.size() <= fd->params.size()){
-                            if(globalArityMatch == nullptr) globalArityMatch = fd;
-                            bool argsOk = true;
-                            bool usesVar = false;
-                            bool needsConversion = false;
-                            for(size_t i = 0; i < callStmt.args.size() && argsOk; i++){
-                                string argType = callStmt.args[i]->resolvedType;
-                                string paramType = fd->params[i]->type.name;
-                                if(paramType == "var") usesVar = true;
-                                else if(argType.empty() || argType == paramType) {} // exact or unknown
-                                else if(isTypeCompatible(argType, paramType)) needsConversion = true;
-                                else argsOk = false;
-                            }
-                            if(argsOk){
-                                if(usesVar){ if(globalVarFallback == nullptr) globalVarFallback = fd; }
-                                else if(!needsConversion){ globalMatch = fd; break; }
-                                else if(globalConversionMatch == nullptr) globalConversionMatch = fd;
-                            }
-                        }
-                    }
-            }
-            if(globalMatch == nullptr) globalMatch = globalConversionMatch;
-            if(globalMatch == nullptr) globalMatch = globalVarFallback;
-            bool isFuncVar = false;
-            if(globalNameMatch == nullptr) {
-                // Check if it's a func<> variable (call by address)
-                string varType = resolveIdentifierType(callStmt.functionName, func, body);
-                if(varType.rfind("func<", 0) == 0) {
-                    isFuncVar = true;
-                    // Extract return type from "func<ReturnType,...>"
-                    size_t lt = varType.find('<');
-                    size_t sep = varType.find(',', lt);
-                    size_t gt = varType.rfind('>');
-                    chainReturnType = (sep != string::npos && sep < gt)
-                        ? varType.substr(lt+1, sep-lt-1)
-                        : varType.substr(lt+1, gt-lt-1);
-                } else {
-                    parsingError(format("Undeclared function '{0}'", callStmt.functionName));
-                }
-            }
-            if(!isFuncVar){
-                if(globalArityMatch == nullptr){
-                    size_t req = 0; for(paramDef* p : globalNameMatch->params) if(p->defaultValue.empty()) req++;
-                    size_t tot = globalNameMatch->params.size();
-                    if(req == tot)
-                        parsingError(format("Function '{0}' expects {1} argument(s), but {2} were supplied",
-                            callStmt.functionName, tot, callStmt.args.size()));
-                    else
-                        parsingError(format("Function '{0}' expects {1}-{2} argument(s), but {3} were supplied",
-                            callStmt.functionName, req, tot, callStmt.args.size()));
-                }
-                if(globalMatch == nullptr)
-                    parsingError(format("No overload of function '{0}' accepts these argument types", callStmt.functionName));
+            // global function call: resolve, validate, apply defaults/conversions/emitter
+            GlobalCallMatch gcm = resolveGlobalCall(callStmt.functionName, callStmt.args, func, body);
+            chainReturnType = validateGlobalCall(gcm, callStmt.functionName, callStmt.args.size());
+            if(gcm.funcVarReturnType.empty() && gcm.match){
                 // reorder named arguments to match parameter positions
-                reorderNamedArgs(callStmt, globalMatch, [&](string msg){ parsingError(msg); return false; });
+                reorderNamedArgs(callStmt, gcm.match, [&](string msg){ parsingError(msg); return false; });
                 // fill in defaults for unspecified trailing arguments
-                for(size_t i = callStmt.args.size(); i < globalMatch->params.size(); i++){
+                for(size_t i = callStmt.args.size(); i < gcm.match->params.size(); i++){
                     expression* defExpr = new expression();
-                    defExpr->tokens.push_back(globalMatch->params[i]->defaultValue);
+                    defExpr->tokens.push_back(gcm.match->params[i]->defaultValue);
                     callStmt.args.push_back(defExpr);
                 }
                 // apply source-type conversion operators for mismatched arg types
-                applyArgConversions(callStmt.args, globalMatch);
-                if(globalMatch->isEmitter)
-                    if(auto* blk = dynamic_cast<i6Block*>(globalMatch->body)){
+                applyArgConversions(callStmt.args, gcm.match);
+                if(gcm.match->isEmitter)
+                    if(auto* blk = dynamic_cast<i6Block*>(gcm.match->body)){
                         callStmt.emitterBody = processBglConditionals(blk->i6Body);
-                        for(paramDef* p : globalMatch->params) callStmt.emitterParams.push_back(p->name);
+                        for(paramDef* p : gcm.match->params) callStmt.emitterParams.push_back(p->name);
                     }
-                chainReturnType = globalMatch->returnType.name;
-            } // end if(!isFuncVar)
+            }
         }
 
         // method chaining: handle optional ".method()" suffixes before the final ";"
-        auto replaceWordChain = [](string str, const string& from, const string& to) -> string {
-            size_t pos=0;
-            while((pos=str.find(from,pos))!=string::npos){
-                bool lOk = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
-                bool rOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
-                if(lOk && rOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
-                else pos+=from.size();
-            }
-            return str;
-        };
         auto resolveEmitterText = [&](functionCallStatement& cs) -> string {
             string b = cs.emitterBody;
             for(size_t i=0; i<cs.emitterParams.size() && i<cs.args.size(); i++)
-                b = replaceWordChain(b, cs.emitterParams[i], cs.args[i]->text());
+                b = replaceWord(b, cs.emitterParams[i], cs.args[i]->text());
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
             return b;
@@ -3990,9 +4123,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             string selfText = resolveEmitterText(callStmt);
             i6Block* chainBlk = dynamic_cast<i6Block*>(chainMethod->body);
             string b = processBglConditionals(chainBlk->i6Body);
-            b = replaceWordChain(b, "$self", selfText);
+            b = replaceWord(b, "$self", selfText);
             for(size_t i=0; i<chainMethod->params.size() && i<chainArgs.size(); i++)
-                b = replaceWordChain(b, chainMethod->params[i]->name, chainArgs[i]->text());
+                b = replaceWord(b, chainMethod->params[i]->name, chainArgs[i]->text());
             callStmt.emitterBody = b;
             callStmt.emitterParams.clear();
             callStmt.args.clear();
@@ -4327,16 +4460,6 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                 size_t e=bodyText.find_last_not_of(" \t\n\r");  if(e!=string::npos) bodyText=bodyText.substr(0,e+1);
                 if(bodyText.empty()) continue;
                 // substitute $self with variable name
-                auto replaceWord=[](string str, const string& from, const string& to){
-                    size_t pos=0;
-                    while((pos=str.find(from,pos))!=string::npos){
-                        bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
-                        bool rightOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
-                        if(leftOk && rightOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
-                        else pos+=from.size();
-                    }
-                    return str;
-                };
                 string substituted = replaceWord(bodyText, "$self", varDecl.name);
                 if(fn->name == "init"){
                     i6RawNode& initNode = *(new i6RawNode());
@@ -4363,16 +4486,6 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                 size_t s=bodyText.find_first_not_of(" \t\n\r"); if(s!=string::npos) bodyText=bodyText.substr(s);
                 size_t e=bodyText.find_last_not_of(" \t\n\r");  if(e!=string::npos) bodyText=bodyText.substr(0,e+1);
                 if(bodyText.empty()) continue;
-                auto replaceWord=[](string str, const string& from, const string& to){
-                    size_t pos=0;
-                    while((pos=str.find(from,pos))!=string::npos){
-                        bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
-                        bool rightOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
-                        if(leftOk && rightOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
-                        else pos+=from.size();
-                    }
-                    return str;
-                };
                 languageService.globalInits.push_back({varDecl.name, replaceWord(bodyText, "$self", varDecl.name)});
             }
         }
@@ -4863,8 +4976,8 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         }
         case chk("#define"):{
             token sym = file.getToken(eTokenType::identifier);
-            // optional value on the same line — skip whitespace after symbol name, then read raw
-            file.bleedSpaces();
+            // optional value on the same line — skip horizontal whitespace only (not newlines)
+            while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
             token val = file.getBasicToken(true);
             string valStr;
             if(val.isNot("\n") && val.isNot(eTokenType::eof)){
@@ -4962,6 +5075,13 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             if(text.size()>=2 && text.front()=='"' && text.back()=='"') text = text.substr(1,text.size()-2);
             return parsingError(text);
         }
+        case chk("#warning"):{
+            token msg = file.getToken({eTokenType::quote, eTokenType::rawQuote});
+            string text = msg.value;
+            if(text.size()>=2 && text.front()=='"' && text.back()=='"') text = text.substr(1,text.size()-2);
+            parsingWarning(text);
+            return false;
+        }
         case chk("#exit"):{
             throw exitFileSignal{};
         }
@@ -4983,6 +5103,36 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
 
     processParameterList(funcDef);
 
+    // ── replace chaining (non-emitter): rename existing before body parse ──
+    // For non-emitter replace, we rename the existing function to a mangled name
+    // BEFORE parsing the body so that replaced() calls can resolve during parsing.
+    // Emitter replace keeps the simpler body-swap path (no chaining).
+    if(isReplace && !isEmitter){
+        functionDef* existing = nullptr;
+        for(typeDef* g : languageService.globals){
+            if(auto* fd = dynamic_cast<functionDef*>(g)){
+                if(fd->name != funcDef.name) continue;
+                if(fd->isPrePassStub) continue; // pre-scan stub doesn't count as a real definition
+                existing = fd;
+                break;
+            }
+        }
+        if(existing){
+            // Determine N for mangled name: count existing _bgl_replaced_NAME_* in globals
+            int n = 0;
+            string prefix = "_bgl_replaced_" + funcDef.name + "_";
+            for(typeDef* g : languageService.globals)
+                if(auto* fd = dynamic_cast<functionDef*>(g))
+                    if(fd->name.rfind(prefix, 0) == 0) n++;
+            string mangledName = prefix + to_string(n);
+            existing->name = mangledName;
+            funcDef.replacedTarget = mangledName;
+            funcDef.replacedFunc = existing;
+        } else {
+            parsingWarning(format("replace: no existing global function '{0}' found; treating as new definition", funcDef.name));
+        }
+    }
+
     file.getToken(token::braceOpen); //consume the open brace
 
     if(isEmitter){
@@ -5002,27 +5152,35 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
             parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
     }
 
-    if(isReplace){
-        // Emitters: match by name + full parameter-type signature (overloading is possible).
-        // Regular functions: match by name only (I6 has no overloading; only one routine per name).
+    // ── replace: emitter body-swap (existing behavior) ──
+    if(isReplace && isEmitter){
         for(typeDef* g : languageService.globals){
             if(auto* existing = dynamic_cast<functionDef*>(g)){
                 if(existing->name != funcDef.name) continue;
-                if(isEmitter){
-                    if(existing->params.size() != funcDef.params.size()) continue;
-                    bool paramsMatch = true;
-                    for(size_t i = 0; i < funcDef.params.size() && paramsMatch; i++)
-                        if(funcDef.params[i]->type.name != existing->params[i]->type.name)
-                            paramsMatch = false;
-                    if(!paramsMatch) continue;
-                }
+                if(existing->params.size() != funcDef.params.size()) continue;
+                bool paramsMatch = true;
+                for(size_t i = 0; i < funcDef.params.size() && paramsMatch; i++)
+                    if(funcDef.params[i]->type.name != existing->params[i]->type.name)
+                        paramsMatch = false;
+                if(!paramsMatch) continue;
                 existing->body = funcDef.body;
                 existing->isEmitter = funcDef.isEmitter;
                 existing->returnType = funcDef.returnType;
                 return false;
             }
         }
-        parsingError(format("replace: no existing global function '{0}' found", funcDef.name));
+        parsingWarning(format("replace: no existing emitter '{0}' found with matching signature; treating as new definition", funcDef.name));
+    }
+
+    // ── replace chaining: dead code elimination ──
+    // If replaced() was never called in the body, the predecessor (and its entire
+    // backward chain) will never execute — mark them dead so the emitter skips them.
+    if(isReplace && !isEmitter && funcDef.replacedFunc && !funcDef.replacedWasCalled){
+        functionDef* f = funcDef.replacedFunc;
+        while(f){
+            f->isReplacedDead = true;
+            f = f->replacedFunc;
+        }
     }
 
     // If a pre-pass stub exists for this name, replace its pointer in globals in-place
@@ -5466,8 +5624,30 @@ bool bglParser::parsingError(string msg){
         errorMessage=msg;
     }
     
-    throw runtime_error(errorMessage); 
+    throw runtime_error(errorMessage);
     return true; //won't ever actually run
+}
+void bglParser::parsingWarning(string msg){
+    string warningMessage;
+    if(file.getNumberOfOpenFiles()>0) {
+        string fileName;
+        int curLine, curCol;
+        if(currentStatementSrc.line > 0){
+            fileName = currentStatementSrc.file;
+            curLine  = currentStatementSrc.line;
+            curCol   = 1;
+        } else {
+            auto detail = file.getCurrentFileDetail();
+            fileName = get<1>(detail);
+            curLine  = get<2>(detail);
+            curCol   = get<3>(detail);
+        }
+        warningMessage=format("{0}:{1}:{2}: warning: {3}",fileName,curLine,curCol,msg);
+    }
+    else{
+        warningMessage=msg;
+    }
+    cerr << warningMessage << endl;
 }
 
 #pragma region Compile Context management
