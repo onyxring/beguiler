@@ -4,12 +4,7 @@ Constant beguiler       = 1000;
 Constant beguilerMajor  = 1;
 Constant beguilerMinor  = 0;
 Constant beguilerPatch  = 0;
-Serial "260330";
-Release 42;
 [bglInit;
-
-    ! startup block test
-
 ];
 
 Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
@@ -58,11 +53,13 @@ object bglWorld
     ]
 ;
 
-constant author = "Tester";
-constant gamerelease = 42;
-[main;
-    print (string)"Feature A enabled";
-    print (string)"Many items";
-    print (string)story;
+[main score;
+    score=42;
+    print "Score: ";
+    print score;
+    print "^";
+    print "Use {braces} for interpolation.^";
+    print "Debug score=";
+    print score;
+    print "^";
 ];
-constant story = "Directive Test";

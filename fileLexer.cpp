@@ -147,9 +147,83 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 if     (c=='n')  retval.value+='^';          // \n  -> ^ (I6 newline)
                 else if(c=='"')  retval.value+='~';          // \"  -> ~ (I6 double-quote)
                 else if(c=='\\') retval.value+="@@92";        // \\  -> @@92 (literal backslash)
-                else if(c=='^')  retval.value+="@@94";       // \^  -> @@94 (literal caret)
-                else if(c=='~')  retval.value+="@@126";      // \~  -> @@126 (literal tilde)
                 else if(c=='@')  retval.value+="@@64";       // \@  -> @@64 (literal at-sign)
+                else if(c=='$') {                             // \$XX -> @{XX} (hex character code)
+                    string hex;
+                    while(isxdigit(peekChar())) { hex += readChar(); }
+                    retval.value += "@{" + hex + "}";
+                }
+                else if(isdigit(c)) {                         // \NNN -> @{hex} (decimal character code)
+                    string dec; dec += c;
+                    while(isdigit(peekChar())) { dec += readChar(); }
+                    char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "%X", stoi(dec));
+                    retval.value += "@{"; retval.value += hexBuf; retval.value += "}";
+                }
+                // ── Diacritical accent shorthands ──
+                // Context-sensitive: \^vowel = circumflex, \^ alone = literal caret.
+                // \^^ = forced literal caret, \~~ = forced literal tilde.
+                else if(c=='^') {
+                    char nc = peekChar();
+                    if(nc == '^') { readChar(); retval.value += "@@94"; }       // \^^ -> literal caret (forced)
+                    else if(string("aeiouyAEIOUY").find(nc) != string::npos) {
+                        readChar(); retval.value += "@^"; retval.value += nc;   // \^a -> @^a (â)
+                    } else { retval.value += "@@94"; }                          // \^  -> literal caret
+                }
+                else if(c=='~') {
+                    char nc = peekChar();
+                    if(nc == '~') { readChar(); retval.value += "@@126"; }      // \~~ -> literal tilde (forced)
+                    else if(string("anoANO").find(nc) != string::npos) {
+                        readChar(); retval.value += "@~"; retval.value += nc;   // \~n -> @~n (ñ)
+                    } else { retval.value += "@@126"; }                         // \~  -> literal tilde
+                }
+                else if(c=='\'') {
+                    char nc = peekChar();
+                    if(string("aeiouyAEIOUY").find(nc) != string::npos) {
+                        readChar(); retval.value += "@'"; retval.value += nc;  // \'e -> @'e (é)
+                    } else { retval.value += '\''; }                           // \'  -> literal quote
+                }
+                else if(c=='`') {
+                    char nc = peekChar();
+                    if(string("aeiouyAEIOUY").find(nc) != string::npos) {
+                        readChar(); retval.value += "@`"; retval.value += nc;  // \`a -> @`a (à)
+                    } else { retval.value += '`'; }                            // \`  -> literal backtick
+                }
+                else if(c==':') {
+                    char nc = peekChar();
+                    if(string("aeiouyAEIOUY").find(nc) != string::npos) {
+                        readChar(); retval.value += "@:"; retval.value += nc;  // \:u -> @:u (ü)
+                    } else { retval.value += ':'; }                            // \:  -> literal colon
+                }
+                else if(c=='/') {
+                    char nc = peekChar();
+                    if(string("oO").find(nc) != string::npos) {
+                        readChar(); retval.value += "@\\"; retval.value += nc; // \/o -> @\o (ø)
+                    } else { retval.value += '/'; }                            // \/  -> literal slash
+                }
+                else if(c=='c') {
+                    char nc = peekChar();
+                    if(nc=='c' || nc=='C') {
+                        readChar(); retval.value += "@c"; retval.value += nc;  // \cc -> @cc (ç), \cC -> @cC (Ç)
+                    } else { retval.value += 'c'; }                            // \c  -> literal c
+                }
+                else if(c=='o') {
+                    char nc = peekChar();
+                    if(nc=='a' || nc=='A') {
+                        readChar(); retval.value += "@o"; retval.value += nc;  // \oa -> @oa (å), \oA -> @oA (Å)
+                    } else { retval.value += 'o'; }                            // \o  -> literal o
+                }
+                // Multi-char accent names: \ss \ae \AE \oe \OE \th \et \LL \!! \?? \<< \>>
+                else if(c=='s' && peekChar()=='s') { readChar(); retval.value += "@ss"; }  // ß
+                else if(c=='a' && peekChar()=='e') { readChar(); retval.value += "@ae"; }  // æ
+                else if(c=='A' && peekChar()=='E') { readChar(); retval.value += "@AE"; }  // Æ
+                else if(c=='O' && peekChar()=='E') { readChar(); retval.value += "@OE"; }  // Œ
+                else if(c=='t' && peekChar()=='h') { readChar(); retval.value += "@th"; }  // þ
+                else if(c=='e' && peekChar()=='t') { readChar(); retval.value += "@et"; }  // ð
+                else if(c=='L' && peekChar()=='L') { readChar(); retval.value += "@LL"; }  // £
+                else if(c=='!' && peekChar()=='!') { readChar(); retval.value += "@!!"; }  // ¡
+                else if(c=='?' && peekChar()=='?') { readChar(); retval.value += "@??"; }  // ¿
+                else if(c=='<' && peekChar()=='<') { readChar(); retval.value += "@<<"; }  // «
+                else if(c=='>' && peekChar()=='>') { readChar(); retval.value += "@>>"; }  // »
                 else           { retval.value+='\\'; retval.value+=c; } // unknown: pass through
             }
             else{
