@@ -7,22 +7,8 @@
 //-----------------------------------------------------------------------------
 #once
 
-    // Assignment operators
-    // emitter char operator = (char v)        { $self=v; }
-    // emitter char operator = (intliteral v)  { $self=v; }
-    // emitter char operator = (int v)         { $self=v; }
-
-    // // Equality operators
-    // emitter eBool operator == (charliteral v) { $self==v }
-    // emitter eBool operator == (char v)        { $self==v }
-    // emitter eBool operator == (intliteral v)  { $self==v }
-    // emitter eBool operator == (int v)         { $self==v }
-    // emitter eBool operator != (charliteral v) { $self~=v }
-    // emitter eBool operator != (char v)        { $self~=v }
-    // emitter eBool operator != (int v)         { $self~=v }
-
-
-//TODO: double check that this notation still works...  and if there is a better notation...
+//TODO: double check that this notation still works...  and if there is a better notation.  
+//TODO: can we add this to the _orChar class?
 array<char> __vowels = "aeiouAEIOU"; //@:a@:o@:uo@:eo@:io@:y@:A@:O@:U@:E@:I@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~n@~o@~A@~N@~O@ae@AE@et@Et@/o@/O";
 object _orChar{
     bool isAlpha(char c){ 
