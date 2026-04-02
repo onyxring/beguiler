@@ -3,35 +3,28 @@
 #include <string_view>
 #include <stack>
 #include <vector>
-#include "typeDef.h"
 
 enum class eTokenType{
-    unknown,
+    unknown, 
     eof,
     comment,
     unclassifiedText,
     identifier,
     directive,
     dataType,
-    name,       // matches either identifier or dataType; use isDataType() to disambiguate
     integer,
     symbol,
     quote,
-    rawQuote,              // @"..."  raw string literal — no Beguile escape processing
-    oper,
-    dictionaryWord,        // .word (isPlural=false) or ..word (isPlural=true)
-    charLiteral,           // 'x'   → I6 'x'  (integer character value)
     //expression,
 };
+
+class parseNode; //forward declaration
 
 class token {
      
      public:
         eTokenType tokenType=eTokenType::unknown;
         std::string value;
-        std::string originalValue; // pre-lowercase value, for case-sensitive I6 emission (e.g. verb/grammar names)
-        bool isPlural=false;       // true for ..word dictionary word literals
-        sourceLocation src;        // file and line where this token was read
 
         static constexpr std::string endStatement=";"; 
         static constexpr std::string assignment ="="; 
@@ -41,15 +34,8 @@ class token {
         static constexpr std::string braceClose ="}"; 
         static constexpr std::string bracketOpen ="["; 
         static constexpr std::string bracketClose ="]"; 
-        static constexpr std::string constantDeclararion="const"; 
-        static constexpr std::string classDeclaration="class"; 
-        static constexpr std::string enumDeclaration="enum"; 
-        static constexpr std::string bnumDeclaration="bnum"; 
+        static constexpr std::string constant="const"; 
         static constexpr std::string comma  =","; 
-        static constexpr std::string period  ="."; 
-        static constexpr std::string external ="extern";
-        static constexpr std::string extend ="extend";
-        static constexpr std::string replace ="replace";
 
         bool is(eTokenType);
         bool is(std::string);
@@ -62,7 +48,6 @@ class token {
         bool isDataType();
         bool isValidIdentifier();
         bool isNumeric();
-        bool isString();   // true for both quote and rawQuote
 
         token assert(eTokenType, std::string="");
         token assert(std::string, std::string="");
@@ -70,6 +55,7 @@ class token {
         token assertOneOf(std::vector<std::string>, std::string="");
         token assertDataType();
         
+        operator parseNode(); 
         operator std::string(); 
         
     
