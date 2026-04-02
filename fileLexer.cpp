@@ -6,11 +6,9 @@
 #include <tuple> 
 #include <optional>
 
-#include "helpers.h"
-#include "bglLanguageService.h"
 #include "fileLexer.h"
-#include "bglParser.h"
-#include "beguiler.h"
+#include "parser.h"
+#include "orbit.h"
 
 using namespace std;
 
@@ -19,7 +17,7 @@ using namespace std;
 void fileLexer::open(string filename){
     ifstream& inputFileStream=*(new ifstream(filename));  
     
-    if (!inputFileStream.is_open()) parser.parsingError("Unable to open file "+filename+".");
+    if (!inputFileStream.is_open()) bglParser.parseError("Unable to open file "+filename+".");
     files.push(make_tuple(&inputFileStream, filename, 1, 0)); //take the current file and push it on the stack    
 }
 void fileLexer::close(){
@@ -28,7 +26,7 @@ void fileLexer::close(){
     delete inputFileStream;
     files.pop();
 }
-int fileLexer::getNumberOfOpenFiles(){
+int fileLexer::numOpen(){
     return files.size();
 }
 void fileLexer::moveToStart(){
@@ -38,7 +36,7 @@ ifstream* fileLexer::currentStream(){
     auto[inputFileStream, fileName, curLine, curCol]=files.top(); 
     return inputFileStream;   
 }
-tuple<ifstream*, string, int, int> fileLexer::getCurrentFileDetail(){ //return saved information about the current file
+tuple<ifstream*, string, int, int> fileLexer::getDetail(){ //return saved information about the current file
     return files.top();
 }
 
@@ -73,65 +71,50 @@ bool fileLexer::isValidIdentifierChar(char c){
     if(c=='_') return true;
     return false;
 }
-/*----------------------------------------------------------------------------------------
-    getBasicToken()
-
-    This routine reads in one character at a time, constructing, then returning, the most 
-    meaningful token than can be pulled from a stream without additional consideration.  
-    All input can be translated into these tokens (see commends on getToken for more 
-    information.    
-
-        EOF             
-        comment               
-        quote    
-        unclassifiedText
-        operator 
-        symbol
-
-    Note: by default, all begining whitespace is ignored ("bled" off of the stream) and each call to getBasicToken()
-    returns the first actual text token; however, if the suppressBleed argument is passed as true, and the first 
-    encountered character is a whitespace, it will be returned as a symbol token.
-*/
+//----------------------------------------------------------------------------------------
+//--Turning characters in the stream into meaningful tokens which the parser can make sense of 
+//----------------------------------------------------------------------------------------
+// Read in one character at a time, constructing, then returning, a "basic" token.
+// A "basic" token is the most meaningful token than can be pulled from a stream without additional 
+// consideration.  All input can be translated into these tokens:
+//
+//  EOF:                The next token encountered was the end of file.
+//  comment:            The next token encountered was a comment.  Text contains the entirety of the comment, whether
+//                      it is a single line comment (//) or a multiline comment (/*...*/)
+//  quote:              The next token encountered was a quoted string.  Text contains the entirety of the string, 
+//                      including the quotes and any escape characters.
+//  unclassifiedText:   The next token encountered was a series of contiguous "identifier appropriate" characters, 
+//                      including the underscore and alphanumeric characters.  Note that this doesn't check for validity:  
+//                      1abc is not a valid identifier, but will still be returned; as would 45.
+//  symbol:             The next token encountered is a single, "non-identifier appropriate" character.  Note that 
+//                      multiple symbols may be contiguous in the file, but each of these will be returned as separate 
+//                      with the exception of comments and text string, with both start with symbols or symbol 
+//                      pairs, e.g. ", //, and /*
+//
+// Note: by default, all begining whitespace is ignored ("bled" off of the stream) and each call to getBasicToken()
+// returns the first actual text token; however, if the suppressBleed argument is passed as true, and the first 
+// encountered character is a whitespace, it will be returned as a symbol token.
 token fileLexer::getBasicToken(bool suppressBleed){
-    token retval;    
+    token retval;
     
     if(!suppressBleed) bleedSpaces();
     char c=peekChar(); 
 
     while(c!=EOF){
-        if(retval.tokenType==eTokenType::unknown) {     /*  We don't yet know what sort of token we are building yet (this is probably  the first pass
-                                                            through of our loop).  Let's determine the basic type of this token so we know how to process 
-                                                            it in subsequent passes. */
+        if(retval.tokenType==eTokenType::unknown) { //we don't know what sort of token we are building yet; this is probably in the first couple of pass through our loop.  So, we analyze and determine the basic type of this token for the next pass of the loop.
+            retval.value+=c;  //add the character we previewed to the value we are building
+            readChar();      //dispose of it and move on to the next
 
-            retval.value+=c;    //add the character we previewed (peeked at) to the value we are building
-            readChar();         //dispose of it and move on to the next
-            char nc=peekChar();                             
-            string twoChars=retval.value + nc; /*   we do a lot of two character checks, so let's just build this string once and use it repeatedly; we will 
-                                                    readChar() to dispose of the nc if we end up using it, but for now we just want to peek at it without consuming it*/
-            
-            if(twoChars=="//" || twoChars=="/*")
-                retval.tokenType=eTokenType::comment;
-            else if(c=='\"')
+            if(c=='/'){     //if the token starts with a slash, its likely a comment
+                char nc=peekChar();                             
+                if(nc=='/'||nc=='*') retval.tokenType=eTokenType::comment;
+            } 
+            else if(c=='\"') 
                 retval.tokenType=eTokenType::quote;
-            else if(c=='@' && nc=='"') {
-                retval.tokenType=eTokenType::rawQuote;
-                retval.value="\""; // adopt the same outer-quote format as regular quote tokens
-                readChar();        // consume the '"'
-            }
-            else if(isValidIdentifierChar(c))
+            else if(isValidIdentifierChar(c)) 
                 retval.tokenType=eTokenType::unclassifiedText;
-            else {                
-                if(find(languageService.operators.begin(), languageService.operators.end(), retval.value)!=languageService.operators.end()){
-                    retval.tokenType=eTokenType::oper; 
-                }
-                else if(find(languageService.operators.begin(), languageService.operators.end(), twoChars)!=languageService.operators.end()){
-                    retval.value=twoChars; //note: this overwrites the previous value, which is just the first character
-                    readChar(); //dispose of the second character we previewed   
-                    retval.tokenType=eTokenType::oper;
-                }
-                else{
-                    retval.tokenType=eTokenType::symbol;
-                }
+            else {
+                retval.tokenType=eTokenType::symbol;
                 break;
             }
             c=peekChar(); //peek at the next character to process
@@ -139,110 +122,20 @@ token fileLexer::getBasicToken(bool suppressBleed){
         }
         
         if(retval.tokenType==eTokenType::quote){
-            readChar(); //dispose of the character we previewed
-
-            if(c=='\\')  { //translate Beguile escape sequences to I6 equivalents
-                c=peekChar();
-                readChar();
-                if     (c=='n')  retval.value+='^';          // \n  -> ^ (I6 newline)
-                else if(c=='"')  retval.value+='~';          // \"  -> ~ (I6 double-quote)
-                else if(c=='\\') retval.value+="@@92";        // \\  -> @@92 (literal backslash)
-                else if(c=='@')  retval.value+="@@64";       // \@  -> @@64 (literal at-sign)
-                else if(c=='$') {                             // \$XX -> @{XX} (hex character code)
-                    string hex;
-                    while(isxdigit(peekChar())) { hex += readChar(); }
-                    retval.value += "@{" + hex + "}";
-                }
-                else if(isdigit(c)) {                         // \NNN -> @{hex} (decimal character code)
-                    string dec; dec += c;
-                    while(isdigit(peekChar())) { dec += readChar(); }
-                    char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "%X", stoi(dec));
-                    retval.value += "@{"; retval.value += hexBuf; retval.value += "}";
-                }
-                // ── Diacritical accent shorthands ──
-                // Context-sensitive: \^vowel = circumflex, \^ alone = literal caret.
-                // \^^ = forced literal caret, \~~ = forced literal tilde.
-                else if(c=='^') {
-                    char nc = peekChar();
-                    if(nc == '^') { readChar(); retval.value += "@@94"; }       // \^^ -> literal caret (forced)
-                    else if(string("aeiouyAEIOUY").find(nc) != string::npos) {
-                        readChar(); retval.value += "@^"; retval.value += nc;   // \^a -> @^a (â)
-                    } else { retval.value += "@@94"; }                          // \^  -> literal caret
-                }
-                else if(c=='~') {
-                    char nc = peekChar();
-                    if(nc == '~') { readChar(); retval.value += "@@126"; }      // \~~ -> literal tilde (forced)
-                    else if(string("anoANO").find(nc) != string::npos) {
-                        readChar(); retval.value += "@~"; retval.value += nc;   // \~n -> @~n (ñ)
-                    } else { retval.value += "@@126"; }                         // \~  -> literal tilde
-                }
-                else if(c=='\'') {
-                    char nc = peekChar();
-                    if(string("aeiouyAEIOUY").find(nc) != string::npos) {
-                        readChar(); retval.value += "@'"; retval.value += nc;  // \'e -> @'e (é)
-                    } else { retval.value += '\''; }                           // \'  -> literal quote
-                }
-                else if(c=='`') {
-                    char nc = peekChar();
-                    if(string("aeiouyAEIOUY").find(nc) != string::npos) {
-                        readChar(); retval.value += "@`"; retval.value += nc;  // \`a -> @`a (à)
-                    } else { retval.value += '`'; }                            // \`  -> literal backtick
-                }
-                else if(c==':') {
-                    char nc = peekChar();
-                    if(string("aeiouyAEIOUY").find(nc) != string::npos) {
-                        readChar(); retval.value += "@:"; retval.value += nc;  // \:u -> @:u (ü)
-                    } else { retval.value += ':'; }                            // \:  -> literal colon
-                }
-                else if(c=='/') {
-                    char nc = peekChar();
-                    if(string("oO").find(nc) != string::npos) {
-                        readChar(); retval.value += "@\\"; retval.value += nc; // \/o -> @\o (ø)
-                    } else { retval.value += '/'; }                            // \/  -> literal slash
-                }
-                else if(c=='c') {
-                    char nc = peekChar();
-                    if(nc=='c' || nc=='C') {
-                        readChar(); retval.value += "@c"; retval.value += nc;  // \cc -> @cc (ç), \cC -> @cC (Ç)
-                    } else { retval.value += 'c'; }                            // \c  -> literal c
-                }
-                else if(c=='o') {
-                    char nc = peekChar();
-                    if(nc=='a' || nc=='A') {
-                        readChar(); retval.value += "@o"; retval.value += nc;  // \oa -> @oa (å), \oA -> @oA (Å)
-                    } else { retval.value += 'o'; }                            // \o  -> literal o
-                }
-                // Multi-char accent names: \ss \ae \AE \oe \OE \th \et \LL \!! \?? \<< \>>
-                else if(c=='s' && peekChar()=='s') { readChar(); retval.value += "@ss"; }  // ß
-                else if(c=='a' && peekChar()=='e') { readChar(); retval.value += "@ae"; }  // æ
-                else if(c=='A' && peekChar()=='E') { readChar(); retval.value += "@AE"; }  // Æ
-                else if(c=='O' && peekChar()=='E') { readChar(); retval.value += "@OE"; }  // Œ
-                else if(c=='t' && peekChar()=='h') { readChar(); retval.value += "@th"; }  // þ
-                else if(c=='e' && peekChar()=='t') { readChar(); retval.value += "@et"; }  // ð
-                else if(c=='L' && peekChar()=='L') { readChar(); retval.value += "@LL"; }  // £
-                else if(c=='!' && peekChar()=='!') { readChar(); retval.value += "@!!"; }  // ¡
-                else if(c=='?' && peekChar()=='?') { readChar(); retval.value += "@??"; }  // ¿
-                else if(c=='<' && peekChar()=='<') { readChar(); retval.value += "@<<"; }  // «
-                else if(c=='>' && peekChar()=='>') { readChar(); retval.value += "@>>"; }  // »
-                else           { retval.value+='\\'; retval.value+=c; } // unknown: pass through
+            retval.value+=c;
+            readChar(); //dispose of the character we previewed    
+            
+            if(c=='\\')  { //if we are processing an escape character, just add the next character no matter what it is
+                c=peekChar(); 
+                retval.value+=c;
+                readChar(); 
             }
             else{
-                retval.value+=c;
                 if(c=='\"')  break; //closing quote
             }
             c=peekChar(); //peek at the next character to process
             continue;
         } 
-        if(retval.tokenType==eTokenType::rawQuote){
-            readChar(); // consume the peeked character
-            // No Beguile escape processing — but translate I6-special chars so they stay literal
-            if     (c=='"')   { retval.value+=c; break; }  // closing quote
-            else if(c=='~')   retval.value+="@@126";        // literal tilde
-            else if(c=='^')   retval.value+="@@94";         // literal caret
-            else              retval.value+=c;
-            c=peekChar();
-            continue;
-        }
         if(retval.tokenType==eTokenType::comment){
             retval.value+=c;
             readChar(); //dispose of the character we previewed    
@@ -268,34 +161,12 @@ token fileLexer::getBasicToken(bool suppressBleed){
 
     //a special case: we've reached the end of file.  If we are not at the global scope, then throw an error, because we've terminated early
     if(c==EOF) {
-        if(parser.getCurrentCompileContext()!=eCompileContext::global) parser.parsingError("End of file encountered prematurely");
+        if(bglParser.getCurrentCompileContext()!=eCompileContext::global) bglParser.parseError("End of file encountered prematurely");
         retval.tokenType=eTokenType::eof;
     }
 
     return retval;//return our completed basic token
 }
-string fileLexer::getRawTextThroughClosingBrace(){
-    string retval;
-    int count=1; //we have already encountered the first open brace, which is why we are calling this function, so we start our count at 1
-    char c=readChar(); 
-
-     while(count>0){
-         if(c=='}') count--;
-         if(count==0) break; //don't include the closing brace in the text we return
-         if(c=='{') count++;
-        
-         retval=retval+c; 
-         c=readChar();      
-     }
-     return retval;
-}
-
-sourceLocation fileLexer::currentLocation(){
-    if(files.empty()) return {};
-    auto [stream, fileName, curLine, curCol] = files.top();
-    return {fileName, curLine};
-}
-
 // token fileLexer::getRunTokenEol(){
 //     token retval;
 //     retval.tokenType=eTokenType::unclassifiedText;
@@ -320,32 +191,22 @@ sourceLocation fileLexer::currentLocation(){
 //     }
 //     return retval;
 // } 
-
-/*----------------------------------------------------------------------------------------
-    getToken()
-
-    Return a token from the stream. This calls getBasicToken, and tries to classify it further.  After this runs, the token 
-    can be any of the following: 
-
-    EOF:                The next token encountered was the end of file.    
-    quote:              The next token encountered was a quoted string.  Text contains the entirety of the string, 
-                        including the quotes.
-    dataType:           The next token is a valid data type.
-    identifier:         The next token is a valid identifier, but not a data type.
-    integer:            The next token is an integer number.
-    directive:          The next token encountered was a compiler directive (e.g., #include).
-    operator:           The next token encountered is a recognized language operator.
-    symbol:             The next token encountered is a single symbol which was not matched to an operator.
-                        Note: multiple symbols may appear contiguously in the file, but each will be 
-                        returned as separate tokens.
-                        Note: comments and text strings are not returned as symbols, even though they both start
-                        with symbols or symbol pairs.
-    unclassifiedText:   The next token encountered was a series of contiguous "identifier appropriate" characters, 
-                        including the underscore and alphanumeric characters; however, it could not be further classified
-                        into another token type.  Usually, this indicates an error condition.
-    
-    Note: comment tokens are discarded, whether single line or multiline comments 
-*/
+//Return a token from the stream. This calls getBasicToken, and classifies it further in specific cases.  After this runs, the token 
+//can be any of the following: 
+//
+//  EOF:                The next token encountered was the end of file.
+//  comment:            The next token encountered was a comment.  Text contains the entirety of the comment, whether
+//                      it is a single line comment (//) or a multiline comment (/*...*/)
+//  quote:              The next token encountered was a quoted string.  Text contains the entirety of the string, 
+//                      including the quotes.
+//  dataType:           The next token is a valid data type.
+//  identifier:         The next token is a valid identifier, but not a data type.
+//  integer:            The next token is an integer number.
+//  unclassifiedText:   The next token encountered was a series of contiguous "identifier appropriate" characters, 
+//                      including the underscore and alphanumeric characters; however, it could not be further classified
+//                      into another token type.  Usually, this indicates an error condition.
+//  directive:          The next token encountered was a compiler directive (e.g., #include).
+//  symbol:             The next token encountered is a single, "non-identifier appropriate" character. 
 token fileLexer::getToken(){
     token next;
     token retval;
@@ -355,101 +216,15 @@ token fileLexer::getToken(){
         retval=getBasicToken();
     }while(retval.tokenType==eTokenType::comment);
     
-    if(retval.isOneOf({eTokenType::eof, eTokenType::quote, eTokenType::rawQuote, eTokenType::charLiteral})){ prevTokenType = retval.tokenType; return retval; } //just return tokens which we know we can't expand
-
-    // normalize to lowercase for case-insensitive parsing (string literals excluded above)
-    retval.originalValue = retval.value; // save pre-lowercase value for case-sensitive I6 emission
-    transform(retval.value.begin(), retval.value.end(), retval.value.begin(), ::tolower);
-
-    //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones
-    if(retval.is("#")){
-        if(peekChar() == '#'){
-            // ## prefix — Beguile compile-time directive (evaluated by the transpiler, not passed to I6)
-            readChar(); // consume second '#'
-            next=getBasicToken(true);
-            if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid Beguile directive name '"+next.value+"'.");
-            transform(next.value.begin(), next.value.end(), next.value.begin(), ::tolower);
-            retval.value = "##" + next.value;
-            retval.tokenType=eTokenType::directive;
-            prevTokenType = eTokenType::directive;
-            return retval;
-        }
+    if(retval.isOneOf({eTokenType::eof, eTokenType::quote})) return retval; //just return tokens which we know we can't expand
+    
+    //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones 
+    if(retval.is("#")){ 
         next=getBasicToken(true); //to make sense, this MUST be a name directly connected to the # with no whitespaces in between
-        if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid directive name '"+next.value+"'.");
-        transform(next.value.begin(), next.value.end(), next.value.begin(), ::tolower);
+        if(!next.isValidIdentifier()) bglParser.parseError("Encountered invalid directive name '"+next.value+"'.");
         retval.value+=next.value;
         retval.tokenType=eTokenType::directive;
-        prevTokenType = eTokenType::directive;
         return retval;
-    }
-
-    // Character literals: 'x'  (single character, with escape support)
-    if(retval.is("'")){
-        char c = peekChar(); readChar();
-        string charVal;
-        if(c == '\\'){
-            c = peekChar(); readChar();
-            if     (c == 'n')  charVal += '^';   // \n -> ^ (I6 newline)
-            else if(c == '\'') charVal += '\'';  // \' -> literal quote
-            else if(c == '\\') charVal += '\\';  // \\ -> backslash
-            else             { charVal += '\\'; charVal += c; } // unknown: pass through
-        } else {
-            charVal += c;
-        }
-        // consume closing '
-        if(peekChar() == '\'') readChar();
-        retval.value = charVal;
-        retval.tokenType = eTokenType::charLiteral;
-        prevTokenType = eTokenType::charLiteral;
-        return retval;
-    }
-
-    // Dictionary word literals: .word (singular) and ..word (plural)
-    // Not recognised after an identifier, data type, or closing paren/bracket (dot-access on expression).
-    bool prevIsExprEnd = (prevTokenType == eTokenType::identifier || prevTokenType == eTokenType::dataType
-                          || prevTokenType == eTokenType::quote || prevTokenType == eTokenType::rawQuote
-                          || prevTokenType == eTokenType::integer || prevTokenType == eTokenType::charLiteral
-                          || prevTokenType == eTokenType::directive
-                          || (prevTokenType == eTokenType::symbol && (prevTokenValue == ")" || prevTokenValue == "]")));
-    if(retval.is(".") && !prevIsExprEnd){
-        char c1 = peekChar();
-        // Helper lambda: read dict-word chars (identifier chars + apostrophe).
-        // A trailing '.' triggers a warning and is discarded.
-        auto readDictWord = [&]() -> string {
-            string w;
-            char ch = peekChar();
-            while(isValidIdentifierChar(ch) || ch == '\''){
-                w += (char)tolower(ch);
-                readChar();
-                ch = peekChar();
-            }
-            if(ch == '.'){
-                auto loc = currentLocation();
-                cerr << loc.file << ":" << loc.line << ": warning: character '.' is not valid for dictionary words. ignoring.\n";
-                readChar(); // discard the period
-            }
-            return w;
-        };
-
-        if(c1 == '.'){
-            auto savepos = currentStream()->tellg();
-            readChar(); // consume the second '.'
-            char c2 = peekChar();
-            if(isalpha(c2)){
-                retval.value = readDictWord();
-                retval.tokenType = eTokenType::dictionaryWord;
-                retval.isPlural = true;
-                prevTokenType = eTokenType::dictionaryWord;
-                return retval;
-            }
-            currentStream()->seekg(savepos); // not a plural dict word; restore stream
-        } else if(isalpha(c1)){
-            retval.value = readDictWord();
-            retval.tokenType = eTokenType::dictionaryWord;
-            retval.isPlural = false;
-            prevTokenType = eTokenType::dictionaryWord;
-            return retval;
-        }
     }
     
     if(retval.isValidIdentifier()) retval.tokenType=eTokenType::identifier; //if it meets the identifier format, default classification an identifier; however, 
@@ -457,36 +232,8 @@ token fileLexer::getToken(){
                                                                             //  rules for valid identifiers (data types for example)
     if(retval.isNumeric())retval.tokenType=eTokenType::integer;
     if(retval.isDataType()) retval.tokenType=eTokenType::dataType; //this would replace the previous identifier assumption
-    if(retval.tokenType==eTokenType::symbol && retval.isOneOf({"=","+","-","*","/","%","<",">","!","&","|","^"})){
-        retval.tokenType=eTokenType::oper;
-    }
 
-    prevTokenType = retval.tokenType;
-    prevTokenValue = retval.value;
-    retval.src = currentLocation();
-    return retval;
-}
-token fileLexer::peekToken(){
-    return peekToken(1);
-}
-token fileLexer::peekToken(int tokNum){
-    token retval;
-    auto savepos=currentStream()->tellg();
-    eTokenType savedPrev = prevTokenType;
-    string savedPrevValue = prevTokenValue;
-    // Save line/col from the current file's tuple (stream seek doesn't reset these)
-    auto& [pStream, pName, pLine, pCol] = files.top();
-    int saveLine = pLine;
-    int saveCol  = pCol;
-    for(int i=0;i<tokNum;i++){
-        retval=getToken();
-    }
-    currentStream()->seekg(savepos);
-    prevTokenType = savedPrev;
-    prevTokenValue = savedPrevValue;
-    pLine = saveLine;
-    pCol  = saveCol;
-    return retval;
+    return retval; 
 }
 //Get tokens, limited to specific types or values. Throw a compile-time error if the next token does not match the requirements.
 //These are used when the language absolutely requires the next token to conform to a specific set of features.
@@ -506,4 +253,3 @@ token fileLexer::getToken(std::vector<string> vals){
     token retval=getToken();
     return retval.assertOneOf(vals); 
 }
-
