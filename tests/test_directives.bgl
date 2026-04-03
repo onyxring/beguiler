@@ -3,7 +3,7 @@
     target = z5;
     informName = "none";
     outputPath = "tests/output";
-    story = "Directive Test";
+    title = "Directive Test";
     author = "Tester";
     release = 42;
     serial = "260330";
@@ -16,7 +16,7 @@
     ! startup block test
 }
 
-const string story = #beguilerSettings.story;
+const string story = #beguilerSettings.title;
 const string author = #beguilerSettings.author;
 const int gameRelease = #beguilerSettings.release;
 

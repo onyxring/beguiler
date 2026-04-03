@@ -28,12 +28,17 @@ public:
     // Phase 2 — Blorb assembly
     // Assemble an IFF/IFRS blorb from the story file and assets.
     // Returns true on error.
+    struct Metadata {
+        std::string ifid, title, author, headline, genre, description;
+        std::string language, series, firstPublished, forgiveness;
+        int seriesNumber = 0;
+    };
     bool build(const std::string& storyFile,
                const std::string& blorbOutPath,
                const std::vector<BlorbAsset>& assets,
                const std::string& copyright,
-               const std::string& author,
-               bool isGlulx);
+               bool isGlulx,
+               const Metadata& meta);
 
 private:
     void             writeU32BE(std::ostream& out, uint32_t v);

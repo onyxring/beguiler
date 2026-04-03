@@ -27,62 +27,62 @@ extend class string {
     emitter void deinit() { $self.free(); }
 
     // Assignment
-    replace emitter string operator = (stringLiteral v) { $self.set(v); }
-    emitter string operator = (string v)                { $self.set(v); }
+    replace emitter string operator = (stringLiteral v) { $self.set($v); }
+    emitter string operator = (string v)                { $self.set($v); }
 
     // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
     // str3 = str1 + str2  =>  str3.set(str1.append(str2))
-    emitter string operator + (stringLiteral v) { $self.append(v) }
-    emitter string operator + (string v)        { $self.append(v) }
+    emitter string operator + (stringLiteral v) { $self.append($v) }
+    emitter string operator + (string v)        { $self.append($v) }
 
     // Equality
-    emitter eBool operator == (stringLiteral v) { $self.equals(v) }
-    emitter eBool operator == (string v)        { $self.equals(v) }
+    emitter eBool operator == (stringLiteral v) { $self.equals($v) }
+    emitter eBool operator == (string v)        { $self.equals($v) }
 
     // Switch comparison: enables switch(myString){ case "hello": ... }
-    emitter eBool operator switch(stringLiteral v) { $self.equals(v) }
-    emitter eBool operator switch(string v)        { $self.equals(v) }
+    emitter eBool operator switch(stringLiteral v) { $self.equals($v) }
+    emitter eBool operator switch(string v)        { $self.equals($v) }
 
     //
-    emitter char operator[](int pos){ $self.getChar(pos) }
-    emitter char operator[]=(int pos, char c)         { $self.setChar(pos,c) }
-    emitter char operator[]=(int pos, charLiteral c)  { $self.setChar(pos,c) }
+    emitter char operator[](int pos){ $self.getChar($pos) }
+    emitter char operator[]=(int pos, char c)         { $self.setChar($pos,$c) }
+    emitter char operator[]=(int pos, charLiteral c)  { $self.setChar($pos,$c) }
 
     // Methods
     emitter string  print()                               { $self.print() }
-    
-    emitter string  append(string v)                      { $self.append(v) }
-    emitter string  append(char v)                        { $self.append(_orStr.charToString(v)) }    
-    emitter string  prepend(var v)                        { $self.prepend(v) }
+
+    emitter string  append(string v)                      { $self.append($v) }
+    emitter string  append(char v)                        { $self.append(_orStr.charToString($v)) }
+    emitter string  prepend(var v)                        { $self.prepend($v) }
     emitter string  toUpper()                             { $self.toUpper() }
     emitter string  toLower()                             { $self.toLower() }
     emitter string  trim()                                { $self.trim() }
     emitter string  trimLeft()                            { $self.trimLeft() }
     emitter string  trimRight()                           { $self.trimRight() }
     emitter string  reverse()                             { $self.reverse() }
-    emitter string  mid(int start, int count)             { $self.mid(start, count) }
-    emitter string  left(int count)                       { $self.left(count) }
-    emitter string  right(int count)                      { $self.right(count) }
-    emitter string  insert(int pos, var source)           { $self.insert(pos, source) }
-    emitter string  delete(int pos, int count)            { $self.delete(pos, count) }
-    emitter string  replace(var searchText, var replaceText)    { $self.replace(searchText, replaceText) }
-    emitter string  replaceAll(var searchText, var replaceText) { $self.replaceAll(searchText, replaceText) }
-    emitter string  format(var pattern)                   { $self.format(pattern) }
-    emitter string  format(var pattern, var p1)           { $self.format(pattern, p1) }
-    emitter string  format(var pattern, var p1, var p2)   { $self.format(pattern, p1, p2) }
+    emitter string  mid(int start, int count)             { $self.mid($start, $count) }
+    emitter string  left(int count)                       { $self.left($count) }
+    emitter string  right(int count)                      { $self.right($count) }
+    emitter string  insert(int pos, var source)           { $self.insert($pos, $source) }
+    emitter string  delete(int pos, int count)            { $self.delete($pos, $count) }
+    emitter string  replace(var searchText, var replaceText)    { $self.replace($searchText, $replaceText) }
+    emitter string  replaceAll(var searchText, var replaceText) { $self.replaceAll($searchText, $replaceText) }
+    emitter string  format(var pattern)                   { $self.format($pattern) }
+    emitter string  format(var pattern, var p1)           { $self.format($pattern, $p1) }
+    emitter string  format(var pattern, var p1, var p2)   { $self.format($pattern, $p1, $p2) }
     emitter int     getLength()                              { $self.getLength() }
-    emitter int     indexOf(var searchText)               { $self.indexOf(searchText, 0) }
-    emitter eBool   startsWith(var prefix)                { $self.startsWith(prefix, false) }
-    emitter eBool   endsWith(var suffix)                  { $self.endsWith(suffix, false) }
-    emitter eBool   contains(var searchText)              { $self.contains(searchText) }
+    emitter int     indexOf(var searchText)               { $self.indexOf($searchText, 0) }
+    emitter eBool   startsWith(var prefix)                { $self.startsWith($prefix, false) }
+    emitter eBool   endsWith(var suffix)                  { $self.endsWith($suffix, false) }
+    emitter eBool   contains(var searchText)              { $self.contains($searchText) }
     emitter eBool   isEmpty()                             { $self.isEmpty() }
     emitter void    capture()                             { $self.capture() }
     emitter void    release()                             { $self.release() }
-    emitter void    captureOutput(object obj, var prop)   { $self.captureOutput(obj, prop) }
+    emitter void    captureOutput(object obj, var prop)   { $self.captureOutput($obj, $prop) }
 }
 
 extend class stringLiteral {
-    emitter string operator + (string v) { _orStr.new($self).append(v) }
-    emitter string operator + (charLiteral c) { _orStr.new($self).appendChar(c) }
+    emitter string operator + (string v) { _orStr.new($self).append($v) }
+    emitter string operator + (charLiteral c) { _orStr.new($self).appendChar($c) }
 }
-replace emitter void print(string str) { _orStr.print(str) }
+replace emitter void print(string str) { _orStr.print($str) }
