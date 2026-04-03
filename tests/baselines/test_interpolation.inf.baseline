@@ -1,9 +1,5 @@
 !% -v5
 !% -E1
-Constant beguiler       = 1000;
-Constant beguilerMajor  = 1;
-Constant beguilerMinor  = 0;
-Constant beguilerPatch  = 0;
 [bglInit;
 ];
 
@@ -54,7 +50,7 @@ object bglWorld
 ;
 
 [main score;
-    score=42;
+    score = 42;
     print "Score: ";
     print score;
     print "^";

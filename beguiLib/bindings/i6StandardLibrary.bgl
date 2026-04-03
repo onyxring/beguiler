@@ -350,3 +350,8 @@ extern verb TraceOn;                // trace / trace on
 extern verb XAbstract;              // abstract <noun> to <noun>
 extern verb XPurloin;               // purloin <noun>
 extern verb XTree;                  // tree
+
+const string story = #beguilerSettings.title;       // I6 standard library expects 'story'
+const string author = #beguilerSettings.author;
+const string headline = #beguilerSettings.headline;
+const int gameRelease = #beguilerSettings.release;

@@ -1,16 +1,15 @@
-// the OnyxRing Beguile/Inform Transpiler
 #include <iostream>
+#include "beguiler.h"
 
-#include "settings.h" 
-#include "orbit.h" 
-
+//The application entry point, here we just create an instance of the beguiler class and pass the command line arguments to it.
 int main(int argc, char* argv[]) {
-  orbit app;
+  beguiler app;
   try{
-    app.go(argc, argv);
+    if(app.go(argc, argv)) return 1;
   }
   catch(std::runtime_error &e){
     std::cerr<<std::endl<<e.what()<<std::endl;
+    return 1;
   }
   return 0;
 }

@@ -181,6 +181,7 @@ class functionDef:public typeMember, public typeDef{
     public:
         sourceLocation src;
         bool isEmitter;
+        bool isExplicit = false;   // true for 'explicit emitter': conversion operator only fires at explicit cast sites
         typeDef returnType;
         vector<paramDef*> params;
         codeBlock* body = nullptr;
@@ -192,6 +193,10 @@ class functionDef:public typeMember, public typeDef{
         functionDef* replacedFunc = nullptr;  // pointer to predecessor functionDef
         bool replacedWasCalled = false;       // set when replaced() is encountered during body parsing
         bool isReplacedDead = false;          // true when this replaced version is unreachable (no successor calls replaced())
+        // Closure captures: variables from the enclosing scope referenced by a lambda.
+        // Each entry maps: {outer variable name, capture global name, type name}
+        struct Capture { string outerName; string globalName; string typeName; };
+        vector<Capture> captures;
 
     using abstractObject::name;
 
@@ -284,6 +289,22 @@ class i6RawNode : public typeDef, public statement, public typeMember {
         string text;
 };
 
+// try/catch statement: structured exception handling using Z-machine @catch/@throw opcodes
+class tryCatchStatement : public statement {
+    public:
+        int id = 0;                         // unique ID for label generation
+        statementBlock* tryBody = nullptr;
+        string catchVarName;                // catch variable name (e.g. "e")
+        string catchVarType;                // catch variable type (e.g. "int")
+        statementBlock* catchBody = nullptr;
+};
+
+// throw statement: throws a value to the nearest enclosing catch
+class throwStatement : public statement {
+    public:
+        expression* value = nullptr;        // the thrown value expression
+};
+
 // An array<T> declaration — global emits as I6 Array directive; property emits inline values
 class arrayDeclaration : public variableDeclaration {
     public:
@@ -331,8 +352,7 @@ class beguilerSettingsDef : public typeDef {
         int release = 0;               // !% Release N;  (0 = not set)
         string serial;                 // Serial "YYMMDD"; (empty = not set; must be exactly 6 digits)
         string errorFormat;            // !% -EN  (e.g. "1" → -E1)
-        vector<string> i6IncludePaths; // !% +include_path=...  passed to I6 compiler
-        vector<string> bglIncludePaths;// search paths for #include "file" resolution in Beguile source
+        vector<string> includePaths;   // unified search paths for both #include and #includeI6 resolution
 
         // runtime options (affect generated I6, not ICL)
         int framePoolSize = -1;        // Z-machine frame pool slot count (-1 = unset; default 64 from schema)
@@ -341,9 +361,17 @@ class beguilerSettingsDef : public typeDef {
         // blorb packaging
         bool   blorbEnabled  = false;  // true = run asset scan + blorb build
         string blorbAssetPath;         // directory to scan; default "assets" applied by schema
-        string author;                 // game author → Constant Author + blorb AUTH
-        string story;                  // game title  → Constant Story
-        string headline;               // game subtitle → Constant Headline
+        string author;                 // iFiction: game author
+        string title;                  // iFiction: game title
+        string headline;               // iFiction: subtitle
+        string genre;                  // iFiction: genre
+        string description;            // iFiction: blurb text
+        string language;               // iFiction: ISO-639 language code
+        string series;                 // iFiction: series name
+        int    seriesNumber = 0;       // iFiction: position in series
+        string firstPublished;         // iFiction: publication date (YYYY or YYYY-MM-DD)
+        string forgiveness;            // iFiction: difficulty rating
+        string ifid;                   // Treaty of Babel IFID (UUID format); auto-generated if empty
 };
 
 extern typeDef emptyTDef;

@@ -1,9 +1,5 @@
 !% -v5
 !% -E1
-Constant beguiler       = 1000;
-Constant beguilerMajor  = 1;
-Constant beguilerMinor  = 0;
-Constant beguilerPatch  = 0;
 Serial "260330";
 Release 42;
 [bglInit;
@@ -58,6 +54,7 @@ object bglWorld
     ]
 ;
 
+constant story = "Directive Test";
 constant author = "Tester";
 constant gamerelease = 42;
 [main;
@@ -65,4 +62,3 @@ constant gamerelease = 42;
     print (string)"Many items";
     print (string)story;
 ];
-constant story = "Directive Test";

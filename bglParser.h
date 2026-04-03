@@ -25,7 +25,8 @@ class bglParser {
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
         void parsingWarning(string); //like parsingError but continues parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
-        
+        void defineSymbol(const string& name, const string& value = ""){ definedSymbols[name] = value; }
+
         string contextToString(eCompileContext);
 
         //as we are parsing a file, we enter and exit "contexts" which help the parser determine what is and isn't valid.  For example, the global context allow different things than in the context of a routine.
@@ -56,8 +57,8 @@ class bglParser {
         void parsePropertyValue(variableDeclaration& prop, string typeName);
         void processI6InlineMember(objectDef& obj);
         void processArrayMember(objectDef& obj);
-        void processTypedMember(objectDef& obj, token typeTok);
-        void processMemberMethod(objectDef& obj, token returnType, token name);
+        void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false);
+        void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false);
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue);
         void processInheritedMember(objectDef& obj, token nameTok);
         bool processVerbDeclaration(bool isExtern=false);
@@ -89,6 +90,22 @@ class bglParser {
             functionDef* func, statementBlock* body);
         vector<interpolatedSegment> parseInterpolatedSegments(functionDef* func, statementBlock* body); // parses $"..." segments from the live stream (consumes $ and string)
         typeMember* findMemberInHierarchy(classDef* cls, function<bool(typeMember*)> pred);
+
+        // Qualifier flags parsed from declaration prefixes (replace, explicit, extern, emitter, const, static, extend, alias).
+        // Parsed in any order via parseQualifiers(); validated for nonsensical combinations.
+        struct Qualifiers {
+            bool isReplace  = false;
+            bool isExplicit = false;
+            bool isExtern   = false;
+            bool isEmitter  = false;
+            bool isConst    = false;
+            bool isStatic   = false;
+            bool isExtend   = false;
+            bool isAlias    = false;
+        };
+        // Parse qualifier keywords from the token stream in any order. Consumes qualifying tokens,
+        // leaves tok pointing at the first non-qualifier. Validates invalid combinations.
+        Qualifiers parseQualifiers(token& tok);
         string resolveIdentifierType(string name, functionDef* func, statementBlock* body);
         string resolvePathType(string path, functionDef* func, statementBlock* body);
         string qualifyIdentifier(string name, functionDef* func, statementBlock* body);
@@ -131,6 +148,9 @@ class bglParser {
         objectDef* currentObject = nullptr;
         classDef* currentClass = nullptr;    // set when parsing inside a class declaration
         functionDef* currentFunc = nullptr;  // outermost function being parsed (not changed for nested if/while blocks)
+        functionDef* lambdaOuterFunc = nullptr;    // set during lambda parsing to enable capture detection
+        statementBlock* lambdaOuterBody = nullptr; // outer function body during lambda parsing
+        string addCapture(const string& outerName, const string& typeName); // register a closure capture, return global name
         sourceLocation currentStatementSrc;  // location of the first token of the current statement
 
         map<string,string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value
@@ -142,6 +162,7 @@ class bglParser {
         set<string> preScanOnceFiles;
         int preScanDepth = 0;
         void preScanDirective(token tok);
+        void preScanSkipConditionalBlock(); // skips tokens in a false #if branch until #elif/#else/#endif
         void preScanSkipBody();           // consumes opening '{' and everything through matching '}'
         void preScanSkipBodyContents();   // assumes '{' already consumed; skips to matching '}'
         void preScanSkipToSemicolon();    // consumes tokens up to and including ';'

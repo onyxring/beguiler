@@ -1,9 +1,5 @@
 !% -v5
 !% -E1
-Constant beguiler       = 1000;
-Constant beguilerMajor  = 1;
-Constant beguilerMinor  = 0;
-Constant beguilerPatch  = 0;
 Release 1;
 [bglInit;
 ];
@@ -54,10 +50,11 @@ object bglWorld
     ]
 ;
 
+constant max = 100;
 constant title = "Test";
 [main a b c s ch flag i j;
-    a=5;
-    b=10;
+    a = 5;
+    b = 10;
     c=a + b;
     s="hello";
     ch = 'x';
@@ -74,7 +71,7 @@ constant title = "Test";
         print (string)"no";
     }
     for (i = 0 : i < 10 : i ++) {
-        print i;
+        print (char)i;
     }
     while (a > 0) {
         a--;
@@ -90,8 +87,7 @@ constant title = "Test";
             print (string)"other";
     }
     for (j = 1 : j<=5 : j++) {
-        print j;
+        print (char)j;
     }
     print (string)title;
 ];
-constant max = 100;

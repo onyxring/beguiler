@@ -1,9 +1,5 @@
 !% -v5
 !% -E1
-Constant beguiler       = 1000;
-Constant beguilerMajor  = 1;
-Constant beguilerMinor  = 0;
-Constant beguilerPatch  = 0;
 global _bgl_sw;
 [bglInit;
 ];
@@ -55,7 +51,7 @@ object bglWorld
 ;
 
 [main val;
-    val=7;
+    val = 7;
     _bgl_sw = val;
     if (_bgl_sw == 0) {
         print (string)"zero";

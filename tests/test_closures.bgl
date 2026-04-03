@@ -1,0 +1,38 @@
+/* test_closures.bgl — lambda closures capturing outer scope variables */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void apply(func<int,int> fn, int x){
+    int result = fn(x);
+}
+
+// --- Test 1: capture a parameter ---
+void test1(int multiplier){
+    apply((int x) => { return x * multiplier; }, 5);
+}
+
+// --- Test 2: capture a local variable ---
+void test2(){
+    int offset = 10;
+    apply((int x) => { return x + offset; }, 3);
+}
+
+// --- Test 3: capture multiple variables ---
+void test3(int a, int b){
+    apply((int x) => { return x * a + b; }, 2);
+}
+
+// --- Test 4: non-capturing lambda (no closure needed) ---
+void test4(){
+    apply((int x) => { return x + 1; }, 5);
+}
+
+void main(){
+    test1(3);
+    test2();
+    test3(4, 5);
+    test4();
+}

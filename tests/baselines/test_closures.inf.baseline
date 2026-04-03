@@ -2,6 +2,10 @@
 !% -E1
 [bglInit;
 ];
+global _bglCap3;
+global _bglCap2;
+global _bglCap1;
+global _bglCap0;
 
 Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
 
@@ -49,13 +53,41 @@ object bglWorld
     ]
 ;
 
-[greet name times;
-    print (string)name;
+[apply fn x result;
+    result=fn(x);
 ];
-[spawn name x y hostile;
-    print (string)name;
+[test1 multiplier;
+    _bglCap0 = multiplier;
+    apply(_bglLambda_0, 5);
+];
+[test2 offset;
+    offset = 10;
+    _bglCap1 = offset;
+    apply(_bglLambda_1, 3);
+];
+[test3 a b;
+    _bglCap2 = a;
+    _bglCap3 = b;
+    apply(_bglLambda_2, 2);
+];
+[test4;
+    apply(_bglLambda_3, 5);
 ];
 [main;
-    greet("Jim", 3);
-    spawn("goblin", 10, 20, true);
+    test1(3);
+    test2();
+    test3(4, 5);
+    test4();
+];
+[_bglLambda_0 x;
+    return x * _bglCap0;
+];
+[_bglLambda_1 x;
+    return x + _bglCap1;
+];
+[_bglLambda_2 x;
+    return x * _bglCap2 + _bglCap3;
+];
+[_bglLambda_3 x;
+    return x + 1;
 ];

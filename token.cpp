@@ -2,8 +2,9 @@
 #include <vector>
 
 #include "token.h"
-#include "orbit.h"
-#include "parser.h"
+#include "beguiler.h"
+#include "bglParser.h"
+#include "bglLanguageService.h"
 
 using namespace std;
 
@@ -17,8 +18,11 @@ const token _nullToken;
 
     bool token::isOneOf(vector<eTokenType> types){
         for (eTokenType &type : types) {
-            //if(type==eTokenType::unknown || tokenType==type) return true;
-            if(tokenType==type) return true;
+            if(type == eTokenType::name){
+                if(tokenType == eTokenType::identifier || tokenType == eTokenType::dataType) return true;
+            } else {
+                if(tokenType == type) return true;
+            }
         }
         return false;
     }
@@ -28,17 +32,22 @@ const token _nullToken;
         }
         return false;
     }
-
+    bool contains(vector<string> vals, string val){
+        for (string &v : vals) {
+            if(v==val) return true;
+        }
+        return false;
+    }
     //primarily used to test for _nullToken, which is defined as a default value for optional parameters
     bool token::isNull(){ 
         return is(eTokenType::unknown); 
     }
-    bool token::isObjectType(){    if(find(bglParser.objects.begin(), bglParser.objects.end(),value)!=bglParser.objects.end()) return true;
-        return false;
-    }
+    
     bool token::isDataType(){
-        if(string("var void bool int string").find(value)!=string::npos) return true; //TODO: make this a list someplace
-        return isObjectType();    
+        return languageService.isObjectType(value);    
+    }
+    bool token::isString(){
+        return tokenType == eTokenType::quote || tokenType == eTokenType::rawQuote;
     }
     bool token::isNumeric(){
         for(char c:value){
@@ -47,7 +56,7 @@ const token _nullToken;
         return true;
     }
     bool token::isValidIdentifier(){
-        if(!(isalpha(value[0])&&value[0]!='_')) return false;
+        if(!(isalpha(value[0]) || value[0]=='_')) return false;
         for (int i = 0; value[i] != '\0'; ++i){
             if(isalnum(value[i]==false&&value[i]!='_')) return false;   
         }
@@ -56,13 +65,8 @@ const token _nullToken;
 #pragma endregion
 
 #pragma region Conversion operators
-    token::operator parseNode(){
-        parseNode pNode;
-        pNode.keyToken=*this;
-        return pNode;
-    }
     token::operator string(){
-        if(tokenType==eTokenType::quote) return unescape(value);
+        if(isString()) return unescape(value);
         return value;
     }
 #pragma endregion
@@ -74,26 +78,26 @@ const token _nullToken;
 
     token token::assertOneOf(vector<eTokenType> types, string errMsg){
         if(!isOneOf(types)) {
-            if(errMsg=="") bglParser.parseError(assertFailedMessage(types));
-            bglParser.parseError(errMsg);
+            if(errMsg=="") parser.parsingError(assertFailedMessage(types));
+            parser.parsingError(errMsg);
         }
         return *this;
     }
     token token::assertOneOf(vector<string> vals, string errMsg){
         if(!isOneOf(vals)) {
-            if(errMsg=="") bglParser.parseError(assertFailedMessage(vals));
-            bglParser.parseError(errMsg);
+            if(errMsg=="") parser.parsingError(assertFailedMessage(vals));
+            parser.parsingError(errMsg);
         }
         return *this;
     }
     token token::assertDataType(){
-        if(!isDataType()) bglParser.parseError("Expected data type.");
+        if(!isDataType()) parser.parsingError("Expected data type.");
         return *this;
     }        
 
     string token::assertFailedMessage(vector<eTokenType> types){
-        string retval=format("Unexpected {0} '{1}'.  Expected ",(tokenType==eTokenType::quote)?"literal string":"token", value);
-        
+        string retval=format("Unexpected {0} '{1}'.  Expected ",isString()?"literal string":"token", value);
+
         types.erase(std::remove(types.begin(), types.end(), eTokenType::eof), types.end()); 
         types.erase(std::remove(types.begin(), types.end(), eTokenType::unknown), types.end()); 
 
@@ -113,7 +117,7 @@ const token _nullToken;
         return retval;
     }
     string token::assertFailedMessage(vector<string> vals){
-        string retval=format("Unexpected {0} '{1}'.  Expected ",(tokenType==eTokenType::quote)?"literal string":"token", value);
+        string retval=format("Unexpected {0} '{1}'.  Expected ",isString()?"literal string":"token", value);
 
         for(int t=0;t<vals.size();t++){
             if(t>0) {
@@ -141,12 +145,12 @@ size_t token::chk() {
 }
 //pass the token text off to the emitter
 token token::emit(){
-    if(tokenType==eTokenType::quote){
-        bglParser.emit.put(unescape(value));
-    }
-    else{
-        bglParser.emit.put(value);
-    }
+    // if(tokenType==eTokenType::quote){
+    //     parser.emit.put(unescape(value));
+    // }
+    // else{
+    //     parser.emit.put(value);
+    // }
     return *this;
 }
 string token::unescape(string value){
@@ -166,9 +170,11 @@ string token::tokenTypeToString(eTokenType type){
     switch(type){
         case eTokenType::identifier: return "identifier";
             break;
-        case eTokenType::quote: return "literal string";
+        case eTokenType::quote:    return "literal string";
             break;
-        case eTokenType::symbol: return "operator";
+        case eTokenType::rawQuote: return "raw string literal";
+            break;
+        case eTokenType::symbol: return "symbol";
             break;
         case eTokenType::unknown: return "Unknown";
             break;
@@ -178,13 +184,20 @@ string token::tokenTypeToString(eTokenType type){
             break;
         case eTokenType::dataType: return "data type";
             break;
+        case eTokenType::name: return "name";
+            break;
         case eTokenType::directive: return "directive";
             break;
         case eTokenType::unclassifiedText: return "unrecognized pattern";
             break;
         case eTokenType::integer: return "integer";
             break;
-        
+        case eTokenType::oper: return "operator";
+            break;
+        case eTokenType::dictionaryWord: return "dictionary word";
+            break;
+        case eTokenType::charLiteral: return "character literal";
+            break;
     }
     return "Unknown";
 }

@@ -1,9 +1,5 @@
 !% -v5
 !% -E1
-Constant beguiler       = 1000;
-Constant beguilerMajor  = 1;
-Constant beguilerMinor  = 0;
-Constant beguilerPatch  = 0;
 [bglInit;
 ];
 
@@ -83,6 +79,6 @@ place testroom
 attribute light;
 [main v;
     _bgl_animal_count=_bgl_animal_count + 1;
-    myhelper.getvalue()=myhelper.getvalue();
-    print v;
+    v=myhelper.getvalue();
+    print (char)v;
 ];
