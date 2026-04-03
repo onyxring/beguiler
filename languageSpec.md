@@ -180,6 +180,18 @@ Common accented characters can be written using shorthand escape sequences that 
 "\^z"       // ^z (literal — z is not in the accent set)
 ```
 
+#### Raw Unicode characters in strings
+
+In addition to escape sequences, diacritical characters may be typed directly in source code. The compiler automatically translates recognized Unicode characters to their I6 accent notation. Both UTF-8 and Latin-1 encoded source files are supported.
+
+```bgl
+"Héllo wörld"    // emits as "H@'ello w@:orld"
+"café"           // emits as "caf@'e"
+"señor"          // emits as "se@~nor"
+```
+
+The full ZSCII extended character set is supported (codes 155–224): diaeresis, acute, grave, circumflex, angstrom, slashed o, tilde, æ/Æ, ç/Ç, þ/Þ, ð/Ð, œ/Œ, ß, £, ¡, ¿. Unrecognized Unicode characters produce a compile-time error.
+
 ### 2.5.2a Raw String Literals
 
 A **raw string literal** is prefixed with `@` and disables all Beguile escape processing except `\"`. Every character between the delimiters is passed through to the generated I6 string as-is, except that `~` and `^` are escaped to their I6 ZSCII equivalents (`@@126` and `@@94`) so they remain literal rather than being interpreted by I6 as quote/newline.
@@ -225,13 +237,24 @@ print($"Press \{enter} to continue.");   // prints: Press {enter} to continue.
 
 ### 2.5.3 Character Literals
 
-A single character enclosed in single quotes. Escape sequences follow the same rules as string literals.
+A single character enclosed in single quotes.
 
 ```bgl
 'a'
 '\n'
 '\\'
 ```
+
+Character literals support the same escape sequences as string literals:
+
+- **Standard escapes**: `\n` (newline), `\\` (backslash), `\'` (literal quote)
+- **Numeric ZSCII**: `'\155'` — emits as the bare integer `155` in I6 expressions
+- **Diacritical accents**: `'\:a'` (ä), `'\'e'` (é), `'\^o'` (ô), `'\`a'` (à), `'\~n'` (ñ), `'\/o'` (ø), `'\cc'` (ç), `'\cC'` (Ç), `'\oa'` (å), `'\oA'` (Å), `'\ae'` (æ), `'\AE'` (Æ), `'\oe'` (œ), `'\OE'` (Œ), `'\th'` (þ), `'\TH'` (Þ), `'\et'` (ð), `'\ET'` (Ð)
+- **Raw Unicode characters**: `'å'`, `'ñ'`, `'é'` — the compiler automatically translates recognized Unicode diacriticals to their ZSCII codes. Both UTF-8 and Latin-1 encoded source files are supported.
+
+Because I6's `@`-accent notation (e.g. `@:a`) is only valid inside string literals, diacritical and numeric escapes in character literals are converted to their numeric ZSCII codes for use in I6 expressions. For example, `'\:a'` and `'å'` both emit as `155`, and `c >= 'å'` compiles to `c >= 155`.
+
+**Acute accent ambiguity**: `\'` followed by a vowel is treated as an acute accent (`'\'e'` = é). A bare `\'` not followed by a vowel is a literal escaped quote.
 ### 2.5.4 Dictionary Word Literals
 
 Dictionary word literals represent I6 dictionary entries — the tokens the parser uses to match player input.
@@ -299,7 +322,7 @@ Structural and type keywords unique to Beguile. They have no corresponding I6 ke
 
 Reserved by Beguile and transpile to I6 statements of the same or equivalent name:
 
-`if`  `else`  `for`  `while`  `do`  `switch`  `case`  `default`  `to`  `break`  `continue`  `return`  `rtrue`  `rfalse`
+`if`  `else`  `for`  `while`  `do`  `switch`  `case`  `default`  `to`  `break`  `continue`  `return`  `rtrue`  `rfalse`  `try`  `catch`  `throw`
 
 ### I6-significant keywords
 
@@ -328,6 +351,17 @@ A Beguile program consists of one or more `.bgl` source files.  Beguile programs
 
 Declarations at the outermost level of a file — types, classes, enums, variables, functions, objects, verbs, and grammar — constitute the *global scope*. Declarations may appear in any order within a file. The two-pass compilation model (pre-scan then full parse) ensures that forward references are resolved: a name may be used before it is declared as long as it appears in the same compilation unit.
 
+### Declaration Qualifiers
+
+Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `extern`, `emitter`, `const`, `static`, `extend`, and `alias`. Qualifiers may appear in **any order** — `emitter replace void foo()` and `replace emitter void foo()` are equivalent. The compiler validates invalid combinations:
+
+- `explicit` without `operator()` — error (explicit is only valid on conversion operators)
+- `const` + `static` — error
+- `static` + `emitter` — error
+- `explicit` + `const` or `static` — error
+- `alias` + `extern` — error
+- `alias` + `emitter` — error
+
 ## 3.2 Include Directives
 
 ### 3.2.1 `#include <name>`
@@ -340,22 +374,39 @@ Includes a file from the Beguile language extensions (`beguilib/` directory). Th
 
 ### 3.2.2 `#include "path"`
 
-Includes a Beguile source file by path relative to the current file. It is legal to include files more than once.  You may protect against this with a `#once` directive (see §3.2.4).
+Includes a Beguile source file by path. The compiler searches the current source file's directory, then each `includePaths` directory, trying with `.bgl` extension first, then without. Subdirectory paths are supported — `#include "utils/helpers"` resolves relative to each search root.
+
+A compile-time error is reported if the file is not found. It is legal to include files more than once; protect against this with `#once` (see §3.2.5).
 
 ```bgl
-#include "myLibrary.bgl"
+#include "myLibrary"
+#include "utils/helpers"
 ```
 
-### 3.2.3 `#includeI6 "name"`
+### 3.2.3 `#include ?"path"` (optional)
 
-Passes an include directive through directly to the generated I6 output. Use this to pull in I6 files that have no Beguile wrapper.
+Same as `#include "path"`, but silently skips if the file is not found instead of reporting an error. Also supported with angle brackets: `#include ?<name>`.
+
+```bgl
+#include ?"optionalExtension"
+```
+
+### 3.2.4 `#includeI6 "name"`
+
+Includes an I6 source file. The compiler resolves the file by searching the current source file's directory, then each `includePaths` directory, trying the name as-is and with `.h` extension. The resolved absolute path is emitted into the I6 output.
+
+A compile-time error is reported if the file is not found. Subdirectory paths are supported.
 
 ```bgl
 #includeI6 "parser"
-// emits: Include "parser";
+// emits: #include "/full/path/to/parser.h";
 ```
 
-### 3.2.4 `#once`
+An optional variant `#includeI6 ?"name"` silently skips if the file is not found.
+
+All `includePaths` directories are also emitted as `!% ++include_path=` directives in the I6 output, so that I6 can resolve its own internal includes (e.g., `parser.h` including `linklpa.h`).
+
+### 3.2.5 `#once`
 
 When placed at the top of a Beguile source file, `#once` marks the file so that any subsequent `#include` of the same file (by any path that resolves to the same absolute location) is silently ignored. Without `#once`, a file may be processed multiple times if included from different places.
 
@@ -391,7 +442,17 @@ Defines a named compilation symbol. Defining the symbol without a value assigns 
 #define MAX_SCORE 100
 ```
 
-Symbols defined with `#define` can be tested with `#if`. A value-bearing symbol can be used as a literal wherever the language accepts a constant.
+Symbols defined with `#define` can be tested with `#if`. A value-bearing symbol is also resolved as an inline compile-time literal in Beguile expressions — the symbol name is replaced by its value at compile time. Numeric values resolve as `intLiteral`; other values resolve as `stringLiteral`.
+
+```bgl
+#define MAX_SCORE 100
+
+if(score >= MAX_SCORE) print("You win!");  // compiles as: if(score >= 100)
+print(MAX_SCORE);                          // compiles as: print(100)
+const int maxScore = MAX_SCORE;            // emits: Constant maxscore = 100;
+```
+
+Pre-defined compiler symbols (`beguiler`, `beguilerMajor`, etc.) behave the same way — they are resolved inline and do not emit I6 `Constant` declarations unless explicitly assigned to a `const` variable.
 
 ### 3.3.2 Pre-Defined Symbols
 
@@ -403,8 +464,10 @@ The compiler pre-defines the following symbols before any source file is parsed:
 | `beguilerMajor` | `1` | Major version component only. |
 | `beguilerMinor` | `0` | Minor version component only. |
 | `beguilerPatch` | `0` | Patch version component only. |
+| `TARGET_GLULX` | (boolean) | Defined when `#beguilerSettings target = Glulx`. |
+| `TARGET_ZCODE` | `3`, `5`, or `8` | Defined when targeting Z-machine. The value is the Z-machine version number, enabling version comparisons. |
 
-These are read-only — they cannot be overridden with `#define` — and are calculated automatically from the compiler's internal version constant. They behave identically to user-defined `#define` symbols in `#if` expressions:
+The version symbols are read-only and are calculated automatically from the compiler's internal version constant. They behave identically to user-defined `#define` symbols in `#if` expressions:
 
 ```bgl
 #if beguiler >= 1010
@@ -416,7 +479,23 @@ These are read-only — they cannot be overridden with `#define` — and are cal
 #endif
 ```
 
-All four are also emitted into the generated I6 output as `Constant` declarations, making them available to runtime Beguile code:
+The target symbols are set from `#beguilerSettings target` before parsing begins, so they are available to `#if` throughout both compiler passes:
+
+```bgl
+#if TARGET_ZCODE
+    // Z-machine specific code
+#endif
+
+#if TARGET_ZCODE <= 5
+    // Z3 and Z5 only
+#endif
+
+#if TARGET_GLULX
+    // Glulx specific code
+#endif
+```
+
+All version symbols are also emitted into the generated I6 output as `Constant` declarations, making them available to runtime Beguile code:
 
 ```bgl
 if(beguiler >= 1010) { ... }
@@ -436,13 +515,15 @@ if(beguiler >= 1010) { ... }
 
 Nesting is supported. The compiler skips tokens in excluded branches without parsing them.
 
+Conditional directives and `#define`/`#undef` are honored during **both** compiler passes (pre-scan and full parse). This means `#if` can safely guard class, object, and function declarations — excluded declarations will not be registered as forward-reference stubs.
+
 > **Note: there is no `#ifdef`.** Beguile does not have a separate `#ifdef` directive. Use `#if SYMBOL` to test whether a symbol is defined — it evaluates to `false` when the symbol is absent, which is equivalent to `#ifdef SYMBOL` in C-family languages. Similarly, use `#if !SYMBOL` in place of `#ifndef SYMBOL`.
 
 The `##ifdef` / `##ifndef` / `##endif` forms (double-hash prefix) do exist, but they are a separate feature that applies only inside **emitter bodies** — see §10.3. They are not valid in ordinary Beguile source.
 
 ## 3.4 `#beguilerSettings`
 
-The `#beguilerSettings` block configures the transpiler and the downstream Inform 6 invocation. Multiple `#beguilerSettings` blocks are allowed; properties follow **first-writer-wins** semantics (the first block to set a property wins; later blocks are ignored for that property), except for `i6IncludePath` and `bglIncludePath`, which are **additive** — every occurrence adds a directory to the respective search path.
+The `#beguilerSettings` block configures the transpiler and the downstream Inform 6 invocation. Multiple `#beguilerSettings` blocks are allowed; properties follow **first-writer-wins** semantics (the first block to set a property wins; later blocks are ignored for that property), except for `includePaths`, which is **additive** — every occurrence adds a directory to the search path.
 
 The schema for this directive is declared as `extern class beguilerSettingsType` in `_beguileCore.bgl`. The parser validates property names and value types against this class.
 
@@ -465,7 +546,7 @@ These settings tell the transpiler where to find external tools. They are not wr
 | `informPath` | string | — | Full path to the Inform 6 compiler binary. Takes precedence over `informName`. |
 | `informName` | string | `"inform"` | Filename of the Inform 6 binary (looked up adjacent to the `beguiler` binary). Use `"none"` to skip the I6 handoff entirely. CLI `-inform=` overrides this. |
 | `beguiLibPath` | string | `"beguiLib"` | Path to the Beguile language extensions directory. Overrides the default binary-adjacent search. |
-| `bglIncludePath` | string | — | Adds a directory to the search path for `#include "file"` resolution. May be specified multiple times (additive). |
+| `includePaths` | string | — | Adds a directory to the include search path for both `#include` and `#includeI6`. May be specified multiple times (additive). Duplicates are ignored. CLI `-includepaths=` also adds to this list. |
 
 ### Compilation settings
 
@@ -475,7 +556,6 @@ These settings control the compilation target and output characteristics.
 |---------|------|---------|-------------|
 | `target` | `eTarget` | `Glulx` | Compilation target: `Glulx`, `Z3`, `Z5`, or `Z8`. |
 | `outputPath` | string | `"output"` | Directory for the compiled story file. Relative paths are resolved from the source file's directory. CLI `-o` overrides this. |
-| `i6IncludePath` | string | — | Adds a directory to the I6 compiler's library search path. May be specified multiple times (additive). |
 | `release` | int | `0` | Sets the story release number. `0` means unset. |
 | `errorFormat` | `eErrorFormat` | `E1` | Error reporting style passed to the I6 compiler. `E1` = Microsoft-style; `E2` = Macintosh-style. |
 
@@ -494,12 +574,35 @@ These settings carry game identity information. They feed blorb packaging direct
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `story` | string | `""` | Game title. |
-| `author` | string | `""` | Game author. |
-| `headline` | string | `""` | Game subtitle or tagline. |
+| `title` | string | `""` | Game title (iFiction `<title>`). |
+| `author` | string | `""` | Game author (iFiction `<author>`). |
+| `headline` | string | `""` | Subtitle or tagline, e.g. `"An Interactive Mystery"` (iFiction `<headline>`). |
+| `genre` | string | `""` | Genre, e.g. `"Fantasy"`, `"Mystery"`, `"Science Fiction"` (iFiction `<genre>`). |
+| `description` | string | `""` | Blurb text; may contain line breaks; max ~2400 chars (iFiction `<description>`). |
+| `language` | string | `""` | ISO-639 language code, e.g. `"en"`, `"en-US"` (iFiction `<language>`). |
+| `series` | string | `""` | Series name (iFiction `<series>`). |
+| `seriesNumber` | int | `0` | Position in series; requires `series` to be set (iFiction `<seriesnumber>`). |
+| `firstPublished` | string | `""` | Publication date: `"YYYY"` or `"YYYY-MM-DD"` (iFiction `<firstpublished>`). |
+| `forgiveness` | string | `""` | Difficulty: `"Merciful"`, `"Polite"`, `"Tough"`, `"Nasty"`, or `"Cruel"` (iFiction `<forgiveness>`). |
 | `release` | int | `0` | Story release number. `0` means unset. |
+| `ifid` | string | (auto) | Treaty of Babel IFID in UUID format (e.g. `"A0B1C2D3-E4F5-6789-ABCD-EF0123456789"`). Auto-generated when blorb packaging is enabled and no explicit IFID is provided. Once published, the IFID must never change across releases. |
 
-None of these are auto-emitted to I6 output. To expose them as I6 constants (e.g. for library integration) you can map these in Beguile source — see §3.4.2.
+All iFiction fields are included in the blorb `IFmd` chunk when blorb packaging is enabled. `<title>` and `<author>` default to "Untitled" / "Anonymous" if not set (Treaty of Babel requires both).
+
+When an `ifid` is set (explicitly or auto-generated), the compiler embeds it in the compiled story file following the Treaty of Babel convention:
+
+```i6
+Array UUID_ARRAY string "UUID://A0B1C2D3-E4F5-6789-ABCD-EF0123456789//";
+#Ifdef UUID_ARRAY;#Endif;
+```
+
+The `UUID_ARRAY` string is searchable in the raw Z-code or Glulx binary by babel-compatible tools (IFDB, the `babel` CLI, interpreters like Lectrote and Gargoyle). The `#Ifdef` suppresses the I6 "declared but not used" warning.
+
+When blorb packaging is enabled, the IFID, title, author, and headline are also written into an iFiction XML metadata record (`IFmd` chunk) inside the blorb file, making the game discoverable on IFDB and other cataloging services.
+
+**Auto-generation**: when `generateBlorb = true` and no explicit `ifid` is provided, the compiler generates a deterministic UUID v5 from the source filename, author, and story title. This ensures the same IFID is produced for the same game identity, even if `_blorbAssets.bgl` is deleted and regenerated. The generated IFID is persisted in `_blorbAssets.bgl` as a `#beguilerSettings { ifid = "..."; }` block so it is read back on subsequent builds. An explicit `ifid` in the user's source always takes priority (first-writer-wins).
+
+All other metadata settings (`title`, `author`, `headline`, `release`, etc.) are not auto-emitted to I6 output. To expose them as I6 constants (e.g. for library integration) you can map these in Beguile source — see §3.4.2. Library bindings handle the mapping to library-specific constant names (e.g. `const string story = #beguilerSettings.title;` for the I6 standard library).
 
 ### 3.4.1 Blorb packaging
 
@@ -530,7 +633,7 @@ Asset files are discovered non-recursively. PNG, JPG, and JPEG files become pict
 Any `#beguilerSettings` property can be read as a compile-time expression using the syntax `#beguilerSettings.propertyName`. The result is a string or integer literal substituted inline.
 
 ```bgl
-const string story    = #beguilerSettings.story;
+const string story    = #beguilerSettings.title;
 const string author   = #beguilerSettings.author;
 const string headline = #beguilerSettings.headline;
 const int    ver      = #beguilerSettings.release;
@@ -541,11 +644,11 @@ const int    ver      = #beguilerSettings.release;
 Both produce identical I6 output. The difference is where the value lives:
 
 - `const string story = "My Game";` — the value is defined only in Beguile source. To use it in a `#beguilerSettings` blorb context (where the compiler reads it for metadata packaging), you would have to duplicate it.
-- `const string story = #beguilerSettings.story;` — the value is defined once in `#beguilerSettings`, where it serves both the blorb packager and the compiled output. The Beguile constant is a *reference* to that single definition, not a second copy.
+- `const string story = #beguilerSettings.title;` — the value is defined once in `#beguilerSettings`, where it serves both the blorb packager and the compiled output. The Beguile constant is a *reference* to that single definition, not a second copy.
 
 In short: if a value only needs to exist as an I6 constant and never participates in blorb packaging, declare it directly. If the value needs to be consumed by beguiler tooling (blorb, future toolchain features) *and* referenced in compiled code, define it in `#beguilerSettings` and surface it with `#beguilerSettings.propertyName`.
 
-Supported properties: `story`, `author`, `headline`, `target`, `outputPath`, `blorbAssetPath`, `informName` (string); `release`, `framePoolSize` (int).
+Supported properties: `title`, `author`, `headline`, `genre`, `description`, `language`, `series`, `firstPublished`, `forgiveness`, `ifid`, `target`, `outputPath`, `blorbAssetPath`, `informName` (string); `release`, `framePoolSize`, `seriesNumber` (int).
 
 ## 3.5 Diagnostic and Control Directives
 
@@ -801,8 +904,8 @@ Normal, `extern`, and `emitter` classes support optional inheritance via `: Pare
 extern class object {
     parentProp parent;
     attributeList attributes;
-    emitter void give(attribute attr){ give $self attr }
-    emitter eBool has(attribute attr){ $self has attr }
+    emitter void give(attribute attr){ give $self $attr }
+    emitter eBool has(attribute attr){ $self has $attr }
 }
 ```
 
@@ -950,7 +1053,7 @@ An operator emitter defines how a built-in operator is compiled when applied to 
 class Counter {
     int value = 0;
     emitter Counter operator ++ (){ $self.value++ }
-    emitter bool operator == (Counter v){ $self.value == v.value }
+    emitter bool operator == (Counter v){ $self.value == $v.value }
 }
 ```
 
@@ -994,8 +1097,8 @@ When no body is provided (empty braces), the value passes through unchanged. Whe
 
 ```bgl
 extern class myBuf {
-    emitter var  operator[]  (int i)        { $self-->i }
-    emitter void operator[]= (int i, var v) { $self-->i = v }
+    emitter var  operator[]  (int i)        { $self-->$i }
+    emitter void operator[]= (int i, var v) { $self-->$i = $v }
 }
 ```
 
@@ -1040,7 +1143,7 @@ To explicitly dispatch to a specific parent's version of a member, use the type-
 (Animal)myDog.speak();   // forces dispatch through Animal's speak, not Dog's
 ```
 
-## 5.7 `extend class` and `replace mamber`
+## 5.7 `extend class` and `replace` for Members
 
 `extend class` adds new members to any already-declared class. If augmenting an `extern` class type, only emitters may be added.  Classes defined in Beguile code may be extended with actual members as well.
 
@@ -1066,12 +1169,37 @@ extend extern class string {
 }
 ```
 
-Matching rules for `replace`:
+### Shadowing Base Class Members
+
+When a derived class or object instance defines a method that already exists in a base class, the compiler emits a warning unless `replace` is specified. This applies to both class declarations and object bodies.
+
+```bgl
+class Animal : object {
+    void speak(){}
+}
+
+class Dog : Animal {
+    replace void speak(){}     // explicit override — no warning
+}
+
+class Cat : Animal {
+    void speak(){}             // warning: 'speak' shadows definition in base class 'Animal'
+}
+
+object rex : Animal {
+    replace void speak(){}     // explicit override on instance — no warning
+}
+```
+
+The warning helps catch accidental shadowing (e.g., a base class method was renamed but a derived class still has the old name). Using `replace` communicates that the shadowing is intentional.
+
+### Matching rules for `replace` in class/object bodies
+- **In `extend class`**: `replace` replaces an existing member on the same class. Adding a duplicate without `replace` is a compile-time error.
+- **In derived classes/objects**: `replace` suppresses the shadowing warning for methods that exist in the base class hierarchy.
 - **Emitters**: matched by name and full parameter-type signature, because emitters support overloading.
-- **Regular functions**: matched by name alone. Since I6 does not support routine overloading, only one regular function per name can exist; signature matching is unnecessary.
+- **Regular functions**: matched by name alone.
 - **Variable properties**: matched by name alone.
-- `replace` on a non-existent member issues a compiler warning and adds the member as new.
-- `replace` outside an `extend class` block is a compile-time error.
+- `replace` on a non-existent member in `extend class` issues a compiler warning and adds the member as new.
 
 `replace` also applies to global functions; see §8.4.
 
@@ -1206,7 +1334,18 @@ object cloak {
 }
 ```
 
-Array properties emit inline property value lists in the I6 output. Element type-checking applies using the same rules as global arrays (§4.7).
+Array properties with word-sized elements (`array<int>`, `array<dictionaryWord>`, etc.) emit inline property value lists in the I6 output. Element type-checking applies using the same rules as global arrays (§4.7).
+
+Byte array properties (`array<char>`) are handled differently: since I6 property values are word-sized, byte arrays cannot be stored inline. The compiler emits an external `Array` declaration with a mangled name and stores a pointer to it as the property value. Both string initializers and brace initializers are supported:
+
+```bgl
+object foo {
+    array<char> greeting = "hello";           // external: Array _foo_greeting string "hello";
+    array<char> codes = {'a', 'b', 'c'};      // external: Array _foo_codes -> 3 'a' 'b' 'c';
+}
+```
+
+This is transparent to the developer — subscript access, `for-in` loops, and the `length()` emitter all work correctly on byte array properties.
 
 ## 6.6 Method Properties
 
@@ -1292,7 +1431,7 @@ Emitters may appear:
 - As members of a class
 - At global scope, as top-level declarations
 
-The body may contain any I6 text. It is not parsed for Beguile syntax — only the placeholder tokens `$self` and parameter names are recognized for substitution.
+The body may contain any I6 text. It is not parsed for Beguile syntax — only the placeholder tokens `$self` and `$paramName` are recognized for substitution.
 
 Emitter bodies also support a small set of conditional directives that are not available in ordinary Beguile code:
 
@@ -1313,13 +1452,14 @@ When an emitter is called, the compiler performs textual substitution on the bod
 | Placeholder | Replaced with |
 |-------------|---------------|
 | `$self` | The receiver — the variable or expression on the left-hand side of a method call or operator |
-| Each parameter name | The corresponding argument expression at the call site |
+| `$paramName` | The corresponding argument expression at the call site. Each parameter is referenced by `$` followed by its declared name. |
+| `$prop` | (For array emitters) The property name when the array is an object property; `0` for global arrays. |
 
-Substitution is performed as a simple text replacement across the entire body string. If a parameter name appears as a substring of another word, it will not be incorrectly substituted — the replacement targets exact token matches.
+All emitter placeholders use the `$` prefix to distinguish them from raw I6 identifiers. This prevents substitution collisions — for example, if a parameter is named `c` and the emitter body also references a variable named `c`, using `$c` for the parameter ensures only the intended token is replaced.
 
 ```bgl
 extern class bool {
-    emitter bool operator = (bool v){ $self = v; }
+    emitter bool operator = (bool v){ $self = $v; }
 }
 
 isBad = true;
@@ -1433,8 +1573,8 @@ An operator emitter defines how a built-in operator is compiled when the left-ha
 ```bgl
 class Counter {
     int value = 0;
-    emitter bool operator == (int v){ $self.value == v }
-    emitter Counter operator = (Counter v){ $self.value = v.value }
+    emitter bool operator == (int v){ $self.value == $v }
+    emitter Counter operator = (Counter v){ $self.value = $v.value }
 }
 ```
 
@@ -2185,6 +2325,72 @@ Returning a value from a `void` function is a compile-time error. A non-`void` f
 
 If the function's local variables have `deinit` emitters, they fire before the `return` is emitted.
 
+## 10.13 `try` / `catch` / `throw`
+
+Beguile provides structured exception handling using the Z-machine's `@catch`/`@throw` opcodes (available on Z-machine v5+ and Glulx). Exceptions unwind the call stack across any number of function calls.
+
+### Basic usage
+
+```bgl
+try {
+    riskyOperation();
+} catch(int errorCode) {
+    print("Error: ");
+    print(errorCode);
+}
+```
+
+The `try` block executes normally. If `throw` is executed anywhere during the try block — including inside called functions — execution unwinds to the nearest enclosing `catch` block. The thrown value is assigned to the catch variable.
+
+### `throw`
+
+```bgl
+throw 42;              // throw an integer error code
+throw errorCode;       // throw a variable's value
+throw x + 1;           // throw an expression result
+```
+
+`throw` takes a single expression whose value is passed to the catch variable. The thrown value is a single word (matching Z-machine/Glulx word size), so it can be an integer, object reference, or any word-sized value.
+
+If `throw` is executed with no active `try`/`catch` on the call stack, the runtime prints an error message and halts.
+
+### Nesting
+
+Try/catch blocks may be nested. Each `throw` unwinds to the nearest enclosing `catch`:
+
+```bgl
+try {
+    try {
+        throw 42;          // caught by inner catch
+    } catch(int inner) {
+        throw inner;        // re-thrown to outer catch
+    }
+} catch(int outer) {
+    // outer == 42
+}
+```
+
+### Cross-frame throwing
+
+`throw` works across call boundaries — the VM unwinds the stack automatically:
+
+```bgl
+void deep(){ throw 7; }
+void middle(){ deep(); }
+
+void main(){
+    try {
+        middle();          // throw in deep() unwinds through middle() to here
+    } catch(int e) {
+        // e == 7
+    }
+}
+```
+
+### Implementation note
+
+Beguile lowers `try`/`catch` to Z-machine `@catch`/`@throw` opcodes, which provide `setjmp`/`longjmp`-style stack unwinding at the VM level. A global cookie variable tracks the active catch frame; nested try blocks save and restore it. No runtime library is required — the VM handles all stack unwinding.
+
 ---
 
 # Chapter 11 — Expressions
@@ -2215,6 +2421,8 @@ Binary operators join two operands. Resolution proceeds as follows:
 1. The compiler looks for an emitter on the LHS type matching the operator and the RHS type.
 2. If not found, it looks for an `operator()` conversion on the RHS type that maps to a type for which the LHS does have an operator emitter.
 3. If still not found, the operator is emitted verbatim as I6.
+
+The full set of overloadable binary operators includes the standard arithmetic (`+`, `-`, `*`, `/`, `%`), comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`), logical (`&&`, `||`), assignment (`=`, `+=`, `-=`, `*=`, `/=`, `%=`), and the custom operators `?=` (nullable assignment) and `=~` (user-defined; intended for case-insensitive matching). All produce `eBool` as their resolved type when used as comparison operators; assignment and arithmetic operators preserve the LHS type.
 
 Operators are resolved left-to-right for chained expressions:
 
@@ -2356,7 +2564,15 @@ func<int, int>     doubler;   // takes one int, returns int
 func<void>         callback;  // takes nothing, returns nothing
 ```
 
-Lambdas are not closures. They do not capture variables from the enclosing scope — local variables, parameters, and class or object members of the enclosing function are not accessible inside a lambda body. Only the lambda's own declared parameters are in scope.
+Lambdas support **closures** — they can capture variables from the enclosing scope. When a lambda body references a local variable or parameter from the enclosing function, the compiler automatically captures its value at the point where the lambda is created.
+
+```bgl
+void test(int multiplier){
+    apply((int x) => { return x * multiplier; }, 5);  // captures 'multiplier'
+}
+```
+
+Multiple variables can be captured, and each is independently stored.
 
 ### 11.6.2 Lambda Literal Syntax
 
@@ -2400,10 +2616,26 @@ void main() {
 
 An inline lambda in an argument position is lifted and passed by address, just like a named lambda variable.
 
-### 11.6.4 Constraints
+### 11.6.4 Closures and Capture
 
-- **No captures.** A lambda body may not reference local variables from the enclosing scope. Globals and parameters of the lambda itself are accessible; locals of the enclosing function are not.
+When a lambda references variables from the enclosing function's scope, the compiler creates **capture globals** — hidden global variables that store the captured values at lambda creation time. The lifted function reads from these globals instead of the (inaccessible) enclosing locals.
+
+```bgl
+void test(int a, int b){
+    // captures both 'a' and 'b'
+    apply((int x) => { return x * a + b; }, 2);
+}
+```
+
+**Capture semantics:**
+- Captures are **by value** — the value is copied at the point the lambda is created, not when it is called. Changes to the outer variable after lambda creation are not reflected.
+- Captures use **global storage** — each unique capture point gets its own global variable. This means captures work correctly for immediate callbacks (the dominant IF pattern), but a lambda stored for later invocation may see its capture globals overwritten by subsequent lambda creations.
+- Non-capturing lambdas incur no capture overhead.
+
+### 11.6.5 Constraints
+
 - **No immediate invocation.** The syntax `((int n) => { print(n); })(42)` is not supported. Assign to a variable or pass as an argument first.
+- **Capture lifetime.** Captured values are stored in globals and may be overwritten if another closure captures from the same scope. Closures are designed for immediate callback use (e.g., `getFiltered`, `applyToAll`), not long-lived storage.
 
 ---
 
@@ -2709,15 +2941,16 @@ Extern variable declarations may also carry an `as i6name` alias clause — see 
 
 ## 15.3 `#includeI6`
 
-Passes an I6 `Include` directive through to the generated `.inf` file verbatim:
+Emits an I6 `#include` directive into the generated `.inf` file. The compiler resolves the file path against the source directory and all `includePaths` directories (trying the name as-is and with `.h` extension), then emits the resolved absolute path. A compile-time error is reported if the file is not found; use the optional form `#includeI6 ?"name"` to skip silently.
 
 ```bgl
-#includeI6 "parser"
+#includeI6 "parser"        // resolves to absolute path of parser.h
 #includeI6 "verblib"
 #includeI6 "grammar"
+#includeI6 ?"optional"     // no error if not found
 ```
 
-These are used to pull in standard Inform library files at the correct positions in the output. The Beguile compiler does not parse or validate the included I6 files.
+These are used to pull in standard Inform library files at the correct positions in the output. The Beguile compiler does not parse or validate the included I6 files, but does verify they exist.
 
 ## 15.4 Emitter Bodies as Raw I6
 
@@ -2725,8 +2958,8 @@ Every emitter body is raw I6 text. Authors may use any I6 construct inside an em
 
 ```bgl
 extern class object {
-    emitter void move(object dest){ move $self to dest }
-    emitter eBool has(attribute a) { $self has a }
+    emitter void move(object dest){ move $self to $dest }
+    emitter eBool has(attribute a) { $self has $a }
 }
 ```
 

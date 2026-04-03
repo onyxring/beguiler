@@ -1,4 +1,5 @@
 #include "blorb.h"
+#include "settings.h"
 
 #include <algorithm>
 #include <chrono>
@@ -140,8 +141,8 @@ bool Blorb::build(const string& storyFile,
                   const string& blorbOutPath,
                   const vector<BlorbAsset>& assets,
                   const string& copyright,
-                  const string& author,
-                  bool isGlulx) {
+                  bool isGlulx,
+                  const Metadata& meta) {
     // Load story file
     vector<char> storyData;
     try {
@@ -167,11 +168,10 @@ bool Blorb::build(const string& storyFile,
 
     // Build the copyright string
     string copyrightStr = copyright;
-    if(copyrightStr.empty() && !author.empty()) {
-        // Auto-derive: "Author YYYY"
+    if(copyrightStr.empty() && !meta.author.empty()) {
         auto now = chrono::system_clock::to_time_t(chrono::system_clock::now());
         tm* t = localtime(&now);
-        copyrightStr = author + " " + to_string(1900 + t->tm_year);
+        copyrightStr = meta.author + " " + to_string(1900 + t->tm_year);
     }
 
     // -----------------------------------------------------------------------
@@ -197,9 +197,43 @@ bool Blorb::build(const string& storyFile,
     }
 
     // AUTH chunk (optional)
-    if(!author.empty()) {
+    if(!meta.author.empty()) {
         Chunk c; c.type = "AUTH";
-        c.data.assign(author.begin(), author.end());
+        c.data.assign(meta.author.begin(), meta.author.end());
+        chunks.push_back(std::move(c));
+    }
+
+    // IFmd chunk — iFiction XML metadata (Treaty of Babel rev 12)
+    if(!meta.ifid.empty()) {
+        string fmt = isGlulx ? "glulx" : "zcode";
+        string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                     "<ifiction version=\"1.0\" xmlns=\"http://babel.ifarchive.org/protocol/iFiction/\">\n"
+                     "  <story>\n"
+                     "    <identification>\n"
+                     "      <ifid>" + meta.ifid + "</ifid>\n"
+                     "      <format>" + fmt + "</format>\n"
+                     "    </identification>\n"
+                     "    <bibliographic>\n"
+                     "      <title>" + (meta.title.empty() ? "Untitled" : meta.title) + "</title>\n"
+                     "      <author>" + (meta.author.empty() ? "Anonymous" : meta.author) + "</author>\n";
+        if(!meta.language.empty())       xml += "      <language>" + meta.language + "</language>\n";
+        if(!meta.headline.empty())       xml += "      <headline>" + meta.headline + "</headline>\n";
+        if(!meta.firstPublished.empty()) xml += "      <firstpublished>" + meta.firstPublished + "</firstpublished>\n";
+        if(!meta.genre.empty())          xml += "      <genre>" + meta.genre + "</genre>\n";
+        if(!meta.description.empty())    xml += "      <description>" + meta.description + "</description>\n";
+        if(!meta.series.empty())         xml += "      <series>" + meta.series + "</series>\n";
+        if(meta.seriesNumber > 0)        xml += "      <seriesnumber>" + to_string(meta.seriesNumber) + "</seriesnumber>\n";
+        if(!meta.forgiveness.empty())    xml += "      <forgiveness>" + meta.forgiveness + "</forgiveness>\n";
+        xml += "    </bibliographic>\n"
+               "    <colophon>\n"
+               "      <generator>Beguile</generator>\n"
+               "      <generatorversion>" + to_string(BEGUILER_VERSION) + "</generatorversion>\n"
+               "      <originated>" + fmt + "</originated>\n"
+               "    </colophon>\n"
+               "  </story>\n"
+               "</ifiction>\n";
+        Chunk c; c.type = "IFmd";
+        c.data.assign(xml.begin(), xml.end());
         chunks.push_back(std::move(c));
     }
 

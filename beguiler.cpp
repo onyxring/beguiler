@@ -4,6 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <cstdlib>
+#include <random>
 
 #include "settings.h"
 #include "beguiler.h"
@@ -83,6 +84,25 @@ void beguiler::extractBlorbSettings(const string& filename) {
         extractBool("generateblorb",   beguilerSettings.blorbEnabled);
         extractStr( "blorbassetpath", beguilerSettings.blorbAssetPath);
 
+        // Extract target for compile-time #if symbols (target = Glulx / Z3 / Z5 / Z8)
+        {
+            size_t k = blockLower.find("target");
+            if(k != string::npos){
+                size_t eq = blockLower.find('=', k + 6);
+                if(eq != string::npos){
+                    size_t vs = blockLower.find_first_not_of(" \t\r\n", eq + 1);
+                    if(vs != string::npos){
+                        size_t ve = blockLower.find_first_of(" \t\r\n;}", vs);
+                        string val = blockLower.substr(vs, ve - vs);
+                        if(val == "glulx")
+                            parser.defineSymbol("target_glulx");
+                        else if(val == "z3" || val == "z5" || val == "z8")
+                            parser.defineSymbol("target_zcode", val.substr(1)); // "3", "5", or "8"
+                    }
+                }
+            }
+        }
+
         pos = cur;
     }
 }
@@ -118,6 +138,45 @@ bool beguiler::go(int argc, char* argv[]) {
     // Safety fallbacks if schema was not loaded
     if(beguilerSettings.target.empty())      beguilerSettings.target = "glulx";
     if(beguilerSettings.framePoolSize == -1) beguilerSettings.framePoolSize = 64;
+
+    // IFID: may already be set from user's #beguilerSettings or from _blorbAssets.bgl.
+    // If still empty and blorb is enabled, generate deterministically from source identity
+    // and persist to _blorbAssets.bgl for stability across builds.
+    if(beguilerSettings.ifid.empty() && beguilerSettings.blorbEnabled){
+        // Deterministic UUID v5-style: hash source filename + author + story
+        string seed = fs::path(settings.inFile).filename().string()
+                    + "|" + beguilerSettings.author
+                    + "|" + beguilerSettings.title;
+        // Simple FNV-1a hash to produce 128 bits (4 x 32-bit)
+        auto fnv = [](const string& s, uint32_t init) -> uint32_t {
+            uint32_t h = init;
+            for(char c : s){ h ^= (uint32_t)(unsigned char)c; h *= 0x01000193; }
+            return h;
+        };
+        uint32_t a = fnv(seed, 0x811c9dc5);
+        uint32_t b = fnv(seed, 0x050c5d1f);
+        uint32_t c = fnv(seed, 0x2166f3a9);
+        uint32_t d = fnv(seed, 0x7a3b1e4c);
+        b = (b & 0xFFFF0FFF) | 0x00005000; // version 5 (name-based)
+        c = (c & 0x3FFFFFFF) | 0x80000000; // variant 1
+        char buf[37];
+        snprintf(buf, sizeof(buf), "%08X-%04X-%04X-%04X-%04X%08X",
+            a, (b >> 16) & 0xFFFF, b & 0xFFFF,
+            (c >> 16) & 0xFFFF, c & 0xFFFF, d);
+        beguilerSettings.ifid = buf;
+
+        // Persist to _blorbAssets.bgl so it survives across builds
+        fs::path srcDir = fs::path(settings.inFile).parent_path();
+        string enumFile = (srcDir / "_blorbAssets.bgl").string();
+        // Read existing content, prepend the ifid setting if not already present
+        string existing;
+        { ifstream in(enumFile); if(in.is_open()) existing = string((istreambuf_iterator<char>(in)), istreambuf_iterator<char>()); }
+        if(existing.find("#beguilerSettings") == string::npos || existing.find("ifid =") == string::npos){
+            string ifidBlock = "#beguilerSettings { ifid = \"" + beguilerSettings.ifid + "\"; }\n";
+            ofstream out(enumFile);
+            out << ifidBlock << existing;
+        }
+    }
 
     // Resolve the I6 binary.  Precedence (highest to lowest):
     //   1. CLI -inform=name   (settings.informName non-empty)
@@ -190,8 +249,19 @@ bool beguiler::go(int argc, char* argv[]) {
             bool isGlulx = (beguilerSettings.target == "glulx");
             string ext = isGlulx ? ".gblorb" : ".zblorb";
             string blorbOut = (outPath.parent_path() / (outPath.stem().string() + ext)).string();
-            blorb.build(settings.outFile, blorbOut, blorbAssets,
-                        "", beguilerSettings.author, isGlulx);
+            Blorb::Metadata meta;
+            meta.ifid           = beguilerSettings.ifid;
+            meta.title          = beguilerSettings.title;
+            meta.author         = beguilerSettings.author;
+            meta.headline       = beguilerSettings.headline;
+            meta.genre          = beguilerSettings.genre;
+            meta.description    = beguilerSettings.description;
+            meta.language       = beguilerSettings.language;
+            meta.series         = beguilerSettings.series;
+            meta.seriesNumber   = beguilerSettings.seriesNumber;
+            meta.firstPublished = beguilerSettings.firstPublished;
+            meta.forgiveness    = beguilerSettings.forgiveness;
+            blorb.build(settings.outFile, blorbOut, blorbAssets, "", isGlulx, meta);
         }
     }
 
@@ -201,9 +271,19 @@ bool beguiler::go(int argc, char* argv[]) {
 
 bool beguiler::parseArgs(int argc, char* argv[]) {
     if(argc==1){
-        cout << "   Usage: beguiler [--debug] [-G|-z3|-z5|-z6|-z8] [-E1|-E2] [-inform=none|<execname>] [-o <outputdir>] <sourcefilepath> [<outputfilepath>]" << endl;
-        cout << "   This program should be placed in the same folder as the I6 compiler."<<endl;
-        cout << "   The Beguile source  will be processed and the resulting I6 source passed to Inform to generate the final game.\n" << endl;
+        cout << "Usage: beguiler [options] <sourcefile.bgl> [<outputfile>]\n\n";
+        cout << "Options:\n";
+        cout << "  -o <dir>              Output directory for compiled files\n";
+        cout << "  -G                    Target Glulx (default)\n";
+        cout << "  -z3, -z5, -z8        Target Z-machine version 3, 5, or 8\n";
+        cout << "  -E1, -E2             Error format: E1=Microsoft, E2=Macintosh\n";
+        cout << "  -inform=<name>       I6 compiler binary name (use 'none' to skip I6)\n";
+        cout << "  -includepaths=<dir>  Add a directory to the include search path\n";
+        cout << "  --debug              Enable debug mode (emit .bgldbg debug info)\n";
+        cout << "\n";
+        cout << "Most options can also be set via #beguilerSettings in the source file.\n";
+        cout << "The compiler should be placed in the same folder as the I6 compiler,\n";
+        cout << "or use -inform= to specify the I6 binary location.\n\n";
         return true;
     }
 
@@ -215,17 +295,17 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
                 settings.outputPath = argv[i];
             } else if(arg.substr(1,7)=="inform="){
                 settings.informName = arg.substr(8);
-            } else if(arg.substr(1,10)=="i6include="){
-                beguilerSettings.i6IncludePaths.push_back(arg.substr(11));
+            } else if(arg.substr(1,13)=="includepaths="){
+                beguilerSettings.includePaths.push_back(arg.substr(14));
             } else if(arg == "-G" || arg == "-g") {
                 beguilerSettings.target = "glulx";
-            } else if(arg == "-z3" || arg == "-z3") {
+            } else if(arg == "-z3" || arg == "-Z3") {
                 beguilerSettings.target = "z3";
-            } else if(arg == "-z5" || arg == "-z5") {
+            } else if(arg == "-z5" || arg == "-Z5") {
                 beguilerSettings.target = "z5";
-            } else if(arg == "-z6" || arg == "-z6") {
+            } else if(arg == "-z6" || arg == "-Z6") {
                 beguilerSettings.target = "z6";
-            } else if(arg == "-z8" || arg == "-z8") {
+            } else if(arg == "-z8" || arg == "-Z8") {
                 beguilerSettings.target = "z8";
             } else if(arg.size() >= 3 && arg[1] == 'E' && isdigit(arg[2])) {
                 beguilerSettings.errorFormat = arg.substr(2);
