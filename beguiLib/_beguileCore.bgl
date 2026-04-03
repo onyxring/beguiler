@@ -15,14 +15,21 @@
         int             release        = 0;             // story release number
         string          serial         = "";            // serial number: exactly 6 digits (e.g. "250328")
         int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
-        string          i6IncludePath;                  // adds one directory to the I6 compiler include search path (additive)
-        string          bglIncludePath;                 // adds one directory to the Beguile include search path (additive)
+        string          includePaths;                   // adds one directory to the include search path for both Beguile and I6 (additive)
         bool            rewritePaths   = true;          // substitute path separators to match OS
         bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)
         string          blorbAssetPath = "assets";      // asset directory relative to source .bgl file
-        string          author         = "";            // used for blorb data
-        string          story          = "";            // used for blorb data
-        string          headline       = "";            // used for blorb data
+        string          author         = "";            // iFiction: game author (required)
+        string          title          = "";            // iFiction: game title (required)
+        string          headline       = "";            // iFiction: subtitle (e.g. "An Interactive Mystery")
+        string          genre          = "";            // iFiction: genre (e.g. "Fantasy", "Mystery", "Science Fiction")
+        string          description    = "";            // iFiction: blurb text (may contain line breaks; max ~2400 chars)
+        string          language       = "";            // iFiction: ISO-639 language code (e.g. "en", "en-US")
+        string          series         = "";            // iFiction: series name
+        int             seriesNumber   = 0;             // iFiction: position in series (requires series)
+        string          firstPublished = "";            // iFiction: publication date (YYYY or YYYY-MM-DD)
+        string          forgiveness    = "";            // iFiction: Merciful, Polite, Tough, Nasty, or Cruel
+        string          ifid           = "";            // Treaty of Babel IFID (UUID format); auto-generated if empty
     }
 
     extern enum eTarget{
@@ -51,22 +58,22 @@
         false
     }
     extern class bool : _bglObject{ //--base type bool, declared as external because it wraps the type-less I6 type
-        emitter void print(){  //TODO: shouldn't this be a replace?
+        replace emitter void print(){
             if($self == true)
                 print "true";
             else
                 print "false";
         }
-        emitter eBool operator == (bool v){ $self == v }
-        emitter eBool operator == (eBool v){ $self == v }
-        emitter eBool operator != (bool v){ $self ~= v }
-        emitter eBool operator != (eBool v){ $self ~= v }
-        emitter bool operator = (bool v){ $self=v; }
-        emitter bool operator = (eBool v){ $self=v; }
-        emitter eBool operator && (bool v){ $self && v }
-        emitter eBool operator && (eBool v){ $self && v }
-        emitter eBool operator || (bool v){ $self || v }
-        emitter eBool operator || (eBool v){ $self || v }
+        emitter eBool operator == (bool v){ $self == $v }
+        emitter eBool operator == (eBool v){ $self == $v }
+        emitter eBool operator != (bool v){ $self ~= $v }
+        emitter eBool operator != (eBool v){ $self ~= $v }
+        emitter bool operator = (bool v){ $self=$v; }
+        emitter bool operator = (eBool v){ $self=$v; }
+        emitter eBool operator && (bool v){ $self && $v }
+        emitter eBool operator && (eBool v){ $self && $v }
+        emitter eBool operator || (bool v){ $self || $v }
+        emitter eBool operator || (eBool v){ $self || $v }
         emitter eBool operator ! (){ ~~$self }
     }
 
@@ -78,107 +85,82 @@
 
     extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
         emitter char operator(){}
-        emitter int operator = (int v){ $self=v; }
-        //emitter int operator = (char v){ $self=v; } //disallow.  int c = 'c';
-        
+        emitter int operator = (int v){ $self=$v; }
+
         // Arithmetic
-        emitter int operator + (int v){ $self + v }
-        //emitter int operator + (intLiteral v){ $self + v } //TODO: I think all the literals can go away now that intLiteral has a conversion operator.  Confirm this.
-        emitter int operator - (int v){ $self - v }
-        //emitter int operator - (intLiteral v){ $self - v }
-        emitter int operator * (int v){ $self * v }
-        //emitter int operator * (intLiteral v){ $self * v }
-        emitter int operator / (int v){ $self / v }
-        //emitter int operator / (intLiteral v){ $self / v }
-        emitter int operator % (int v){ $self % v }
-        //emitter int operator % (intLiteral v){ $self % v }
-        
+        emitter int operator + (int v){ $self + $v }
+        emitter int operator - (int v){ $self - $v }
+        emitter int operator * (int v){ $self * $v }
+        emitter int operator / (int v){ $self / $v }
+        emitter int operator % (int v){ $self % $v }
+
         // Comparison
-        emitter eBool operator == (int v){ $self == v }
-        
-        //TODO: do we need these char operators?  I'm not convinced.  intA == 'a' isn't as useful as as charA == 34.
-        //emitter eBool operator == (char v){ $self == v } // intA == 'a'
-        
-        //emitter eBool operator == (intLiteral v){ $self == v } //TODO: intliteral conversion op should cover this
-        
-        //emitter eBool operator != (char v){ $self ~= v } //intA != 'a'
-        emitter eBool operator != (int v){ $self ~= v }
-        //emitter eBool operator != (intLiteral v){ $self ~= v } //TODO: intliteral conversion op should cover this
-        
-        //emitter eBool operator < (char v){ $self < v }// intA < 'a'
-        emitter eBool operator < (int v){ $self < v }
-        //emitter eBool operator < (intLiteral v){ $self < v } //TODO: intliteral conversion op should cover this
-        
-        //emitter eBool operator <= (char v){ $self <= v }
-        emitter eBool operator <= (int v){ $self <= v }
-        //emitter eBool operator <= (intLiteral v){ $self <= v } //TODO: intliteral conversion op should cover this
-        
-        //emitter eBool operator > (char v){ $self > v }
-        emitter eBool operator > (int v){ $self > v }
-        //emitter eBool operator > (intLiteral v){ $self > v } //TODO: intliteral conversion op should cover this
-        
-        //emitter eBool operator >= (char v){ $self >= v }
-        emitter eBool operator >= (int v){ $self >= v }
-        //emitter eBool operator >= (intLiteral v){ $self >= v } //TODO: intliteral conversion op should cover this
+        emitter bool operator == (int v){ $self == $v }
+        emitter bool operator != (int v){ $self ~= $v }
+        emitter bool operator < (int v){ $self < $v }
+        emitter bool operator <= (int v){ $self <= $v }
+        emitter bool operator > (int v){ $self > $v }
+        emitter bool operator >= (int v){ $self >= $v }
     }
     
 //=============================================================================
 // type char
     extern class charLiteral:_bglObject{    
         emitter char operator(){}                   //implicitly converts to char type
-        emitter void print(){ print (char)$self; }  //override: print as character, not numeric code
+        replace emitter void print(){ print (char)$self; }
     }
     extern class char : _bglObject{ 
-        //emitter int operator(){}                    //no.  int i = 'a'; should not compile
-        
-        emitter char operator = (char c){ $self=c; }  
-        //emitter char operator = (int v){ $self=v; } //we avoid:  char c = 45;  Enforce: char c ='\45'; 
-        
-        emiter bool operator == (char c){ $self==c} 
-    	emiter bool operator != (char c){ $self~=c} 
-    	emiter bool operator < (char c)	{ $self<c} 
-    	emiter bool operator > (char c)	{ $self>c} 
-    	emiter bool operator <= (char c){ $self<=c} 
-    	emiter bool operator >= (char c){ $self>=c} 
+        emitter char operator = (char c){ $self=$c; }
+        //emitter char operator = (int v){ $self=$v; } //we avoid:  char c = 45;  Enforce: char c ='\45';
+
+        emitter bool operator == (char c){ $self==$c}
+    	emitter bool operator != (char c){ $self~=$c}
+    	emitter bool operator < (char c)	{ $self<$c}
+    	emitter bool operator > (char c)	{ $self>$c}
+    	emitter bool operator <= (char c){ $self<=$c}
+    	emitter bool operator >= (char c){ $self>=$c}
     									
-    	//By design, int and char are NOT the same. For example, we don't allow an integer to compared to a character value by default; however, we do overload character for the reverse test for convenience.
-    	emitter bool operator == (int i){ $self==i} 
-    	emitter bool operator != (int i){ $self~=i} 
-    	emitter bool operator < (int i)	{ $self<i} 
-    	emitter bool operator > (int i)	{ $self>i} 
-    	emitter bool operator <= (int i){ $self<+i} 
-    	emitter bool operator >= (int i){ $self>=i} 
+    	//By design, int and char are NOT the same. For example, we don't support an integer test against a character by default (intA == 'c'); however, we do overload character for the reverse test for convenience (charA==64).
+    	// emitter bool operator == (int i){ $self==i} 
+    	// emitter bool operator != (int i){ $self~=i} 
+    	// emitter bool operator < (int i)	{ $self<i} 
+    	// emitter bool operator > (int i)	{ $self>i} 
+    	// emitter bool operator <= (int i){ $self<+i} 
+    	// emitter bool operator >= (int i){ $self>=i} 
+
+        emitter char operator + (int c){$self+$c}
+        emitter char operator - (int c){$self-$c}
             
-        emitter void print(){ print (char)$self; } //TODO: shouldn't this be a replace, since it inherits from _bglObject which implements print?  We don't currently enforce this on object instances, nor should we.  So this would be a class-only requirement.
+        replace emitter void print(){ print (char)$self; }
     }
 
 //=============================================================================
 // type string
     extern class stringLiteral:_bglObject{
-        emiter string operator(){}
-        emitter void print(){ print (string)$self; } //--override: print as string, not numeric code  (TODO: shouldn't this line require replace?)
+        emitter string operator(){}
+        replace emitter void print(){ print (string)$self; }
     }       
     
     extern class interpolatedStringLiteral:_bglObject{} //interpolatedStrings are smoke and mirrors.  All functionality is implemented by the compiler. TODO: _bglObject has print which I don't think works here.  Either remove this inheritance, or make @"{actor} was here".print(); a thing, as it is for other literals.
     
     extern class string : _bglObject{
         emitter string operator = (stringLiteral v){
-            $self=v
+            $self=$v
         }
-        emitter void print(){ print (string)$self; } //--override: print as string, not numeric code  (shouldn't this enforce replace?)
+        replace emitter void print(){ print (string)$self; }
         //emitter stringLiteral operator(){} //--declares I6 compatibility with stringLiteral  //TODO: I'm not sure this gives us anything.  If stringLiteral converts to string, then all things accepting string would accept literalls.  We'd never assign a string to a literal, so I don't think this is right.
     }
 
 //=============================================================================
 // type dictionary word
-    extern class dictionaryWordLiteral:_bglObject{ 
-        emitter void print(){ print (address) $self }
+    extern class dictionaryWordLiteral:_bglObject{
+        replace emitter void print(){ print (address) $self }
     }
     emitter class dictionaryWord : _bglObject{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
         emitter dictionaryWordLiteral operator(){}                           //--I6 passthrough; enables mixed expressions
-        emitter dictionaryWord operator = (dictionaryWordLiteral v){ $self = v; }
-        emitter dictionaryWord operator = (dictionaryWord v){ $self = v; }
-        emitter void print(){ print (address) $self }
+        emitter dictionaryWord operator = (dictionaryWordLiteral v){ $self = $v; }
+        emitter dictionaryWord operator = (dictionaryWord v){ $self = $v; }
+        replace emitter void print(){ print (address) $self }
     }
 
 //=============================================================================
@@ -187,13 +169,13 @@
     
     extern class attributeList : _bglObject{ 
         emitter void give(attribute attr){
-            give $self attr
+            give $self $attr
         }
         emitter void ungive(attribute attr){
-            give $self ~attr
+            give $self ~$attr
         }
         emitter bool has(attribute attr){
-            ($self has attr)
+            ($self has $attr)
         }
     }
 
@@ -201,16 +183,16 @@
 // type grammarToken
     emitter class grammarToken : _bglObject{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
         emitter var operator(){}              //--declares I6 compatibility with var, enabling mixed expressions
-        emitter eBool operator == (var v){ $self == v }
-        emitter eBool operator != (var v){ $self ~= v }
-        emitter grammarToken operator = (var v){ $self = v }
+        emitter eBool operator == (var v){ $self == $v }
+        emitter eBool operator != (var v){ $self ~= $v }
+        emitter grammarToken operator = (var v){ $self = $v }
     }
 
 //=============================================================================
 // type verb
     //--Note: verb identifiers emit as ##Name in comparison context in i6.  This is hardcoded in the compiler.  Consider a mechanism to wrap this in an new overload emitter instead.  That way, anything could go into a switch statement if it could emit an appropriate constant value.
     alias class verb for object{ 
-        emitter eBool operator == (verb v){ $self == ##v }
+        emitter eBool operator == (verb v){ $self == ##$v }
         emitter void _bglGlobalDeclaration() {
             [$selfsub;
                 $self.perform();
@@ -226,28 +208,28 @@
         
         emitter eBool operator ?() { $self ~= nothing }
         emitter object operator = (object v){
-            $self = v
+            $self = $v
         }
         emitter eBool operator == (var v){
-            $self == v
+            $self == $v
         }
         emitter eBool operator != (var v){
-            $self ~= v
+            $self ~= $v
         }
         emitter void give(attribute attr){
-            give $self attr
+            give $self $attr
         }
         emitter void ungive(attribute attr){
-            give $self ~attr
+            give $self ~$attr
         }
         emitter bool has(attribute attr){
-            ($self has attr)
+            ($self has $attr)
         }
         emitter bool hasnt(attribute attr){
-            ($self hasnt attr)
+            ($self hasnt $attr)
         }
         emitter void move(object parent){
-            move $self to parent
+            move $self to $parent
         }
         emitter void remove(){
             remove $self
@@ -266,7 +248,7 @@
     //--Note to self: this pattern works as a mechanism to create c# like getters and setters...  Consider this for future patterns.
     extern class parentProp{ 
         emitter parentProp operator = (object v){
-            move $self to v
+            move $self to $v
         }
     }
 
@@ -277,10 +259,10 @@
 // $prop = 0 (global) or property name (property)
 extern class array  : _bglObject{
     emitter var operator[](int i) {
-        _orArray.get($self, $prop, i)
+        _orArray.get($self, $prop, $i)
     }
     emitter void operator[]=(int i, var v) {
-        _orArray.set($self, $prop, i, v)
+        _orArray.set($self, $prop, $i, $v)
     }
     emitter int length() {
         _orArray.getLength($self, $prop)
@@ -291,9 +273,9 @@ extern class array  : _bglObject{
 // Overrides array's word-access emitters with byte-access (->).
 // Layout: byte 0 = length, bytes 1..N = elements.
 extern class byteArray : array {
-    emitter char operator[](int i)          { $self->(i+1) }
-    emitter void operator[]=(int i, char v) { $self->(i+1) = v }
-    emitter int length()                    { $self->0 }
+    replace emitter char operator[](int i)          { $self->($i+1) }
+    replace emitter void operator[]=(int i, char v) { $self->($i+1) = $v }
+    replace emitter int length()                    { $self->0 }
 }
 extern object _orArray;   
 
@@ -321,19 +303,19 @@ extern class bglWorldType  : _bglObject{
         $self.getAll()
     }
     emitter array getFiltered(var pred) {
-        $self.getFiltered(pred)
+        $self.getFiltered($pred)
     }
     emitter array inParent(object parent) {
-        $self.inParent(parent, 0)
+        $self.inParent($parent, 0)
     }
     emitter array inParent(object parent, var pred) {
-        $self.inParent(parent, pred)
+        $self.inParent($parent, $pred)
     }
     emitter array ofClass(var cls) {
-        $self.ofClass(cls, 0)
+        $self.ofClass($cls, 0)
     }
     emitter array ofClass(var cls, var pred) {
-        $self.ofClass(cls, pred)
+        $self.ofClass($cls, $pred)
     }
 }
 extern bglWorldType bglWorld;
@@ -402,16 +384,16 @@ object bglWorld
 //  standard library globals would align this this
 //
 //-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
-emitter void print(var val){ print val; } //the default, which will be used for all data types not defined
-emitter void print(string str){ print (string)str; } 
-emitter void print(char c){ print (char)c; }
-emitter void print(interpolatedStringLiteral v){ v; }
+emitter void print(var val){ print $val; } //the default, which will be used for all data types not defined
+emitter void print(string str){ print (string)$str; }
+emitter void print(char c){ print (char)$c; }
+emitter void print(interpolatedStringLiteral v){ $v; }
 
-//-- log() — debug-conditional print; never reaches i6 unless DEBUG is #defined 
-emitter void log(stringLiteral msg){ ##ifdef DEBUG print (string)msg; ##endif }
-emitter void log(string msg){ ##ifdef DEBUG print (string)msg; ##endif }
-emitter void log(var msg){ ##ifdef DEBUG print msg; ##endif }
-emitter void log(interpolatedStringLiteral v){ ##ifdef DEBUG v; ##endif }
+//-- log() — debug-conditional print; never reaches i6 unless DEBUG is #defined
+emitter void log(stringLiteral msg){ ##ifdef DEBUG print (string)$msg; ##endif }
+emitter void log(string msg){ ##ifdef DEBUG print (string)$msg; ##endif }
+emitter void log(var msg){ ##ifdef DEBUG print $msg; ##endif }
+emitter void log(interpolatedStringLiteral v){ ##ifdef DEBUG $v; ##endif }
 
 //=============================================================================
 // style emitter namespace.  TODO: add the rest of these.
