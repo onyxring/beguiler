@@ -1,0 +1,225 @@
+//-----------------------------------------------------------------------------
+// punyInform.bgl - extern declarations for the PunyInform library.
+//      Include this file to get typed access to PunyInform globals and objects.
+//      Corresponds to: #includeI6 "globals" and #includeI6 "puny"
+//
+// Key differences from i6StandardLibrary.bgl:
+//   - PunyInform defines NO classes (no Room, Container, etc.)
+//   - Two includes instead of three (globals.h + puny.h)
+//   - Objects with before/after/each_turn/react_before/react_after must have 'reactive'
+//   - Feature constants (OPTIONAL_*) must be defined before including globals.h
+//   - INITIAL_LOCATION_VALUE constant replaces setting location in Initialise
+//-----------------------------------------------------------------------------
+#once
+
+//-- PunyInform attributes ------------------------------------------------------
+extern attribute light;         // object is a light source
+extern attribute edible;        // can be eaten
+extern attribute absent;        // object is currently out of scope
+extern attribute talkable;      // can be addressed directly
+extern attribute supporter;     // can hold objects on top of it
+extern attribute container;     // can hold objects inside it
+extern attribute enterable;     // player can enter this object
+extern attribute transparent;   // see through even when closed
+extern attribute open;          // container/door is currently open
+extern attribute openable;      // can be opened and closed
+extern attribute concealed;     // hidden from normal room listing
+extern attribute moved;         // object has been taken at least once
+extern attribute visited;       // room has been entered before
+extern attribute proper;        // name needs no "the" prefix
+extern attribute scenery;       // not listed in room descriptions
+extern attribute static;        // cannot be taken or moved
+extern attribute animate;       // is an NPC or animate object
+extern attribute clothing;      // can be worn
+extern attribute worn;          // clothing item is currently worn
+extern attribute pluralname;    // name is grammatically plural
+extern attribute female;        // animate: use she/her pronouns
+extern attribute neuter;        // animate: use it/its pronouns
+extern attribute general;       // general-purpose flag
+extern attribute switchable;    // can be switched on/off
+extern attribute on;            // switchable object is currently on
+extern attribute door;          // is a door between locations
+extern attribute locked;        // container/door is locked
+extern attribute lockable;      // can be locked and unlocked
+extern attribute workflag;      // internal working flag (parser use)
+extern attribute reactive;      // REQUIRED for objects with before/after/each_turn/react_before/react_after
+extern attribute scored;        // object/room has been scored
+
+//-- Game state ---------------------------------------------------------------
+extern object location;             // current room
+extern object real_location;        // actual location when in darkness
+extern object player;               // object the human controls
+extern object actor;                // who was asked to do something
+extern int    deadflag;             // 0=alive, 1=dead, 2+=custom death
+extern int    score;                // current score
+extern int    turns;                // number of game turns elapsed
+extern int    the_time;             // time in minutes since midnight
+extern int    time_rate;            // how often time updates
+extern int    lookmode;             // verbosity: 1=brief, 2=verbose, 3=superbrief
+
+//-- Parser results -----------------------------------------------------------
+extern object       noun;           // first noun
+extern object       second;         // second noun
+extern verb         action;         // current action being performed
+extern int    parsed_number;        // user-supplied number
+extern int    consult_from;         // start word of consult topic
+extern int    consult_words;        // number of words in topic
+extern int    special_word;         // dictionary address for "special" token
+extern int    special_number;       // number typed for "special" token
+extern int    verb_word;            // the verb word
+extern int    verb_wordnum;         // verb position in input
+extern int    wn;                   // word number currently being parsed
+extern int    num_words;            // number of words typed
+extern int    keep_silent;          // suppress action output
+extern int    selected_direction;   // direction chosen for Go action
+
+//-- Pronoun tracking ---------------------------------------------------------
+extern object itobj;                // object currently referred to as "it"
+extern object himobj;               // object currently referred to as "him"
+extern object herobj;               // object currently referred to as "her"
+extern object themobj;              // object currently referred to as "them"
+
+//-- Notifications and modes --------------------------------------------------
+extern int    notify_mode;          // score notification on/off
+extern int    inventory_style;      // inventory display style
+extern int    debug_flag;           // debug mode flag
+extern int    screen_width;         // screen width in characters
+extern int    statusline_height;    // status line height
+
+//-- Colour settings (z5+ only) -----------------------------------------------
+extern int    clr_on;              // set to true to enable colours
+extern int    clr_bg;              // background colour
+extern int    clr_fg;              // foreground colour
+extern int    clr_fginput;         // player input colour (PUNY++)
+extern int    clr_fgstatus;        // status line colour
+
+//-- Colour constants ---------------------------------------------------------
+extern const int CLR_BLACK;
+extern const int CLR_RED;
+extern const int CLR_GREEN;
+extern const int CLR_YELLOW;
+extern const int CLR_BLUE;
+extern const int CLR_MAGENTA;
+extern const int CLR_CYAN;
+extern const int CLR_WHITE;
+extern const int CLR_DEFAULT;
+extern const int CLR_CURRENT;
+
+//-- Ozmoo extended colours (PUNY++) ------------------------------------------
+extern const int CLR_OZMOO_ORANGE;
+extern const int CLR_OZMOO_BROWN;
+extern const int CLR_OZMOO_LIGHT_RED;
+extern const int CLR_OZMOO_DARK_GREY;
+extern const int CLR_OZMOO_MEDIUM_GREY;
+extern const int CLR_OZMOO_LIGHT_GREEN;
+extern const int CLR_OZMOO_LIGHT_BLUE;
+extern const int CLR_OZMOO_LIGHT_GREY;
+
+//-- Window constants ---------------------------------------------------------
+extern const int WIN_ALL;
+extern const int WIN_STATUS;
+extern const int WIN_MAIN;
+
+//-- Scoring ------------------------------------------------------------------
+extern int    things_score;         // score from picking up scored objects
+extern int    places_score;         // score from visiting scored rooms
+
+//-- Objects ------------------------------------------------------------------
+extern object thedark;              // the darkness object (in-scope when no light)
+extern object selfobj;              // the player self object
+
+//-- Standard grammar tokens --------------------------------------------------
+extern grammarToken OBJ as noun;    // a noun object
+extern grammarToken ANYNUMBER;      // any number typed by the player
+extern grammarToken HELD;           // object currently held by the actor
+extern grammarToken CREATURE;       // an animate object
+extern grammarToken TOPIC;          // a conversational topic
+extern grammarToken MULTI;          // one or more nouns
+extern grammarToken MULTIHELD;      // one or more held nouns
+extern grammarToken MULTIEXCEPT;    // multiple nouns except one
+extern grammarToken MULTIINSIDE;    // multiple nouns inside a container
+extern grammarToken SPECIAL;        // a special token
+extern grammarToken NUMBER;         // a number typed by the player
+
+//-- Standard game actions ----------------------------------------------------
+extern verb Answer;
+extern verb Ask;
+extern verb Attack;
+extern verb Blow;
+extern verb Burn;
+extern verb Buy;
+extern verb Climb;
+extern verb Close;
+extern verb Cut;
+extern verb Dig;
+extern verb Disrobe;
+extern verb Drink;
+extern verb Drop;
+extern verb Eat;
+extern verb Empty;
+extern verb Enter;
+extern verb Examine;
+extern verb Exit;
+extern verb Fill;
+extern verb GetOff;
+extern verb Give;
+extern verb Go;
+extern verb Insert;
+extern verb Inv;
+extern verb Jump;
+extern verb Kiss;
+extern verb Listen;
+extern verb Lock;
+extern verb Look;
+extern verb LookUnder;
+extern verb No;
+extern verb Open;
+extern verb Pray;
+extern verb Pull;
+extern verb Push;
+extern verb PushDir;
+extern verb PutOn;
+extern verb Remove;
+extern verb Rub;
+extern verb Search;
+extern verb Set;
+extern verb SetTo;
+extern verb Show;
+extern verb Sing;
+extern verb Sleep;
+extern verb Smell;
+extern verb Squeeze;
+extern verb SwitchOff;
+extern verb SwitchOn;
+extern verb Take;
+extern verb Taste;
+extern verb Tell;
+extern verb Think;
+extern verb Tie;
+extern verb Touch;
+extern verb Transfer;
+extern verb Turn;
+extern verb Unlock;
+extern verb Wait;
+extern verb Wake;
+extern verb Wave;
+extern verb Wear;
+extern verb Yes;
+
+//-- Meta actions -------------------------------------------------------------
+extern verb Quit;
+extern verb Restart;
+extern verb Restore;
+extern verb Save;
+extern verb Score;
+extern verb FullScore;
+extern verb Version;
+extern verb Verify;
+extern verb ScriptOn;
+extern verb ScriptOff;
+extern verb Pronouns;
+extern verb LookModeNormal;
+extern verb LookModeShort;
+extern verb LookModeLong;
+extern verb NotifyOn;
+extern verb NotifyOff;

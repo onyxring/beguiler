@@ -1,0 +1,59 @@
+/* test_trycatch.bgl — try/catch/throw exception handling */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// --- Test 1: basic throw and catch ---
+void risky(int x){
+    if(x > 10) throw x;
+}
+
+// --- Test 2: nested try/catch ---
+void doubleRisky(int x){
+    try {
+        if(x > 20) throw 99;
+    } catch(int inner) {
+        throw inner;
+    }
+}
+
+// --- Test 3: throw across call frames ---
+void deep(){
+    throw 7;
+}
+void middle(){
+    deep();
+}
+
+void main(){
+    // Test 1: basic catch
+    try {
+        risky(5);
+        risky(15);
+    } catch(int e) {
+    }
+
+    // Test 2: nested
+    try {
+        try {
+            throw 42;
+        } catch(int a) {
+            throw a;
+        }
+    } catch(int b) {
+    }
+
+    // Test 3: cross-frame throw
+    try {
+        middle();
+    } catch(int c) {
+    }
+
+    // Test 4: no throw — normal completion
+    try {
+        risky(3);
+    } catch(int d) {
+    }
+}

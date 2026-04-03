@@ -15,7 +15,10 @@ class bglLanguageService{
     vector<pair<string,string>> globalInits;  // {varName, initBody} — populated for globals with init emitters
     vector<string> startupBlocks;            // raw I6 bodies from #startup { } directives; emitted first in bglInit()
     vector<verbObjectDef*> verbs;  // all verb declarations (extern and non-extern) for action-constant lookup
-    bool ternaryTempNeeded = false; // set true when any ternary is lowered; drives conditional _bgl_temp emission
+    bool ternaryTempNeeded = false;  // set true when any ternary is lowered; drives conditional _bgl_temp emission
+    bool tryCatchNeeded = false;     // set true when try/catch is used; drives conditional _bgl_catch_cookie emission
+    int tryCatchCounter = 0;         // unique ID for try/catch label generation
+    int captureCounter = 0;          // unique ID for closure capture globals
     bool switchTempNeeded = false;  // set true when any switch uses guards; drives conditional _bgl_sw emission
     
     bglLanguageService();
@@ -32,7 +35,7 @@ class bglLanguageService{
         string getEnumType(string valueName); //returns the enum type name for a given enum value name, or "" if not found
         
         
-        vector<string> operators={"-=","+=","?=","==","!=","<=",">=","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^=","=>","?.","??"};
+        vector<string> operators={"-=","+=","?=","==","!=","<=",">=","=~","&&","||","++","--","<<",">>","*=","/=","%=","&=","|=","^=","=>","?.","??"};
 };
 
 extern bglLanguageService languageService;
