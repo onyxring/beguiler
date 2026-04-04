@@ -58,21 +58,22 @@ typeDef& bglLanguageService::registerType(string name){
     if(parser.getCurrentCompileContext()==eCompileContext::global && baseType.isExternal==false) globals.push_back(&retval);
     return retval;
 }
-enumDef& bglLanguageService::registerEnum(string name, bool isExternal){
+enumDef& bglLanguageService::registerEnum(string name, bool isExternal, string dspName){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)){
         enumDef* existing = dynamic_cast<enumDef*>(&getType(name));
-        // Allow full pass to claim a pre-pass stub (values already populated by pre-scan)
         if(existing && existing->isPrePassStub){
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
+            if(!dspName.empty()) existing->displayName = dspName;
             return *existing;
         }
         string loc = existing ? fmtSrc(existing->src) : "unknown location";
-        parser.parsingError(format("'{0}' is already defined (originally declared at {1})", name, loc));
+        parser.parsingError(format("'{0}' is already defined (originally declared at {1})", dspName.empty() ? name : dspName, loc));
     }
     enumDef& newType=*(new enumDef());
     newType.name=name;
+    newType.displayName=dspName;
     newType.isExternal=isExternal;
     newType.src = parser.file.currentLocation();
     objectTypes.push_back(&newType);
@@ -80,21 +81,22 @@ enumDef& bglLanguageService::registerEnum(string name, bool isExternal){
     if(parser.getCurrentCompileContext()==eCompileContext::global && !isExternal) globals.push_back(&retval);
     return retval;
 }
-classDef& bglLanguageService::registerClass(string name, bool isExternal){
+classDef& bglLanguageService::registerClass(string name, bool isExternal, string dspName){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)){
         classDef* existing = dynamic_cast<classDef*>(&getType(name));
-        // Allow full pass to claim a pre-pass stub and populate its members
         if(existing && existing->isPrePassStub){
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
+            if(!dspName.empty()) existing->displayName = dspName;
             return *existing;
         }
         string loc = existing ? fmtSrc(existing->src) : "unknown location";
-        parser.parsingError(format("'{0}' is already defined (originally declared at {1})", name, loc));
+        parser.parsingError(format("'{0}' is already defined (originally declared at {1})", dspName.empty() ? name : dspName, loc));
     }
     classDef& newType=*(new classDef());
     newType.name=name;
+    newType.displayName=dspName;
     newType.isExternal=isExternal;
     newType.src = parser.file.currentLocation();
     objectTypes.push_back(&newType);
@@ -102,26 +104,23 @@ classDef& bglLanguageService::registerClass(string name, bool isExternal){
     if(parser.getCurrentCompileContext()==eCompileContext::global && !isExternal) globals.push_back(&retval);
     return retval;
 }
-objectDef& bglLanguageService::registerObject(string name, bool isExternal){
+objectDef& bglLanguageService::registerObject(string name, bool isExternal, string dspName){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)){
         objectDef* existing = dynamic_cast<objectDef*>(&getType(name));
-        // Allow full pass to claim a pre-pass stub and populate its members;
-        // the stub is already in globals so don't push again
         if(existing && existing->isPrePassStub){
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
             existing->src = parser.file.currentLocation();
-            if(!isExternal && !existing->isExternal){
-                // already in globals from pre-pass — don't push again
-            }
+            if(!dspName.empty()) existing->displayName = dspName;
             return *existing;
         }
         string loc = existing ? fmtSrc(existing->src) : "unknown location";
-        parser.parsingError(format("'{0}' is already defined (originally declared at {1})", name, loc));
+        parser.parsingError(format("'{0}' is already defined (originally declared at {1})", dspName.empty() ? name : dspName, loc));
     }
     objectDef& newType=*(new objectDef());
     newType.name=name;
+    newType.displayName=dspName;
     newType.isExternal=isExternal;
     newType.src = parser.file.currentLocation();
     objectTypes.push_back(&newType);

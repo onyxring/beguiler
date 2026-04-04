@@ -49,11 +49,26 @@ object bglWorld
     ]
 ;
 
-[main score;
-    score = 42;
-    print "Score: ";
-    print score;
-    print "^";
-    print "Use {braces} for interpolation.^";
-     ;
+class counter
+  class object
+  with
+    value 0,
+    _opeqeq[other;
+        return self.value == other.value;
+    ],
+    _opadd[n;
+        return self.value + n;
+    ]
+;
+counter a
+  with value 5
+;
+counter b
+  with value 5
+;
+[main sum;
+    if (a._opeqeq(b)) {
+        print (string)"equal";
+    }
+    sum=a._opadd(10);
 ];

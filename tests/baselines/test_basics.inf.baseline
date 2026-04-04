@@ -62,8 +62,8 @@ constant title = "Test";
     a = a + 3;
     b = b - 1;
     c = c * 2;
-    a++;
-    b--;
+     a++ ;
+     b-- ;
     if (flag) {
         print (string)"yes";
     }
@@ -74,7 +74,7 @@ constant title = "Test";
         print (char)i;
     }
     while (a > 0) {
-        a--;
+         a-- ;
     }
     switch (c) {
         0:
