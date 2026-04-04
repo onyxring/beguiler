@@ -1,0 +1,80 @@
+/*
+    test_grammar_objects.bgl
+    Tests: grammar type system features
+        - extend verb with grammar
+        - standalone grammar object with grammarRule members (explicit type)
+        - standalone grammar object with grammarRule members (inferred type)
+        - standalone grammar object with array of grammarRule
+        - old-style standalone grammar (backward compatibility)
+*/
+
+#beguilerSettings {
+    informName = "none";
+}
+
+#include <bindings/i6StandardLibrary>
+
+//=============================================================================
+// Test 1: extend object — appends grammar to an existing extern verb
+//=============================================================================
+extend PutOn {
+    grammar += {
+        {.hang, HELD, .on, OBJ},
+    }
+}
+
+//=============================================================================
+// Test 2: standalone grammar object with explicit grammarRule members
+//=============================================================================
+grammar explicitRules {
+    grammarRule rule1 = {Take, {.grab, OBJ}};
+    grammarRule rule2 = {Drop, {.toss, HELD}};
+}
+
+//=============================================================================
+// Test 3: standalone grammar object with inferred grammarRule type
+//=============================================================================
+grammar inferredRules {
+    rule1 = {Take, {.snatch, OBJ}};
+    rule2 = {Examine, {.inspect, OBJ}};
+}
+
+//=============================================================================
+// Test 4: standalone grammar object with array of grammarRule
+//=============================================================================
+grammar arrayRules {
+    array<grammarRule> rules = {{Take, {.nab, OBJ}},
+                                {Drop, {.discard, HELD}},
+                                {Examine, {.study, OBJ}}};
+}
+
+//=============================================================================
+// Test 5: old-style standalone grammar (backward compat)
+//=============================================================================
+grammar PutOn {
+    {.place, HELD, .on, OBJ},
+}
+
+//=============================================================================
+// Test 6: verb with inline grammar — typed member assignment
+//=============================================================================
+verb Whiff {
+    grammar = {
+        {.whiff},
+    };
+    void perform() {
+        print("You take a whiff.");
+    }
+}
+
+//=============================================================================
+// Test 7: verb with explicit grammarRuleList type
+//=============================================================================
+verb Nudge {
+    grammarRuleList grammar = {
+        {.nudge, OBJ},
+    };
+    void perform() {
+        print("You nudge it.");
+    }
+}
