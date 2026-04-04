@@ -1,0 +1,26 @@
+/* test_nonemitter_op.bgl — non-emitter operator on a class */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Counter : object {
+    int value = 0;
+
+    replace bool operator == (Counter other){
+        return self.value == other.value;
+    }
+
+    int operator + (int n){
+        return self.value + n;
+    }
+}
+
+Counter a { value = 5; }
+Counter b { value = 5; }
+
+void main(){
+    if(a == b) print("equal");
+    int sum = a + 10;
+}
