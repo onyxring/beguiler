@@ -77,6 +77,8 @@
   - 5.6.6 Overloadable Operator List
 - 5.7 Class Inheritance
 - 5.8 `extend class` and `replace` for Members
+- 5.9 `extend` for Objects
+- 5.10 `_bglGlobalDeclaration`
 
 ### Chapter 6 — Objects
 - 6.1 Overview
@@ -168,8 +170,7 @@
 - 14.1 Overview
 - 14.2 Verb Declarations
 - 14.3 Action Comparisons
-- 14.4 Grammar Declarations
-- 14.5 The `_bglGlobalDeclaration` Mechanism
+- 14.4 Grammar
 
 ### Chapter 15 — I6 Interoperability
 - 15.1 Overview
@@ -181,13 +182,15 @@
 ### Chapter 16 — Beguile Language Extensions
 - 16.1 Overview
 - 16.2 Language Extension Files
-  - 16.2.1 `bglInit()` — Runtime Initialization
   - 16.2.2 `<char>` — Character Utilities
   - 16.2.3 `<string>` — Mutable String Runtime
   - 16.2.4 `<array>` — Extended Array Utilities (TBD)
   - 16.2.5 `<math>` — Mathematical Functions (TBD)
+  - 16.2.6 `bglInit()` — Runtime Initialization
 - 16.3 IF Library Bindings
-- 16.4 `bglWorld` — Object Tree Iteration
+
+### Chapter 17 — Runtime Library
+- 17.1 `bglWorld` — Object Tree Iteration (planned)
 
 ---
 # Chapter 1 — Introduction
@@ -519,8 +522,9 @@ Structural and type keywords unique to Beguile. They have no corresponding I6 ke
 | Keyword | Role |
 |---------|------|
 | `const` | Compile-time constant or immutable member declaration |
+| `default` | Marks a class method as expected to be overridden; overriding does not require `replace` |
 | `extern` | Declares a type or value backed by I6 with no Beguile body emitted |
-| `extend` | Opens an extension block on an existing class |
+| `extend` | Opens an extension block on an existing class or object |
 | `alias` | Declares a type alias |
 | `emitter` | Marks a function or class as containing inline I6 fragments |
 | `explicit` | Restricts a conversion operator to explicit cast sites only |
@@ -569,7 +573,7 @@ Declarations at the outermost level of a file — types, classes, enums, variabl
 
 ### Declaration Qualifiers
 
-Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `extern`, `emitter`, `const`, `static`, `extend`, and `alias`. Qualifiers may appear in **any order** — `emitter replace void foo()` and `replace emitter void foo()` are equivalent. The compiler validates invalid combinations:
+Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `extern`, `emitter`, `const`, `static`, `extend`, `alias`, and `default`. Qualifiers may appear in **any order** — `emitter replace void foo()` and `replace emitter void foo()` are equivalent. The compiler validates invalid combinations:
 
 - `explicit` without `operator()` — error (explicit is only valid on conversion operators)
 - `const` + `static` — error
@@ -577,6 +581,7 @@ Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `exte
 - `explicit` + `const` or `static` — error
 - `alias` + `extern` — error
 - `alias` + `emitter` — error
+- `default` in an object or verb instance body — error (only valid in class declarations)
 
 ## 3.2 Include Directives
 
@@ -1562,15 +1567,98 @@ object rex : Animal {
 
 The warning helps catch accidental shadowing (e.g., a base class method was renamed but a derived class still has the old name). Using `replace` communicates that the shadowing is intentional.
 
+### The `default` Qualifier
+
+A method marked `default` in a class declaration provides a default implementation that is expected to be overridden. Overriding a `default` method does not require `replace` and produces no shadowing warning:
+
+```bgl
+class Animal : object {
+    default void speak(){ print("..."); }
+}
+
+object rex : Animal {
+    void speak(){ print("Woof!"); }    // no warning — base method is 'default'
+}
+```
+
+`default` is only valid in class declarations — using it in an object or verb instance body is an error.
+
+If a derived class overrides a `default` method *without* marking its own version `default`, the method is no longer freely overridable — further descendants will require `replace` to suppress the shadowing warning. To keep the method overridable through the hierarchy, mark each override `default` as well.
+
+The built-in `verb` class uses this for `perform()`:
+
+```bgl
+alias class verb for object {
+    default emitter void perform(){ $selfsub; }
+    ...
+}
+```
+
+This provides a default bridge to the I6 action routine (`<verbName>Sub`) while allowing each verb to override `perform()` without boilerplate.
+
 ### Matching rules for `replace` in class/object bodies
 - **In `extend class`**: `replace` replaces an existing member on the same class. Adding a duplicate without `replace` is a compile-time error.
+- **In `extend object` (§5.9)**: `replace` replaces an existing method or property on the object. Same duplicate/warning rules as `extend class`.
 - **In derived classes/objects**: `replace` suppresses the shadowing warning for methods that exist in the base class hierarchy.
 - **Emitters**: matched by name and full parameter-type signature, because emitters support overloading.
 - **Regular functions**: matched by name alone.
 - **Variable properties**: matched by name alone.
-- `replace` on a non-existent member in `extend class` issues a compiler warning and adds the member as new.
+- `replace` on a non-existent member in `extend class` or `extend object` issues a compiler warning and adds the member as new.
 
 `replace` also applies to global functions; see §8.4.
+
+## 5.9 `extend` for Objects
+
+Any previously declared object can be extended using `extend ObjectName { }`. The extend body supports:
+
+- **New members** — declared with `=`, just as in a regular object body
+- **Replacing members** — `replace` replaces an existing method or property on the object. Adding a duplicate without `replace` is a compile error. Using `replace` on a non-existent member produces a warning.
+- **Appending to collections** — `+=` appends elements to an existing collection member (`grammarRuleList`, `attributeList`, or `array<T>`)
+- **Removing from collections** — `-=` removes elements from an existing collection member
+
+```bgl
+extend myRoom {
+    int turnCount = 0;               // new member
+    replace int score = 20;          // replace existing property value
+    replace void describe() {        // replace existing method
+        print("A dark room.");
+    }
+    attributes += {light};           // append to existing attributeList
+    attributes -= {scenery};         // remove from existing attributeList
+}
+```
+
+`+=` and `-=` operate on existing members of the object. The member must be a collection type. Using `+=`/`-=` on a non-collection member or a member that doesn't exist is a compile error.
+
+**Extern objects**: Extending an `extern` object is restricted — the object's definition is in I6, not Beguile, so only operations that emit independently of the object are allowed. In practice this means only `grammar +=` works (grammar emits as standalone I6 `Verb`/`Extend` directives). Adding new members, methods, or using `-=` on an extern object is a compile error.
+
+## 5.10 `_bglGlobalDeclaration`
+
+A class can define a `_bglGlobalDeclaration` emitter to inject additional top-level I6 declarations for every object instance of that class. This mechanism allows a class definition to generate companion routines, arrays, or other I6 constructs that accompany each instance.
+
+Within a `_bglGlobalDeclaration` emitter body, two substitution variables are available:
+
+| Variable | Expands to |
+|----------|-----------|
+| `$self` | The object's I6 name (e.g., `examine`) |
+| `$selfsub` | The object's name with `sub` appended (e.g., `examinesub`) |
+
+The built-in `verb` class uses this to generate a wrapper routine for each verb:
+
+```bgl
+alias class verb for object {
+    grammarRuleList grammar;
+    default emitter void perform(){ $selfsub; }
+    emitter eBool operator == (verb v){ $self == ##$v }
+    emitter void _bglGlobalDeclaration() {
+        [$selfsub;
+            $self.perform();
+        ];
+    }
+}
+```
+
+This pattern is available to any user-defined class — not just `verb` — when additional top-level I6 declarations must accompany each instance.
 
 ---
 
@@ -3125,36 +3213,27 @@ Collisions detected at global scope:
 
 ## 14.1 Overview
 
-Verbs and grammar declarations are the mechanism for adding new player commands to an IF game. A `verb` declaration defines an action and its handler. A `grammar` declaration — either inline inside the verb block or as a separate top-level `grammar` block — adds input patterns that the Inform parser recognizes as triggering that action.
+Verbs and grammar are the mechanism for adding new player commands to an IF game. A `verb` object defines an action and its handler. Grammar rules define the input patterns that the game parser recognizes as triggering an action.
 
 ## 14.2 Verb Declarations
 
-A `verb` declaration creates a named Beguile object that is an instance of the built-in `verb` class. The object's action body is provided in a `perform()` block:
+A `verb` declaration creates a named Beguile object that is an instance of the `verb` class. Unlike I6, which uses specialized `Verb` directives and `*` grammar syntax, Beguile verb bodies use standard object member syntax — methods, properties, and typed members are all declared the same way as on any other object:
 
 ```bgl
 verb Examine {
-    perform() {
+    grammarRuleList grammar = {
+        {.examine, OBJ},
+        {.x, OBJ},
+    }
+    void perform() {
         print("You examine it closely.");
     }
 }
 ```
 
-Grammar patterns may be declared inline inside the verb block using a `grammar { }` sub-block:
+The type `grammarRuleList` can be inferred from the class declaration, so `grammar = { ... }` without the type name is also valid.
 
-```bgl
-verb Examine {
-    grammar {
-        {.examine, NOUN},
-        {.x, NOUN},
-        {.look, .at, NOUN},
-    }
-    perform() {
-        print("You examine it closely.");
-    }
-}
-```
-
-Verb action bodies have their own variable scope — locals declared inside `perform()` are confined to that action and do not conflict with other verbs or global routines.
+`perform()` is the verb's action handler — it is called automatically when the player enters a command matching the verb's grammar. The base `verb` class declares `perform()` as a `default` method (see §5.8) that bridges to the I6 action routine. Since it is declared as `default`, overriding it requires no `replace` qualifier. A non-extern verb that does not define `perform()` produces a compiler warning.
 
 ### External Verbs
 
@@ -3166,7 +3245,7 @@ extern verb Drop;
 extern verb Go;
 ```
 
-`extern verb` declarations register the name in Beguile's type system for use in `switch(action)` comparisons and grammar lines without generating any I6 output.
+`extern verb` declarations register the name in Beguile's type system for use in `switch(action)` comparisons, grammar lines, and method calls. Because the `verb` class defines `default emitter void perform()`, calling `Take.perform()` on an extern verb emits a call to the I6 action routine (`TakeSub`), bridging Beguile code to I6-defined verb handlers.
 
 ## 14.3 Action Comparisons
 
@@ -3188,18 +3267,25 @@ switch(action) {
 //   switch(action) { ##Take: ... ##Drop: ... }
 ```
 
-## 14.4 Grammar Declarations
+## 14.4 Grammar
 
-Grammar patterns may be defined inline in the verb block (see §14.2) or in a separate top-level `grammar` block. The standalone form is useful when a verb is declared elsewhere (e.g., as `extern verb`) or when grammar lines are added incrementally:
+Grammar rules define what the player can type and which verb action is triggered. Rules are declared either on a verb (verb-centric) or in a standalone grammar object (grammar-centric). Both produce the same I6 output.
 
-```bgl
-grammar PutOn {
-    {.hang, HELD, .on, NOUN},
-    {.put, HELD, .on, NOUN},
-}
-```
+### Grammar Types
 
-Each line inside the braces is a comma-separated grammar pattern enclosed in `{}`.
+| Type | Purpose |
+|------|---------|
+| `grammarToken` | A grammar token used in patterns (`OBJ`, `HELD`, `CREATURE`, etc.). Supports parameterized forms: `OBJ(Routine)` filters matches, `SCOPE(Routine)` sets scope. |
+| `dictionaryWord` | A dictionary word used in patterns (`.examine`, `.put`, etc.). Supports `\|` alternatives and plural forms (`..words`). |
+| `grammarPattern` | A sequence of tokens and dictionary words describing player input: `{.examine, OBJ}`. |
+| `grammarRule` | Pairs a verb with a pattern: `{Examine, {.examine, OBJ}}`. |
+| `grammarRuleList` | A collection of grammar rules. The type of the `grammar` member on `verb` and of standalone grammar objects. |
+
+These types can be used as members on any object. A `grammarRule` has two initializer forms:
+- **Explicit verb**: `grammarRule r = {Examine, {.examine, OBJ}}` — works in any context.
+- **Inferred verb**: `grammarRule r = {.examine, OBJ}` — the verb is inferred from the owning object. The owning object should be a `verb` or a subclass of `verb`; a warning is issued otherwise.
+
+`grammarRuleList` is a container for `grammarRule` entries in either form.
 
 ### Grammar Pattern Tokens
 
@@ -3219,40 +3305,137 @@ Each element of a pattern is one of:
 | `NUMBER` | Matches a number typed by the player (range-checked) |
 | `ANYNUMBER` | Matches any number (no range check) |
 | `SPECIAL` | Matches a number or dictionary word |
-| `attributeName` | Matches objects that have that attribute |
-| `variableName` | Any declared global variable — emits its I6 name (respecting `as` aliases) |
-| `RoutineName` | Calls routine as a general token filter (must be a declared global function) |
-| `OBJ(Routine)` | Filters noun matches through Routine |
-| `SCOPE(Routine)` | Sets scope via Routine |
+| `attributeName` | Matches objects that have that attribute (e.g. `container`, `animate`) |
+| `RoutineName` | General parsing routine — a declared global function called by the parser as a custom token; handles its own input matching |
+| `OBJ(Routine)` | Noun filter — the parser matches nouns normally, then calls Routine for each candidate to accept or reject it |
+| `SCOPE(Routine)` | Scope setter — Routine modifies which objects the parser considers in scope for this grammar line |
 
 `OBJ` is used instead of the I6 name `noun` because `noun` is also declared as a runtime variable in Beguile (`extern object noun`). Using `OBJ` avoids this collision — `OBJ` is declared as `extern grammarToken OBJ as noun`, so it carries the Beguile-facing name `OBJ` and emits as the I6 grammar token `noun`. Grammar tokens (`OBJ`, `HELD`, `CREATURE`, etc.) are written in ALL_CAPS by convention to distinguish them visually from dictionary word literals (`.word`). Since Beguile identifiers are case-insensitive, this is a matter of style, not enforced by the compiler.
 
 The compiler validates that bare identifiers in grammar patterns are declared as `grammarToken`, `attribute`, or a global function. Plain object or variable declarations (such as the runtime variable `noun`) are not valid in this position — use the corresponding `grammarToken` alias instead (e.g. `OBJ`). The identifier emits as its I6 name, respecting any `as` alias on the declaration. Unrecognized or wrong-typed names are a compile error.
 
-## 14.5 The `_bglGlobalDeclaration` Mechanism
+### Advanced Pattern Syntax
 
-The wrapper routine emitted for each verb (`examinesub` above) is generated automatically by a `_bglGlobalDeclaration` emitter on the `verb` type. This mechanism allows a class definition to inject additional top-level declarations for every object instance of that class.
-
-Within a `_bglGlobalDeclaration` emitter body, two substitution variables are available:
-
-| Variable | Expands to |
-|----------|-----------|
-| `$self` | The object's I6 name (e.g., `examine`) |
-| `$selfsub` | The object's name with `sub` appended (e.g., `examinesub`) |
-
-The built-in `verb` class uses this to generate the wrapper routine:
+**Dictionary word alternatives** — multiple dictionary words separated by `|` match any one of them. Parentheses are optional and purely for readability:
 
 ```bgl
-extern class verb {
-    emitter void _bglGlobalDeclaration() {
-        [$selfsub;
-            $self.perform();
-        ];
+verb Stow {
+    grammar = {
+        {.stow, HELD, .on | .onto | .upon, OBJ},
+        {.stow, HELD, (.in | .into | .inside), OBJ},
     }
 }
 ```
 
-This pattern is available to any user-defined class — not just `verb` — when additional top-level I6 declarations must accompany each instance.
+**Parameterized grammar tokens** — `OBJ(Routine)` and `SCOPE(Routine)` pass a routine to the I6 parser. The routine must be a declared global function returning `bool`:
+
+- `OBJ(Routine)` — the I6 parser matches nouns normally, then calls Routine with each candidate object as a parameter. The routine returns true to accept or false to reject.
+- `SCOPE(Routine)` — the I6 parser calls Routine to determine which objects are in scope. The routine uses I6 library functions like `PlaceInScope()` or `ScopeWithin()` to add objects.
+
+```bgl
+bool isEdible(object obj) { return obj.has(edible); }
+
+verb Taste {
+    grammar = {
+        {.taste, OBJ(isEdible)},      // only matches edible objects
+    }
+}
+```
+
+**Bare routine as general parsing token** — a global function name used directly in a pattern acts as a general parsing routine. The I6 parser calls it with a parsing context parameter to handle custom input matching. The routine is responsible for consuming input words and returning true if they match:
+
+```bgl
+bool parseColor(int context) {
+    // context is provided by the I6 parser
+    // routine examines the player's input words and returns true if matched
+    return true;
+}
+
+verb Paint {
+    grammar = {
+        {.paint, OBJ, parseColor},    // "paint <object> <color>"
+    }
+}
+```
+
+**Attributes as pattern tokens** — an attribute name in a pattern matches objects that have that attribute:
+
+```bgl
+verb Replenish {
+    grammar = {
+        {.replenish, container},
+        {.chat, animate, .about, TOPIC},
+    }
+}
+```
+
+### Grammar on Verbs
+
+The `grammar` member on a verb is of type `grammarRuleList`. Grammar patterns declared here use the inferred-verb form — the verb is the owning object:
+
+```bgl
+verb Examine {
+    grammar = {
+        {.examine, OBJ},
+        {.x, OBJ},
+        {.look, .at, OBJ},
+    }
+    void perform() {
+        print("You examine it closely.");
+    }
+}
+```
+
+`grammarRuleList` follows the same pattern as `attributeList` on `object` — a real type in the type system, declared as a member on the class, with the compiler handling the I6 emission (as `Verb` directives rather than object properties).
+
+### Grammar Objects
+
+`grammar` is a shorthand for declaring an object of class `grammarRuleList`. Grammar objects provide a grammar-centric alternative to declaring rules on verbs.
+
+**Single-verb form** — the object name identifies the target verb:
+
+```bgl
+grammar PutOn {
+    {.hang, HELD, .on, OBJ},
+    {.put, HELD, .on, OBJ},
+}
+```
+
+**Multi-verb form** — `grammarRule` members pair patterns with explicit verb references:
+
+```bgl
+grammar customPatterns {
+    grammarRule rule1 = {PutOn, {.hang, HELD, .on, OBJ}};
+    grammarRule rule2 = {Insert, {.put, HELD, .in, OBJ}};
+}
+```
+
+Type can be inferred, and `array<grammarRule>` is supported for multiple rules in a single member:
+
+```bgl
+grammar customPatterns {
+    rule1 = {PutOn, {.hang, HELD, .on, OBJ}};
+    array<grammarRule> rules = {{PutOn, {.put, HELD, .on, OBJ}},
+                                {Insert, {.put, HELD, .in, OBJ}}};
+}
+```
+
+`grammarRule` and `array<grammarRule>` have strict initializer shapes — a `grammarRule` member takes a single `{verb, {pattern}}` pair, while `array<grammarRule>` takes a list of them. Mismatched shapes are a compile error.
+
+### Extending Verb Grammar
+
+Grammar can be added to an existing verb (including `extern verb` declarations) using `extend` with `+=` on the `grammar` member (see §5.9 for the general `extend` mechanism):
+
+```bgl
+extern verb PutOn;
+extend PutOn {
+    grammar += {
+        {.hang, HELD, .on, OBJ},
+    }
+}
+```
+
+Since `extern verb` objects are defined in I6, only `grammar +=` is allowed — new members, methods, and `-=` are not supported on extern objects.
 
 ---
 
@@ -3264,50 +3447,27 @@ Beguile is built on top of I6, and several mechanisms allow Beguile code to use 
 
 ## 15.2 `extern` Declarations
 
-`extern` declares that a type, variable, function, attribute, or enum member is defined in I6. Beguile registers the name and type for compile-time checking but emits no I6 definition.
+`extern` declares that a type, variable, function, attribute, or enum member is defined in I6. Beguile registers the name and type for compile-time checking but emits no I6 definition. None of these produce I6 output — they exist solely to make I6-defined names available in Beguile source with proper typing.
 
-| Form | Purpose |
-|------|---------|
-| `extern class Name { ... }` | I6 class with Beguile-typed emitters and stubs |
-| `extern enum Name { ... }` | I6 enum; registers member names globally |
-| `extern object Name;` | Forward-declares an I6 object |
-| `extern verb Name;` | Registers a library verb name |
-| `extern attribute Name;` | Registers an existing I6 attribute (no declaration emitted) |
-| `extern int Name;` | Mutable I6 global variable |
-| `extern const int Name;` | Read-only I6 constant |
-| `extern var Name;` | Untyped I6 variable (when type is unknowable) |
+| Form | Detailed in |
+|------|-------------|
+| `extern enum Name { ... }` | §4.3 |
+| `extern class Name { ... }` | §5.2.2 |
+| `extern object Name;` | §6.2 |
+| `extern Type Name;` | §8.2 |
+| `extern const Type Name;` | §8.3 |
+| `extern attribute Name;` | §8.6 |
+| `extern verb Name;` | §14.2 |
 
-None of these produce any I6 output. They exist solely to make I6-defined names available in Beguile source with proper typing.
-
-To declare a new attribute in Beguile (emitting an I6 `Attribute` declaration), use the non-extern form: `attribute Name;` (see §8.6).
-
-Extern variable declarations may also carry an `as i6name` alias clause — see §8.7.
+Extern variable declarations may also carry an `as i6name` alias clause (§8.7).
 
 ## 15.3 `#includeI6`
 
-Emits an I6 `#include` directive into the generated `.inf` file. The compiler resolves the file path against the source directory and all `includePaths` directories (trying the name as-is and with `.h` extension), then emits the resolved absolute path. A compile-time error is reported if the file is not found; use the optional form `#includeI6 ?"name"` to skip silently.
-
-```bgl
-#includeI6 "parser"        // resolves to absolute path of parser.h
-#includeI6 "verblib"
-#includeI6 "grammar"
-#includeI6 ?"optional"     // no error if not found
-```
-
-These are used to pull in standard Inform library files at the correct positions in the output. The Beguile compiler does not parse or validate the included I6 files, but does verify they exist.
+Emits an I6 `#include` directive into the generated output. See §3.2.4 for full syntax and path resolution details.
 
 ## 15.4 Emitter Bodies as Raw I6
 
-Every emitter body is raw I6 text. Authors may use any I6 construct inside an emitter body — I6 operators, library calls, conditionals, `objectloop`, `move`, `give`, etc. — without restriction. Only `$self` and parameter names are treated specially (substituted before emission).
-
-```bgl
-extern class object {
-    emitter void move(object dest){ move $self to $dest }
-    emitter eBool has(attribute a) { $self has $a }
-}
-```
-
-This is the primary path for I6 capabilities that have no Beguile syntax equivalent.
+Emitter bodies are raw I6 text inlined at call sites — the primary path for I6 capabilities that have no Beguile syntax equivalent. See Chapter 7 for full emitter syntax, substitution rules, and `##if` conditional directives within emitter bodies.
 
 ## 15.5 Debug Bundle
 
@@ -3348,7 +3508,7 @@ The Beguile language extensions (`beguiLib/`) provide opt-in language features t
 
 A separate category of files, **IF Library Bindings** (`beguiLib/bindings/`), expose a specific external IF library's symbols — attributes, globals, actions, and so on — to Beguile's type system using `extern` declarations. These are inherently target-dependent and entirely optional; projects that manage their own I6 bindings or use a different library do not need them.
 
-## 16.2 Language Extension Files
+## 16.2 Core Language Extension Files
 
 Core files in `beguiLib/`. These are library-agnostic and work with any IF target. Each is included with `#include <name>`.
 
@@ -3467,7 +3627,7 @@ Strings are automatically allocated on declaration (`init`) and freed on functio
 
 > *This extension is planned but not yet implemented.* It will provide common mathematical functions (abs, min, max, clamp, random range, power) as emitters.
 
-## 16.2.1 `bglInit()` — Runtime Initialization
+### 16.2.6 `bglInit()` — Runtime Initialization
 
 Some language extensions allocate runtime resources (memory pools, buffers, etc.) that must be set up before use. These extensions register an initialization hook automatically when included; all registered hooks are called by `bglInit()`.
 
@@ -3498,7 +3658,11 @@ Different IF libraries require different binding files and would not be used tog
 
 ---
 
-## 16.4 `bglWorld` — Object Tree Iteration
+# Chapter 17 — Runtime Library
+
+## 17.1 `bglWorld` — Object Tree Iteration
+
+> *This facility is designed but not yet implemented.*
 
 `bglWorld` is a built-in object that provides structured iteration over the Inform 6 object tree. It is available without any `#include`.
 

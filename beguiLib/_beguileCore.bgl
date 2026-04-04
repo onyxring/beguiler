@@ -163,11 +163,15 @@
     }
 
 //=============================================================================
+// type grammarElement — base class for grammar line elements (grammarToken, dictionaryWord)
+    extern class grammarElement : _bglObject{ }
+
+//=============================================================================
 // type dictionary word
     extern class dictionaryWordLiteral:_bglObject{
         replace emitter void print(){ print (address) $self }
     }
-    emitter class dictionaryWord : _bglObject{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
+    emitter class dictionaryWord : grammarElement{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
         emitter dictionaryWordLiteral operator();                           //--I6 passthrough; enables mixed expressions
         emitter dictionaryWord operator = (dictionaryWordLiteral v){ $self = $v; }
         emitter dictionaryWord operator = (dictionaryWord v){ $self = $v; }
@@ -192,7 +196,7 @@
 
 //=============================================================================
 // type grammarToken
-    emitter class grammarToken : _bglObject{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
+    emitter class grammarToken : grammarElement{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
         emitter var operator();              //--declares I6 compatibility with var, enabling mixed expressions
         emitter eBool operator == (var v){ $self == $v }
         emitter eBool operator != (var v){ $self ~= $v }
@@ -200,9 +204,25 @@
     }
 
 //=============================================================================
+// type grammarPattern — a sequence of grammar tokens and dictionary words describing player input
+    extern class grammarPattern : _bglObject{ }
+
+//=============================================================================
+// type grammarRule — pairs a verb reference with a grammarPattern
+    extern class grammarRule : _bglObject{ }
+
+//=============================================================================
+// type grammarRuleList — collection of grammarRules; emits as I6 Verb directives
+    extern class grammarRuleList : _bglObject{
+        grammarRule rule;            // class-level member for type inference (individual and array rules)
+    }
+
+//=============================================================================
 // type verb
     //--Note: verb identifiers emit as ##Name in comparison context in i6.  This is hardcoded in the compiler.  Consider a mechanism to wrap this in an new overload emitter instead.  That way, anything could go into a switch statement if it could emit an appropriate constant value.
-    alias class verb for object{ 
+    alias class verb for object{
+        grammarRuleList grammar;
+        default emitter void perform(){ $selfsub; }    // bridges to I6 <verbName>Sub; override without 'replace'
         emitter eBool operator == (verb v){ $self == ##$v }
         emitter void _bglGlobalDeclaration() {
             [$selfsub;

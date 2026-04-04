@@ -367,9 +367,15 @@ void bglParser::preScanFile(string filename){
         bool isExtern  = q.isExtern;
         bool isEmitter = q.isEmitter;
 
-        // extend class — register new members on the existing class during pre-scan
-        // Note: 'extend' was consumed by parseQualifiers; tok is now 'class' (or 'extern class')
+        // extend class/object — register new members on the existing type during pre-scan
+        // Note: 'extend' was consumed by parseQualifiers; tok is now 'class', 'verb', identifier, or 'extern'
         if(q.isExtend){
+            // extend object by name — just skip the body (already registered by its own decl)
+            if((tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration)){
+                // extend ObjectName { } — object extension; skip body during pre-scan
+                preScanSkipBody();
+                continue;
+            }
             if(tok.is("extern")) tok = file.getToken(); // consume "extern", now tok = "class"
             if(tok.is(token::classDeclaration)) tok = file.getToken(); // consume "class", now tok = name
             token nameTok = tok;
@@ -513,12 +519,29 @@ void bglParser::preScanFile(string filename){
             token nameTok = file.getToken();
             string nameStr = nameTok.value;
             transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+            // Check if class is verb-derived — create verbObjectDef instead of objectDef
+            bool isVerbType = false;
+            {   function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
+                    if(!c) return false;
+                    if(c->name == "verb") return true;
+                    for(classDef* b : c->baseClasses) if(checkVerb(b)) return true;
+                    return false;
+                };
+                if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(classType)))
+                    isVerbType = checkVerb(cls);
+            }
             token peek = file.peekToken();
             if(peek.is(token::braceOpen) || peek.is(":")){ // object body
                 objectDef* objStub = nullptr;
                 if(!languageService.isObjectType(nameStr)){
-                    objStub = &languageService.registerObject(nameStr, isExtern);
-                    objStub->isPrePassStub = true;
+                    if(isVerbType){
+                        verbObjectDef& vs = languageService.registerVerbObject(nameTok.value, isExtern);
+                        vs.isPrePassStub = true;
+                        objStub = &vs;
+                    } else {
+                        objStub = &languageService.registerObject(nameStr, isExtern);
+                        objStub->isPrePassStub = true;
+                    }
                     // Set objectClass from the declared type so forward references resolve correctly
                     if(classType != "object")
                         if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(classType)))
@@ -581,38 +604,32 @@ void bglParser::preScanFile(string filename){
                     file.getRawTextThroughClosingBrace();
                 }
             } else {
-                // extern object Name; or object Name = ...; — variable stub
-                bool alreadyReg = false;
-                for(typeDef* g : languageService.globals)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                        if(vd->name == nameStr){ alreadyReg = true; break; }
-                if(!alreadyReg){
-                    variableDeclaration& stub = *(new variableDeclaration());
-                    stub.name = nameStr;
-                    stub.type.name = "object";
-                    stub.isPrePassStub = true;
-                    stub.isExternal = isExtern;
-                    languageService.globals.push_back(&stub);
+                // extern ClassName Name; or ClassName Name = ...; — variable or object stub
+                if(isVerbType){
+                    // extern verb-derived: register as verb object
+                    bool alreadyReg = false;
+                    for(verbObjectDef* v : languageService.verbs)
+                        if(v->name == nameStr){ alreadyReg = true; break; }
+                    if(!alreadyReg){
+                        verbObjectDef& vs = languageService.registerVerbObject(nameTok.value, isExtern);
+                        vs.isPrePassStub = true;
+                    }
+                } else {
+                    bool alreadyReg = false;
+                    for(typeDef* g : languageService.globals)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                            if(vd->name == nameStr){ alreadyReg = true; break; }
+                    if(!alreadyReg){
+                        variableDeclaration& stub = *(new variableDeclaration());
+                        stub.name = nameStr;
+                        stub.type.name = "object";
+                        stub.isPrePassStub = true;
+                        stub.isExternal = isExtern;
+                        languageService.globals.push_back(&stub);
+                    }
                 }
                 preScanSkipToSemicolon();
             }
-            continue;
-        }
-
-        // verb keyword
-        if(tok.is("verb")){
-            token nameTok = file.getToken();
-            string nameStr = nameTok.value;
-            transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
-            bool alreadyReg = false;
-            for(verbObjectDef* v : languageService.verbs)
-                if(v->name == nameStr){ alreadyReg = true; break; }
-            if(!alreadyReg){
-                verbObjectDef& stub = languageService.registerVerbObject(nameTok.value, isExtern);
-                stub.isPrePassStub = true;
-            }
-            if(isExtern) preScanSkipToSemicolon();
-            else         preScanSkipBody();
             continue;
         }
 
@@ -763,7 +780,10 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
     if(tok.is(token::classDeclaration)) return processClassDeclaration(tok, isExtern, isExtend, isEmitter, q.isAlias);
     // verb/grammar keywords must be checked before the isDataType() branch because 'verb' is
     // also a registered class name and would otherwise be caught as a type declaration.
-    if(!isExtern && tok.is("verb"))    return processVerbDeclaration(isExtern);
+    // extend <objectName> — extend any object by name
+    if(isExtend && !isExtern && (tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration)){
+        return processObjectExtension(tok);
+    }
     if(!isExtern && tok.is("grammar")) return processGrammarDeclaration();
 
     // A declared object's name is both its type and its singleton instance reference.
@@ -819,14 +839,32 @@ bool bglParser::processNextStatement(abstractObject& contextObject){
             processRoutineDeclaration(tok, name, contextObject, isExtern, isEmitter, isReplace);
         else if(symbol.is(token::braceOpen))
             processObjectDeclaration(tok, name, isExtern, objectClassName, i6alias);
+        else if(symbol.is(token::endStatement) && isExtern){
+            // Check if this is a verb-derived type — route to object declaration for verb instances
+            bool verbDerived = false;
+            if(classDef* cls = dynamic_cast<classDef*>(&languageService.getType(tok.value))){
+                function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
+                    if(!c) return false;
+                    if(c->name == "verb") return true;
+                    for(classDef* b : c->baseClasses) if(checkVerb(b)) return true;
+                    return false;
+                };
+                verbDerived = checkVerb(cls);
+            }
+            if(verbDerived)
+                processObjectDeclaration(tok, name, isExtern, objectClassName, i6alias);
+            else
+                processVariableDeclaration(tok, name, symbol, contextObject, isExtern, isConst, i6alias);
+        }
         else
             processVariableDeclaration(tok, name, symbol, contextObject, isExtern, isConst, i6alias);
         return false;
     }
 
     // beguilerSettings is now a directive (#beguilerSettings); handled in processDirective
-    if(tok.is("verb"))    return processVerbDeclaration(isExtern);
-    if(tok.is("grammar")) return processGrammarDeclaration();
+    if(isExtend && !isExtern && (tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration))
+        return processObjectExtension(tok);
+    if(!isExtern && tok.is("grammar")) return processGrammarDeclaration();
 
     //that's all we allow in the global context.  Throw an error otherwise...
     if(getCurrentCompileContext()==eCompileContext::global) parsingError(format("Illegal global identifier:'{0}'", (string) tok));
@@ -1072,6 +1110,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             funcDef.returnType=languageService.getType((string) returnType);
             funcDef.isEmitter=isEmitter;
             funcDef.isExplicit=isExplicitConversion;
+            funcDef.isDefault=q.isDefault;
             if(isExplicitConversion && funcDef.name != "operator()")
                 parsingError("'explicit' is only valid on conversion operators (operator())");
             processParameterList(funcDef);
@@ -1194,10 +1233,25 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(tok.is(token::assignment)){
                 token first = file.getToken();
                 if(first.is(token::braceOpen)){
-                    // initializer list: { expr, expr, ... }
+                    // initializer list: { expr, expr, ... } with optional nesting
                     initializerList* list = new initializerList();
                     token t2 = file.getToken();
                     while(!t2.is(token::braceClose) && !t2.is(eTokenType::eof)){
+                        if(t2.is(token::braceOpen)){
+                            initializerList* inner = new initializerList();
+                            token t3 = file.getToken();
+                            while(!t3.is(token::braceClose) && !t3.is(eTokenType::eof)){
+                                expression* elem = parseExpression(t3, {",", token::braceClose}, nullptr, nullptr);
+                                inner->elements.push_back(elem);
+                                if(elem->terminator == token::braceClose) break;
+                                t3 = file.getToken();
+                            }
+                            list->elements.push_back(inner);
+                            t2 = file.getToken({token::comma, token::braceClose});
+                            if(t2.is(token::braceClose)) break;
+                            t2 = file.getToken();
+                            continue;
+                        }
                         expression* elem = parseExpression(t2, {",", token::braceClose}, nullptr, nullptr);
                         list->elements.push_back(elem);
                         if(elem->terminator == token::braceClose) break;
@@ -2331,6 +2385,7 @@ bglParser::Qualifiers bglParser::parseQualifiers(token& tok){
         else if(tok.is("static"))                  { q.isStatic   = true; tok = file.getToken(); }
         else if(tok.is(token::extend))             { q.isExtend   = true; tok = file.getToken(); }
         else if(tok.is("alias"))                   { q.isAlias    = true; tok = file.getToken(); }
+        else if(tok.is("default"))                 { q.isDefault  = true; tok = file.getToken(); }
         else break;
     }
     // Validate nonsensical combinations
@@ -5646,6 +5701,23 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
         initializerList* list = new initializerList();
         token t = file.getToken();
         while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+            if(t.is(token::braceOpen)){
+                // nested initializer list: { {a, b}, {c, d} }
+                initializerList* inner = new initializerList();
+                token t2 = file.getToken();
+                while(!t2.is(token::braceClose) && !t2.is(eTokenType::eof)){
+                    expression* elem = parseExpression(t2, {",", token::braceClose}, nullptr, nullptr);
+                    inner->elements.push_back(elem);
+                    if(elem->terminator == token::braceClose) break;
+                    t2 = file.getToken();
+                }
+                list->elements.push_back(inner);
+                // after inner }, expect , or outer }
+                t = file.getToken({token::comma, token::braceClose});
+                if(t.is(token::braceClose)) break;
+                t = file.getToken();
+                continue;
+            }
             expression* elem = parseExpression(t, {",", token::braceClose}, nullptr, nullptr);
             list->elements.push_back(elem);
             if(elem->terminator == token::braceClose) break;
@@ -5715,6 +5787,47 @@ void bglParser::processArrayMember(objectDef& obj){
     string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
     file.getToken(">");
     token propName = file.getToken(eTokenType::identifier);
+
+    // array<grammarRule>: parse {{Verb, {pattern}}, ...} initializer
+    if(elemType == "grammarrule"){
+        file.getToken(token::assignment);
+        file.getToken(token::braceOpen);
+        token inner = file.getToken();
+        while(inner.is(token::braceOpen)){
+            grammarRuleDecl& rd = *(new grammarRuleDecl());
+            rd.name = propName.value;
+            rd.type = languageService.getType("grammarrule");
+            // Parse verb reference
+            token verbTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            string lower = verbTok.value;
+            transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            bool verbFound = false;
+            for(verbObjectDef* v : languageService.verbs)
+                if(v->name == lower){ verbFound = true; break; }
+            if(!verbFound){
+                string display = verbTok.originalValue.empty() ? verbTok.value : verbTok.originalValue;
+                parsingError(format("'{0}' in grammarRule initializer is not a declared verb", display));
+            }
+            rd.targetVerb = verbTok.originalValue.empty() ? verbTok.value : verbTok.originalValue;
+            file.getToken(token::comma);
+            file.getToken(token::braceOpen);
+            rd.line = parseGrammarLineContent();
+            file.getToken(token::braceClose);  // closing } of this rule
+            // Add to verb's grammarLines if applicable
+            if(auto* vod = dynamic_cast<verbObjectDef*>(&obj)){
+                grammarLine gl = rd.line;
+                gl.targetVerb = rd.targetVerb;
+                vod->grammarLines.push_back(gl);
+            }
+            obj.members.push_back(&rd);
+            token sep = file.getToken({token::comma, token::braceClose});
+            if(sep.is(token::braceClose)) break;
+            inner = file.getToken();
+        }
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        return;
+    }
+
     token sym = file.getToken({token::bracketOpen, token::assignment, token::endStatement});
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
     arrDecl.name = (string)propName;
@@ -5779,11 +5892,12 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
     // Check class hierarchy for shadowed methods — warn if 'replace' not specified
     if(!isReplace && !funcDef.name.empty()){
         string shadowedFrom;
+        bool shadowedIsDefault = false;
         function<void(classDef*)> searchClass = [&](classDef* c){
             if(!shadowedFrom.empty() || !c) return;
             for(typeMember* m : c->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
-                    if(fd->name == funcDef.name){ shadowedFrom = c->dName(); return; }
+                    if(fd->name == funcDef.name){ shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault; return; }
             for(classDef* base : c->baseClasses) searchClass(base);
         };
         // Search objectClass hierarchy
@@ -5791,29 +5905,54 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
         // Search objectDef base classes (from ': Parent' clause)
         for(typeDef* base : obj.baseClasses)
             if(auto* cd = dynamic_cast<classDef*>(base)) searchClass(cd);
-        if(!shadowedFrom.empty())
+        if(!shadowedFrom.empty() && !shadowedIsDefault)
             parsingWarning(format("object '{0}': method '{1}' shadows definition in class '{2}'; use 'replace' to suppress this warning",
                 obj.dName(), funcDef.dName(), shadowedFrom));
     }
     if(!replaceStubMember(obj.members, funcDef)){
         // No stub — check for duplicates
-        for(typeMember* m : obj.members)
-            if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(fd->name == funcDef.name && fd->params.size() == funcDef.params.size())
-                    parsingError(format("object '{0}': method '{1}' with the same signature is already defined", obj.dName(), funcDef.dName()));
-        obj.members.push_back((typeMember*)&funcDef);
+        bool replaced = false;
+        if(isReplace){
+            for(size_t i = 0; i < obj.members.size(); i++)
+                if(auto* fd = dynamic_cast<functionDef*>(obj.members[i]))
+                    if(fd->name == funcDef.name && fd->params.size() == funcDef.params.size()){
+                        obj.members[i] = &funcDef;
+                        replaced = true;
+                        break;
+                    }
+            if(!replaced)
+                parsingWarning(format("object '{0}': 'replace' specified but no existing method '{1}' to replace", obj.dName(), funcDef.dName()));
+        }
+        if(!replaced){
+            for(typeMember* m : obj.members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->name == funcDef.name && fd->params.size() == funcDef.params.size())
+                        parsingError(format("object '{0}': method '{1}' with the same signature is already defined", obj.dName(), funcDef.dName()));
+        }
+        if(!replaced)
+            obj.members.push_back((typeMember*)&funcDef);
     }
 }
 
-void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue){
+void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace){
     variableDeclaration& prop = *(new variableDeclaration());
     prop.name = name;
     prop.type = languageService.getType(typeName);
     if(hasValue) parsePropertyValue(prop, typeName);
-    for(typeMember* m : obj.members)
-        if(m->name == prop.name)
-            parsingError(format("object '{0}': member '{1}' is already defined", obj.dName(), prop.dName()));
-    obj.members.push_back((typeMember*)&prop);
+    bool replaced = false;
+    if(isReplace){
+        for(size_t i = 0; i < obj.members.size(); i++)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(obj.members[i]))
+                if(vd->name == prop.name){ obj.members[i] = &prop; replaced = true; break; }
+        if(!replaced)
+            parsingWarning(format("object '{0}': 'replace' specified but no existing member '{1}' to replace", obj.dName(), prop.dName()));
+    }
+    if(!replaced){
+        for(typeMember* m : obj.members)
+            if(m->name == prop.name)
+                parsingError(format("object '{0}': member '{1}' is already defined", obj.dName(), prop.dName()));
+        obj.members.push_back((typeMember*)&prop);
+    }
 }
 
 void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace){
@@ -5827,11 +5966,97 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
             propName.value = "operator " + opTok.value;
         }
     }
+    // grammarRule member: parse {Verb, {pattern}} or array<grammarRule> {{Verb, {pattern}}, ...}
+    if(typeTok.value == "grammarrule"){
+        file.getToken(token::assignment);
+        file.getToken(token::braceOpen);
+        token peek = file.peekToken();
+        if(peek.is(token::braceOpen)){
+            // array form: single grammarRule can't have nested braces
+            parsingError(format("grammarRule '{0}' takes a single rule initializer; use array<grammarRule> for multiple rules", propName.value));
+        }
+        // Single rule: {VerbRef, {.word, TOKEN, ...}}
+        grammarRuleDecl& rd = *(new grammarRuleDecl());
+        rd.name = propName.value;
+        rd.type = languageService.getType("grammarrule");
+        token verbTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        // Resolve verb reference
+        string lower = verbTok.value;
+        transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        bool verbFound = false;
+        for(verbObjectDef* v : languageService.verbs)
+            if(v->name == lower){ verbFound = true; break; }
+        if(!verbFound){
+            string display = verbTok.originalValue.empty() ? verbTok.value : verbTok.originalValue;
+            parsingError(format("'{0}' in grammarRule initializer is not a declared verb", display));
+        }
+        rd.targetVerb = verbTok.originalValue.empty() ? verbTok.value : verbTok.originalValue;
+        file.getToken(token::comma);
+        file.getToken(token::braceOpen);
+        rd.line = parseGrammarLineContent();
+        file.getToken(token::braceClose);  // closing } of outer initializer
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        // If on a grammarRuleList-bearing object, also add to its grammarLines
+        if(auto* vod = dynamic_cast<verbObjectDef*>(&obj)){
+            grammarLine gl = rd.line;
+            gl.targetVerb = rd.targetVerb;
+            vod->grammarLines.push_back(gl);
+        }
+        obj.members.push_back(&rd);
+        return;
+    }
+    // grammarRuleList member: parse grammar lines instead of standard property value
+    if(typeTok.value == "grammarrulelist"){
+        // Resolve verb context for inferred-verb grammarRule entries
+        auto* vod = dynamic_cast<verbObjectDef*>(&obj);
+        bool isVerbContext = (vod != nullptr);
+        if(!isVerbContext){
+            bool isVerbDerived = false;
+            function<void(classDef*)> searchBases = [&](classDef* cls){
+                if(!cls || isVerbDerived) return;
+                if(cls->name == "verb"){ isVerbDerived = true; return; }
+                for(classDef* base : cls->baseClasses) searchBases(base);
+            };
+            if(obj.objectClass) searchBases(obj.objectClass);
+            isVerbContext = isVerbDerived;
+        }
+        string inferredVerb;
+        if(vod) inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
+
+        file.getToken(token::assignment);
+        grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
+        gtd.name = propName.value;
+        gtd.type = languageService.getType("grammarrulelist");
+        gtd.verbName = inferredVerb;
+
+        // Parse grammar lines and create a grammarRuleDecl for each
+        vector<grammarLine> lines = parseGrammarLines();
+        for(grammarLine& gl : lines){
+            grammarRuleDecl& rd = *(new grammarRuleDecl());
+            rd.name = propName.value;
+            rd.type = languageService.getType("grammarrule");
+            rd.line = gl;
+            rd.targetVerb = inferredVerb;
+            if(!isVerbContext)
+                parsingWarning(format("grammarRule in '{0}' uses inferred verb form but the owning object is not a verb; use explicit form: grammarRule r = {{Verb, {{pattern}}}}", propName.value));
+            gtd.rules.push_back(&rd);
+            gl.targetVerb = inferredVerb;
+            gtd.grammarLines.push_back(gl);
+        }
+
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        if(vod){
+            vod->grammarLines.insert(vod->grammarLines.end(), gtd.grammarLines.begin(), gtd.grammarLines.end());
+            if(vod->isExternal) languageService.globals.push_back(&gtd);
+        }
+        obj.members.push_back(&gtd);
+        return;
+    }
     token sym = file.getToken({token::assignment, token::endStatement, token::parenOpen});
     if(sym.is(token::parenOpen))
         processMemberMethod(obj, typeTok, propName, isReplace);
     else
-        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment));
+        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment), isReplace);
 }
 
 void bglParser::processInheritedMember(objectDef& obj, token nameTok){
@@ -5852,22 +6077,125 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
     }
     if(propTypeName.empty())
         parsingError(format("'{0}' is not a property defined on the object class or its bases; add a type specifier (e.g. 'object {0} = ...')", nameTok.value));
+    // grammarRule/grammarRuleList with inferred type: route to grammar-specific parsing
+    if(propTypeName == "grammarrule"){
+        file.getToken(token::assignment);
+        file.getToken(token::braceOpen);
+        grammarRuleDecl& rd = *(new grammarRuleDecl());
+        rd.name = nameTok.value;
+        rd.type = languageService.getType("grammarrule");
+        token verbTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        string lower = verbTok.value;
+        transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        bool verbFound = false;
+        for(verbObjectDef* v : languageService.verbs)
+            if(v->name == lower){ verbFound = true; break; }
+        if(!verbFound){
+            string display = verbTok.originalValue.empty() ? verbTok.value : verbTok.originalValue;
+            parsingError(format("'{0}' in grammarRule initializer is not a declared verb", display));
+        }
+        rd.targetVerb = verbTok.originalValue.empty() ? verbTok.value : verbTok.originalValue;
+        file.getToken(token::comma);
+        file.getToken(token::braceOpen);
+        rd.line = parseGrammarLineContent();
+        file.getToken(token::braceClose);
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        if(auto* vod = dynamic_cast<verbObjectDef*>(&obj)){
+            grammarLine gl = rd.line;
+            gl.targetVerb = rd.targetVerb;
+            vod->grammarLines.push_back(gl);
+        }
+        obj.members.push_back(&rd);
+        return;
+    }
+    if(propTypeName == "grammarrulelist"){
+        auto* vod = dynamic_cast<verbObjectDef*>(&obj);
+        bool isVerbContext = (vod != nullptr);
+        if(!isVerbContext){
+            bool isVerbDerived = false;
+            function<void(classDef*)> searchBases = [&](classDef* cls){
+                if(!cls || isVerbDerived) return;
+                if(cls->name == "verb"){ isVerbDerived = true; return; }
+                for(classDef* base : cls->baseClasses) searchBases(base);
+            };
+            if(obj.objectClass) searchBases(obj.objectClass);
+            isVerbContext = isVerbDerived;
+        }
+        string inferredVerb;
+        if(vod) inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
+
+        file.getToken(token::assignment);
+        grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
+        gtd.name = nameTok.value;
+        gtd.type = languageService.getType("grammarrulelist");
+        gtd.verbName = inferredVerb;
+
+        vector<grammarLine> lines = parseGrammarLines();
+        for(grammarLine& gl : lines){
+            grammarRuleDecl& rd = *(new grammarRuleDecl());
+            rd.name = nameTok.value;
+            rd.type = languageService.getType("grammarrule");
+            rd.line = gl;
+            rd.targetVerb = inferredVerb;
+            if(!isVerbContext)
+                parsingWarning(format("grammarRule in '{0}' uses inferred verb form but the owning object is not a verb; use explicit form: grammarRule r = {{Verb, {{pattern}}}}", nameTok.value));
+            gtd.rules.push_back(&rd);
+            gl.targetVerb = inferredVerb;
+            gtd.grammarLines.push_back(gl);
+        }
+
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        if(vod){
+            vod->grammarLines.insert(vod->grammarLines.end(), gtd.grammarLines.begin(), gtd.grammarLines.end());
+            if(vod->isExternal) languageService.globals.push_back(&gtd);
+        }
+        obj.members.push_back(&gtd);
+        return;
+    }
     bool hasValue = file.getToken({token::assignment, token::endStatement}).is(token::assignment);
     processMemberVariable(obj, propTypeName, nameTok.value, hasValue);
 }
 
 bool bglParser::processObjectDeclaration(token objectType, token name, bool isExternal, string className, string i6alias){
-    objectDef& newObj = languageService.registerObject((string)name, isExternal, name.originalValue);
-    if(!i6alias.empty()) newObj.i6name = i6alias;
-    // Resolve objectClass: prefer explicit ': ClassName' annotation, otherwise use the
-    // declared type token (e.g. 'worldObject foyer { }' where worldObject is a classDef)
+    // Resolve the class to determine if this is a verb-derived object
     string resolvedClassName = !className.empty() ? className : objectType.value;
+    bool isVerbDerived = false;
+    if(!resolvedClassName.empty()){
+        function<bool(classDef*)> checkVerbBase = [&](classDef* cls) -> bool {
+            if(!cls) return false;
+            if(cls->name == "verb") return true;
+            for(classDef* base : cls->baseClasses)
+                if(checkVerbBase(base)) return true;
+            return false;
+        };
+        if(classDef* cls = dynamic_cast<classDef*>(&languageService.getType(resolvedClassName)))
+            isVerbDerived = checkVerbBase(cls);
+    }
+
+    // Create verbObjectDef for verb-derived objects, objectDef otherwise
+    objectDef* objPtr;
+    verbObjectDef* vod = nullptr;
+    string origName = name.originalValue.empty() ? (string)name : name.originalValue;
+    if(isVerbDerived){
+        verbObjectDef& vd = languageService.registerVerbObject(origName, isExternal);
+        objPtr = &vd;
+        vod = &vd;
+    } else {
+        objectDef& od = languageService.registerObject((string)name, isExternal, name.originalValue);
+        objPtr = &od;
+    }
+    objectDef& newObj = *objPtr;
+    if(!i6alias.empty()) newObj.i6name = i6alias;
     if(!resolvedClassName.empty()){
         if(classDef* cls = dynamic_cast<classDef*>(&languageService.getType(resolvedClassName)))
             newObj.objectClass = cls;
         else if(!className.empty())
             parsingError(format("Unknown class '{0}' in object declaration", className));
     }
+
+    // Extern objects have no body
+    if(isExternal) return false;
+
     objectDef* savedObject = currentObject;
     currentObject = &newObj;
     openCompileContext(eCompileContext::objectDef);
@@ -5888,6 +6216,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
         if(q.isAlias)   parsingError("'alias' is not valid inside an object body");
         if(q.isConst)   parsingError("'const' is not valid inside an object body (use on the property type)");
         if(q.isStatic)  parsingError("'static' is not valid inside an object body");
+        if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
         if(q.isEmitter){
             // emitter method inside object body — parse as raw I6 body
             token retType = tok;
@@ -5904,6 +6233,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
             funcDef.returnType = languageService.getType((string)retType);
             funcDef.isEmitter = true;
             funcDef.isExplicit = q.isExplicit;
+            funcDef.isDefault = q.isDefault;
             if(q.isExplicit && funcDef.name != "operator()")
                 parsingError("'explicit' is only valid on conversion operators (operator())");
             token sym = file.getToken();
@@ -5935,6 +6265,16 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
 
     closeCompileContext(eCompileContext::objectDef);
     currentObject = savedObject;
+
+    // Verb-specific post-processing: link perform() and warn if missing
+    if(vod && !isExternal){
+        for(typeMember* m : vod->members)
+            if(auto* fd = dynamic_cast<functionDef*>(m))
+                if(fd->name == "perform"){ vod->doFunc = fd; break; }
+        if(!vod->doFunc)
+            parsingWarning(format("verb '{0}' does not define perform()", origName));
+    }
+
     return false;
 }
 
@@ -6234,69 +6574,579 @@ eCompileContext bglParser::getCurrentCompileContext(){
 // }
 
 //===============================================================================================================================
-// Verb and grammar declarations
+// Object extension: extend <objectName> { }
 //===============================================================================================================================
 
-bool bglParser::processVerbDeclaration(bool isExtern){
+bool bglParser::processObjectExtension(token nameTok){
     if(getCurrentCompileContext() != eCompileContext::global)
-        parsingError("'verb' declarations are only allowed in global context");
+        parsingError("'extend' declarations are only allowed in global context");
 
-    token name = file.getToken({eTokenType::identifier, eTokenType::dataType});
-
-    string origName = name.originalValue.empty() ? name.value : name.originalValue;
-    verbObjectDef& vd = languageService.registerVerbObject(origName, isExtern);
-
-    if(isExtern){
-        file.getToken(token::endStatement);   // extern verb Take;
-        return false;
+    string lower = nameTok.value;
+    // Look up as verb first, then as regular object
+    objectDef* obj = nullptr;
+    verbObjectDef* vod = nullptr;
+    for(verbObjectDef* v : languageService.verbs)
+        if(v->name == lower){ obj = v; vod = v; break; }
+    if(!obj){
+        for(typeDef* g : languageService.globals)
+            if(auto* od = dynamic_cast<objectDef*>(g))
+                if(od->name == lower){ obj = od; break; }
     }
+    if(!obj)
+        parsingError(format("extend '{0}': no previously declared object with that name",
+            nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
 
+    bool isExternalObj = obj->isExternal || (vod && vod->isExternal);
+
+    // Parse body using standard object body loop
     file.getToken(token::braceOpen);
+    objectDef* savedObject = currentObject;
+    currentObject = obj;
+    openCompileContext(eCompileContext::objectDef);
+
     token tok = file.getToken();
     while(tok.isNot(token::braceClose)){
-        if(tok.is("perform")){
-            file.getToken(token::parenOpen);
-            file.getToken(token::parenClose);
-            file.getToken(token::braceOpen);
-
-            functionDef& doFunc = *(new functionDef());
-            doFunc.name = "perform";    // I6 object method; wrapper routine verbNameSub calls obj.perform()
-            doFunc.src = file.currentLocation();
-            doFunc.returnType = languageService.getType("void");
-            doFunc.isExternal = false;
-            doFunc.isEmitter = false;
-            doFunc.body = new statementBlock();
-
-            functionDef* savedFunc = currentFunc;
-            currentFunc = &doFunc;
-            openCompileContext(eCompileContext::codeBlock);
-            while(processNextStatement(doFunc) == false){}
-            closeCompileContext(eCompileContext::codeBlock);
-            currentFunc = savedFunc;
-
-            vd.doFunc = &doFunc;
-            vd.members.push_back(&doFunc);
-        } else if(tok.is("grammar")){
-            vector<grammarLine> lines = parseGrammarLines();
-            vd.grammarLines.insert(vd.grammarLines.end(), lines.begin(), lines.end());
-        } else {
-            parsingError(format("Unexpected token '{0}' in verb body (expected 'perform' or 'grammar')", tok.value));
+        if(tok.is(eTokenType::directive)){
+            if(tok.is("#i6")) processI6InlineMember(*obj);
+            else parsingError(format("Unsupported directive in extend body: '{0}'", tok.value));
+            tok = file.getToken();
+            continue;
         }
+        Qualifiers q = parseQualifiers(tok);
+        bool memberIsReplace = q.isReplace;
+        if(q.isExtern)  parsingError("'extern' is not valid inside an extend body");
+        if(q.isExtend)  parsingError("'extend' is not valid inside an extend body");
+        if(q.isAlias)   parsingError("'alias' is not valid inside an extend body");
+        if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
+        if(isExternalObj && !q.isEmitter){
+            // For extern objects, only compound assignment on grammar is allowed
+            // Check for += which is handled below; everything else is an error
+            bool isCompound = false;
+            if(tok.isDataType()){
+                token peekName = file.peekToken();
+                token peekOp = file.peekToken(2);
+                if(peekOp.is("+=") || peekOp.is("-=")) isCompound = true;
+            } else if(tok.is(eTokenType::identifier)){
+                token peekOp = file.peekToken();
+                if(peekOp.is("+=") || peekOp.is("-=")) isCompound = true;
+            }
+            if(!isCompound)
+                parsingError(format("Cannot add members to extern object '{0}'; only compound assignment (+=) on collection members is allowed",
+                    nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
+        }
+        if(q.isEmitter){
+            if(isExternalObj)
+                parsingError(format("Cannot add emitter methods to extern object '{0}'",
+                    nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
+            token retType = tok;
+            token propName = file.getToken(eTokenType::identifier);
+            if(propName.is("operator")){
+                token opTok = file.getToken();
+                if(opTok.is(token::parenOpen)) propName.value = "operator()";
+                else if(opTok.is("?")) propName.value = "?";
+                else if(opTok.is("switch")) propName.value = "switch";
+                else { opTok.assert(eTokenType::oper); propName.value = opTok.value; }
+            }
+            functionDef& funcDef = *(new functionDef());
+            funcDef.name = (string)propName;
+            funcDef.returnType = languageService.getType((string)retType);
+            funcDef.isEmitter = true;
+            funcDef.isExplicit = q.isExplicit;
+            funcDef.isDefault = q.isDefault;
+            token sym = file.getToken();
+            if(sym.is(token::parenOpen)){ processParameterList(funcDef); sym = file.getToken(); }
+            i6Block& rawblock = *(new i6Block());
+            if(sym.is(token::endStatement)) rawblock.i6Body = " $self";
+            else rawblock.i6Body = file.getRawTextThroughClosingBrace();
+            funcDef.body = &rawblock;
+            if(!replaceStubMember(obj->members, funcDef)){
+                bool replaced = false;
+                if(memberIsReplace){
+                    for(size_t i = 0; i < obj->members.size(); i++)
+                        if(auto* fd = dynamic_cast<functionDef*>(obj->members[i]))
+                            if(fd->name == funcDef.name){ obj->members[i] = &funcDef; replaced = true; break; }
+                }
+                if(!replaced) obj->members.push_back((typeMember*)&funcDef);
+            }
+        } else if(tok.value == "array")
+            processArrayMember(*obj);
+        else if(tok.isDataType()){
+            // Check for += / -= compound assignment on a typed member
+            token peekName = file.peekToken();
+            token peekOp = file.peekToken(2);
+            if((peekOp.is("+=") || peekOp.is("-=")) && peekName.is(eTokenType::identifier)){
+                token memberName = file.getToken();
+                token op = file.getToken();
+                processExtendCompoundAssignment(*obj, memberName, op.value, vod);
+            } else {
+                processTypedMember(*obj, tok, memberIsReplace);
+            }
+        }
+        else if(tok.is(eTokenType::identifier)){
+            // Check for += / -= compound assignment (inferred type)
+            token peekOp = file.peekToken();
+            if(peekOp.is("+=") || peekOp.is("-=")){
+                token op = file.getToken();
+                processExtendCompoundAssignment(*obj, tok, op.value, vod);
+            } else {
+                processInheritedMember(*obj, tok);
+            }
+        }
+        else
+            parsingError(format("Unexpected token '{0}' in extend body", tok.value));
         tok = file.getToken();
     }
+
+    closeCompileContext(eCompileContext::objectDef);
+    currentObject = savedObject;
+
+    // For verb objects: link perform() and add grammar to globals if external
+    if(vod){
+        for(typeMember* m : vod->members)
+            if(auto* fd = dynamic_cast<functionDef*>(m))
+                if(fd->name == "perform"){ vod->doFunc = fd; break; }
+    }
+
     return false;
 }
+
+// Compound assignment (+= / -=) on an existing collection member inside an extend body.
+// Supports: grammarRuleList, attributeList, array<T>.
+void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod){
+    string memberNameStr = memberName.value;
+    string display = memberName.originalValue.empty() ? memberName.value : memberName.originalValue;
+
+    // Find the existing member on the object
+    string memberType;
+    typeMember* existingMember = nullptr;
+    // Search object's own members
+    for(typeMember* m : obj.members){
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+            if(vd->name == memberNameStr){ memberType = vd->type.name; existingMember = m; break; }
+    }
+    // Search class hierarchy if not found on object
+    if(memberType.empty()){
+        function<void(classDef*)> searchClass = [&](classDef* cls){
+            if(!cls || !memberType.empty()) return;
+            for(typeMember* m : cls->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                    if(vd->name == memberNameStr){ memberType = vd->type.name; break; }
+            for(classDef* base : cls->baseClasses) searchClass(base);
+        };
+        if(obj.objectClass) searchClass(obj.objectClass);
+    }
+    if(memberType.empty())
+        parsingError(format("'{0}' is not a member of this object; cannot use {1}", display, op));
+
+    // -= on extern objects is not allowed — we don't control their original data
+    bool isExternalObj = obj.isExternal || (vod && vod->isExternal);
+    if(isExternalObj && op == "-=")
+        parsingError(format("Cannot use -= on extern object '{0}'; the original data is defined externally",
+            obj.displayName.empty() ? obj.name : obj.displayName));
+
+    // grammarRuleList += / -=
+    if(memberType == "grammarrulelist"){
+        if(op == "+="){
+            // Parse grammar lines and append
+            vector<grammarLine> lines = parseGrammarLines();
+            string inferredVerb;
+            if(vod) inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
+
+            // Find or create the grammarRuleListDecl on the object
+            grammarRuleListDecl* gtd = nullptr;
+            for(typeMember* m : obj.members)
+                if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+                    if(g->name == memberNameStr){ gtd = g; break; }
+            if(!gtd){
+                gtd = new grammarRuleListDecl();
+                gtd->name = memberNameStr;
+                gtd->type = languageService.getType("grammarrulelist");
+                gtd->verbName = inferredVerb;
+                obj.members.push_back(gtd);
+                if(vod && vod->isExternal) languageService.globals.push_back(gtd);
+            }
+            for(grammarLine& gl : lines){
+                grammarRuleDecl& rd = *(new grammarRuleDecl());
+                rd.name = memberNameStr;
+                rd.type = languageService.getType("grammarrule");
+                rd.line = gl;
+                rd.targetVerb = inferredVerb;
+                gtd->rules.push_back(&rd);
+                gl.targetVerb = inferredVerb;
+                gtd->grammarLines.push_back(gl);
+            }
+            if(vod)
+                vod->grammarLines.insert(vod->grammarLines.end(), gtd->grammarLines.end() - lines.size(), gtd->grammarLines.end());
+        } else {
+            // -= : remove matching grammar lines
+            vector<grammarLine> toRemove = parseGrammarLines();
+            for(typeMember* m : obj.members){
+                if(auto* g = dynamic_cast<grammarRuleListDecl*>(m)){
+                    if(g->name != memberNameStr) continue;
+                    for(const grammarLine& rem : toRemove){
+                        g->grammarLines.erase(
+                            remove_if(g->grammarLines.begin(), g->grammarLines.end(),
+                                [&](const grammarLine& gl){ return gl.verbWord == rem.verbWord && gl.patternTokens == rem.patternTokens; }),
+                            g->grammarLines.end());
+                    }
+                }
+            }
+            if(vod){
+                for(const grammarLine& rem : toRemove){
+                    vod->grammarLines.erase(
+                        remove_if(vod->grammarLines.begin(), vod->grammarLines.end(),
+                            [&](const grammarLine& gl){ return gl.verbWord == rem.verbWord && gl.patternTokens == rem.patternTokens; }),
+                        vod->grammarLines.end());
+                }
+            }
+        }
+    }
+    // attributeList += / -=
+    else if(memberType == "attributelist"){
+        file.getToken(token::braceOpen);
+        vector<string> attrs;
+        token t = file.getToken();
+        while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+            attrs.push_back(t.value);
+            t = file.getToken({token::comma, token::braceClose});
+            if(t.is(token::comma)) t = file.getToken();
+        }
+        // Find existing attributeList member
+        variableDeclaration* attrMember = nullptr;
+        for(typeMember* m : obj.members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(vd->name == memberNameStr){ attrMember = vd; break; }
+        if(op == "+="){
+            if(!attrMember){
+                attrMember = new variableDeclaration();
+                attrMember->name = memberNameStr;
+                attrMember->type = languageService.getType("attributelist");
+                attrMember->declaredExpressionValue = new initializerList();
+                obj.members.push_back(attrMember);
+            }
+            auto* list = dynamic_cast<initializerList*>(attrMember->declaredExpressionValue);
+            if(!list){ list = new initializerList(); attrMember->declaredExpressionValue = list; }
+            for(const string& a : attrs){
+                expression* elem = new expression();
+                elem->tokens.push_back(a);
+                elem->resolvedType = "attribute";
+                list->elements.push_back(elem);
+            }
+        } else {
+            // -= : remove attributes
+            if(attrMember){
+                if(auto* list = dynamic_cast<initializerList*>(attrMember->declaredExpressionValue)){
+                    for(const string& a : attrs){
+                        list->elements.erase(
+                            remove_if(list->elements.begin(), list->elements.end(),
+                                [&](expression* e){ return !e->tokens.empty() && e->tokens[0] == a; }),
+                            list->elements.end());
+                    }
+                }
+            }
+        }
+    }
+    // array<T> += / -=
+    else if(memberType == "array"){
+        file.getToken(token::braceOpen);
+        initializerList* newElements = new initializerList();
+        token t = file.getToken();
+        while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+            expression* elem = parseExpression(t, {",", token::braceClose}, nullptr, nullptr);
+            newElements->elements.push_back(elem);
+            if(elem->terminator == token::braceClose) break;
+            t = file.getToken();
+        }
+        // Find existing array member
+        arrayDeclaration* arrMember = nullptr;
+        for(typeMember* m : obj.members)
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(m))
+                if(ad->name == memberNameStr){ arrMember = ad; break; }
+        if(op == "+="){
+            if(arrMember){
+                auto* list = dynamic_cast<initializerList*>(arrMember->declaredExpressionValue);
+                if(!list){ list = new initializerList(); arrMember->declaredExpressionValue = list; }
+                for(expression* e : newElements->elements)
+                    list->elements.push_back(e);
+            }
+        } else {
+            // -= : remove matching elements by text value
+            if(arrMember){
+                if(auto* list = dynamic_cast<initializerList*>(arrMember->declaredExpressionValue)){
+                    for(expression* rem : newElements->elements){
+                        string remText = rem->text();
+                        list->elements.erase(
+                            remove_if(list->elements.begin(), list->elements.end(),
+                                [&](expression* e){ return e->text() == remText; }),
+                            list->elements.end());
+                    }
+                }
+            }
+        }
+    }
+    else {
+        parsingError(format("Type '{0}' does not support {1} in extend body", memberType, op));
+    }
+
+    if(file.peekToken().is(token::endStatement)) file.getToken();
+}
+
+//===============================================================================================================================
+// Grammar declarations
+//===============================================================================================================================
 
 bool bglParser::processGrammarDeclaration(){
     if(getCurrentCompileContext() != eCompileContext::global)
         parsingError("'grammar' declarations are only allowed in global context");
 
     token name = file.getToken(eTokenType::identifier);
-    grammarBlock& gb = *(new grammarBlock());
-    gb.verbName = name.originalValue.empty() ? name.value : name.originalValue;
-    gb.grammarLines = parseGrammarLines();
-    languageService.globals.push_back(&gb);
+    string grammarName = name.originalValue.empty() ? name.value : name.originalValue;
+
+    // Peek inside the body to detect old-style grammar lines vs new-style member declarations.
+    // Old-style: grammar VerbName { {.word, TOKEN}, ... } — first body token is '{'
+    // New-style: grammar ObjName { grammarRule rule = ...; ... } — first body token is type/identifier
+    file.getToken(token::braceOpen);
+    token peek = file.peekToken();
+    if(peek.is(token::braceOpen)){
+        // Old-style: single-verb grammar lines — each becomes a grammarRuleDecl with inferred verb
+        grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
+        gtd.name = "grammar";
+        gtd.type = languageService.getType("grammarrulelist");
+        gtd.verbName = grammarName;
+        token tok = file.getToken();
+        while(tok.isNot(token::braceClose)){
+            tok.assert(token::braceOpen, "Expected '{' to start a grammar line");
+            grammarLine gl = parseGrammarLineContent();
+            grammarRuleDecl& rd = *(new grammarRuleDecl());
+            rd.name = "grammar";
+            rd.type = languageService.getType("grammarrule");
+            rd.line = gl;
+            rd.targetVerb = grammarName;
+            gtd.rules.push_back(&rd);
+            gl.targetVerb = grammarName;
+            gtd.grammarLines.push_back(gl);
+            tok = file.getToken({token::comma, token::braceClose});
+            if(tok.is(token::comma)) tok = file.getToken();
+        }
+        languageService.globals.push_back(&gtd);
+    } else {
+        // New-style: grammar object with grammarRule members
+        return processGrammarObjectDeclaration(grammarName);
+    }
     return false;
+}
+
+// Parse a grammar object body with grammarRule members.
+// Assumes outer '{' already consumed. grammarName is the object name.
+// Members are: grammarRule name = {VerbRef, {.word, TOKEN, ...}};
+// or array<grammarRule> name = {{VerbRef, {.word, ...}}, ...};
+// Type can be inferred from the grammarTable class members.
+bool bglParser::processGrammarObjectDeclaration(const string& grammarName){
+    // Resolve grammarTable class for type inference
+    classDef* gtClass = dynamic_cast<classDef*>(&languageService.getType("grammarrulelist"));
+
+    // Create a grammarRuleListDecl to hold all the rules
+    grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
+    gtd.name = grammarName;
+    gtd.type = languageService.getType("grammarrulelist");
+
+    // Helper: resolve a verb reference token, return original-case verb name or error
+    auto resolveVerbRef = [this](const token& verbTok) -> string {
+        string lower = verbTok.value;
+        transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        for(verbObjectDef* v : languageService.verbs)
+            if(v->name == lower)
+                return verbTok.originalValue.empty() ? verbTok.value : verbTok.originalValue;
+        string display = verbTok.originalValue.empty() ? verbTok.value : verbTok.originalValue;
+        parsingError(format("'{0}' in grammarRule initializer is not a declared verb", display));
+        return "";
+    };
+
+    // Helper: parse a single grammarRule initializer {VerbRef, {.word, TOKEN, ...}}
+    // Assumes outer '{' already consumed.
+    auto parseGrammarRuleInit = [&](grammarRuleDecl& rd){
+        // First element: verb reference
+        token verbTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        rd.targetVerb = resolveVerbRef(verbTok);
+        file.getToken(token::comma);
+        // Second element: grammar line pattern {.word, TOKEN, ...}
+        file.getToken(token::braceOpen);
+        rd.line = parseGrammarLineContent();
+        // Closing } of the outer initializer
+        file.getToken(token::braceClose);
+    };
+
+    token tok = file.getToken();
+    while(tok.isNot(token::braceClose)){
+        // Determine type — explicit or inferred
+        string memberType;
+        bool isArray = false;
+        if(tok.is("array")){
+            // explicit array<grammarRule>
+            file.getToken("<");
+            string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+            file.getToken(">");
+            memberType = "grammarrule";
+            isArray = true;
+            tok = file.getToken(eTokenType::identifier); // member name
+        } else if(tok.isDataType() && tok.value == "grammarrule"){
+            // explicit grammarRule
+            memberType = "grammarrule";
+            tok = file.getToken(eTokenType::identifier); // member name
+        } else if(tok.is(eTokenType::identifier)){
+            // inferred type from grammarTable class
+            // tok is the member name; infer type from class
+            if(gtClass){
+                // Check if assignment follows — peek for = or {
+                token afterName = file.peekToken();
+                if(afterName.is(token::assignment)){
+                    // Look at initializer shape to determine type
+                    // For now, we'll determine after reading the initializer
+                    memberType = "grammarrule"; // default inference
+                }
+            }
+            if(memberType.empty())
+                parsingError(format("Cannot infer type for '{0}' in grammar object body", tok.value));
+        } else {
+            parsingError(format("Unexpected '{0}' in grammar object body", tok.value));
+        }
+
+        string memberName = tok.value;
+        file.getToken(token::assignment);
+
+        token first = file.getToken(token::braceOpen);
+
+        // Validate shape matches declared type
+        token peek2 = file.peekToken();
+        if(isArray){
+            // array<grammarRule>: must be {{VerbRef, {pattern}}, ...}
+            if(!peek2.is(token::braceOpen))
+                parsingError(format("array<grammarRule> '{0}' requires nested initializer list of rule pairs", memberName));
+            token inner = file.getToken();
+            while(inner.is(token::braceOpen)){
+                grammarRuleDecl& rd = *(new grammarRuleDecl());
+                rd.name = memberName;
+                rd.type = languageService.getType("grammarrule");
+                parseGrammarRuleInit(rd);
+                gtd.rules.push_back(&rd);
+                grammarLine gl = rd.line;
+                gl.targetVerb = rd.targetVerb;
+                gtd.grammarLines.push_back(gl);
+                token sep = file.getToken({token::comma, token::braceClose});
+                if(sep.is(token::braceClose)) break;
+                inner = file.getToken();
+            }
+        } else {
+            // grammarRule: must be {VerbRef, {pattern}} — not nested
+            if(peek2.is(token::braceOpen))
+                parsingError(format("grammarRule '{0}' takes a single rule initializer; use array<grammarRule> for multiple rules", memberName));
+            grammarRuleDecl& rd = *(new grammarRuleDecl());
+            rd.name = memberName;
+            rd.type = languageService.getType("grammarrule");
+            parseGrammarRuleInit(rd);
+            gtd.rules.push_back(&rd);
+            grammarLine gl = rd.line;
+            gl.targetVerb = rd.targetVerb;
+            gtd.grammarLines.push_back(gl);
+        }
+
+        // Consume optional semicolon after member declaration
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+
+        tok = file.getToken();
+    }
+
+    languageService.globals.push_back(&gtd);
+    return false;
+}
+
+// Parse a single grammar line's content: trigger word + pattern tokens.
+// Assumes the opening '{' has already been consumed.
+// Returns a grammarLine with verbWord and I6-ready patternTokens.
+grammarLine bglParser::parseGrammarLineContent(){
+    auto escDictWord = [](const string& w) -> string {
+        string e; for(char ch : w) e += (ch == '\'') ? '^' : ch; return e;
+    };
+    auto makeI6Word = [&escDictWord](const token& t) -> string {
+        string e = escDictWord(t.value);
+        if(t.isPlural) return "'" + e + "/p'";
+        if(e.size() == 1) return "'" + e + "//'";
+        return "'" + e + "'";
+    };
+
+    grammarLine line;
+
+    // First token: the verb trigger word — must be a singular dict word
+    token trigger = file.getToken(eTokenType::dictionaryWord);
+    line.verbWord = trigger.value;   // raw word, e.g. "put"
+
+    // Remaining pattern tokens, comma-separated until }
+    token tok = file.getToken({token::comma, token::braceClose});
+    while(tok.is(token::comma)){
+        // Optional opening paren — syntactic sugar for a dict-word alternatives group
+        bool hasParens = file.peekToken().is("(");
+        if(hasParens) file.getToken();  // consume '('
+
+        token pt = file.getToken({eTokenType::dictionaryWord, eTokenType::identifier, eTokenType::dataType});
+
+        if(pt.is(eTokenType::dictionaryWord)){
+            // Dict word — may be chained with | alternatives: .word1 | .word2 | .word3
+            string i6tok = makeI6Word(pt);
+            while(file.peekToken().is("|")){
+                file.getToken();  // consume '|'
+                token alt = file.getToken(eTokenType::dictionaryWord);
+                i6tok += "/" + makeI6Word(alt);
+            }
+            if(hasParens) file.getToken(")");  // consume ')'
+            line.patternTokens.push_back(i6tok);
+        } else {
+            if(hasParens)
+                parsingError("Parenthesized grammar group must contain dictionary word alternatives (.word | .word2 | ...)");
+
+            // identifier or dataType in grammar pattern
+            string tokenStr = pt.value;
+            string display = pt.originalValue.empty() ? pt.value : pt.originalValue;
+
+            // resolve declared type; apply i6name alias if present
+            string resolvedType;
+            for(typeDef* g : languageService.globals){
+                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                    if(vd->name == tokenStr){
+                        resolvedType = vd->type.name;
+                        if(!vd->i6name.empty()) tokenStr = vd->i6name;
+                        break;
+                    }
+                if(auto* fd = dynamic_cast<functionDef*>(g))
+                    if(fd->name == tokenStr){ resolvedType = "function"; break; }
+            }
+
+            if(file.peekToken().is("(")){
+                // NOUN(Routine) / SCOPE(Routine) — parameterized grammar token
+                if(resolvedType != "grammartoken")
+                    parsingError(format("'{0}' in grammar pattern: only grammarToken types can be parameterized with (Routine)", display));
+                file.getToken();  // consume '('
+                token routine = file.getToken({eTokenType::identifier, eTokenType::dataType});
+                file.getToken(")");  // consume ')'
+                functionDef* rfd = nullptr;
+                for(typeDef* g : languageService.globals)
+                    if(auto* fd = dynamic_cast<functionDef*>(g))
+                        if(fd->name == routine.value){ rfd = fd; break; }
+                if(!rfd)
+                    parsingError(format("'{0}' in '{1}({0})' does not name a declared global function", routine.value, display));
+                if(rfd->returnType.name != "bool" && rfd->returnType.name != "ebool")
+                    parsingError(format("'{0}' in '{1}({0})' must return bool (returns '{2}')", routine.value, display, rfd->returnType.name));
+                tokenStr = pt.value + "=" + routine.value;  // I6 form: noun=Routine
+            } else {
+                // bare token: must be a declared grammarToken, attribute, or global function
+                if(resolvedType != "grammartoken" && resolvedType != "attribute" && resolvedType != "function")
+                    parsingError(format("'{0}' in grammar pattern is not a declared grammarToken, attribute, or global function", display));
+            }
+            line.patternTokens.push_back(tokenStr);
+        }
+        tok = file.getToken({token::comma, token::braceClose});
+    }
+    // tok is now } (closing brace of this line)
+    return line;
 }
 
 // Parse a grammar line list: { {.put, held, .on, noun}, {.hang, held, .on, noun} }
@@ -6305,100 +7155,11 @@ bool bglParser::processGrammarDeclaration(){
 vector<grammarLine> bglParser::parseGrammarLines(){
     vector<grammarLine> result;
 
-    auto escDictWord = [](const string& w) -> string {
-        string e; for(char ch : w) e += (ch == '\'') ? '^' : ch; return e;
-    };
-    auto dictWordI6 = [&escDictWord](const string& w) -> string {
-        string e = escDictWord(w);
-        return (e.size() == 1) ? ("'" + e + "//'") : ("'" + e + "'");
-    };
-
     file.getToken(token::braceOpen);   // outer {
     token tok = file.getToken();
     while(tok.isNot(token::braceClose)){
         tok.assert(token::braceOpen, "Expected '{' to start a grammar line");
-
-        grammarLine line;
-
-        // First token: the verb trigger word — must be a singular dict word
-        token trigger = file.getToken(eTokenType::dictionaryWord);
-        line.verbWord = trigger.value;   // raw word, e.g. "put"
-
-        // Remaining pattern tokens, comma-separated until }
-        // Builds I6 form for a single dict word token
-        auto makeI6Word = [&escDictWord](const token& t) -> string {
-            string e = escDictWord(t.value);
-            if(t.isPlural) return "'" + e + "/p'";
-            if(e.size() == 1) return "'" + e + "//'";
-            return "'" + e + "'";
-        };
-
-        tok = file.getToken({token::comma, token::braceClose});
-        while(tok.is(token::comma)){
-            // Optional opening paren — syntactic sugar for a dict-word alternatives group
-            bool hasParens = file.peekToken().is("(");
-            if(hasParens) file.getToken();  // consume '('
-
-            token pt = file.getToken({eTokenType::dictionaryWord, eTokenType::identifier, eTokenType::dataType});
-
-            if(pt.is(eTokenType::dictionaryWord)){
-                // Dict word — may be chained with | alternatives: .word1 | .word2 | .word3
-                string i6tok = makeI6Word(pt);
-                while(file.peekToken().is("|")){
-                    file.getToken();  // consume '|'
-                    token alt = file.getToken(eTokenType::dictionaryWord);
-                    i6tok += "/" + makeI6Word(alt);
-                }
-                if(hasParens) file.getToken(")");  // consume ')'
-                line.patternTokens.push_back(i6tok);
-            } else {
-                if(hasParens)
-                    parsingError("Parenthesized grammar group must contain dictionary word alternatives (.word | .word2 | ...)");
-
-                // identifier or dataType in grammar pattern
-                string tokenStr = pt.value;
-                string display = pt.originalValue.empty() ? pt.value : pt.originalValue;
-
-                // resolve declared type; apply i6name alias if present
-                string resolvedType;
-                for(typeDef* g : languageService.globals){
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                        if(vd->name == tokenStr){
-                            resolvedType = vd->type.name;
-                            if(!vd->i6name.empty()) tokenStr = vd->i6name;
-                            break;
-                        }
-                    if(auto* fd = dynamic_cast<functionDef*>(g))
-                        if(fd->name == tokenStr){ resolvedType = "function"; break; }
-                }
-
-                if(file.peekToken().is("(")){
-                    // NOUN(Routine) / SCOPE(Routine) — parameterized grammar token
-                    if(resolvedType != "grammartoken")
-                        parsingError(format("'{0}' in grammar pattern: only grammarToken types can be parameterized with (Routine)", display));
-                    file.getToken();  // consume '('
-                    token routine = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                    file.getToken(")");  // consume ')'
-                    functionDef* rfd = nullptr;
-                    for(typeDef* g : languageService.globals)
-                        if(auto* fd = dynamic_cast<functionDef*>(g))
-                            if(fd->name == routine.value){ rfd = fd; break; }
-                    if(!rfd)
-                        parsingError(format("'{0}' in '{1}({0})' does not name a declared global function", routine.value, display));
-                    if(rfd->returnType.name != "bool" && rfd->returnType.name != "ebool")
-                        parsingError(format("'{0}' in '{1}({0})' must return bool (returns '{2}')", routine.value, display, rfd->returnType.name));
-                    tokenStr = pt.value + "=" + routine.value;  // I6 form: noun=Routine
-                } else {
-                    // bare token: must be a declared grammarToken, attribute, or global function
-                    if(resolvedType != "grammartoken" && resolvedType != "attribute" && resolvedType != "function")
-                        parsingError(format("'{0}' in grammar pattern is not a declared grammarToken, attribute, or global function", display));
-                }
-                line.patternTokens.push_back(tokenStr);
-            }
-            tok = file.getToken({token::comma, token::braceClose});
-        }
-        // tok is now }
-        result.push_back(line);
+        result.push_back(parseGrammarLineContent());
 
         // After }, expect , (more lines) or } (end of list)
         tok = file.getToken({token::comma, token::braceClose});

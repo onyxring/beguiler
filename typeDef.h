@@ -122,9 +122,10 @@ class expression {
 
 // an initializer list: { expr, expr, ... }
 // stored as declaredExpressionValue on a variableDeclaration; emitted type-dependently.
+// Supports nested lists: { {a, b}, {c, d} } — inner lists are initializerList* in elements.
 class initializerList : public expression {
     public:
-        vector<expression*> elements;
+        vector<expression*> elements;  // may include nested initializerList* nodes
 };
 // A single segment of an interpolated string: either a literal text fragment or a parsed expression.
 // Used by assignment, variable declaration, and function call statements for $"..." handling.
@@ -184,6 +185,7 @@ class functionDef:public typeMember, public typeDef{
         sourceLocation src;
         bool isEmitter;
         bool isExplicit = false;   // true for 'explicit emitter': conversion operator only fires at explicit cast sites
+        bool isDefault = false;    // true for 'default': expected to be overridden without requiring 'replace'
         typeDef returnType;
         vector<paramDef*> params;
         codeBlock* body = nullptr;
@@ -320,6 +322,7 @@ class arrayDeclaration : public variableDeclaration {
 struct grammarLine {
     string verbWord;                // raw word without quotes, e.g. "put" (emitter adds them)
     vector<string> patternTokens;   // I6-ready: "'on'", "noun", "'up/p'", etc.
+    string targetVerb;              // per-line verb override (multi-verb grammar objects); empty = use parent context
 };
 
 // a verb declaration — an objectDef of class 'verb'; holds optional action body and inline grammar
@@ -330,11 +333,24 @@ class verbObjectDef : public objectDef {
         vector<grammarLine> grammarLines;   // inline grammar (from verb { grammar { } })
 };
 
-// a standalone grammar block — adds grammar lines to an already-declared verb
-class grammarBlock : public typeDef {
+class grammarRuleDecl;  // forward declaration
+
+// grammarRuleList typed member or standalone grammar object.
+// As a verb member: name = "grammar", verbName = verb's action name.
+// As a standalone object: verbName = target verb's action name.
+class grammarRuleListDecl : public variableDeclaration {
     public:
-        string verbName;                    // the verb action name (lowercase)
-        vector<grammarLine> grammarLines;
+        string verbName;                    // default verb action name (for old-style single-verb form)
+        vector<grammarRuleDecl*> rules;     // grammarRule entries (each carries its own verb reference)
+        vector<grammarLine> grammarLines;   // derived from rules for emitter consumption
+};
+
+// A single grammarRule member — wraps a verb reference + grammar line pair.
+// Parsed from: grammarRule name = {VerbRef, {.word, TOKEN, ...}};
+class grammarRuleDecl : public variableDeclaration {
+    public:
+        string targetVerb;       // resolved verb action name (lowercase)
+        grammarLine line;        // the grammar pattern
 };
 
 // compile-time settings declared in source via a beguilerSettings { } block.

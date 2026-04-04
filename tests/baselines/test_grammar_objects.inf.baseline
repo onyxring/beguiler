@@ -1,0 +1,93 @@
+!% -G
+!% -E1
+[bglInit;
+];
+
+Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
+
+object bglWorld
+    with getAll [ o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            _bglWorldBuf-->i = o;
+            i++;
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    getFiltered [ pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            if (indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    inParent [ parent pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o in parent) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    ofClass [ cls pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o ofclass cls) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ]
+;
+
+constant story = "";
+constant author = "";
+constant headline = "";
+constant gamerelease = 0;
+object whiff
+  with perform [;
+    print (string)"You take a whiff.";
+  ]
+;
+[whiffsub;
+                whiff.perform();
+            ];
+verb 'whiff'
+    * -> whiff;
+object nudge
+  with perform [;
+    print (string)"You nudge it.";
+  ]
+;
+[nudgesub;
+                nudge.perform();
+            ];
+verb 'nudge'
+    * noun -> nudge;
+verb 'hang'
+    * held 'on' noun -> puton;
+verb 'grab'
+    * noun -> Take;
+verb 'toss'
+    * held -> Drop;
+verb 'snatch'
+    * noun -> Take;
+verb 'inspect'
+    * noun -> Examine;
+verb 'nab'
+    * noun -> Take;
+verb 'discard'
+    * held -> Drop;
+verb 'study'
+    * noun -> Examine;
+verb 'place'
+    * held 'on' noun -> PutOn;

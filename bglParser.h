@@ -55,16 +55,19 @@ class bglParser {
         bool processBeguilerSettings();
         
         bool processObjectDeclaration(token, token, bool, string className = "", string i6alias = "");
+        bool processObjectExtension(token nameTok);  // extend <objectName> { }
+        void processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod);
         void parsePropertyValue(variableDeclaration& prop, string typeName);
         void processI6InlineMember(objectDef& obj);
         void processArrayMember(objectDef& obj);
         void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false);
         void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false);
-        void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue);
+        void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false);
         void processInheritedMember(objectDef& obj, token nameTok);
-        bool processVerbDeclaration(bool isExtern=false);
         bool processGrammarDeclaration();
+        bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members
         vector<grammarLine> parseGrammarLines();
+        grammarLine parseGrammarLineContent();  // parses single grammar line (trigger + pattern tokens); assumes '{' consumed
 
         string parseFuncType();             // reads <ReturnType,ParamType,...> from stream; returns "func<...>"
         string parseLambdaExpr(functionDef* func, statementBlock* body);  // parses lambda, lifts to global, returns lifted name
@@ -92,7 +95,7 @@ class bglParser {
         vector<interpolatedSegment> parseInterpolatedSegments(functionDef* func, statementBlock* body); // parses $"..." segments from the live stream (consumes $ and string)
         typeMember* findMemberInHierarchy(classDef* cls, function<bool(typeMember*)> pred);
 
-        // Qualifier flags parsed from declaration prefixes (replace, explicit, extern, emitter, const, static, extend, alias).
+        // Qualifier flags parsed from declaration prefixes (replace, explicit, extern, emitter, const, static, extend, alias, default).
         // Parsed in any order via parseQualifiers(); validated for nonsensical combinations.
         struct Qualifiers {
             bool isReplace  = false;
@@ -103,6 +106,7 @@ class bglParser {
             bool isStatic   = false;
             bool isExtend   = false;
             bool isAlias    = false;
+            bool isDefault  = false;
         };
         // Parse qualifier keywords from the token stream in any order. Consumes qualifying tokens,
         // leaves tok pointing at the first non-qualifier. Validates invalid combinations.

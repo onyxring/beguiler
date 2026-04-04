@@ -487,11 +487,11 @@ void i6Emitter::generateI6(typeDef* node){
      if (typeid(*node) == typeid(enumDef))  emitEnum((enumDef*)node);
      else if (typeid(*node) == typeid(classDef)) emitClass((classDef*)node);
      else if (typeid(*node) == typeid(objectDef)) emitObject((objectDef*)node);
+     else if (typeid(*node) == typeid(verbObjectDef)) emitVerbObject((verbObjectDef*)node);
+     else if (auto* gtd = dynamic_cast<grammarRuleListDecl*>(node)) emitGrammarRuleListDecl(gtd);
      else if (auto* vd = dynamic_cast<variableDeclaration*>(node)) emitGlobal(vd);
      else if (typeid(*node) == typeid(functionDef)) emitFunction((functionDef*)node);
      else if (typeid(*node) == typeid(i6RawNode)) out << ((i6RawNode*)node)->text << "\n";
-     else if (typeid(*node) == typeid(verbObjectDef)) emitVerbObject((verbObjectDef*)node);
-     else if (typeid(*node) == typeid(grammarBlock)) emitGrammarBlock((grammarBlock*)node);
 }
 
 void i6Emitter::emitEnum(enumDef* enumNode){    
@@ -527,6 +527,7 @@ void i6Emitter::emitClass(classDef* classNode){
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
             if(vd->isStatic) continue;
             if(vd->type.name == "attributelist") continue; // emitted separately as 'has' line
+            if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue; // emitted as I6 Verb directives
         }
         emittable.push_back(m);
     }
@@ -1130,7 +1131,7 @@ void i6Emitter::emitObject(objectDef* obj){
     bool hasProps = false;
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-            if(vd->type.name != "attributelist" && vd->name != "parent") { hasProps = true; break; }
+            if(vd->type.name != "attributelist" && vd->type.name != "grammarrulelist" && vd->type.name != "grammarrule" && vd->name != "parent") { hasProps = true; break; }
         } else if(auto* fd = dynamic_cast<functionDef*>(m)){ if(!fd->isEmitter) { hasProps = true; break; } }
           else if(dynamic_cast<i6RawNode*>(m))  { hasProps = true; break; }
 
@@ -1154,6 +1155,7 @@ void i6Emitter::emitObject(objectDef* obj){
                 first = false;
             } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 if(vd->type.name == "attributelist") continue; // handled separately below
+                if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue; // emitted as I6 Verb directives
                 if(vd->name == "parent") continue; // emitted as positional argument, not 'with' property
                 out << (first ? "  with " : ",\n       ");
                 out << vd->name << " ";
@@ -1235,19 +1237,23 @@ void i6Emitter::emitVerbObject(verbObjectDef* vd){
     if(!vd->grammarLines.empty()) emitGrammarLines(vd->name, vd->grammarLines);
 }
 
-void i6Emitter::emitGrammarBlock(grammarBlock* gb){
-    emitGrammarLines(gb->verbName, gb->grammarLines);
+void i6Emitter::emitGrammarRuleListDecl(grammarRuleListDecl* gtd){
+    emitGrammarLines(gtd->verbName, gtd->grammarLines);
 }
 
 // Group grammar lines by verb trigger word; emit one Verb/Extend block per unique trigger word.
 // First occurrence of a trigger word → Verb 'word'; subsequent → Extend 'word' first.
+// Per-line targetVerb overrides verbName (for multi-verb grammar objects).
 void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLine>& lines){
+    // Each entry: {triggerWord, patternTokens, actionName}
+    struct lineEntry { vector<string> patternTokens; string actionName; };
     vector<string> wordOrder;
-    map<string, vector<vector<string>>> byWord;
+    map<string, vector<lineEntry>> byWord;
     for(const grammarLine& line : lines){
         if(byWord.find(line.verbWord) == byWord.end())
             wordOrder.push_back(line.verbWord);
-        byWord[line.verbWord].push_back(line.patternTokens);
+        string action = line.targetVerb.empty() ? verbName : line.targetVerb;
+        byWord[line.verbWord].push_back({line.patternTokens, action});
     }
 
     auto toI6Word = [](const string& w) -> string {
@@ -1263,12 +1269,12 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
         } else {
             out << format("extend {0} first\n", toI6Word(word));
         }
-        const auto& patterns = byWord[word];
-        for(size_t i = 0; i < patterns.size(); i++){
+        const auto& entries = byWord[word];
+        for(size_t i = 0; i < entries.size(); i++){
             out << "    *";
-            for(const string& pt : patterns[i]) out << " " << pt;
-            out << format(" -> {0}", verbName);
-            if(i + 1 == patterns.size()) out << ";";
+            for(const string& pt : entries[i].patternTokens) out << " " << pt;
+            out << format(" -> {0}", entries[i].actionName);
+            if(i + 1 == entries.size()) out << ";";
             out << "\n";
         }
     }
