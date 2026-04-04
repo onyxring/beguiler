@@ -191,9 +191,42 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 retval.value="\""; // adopt the same outer-quote format as regular quote tokens
                 readChar();        // consume the '"'
             }
+            else if(c == '$' && nc == '$'){
+                // Possible binary literal: $$01010110
+                readChar(); // consume second $
+                char bc = peekChar();
+                if(bc != '0' && bc != '1'){
+                    // Not binary — put back as two $ symbols. Since we can't un-read,
+                    // return first $ as symbol; second $ will be read next call.
+                    retval.tokenType = eTokenType::symbol;
+                    // nc ('$') is already consumed — we need to handle this.
+                    // Simplest: treat "$$" without binary digits as a symbol token "$$"
+                    retval.value = "$$";
+                    break;
+                }
+                string bits;
+                while(peekChar() == '0' || peekChar() == '1'){ bits += peekChar(); readChar(); }
+                if(bits.empty()) parser.parsingError("Expected binary digits after '$$'");
+                int val = 0;
+                for(char b : bits) val = (val << 1) | (b - '0');
+                retval.value = to_string(val);
+                retval.tokenType = eTokenType::integer;
+                break;
+            }
+            else if(c == '$' && isxdigit(nc)){
+                // Hex literal: $FF — read hex digits, convert to decimal
+                readChar(); // consume first hex digit
+                string hex;
+                hex += nc;
+                while(isxdigit(peekChar())){ hex += peekChar(); readChar(); }
+                int val = (int)strtol(hex.c_str(), nullptr, 16);
+                retval.value = to_string(val);
+                retval.tokenType = eTokenType::integer;
+                break;
+            }
             else if(isValidIdentifierChar(c))
                 retval.tokenType=eTokenType::unclassifiedText;
-            else {                
+            else {
                 if(find(languageService.operators.begin(), languageService.operators.end(), retval.value)!=languageService.operators.end()){
                     retval.tokenType=eTokenType::oper; 
                 }

@@ -24,10 +24,12 @@ struct sourceLocation {
 class abstractObject{
     public:
         string name;
+        string displayName; // original-case name for error messages (empty = use 'name')
         string i6name;  // optional I6 alias: if non-empty, emitted under this name instead of 'name'
         bool operator == (abstractObject);
         bool isExternal;
         bool isPrePassStub = false; // true when registered by the pre-scanner; cleared when full pass processes the declaration
+        const string& dName() const { return displayName.empty() ? name : displayName; } // display name for error messages
         virtual void dummy(){}  //typeid requires at lease one virtual function in the base class to work
 };
 //things defined at the global level, such as type definitions, objects, enums, and functions and global variables.

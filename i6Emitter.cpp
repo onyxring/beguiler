@@ -545,7 +545,7 @@ void i6Emitter::emitClass(classDef* classNode){
             }
             else if(auto* fd = dynamic_cast<functionDef*>(m)){
                 buildSpillMap(fd);
-                out << format("    {0}[", fd->name);
+                out << format("    {0}[", fd->i6name.empty() ? fd->name : fd->i6name);
                 string sp;
                 for(paramDef* p : fd->params)
                     if(currentSpillAliases.find(p->name) == currentSpillAliases.end())

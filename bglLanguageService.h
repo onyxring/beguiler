@@ -26,9 +26,9 @@ class bglLanguageService{
         bool isObjectType(string);
         
         typeDef& registerType(string); //for creating types by name, for example for type members of the core language (e.g., var and void)
-        enumDef& registerEnum(string name, bool isExternal=false);
-        classDef& registerClass(string name, bool isExternal=false);
-        objectDef& registerObject(string name, bool isExternal=false);
+        enumDef& registerEnum(string name, bool isExternal=false, string displayName="");
+        classDef& registerClass(string name, bool isExternal=false, string displayName="");
+        objectDef& registerObject(string name, bool isExternal=false, string displayName="");
         
         variableDeclaration& registerInstance(variableDeclaration&);
         verbObjectDef& registerVerbObject(string name, bool isExternal=false);

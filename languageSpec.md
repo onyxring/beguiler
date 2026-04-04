@@ -1,5 +1,194 @@
 # Beguile Language Specification
 
+## Table of Contents
+
+### Chapter 1 — Introduction
+- 1.1 What Is Beguile?
+- 1.2 Design Goals
+- 1.3 Compilation Model
+- 1.4 Relationship to Inform 6
+- 1.5 A Note on Scope
+
+### Chapter 2 — Lexical Elements
+- 2.1 Character Set and Encoding
+- 2.2 Comments
+- 2.3 Case Sensitivity
+- 2.4 Identifiers
+  - 2.4.1 Reserved Prefix `_bgl`
+- 2.5 Literals
+  - 2.5.1 Integer Literals
+  - 2.5.2 String Literals
+  - 2.5.2a Raw String Literals
+  - 2.5.2b Interpolated String Literals
+  - 2.5.3 Character Literals
+  - 2.5.4 Dictionary Word Literals
+- 2.6 Operators and Symbols
+- 2.7 Preprocessor Directives
+- 2.8 Reserved Keywords
+
+### Chapter 3 — Program Structure
+- 3.1 Source Files
+- 3.2 Include Directives
+  - 3.2.1 `#include <name>`
+  - 3.2.2 `#include "path"`
+  - 3.2.3 `#include ?"path"` (optional)
+  - 3.2.4 `#includeI6 "name"`
+  - 3.2.5 `#once`
+  - 3.2.5 Path resolution
+- 3.3 Preprocessor Symbols
+  - 3.3.1 `#define`
+  - 3.3.2 Pre-Defined Symbols
+  - 3.3.3 Conditional Compilation
+- 3.4 `#beguilerSettings`
+  - 3.4.1 Blorb packaging
+  - 3.4.2 Referencing settings values in Beguile source
+- 3.5 Diagnostic and Control Directives
+  - 3.5.1 `#message`
+  - 3.5.2 `#warning`
+  - 3.5.3 `#error`
+  - 3.5.4 `#exit`
+  - 3.5.5 `#startup`
+
+### Chapter 4 — Types
+- 4.1 Overview
+- 4.2 Primitive Types
+- 4.3 Literal Pseudo-Types
+- 4.4 The `null` Keyword
+- 4.5 Enumerations
+- 4.6 The `var` Type
+- 4.7 Arrays
+
+### Chapter 5 — Classes
+- 5.1 Defining a Class
+- 5.2 The Four Class Forms
+  - 5.2.1 Normal Classes
+  - 5.2.2 `extern class`
+  - 5.2.3 `emitter class`
+  - 5.2.4 `alias class`
+- 5.3 Member Variables
+- 5.4 Member Methods
+- 5.5 Lifecycle Emitters
+- 5.6 Operator Overloads
+  - 5.6.1 Emitter Operators
+  - 5.6.2 Non-Emitter Operators
+  - 5.6.3 Subscript Operators
+  - 5.6.4 Conversion Operator (`operator()`)
+  - 5.6.5 Special Operators
+  - 5.6.6 Overloadable Operator List
+- 5.7 Class Inheritance
+- 5.8 `extend class` and `replace` for Members
+
+### Chapter 6 — Objects
+- 6.1 Overview
+- 6.2 Declaring an Object
+- 6.3 Object Types
+- 6.4 Properties
+  - 6.4.1 Type Inference from Class and Base Object
+  - 6.4.2 Special Properties
+- 6.5 Array Properties
+- 6.6 Method Properties
+- 6.7 Complete Example
+
+### Chapter 7 — Emitters
+- 7.1 What Is an Emitter?
+- 7.2 Emitter Syntax
+- 7.3 Substitution
+- 7.4 Global Emitters
+- 7.5 Emitter Namespaces
+- 7.6 `print()` and `log()`
+- 7.7 Operator Emitters
+- 7.8 Conversion Operator
+- 7.9 Lifecycle Emitters: `init` and `deinit`
+- 7.10 Emitters vs. Regular Functions
+
+### Chapter 8 — Global Declarations
+- 8.1 Overview
+- 8.2 Global Variables
+- 8.3 Global Constants
+- 8.4 Global Functions
+- 8.5 Extern Variables
+- 8.6 Attributes
+- 8.7 I6 Name Aliasing — the `as` Clause
+
+### Chapter 9 — Functions
+- 9.1 Syntax
+- 9.2 Return Types
+- 9.3 Parameters
+- 9.4 Overload Resolution
+- 9.5 The `self` Keyword
+
+### Chapter 10 — Statements
+- 10.1 Overview
+- 10.2 Variable Declaration
+  - 10.2.1 Z-Machine Local Variable Limit
+- 10.3 Assignment
+- 10.4 Compound Assignment
+- 10.5 Increment and Decrement
+- 10.6 Function and Method Calls
+- 10.7 `if` / `else`
+- 10.8 `for` Loop
+  - 10.8.1 `for-in` Loop
+- 10.9 `while` Loop
+- 10.10 `switch` / `case`
+- 10.11 `break` and `continue`
+- 10.12 `return`
+- 10.13 `print()` and `log()`
+- 10.14 `try` / `catch` / `throw`
+
+### Chapter 11 — Expressions
+- 11.1 Overview
+- 11.2 Operands
+- 11.3 Binary Operators
+- 11.4 Ternary Operator
+- 11.4b Optional Chaining, Null Coalescing, and Postfix Query
+- 11.5 Type Cast
+- 11.6 Lambda Functions
+  - 11.6.1 The `func<>` Type
+  - 11.6.2 Lambda Literal Syntax
+  - 11.6.3 Passing Lambdas as Arguments
+  - 11.6.4 Closures and Capture
+  - 11.6.5 Constraints
+
+### Chapter 12 — Type Compatibility
+- 12.1 Overview
+- 12.2 Compatibility Rules
+- 12.3 Priority at Assignment
+- 12.4 Priority at Function Call Arguments
+- 12.5 Example
+
+### Chapter 13 — Name Resolution
+- 13.1 Overview
+- 13.2 Resolution Tiers
+- 13.3 The `self` Keyword
+- 13.4 Global Variable Shadowing — Prohibited
+- 13.5 Verb Names vs. Variables
+- 13.6 Global Name Collision Detection
+
+### Chapter 14 — Verbs and Grammar
+- 14.1 Overview
+- 14.2 Verb Declarations
+- 14.3 Action Comparisons
+- 14.4 Grammar Declarations
+- 14.5 The `_bglGlobalDeclaration` Mechanism
+
+### Chapter 15 — I6 Interoperability
+- 15.1 Overview
+- 15.2 `extern` Declarations
+- 15.3 `#includeI6`
+- 15.4 Emitter Bodies as Raw I6
+- 15.5 Debug Bundle
+
+### Chapter 16 — Beguile Language Extensions
+- 16.1 Overview
+- 16.2 Language Extension Files
+  - 16.2.1 `bglInit()` — Runtime Initialization
+  - 16.2.2 `<char>` — Character Utilities
+  - 16.2.3 `<string>` — Mutable String Runtime
+  - 16.2.4 `<array>` — Extended Array Utilities (TBD)
+  - 16.2.5 `<math>` — Mathematical Functions (TBD)
+- 16.3 IF Library Bindings
+- 16.4 `bglWorld` — Object Tree Iteration
+
 ---
 # Chapter 1 — Introduction
 
@@ -41,7 +230,7 @@ Authors who need capabilities beyond what Beguile exposes can always drop down t
 
 ## 1.5 A Note on Scope
 
-This specification describes the Beguile language as recognized by the compiler. It does not describe the Inform 6 language itself or the Libraries used with I6 or the behavior of the Z-Machine or Glulx virtual machines. Readers wanting background on those topics should consult the Inform 6 documentation and the relevant virtual machine specifications.
+This specification describes the Beguile language as recognized by the compiler. It does not describe the Inform 6 language itself, the common libraries used with I6, or the behavior of the Z-Machine or Glulx virtual machines. Readers wanting background on those topics should consult the Inform 6 documentation and the relevant virtual machine specifications.
 
 ---
 
@@ -84,20 +273,46 @@ Examples of valid identifiers: `score`, `myVar`, `_internal`, `room1`, `velvetCl
 
 Identifiers that match a reserved keyword (§2.8) may not be used as variable or function names.
 
-### 2.4.1 Reserved Prefix `_bgl`
+### 2.4.1 Reserved Prefixes `_bgl` and `bgl`
 
-Identifiers beginning with `_bgl` are earmarked for language-generated symbols (loop counters, frame pool variables, lambda functions, scratch temporaries, etc.). This is a convention, rather than a hard requirement; however, it is best practice for user code to avoid names that begin with `_bgl` as collisions may produce undefined or erroneous I6 output.
+Identifiers beginning with `_bgl` or `bgl` are earmarked for language-generated symbols and runtime infrastructure (loop counters, frame pool variables, lambda functions, scratch temporaries, `bglInit`, `bglWorld`, etc.). This is a convention, rather than a hard requirement; however, it is best practice for user code to avoid names that begin with either prefix as collisions may produce undefined or erroneous I6 output.
 
 ## 2.5 Literals
 
 ### 2.5.1 Integer Literals
 
-A sequence of decimal digits. Negative values are formed by prefixing the `-` symbol to a positive literal.
+Integer literals may be expressed in decimal, hexadecimal, or binary notation. All three forms are converted to decimal at compile time — the generated I6 output always contains plain decimal values.
+
+#### Decimal
+
+A sequence of digits `0`–`9`. Negative values are formed by prefixing `-`.
 
 ```bgl
 42
 0
 -1234
+```
+
+#### Hexadecimal
+
+Prefixed with `$`, followed by one or more hex digits (`0`–`9`, `A`–`F`, `a`–`f`). Follows the Inform 6 convention.
+
+```bgl
+$FF         // 255
+$10         // 16
+$0A         // 10
+$FFFF       // 65535
+```
+
+#### Binary
+
+Prefixed with `$$`, followed by one or more binary digits (`0` or `1`). Follows the Inform 6 convention. Useful for bitmask constants and attribute flags.
+
+```bgl
+$$11111111  // 255
+$$11010     // 26
+$$00000001  // 1
+$$10000000  // 128
 ```
 
 ### 2.5.2 String Literals
@@ -126,7 +341,7 @@ As a design decision, Beguile preserves most of Inform's conventions for embeddi
 
 #### Numeric character escapes
 
-Characters can be specified by their numeric code, using either decimal or hexadecimal (prefixed with `$`, consistent with I6's integer literal convention):
+Characters can be specified by their numeric code, using either decimal or hexadecimal (prefixed with `$`):
 
 | Escape | Meaning |
 |--------|---------|
@@ -151,24 +366,15 @@ Common accented characters can be written using shorthand escape sequences that 
 | `\^X`  | a e i o u y A E I O U Y | `"g\^ateau"` | gâteau |
 | `\:X`  | a e i o u y A E I O U Y | `"na\:ive"` | naïve |
 | `\~X`  | a n o A N O | `"se\~nor"` | señor |
-| `\/X`  | o O | `"sm\/orgåsbord"` | smørgåsbord |
-| `\cX`  | c C | `"gar\ccon"` | garçon |
-| `\oX`  | a A | `"\oAngstr\:om"` | Ångström |
 
-| Named escape | Result |
-|-------------|--------|
-| `\ss` | ß (eszett) |
-| `\ae` | æ (ae ligature) |
-| `\AE` | Æ |
-| `\oe` | œ (oe ligature) |
-| `\OE` | Œ |
-| `\th` | þ (thorn) |
-| `\et` | ð (eth) |
-| `\LL` | £ (pounds sterling) |
-| `\!!` | ¡ (inverted !) |
-| `\??` | ¿ (inverted ?) |
-| `\<<` | « (left guillemet) |
-| `\>>` | » (right guillemet) |
+| Named escape | Result | | Named escape | Result |
+|-------------|--------|--|-------------|--------|
+| `\/o` `\/O` | ø Ø (slashed o) | | `\th` `\TH` | þ Þ (thorn) |
+| `\cc` `\cC` | ç Ç (cedilla) | | `\et` `\ET` | ð Ð (eth) |
+| `\oa` `\oA` | å Å (angstrom) | | `\ae` `\AE` | æ Æ (ae ligature) |
+| `\oe` `\OE` | œ Œ (oe ligature) | | `\ss` | ß (eszett) |
+| `\LL` | £ (pounds sterling) | | `\!!` | ¡ (inverted !) |
+| `\??` | ¿ (inverted ?) | | `\<<` `\>>` | « » (guillemets) |
 
 **Context-sensitive `\^` and `\~`:** When `\^` or `\~` is followed by a character in its accent set, it produces the accented character. Otherwise it produces the literal caret or tilde. To force a literal caret or tilde before a character that would otherwise trigger an accent, double the character: `\^^` or `\~~`.
 
@@ -178,6 +384,14 @@ Common accented characters can be written using shorthand escape sequences that 
 "\~n"       // ñ  (tilde n — auto-detected)
 "\~~n"      // ~n (forced literal tilde, then n)
 "\^z"       // ^z (literal — z is not in the accent set)
+```
+
+**Inline Unicode diacriticals:** If your keyboard supports typing accented characters directly, Beguile accepts them in string literals, character literals, and dictionary words. The compiler automatically translates them to the appropriate I6 encoding. Both UTF-8 and Latin-1 source files are supported.
+
+```bgl
+"café"          // emits as "caf@'e"
+'ñ'             // emits as 206 (ZSCII code)
+.café           // emits as 'caf@'e'
 ```
 
 #### Raw Unicode characters in strings
@@ -208,7 +422,7 @@ Raw strings may be used anywhere a regular string literal is valid — in assign
 
 ### 2.5.2b Interpolated String Literals
 
-An **interpolated string** is prefixed with `$` and may contain embedded Beguile expressions inside `{` `}` spans. An interpolated string literal has the pseudo-type `interpolatedStringLiteral` (see §4.3). It can be passed to any function or operator that declares an `interpolatedStringLiteral` parameter — it is not restricted to `print()` and `log()`.
+An **interpolated string** is prefixed with `$` and may contain embedded Beguile expressions inside `{` `}` spans. An interpolated string literal has the pseudo-type `interpolatedStringLiteral` (see §4.3). It can be passed to any emitter that declares an `interpolatedStringLiteral` parameter. Passing an interpolated string to a non-emitter function is a compile-time error — the expansion is purely textual and requires an emitter body to splice into.
 
 ```bgl
 print($"The {obj.name} weighs {obj.weight} stone.");
@@ -216,7 +430,7 @@ print($"Score: {score}  Turns: {turns}");
 log($"Entering handler for {actor.name}");
 ```
 
-When the target type provides an `operator=(interpolatedStringLiteral)` emitter, interpolated strings can also appear in assignment and variable initialisation:
+When the target type provides an `operator=(interpolatedStringLiteral)` emitter, interpolated strings can also appear in assignment and variable initialization, making the following, which uses Beguile's `string` language extension (`#include <string>`) possible:
 
 ```bgl
 string greeting = $"Hello, {name}!";
@@ -272,7 +486,7 @@ Both forms resolve to type `dictionaryWord`.
 
 The following two-character sequences are recognized as single operator tokens:
 
-`-=`  `+=`  `?=`  `==`  `!=`  `<=`  `>=`  `&&`  `||`  `++`  `--`  `<<`  `>>`  `*=`  `/=`  `%=`  `&=`  `|=`  `^=`
+`-=`  `+=`  `?=`  `==`  `!=`  `<=`  `>=`  `=~`  `&&`  `||`  `++`  `--`  `<<`  `>>`  `*=`  `/=`  `%=`  `&=`  `|=`  `^=`
 
 Single-character operator and punctuation symbols include:
 
@@ -304,12 +518,14 @@ Structural and type keywords unique to Beguile. They have no corresponding I6 ke
 
 | Keyword | Role |
 |---------|------|
-| `const` | Compile-time constant declaration |
+| `const` | Compile-time constant or immutable member declaration |
 | `extern` | Declares a type or value backed by I6 with no Beguile body emitted |
 | `extend` | Opens an extension block on an existing class |
 | `alias` | Declares a type alias |
 | `emitter` | Marks a function or class as containing inline I6 fragments |
-| `readonly` | Makes a member variable immutable after initialization |
+| `explicit` | Restricts a conversion operator to explicit cast sites only |
+| `replace` | Replaces an existing function or class member; suppresses shadowing warnings |
+| `replaced` | Calls the previous version of a replaced function |
 | `static` | Declares a class-level member shared across all instances |
 | `enum` | Enumeration type declaration |
 | `int` | Integer primitive type |
@@ -366,7 +582,7 @@ Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `exte
 
 ### 3.2.1 `#include <name>`
 
-Includes a file from the Beguile language extensions (`beguilib/` directory). The `.bgl` extension is appended automatically. The compiler performs a case-insensitive search of the library directory, so `#include <String>` and `#include <string>` are equivalent regardless of the file system. If two files in the library directory differ only by case, the compiler will select one arbitrarily.
+Includes a file from the Beguile language extensions (`beguilib`) directory. The `.bgl` extension is optional — the compiler tries with `.bgl` appended first, then without. The compiler performs a case-insensitive search of the library directory, so `#include <String>` and `#include <string>` are equivalent regardless of the file system. If two files in the library directory differ only by case, the compiler will select one arbitrarily.
 
 ```bgl
 #include <string>
@@ -415,21 +631,19 @@ When placed at the top of a Beguile source file, `#once` marks the file so that 
 // rest of myLibrary.bgl ...
 ```
 
-`#once` is the recommended guard for any file intended to be included as a library. The language extension files in `beguilib/` all use it.
+`#once` is the recommended guard for any file intended to be included as a library. The language extension files in `beguilib` all use it.
 
 The compiler also enforces a maximum include nesting depth of 255. Exceeding this limit — for example through circular includes in files without `#once` — is a compile-time error.
 
 ### 3.2.5 Path resolution
 
-All file paths in Beguile source — `#include` paths, `#includeI6` paths, and `#beguilerSettings` path properties (`informPath`, `outputPath`, `blorbAssetPath`, etc.) — receive two normalisation passes at parse time.
+All file paths in Beguile source — `#include` paths, `#includeI6` paths, and `#beguilerSettings` path properties (`informPath`, `outputPath`, `blorbAssetPath`, etc.) — receive two normalization passes at parse time.
 
 **Separator rewriting.** Every `/` and `\` character in a path string is replaced with the OS path separator (`\` on Windows, `/` on all other platforms). This means paths may be written with either separator and will work correctly on any platform. Separator rewriting can be disabled project-wide with `rewritePaths = false` in `#beguilerSettings`.
 
 **Case-insensitive resolution.** When searching for an include file, the compiler performs a case-insensitive match against the entries of the target directory. The first directory entry whose lowercased name equals the lowercased target filename is used. This applies to both `#include <name>` (library search) and `#include "path"` (relative search). If no entry matches, the literal path is used and a normal file-not-found error results.
 
 > Note: case-insensitive resolution only applies to the **filename** portion of the path, not to intermediate directory components. On a case-sensitive file system, directories in the path must still be cased correctly.
-
-This section will be expanded as additional path features (such as optional includes) are added to the language.
 
 ## 3.3 Preprocessor Symbols
 
@@ -458,12 +672,12 @@ Pre-defined compiler symbols (`beguiler`, `beguilerMajor`, etc.) behave the same
 
 The compiler pre-defines the following symbols before any source file is parsed:
 
-| Symbol | Value | Description |
+| Symbol | Example Value | Description |
 |--------|-------|-------------|
-| `beguiler` | `1000` | Full version encoded as `major*1000 + minor*10 + patch` (e.g. 1.0.0 = `1000`, 1.1.0 = `1010`). Safe on Z-machine (16-bit signed max 32,767 → major up to 32). |
+| `beguiler` | `1023` | Full version encoded as `major*1000 + minor*10 + patch` (e.g. 1.2.3 = `1023`, 1.1.0 = `1010`). Safe on Z-machine (16-bit signed max 32,767 → major up to 32). |
 | `beguilerMajor` | `1` | Major version component only. |
-| `beguilerMinor` | `0` | Minor version component only. |
-| `beguilerPatch` | `0` | Patch version component only. |
+| `beguilerMinor` | `2` | Minor version component only. |
+| `beguilerPatch` | `3` | Patch version component only. |
 | `TARGET_GLULX` | (boolean) | Defined when `#beguilerSettings target = Glulx`. |
 | `TARGET_ZCODE` | `3`, `5`, or `8` | Defined when targeting Z-machine. The value is the Z-machine version number, enabling version comparisons. |
 
@@ -495,10 +709,11 @@ The target symbols are set from `#beguilerSettings target` before parsing begins
 #endif
 ```
 
-All version symbols are also emitted into the generated I6 output as `Constant` declarations, making them available to runtime Beguile code:
+All symbols (both pre-defined and user `#define`) are resolved as inline compile-time literals in Beguile expressions — the symbol name is replaced by its value at compile time. They are not emitted as I6 `Constant` declarations unless explicitly assigned to a `const` variable:
 
 ```bgl
-if(beguiler >= 1010) { ... }
+if(beguiler >= 1010) { ... }             // resolved at compile time
+const int myVer = beguilerMajor;         // emits: Constant myver = 1;
 ```
 
 ### 3.3.3 Conditional Compilation
@@ -507,19 +722,40 @@ if(beguiler >= 1010) { ... }
 
 ```bgl
 #define DEBUG
+#define FEATURE_LEVEL 3
 
 #if DEBUG
     print("debug mode");
 #endif
+
+#if DEBUG && beguiler >= 1010
+    print("debug mode on Beguile 1.1+");
+#endif
+
+#if FEATURE_LEVEL > 2
+    // included when FEATURE_LEVEL is 3 or higher
+#elif FEATURE_LEVEL == 1
+    // included only when FEATURE_LEVEL is exactly 1
+#else
+    // fallback
+#endif
+
+#if TARGET_ZCODE <= 5
+    // Z3 and Z5 only
+#endif
+
+#if !DEBUG
+    // included when DEBUG is not defined
+#endif
 ```
 
-Nesting is supported. The compiler skips tokens in excluded branches without parsing them.
+The `#if` expression supports: symbol names (true if defined, value if numeric), integer literals, comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`), logical operators (`&&`, `||`), negation (`!`), and parenthesized sub-expressions. Nesting is supported. The compiler skips tokens in excluded branches without parsing them.
 
 Conditional directives and `#define`/`#undef` are honored during **both** compiler passes (pre-scan and full parse). This means `#if` can safely guard class, object, and function declarations — excluded declarations will not be registered as forward-reference stubs.
 
 > **Note: there is no `#ifdef`.** Beguile does not have a separate `#ifdef` directive. Use `#if SYMBOL` to test whether a symbol is defined — it evaluates to `false` when the symbol is absent, which is equivalent to `#ifdef SYMBOL` in C-family languages. Similarly, use `#if !SYMBOL` in place of `#ifndef SYMBOL`.
 
-The `##ifdef` / `##ifndef` / `##endif` forms (double-hash prefix) do exist, but they are a separate feature that applies only inside **emitter bodies** — see §10.3. They are not valid in ordinary Beguile source.
+The `##if` / `##else` / `##endif` forms (double-hash prefix) provide the same conditional logic inside **emitter bodies** — see §7.2. They support the same expression syntax as `#if` (symbols, comparisons, `&&`, `||`, `!`). They are evaluated at emit time and are not valid in ordinary Beguile source.
 
 ## 3.4 `#beguilerSettings`
 
@@ -600,7 +836,14 @@ The `UUID_ARRAY` string is searchable in the raw Z-code or Glulx binary by babel
 
 When blorb packaging is enabled, the IFID, title, author, and headline are also written into an iFiction XML metadata record (`IFmd` chunk) inside the blorb file, making the game discoverable on IFDB and other cataloging services.
 
-**Auto-generation**: when `generateBlorb = true` and no explicit `ifid` is provided, the compiler generates a deterministic UUID v5 from the source filename, author, and story title. This ensures the same IFID is produced for the same game identity, even if `_blorbAssets.bgl` is deleted and regenerated. The generated IFID is persisted in `_blorbAssets.bgl` as a `#beguilerSettings { ifid = "..."; }` block so it is read back on subsequent builds. An explicit `ifid` in the user's source always takes priority (first-writer-wins).
+#### IFID auto-generation and persistence
+
+When `generateBlorb = true` and no explicit `ifid` is provided, the compiler automatically generates a stable IFID:
+
+1. **Deterministic generation** — a UUID v5 is derived from the source filename, author, and title. The same inputs always produce the same IFID, so even if the generated file is deleted, recompilation produces an identical IFID.
+2. **Persistence** — the generated IFID is written into `_blorbAssets.bgl` as a `#beguilerSettings { ifid = "..."; }` block. On subsequent builds, this value is read back through normal settings parsing.
+3. **Priority** — an explicit `ifid` in the user's source file always takes priority (first-writer-wins). The persisted value in `_blorbAssets.bgl` acts as a fallback.
+4. **Stability** — per the Treaty of Babel, the IFID must never change once published. The deterministic generation and persistence mechanisms ensure this across builds, even if intermediate files are regenerated.
 
 All other metadata settings (`title`, `author`, `headline`, `release`, etc.) are not auto-emitted to I6 output. To expose them as I6 constants (e.g. for library integration) you can map these in Beguile source — see §3.4.2. Library bindings handle the mapping to library-specific constant names (e.g. `const string story = #beguilerSettings.title;` for the I6 standard library).
 
@@ -630,7 +873,7 @@ Asset files are discovered non-recursively. PNG, JPG, and JPEG files become pict
 
 ### 3.4.2 Referencing settings values in Beguile source
 
-Any `#beguilerSettings` property can be read as a compile-time expression using the syntax `#beguilerSettings.propertyName`. The result is a string or integer literal substituted inline.
+Any `#beguilerSettings` property can be read as a compile-time expression using the syntax `#beguilerSettings.propertyName`. The result is a string, integer, or enum value literal substituted inline. Enum-typed properties (such as `target`) return the value name as a string.
 
 ```bgl
 const string story    = #beguilerSettings.title;
@@ -648,7 +891,19 @@ Both produce identical I6 output. The difference is where the value lives:
 
 In short: if a value only needs to exist as an I6 constant and never participates in blorb packaging, declare it directly. If the value needs to be consumed by beguiler tooling (blorb, future toolchain features) *and* referenced in compiled code, define it in `#beguilerSettings` and surface it with `#beguilerSettings.propertyName`.
 
-Supported properties: `title`, `author`, `headline`, `genre`, `description`, `language`, `series`, `firstPublished`, `forgiveness`, `ifid`, `target`, `outputPath`, `blorbAssetPath`, `informName` (string); `release`, `framePoolSize`, `seriesNumber` (int).
+Supported properties:
+
+| Category | Property | Type |
+|----------|----------|------|
+| **Metadata / iFiction** | `title`, `author`, `headline`, `genre`, `description`, `language`, `series`, `firstPublished`, `forgiveness`, `ifid` | string |
+| | `release`, `seriesNumber` | int |
+| **Compilation** | `target`, `informName`, `outputPath`, `serial` | string |
+| | `framePoolSize` | int |
+| **Toolchain** | `informPath`, `beguiLibPath`, `includePaths` | string |
+| **Blorb** | `blorbAssetPath` | string |
+| | `generateBlorb`, `rewritePaths` | bool |
+
+> **Note:** The standard library and PunyInform bindings automatically declare the I6 constants `story` and `headline` from `#beguilerSettings.title` and `#beguilerSettings.headline` respectively. The `release` and `serial` settings are emitted directly by the compiler as I6 `Release` and `Serial` directives. When using either binding, you do not need to declare these constants yourself.
 
 ## 3.5 Diagnostic and Control Directives
 
@@ -694,7 +949,7 @@ Stops processing the current file immediately, as though end-of-file had been re
 // ... feature implementation follows ...
 ```
 
-`#exit` is primarily useful in library files that want to skip their body entirely when a required symbol is not defined.
+`#exit` can be useful in library files that want to skip their body entirely when a required symbol is not defined.
 
 ### 3.5.5 `#startup`
 
@@ -729,10 +984,10 @@ Beguile is statically typed. Every variable, parameter, and return value has a d
 | `int` | Integer value. Maps to the native I6 integer. |
 | `bool` | Boolean value. Backed by the `eBool` enum (`true`/`false`). |
 | `char` | A single ZSCII character value. |
-| `string` | A string object, backed by an I6 string utility class. |
+| `string` | A string value. The `<string>` language extension adds mutable string operations backed by a runtime utility class; without it, strings are immutable I6 print-only values. |
 | `object` | The base class for all world objects in the IF model. |
-| `verb` | An I6 action constant. Used to define possible actions in the story. |
-| `void` | Is not actually a type.  Its a type-specifier which means value of any type. Valid only as a function return type. |
+| `verb` | A class for managing verb actions. Verb instances are declared with the `verb` keyword and compared in `switch`/`case` blocks against the current action. |
+| `void` | Not a value type. A return-type specifier indicating a function returns no value. |
 
 ## 4.3 Literal Pseudo-Types
 
@@ -746,9 +1001,9 @@ Literal pseudo-types are not declared by user code. They are inferred automatica
 | `dictionaryWordLiteral` | `.cloak`, `..cloaks` | Dictionary word; plural form (`..`) sets an internal plural flag |
 | `interpolatedStringLiteral` | `$"hello {x}"` | An interpolated string (see §2.5.2b); expands to a block of statements rather than a single expression |
 
-Literal pseudo-types are compatible with their corresponding runtime types exclusively through declared operators — specifically `operator =` on the target class. No built-in compatibility rule exists for any of them.
+Literal pseudo-types are compatible with their corresponding runtime types exclusively through declared operators — specifically `operator =` on the target class. No compatibility rule for these is built-in to the compiler, but operator makes this distintion transparent to the user.
 
-`interpolatedStringLiteral` is unique among the literal pseudo-types: because an interpolated string contains multiple segments that emit as separate statements, it cannot be reduced to a single expression value. Instead, when an emitter parameter has this type, the parameter reference in the emitter body expands to the full block of print statements for all segments. This is what enables both `print($"...")` (where the emitter body is just the parameter — the print-block is emitted directly) and `string s = $"..."` (where the emitter body wraps the print-block in `capture()`/`release()` calls). See §7.6 for details.
+`interpolatedStringLiteral` is unique among the literal pseudo-types: because an interpolated string contains multiple segments that emit as separate statements, it cannot be reduced to a single expression value. Instead, when an emitter parameter has this type, the parameter reference in the emitter body expands to the full block of print statements for all segments. This enables `print($"...")` and the extended syntax implemented by the `string` language extension: `string s = $"..."`. See §16.2 for details on language extensions.
 
 Literal pseudo-types are first-class types: they are declared as `extern class` in the core library and can be extended to have operators and methods defined against them. This means method calls are valid directly on literal values, if defined in an emitter:
 
@@ -767,7 +1022,7 @@ object o = null;
 if(o == null) print("nothing here");
 ```
 
-`null` may be used anywhere an `object`-typed value is expected. It is not valid as an integer or string.
+`null` is compatible with any type. It emits as `nothing` in I6, which is the integer value `0`. For objects, it represents the absent/unset object reference. For integers and strings, it represents zero or an undefined reference.
 
 ## 4.5 Enumerations
 
@@ -808,7 +1063,7 @@ bnum itemFlag {
 
 ```
 
-Individual members may be assigned an explicit starting value; auto-assignment resumes by doubling from the last assigned value.
+Individual members may be assigned an explicit starting value; auto-assignment resumes by doubling from the last assigned value. Explicit values must be a power of 2 — the compiler reports an error otherwise, since non-power-of-2 values defeat the purpose of bitmask flags.
 
 For Z-code, the maximum number of unique values in a `bnum` is 16; for Glulx this cap is 32. 
 
@@ -821,7 +1076,7 @@ extern enum eBool { true, false }
 extern enum eErrorFormat { E1, E2 }
 ```
 
-Enum and bnum values are referenced by name directly (not qualified by the enumeration type name): `true`, `false`, `north`, `portable`, etc. The one exception is `#beguilerSettings` blocks, where the optional `EnumType.Value` qualified form is also accepted — see §3.4.
+Enum and bnum values may be referenced by bare name (`true`, `false`, `north`, `portable`, etc.) or by qualified name (`eBool.true`, `eTarget.Z5`). The qualified form is useful for autocompletion in the IDE and is required when two different enum types define values with the same name.
 
 ## 4.6 The `var` Type
 
@@ -851,7 +1106,7 @@ emitter void print(stringLiteral s){ print (string)s; }    // preferred for stri
 array<int> scores[5];                    // sized, zero-initialized
 array<int> primes = {2, 3, 5, 7, 11};   // initialized with values
 ```
-Array properties on the Z-machine have a maximum number of elements: Z3 has a max of 4, Z5 and Z8's upper limit is 32.
+Global arrays have no element count limit. However, arrays declared as object properties (see §6.5) are constrained by the Z-machine's property size limits: Z3 allows a maximum of 4 word-sized elements per property, Z5 and Z8 allow up to 32. Byte arrays (`array<char>`) on object properties do not suffer from this limitation limit.
 
 Array elements are accessed using subscript syntax:
 
@@ -889,14 +1144,46 @@ Beguile has four class declaration forms. Each is introduced by a different keyw
 
 | Form | Syntax | I6 class emitted | Members allowed | Used for |
 |---|---|---|---|
-| Normal class | `class Foo` | Yes | Variables (with or without values), emitter methods, regular methods |  |
-| Extern class | `extern class Foo` | No | Typed variable declarations (initializers allowed but ignored), emitter methods | |
-| Emitter class | `emitter class Foo` | No | Emitter methods only (`emitter` keyword optional) | |
-| Alias class | `alias class Foo for Parent` | No | Typed variable declarations (no values), emitter methods | |
+| Normal class | `class Foo` | Yes | Variables (with or without values), emitter methods, regular methods | Normal type definitions |
+| Extern class | `extern class Foo` | No | Typed variable declarations (initializers allowed but ignored in most cases), emitter methods | Declaring types which are defined externally to Beguile, in I6 includes  |
+| Emitter class | `emitter class Foo` | No | Emitter methods only (`emitter` keyword optional) | Groups inline emitter functionality under a conceptual class |
+| Alias class | `alias class Foo for Parent` | No | Typed variable declarations (no values), emitter methods | Defines a psuedo type, really another type but with predefined member types |
 
-Normal, `extern`, and `emitter` classes support optional inheritance via `: Parent` (see §5.6). Alias classes use `for Parent` instead (see §5.2.3). All forms support extension via `extend class` (see §5.7). Alias classes require exactly one parent; extern/alias classes do not allow non-emitter methods.
+Normal, `extern`, and `emitter` classes support optional inheritance via `: Parent` (see §5.6). Alias classes use `for Parent` to specify the underlying type they map to (see §5.2.3) — this is not inheritance but a type-aliasing relationship. All forms support extension via `extend class` (see §5.7). Alias classes require exactly one parent; extern/alias classes do not allow non-emitter methods.
 
-## 5.2.1 `extern class`
+## 5.2.1 Normal Classes
+
+A normal class (no qualifier) is the standard Beguile class. It generates an I6 `Class` declaration and supports the full range of members: variables with initializers, non-emitter methods with Beguile statement bodies, and emitter methods with raw I6 bodies.
+
+```bgl
+class Animal : object {
+    string short_name;
+    const int maxAge = 20;
+
+    void speak(){}
+
+    emitter bool operator == (Animal v){ $self == $v }
+}
+```
+
+Normal classes are the most common form and are used for game-specific types, data structures, and behavioral hierarchies.
+
+#### Typical use
+
+Normal classes define game-specific types that need both data and behavior. A `Room` class might declare `description` and `short_name` properties and provide methods for custom behavior. Objects instantiated from normal classes inherit both the properties and methods, and can override methods using `replace`.
+
+```bgl
+class Room : object {
+    string short_name;
+    string description;
+}
+
+class Dog : Animal {
+    replace void speak(){ print("Woof!"); }
+}
+```
+
+## 5.2.2 `extern class`
 
 `extern class` declares a class that is implemented in I6. Beguile uses the declaration for type-checking and emitter dispatch only — no I6 class definition is generated.
 
@@ -915,7 +1202,18 @@ Rules for `extern class` members:
 - **Variable declarations** (type and name only, no `=` initializer) are allowed and contribute to type inference on object instances.
 - **Variable definitions** (with `=` initializer) are syntactically valid but the initializer value is ignored at runtime — no code is generated for it. The value exists solely as metadata and is invisible to normal Beguile programs. Certain compiler-internal classes (such as `beguilerSettingsType`) treat these initializers as default values for directive properties.
 
-## 5.2.2 `emitter class`
+#### Typical use
+
+Extern classes wrap I6 built-in types so that Beguile's type system can reason about them. The core library uses extern classes for all primitive types (`int`, `char`, `bool`, `string`, `object`) and for library-defined types like `attribute` and `attributeList`. Emitter methods on extern classes provide typed, operator-overloaded access to I6 operations that would otherwise require raw I6 code.
+
+```bgl
+extern class int : _bglObject {
+    emitter int operator + (int v){ $self + $v }
+    emitter bool operator == (int v){ $self == $v }
+}
+```
+
+## 5.2.3 `emitter class`
 
 `emitter class` declares a class that has no I6 backing at all — it exists purely in Beguile's type system to drive emitter dispatch. No I6 class definition is generated, and no I6 object or variable underlies instances of the type.
 
@@ -930,7 +1228,18 @@ Rules for `emitter class` members:
 - All methods are implicitly emitters. The `emitter` keyword may be included for clarity but is not required.
 - Variable properties (declared or defined) are not allowed — a compile-time error.
 
-## 5.2.3 `alias class`
+#### Typical use
+
+Emitter classes group related inline I6 operations under a conceptual type without any runtime backing. They are useful for defining unit types (temperature, distance) with conversion operators, or for organizing emitter-only functionality into a namespace-like structure. The `style` emitter class in the core library is an example — it provides `style.italics()` and `style.roman()` as pure inline I6 calls.
+
+```bgl
+emitter class grammarToken : _bglObject {
+    emitter var operator(){}
+    emitter eBool operator == (var v){ $self == $v }
+}
+```
+
+## 5.2.4 `alias class`
 
 `alias class` declares a Beguile type that dissolves to an existing type for I6 emission. No I6 class declaration is generated. Instances of an alias class emit using the I6 name resolved by walking the alias chain to its root.
 
@@ -946,6 +1255,8 @@ worldObject foyer {
 ```
 
 The `for` keyword rather than `:` signals that the RHS is the I6 type being dissolved to — not a superclass being extended. No I6 class declaration is generated for the alias; instances emit using the I6 name of the root non-alias type.
+
+#### Typical use
 
 One primary use of alias classes is **type inference**: typed member declarations on the alias class let instances omit the type specifier when setting those properties. The instance body still resolves members against both the alias class and the base `object` class.
 
@@ -974,8 +1285,8 @@ Member variables declare properties on the class.
 ```bgl
 class Room {
     string short_name = "A dark room";
+    string description;
     int visits = 0;
-    object parent;
 }
 ```
 
@@ -998,7 +1309,7 @@ config.maxScore = 200;  // error: Cannot assign to const member 'maxScore'
 
 ### `static` Members
 
-A `static` member is class-level state shared across all instances. It is emitted as a mangled I6 global variable (`_bgl_ClassName_memberName`) rather than as a per-instance property.
+A `static` member is class-level state shared across all instances. 
 
 ```bgl
 class Counter {
@@ -1038,32 +1349,12 @@ class Counter {
 }
 ```
 
-Within a method body, bare member names are automatically resolved as `self.memberName`. In the example above, `count` on the right-hand side of `count = newCount;` resolves to `self.count`. Explicit `self.memberName` is also accepted and has the same effect.
+Within a method body, bare member names are automatically resolved as `self.memberName`. In the example above, `count` on the left-hand side of `count = newCount;` resolves to `self.count`. Explicit `self.memberName` is also accepted and has the same effect.
 
 
-## 5.5 Emitters
+## 5.5 Lifecycle Emitters
 
-An `emitter` member inlines raw I6 code at the call site instead of generating a function call. See Chapter 7 for a full description of emitter mechanics. The key forms relevant to classes are summarized here.
-
-### 5.5.1 Operator Emitters
-
-An operator emitter defines how a built-in operator is compiled when applied to the class. The operator name follows the `emitter` keyword and return type. Operator emitters may appear on any class — extern or otherwise.
-
-```bgl
-class Counter {
-    int value = 0;
-    emitter Counter operator ++ (){ $self.value++ }
-    emitter bool operator == (Counter v){ $self.value == $v.value }
-}
-```
-
-The full list of operators that may have emitters:
-`=` `+` `-` `*` `/` `%` `==` `!=` `<` `>` `<=` `>=` `?=` `&` `|` `^` `<<` `>>`
-`+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=` `++` `--` `prefix++` `prefix--` `[]` `[]=`
-
-### 5.5.2 `init` and `deinit` Emitters
-
-`init` and `deinit` are zero-parameter lifecycle emitters called implicitly by the compiler:
+`init` and `deinit` are zero-parameter lifecycle emitters called implicitly by the compiler. See Chapter 7 for a full description of emitter mechanics.
 
 - `init` fires immediately after a local variable of this type is declared.
 - `deinit` fires before every `return` in the enclosing routine, and at the end of the routine if it falls through.
@@ -1077,23 +1368,42 @@ class Token {
 }
 ```
 
-`init` and `deinit` must not declare parameters; doing so is a compile-time error.
+`init` and `deinit` must not declare parameters; doing so is a compile-time error. These must be emitters — non-emitter lifecycle hooks are not supported.
 
-### 5.5.3 Conversion Operator
+## 5.6 Operator Overloads
 
-A zero-parameter emitter named `operator()` declares that this type is compatible with the return type, enabling implicit type conversion (see §12). This may be declared on any class:
+Operators can be overloaded on any class as either **emitters** (inlined at call sites) or **regular methods** (emitted as class properties and called at runtime).
+
+### 5.6.1 Emitter Operators
+
+Emitter operators are the most common form — they inline I6 code at each use site, producing no function call overhead:
 
 ```bgl
-class celsius {
-    emitter fahrenheit operator(){ $self * 9 / 5 + 32 }
+class Counter {
+    int value = 0;
+    emitter Counter operator ++ (){ $self.value++ }
+    emitter bool operator == (Counter v){ $self.value == $v.value }
 }
 ```
 
-When no body is provided (empty braces), the value passes through unchanged. When a body is provided, it is substituted with `$self` replaced by the source expression.
+### 5.6.2 Non-Emitter Operators
 
-### 5.5.4 Subscript Operators
+Non-emitter operators are emitted as class methods with a mangled property name (e.g., `operator ==` becomes `_opeqeq`). The compiler automatically generates the mangled name and emits method calls at use sites. Non-emitter operators are useful when the operator body is complex, when debugging visibility is needed, or when code size is a concern:
 
-`operator[]` and `operator[]=` allow a class to support subscript read and write syntax (`obj[n]` and `obj[n] = v`). Any class may define them — not just `array<T>`.
+```bgl
+class Animal : object {
+    int id;
+
+    replace bool operator == (Animal other){
+        return self.id == other.id;
+    }
+}
+// a == b  emits as:  a._opeqeq(b)
+```
+
+### 5.6.3 Subscript Operators
+
+`operator[]` and `operator[]=` allow a class to support subscript read and write syntax (`obj[n]` and `obj[n] = v`). Although this convention is commonly associated with array-access members, any class may define them — not just `array<T>`.
 
 ```bgl
 extern class myBuf {
@@ -1110,11 +1420,70 @@ var x  = buf[3];    // calls operator[]  — emits: buf-->3
 buf[3] = x + 1;    // calls operator[]= — emits: buf-->3 = x + 1
 ```
 
-`operator[]` takes one parameter (the index) and returns the element type. `operator[]=` takes two parameters — the index first, then the value — and returns `void`. Both are looked up via the class hierarchy, so a subclass inherits subscript support from a parent.
+`operator[]` takes one parameter (the index) and returns the element type. `operator[]=` takes two parameters — the index first, then the value. Its return type is the developer's choice — commonly the same type as assigned, allowing the assignment to be used as an expression value or enabling the operator to return a transformed value. Both operators are looked up via the class hierarchy, so a subclass inherits subscript support from a parent.
 
-The built-in `array<T>` class defines both operators, delegating to the `_orArray` helper object.
+### 5.6.4 Conversion Operator (`operator()`)
 
-## 5.6 Class Inheritance
+A zero-parameter emitter named `operator()` declares that this type is compatible with the return type, enabling implicit type conversion (see §12). This may be declared on any class:
+
+```bgl
+class celsius {
+    emitter fahrenheit operator(){ $self * 9 / 5 + 32 }
+}
+```
+
+A **pass-through** conversion (value unchanged) is declared with a semicolon terminator instead of a body:
+
+```bgl
+emitter int operator();                        // pass-through: value is used as-is
+emitter fahrenheit operator(){ $self * 9 / 5 + 32 }  // custom: body transforms the value
+```
+
+The semicolon form is equivalent to writing `{ $self }` — the value passes through with no transformation. Use the body form when the conversion requires computation.
+
+#### Implicit vs. explicit conversions
+
+By default, conversion operators are **implicit** — the compiler uses them automatically during operator resolution, argument matching, and assignment. An **explicit** conversion operator, marked with the `explicit` qualifier, only fires at explicit `(Type)expr` cast sites:
+
+```bgl
+class MyType : _bglObject {
+    emitter int operator();                    // implicit: MyType silently converts to int anywhere
+    explicit emitter string operator();        // explicit: only via (string)myValue
+}
+
+MyType t;
+int n = t;             // OK — implicit conversion to int
+string s = t;          // ERROR — explicit conversion, requires cast
+string s = (string)t;  // OK — explicit cast
+```
+
+This prevents silent coercion to surprising overloads while still allowing intentional casts. See §11.5 for cast syntax.
+
+### 5.6.5 Special Operators
+
+In addition to standard arithmetic and comparison operators, these special operators may be overloaded:
+
+| Operator | Syntax | Description |
+|----------|--------|-------------|
+| `operator switch(type v)` | `switch(x){ case val: }` | Custom switch comparison. Called for each `case` value to test equality. Must be an emitter. See §10.10. |
+| `operator ?()` | `x?` | Postfix query / null test. Returns `eBool`. Used by optional chaining (`?.`) and null coalescing (`??`). Must be an emitter. See §11.4b. |
+| `operator !()` | `!x` | Prefix logical NOT. Must be an emitter. |
+| `operator()` | `(Type)x` | Conversion operator. Covered in §5.5.2. |
+| `operator[]` / `operator[]=` | `x[i]` / `x[i]=v` | Subscript read/write. Covered in §5.6.3. |
+
+### 5.6.6 Overloadable Operator List
+
+The complete list of operators that may be overloaded (as either emitters or regular methods):
+
+**Binary:** `=` `+` `-` `*` `/` `%` `==` `!=` `=~` `<` `>` `<=` `>=` `?=` `&&` `||` `&` `|` `^` `<<` `>>`
+
+**Compound assignment:** `+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=`
+
+**Unary:** `++` `--` `prefix++` `prefix--` `!`
+
+**Special:** `switch` `?` `()` `[]` `[]=`
+
+## 5.7 Class Inheritance
 
 A class may inherit from one or more parent classes by listing them after a colon in the class declaration:
 
@@ -1143,7 +1512,7 @@ To explicitly dispatch to a specific parent's version of a member, use the type-
 (Animal)myDog.speak();   // forces dispatch through Animal's speak, not Dog's
 ```
 
-## 5.7 `extend class` and `replace` for Members
+## 5.8 `extend class` and `replace` for Members
 
 `extend class` adds new members to any already-declared class. If augmenting an `extern` class type, only emitters may be added.  Classes defined in Beguile code may be extended with actual members as well.
 
@@ -1209,7 +1578,7 @@ The warning helps catch accidental shadowing (e.g., a base class method was rena
 
 ## 6.1 Overview
 
-An *object* is a named, globally visible instance that maps directly to an I6 object and exists as a concrete entity in the compiled story file. Unlike a class, which is a type definition, an object is a single named value.
+An *object* is a named, globally visible instance that maps directly to an I6 object and exists as a concrete entity in the compiled story file. Unlike a class, which is a type definition, an object is a single instance of that type.
 
 Objects are commonly used for IF world-model entities — rooms, things, and characters — but their use is not restricted to the world model. Any class that inherits from `object` can be instantiated as a named object, including utility classes, data tables, and other non-interactive constructs that benefit from I6's property and method dispatch.
 
@@ -1229,7 +1598,7 @@ The object name becomes a globally visible identifier that can be used wherever 
 
 ## 6.3 Object Types
 
-An object may be associated with a class in two equivalent ways:
+An object may be declared as an instance of a class in two equivalent ways:
 
 **Using the class name as the type keyword** (preferred when the class is the primary type):
 
@@ -1243,7 +1612,7 @@ worldObject foyer {
 }
 ```
 
-**Using `: ClassName1, ClassName2` after the object name** (preferred when the object/classes inherits from more than one base type):
+**Using the inheritance syntax after the object name** (required when the object/class inherits from more than one base type):
 
 ```bgl
 class Robot {
@@ -1262,7 +1631,7 @@ object dog : Animal, Robot{
 
 ## 6.4 Properties
 
-Properties within an object body set initial values for the object's I6 properties. They are declared using a type-name-value form:
+Properties within an object body declare the object's I6 properties, optionally with initial values. Uninitialized properties default to 0/false/nothing. They are declared using a type-name form, with an optional value:
 
 ```bgl
 object hook {
@@ -1274,7 +1643,7 @@ object hook {
 
 ### 6.4.1 Type Inference from Class and Base Object
 
-When an object is associated with a class (via either syntax in §6.3), typed member declarations on that class may be set without repeating the type. The compiler searches the object's declared class first, then walks the parent chain, and finally checks the base `object` class.
+When an object is an instance of a class (via either syntax in §6.3), typed member declarations on that class may be set without repeating the type. The compiler searches the object's declared class first, then walks the parent chain, and finally checks the base `object` class.
 
 ```bgl
 alias class worldObject for object {
@@ -1289,39 +1658,31 @@ worldObject foyer {
 
 If a property name without a type specifier is not found on any class in the hierarchy, the compiler reports a compile-time error.
 
-### 6.4.2 The `parent` Property
+### 6.4.2 Special Properties
 
-Setting the `parent` property places the object inside another object at the start of the game. 
+The following properties have compiler-level support tied to the underlying I6 world model. They are currently declared on the `object` base class, but the mechanisms they represent — object tree placement and attribute assignment — are distinct from ordinary property storage and may be applied to other base class hierarchies in the future.
+
+**`parent`** — places the object inside another object at game start:
 
 ```bgl
 object cloak {
     object parent = selfobj;    // player is carrying it at game start
 }
-
-object hook {
-    object parent = cloakroom;  // hook starts in the cloakroom
-}
 ```
 
-### 6.4.3 The `attributes` Property
-
-The `attributes` property declares the object's initial attributes using an initializer list of attribute names:
+**`attributes`** — an `attributeList` property (effectively `array<attribute>`) that declares the object's initial attributes using an initializer list:
 
 ```bgl
 object foyer {
     attributes = {light};
 }
-
-object cloak {
-    attributes = {clothing, general, worn};
-}
 ```
 
-Attribute names used in `attributes` initializer lists must be declared before use. Two forms are available:
+Attribute names must be declared before use:
 
 ```bgl
 attribute myNewAttr;           // declares a new attribute; emits 'Attribute myNewAttr;' to I6
-extern attribute light;        // references an attribute already declared in the I6 library; no I6 declaration emitted
+extern attribute light;        // references an attribute already declared in the I6 library
 ```
 
 ## 6.5 Array Properties
@@ -1329,8 +1690,8 @@ extern attribute light;        // references an attribute already declared in th
 A property may be an array, declared with `array<T>`:
 
 ```bgl
-object cloak {
-    array<dictionaryWord> name = {.handsome, .dark, .velvet, .cloak};
+object scoreboard {
+    array<int> highScores = {100, 75, 50, 25};
 }
 ```
 
@@ -1365,7 +1726,7 @@ object bar {
 
 ## 6.7 Complete Example
 
-The following is a representative object from the Cloak of Darkness demonstration:
+The following is a representative object from the Cloak of Darkness demonstration. Note the use of `give`, `ungive`, and `has` methods on objects — these and the `attributes` property are covered in §8.6.
 
 ```bgl
 object cloak {
@@ -1406,6 +1767,8 @@ An emitter is a function whose body contains raw I6 code that is *inlined* at ev
 
 Emitters are the primary mechanism for giving library authors precise control over generated I6 while keeping the Beguile call site type-safe and readable. They may appear on any class.
 
+Unlike regular methods, emitters support **overloading** — multiple emitters with the same name but different parameter types can coexist on the same class. The compiler selects the best match based on argument types at each call site. This is how `print()` handles `string`, `char`, `int`, and `interpolatedStringLiteral` arguments with different I6 output for each. Regular (non-emitter) methods cannot be overloaded because I6 has no function overloading — only one routine per name can exist.
+
 ```bgl
 class Counter {
     int value = 0;
@@ -1433,17 +1796,17 @@ Emitters may appear:
 
 The body may contain any I6 text. It is not parsed for Beguile syntax — only the placeholder tokens `$self` and `$paramName` are recognized for substitution.
 
-Emitter bodies also support a small set of conditional directives that are not available in ordinary Beguile code:
+Emitter bodies support conditional directives using the `##` (double-hash) prefix:
 
 | Directive | Meaning |
 |-----------|---------|
-| `##ifdef SYMBOL` | Include following body text only if `SYMBOL` is defined |
-| `##ifndef SYMBOL` | Include following body text only if `SYMBOL` is not defined |
-| `##if SYMBOL` | Alias for `##ifdef` |
+| `##if expr` | Include following body text only if the expression is true. Supports the same syntax as `#if`: symbols, comparisons, `&&`, `||`, `!`, parentheses. |
 | `##else` | Alternate branch |
 | `##endif` | Close a conditional block |
 
 These `##` directives are processed at emit time and affect what raw I6 text is written to the output file. They are only meaningful inside an emitter body and have no effect in ordinary Beguile statement blocks.
+
+**Single-hash vs. double-hash in emitter bodies:** Since emitter bodies are raw I6 text, single-hash directives like `#ifdef` are passed through verbatim to the I6 output — they become I6 compile-time conditionals. Use `##if` for Beguile compile-time conditionals that should be resolved before the I6 is generated.
 
 ## 7.3 Substitution
 
@@ -1503,68 +1866,13 @@ Rules:
 - The namespace name cannot be used as a variable type — it exists solely to group emitter methods.
 - Inheritance and `extend` are not supported.
 
-Emitter namespaces are distinguished from `emitter class` by the absence of the `class` keyword. An `emitter class` requires instances of a named type; an emitter namespace is a singleton with no associated type.
+Emitter namespaces are distinguished from `emitter class` by the absence of the `class` keyword. The key difference is usage style: an emitter namespace is intended to be called directly by name (`style.italics()`), while an `emitter class` is intended to be used as a type for variable declarations (`Temp t; t + 5;`). Internally both are parsed as emitter classes — the namespace syntax is shorthand for the common case where no instances are needed.
 
 `style` is a built-in emitter namespace providing I6 style directives (`style.italics()`, `style.roman()`) without requiring an instance variable.
 
 ## 7.6 `print()` and `log()`
 
-`print()` and `log()` are global emitter functions defined in the core library (`_beguileCore.bgl`). They are not compiler built-ins — the compiler has no special knowledge of them.
-
-### `print()`
-
-`print()` is overloaded to accept any value type and outputs it immediately:
-
-```bgl
-print("hello");       // string literal
-print(score);         // int or var
-print(c);             // char
-```
-
-The standard overloads are defined as emitters:
-
-```bgl
-emitter void print(var val)           { print val; }
-emitter void print(string str)        { print (string)str; }
-emitter void print(char c)            { print (char)c; }
-```
-
-When the `string` extension is included, `print(string)` is replaced with `_orStr.print(str)` to support the managed string type.
-
-### `print()` with interpolated strings
-
-The interpolated string overload is also a library-defined emitter:
-
-```bgl
-emitter void print(interpolatedStringLiteral v){ v; }
-```
-
-Because the parameter type is `interpolatedStringLiteral`, the `v;` in the emitter body expands at compile time to the full print-block for all segments. For example, `print($"Score: {score}")` emits:
-
-```i6
-print "Score: ";
-print score;
-```
-
-Each expression segment is emitted using type-aware dispatch: if the expression's type has a `print()` emitter (such as `string`), that emitter is inlined; otherwise, a plain I6 `print` statement is used.
-
-### `log()`
-
-`log()` has the same overloads as `print()` but is a debug-only output routine. It is implemented using `##ifdef` conditional directives inside the emitter body:
-
-```bgl
-emitter void log(interpolatedStringLiteral v){ ##ifdef DEBUG v; ##endif }
-emitter void log(var msg){ ##ifdef DEBUG print msg; ##endif }
-```
-
-When `DEBUG` is not defined, the `##ifdef` strips the emitter body, so no code is emitted at the call site — not even a conditional check. The interpolated string segments are still parsed and type-checked in all builds, so errors inside `log()` expressions are caught even in release builds.
-
-To enable `log()` output, define the `DEBUG` symbol before the call:
-
-```bgl
-#define DEBUG
-log($"Entering handler for {actor.name}");
-```
+`print()` and `log()` are core language output functions. They are mentioned here because they are implemented as global emitters in `_beguileCore.bgl`; however, they are fundamental to every Beguile program. See §10.13 for usage documentation.
 
 ## 7.7 Operator Emitters
 
@@ -1596,7 +1904,7 @@ The full set of operators that may be overloaded via emitters:
 |----------|-----------|
 | Assignment | `=` |
 | Arithmetic | `+` `-` `*` `/` `%` |
-| Comparison | `==` `!=` `<` `>` `<=` `>=` `?=` |
+| Comparison | `==` `!=` `=~` `<` `>` `<=` `>=` `?=` |
 | Bitwise / logical | `&` `\|` `^` `<<` `>>` `&&` `\|\|` |
 | Compound assignment | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` |
 | Increment / decrement | `++` `--` `prefix++` `prefix--` |
@@ -1605,6 +1913,8 @@ The full set of operators that may be overloaded via emitters:
 | Switch comparison | `switch` |
 
 The `prefix++` and `prefix--` names distinguish prefix forms (`++n`) from postfix forms (`n++`). This allows a class to provide different behavior for each — for example, postfix increment conventionally returns the value before modification, while prefix increment returns the value after.
+
+Most operators (arithmetic, comparison, assignment, etc.) follow standard conventions and require no special documentation — they take one parameter (the right-hand operand) and return the expected type. The following operators have unique semantics:
 
 ### Query Operator `?`
 
@@ -1624,25 +1934,7 @@ Types without `operator ?()` cannot use `?.`, `??`, or postfix `?`. Attempting t
 
 ### Switch Comparison Operator `switch`
 
-The `operator switch()` emitter defines how a type is compared in `switch` statements. When the switch condition's type declares `operator switch()`, the compiler lowers the switch to an `if`/`else if` chain using the emitter for each case comparison instead of native I6 `switch`.
-
-```bgl
-extend class string {
-    emitter eBool operator switch(stringLiteral v) { $self.equals(v) }
-    emitter eBool operator switch(string v)        { $self.equals(v) }
-}
-```
-
-Multiple overloads may be declared for different case value types. The compiler selects the overload matching each case value's resolved type, enabling mixed-type cases:
-
-```bgl
-switch(myString){
-    case "hello": ...   // uses operator switch(stringLiteral)
-    case otherStr: ...  // uses operator switch(string)
-}
-```
-
-Types without `operator switch()` use native I6 `switch`, which compares by value identity. See §10.10 for the full `switch` statement description.
+The `operator switch()` emitter enables custom comparison logic in `switch` statements. See §10.10 for full details on how the compiler lowers `switch` statements using this operator.
 
 ### Compound Assignment Fallback
 
@@ -1733,9 +2025,11 @@ Emitters and regular functions serve different purposes and generate different I
 |---|---|---|
 | I6 output | Generates an I6 routine | Inlines body text at call site |
 | Body language | Beguile statements | Raw I6 code |
-| `$self` | Not applicable | Replaced with receiver expression |
+| Parameters | Referenced by bare name (`myParam`) | Referenced with `$` prefix (`$myParam`) |
+| `$self` | Not applicable (use `self` keyword) | Replaced with receiver expression |
+| Overloading | Not supported (one routine per name) | Supported (matched by parameter types) |
 | Recursion | Supported | Not meaningful (no routine exists) |
-| In an `extern class` body | Must have no body (stub only) | Must have a body |
+| In an `extern class` body | Must have no body (stub only) | Must have a body (or `;` for pass-through) |
 | Allowed at global scope | Yes | Yes |
 
 ---
@@ -1775,7 +2069,7 @@ const int MAX_SCORE   = 2;
 
 Attempting to assign to a `const` variable is a compile-time error.
 
-`extern const` declares a constant that is defined in I6, not in Beguile. It registers the name in the type system for type-checking purposes and produces no I6 output:
+`extern const` declares a constant that is defined in I6, not in Beguile. It registers the name in the type system for type-checking purposes and produces no I6 output. The compiler enforces read-only access — assigning to a `const` variable (including `++`, `--`, and compound assignment) is a compile-time error:
 
 ```bgl
 extern const int STUCK_PE;
@@ -1864,14 +2158,12 @@ Mutable `extern` variables may be read and assigned. `extern const` variables ar
 
 ## 8.6 Attributes
 
-Two forms of attribute declaration are available:
+An `attribute` declaration introduces a named flag that can be assigned to objects. It emits an I6 `Attribute` directive. Attributes declared with `extern` reference an attribute already defined in I6 (e.g. via an IF library) and produce no I6 output.
 
 ```bgl
-attribute myAttr;              // declares a new attribute; emits 'Attribute myAttr;' to I6
-extern attribute light;        // references an existing I6 attribute; no declaration emitted
+attribute myAttr;              // new attribute; emits 'Attribute myAttr;' to I6
+extern attribute light;        // defined externally; no I6 output
 ```
-
-Use `extern attribute` for attributes already declared externally (e.g. via an IF library binding). Use plain `attribute` for new attributes defined in Beguile code.
 
 Once declared, attributes are available as identifiers of type `attribute` and can be passed to the `give`, `ungive`, and `has` methods defined on `object` and `attributeList`.
 
@@ -1892,6 +2184,10 @@ It is **not** valid on type declarations (e.g., `extern class`, `alias class`) o
 
 This is available any time a chosen Beguile name must differ from the underlying I6 name — for example, when the I6 name conflicts with a Beguile keyword, or when a more descriptive Beguile name is preferred in source while the I6 name must remain unchanged for compatibility.
 
+> **`as` vs. `for`:** These serve different purposes:
+> - **`as`** renames a single instance for I6 output. You write `myHook` in Beguile, but the name emitted to I6 is `hook`. It's a per-instance name override.
+> - **`for`** in `alias class Foo for Bar` declares that `Foo` is another name for the type `Bar`. It affects type resolution, not emission names. See §5.2.4.
+
 ---
 
 # Chapter 9 — Functions and Routines
@@ -1908,16 +2204,18 @@ returnType name(paramType paramName, ...) {
 
 The body is a sequence of statements (see Chapter 10). Functions declared at global scope emit I6 routines. Functions declared as class or object members emit I6 method properties.
 
+Global functions may also be declared as `extern` (defined in I6, no Beguile body — see §8.5) or as `emitter` (raw I6 body inlined at call sites — see Chapter 7).
+
 ## 9.2 Return Types
 
-The return type precedes the function name. Every non-`void` function must have at least one `return` statement somewhere in its body; the absence of a return in a non-`void` function is a compile-time error.
+The return type precedes the function name. Every execution path in a non-`void` function must end with a `return` statement; a path that can fall off the end without returning is a compile-time error. See §10.12 for the full path analysis rules.
 
 | Return type | Meaning |
 |-------------|---------|
 | `void` | The function produces no value. A bare `return;` is permitted; `return expr;` is an error. |
 | Any other type | The function must return a value of that type via `return expr;`. |
 
-The I6 `rtrue` and `rfalse` keywords may also appear in functions with a return type as `bool`. 
+The I6 `rtrue` and `rfalse` keywords may also appear in functions with a return type as `bool`, serving as shorthand for `return true` and `return false` respectively. 
 
 ## 9.3 Parameters
 
@@ -1977,7 +2275,7 @@ extern class string {
 
 Multiple functions with the same name but different parameter-type signatures may only exist for emitter functions. Resolution proceeds as described in §8.4: exact match, then conversion match, then `var` fallback.
 
-Arity is checked before type compatibility. A call with the wrong number of arguments will not match any overload regardless of types.
+Arity is checked before type compatibility. The required argument count is the number of parameters without default values — parameters with defaults are optional. A call matches if the number of arguments falls between the required count and the total parameter count. A call outside this range will not match any overload regardless of types.
 
 ## 9.5 The `self` Keyword
 
@@ -2017,7 +2315,7 @@ The variable is visible from the point of declaration to the end of the enclosin
 
 If the variable's type defines an `init` emitter, it fires immediately after the declaration, before any initializer assignment (§7.7).
 
-### 10.2.1 Z-Machine Local Variable Limit
+### 10.2.1 Bypassing the Z-Machine's Local Variable Limit
 
 The Z-machine architecture limits a routine to **15 local variable slots** total (parameters + declared locals combined). This is a hard constraint of the virtual machine.
 
@@ -2062,11 +2360,7 @@ x *= factor;
 
 Supported operators: `+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=`
 
-If the LHS type defines an emitter for the operator, it is used. Otherwise the expression is expanded to its equivalent simple assignment, since I6 does not natively support compound operators:
-
-```
-n += 2    →    n = n + 2;
-```
+The LHS type must define the corresponding compound operator. If no matching operator is found and the variable has a known type (not `var`), a compile-time error is reported. The `int` class defines all standard compound assignment operators in the core library.
 
 ## 10.5 Increment and Decrement
 
@@ -2079,7 +2373,7 @@ n--;    // postfix decrement
 --n;    // prefix decrement
 ```
 
-If the variable's type defines the corresponding emitter (`operator ++`, `operator --`, `operator prefix++`, `operator prefix--`), it is used. Otherwise the statement is passed through to I6 directly.
+The variable's type must define the corresponding operator (`operator ++`, `operator --`, `operator prefix++`, `operator prefix--`). If no matching operator is found and the variable has a known type (not `var`), a compile-time error is reported.
 
 ## 10.6 Function and Method Calls
 
@@ -2325,9 +2619,51 @@ Returning a value from a `void` function is a compile-time error. A non-`void` f
 
 If the function's local variables have `deinit` emitters, they fire before the `return` is emitted.
 
-## 10.13 `try` / `catch` / `throw`
+## 10.13 `print()` and `log()`
 
-Beguile provides structured exception handling using the Z-machine's `@catch`/`@throw` opcodes (available on Z-machine v5+ and Glulx). Exceptions unwind the call stack across any number of function calls.
+### `print()`
+
+`print()` outputs a value immediately. It is overloaded to accept any value type:
+
+```bgl
+print("hello");       // string literal
+print(score);         // int or var
+print(c);             // char
+```
+
+`print()` also supports interpolated strings:
+
+```bgl
+print($"Score: {score}  Turns: {turns}");
+```
+
+Each segment of the interpolated string is emitted using type-aware dispatch. For example, `print($"Score: {score}")` emits:
+
+```i6
+print "Score: ";
+print score;
+```
+
+When the `<string>` extension is included, `print(string)` is replaced with the managed string printer. See §16.2.3.
+
+### `log()`
+
+`log()` has the same overloads as `print()` but is a **debug-only** output routine. When `DEBUG` is not `#define`d, `log()` calls produce no code at all — not even a conditional check:
+
+```bgl
+#define DEBUG
+log($"Entering handler for {actor.name}");
+```
+
+Without `DEBUG` defined, the above produces zero I6 output. Expressions inside `log()` are still parsed and type-checked in all builds, so errors are caught even in release builds.
+
+### Implementation note
+
+Both `print()` and `log()` are implemented as global emitters in the core library (`_beguileCore.bgl`). The compiler has no special knowledge of them — they follow the same overload resolution and emitter substitution rules as any other emitter function. See §7.6.
+
+## 10.14 `try` / `catch` / `throw`
+
+Beguile provides structured exception handling using the Z-machine's `@catch`/`@throw` opcodes (available on Z-machine v5+ and Glulx). Exceptions unwind the call stack across any number of function calls. Using `try`, `catch`, or `throw` when targeting Z3 is a compile-time error, as the required opcodes do not exist on that platform.
 
 ### Basic usage
 
@@ -2403,28 +2739,30 @@ Expressions appear as conditions in `if` and loop statements, as initializers in
 
 An expression is built from one or more operands joined by operators. Operands are:
 
-- **Integer literals** — e.g. `42`; may have methods called directly: `42.someMethod()`
-- **String literals** — e.g. `"hello"`, `@"raw"`; may have methods called directly: `"hello".print()`
-- **Character literals** — e.g. `'x'`; may have methods called directly: `'x'.someMethod()`
-- **Dictionary word literals** — e.g. `.word`, `..word` (plural form)
+- **Literals** — integer (`42`), string (`"hello"`, `@"raw"`), character (`'x'`), dictionary word (`.word`, `..word`)
 - **Identifiers** — resolved by scope lookup (see Chapter 13); type is the declared type of the variable, parameter, or enum value
-- **`null`** — resolved type `object`
+- **`null`** — compatible with any type (see §4.4)
 - **`self`** — resolved type of the enclosing class
 - **Method call results** — resolved type is the method's return type
 - **Subscript expressions** — `arr[i]` resolves as the element type of the array
 - **Parenthesized sub-expressions** — `(expr)` has the same type as `expr`
 
+All literal values have an associated pseudo-type (see §4.3) and may have emitter methods called directly on them — e.g. `"hello".print()`, `42.someMethod()`. See §4.3 for the full list of literal pseudo-types.
+
 ## 11.3 Binary Operators
 
 Binary operators join two operands. Resolution proceeds as follows:
 
-1. The compiler looks for an emitter on the LHS type matching the operator and the RHS type.
-2. If not found, it looks for an `operator()` conversion on the RHS type that maps to a type for which the LHS does have an operator emitter.
-3. If still not found, the operator is emitted verbatim as I6.
+1. The compiler looks for an operator (emitter or method) on the LHS type matching the operator name and the RHS type.
+2. If not found, it checks if the LHS type has a conversion operator (`operator()`) that maps to the RHS type — if so, the operator is emitted verbatim as I6 (raw fallback).
+3. If not found, it checks if the RHS type has a conversion operator that maps to a type for which the LHS does have a matching operator.
+4. If no match is found and the LHS has a known type, a compile-time error is reported. Untyped (`var`) operands fall through to raw I6.
 
-The full set of overloadable binary operators includes the standard arithmetic (`+`, `-`, `*`, `/`, `%`), comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`), logical (`&&`, `||`), assignment (`=`, `+=`, `-=`, `*=`, `/=`, `%=`), and the custom operators `?=` (nullable assignment) and `=~` (user-defined; intended for case-insensitive matching). All produce `eBool` as their resolved type when used as comparison operators; assignment and arithmetic operators preserve the LHS type.
+Comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`, `?=`, `=~`) produce `eBool` as their resolved type. Logical operators (`&&`, `||`) also produce `eBool`. Assignment and arithmetic operators preserve the LHS type. See §5.6.6 for the full list of overloadable operators.
 
-Operators are resolved left-to-right for chained expressions:
+Most operators are resolved strictly left-to-right. However, the logical operators `&&` and `||` have **lower precedence**: their right-hand side is parsed as a complete sub-expression. This means `a > 0 && b < 10` is correctly parsed as `(a > 0) && (b < 10)`, not `((a > 0) && b) < 10`.
+
+For all other operators, chaining resolves left-to-right:
 
 ```bgl
 str + " followed" + apnd
@@ -2485,7 +2823,12 @@ x?.remove();
 // if (x ~= nothing) { remove x; }
 ```
 
-Optional chains may be mixed with regular `.` access. A regular `.` after a `?.` does not add a null guard — if the preceding `?.` short-circuited, the regular `.` executes on the null value (which may produce undefined behavior, just as a regular `.` on null would).
+Optional chains may be mixed with regular `.` access. A regular `.` after a `?.` does not add a null guard — if the preceding `?.` short-circuited, the regular `.` executes on the null value (which may produce undefined behavior, just as a regular `.` on null would):
+
+```bgl
+object container = noun?.parent();   // guarded: null if noun is null
+string desc = noun?.parent().description;  // parent() is guarded, but .description is not
+```
 
 ### Null Coalescing `??`
 
@@ -2503,11 +2846,11 @@ object target = customTarget ?? defaultTarget;
 
 ### Postfix Query `v?`
 
-The postfix `?` operator inlines the type's `operator ?()` emitter directly, producing a boolean result. It is primarily useful in `if` conditions:
+The postfix `?` operator inlines the type's `operator ?()` emitter directly, producing a boolean result. For the `object` type, `operator ?()` is defined as `$self ~= nothing`, making `noun?` equivalent to `noun != null`. Other types may define `operator ?()` with different semantics (e.g., a string type could test for non-empty).
 
 ```bgl
-if(noun?) print("something is here");
-if(!noun?) print("nothing here");
+if(noun?) print("something is here");    // equivalent to: if(noun != null)
+if(!noun?) print("nothing here");        // equivalent to: if(noun == null)
 ```
 
 `!v?` correctly negates the result using I6 `~~()` syntax.
@@ -2538,6 +2881,13 @@ No I6 cast is emitted — this is a compile-time-only annotation. It is useful f
 
 ```bgl
 (Animal)myDog.speak();   // dispatches speak() through Animal, not Dog
+```
+
+**Explicit conversion operators** — triggering a conversion operator marked `explicit` that won't fire during implicit resolution (see §5.6.4):
+
+```bgl
+explicit emitter string operator();    // only via cast
+string s = (string)myValue;            // invokes the explicit conversion
 ```
 
 **Disambiguation in expressions** — forcing operator resolution through a specific type when the inferred type would resolve differently.
@@ -2649,12 +2999,13 @@ Beguile checks type compatibility at every assignment, variable declaration init
 
 A value of type `A` is compatible with a target of type `B` if any of the following hold, checked in order:
 
-1. **Exact match** — `A == B`.
-2. **Object subtyping** — any class instance (normal class, extern class, or alias class) is compatible with the base `object` type. This reflects that all I6 objects are ultimately `Object`s.
-3. **Class hierarchy** — if `A` is a class that inherits from (or is an alias of) `B`, `A` is compatible with `B`. The check walks the full parent chain, including alias chains.
-4. **Assignment operator** — type `B` defines `emitter B operator = (A v)` (the target type accepts the source type).
-5. **Conversion operator** — type `A` defines `emitter B operator()` (the source type converts itself to the target type).
-6. **I6 compatibility** — type `A` defines `emitter C operator(){}` where `C` is I6-compatible with `B` (an empty-body conversion, meaning both types share the same underlying I6 representation).
+1. **`var` wildcard** — `var` is compatible with any type in both directions (source or target).
+2. **`null` universal** — `null` is compatible with any target type (emits as `nothing` / `0`).
+3. **Exact match** — `A == B`.
+4. **Class hierarchy** — if `A` inherits from `B` (directly or through a chain of base classes and aliases), `A` is compatible with `B`. The reverse (assigning a base type to a derived type) is blocked — `object` cannot be assigned to `Room`.
+5. **Assignment operator** — type `B` defines `operator = (A v)` (the target type accepts the source type via an operator).
+6. **Conversion operator** — type `A` defines `operator()` returning `B` (the source type converts to the target type). Only implicit conversions participate; `explicit` conversions require a cast (see §11.5).
+7. **`func<>` / `array<>` generics** — `func` is compatible with any `func<...>` type; `array` is compatible with any `array<T>` type.
 
 If none apply, the assignment or call is a compile-time type mismatch error.
 
@@ -2662,16 +3013,15 @@ If none apply, the assignment or call is a compile-time type mismatch error.
 
 When assigning `lhs = rhs`:
 
-1. If LHS type has `emitter LHS_type operator = (RHS_type v)`, inline that emitter.
-2. Else if RHS type has `emitter LHS_type operator()` with a body, apply the conversion and emit a plain assignment.
-3. Else if the types are I6-compatible (both map to the same underlying I6 type via empty `operator()`), emit a plain assignment.
-4. Otherwise — compile-time error.
+1. If LHS type has `operator = (RHS_type v)`, use that operator (emitter or method).
+2. Else if RHS type has an implicit `operator()` returning the LHS type, apply the conversion. Pass-through conversions (`;` terminated) emit a plain assignment; conversions with a body transform the value.
+3. Otherwise — compile-time error.
 
 This priority is consistent across assignment statements (`x = expr;`), variable declaration initializers (`T x = expr;`), and function call arguments.
 
 ## 12.4 Priority at Function Call Arguments
 
-For each argument, the same priority applies: exact match first, then `operator =`, then `operator()` conversion, then I6 compatibility, then `var` fallback. If multiple overloads exist, exact matches win over conversion matches, which win over `var` fallbacks (see §8.4).
+For each argument, the same priority applies: exact type match first, then implicit `operator()` conversion, then `var` fallback. If multiple overloads exist, exact matches win over conversion matches, which win over `var` fallbacks (see §8.4).
 
 ## 12.5 Example
 
@@ -2709,46 +3059,41 @@ Identifiers are resolved through four tiers, searched in order:
 
 **Tier 3 — Global scope**
 5. Enum values (all declared enum members are in a flat global namespace)
-6. Global variables, constants, and extern declarations
-
-**Tier 4 — Verb names**
-7. Declared verb names. Resolved as the plain I6 verb name. The `##` prefix is applied only by emitter bodies (e.g., `##v` in `operator ==`) and by `switch`/`case` emission for `verb`-typed case values.
+6. Global variables, constants, extern declarations, and verb names
 
 If no tier matches, the identifier is undeclared — a compile-time error.
 
 ## 13.3 The `self` Keyword
 
-`self` explicitly refers to the receiver object within a method body. It may be used anywhere a member name appears; however, it is generally optional since beguile will resolve class members even if not qualified:
+`self` refers to the receiver object within a method body. Bare member names are automatically qualified with `self.` — see §5.4 for details. `self` is only valid inside a class or object method body.
 
-```bgl
-class Counter {
-    int count = 0;
-    void reset() {
-        self.count = 0;   // explicit self
-        count = 0;        // identical — bare member names resolve automatically in Beguile
-    }
-}
-```
+## 13.4 Variable Shadowing — Prohibited
 
-`self` is only valid inside a class or object method body.
+Local variables and function parameters may not shadow any of the following:
+- **Global variables** — I6 provides no mechanism to access a shadowed global.
+- **Class members** — when inside a class method body.
+- **Object members** — when inside an object method body.
 
-## 13.4 Global Variable Shadowing — Prohibited
-
-A local variable declaration may not use the same name as any global variable. If a local would shadow a global, the compiler reports a compile-time error and halts:
+All three cases produce a compile-time error:
 
 ```bgl
 int score = 0;     // global
 
 void foo() {
-    int score = 5; // ERROR: local 'score' shadows global variable of the same name
+    int score = 5; // ERROR: local 'score' shadows global variable
+}
+
+class Room : object {
+    string description;
+    void init(string description) { }  // ERROR: parameter shadows class member
 }
 ```
 
-**Rationale:** I6 provides no mechanism to access a global that has been shadowed by a local. Rather than silently producing unreachable globals, Beguile disallows the condition entirely. Rename the local to resolve the conflict.
+**Method shadowing** in derived classes is handled differently — it produces a warning, not an error, and can be suppressed with `replace` (see §5.8).
 
 ## 13.5 Verb Names vs. Variables
 
-When an identifier matches both a declared variable and a declared verb name, the variable always wins (Tier 1–3 before Tier 4). The `##VerbName` form is never emitted simply from naming an identifier — it requires the `verb` type's `operator ==` emitter or a `switch` case value of type `verb`.
+Verbs are objects in Beguile and follow the same name resolution rules as other identifiers. If a local variable has the same name as a verb, the variable takes priority (Tier 1–3 before Tier 4). The I6 `##VerbName` prefix is an internal emission detail handled by the `verb` class's `operator ==` emitter — the user never writes `##` directly.
 
 ## 13.6 Global Name Collision Detection
 
@@ -2768,11 +3113,10 @@ Collisions detected at global scope:
 | Object vs. object or class | detected; error cites original declaration |
 | Enum vs. enum or other type | detected; error cites original declaration |
 
-**Beguile vs. raw I6 collisions** (symbols declared via `#includeI6` or `#i6` blocks) are invisible to the Beguile parser and will surface as I6 compiler errors instead. Using `extern` declarations in a bridging file is the recommended way to make I6 symbols known to the Beguile type system and prevent silent conflicts.
+**Beguile vs. raw I6 collisions** (symbols declared via `#includeI6` or `#i6` blocks) are invisible to the Beguile parser and will surface as I6 compiler errors instead. Using `extern` declarations in a bindings file is the recommended way to make I6 symbols known to the Beguile type system and prevent silent conflicts.
 
 **Naming conventions to avoid collisions:**
-- Compiler-generated symbols use the `_bgl` prefix (reserved — see §2.4.1)
-- Standard library internal symbols use the `or` prefix (e.g., `orString`, `orBufferWrapper`)
+- Compiler-generated symbols use the `bgl` and `_bgl` prefixes (reserved — see §2.4.1)
 - User code should use application-specific prefixes for any global variables or types intended to coexist with included library files
 
 ---
@@ -3006,13 +3350,122 @@ A separate category of files, **IF Library Bindings** (`beguiLib/bindings/`), ex
 
 ## 16.2 Language Extension Files
 
-Core files in `beguiLib/`. These are library-agnostic and work with any IF target.
+Core files in `beguiLib/`. These are library-agnostic and work with any IF target. Each is included with `#include <name>`.
 
-### File Overview
+### 16.2.2 `<char>` — Character Utilities
 
-**`string.bgl`** — The full string runtime. Provides a pool-based string type with methods covering assignment, concatenation, comparison, mutation, transformation, substring extraction, search, and formatted output. Requires `bglInit()` (see §16.2.1).
+```bgl
+#include <char>
+```
 
-**`char.bgl`** — Extends the built-in `char` type with character-testing, case transformation, and support for extended characters including diacritics and other Z-machine character set entries.
+Extends the built-in `char` type with character inspection, case conversion, and case-insensitive comparison. Includes full support for ZSCII extended characters (diacritics, ligatures, etc.).
+
+**Case inspection:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `c.isLower()` | `bool` | True if `c` is a lowercase letter (including diacritics) |
+| `c.isUpper()` | `bool` | True if `c` is an uppercase letter (including diacritics) |
+| `c.isAlpha()` | `bool` | True if `c` is any letter |
+| `c.isNumeric()` | `bool` | True if `c` is a digit (`0`–`9`) |
+| `c.isAlphaNumeric()` | `bool` | True if `c` is a letter or digit |
+| `c.isVowel()` | `bool` | True if `c` is a vowel (including accented vowels) |
+| `c.isConsonant()` | `bool` | True if `c` is a consonant |
+
+**Case conversion:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `c.toUpper()` | `char` | Returns uppercase version of `c` |
+| `c.toLower()` | `char` | Returns lowercase version of `c` |
+
+**Operators:**
+
+| Operator | Description |
+|----------|-------------|
+| `c =~ d` | Case-insensitive equality. `'A' =~ 'a'` is true. |
+
+Does not require `bglInit()`.
+
+### 16.2.3 `<string>` — Mutable String Runtime
+
+```bgl
+#include <string>
+```
+
+Provides a pool-based mutable string type. Requires `bglInit()` to initialize the string pool.
+
+**Lifecycle:**
+
+Strings are automatically allocated on declaration (`init`) and freed on function exit (`deinit`). The pool size is configurable via `beguilerSettings.framePoolSize`.
+
+**Assignment and concatenation:**
+
+| Method / Operator | Description |
+|-------------------|-------------|
+| `s = "text"` | Assign from a string literal |
+| `s = other` | Copy from another string |
+| `s + "text"` | Concatenate (returns new string) |
+
+**Comparison:**
+
+| Operator | Description |
+|----------|-------------|
+| `s == "text"` | Content equality |
+| `switch(s) { case "a": ... }` | Switch on string value (via `operator switch`) |
+
+**Subscript access:**
+
+| Operator | Description |
+|----------|-------------|
+| `s[i]` | Read character at position `i` |
+| `s[i] = c` | Write character at position `i` |
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `s.print()` | `string` | Print the string |
+| `s.append(v)` | `string` | Append a string or character |
+| `s.prepend(v)` | `string` | Prepend a value |
+| `s.toUpper()` | `string` | Convert to uppercase |
+| `s.toLower()` | `string` | Convert to lowercase |
+| `s.trim()` | `string` | Trim whitespace from both ends |
+| `s.trimLeft()` | `string` | Trim leading whitespace |
+| `s.trimRight()` | `string` | Trim trailing whitespace |
+| `s.reverse()` | `string` | Reverse the string |
+| `s.mid(start, count)` | `string` | Extract substring |
+| `s.left(count)` | `string` | Extract left substring |
+| `s.right(count)` | `string` | Extract right substring |
+| `s.insert(pos, src)` | `string` | Insert at position |
+| `s.delete(pos, count)` | `string` | Delete characters |
+| `s.replace(search, repl)` | `string` | Replace first occurrence |
+| `s.replaceAll(search, repl)` | `string` | Replace all occurrences |
+| `s.format(pattern, ...)` | `string` | Formatted output (up to 2 additional args) |
+| `s.getLength()` | `int` | String length |
+| `s.indexOf(search)` | `int` | Find first occurrence |
+| `s.startsWith(prefix)` | `eBool` | Prefix test |
+| `s.endsWith(suffix)` | `eBool` | Suffix test |
+| `s.contains(search)` | `eBool` | Substring test |
+| `s.isEmpty()` | `eBool` | True if empty |
+| `s.capture()` | `void` | Capture output to this string |
+| `s.release()` | `void` | Release captured output |
+
+### 16.2.4 `<array>` — Extended Array Utilities
+
+```bgl
+#include <array>
+```
+
+> *This extension is planned but not yet implemented.* It will provide higher-level array operations (sort, search, filter, map) beyond the built-in subscript and for-in support.
+
+### 16.2.5 `<math>` — Mathematical Functions
+
+```bgl
+#include <math>
+```
+
+> *This extension is planned but not yet implemented.* It will provide common mathematical functions (abs, min, max, clamp, random range, power) as emitters.
 
 ## 16.2.1 `bglInit()` — Runtime Initialization
 
@@ -3035,11 +3488,13 @@ If you use `string` and forget to call `bglInit()`, strings will not function co
 
 Files in `beguiLib/bindings/`. Each binding file is a Beguile declaration layer over one particular external IF library, giving Beguile code typed, name-checked access to that library's attributes, globals, and actions. Binding files do not define behavior — they map existing I6 names into the Beguile type system using `extern` declarations.
 
-Different IF libraries require different binding files and would not be used together. An example binding file is provided for the Inform 6 standard library.
+Different IF libraries require different binding files and would not be used together.
 
-### File Overview
+### Available Bindings
 
-**`i6StandardLibrary.bgl`** — Example bindings for the Inform 6 standard library. Declares standard world-model attributes, mutable library globals, parser variables, and the full set of standard IF actions as typed verbs.
+**`bindings/i6StandardLibrary`** — Bindings for the Inform 6 standard library (`parser.h`, `verblib.h`, `grammar.h`). Declares standard world-model attributes, mutable library globals, parser variables, compass direction objects, and the full set of standard IF actions as typed verbs. Automatically maps `title`, `headline`, and `release` from `#beguilerSettings` to the I6 constants the library expects.
+
+**`bindings/punyInform`** — Bindings for the PunyInform library (`globals.h`, `puny.h`). Declares PunyInform's attributes (including `reactive`), globals, colour settings, and verb actions. PunyInform uses no classes — objects are distinguished by attributes alone. Automatically maps `title` and `headline` from `#beguilerSettings`.
 
 ---
 

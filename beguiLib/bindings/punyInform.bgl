@@ -223,3 +223,7 @@ extern verb LookModeShort;
 extern verb LookModeLong;
 extern verb NotifyOn;
 extern verb NotifyOff;
+
+//-- Map beguilerSettings metadata to PunyInform constants ----------------------
+const string story = #beguilerSettings.title;
+const string headline = #beguilerSettings.headline;

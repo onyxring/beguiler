@@ -45,6 +45,7 @@ class bglParser {
         int forInCounter = 0;               // counter for unique _bglfiN variable names
         int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
+        int ternaryDepth = 0;               // nesting depth of ternary expressions (max 1)
 
         bool processNextStatement(abstractObject& =emptyContainer);
         bool processParameterList(functionDef&);
