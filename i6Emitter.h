@@ -52,7 +52,7 @@ class i6Emitter{
         void emitInterpolatedSegments(const vector<interpolatedSegment>& segments, string indent);
         void emitInterpolatedEmitterBody(const string& body, const string& paramName, const vector<interpolatedSegment>& segments, string indent);
         void emitVerbObject(verbObjectDef*);
-        void emitGrammarBlock(grammarBlock*);
+        void emitGrammarRuleListDecl(grammarRuleListDecl*);
         void emitGrammarLines(const string& verbName, const vector<grammarLine>& lines);
         int currentLine();
         void writeSourceMap(const string& path);
