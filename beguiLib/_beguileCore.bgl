@@ -80,11 +80,11 @@
 //=============================================================================
 // type int 
     extern class intLiteral:_bglObject{
-        emitter int operator(){}
+        emitter int operator();
     }
 
     extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
-        emitter char operator(){}
+        emitter char operator();
         emitter int operator = (int v){ $self=$v; }
 
         // Arithmetic
@@ -101,12 +101,23 @@
         emitter bool operator <= (int v){ $self <= $v }
         emitter bool operator > (int v){ $self > $v }
         emitter bool operator >= (int v){ $self >= $v }
+
+        // Compound assignment
+        emitter int operator += (int v){ $self = $self + $v }
+        emitter int operator -= (int v){ $self = $self - $v }
+        emitter int operator *= (int v){ $self = $self * $v }
+        emitter int operator /= (int v){ $self = $self / $v }
+        emitter int operator %= (int v){ $self = $self % $v }
+
+        // Increment / decrement
+        emitter int operator ++() { $self++ }
+        emitter int operator --() { $self-- }
     }
     
 //=============================================================================
 // type char
     extern class charLiteral:_bglObject{    
-        emitter char operator(){}                   //implicitly converts to char type
+        emitter char operator();                   //implicitly converts to char type
         replace emitter void print(){ print (char)$self; }
     }
     extern class char : _bglObject{ 
@@ -137,7 +148,7 @@
 //=============================================================================
 // type string
     extern class stringLiteral:_bglObject{
-        emitter string operator(){}
+        emitter string operator();
         replace emitter void print(){ print (string)$self; }
     }       
     
@@ -157,7 +168,7 @@
         replace emitter void print(){ print (address) $self }
     }
     emitter class dictionaryWord : _bglObject{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
-        emitter dictionaryWordLiteral operator(){}                           //--I6 passthrough; enables mixed expressions
+        emitter dictionaryWordLiteral operator();                           //--I6 passthrough; enables mixed expressions
         emitter dictionaryWord operator = (dictionaryWordLiteral v){ $self = $v; }
         emitter dictionaryWord operator = (dictionaryWord v){ $self = $v; }
         replace emitter void print(){ print (address) $self }
@@ -182,7 +193,7 @@
 //=============================================================================
 // type grammarToken
     emitter class grammarToken : _bglObject{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
-        emitter var operator(){}              //--declares I6 compatibility with var, enabling mixed expressions
+        emitter var operator();              //--declares I6 compatibility with var, enabling mixed expressions
         emitter eBool operator == (var v){ $self == $v }
         emitter eBool operator != (var v){ $self ~= $v }
         emitter grammarToken operator = (var v){ $self = $v }
@@ -390,10 +401,10 @@ emitter void print(char c){ print (char)$c; }
 emitter void print(interpolatedStringLiteral v){ $v; }
 
 //-- log() — debug-conditional print; never reaches i6 unless DEBUG is #defined
-emitter void log(stringLiteral msg){ ##ifdef DEBUG print (string)$msg; ##endif }
-emitter void log(string msg){ ##ifdef DEBUG print (string)$msg; ##endif }
-emitter void log(var msg){ ##ifdef DEBUG print $msg; ##endif }
-emitter void log(interpolatedStringLiteral v){ ##ifdef DEBUG $v; ##endif }
+emitter void log(stringLiteral msg){ ##if DEBUG print (string)$msg; ##endif }
+emitter void log(string msg){ ##if DEBUG print (string)$msg; ##endif }
+emitter void log(var msg){ ##if DEBUG print $msg; ##endif }
+emitter void log(interpolatedStringLiteral v){ ##if DEBUG $v; ##endif }
 
 //=============================================================================
 // style emitter namespace.  TODO: add the rest of these.
