@@ -1,0 +1,28 @@
+#once
+//=============================================================================
+// type grammarToken
+    emitter class grammarToken : grammarElement{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
+        emitter var operator();              //--declares I6 compatibility with var, enabling mixed expressions
+        emitter eBool operator == (var v){ $self == $v }
+        emitter eBool operator != (var v){ $self ~= $v }
+        emitter grammarToken operator = (var v){ $self = $v }
+    }
+
+//=============================================================================
+// type grammarPattern — a sequence of grammar tokens and dictionary words describing player input
+    extern class grammarPattern : _bglObject{ }
+
+//=============================================================================
+// type grammarRule — pairs a verb reference with a grammarPattern
+    extern class grammarRule : _bglObject{ }
+
+//=============================================================================
+// type grammarRuleList — collection of grammarRules; emits as I6 Verb directives
+    extern class grammarRuleList : _bglObject{
+        grammarRule rule;            // class-level member for type inference (individual and array rules)
+    }
+
+//=============================================================================
+// type grammarElement — base class for grammar line elements (grammarToken, dictionaryWord)
+    extern class grammarElement : _bglObject{ }
+

@@ -1,0 +1,24 @@
+#once
+//=============================================================================
+// type array<> NOTE: Should this move to an <array> language extension?
+//-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+// $self = array name (global) or owning object (if property)
+// $prop = 0 (global) or property name (property)
+extern class array  : _bglObject{
+    replace emitter char operator[](int i)          { $self-->($i+1) }
+    replace emitter char operator[]=(int i, char v) { $self-->($i+1) = $v }
+    replace emitter int length()                    { $self-->0 }
+}
+
+// byteArray — byte-sized element array, used internally for array<char>.
+// Overrides array's word-access emitters with byte-access (->).
+// Layout: byte 0 = length, bytes 1..N = elements.
+// byteArray — byte-sized element array, used internally for array<char>.
+// Overrides array's word-access emitters with byte-access (->).
+// I6 buffer layout: byte 0 = max length, byte 1 = current length, data starts at byte 2.
+extern class byteArray : array {
+    replace emitter char operator[](int i)          { $self->($i+2) }
+    replace emitter char operator[]=(int i, char v) { $self->($i+2) = $v }
+    replace emitter int length()                    { $self->0 }
+}
+  

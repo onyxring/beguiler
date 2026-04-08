@@ -293,7 +293,7 @@ void i6Emitter::writeDebugBundle(const string& path){
             f << od->name << "\t" << od->name << "\tobject\n";
             for(typeMember* m : od->members){
                 if(auto* mv = dynamic_cast<variableDeclaration*>(m)){
-                    if(mv->name == "parent") continue; // positional arg, not a real property
+                    if(mv->name == "parent") continue;
                     f << od->name << "." << mv->name << "\t" << mv->name << "\tproperty\n";
                 }
             }
@@ -301,6 +301,22 @@ void i6Emitter::writeDebugBundle(const string& path){
             if(fd->isEmitter || fd->isExternal) continue;
             f << fd->name << "\t" << fd->name << "\tfunction\n";
         }
+    }
+    // Extern objects — emit sym entries so the debugger can expand them
+    for(typeDef* node : languageService.globals){
+        if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
+            if(!vd->isExternal) continue;
+            // Extern variables of object type — emit as object so debugger can expand
+            if(dynamic_cast<objectDef*>(&languageService.getType(vd->type.name)) != nullptr
+               || vd->type.name == "object")
+                f << vd->name << "\t" << vd->name << "\tobject\n";
+            else
+                f << vd->name << "\t" << vd->name << "\tglobal\n";
+        }
+    }
+    for(verbObjectDef* v : languageService.verbs){
+        if(!v->isExternal) continue;
+        f << v->name << "\t" << v->name << "\tobject\n";
     }
 
     // ── [types] section ───────────────────────────────────────────────────────
@@ -335,15 +351,30 @@ void i6Emitter::writeDebugBundle(const string& path){
             f << "  prop " << mv->name << " " << i6n << " " << propTypeName(mv) << "\n";
         }
     }
-    // Bare object instances (no Beguile class) — each gets a synthetic type using its own name
+    // Object instances — emit a type entry for each object that has its own properties.
+    // This covers bare objects (no class) and class-typed objects with properties unique
+    // to the instance (e.g. 'name' on a specific object not defined on its class).
     for(typeDef* node : languageService.globals){
         auto* od = dynamic_cast<objectDef*>(node);
-        if(!od || od->isExternal || od->objectClass) continue;
+        if(!od || od->isExternal) continue;
+        // Collect properties that are on this object instance
+        bool hasProps = false;
+        for(typeMember* m : od->members){
+            auto* mv = dynamic_cast<variableDeclaration*>(m);
+            if(mv && !mv->isExternal && !mv->type.name.empty() && mv->name != "parent"
+               && mv->type.name != "grammartable" && mv->type.name != "grammarrulelist"
+               && mv->type.name != "grammarrule" && mv->type.name != "attributelist"){
+                hasProps = true; break;
+            }
+        }
+        if(!hasProps) continue;
         f << "type " << od->name << "\n";
         for(typeMember* m : od->members){
             auto* mv = dynamic_cast<variableDeclaration*>(m);
             if(!mv || mv->isExternal || mv->type.name.empty()) continue;
-            if(mv->name == "parent") continue; // positional arg, not a real property
+            if(mv->name == "parent") continue;
+            if(mv->type.name == "grammartable" || mv->type.name == "grammarrulelist"
+               || mv->type.name == "grammarrule" || mv->type.name == "attributelist") continue;
             const string& i6n = mv->i6name.empty() ? mv->name : mv->i6name;
             f << "  prop " << mv->name << " " << i6n << " " << propTypeName(mv) << "\n";
         }
@@ -437,8 +468,15 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
         xpGlobalsNeeded = maxXP;
     }
 
-    // Synthesise bglInit — always emitted, even if empty
+    // Emit #emitfirst blocks — raw I6 after ICL headers, before bglInit
+    for(const string& block : languageService.emitFirstBlocks)
+        out << block << "\n";
+
+    // Synthesise bglInit — always emitted, even if empty; guarded against double-call
+    out << "global _bglInitDone = 0;\n";
     out << "[bglInit;\n";
+    out << "    if(_bglInitDone) return;\n";
+    out << "    _bglInitDone = 1;\n";
     for(const string& block : languageService.startupBlocks)
         out << block << "\n";
     for(auto& [varName, body] : languageService.globalInits)
@@ -448,6 +486,10 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Pass 3: emit everything else
     for(typeDef* node : nodeList)
         generateI6(node);
+
+    // Emit #emitlast blocks at the very end of the I6 output
+    for(const string& block : languageService.emitLastBlocks)
+        out << block << "\n";
 }
 void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     if(cfg->target == "glulx")     out << "!% -G\n";
@@ -484,6 +526,10 @@ void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     //   const int gameRelease = #beguilerSettings.release;
 }
 void i6Emitter::generateI6(typeDef* node){
+     // Skip value emitters — they expand inline at use sites, no standalone I6 output
+     if(auto* fd = dynamic_cast<functionDef*>(node)){
+         if(fd->isValueEmitter) return;
+     }
      if (typeid(*node) == typeid(enumDef))  emitEnum((enumDef*)node);
      else if (typeid(*node) == typeid(classDef)) emitClass((classDef*)node);
      else if (typeid(*node) == typeid(objectDef)) emitObject((objectDef*)node);
@@ -634,7 +680,7 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     if(typeid(*stmt) == typeid(variableDeclaration)){
         variableDeclaration* var = (variableDeclaration*)stmt;
         // emit initializer assignment if present
-        if(var->declaredExpressionValue != nullptr && !var->declaredExpressionValue->text().empty()){
+        if(var->declaredExpressionValue != nullptr && (!var->declaredExpressionValue->text().empty() || !var->interpSegments.empty())){
             if(!var->interpSegments.empty() && !var->initEmitterBody.empty()){
                 // Interpolated string literal: split emitter body at parameter, splice print-block
                 string b = var->initEmitterBody;
@@ -644,11 +690,18 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                 string b = var->initEmitterBody;
                 b = replaceWord(b, "$" + var->initEmitterParam, exprText(var->declaredExpressionValue));
                 b = replaceWord(b, "$self",              spillName(var->name));
+                b = replaceWord(b, "$target",            spillName(var->name));
                 size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
                 size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
                 out << format("{0}{1};\n", indent, b);
             } else {
-                out << format("{0}{1} = {2};\n", indent, spillName(var->name), exprText(var->declaredExpressionValue));
+                string rhs = exprText(var->declaredExpressionValue);
+                if(rhs.find("$target") != string::npos){
+                    rhs = replaceWord(rhs, "$target", spillName(var->name));
+                    out << format("{0}{1};\n", indent, rhs);
+                } else {
+                    out << format("{0}{1} = {2};\n", indent, spillName(var->name), rhs);
+                }
             }
         }
     }
@@ -666,10 +719,18 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             // Substitute params before $self to avoid double-substitution when param name matches the LHS variable
             b=replaceWord(b,"$" + assign->emitterParam, assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "");
             b=replaceWord(b,"$self", assign->emitterSelf.empty() ? spillName(assign->variableLeft) : spillName(assign->emitterSelf));
+            b=replaceWord(b,"$target", spillName(assign->variableLeft));
             while(!b.empty() && b.back()==';') b.pop_back();
             out << indent << b << ";\n";
         } else {
-            out << format("{0}{1} = {2};\n", indent, spillName(assign->variableLeft), assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "");
+            string rhs = assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "";
+            // $target in expression: substitute LHS and emit as statement (no "LHS =" prefix)
+            if(rhs.find("$target") != string::npos){
+                rhs = replaceWord(rhs, "$target", spillName(assign->variableLeft));
+                out << indent << rhs << ";\n";
+            } else {
+                out << format("{0}{1} = {2};\n", indent, spillName(assign->variableLeft), rhs);
+            }
         }
     }
     else if(typeid(*stmt) == typeid(returnStatement)){
@@ -701,6 +762,9 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             for(size_t i=0; i<call->emitterParams.size() && i<call->args.size(); i++)
                 if((int)i != interpArgIdx)
                     b=replaceWord(b, "$" + call->emitterParams[i], exprText(call->args[i]));
+            // $target substitution: for discarded call statements, use _bgl_temp
+            b = replaceWord(b, "$target", "_bgl_temp");
+            if(b.find("_bgl_temp") != string::npos) languageService.ternaryTempNeeded = true;
             if(interpArgIdx >= 0){
                 // Splice interpolated print-block at the interpolated parameter's position
                 emitInterpolatedEmitterBody(b, call->emitterParams[interpArgIdx],
@@ -893,27 +957,51 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         string cvSave = "_bgl_cvs" + id;
         string tryLabel = "_bgl_try" + id;
         string endLabel = "_bgl_tryend" + id;
-        // @catch: on normal execution, stores cookie and branches to try body.
-        // On @throw, resumes here with thrown value in cvName.
-        out << indent << "@catch -> " << cvName << " ?" << tryLabel << ";\n";
-        // Catch body (reached via @throw)
-        out << indent << "    " << tc->catchVarName << " = " << cvName << ";\n";
-        if(tc->catchBody != nullptr)
-            for(statement* s : tc->catchBody->statements){
-                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                    if(vd->name == tc->catchVarName) continue; // skip the catch var decl — emitted above
-                emitStatement(s, indent + "    ");
-            }
-        out << indent << "    jump " << endLabel << ";\n";
-        // Try body (normal execution)
-        out << indent << "." << tryLabel << ";\n";
-        out << indent << "    " << cvSave << " = _bgl_catch_cookie;\n";
-        out << indent << "    _bgl_catch_cookie = " << cvName << ";\n";
-        if(tc->tryBody != nullptr)
-            for(statement* s : tc->tryBody->statements)
-                emitStatement(s, indent + "    ");
-        out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
-        out << indent << "." << endLabel << ";\n";
+        if(currentTarget == "glulx"){
+            // Glulx: @catch cookie ?label — branches to label on first exec, falls through on throw
+            out << indent << "@catch " << cvName << " ?" << tryLabel << ";\n";
+            // Catch body (reached via @throw)
+            out << indent << "    " << tc->catchVarName << " = " << cvName << ";\n";
+            if(tc->catchBody != nullptr)
+                for(statement* s : tc->catchBody->statements){
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == tc->catchVarName) continue;
+                    emitStatement(s, indent + "    ");
+                }
+            out << indent << "    jump " << endLabel << ";\n";
+            // Try body (normal execution — branched here by @catch)
+            out << indent << "." << tryLabel << ";\n";
+            out << indent << "    " << cvSave << " = _bgl_catch_cookie;\n";
+            out << indent << "    _bgl_catch_cookie = " << cvName << ";\n";
+            if(tc->tryBody != nullptr)
+                for(statement* s : tc->tryBody->statements)
+                    emitStatement(s, indent + "    ");
+            out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
+            out << indent << "." << endLabel << ";\n";
+            out << indent << "    _bgl_catch_cookie = _bgl_catch_cookie;\n";  // no-op to satisfy I6 label requirement
+        } else {
+            // Z-machine: @catch -> cookie — no branch; saves frame cookie, resumes after @catch on throw
+            out << indent << cvSave << " = _bgl_catch_cookie;\n";
+            out << indent << "@catch -> " << cvName << ";\n";
+            out << indent << "if (_bgl_catch_cookie == " << cvName << ") {\n";
+            // First execution: cookie just stored, set it as the active catch cookie
+            out << indent << "    _bgl_catch_cookie = " << cvName << ";\n";
+            if(tc->tryBody != nullptr)
+                for(statement* s : tc->tryBody->statements)
+                    emitStatement(s, indent + "    ");
+            out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
+            out << indent << "} else {\n";
+            // Throw landed: cvName contains thrown value
+            out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
+            out << indent << "    " << tc->catchVarName << " = " << cvName << ";\n";
+            if(tc->catchBody != nullptr)
+                for(statement* s : tc->catchBody->statements){
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == tc->catchVarName) continue;
+                    emitStatement(s, indent + "    ");
+                }
+            out << indent << "}\n";
+        }
     }
     else if(typeid(*stmt) == typeid(throwStatement)){
         throwStatement* th = (throwStatement*)stmt;
@@ -1031,29 +1119,32 @@ void i6Emitter::emitInterpolatedEmitterBody(const string& body, const string& pa
 void i6Emitter::emitGlobal(variableDeclaration* varNode){
     if(varNode->isExternal) return;  // extern declarations are type-system only
 
-    // Array declarations emit as I6 Array directives
+    //--Array declarations. We use I6 tables and buffers exclusively for Beguile constructs
     if(auto* arr = dynamic_cast<arrayDeclaration*>(varNode)){
-        if(!arr->stringInitializer.empty()){
-            // String initializer: Array name string "text";
-            out << format("Array {0} string {1};\n", arr->name, arr->stringInitializer);
-        } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-            if(arr->isByteArray){
-                // Byte array: Array name -> count v1 v2 ...
-                out << format("Array {0} -> {1}", arr->name, list->elements.size());
-                for(expression* elem : list->elements) out << " " << elem->text();
-                out << ";\n";
-            } else {
-                // Word array: Array name --> count v1 v2 ...
-                out << format("array {0} --> {1}", arr->name, list->elements.size());
-                for(expression* elem : list->elements) out << " " << elem->text();
-                out << ";\n";
-            }
-        } else if(arr->arraySize > 0) {
-            if(arr->isByteArray)
-                out << format("Array {0} -> {1};\n", arr->name, arr->arraySize);
-            else
-                out << format("array {0} table {1};\n", arr->name, arr->arraySize);
+        string arraySubtype;
+        if(arr->isByteArray) arraySubtype="buffer"; else arraySubtype="table"; 
+
+        // initialize with string...
+        if(!arr->stringInitializer.empty()) { 
+            out << format("array {0} {1} {2};\n", arr->name, arraySubtype, arr->stringInitializer);
+            return;
         }
+        
+        //no initialization, just allocating size
+        if(arr->arraySize > 0) { 
+            out << format("array {0} {1} {2};\n", arr->name, arraySubtype, arr->arraySize);
+            return;
+        }
+        
+        //initialize with a list of elements
+        if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){ 
+            out << format("array {0} {1}", arr->name, arraySubtype);
+            for(expression* elem : list->elements) out << " " << elem->text();
+            out << ";\n";
+            return;
+        } 
+        //NOTE: if we got here, something's wrong.  The parser hasn't filled in what we need.
+        throw ("i6Emitter: unable to emit array.");
         return;
     }
 
