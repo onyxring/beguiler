@@ -1,0 +1,39 @@
+#once
+//=============================================================================
+// type int 
+    extern class intLiteral:_bglObject{
+        emitter int operator();
+        int operator auto();
+    }
+
+    extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
+        emitter char operator();
+        emitter int operator = (int v){ $self=$v; }
+
+        // Arithmetic
+        emitter int operator + (int v){ $self + $v }
+        emitter int operator - (int v){ $self - $v }
+        emitter int operator * (int v){ $self * $v }
+        emitter int operator / (int v){ $self / $v }
+        emitter int operator % (int v){ $self % $v }
+
+        // Comparison
+        emitter bool operator == (int v){ $self == $v }
+        emitter bool operator != (int v){ $self ~= $v }
+        emitter bool operator < (int v){ $self < $v }
+        emitter bool operator <= (int v){ $self <= $v }
+        emitter bool operator > (int v){ $self > $v }
+        emitter bool operator >= (int v){ $self >= $v }
+
+        // Compound assignment
+        emitter int operator += (int v){ $self = $self + $v }
+        emitter int operator -= (int v){ $self = $self - $v }
+        emitter int operator *= (int v){ $self = $self * $v }
+        emitter int operator /= (int v){ $self = $self / $v }
+        emitter int operator %= (int v){ $self = $self % $v }
+
+        // Increment / decrement
+        emitter int operator ++() { $self++ }
+        emitter int operator --() { $self-- }
+    }
+    emitter void print(int c){ print $c; }

@@ -1,0 +1,31 @@
+#once
+extern class charLiteral:_bglObject{
+    emitter char operator();                   //implicitly converts to char type
+    char operator auto();
+    replace emitter void print(){ print (char)$self; }
+}
+extern class char : _bglObject{ 
+    emitter char operator = (char c){ $self=$c; }
+    //emitter char operator = (int v){ $self=$v; } //we avoid:  char c = 45;  Enforce: char c ='\45';
+
+    emitter bool operator == (char c){ $self==$c}
+    emitter bool operator != (char c){ $self~=$c}
+    emitter bool operator < (char c)	{ $self<$c}
+    emitter bool operator > (char c)	{ $self>$c}
+    emitter bool operator <= (char c){ $self<=$c}
+    emitter bool operator >= (char c){ $self>=$c}
+                                    
+    //By design, int and char are NOT the same. For example, we don't support an integer test against a character by default (intA == 'c'); however, we do overload character for the reverse test for convenience (charA==64).
+    // emitter bool operator == (int i){ $self==i} 
+    // emitter bool operator != (int i){ $self~=i} 
+    // emitter bool operator < (int i)	{ $self<i} 
+    // emitter bool operator > (int i)	{ $self>i} 
+    // emitter bool operator <= (int i){ $self<+i} 
+    // emitter bool operator >= (int i){ $self>=i} 
+
+    emitter char operator + (int c){$self+$c}
+    emitter char operator - (int c){$self-$c}
+        
+    replace emitter void print(){ print (char)$self; }
+}
+emitter void print(char c){ print (char)$c; }
