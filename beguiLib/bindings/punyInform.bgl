@@ -225,5 +225,15 @@ extern verb NotifyOn;
 extern verb NotifyOff;
 
 //-- Map beguilerSettings metadata to PunyInform constants ----------------------
-const string story = #beguilerSettings.title;
+const string story = #beguilerSettings.title;       
 const string headline = #beguilerSettings.headline;
+
+#emitfirst{
+    replace main _oldmain;
+}
+#emitlast{
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+}

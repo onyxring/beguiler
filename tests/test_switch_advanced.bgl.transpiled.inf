@@ -1,0 +1,38 @@
+!% -v5
+!% -E1
+global _bgl_sw;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+[main val;
+    val = 7;
+    _bgl_sw = val;
+    if (_bgl_sw == 0) {
+        print (string)"zero";
+    }
+    else if (_bgl_sw == 1 || _bgl_sw == 2 || _bgl_sw == 3) {
+        print (string)"low";
+    }
+    else if ((_bgl_sw >= 4 && _bgl_sw <= 6)) {
+        print (string)"mid";
+    }
+    else if ((_bgl_sw >= 7 && _bgl_sw <= 9)) {
+        print (string)"high";
+    }
+    else if ((_bgl_sw > 9)) {
+        print (string)"over nine";
+    }
+    else {
+        print (string)"negative";
+    }
+    switch (val) {
+        1, 2:
+            print (string)"one or two";
+        3 to 5:
+            print (string)"three to five";
+        6, 7 to 9:
+            print (string)"six or seven to nine";
+    }
+];

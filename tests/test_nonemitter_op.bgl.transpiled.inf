@@ -1,0 +1,30 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+class counter
+  class object
+  with
+    value 0,
+    _opeqeq[other;
+        return self.value == other.value;
+    ],
+    _opadd[n;
+        return self.value + n;
+    ]
+;
+counter a
+  with value 5
+;
+counter b
+  with value 5
+;
+[main sum;
+    if (a._opeqeq(b)) {
+        print (string)"equal";
+    }
+    sum=a._opadd(10);
+];

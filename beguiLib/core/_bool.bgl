@@ -1,0 +1,28 @@
+#once
+//=============================================================================
+// type bool
+    extern enum eBool{
+        true,
+        false
+    }
+    extern class bool : _bglObject{ //--base type bool, declared as external because it wraps the type-less I6 type
+        replace emitter void print(){
+            if($self == true)
+                print "true";
+            else
+                print "false";
+        }
+        emitter eBool operator == (bool v){ $self == $v }
+        emitter eBool operator == (eBool v){ $self == $v }
+        emitter eBool operator != (bool v){ $self ~= $v }
+        emitter eBool operator != (eBool v){ $self ~= $v }
+        emitter bool operator = (bool v){ $self=$v; }
+        emitter bool operator = (eBool v){ $self=$v; }
+        emitter eBool operator && (bool v){ $self && $v }
+        emitter eBool operator && (eBool v){ $self && $v }
+        emitter eBool operator || (bool v){ $self || $v }
+        emitter eBool operator || (eBool v){ $self || $v }
+        emitter eBool operator ! (){ ~~$self }
+    }
+
+    emitter void print(bool b){ if($b == true) print "true"; else print "false"; }

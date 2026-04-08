@@ -1,0 +1,41 @@
+#once
+//=============================================================================
+// beguilerSettings
+    extern class beguilerSettingsType { //--schema for #beguilerSettings directive blocks; provides property IntelliSense
+        eTarget         target         = Glulx;         // compilation target: Glulx (default), Z3, Z5, or Z8
+        string          informPath;                     // full path to the Inform 6 compiler binary (overrides informName)
+        string          informName     = "inform";      // I6 binary filename (default "inform"); use "none" to skip I6 handoff
+        string          beguiLibPath   = "beguiLib";    // path to the Beguile language extensions directory
+        string          outputPath     = "output";      // output directory for compiled files
+        eErrorFormat    errorFormat    = E1;            // error format: "E1" (Microsoft) or "E2" (Macintosh)
+        int             release        = 0;             // story release number
+        string          serial         = "";            // serial number: exactly 6 digits (e.g. "250328")
+        int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
+        string          includePaths;                   // adds one directory to the include search path for both Beguile and I6 (additive)
+        bool            rewritePaths   = true;          // substitute path separators to match OS
+        bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)
+        string          blorbAssetPath = "assets";      // asset directory relative to source .bgl file
+        string          author         = "";            // iFiction: game author (required)
+        string          title          = "";            // iFiction: game title (required)
+        string          headline       = "";            // iFiction: subtitle (e.g. "An Interactive Mystery")
+        string          genre          = "";            // iFiction: genre (e.g. "Fantasy", "Mystery", "Science Fiction")
+        string          description    = "";            // iFiction: blurb text (may contain line breaks; max ~2400 chars)
+        string          language       = "";            // iFiction: ISO-639 language code (e.g. "en", "en-US")
+        string          series         = "";            // iFiction: series name
+        int             seriesNumber   = 0;             // iFiction: position in series (requires series)
+        string          firstPublished = "";            // iFiction: publication date (YYYY or YYYY-MM-DD)
+        string          forgiveness    = "";            // iFiction: Merciful, Polite, Tough, Nasty, or Cruel
+        string          ifid           = "";            // Treaty of Babel IFID (UUID format); auto-generated if empty
+    }
+
+    extern enum eTarget{
+        Glulx,
+        Z3,
+        Z5,
+        Z8
+    }
+    extern enum eErrorFormat{ 
+        E0,
+        E1,
+        E2
+    }

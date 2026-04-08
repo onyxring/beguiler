@@ -1,0 +1,11 @@
+#once
+//-----------------------------------------------------------------------------
+// buf.bgl - Low-level buffer and character operations for the Beguile runtime.
+//           Ported from orUtilBuf / orUtilChar (Jim Fisher, Public Domain).
+//           Provides:
+//             - bglCharIsLower/IsUpper/ToLower/ToUpper/IsAlpha/IsNumeric/etc.
+//             - _bglBuf object (all buffer manipulation routines)
+//           Included automatically by string.bgl and char.bgl.
+//-----------------------------------------------------------------------------
+#include <char>
+#include <_buf>

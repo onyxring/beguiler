@@ -1,0 +1,40 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+global _bgl_animal_count = 0;
+class animal
+  class object
+  with
+    short_name,
+    description,
+    maxage 20,
+    speak[;
+    ]
+;
+class dog
+  class animal
+  with
+    speak[;
+    ]
+;
+object myhelper
+  with getvalue [;
+    return self.value;
+  ],
+       value 0
+;
+place testroom
+  with short_name "Test Room",
+       description "A room for testing."
+  has light
+;
+attribute light;
+[main v;
+    _bgl_animal_count=_bgl_animal_count + 1;
+    v=myhelper.getvalue();
+    print v;
+];

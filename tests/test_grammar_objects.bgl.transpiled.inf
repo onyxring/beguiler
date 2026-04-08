@@ -1,0 +1,56 @@
+!% -G
+!% -E1
+
+    replace main _oldmain;
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+constant story = "";
+constant headline = "";
+object whiff
+  with perform [;
+    print (string)"You take a whiff.";
+  ]
+;
+[whiffsub;
+                whiff.perform();
+            ];
+verb 'whiff'
+    * -> whiff;
+object nudge
+  with perform [;
+    print (string)"You nudge it.";
+  ]
+;
+[nudgesub;
+                nudge.perform();
+            ];
+verb 'nudge'
+    * noun -> nudge;
+verb 'hang'
+    * held 'on' noun -> puton;
+verb 'grab'
+    * noun -> Take;
+verb 'toss'
+    * held -> Drop;
+verb 'snatch'
+    * noun -> Take;
+verb 'inspect'
+    * noun -> Examine;
+verb 'nab'
+    * noun -> Take;
+verb 'discard'
+    * held -> Drop;
+verb 'study'
+    * noun -> Examine;
+verb 'place'
+    * held 'on' noun -> PutOn;
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

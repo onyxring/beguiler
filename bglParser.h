@@ -36,10 +36,12 @@ class bglParser {
         string processBglConditionals(const string& text); // evaluates ##ifdef/##ifndef/##else/##endif in raw emitter body text
 
     private:
-        deque<eCompileLanguage> compileLanguageStack;   //of course, these aren't really stacks, but we use them that way
         deque<eCompileContext> compileContextStack;
         set<string> onceFiles;        // absolute paths of files that declared #once
         set<string> startupFiles;     // absolute paths of files whose #startup blocks have been registered
+        set<string> emitFirstFiles;   // absolute paths of files whose #emitfirst blocks have been registered
+        set<string> emitLastFiles;    // absolute paths of files whose #emitlast blocks have been registered
+        vector<classDef*> usingImports;     // imported scopes from #using directives (file-scoped)
         int includeDepth = 0;               // current include nesting depth
         static constexpr int maxIncludeDepth = 255;
         int forInCounter = 0;               // counter for unique _bglfiN variable names
@@ -54,7 +56,7 @@ class bglParser {
         bool processEnumDeclaration(token, bool);
         bool processBeguilerSettings();
         
-        bool processObjectDeclaration(token, token, bool, string className = "", string i6alias = "");
+        bool processObjectDeclaration(token, token, bool, string className = "", string i6alias = "", bool hasBody = true);
         bool processObjectExtension(token nameTok);  // extend <objectName> { }
         void processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod);
         void parsePropertyValue(variableDeclaration& prop, string typeName);
