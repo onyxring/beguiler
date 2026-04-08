@@ -1,0 +1,196 @@
+/*-----------------------------------------------------------------------------
+    _beguilerCore.bgl - the standard language extensions for the Beguile 
+        language, included automatically by the compiler.
+ -----------------------------------------------------------------------------*/
+#once
+//-- Pull in all the core features
+#include <core/_array>
+#include <core/_attribute>
+#include <core/_beguilerSettings>
+#include <core/_bool>
+#include <core/_char>
+#include <core/_dictionaryWord>
+#include <core/_int>
+#include <core/_string>
+#include <core/_grammar>
+#include <core/_verb>
+
+#if TARGET_ZCODE
+    #include<core/_zcode>
+#else
+    #include<core/_glulx>
+#endif
+
+emitter class bgl{
+    int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
+    auto asm = bglOpCodes;
+}
+//=============================================================================
+// _bglObject - the base class for all Beguile objects
+    emitter class _bglObject{
+        void print(){
+            print $self;    
+        }
+    }
+
+//=============================================================================
+// type object
+    extern class object:_bglObject{ //--the base I6 object, declared as external because it is defined in the I6 compiler
+        parentProp parent;           //--initial parent object; emitted as I6 third positional argument
+        attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
+        
+        emitter eBool operator ?() { $self ~= nothing }
+        emitter object operator = (object v){
+            $self = $v
+        }
+        emitter eBool operator == (var v){
+            $self == $v
+        }
+        emitter eBool operator != (var v){
+            $self ~= $v
+        }
+        emitter void give(attribute attr){
+            give $self $attr
+        }
+        emitter void ungive(attribute attr){
+            give $self ~$attr
+        }
+        emitter bool has(attribute attr){
+            ($self has $attr)
+        }
+        emitter bool hasnt(attribute attr){
+            ($self hasnt $attr)
+        }
+        emitter void remove(){
+            remove $self
+        }
+        emitter object child{
+            child($self)
+        }
+        emitter int children{
+            children($self)
+        }
+        emitter object sibling{
+            sibling($self)
+        }
+        emitter bool provides(var prop){
+            $self provides $prop
+        }
+    }
+    
+    //--setters
+    extern class parentProp{   //obj.parent=loc; -> move obj to loc;
+        emitter parentProp operator = (object v){
+            move $self to $v
+        }
+    }
+
+
+//-----------------------------------------------------------------------------
+// TODO: revisit all of this theoretical stuff, when Arrays are dealt with
+//-----------------------------------------------------------------------------
+// bglWorld — iterate over the I6 object tree.
+//
+// Methods fill a shared scratch buffer (_bglWorldBuf) and return it as an
+// array<object>.  The buffer is reused on every call; do not store the result
+// across turns or nest two bglWorld calls.
+//
+// Format: TABLE array conforming to orUtilArray standalone convention —
+//   _bglWorldBuf-->0   = capacity (256)
+//   _bglWorldBuf-->(i+1) = element at 0-based index i
+//   first 0 entry is the end sentinel (read by _orArray.getLength)
+//
+// Usage:
+//   for(object o in bglWorld.getAll()) { ... }
+//   for(object o in bglWorld.getFiltered((object v)-->v.has(light))) { ... }
+//   for(object o in bglWorld.inParent(location)) { ... }
+//-----------------------------------------------------------------------------
+/*
+    extern class bglWorldType  : _bglObject{
+    emitter array getAll() {
+        $self.getAll()
+    }
+    emitter array getFiltered(var pred) {
+        $self.getFiltered($pred)
+    }
+    emitter array inParent(object parent) {
+        $self.inParent($parent, 0)
+    }
+    emitter array inParent(object parent, var pred) {
+        $self.inParent($parent, $pred)
+    }
+    emitter array ofClass(var cls) {
+        $self.ofClass($cls, 0)
+    }
+    emitter array ofClass(var cls, var pred) {
+        $self.ofClass($cls, $pred)
+    }
+}
+extern bglWorldType bglWorld;
+
+#i6{
+Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
+
+object bglWorld
+    with getAll [ o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            _bglWorldBuf-->i = o;
+            i++;
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    getFiltered [ pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o) {
+            if (i > 256) break;
+            if (indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    inParent [ parent pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o in parent) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ],
+    ofClass [ cls pred o i;
+        _bglWorldBuf-->0 = 256;
+        i = 1;
+        objectloop(o ofclass cls) {
+            if (i > 256) break;
+            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
+        }
+        _bglWorldBuf-->i = 0;
+        return _bglWorldBuf;
+    ]
+;
+}
+*/
+
+emitter void print(var val){ print $val; } //the default, which will be used for all data types not defined
+emitter void log(var msg){ ##if DEBUG print $msg; ##endif }
+
+//=============================================================================
+// style emitter namespace.  TODO: add the rest of these.
+// emitter style{
+//     void italics(){
+//         style underline;
+//     }
+//     void roman(){
+//         style roman;
+//     }
+// }
+
+//=============================================================================
+// bglInit() is a special, compiler built routine
+extern void bglInit(){}

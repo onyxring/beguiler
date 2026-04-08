@@ -1,4 +1,4 @@
-/* test_directives.bgl — preprocessor directives, #startup, #beguilerSettings refs */
+/* test_directives.bgl — preprocessor directives, #startup, #emitfirst, #emitlast, #beguilerSettings refs */
 #beguilerSettings {
     target = z5;
     informName = "none";

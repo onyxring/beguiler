@@ -12,6 +12,7 @@
 #include "bglParser.h"
 #include "bglLanguageService.h"
 #include "blorb.h"
+#include "lspServer.h"
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -108,6 +109,14 @@ void beguiler::extractBlorbSettings(const string& filename) {
 }
 
 bool beguiler::go(int argc, char* argv[]) {
+
+    // LSP mode: run as language server instead of compiler
+    for(int i = 1; i < argc; i++)
+        if(string(argv[i]) == "--lsp") {
+            LspServer lsp;
+            lsp.run();
+            return false;
+        }
 
    cout << "Beguiler 0.1b : The Beguile-Inform6 Transpiler (" << __DATE__ << ")" << endl;
     if(parseArgs(argc, argv)) return true;
@@ -365,7 +374,6 @@ bool beguiler::writeFile(string filename) {
     emitter.emit(languageService.globals);
     outFileStream << emitter.out.str();
     outFileStream.close();
-    emitter.writeSourceMap(filename + ".map");
     return false;
 
 }

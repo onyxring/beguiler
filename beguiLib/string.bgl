@@ -29,6 +29,7 @@ extend class string {
     // Assignment
     replace emitter string operator = (stringLiteral v) { $self.set($v); }
     emitter string operator = (string v)                { $self.set($v); }
+    emitter string operator = (interpolatedStringLiteral v) { $self.capture(); $v; $self.release(); }
 
     // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
     // str3 = str1 + str2  =>  str3.set(str1.append(str2))
@@ -48,8 +49,11 @@ extend class string {
     emitter char operator[]=(int pos, char c)         { $self.setChar($pos,$c) }
     emitter char operator[]=(int pos, charLiteral c)  { $self.setChar($pos,$c) }
 
+    // Query — enables ?., ??, and postfix ? for null (unallocated) checks
+    emitter eBool operator ?() { $self ~= 0 }
+
     // Methods
-    emitter string  print()                               { $self.print() }
+    replace emitter void  print()                          { $self.print() }
 
     emitter string  append(string v)                      { $self.append($v) }
     emitter string  append(char v)                        { $self.append(_orStr.charToString($v)) }

@@ -11,7 +11,6 @@
 using namespace std;
 
 enum class eCompileContext {noContext, global, objectDef, codeBlock};
-enum class eCompileLanguage {beguile, i6};
 
 // Source location — Beguile file and line number where an AST node was parsed.
 // Used to build the source map for the debugger.
@@ -186,6 +185,7 @@ class functionDef:public typeMember, public typeDef{
         bool isEmitter;
         bool isExplicit = false;   // true for 'explicit emitter': conversion operator only fires at explicit cast sites
         bool isDefault = false;    // true for 'default': expected to be overridden without requiring 'replace'
+        bool isValueEmitter = false; // true for emitter values (no parens): expands inline as expression or statement
         typeDef returnType;
         vector<paramDef*> params;
         codeBlock* body = nullptr;

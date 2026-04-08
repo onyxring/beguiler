@@ -32,8 +32,8 @@
 
     object _orBuf
         private _streamStack  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0  ! capture/release buf stack
-        ,       _glulxStreams  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0  ! Glulx stream stack
-        ,       _stackTop      0                                 ! current stack depth
+        ,       _glulxStreams 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0  ! Glulx stream stack
+        ,       _stackTop     0                                 ! current stack depth
 
         with _stackPush [ prop val;
                 (self.prop)-->(self._stackTop) = val;
@@ -147,7 +147,7 @@
                     if(caseInsensitive<=0) {
                         if(buf1->(t) ~= buf2->(t)) rfalse;
                     } else {
-                        if(_orChar.toLower(buf1->(t)) ~= _orChar.toLower(buf2->(t))) rfalse;
+                        if(_bglChar.toLower(buf1->(t)) ~= _bglChar.toLower(buf2->(t))) rfalse;
                     }
                 }
                 rtrue;
@@ -159,7 +159,7 @@
                     if(caseInsensitive<=0) {
                         if(buf1->(t) ~= buf2->(t)) rfalse;
                     } else {
-                        if(_orChar.toLower(buf1->(t)) ~= _orChar.toLower(buf2->(t))) rfalse;
+                        if(_bglChar.toLower(buf1->(t)) ~= _bglChar.toLower(buf2->(t))) rfalse;
                     }
                 }
                 rtrue;
@@ -172,7 +172,7 @@
                     if(caseInsensitive<=0) {
                         if(buf1->(offset+t) ~= buf2->(t)) rfalse;
                     } else {
-                        if(_orChar.toLower(buf1->(offset+t)) ~= _orChar.toLower(buf2->(t))) rfalse;
+                        if(_bglChar.toLower(buf1->(offset+t)) ~= _bglChar.toLower(buf2->(t))) rfalse;
                     }
                 }
                 rtrue;
@@ -283,13 +283,13 @@
         ,    toUpper [ buf t buflen;
                 buflen = self.getLength(buf);
                 for(t=WORDSIZE : t<=buflen+WORDSIZE : t++)
-                    buf->t = _orChar.toUpper(buf->t);
+                    buf->t = _bglChar.toUpper(buf->t);
                 return buf;
             ]
         ,    toLower [ buf t buflen;
                 buflen = self.getLength(buf);
                 for(t=WORDSIZE : t<buflen+WORDSIZE : t++)
-                    buf->t = _orChar.toLower(buf->t);
+                    buf->t = _bglChar.toLower(buf->t);
                 return buf;
             ]
         ,    reverse [ buf t c buflen;

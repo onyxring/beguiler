@@ -17,17 +17,27 @@ beguilerSettingsDef beguilerSettings;
 bglLanguageService::bglLanguageService(){
     registerType("void");
     registerType("var");
+    registerType("auto");
     registerType("func");
     // intliteral, stringliteral, charliteral are now declared as extern class in _beguileCore.bgl
 }
-bool bglLanguageService::isObjectType(string name){ 
+bool bglLanguageService::isObjectType(string name){
     if(getType(name)==emptyTDef) return false;
     return true;
+}
+bool bglLanguageService::isClassType(string name){
+    transform(name.begin(), name.end(), name.begin(), ::tolower);
+    for(typeDef* ot : objectTypes)
+        if(ot->name == name) return true;
+    return false;
 }
 typeDef& bglLanguageService::getType(string name){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     for (typeDef* ot : objectTypes) {
         if(ot->name == name) return *ot;
+    }
+    for (typeDef* oi : objectInstances) {
+        if(oi->name == name) return *oi;
     }
     return emptyTDef;
 }
@@ -123,7 +133,7 @@ objectDef& bglLanguageService::registerObject(string name, bool isExternal, stri
     newType.displayName=dspName;
     newType.isExternal=isExternal;
     newType.src = parser.file.currentLocation();
-    objectTypes.push_back(&newType);
+    objectInstances.push_back(&newType);
     objectDef& retval=(objectDef&)getType(name);
     if(parser.getCurrentCompileContext()==eCompileContext::global && !isExternal) globals.push_back(&retval);
     return retval;

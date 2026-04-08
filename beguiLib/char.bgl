@@ -7,8 +7,7 @@
 //-----------------------------------------------------------------------------
 #once
 
-//array<char> __vowels = "aeiouAEIOU\:a\:e\:i\:o\:u\:y\:A\:E\:I\:O\:U\'a\'e\'i\'o\'u\'y\'A\'E\'I\'O\'U\'Y\`a\`e\`i\`o\`u\`A\`E\`I\`O\`U\^a\^e\^i\^o\^u\^A\^E\^I\^O\^U\oa\oA\~a\~o\~A\~O";
-object _orChar{
+object _bglChar{
     array<char> __vowels = "aeiouAEIOU\:a\:e\:i\:o\:u\:y\:A\:E\:I\:O\:U\'a\'e\'i\'o\'u\'y\'A\'E\'I\'O\'U\'Y\`a\`e\`i\`o\`u\`A\`E\`I\`O\`U\^a\^e\^i\^o\^u\^A\^E\^I\^O\^U\oa\oA\~a\~o\~A\~O";
     bool isAlpha(char c){ 
         return isLower(c) || isUpper(c);
@@ -58,8 +57,7 @@ object _orChar{
         rfalse;
     }
     bool isConsonant(char c){
-        if(isAlpha(c) && !isVowel(c)) rtrue;
-        rfalse;
+        return (isAlpha(c) && !isVowel(c));         
     }		
     char toLower(char c){
 		switch (c) {
@@ -85,17 +83,17 @@ object _orChar{
 	}
 }
 extend class char { 
-    emitter char toUpper()          { _orChar.toUpper($self) }
-    emitter char toLower()          { _orChar.toLower($self) }
-    emitter bool isLower()          { _orChar.isLower($self) }
-    emitter bool isUpper()          { _orChar.isUpper($self) }
-    emitter bool isAlpha()          { _orChar.isAlpha($self) }
-    emitter bool isNumeric()        { _orChar.isNumeric($self) }
-    emitter bool isAlphaNumeric()   { _orChar.isAlphaNumeric($self) }
-    emitter bool isVowel()          { _orChar.isVowel($self) }
-    emitter bool isConsonant()      { _orChar.isConsonant($self) }
+    emitter char toUpper()          { _bglChar.toUpper($self) }
+    emitter char toLower()          { _bglChar.toLower($self) }
+    emitter bool isLower()          { _bglChar.isLower($self) }
+    emitter bool isUpper()          { _bglChar.isUpper($self) }
+    emitter bool isAlpha()          { _bglChar.isAlpha($self) }
+    emitter bool isNumeric()        { _bglChar.isNumeric($self) }
+    emitter bool isAlphaNumeric()   { _bglChar.isAlphaNumeric($self) }
+    emitter bool isVowel()          { _bglChar.isVowel($self) }
+    emitter bool isConsonant()      { _bglChar.isConsonant($self) }
     
-	emitter bool operator =~ (char c){ _orChar.toLower($self)==_orChar.toLower($c)}
+	emitter bool operator =~ (char c){ _bglChar.toLower($self)==_bglChar.toLower($c)}
 
 	//NOTE: other comparisons are part of the char class declared in the core file
 	

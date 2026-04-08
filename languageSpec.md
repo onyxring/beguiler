@@ -48,6 +48,9 @@
   - 3.5.3 `#error`
   - 3.5.4 `#exit`
   - 3.5.5 `#startup`
+  - 3.5.6 `#emitfirst`
+  - 3.5.7 `#emitlast`
+  - 3.5.8 `#using`
 
 ### Chapter 4 — Types
 - 4.1 Overview
@@ -96,12 +99,14 @@
 - 7.2 Emitter Syntax
 - 7.3 Substitution
 - 7.4 Global Emitters
-- 7.5 Emitter Namespaces
-- 7.6 `print()` and `log()`
-- 7.7 Operator Emitters
-- 7.8 Conversion Operator
-- 7.9 Lifecycle Emitters: `init` and `deinit`
-- 7.10 Emitters vs. Regular Functions
+- 7.5 Emitter Values
+- 7.6 Emitter Namespaces
+- 7.7 `print()` and `log()`
+- 7.8 Operator Emitters
+- 7.9 Conversion Operator
+- 7.9a `operator auto()` — Auto-Inference Type
+- 7.10 Lifecycle Emitters: `init` and `deinit`
+- 7.11 Emitters vs. Regular Functions
 
 ### Chapter 8 — Global Declarations
 - 8.1 Overview
@@ -535,6 +540,7 @@ Structural and type keywords unique to Beguile. They have no corresponding I6 ke
 | `int` | Integer primitive type |
 | `bool` | Boolean primitive type |
 | `void` | Absence-of-value marker on function return types |
+| `auto` | Type inferred from the initializer expression |
 | `var` | Dynamically-typed (untyped) variable |
 | `null` | Absent/unset value |
 
@@ -958,7 +964,7 @@ Stops processing the current file immediately, as though end-of-file had been re
 
 ### 3.5.5 `#startup`
 
-Registers a block of I6 code to be executed at program startup, before any global variable initializers run. The body is emitted as the first statements inside the generated `bglInit()` routine.
+Registers a block of I6 code to be executed at program startup. The body is emitted inside the generated `bglInit()` routine, before any global variable initializers.
 
 ```bgl
 #startup {
@@ -966,13 +972,87 @@ Registers a block of I6 code to be executed at program startup, before any globa
 }
 ```
 
-`bglInit()` must still be called explicitly by the game's starting routine — `#startup` only affects the content of that function, not whether it is called.
+The standard IF library bindings (`i6StandardLibrary` and `punyInform`) call `bglInit()` automatically, so users of those bindings do not need to call it themselves. Only games built without a standard binding need to call `bglInit()` explicitly in their starting routine.
 
-**Deduplication.** Each source file contributes its `#startup` blocks at most once, regardless of how many times the file is included. This means `#startup` is safe in library files that do not use `#once`. If a file is included five times, its startup block is still registered and emitted only once.
+**Deduplication.** Each source file contributes its `#startup` blocks at most once, regardless of how many times the file is included. This means `#startup` is safe in library files that do not use `#once`.
 
 **Ordering.** When multiple files each declare a `#startup` block, the blocks are emitted in file-inclusion order (the order the compiler first encounters each file). Startup blocks from all files run before any global variable init emitters.
 
 `#startup` is primarily intended for low-level library code that must initialise runtime infrastructure before any user objects are constructed. User code should prefer placing initialisation logic in object init emitters or the game's starting routine.
+
+### 3.5.6 `#emitfirst`
+
+Emits a block of raw I6 code at the beginning of the generated output, after ICL headers but before the `bglInit` routine and all other declarations. This is useful for I6 directives that must appear early in the file, such as `Replace` directives or conditional compilation setup.
+
+```bgl
+#emitfirst {
+    Replace DrawStatusLine;
+}
+```
+
+**Deduplication** and **ordering** follow the same rules as `#startup` — each file's block is emitted at most once, in file-inclusion order.
+
+### 3.5.7 `#emitlast`
+
+Emits a block of raw I6 code at the very end of the generated output, after all other declarations. This is useful for I6 code that must appear after grammar directives, object definitions, or other late-emitted constructs.
+
+```bgl
+#emitlast {
+    [ DrawStatusLine; ! replacement routine
+        ! ...
+    ];
+}
+```
+
+**Deduplication** and **ordering** follow the same rules as `#startup`.
+
+### 3.5.8 `#using`
+
+Imports the members of a class or object into the current file's scope, allowing them to be referenced without qualification:
+
+```bgl
+emitter class myPlatform {
+    int wordsize { WORDSIZE }
+}
+
+#using myPlatform
+
+void main() {
+    int ws = wordsize;    // resolves to myPlatform.wordsize → WORDSIZE
+}
+```
+
+Without `#using`, the full path `myPlatform.wordsize` is required.
+
+**Scope**: `#using` is file-scoped — active from the directive to end of file. It does not leak into included files, and `#using` in an included file does not affect the includer. Each file declares its own imports.
+
+**Resolution priority**: Imported names have lower priority than locals, parameters, class/object members, and globals. If a global variable has the same name as an imported member, the global wins and the compiler issues a warning:
+
+```
+warning: global 'wordsize' shadows imported 'myPlatform.wordsize'; use 'myPlatform.wordsize' to access the import
+```
+
+**Non-existent target**: If the `#using` target is not a declared class or object, the compiler issues a warning and the directive is ignored. This allows `#using` to appear before the target is declared in a later `#include`, without halting compilation:
+
+```
+warning: #using 'myLib': not a declared class or object; directive ignored
+```
+
+**Ambiguity**: If two `#using` imports both declare a member with the same name, using that name without qualification is a compile error:
+
+```
+error: 'val' is ambiguous — found in both 'libA' and 'libB'; qualify explicitly
+```
+
+**What can be imported**:
+
+| `#using` target | What's imported | How it resolves |
+|----------------|-----------------|-----------------|
+| Emitter class | Value emitters, emitter functions | Body expanded inline |
+| Object | Methods, properties | Compiler prepends object path |
+| Static members | Static variables | Compiler emits mangled name |
+
+`#using` a regular class with only non-static instance members is an error — instance methods require a receiver.
 
 ---
 
@@ -1630,7 +1710,29 @@ extend myRoom {
 
 `+=` and `-=` operate on existing members of the object. The member must be a collection type. Using `+=`/`-=` on a non-collection member or a member that doesn't exist is a compile error.
 
+**Object reference members** — a property can hold a reference to another object. The assigned object must be type-compatible with the declared property type:
+
+```bgl
+class Subsystem : object { void activate() { ... } }
+Subsystem combat { }
+
+extend gameState {
+    Subsystem sys = combat;     // property holds reference to combat object
+}
+
+gameState.sys.activate();       // chained method call through property
+```
+
+When the assigned value is a declared object instance, it is stored as a direct reference — no `init()` emitter is called.
+
 **Extern objects**: Extending an `extern` object is restricted — the object's definition is in I6, not Beguile, so only operations that emit independently of the object are allowed. In practice this means only `grammar +=` works (grammar emits as standalone I6 `Verb`/`Extend` directives). Adding new members, methods, or using `-=` on an extern object is a compile error.
+
+**Extern object bodies**: An `extern` object may include a `{ }` body for type registration purposes. The body may contain:
+- Method declarations without bodies (`int getScore();`) — registered for type checking
+- Emitter methods and emitter values — expanded at call sites as usual
+- Property type declarations without initializers (`string name;`) — registered for type checking
+
+Non-emitter methods with bodies and properties with initializers are compile errors — extern objects are defined in I6, not Beguile.
 
 ## 5.10 `_bglGlobalDeclaration`
 
@@ -1905,6 +2007,7 @@ When an emitter is called, the compiler performs textual substitution on the bod
 | `$self` | The receiver — the variable or expression on the left-hand side of a method call or operator |
 | `$paramName` | The corresponding argument expression at the call site. Each parameter is referenced by `$` followed by its declared name. |
 | `$prop` | (For array emitters) The property name when the array is an object property; `0` for global arrays. |
+| `$target` | The assignment target variable. Used by emitters that need to store a result directly (e.g. assembly opcodes). When assigned (`int r = foo();`), `$target` is the LHS variable. When called as a statement without assignment (`foo();`), `$target` is a compiler-generated temporary. When `$target` appears in the body, the normal `LHS = RHS` assignment is suppressed — the emitter body handles the store itself. |
 
 All emitter placeholders use the `$` prefix to distinguish them from raw I6 identifiers. This prevents substitution collisions — for example, if a parameter is named `c` and the emitter body also references a variable named `c`, using `$c` for the parameter ensures only the intended token is replaced.
 
@@ -1929,7 +2032,51 @@ emitter void print(var val)          { print val; }
 
 Global emitters participate in overload resolution by the same rules as regular global functions (see §8.3). `$self` is not meaningful for global emitters.
 
-## 7.5 Emitter Namespaces
+## 7.5 Emitter Values
+
+An **emitter value** is an emitter without parentheses — it declares a typed inline expansion that can be used as an expression or a standalone statement. Unlike emitter functions, emitter values require no `()` at the use site.
+
+```bgl
+emitter int wordSize { WORDSIZE }
+emitter int doubleWord { WORDSIZE * 2 }
+emitter void setBold { style bold }
+```
+
+**As an expression** — the body expands inline wherever the name appears in an expression:
+
+```bgl
+int ws = wordSize;             // emits: ws = WORDSIZE;
+int dw = 4 + doubleWord;      // emits: dw = 4 + WORDSIZE * 2;
+```
+
+**As a statement** — the body expands as a standalone statement when followed by `;`:
+
+```bgl
+setBold;                       // emits: style bold;
+```
+
+The distinction from an emitter function is the absence of parentheses in both the declaration and at the call site:
+
+| Declaration | Usage | Kind |
+|-------------|-------|------|
+| `emitter int foo() { body }` | `foo()` | Emitter function |
+| `emitter int foo { body }` | `foo` | Emitter value |
+
+Emitter values can be declared at global scope, in class bodies, and in object bodies. On class/object members, `$self` substitution works the same as for emitter functions.
+
+```bgl
+emitter class style : _bglObject {
+    emitter void bold { style bold }
+    emitter void roman { style roman }
+}
+
+// Usage:
+style.bold;                    // emits: style bold;
+```
+
+Emitter values are typed — the declared return type is used for type checking at use sites. `emitter void` values can only be used as statements; typed values (`emitter int`, `emitter string`, etc.) can appear in expressions.
+
+## 7.6 Emitter Namespaces
 
 An **emitter namespace** groups related emitter methods under a single name without creating a class, instances, or any I6 backing. It is declared with `emitter` followed directly by the namespace name and a body block — no `class` keyword:
 
@@ -1958,11 +2105,45 @@ Emitter namespaces are distinguished from `emitter class` by the absence of the 
 
 `style` is a built-in emitter namespace providing I6 style directives (`style.italics()`, `style.roman()`) without requiring an instance variable.
 
-## 7.6 `print()` and `log()`
+### Alias Members on Emitter Classes
+
+An emitter class can hold **alias members** — typed references to other classes that enable hierarchical namespace composition. An alias member is declared as `TypeName memberName;` (no initializer) and is resolved transparently at compile time:
+
+```bgl
+emitter class bglStrings {
+    void init { _orStr_init() }
+    int count { _orStr_count }
+}
+
+emitter class bgl { }
+
+extend class bgl {
+    bglStrings strings;     // alias member
+}
+
+// Usage:
+bgl.strings.init;           // resolves through alias: bglStrings.init
+int c = bgl.strings.count;  // resolves through alias: bglStrings.count
+```
+
+Alias members allow building a single root namespace (e.g. `bgl`) that delegates to sub-namespaces, keeping the global namespace clean. They compose with `#using`:
+
+```bgl
+#using bgl
+strings.init;               // resolves: bgl → strings → bglStrings.init
+```
+
+Rules:
+- The member type must be a declared class (emitter or regular)
+- No initializer is allowed — the alias is purely compile-time
+- Alias members are only valid on emitter classes (regular objects use property references instead)
+- Multi-level aliases are supported: `a.b.c.method()` resolves through any number of alias hops
+
+## 7.7 `print()` and `log()`
 
 `print()` and `log()` are core language output functions. They are mentioned here because they are implemented as global emitters in `_beguileCore.bgl`; however, they are fundamental to every Beguile program. See §10.13 for usage documentation.
 
-## 7.7 Operator Emitters
+## 7.8 Operator Emitters
 
 An operator emitter defines how a built-in operator is compiled when the left-hand operand is of the declaring class. The operator symbol replaces the function name. Operator emitters may be declared on any class:
 
@@ -2056,7 +2237,7 @@ Most operators may be declared as either emitters or regular functions. However,
 
 Declaring any of these without the `emitter` keyword is a compile-time error. Inside an `emitter class`, the `emitter` keyword is implicit as usual.
 
-## 7.8 Conversion Operator
+## 7.9 Conversion Operator
 
 A zero-parameter emitter named `operator()` declares an implicit type conversion from the declaring class to the return type. It enables the compiler to use an existing operator overload when the exact type match is absent, by first converting the value through the conversion operator.
 
@@ -2078,7 +2259,35 @@ extern class celsius {
 
 See §12 for the full rules governing when conversion operators are applied.
 
-## 7.9 Lifecycle Emitters: `init` and `deinit`
+## 7.9a `operator auto()` — Auto-Inference Type
+
+When `auto` is used as a variable type (see §10.2), the compiler infers the type from the initializer expression. By default, `auto` uses the exact resolved type of the RHS. `operator auto()` overrides this — its return type becomes the inferred type instead.
+
+```bgl
+extern class intLiteral : _bglObject {
+    emitter int operator();       // implicit conversion to int
+    int operator auto();          // auto infers int, not intLiteral
+}
+```
+
+With this declaration, `auto x = 5;` infers `int` (not `intLiteral`), giving `x` full `int` operator support (`+=`, `-=`, etc.) rather than the limited literal type.
+
+Rules:
+- `operator auto()` takes no parameters
+- It cannot have a body — only the return type matters
+- At most one per class; duplicates are a compile error
+- The return type is the inferred type for `auto` declarations
+- Types without `operator auto()` infer as themselves
+
+The core library declares `operator auto()` on all literal pseudo-types:
+
+| Literal type | `operator auto()` returns | `auto` infers |
+|---|---|---|
+| `intLiteral` | `int` | `int` |
+| `charLiteral` | `char` | `char` |
+| `dictionaryWordLiteral` | `dictionaryWord` | `dictionaryWord` |
+
+## 7.10 Lifecycle Emitters: `init` and `deinit`
 
 A class may declare `init` and `deinit` emitters to run code automatically when a local variable of that type comes into and out of scope.
 
@@ -2105,7 +2314,7 @@ void doSomething() {
 }                       // deinit also fires here on fall-through
 ```
 
-## 7.10 Emitters vs. Regular Functions
+## 7.11 Emitters vs. Regular Functions
 
 Emitters and regular functions serve different purposes and generate different I6 output. Understanding when to use each is key to writing effective Beguile library code.
 
@@ -2399,6 +2608,16 @@ string label;
 bool found = false;
 ```
 
+The `auto` keyword infers the type from the initializer expression:
+
+```bgl
+auto x = 5;            // inferred as int
+auto s = "hello";      // inferred as stringLiteral
+auto r = myRoom;       // inferred as the object's class type
+```
+
+`auto` requires an initializer — `auto x;` without `=` is a compile error. The inferred type is locked in at declaration; subsequent assignments are type-checked against it. `auto` works in local, global, and member declarations.
+
 The variable is visible from the point of declaration to the end of the enclosing block. A local variable name may not shadow a global variable, a member of the enclosing class, or a member of the enclosing object — any of these is a compile-time error (§13.4).
 
 If the variable's type defines an `init` emitter, it fires immediately after the declaration, before any initializer assignment (§7.7).
@@ -2538,12 +2757,21 @@ for(int p in primes) {
 }
 ```
 
-Both forms require the iteration variable's type to match the array's element type. The only exception is `var`, which is accepted for any element type.
+Both forms require the iteration variable's type to be compatible with the array's element type. Incompatible types are a compile error. `var` is accepted as a wildcard for any element type.
 
 ```bgl
 string p;
 for(p in primes) { }  // compile-time error: string ≠ int
 ```
+
+`auto` infers the element type from the array:
+
+```bgl
+for(auto p in primes) { }      // p inferred as int (from array<int>)
+for(auto v in {1, 2, 3}) { }   // v inferred as int (via operator auto on intLiteral)
+```
+
+For inline lists, the element type is inferred from the first element. `operator auto()` is applied if the element type defines one (see §7.9a). Each element in an inline list is type-checked against the declared loop variable type.
 
 ### Call-expression form
 
@@ -2598,6 +2826,24 @@ while(condition) {
 ```
 
 The condition is evaluated before each iteration. If false on first entry, the body is not executed.
+
+## 10.9a `do` / `while` and `do` / `until`
+
+```bgl
+do {
+    statements;
+} while(condition);
+
+do {
+    statements;
+} until(condition);
+```
+
+The body executes at least once. After each iteration, the condition is evaluated:
+- `do...while` — repeats while the condition is true (same as C)
+- `do...until` — repeats until the condition becomes true (I6 native; the condition is the exit test)
+
+Both forms emit directly to their I6 equivalents.
 
 ## 10.10 `switch` / `case`
 
@@ -3629,9 +3875,9 @@ Strings are automatically allocated on declaration (`init`) and freed on functio
 
 ### 16.2.6 `bglInit()` — Runtime Initialization
 
-Some language extensions allocate runtime resources (memory pools, buffers, etc.) that must be set up before use. These extensions register an initialization hook automatically when included; all registered hooks are called by `bglInit()`.
+Some language extensions allocate runtime resources (memory pools, buffers, etc.) that must be set up before use. These extensions register an initialization hook via `#startup` (see §3.5.5); all registered hooks are called by `bglInit()`.
 
-`bglInit()` is always available — it is a no-op if no extensions that need it have been included. Call it once, early in your game's startup routine:
+The standard IF library bindings (`i6StandardLibrary` and `punyInform`) call `bglInit()` automatically during game startup. **Most users do not need to call `bglInit()` themselves.** It is only necessary when building a game without a standard binding:
 
 ```bgl
 void Initialise() {
@@ -3640,9 +3886,9 @@ void Initialise() {
 }
 ```
 
-**Which extensions require it:** `string.bgl` requires `bglInit()` to initialize the string pool. Extensions that do not allocate runtime resources (such as `char.bgl`) do not require it but are unaffected by the call.
+`bglInit()` is always available — it is a no-op if no extensions that need it have been included. The call is harmless to include unconditionally.
 
-If you use `string` and forget to call `bglInit()`, strings will not function correctly. The call is harmless to include unconditionally whenever any language extension is in use.
+**Which extensions require it:** `string.bgl` requires `bglInit()` to initialize the string pool. Extensions that do not allocate runtime resources (such as `char.bgl`) do not require it but are unaffected by the call.
 
 ## 16.3 IF Library Bindings
 

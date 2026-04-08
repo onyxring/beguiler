@@ -242,6 +242,7 @@ extern verb Fill;                   // fill <noun>
 extern verb GetOff;                 // get off <noun>
 extern verb Give;                   // give <held> to <creature>
 extern verb Go;                     // go <direction>
+extern verb Going;                     // go <direction>
 extern verb GoIn;                   // go in / enter
 extern verb Insert;                 // insert <noun> into <noun>
 extern verb Inv;                    // inventory / i
@@ -352,6 +353,14 @@ extern verb XPurloin;               // purloin <noun>
 extern verb XTree;                  // tree
 
 const string story = #beguilerSettings.title;       // I6 standard library expects 'story'
-const string author = #beguilerSettings.author;
 const string headline = #beguilerSettings.headline;
-const int gameRelease = #beguilerSettings.release;
+
+#emitfirst{
+    replace main _oldmain;
+}
+#emitlast{
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+}

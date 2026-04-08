@@ -2,58 +2,14 @@
 !% -E1
 Serial "260330";
 Release 42;
+global _bglInitDone = 0;
 [bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
 
     ! startup block test
 
 ];
-
-Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
-
-object bglWorld
-    with getAll [ o i;
-        _bglWorldBuf-->0 = 256;
-        i = 1;
-        objectloop(o) {
-            if (i > 256) break;
-            _bglWorldBuf-->i = o;
-            i++;
-        }
-        _bglWorldBuf-->i = 0;
-        return _bglWorldBuf;
-    ],
-    getFiltered [ pred o i;
-        _bglWorldBuf-->0 = 256;
-        i = 1;
-        objectloop(o) {
-            if (i > 256) break;
-            if (indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
-        }
-        _bglWorldBuf-->i = 0;
-        return _bglWorldBuf;
-    ],
-    inParent [ parent pred o i;
-        _bglWorldBuf-->0 = 256;
-        i = 1;
-        objectloop(o in parent) {
-            if (i > 256) break;
-            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
-        }
-        _bglWorldBuf-->i = 0;
-        return _bglWorldBuf;
-    ],
-    ofClass [ cls pred o i;
-        _bglWorldBuf-->0 = 256;
-        i = 1;
-        objectloop(o ofclass cls) {
-            if (i > 256) break;
-            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
-        }
-        _bglWorldBuf-->i = 0;
-        return _bglWorldBuf;
-    ]
-;
-
 constant story = "Directive Test";
 constant author = "Tester";
 constant gamerelease = 42;
