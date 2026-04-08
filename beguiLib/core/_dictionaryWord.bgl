@@ -1,0 +1,13 @@
+#once
+//=============================================================================
+// type dictionary word
+    extern class dictionaryWordLiteral:_bglObject{
+        dictionaryWord operator auto();
+        replace emitter void print(){ print (address) $self }
+    }
+    emitter class dictionaryWord : grammarElement{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
+        emitter dictionaryWordLiteral operator();                           //--I6 passthrough; enables mixed expressions
+        emitter dictionaryWord operator = (dictionaryWordLiteral v){ $self = $v; }
+        emitter dictionaryWord operator = (dictionaryWord v){ $self = $v; }
+        replace emitter void print(){ print (address) $self }
+    }

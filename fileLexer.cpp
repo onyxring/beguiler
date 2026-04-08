@@ -396,15 +396,47 @@ token fileLexer::getBasicToken(bool suppressBleed){
 string fileLexer::getRawTextThroughClosingBrace(){
     string retval;
     int count=1; //we have already encountered the first open brace, which is why we are calling this function, so we start our count at 1
-    char c=readChar(); 
+    char c=readChar();
 
      while(count>0){
+         // Skip // line comments — braces inside don't count
+         if(c=='/' && peekChar()=='/'){
+             retval += c; c = readChar();  // second /
+             retval += c; c = readChar();
+             while(c != '\n' && c != EOF){
+                 retval += c;
+                 c = readChar();
+             }
+             if(c == '\n'){ retval += c; c = readChar(); }
+             continue;
+         }
+         // Skip string literals — braces inside don't count
+         if(c=='"'){
+             retval += c; c = readChar();
+             while(c != '"' && c != EOF){
+                 if(c == '\\'){ retval += c; c = readChar(); } // skip escaped chars
+                 retval += c; c = readChar();
+             }
+             if(c == '"'){ retval += c; c = readChar(); }
+             continue;
+         }
+         // Skip character literals
+         if(c=='\''){
+             retval += c; c = readChar();
+             while(c != '\'' && c != EOF){
+                 if(c == '\\'){  retval += c; c = readChar(); }
+                 retval += c; c = readChar();
+             }
+             if(c == '\''){ retval += c; c = readChar(); }
+             continue;
+         }
+
          if(c=='}') count--;
          if(count==0) break; //don't include the closing brace in the text we return
          if(c=='{') count++;
-        
-         retval=retval+c; 
-         c=readChar();      
+
+         retval=retval+c;
+         c=readChar();
      }
      return retval;
 }
@@ -512,6 +544,13 @@ token fileLexer::getToken(){
             c = peekChar(); readChar();
             if     (c == 'n')  charVal += '^';   // \n -> ^ (I6 newline)
             else if(c == '\\') charVal += '\\';  // \\ -> backslash
+            else if(c == '$'){
+                // Hex escape: \$XX — character code in hexadecimal; emit as raw integer
+                string hex;
+                while(isxdigit(peekChar())){ hex += peekChar(); readChar(); }
+                if(hex.empty()) parser.parsingError("Expected hex digits after \\$ in character literal");
+                charVal += to_string(stoi(hex, nullptr, 16));
+            }
             else if(isdigit(c)){
                 // Numeric escape: \NNN — ZSCII character code; emit as raw integer for I6 expressions
                 charVal += c;

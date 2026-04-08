@@ -1,0 +1,153 @@
+#once
+#if TARGET_GLULX
+    #error "ERROR: Z-Code assembly binding are not compatible with Glulx."
+#endif
+//=============================================================================
+// asmZcode — Z-machine assembly opcode emitters
+// Provides typed access to raw Z-machine instructions via the emitter namespace
+// pattern. Each emitter inlines the corresponding @opcode at the call site.
+//
+// Usage:
+//     int r = asmZcode.add(a, b);
+//     asmZcode.print_char('A');
+//     int parent = asmZcode.get_parent(obj);
+//
+// Reference: https://www.inform-fiction.org/zmachine/standards/z1point0/sect15.html
+
+emitter class bglOpCodes {
+
+    //── Integer Math (all versions) ─────────────────────────────────────
+    emitter int add(int a, int b)        { ($a + $b) }
+    emitter int sub(int a, int b)        { ($a - $b) }
+    emitter int mul(int a, int b)        { ($a * $b) }
+    emitter int div(int a, int b)        { ($a / $b) }
+    emitter int mod(int a, int b)        { ($a % $b) }
+
+    //── Bitwise Operations (all versions) ───────────────────────────────
+    emitter int bitor(int a, int b)      { ($a | $b) }
+    emitter int bitand(int a, int b)     { ($a & $b) }
+    emitter int bitnot(int a)            { (~$a) }
+
+    //── Memory Access (all versions) ────────────────────────────────────
+    emitter int loadw(int arr, int idx)  { @loadw $arr $idx -> $target }
+    emitter int loadb(int arr, int idx)  { @loadb $arr $idx -> $target }
+    emitter void storew(int arr, int idx, int v) { @storew $arr $idx $v; }
+    emitter void storeb(int arr, int idx, int v) { @storeb $arr $idx $v; }
+
+    //── Stack Operations (all versions) ─────────────────────────────────
+    emitter void push(int v)             { @push $v; }
+    emitter int pull()                   { @pull $target }
+
+    //── Object Tree (all versions) ──────────────────────────────────────
+    emitter int get_parent(int obj)      { @get_parent $obj -> $target }
+    emitter int get_child(int obj)       { @get_child $obj -> $target }
+    emitter int get_sibling(int obj)     { @get_sibling $obj -> $target }
+    emitter void insert_obj(int obj, int dst) { @insert_obj $obj $dst; }
+    emitter void remove_obj(int obj)     { @remove_obj $obj; }
+    emitter void print_obj(int obj)      { @print_obj $obj; }
+
+    //── Object Properties (all versions) ────────────────────────────────
+    emitter int get_prop(int obj, int prop)      { @get_prop $obj $prop -> $target }
+    emitter int get_prop_addr(int obj, int prop) { @get_prop_addr $obj $prop -> $target }
+    emitter int get_prop_len(int propAddr)        { @get_prop_len $propAddr -> $target }
+    emitter int get_next_prop(int obj, int prop)  { @get_next_prop $obj $prop -> $target }
+    emitter void put_prop(int obj, int prop, int v) { @put_prop $obj $prop $v; }
+
+    //── Object Attributes (all versions) ────────────────────────────────
+    emitter void set_attr(int obj, int attr)   { @set_attr $obj $attr; }
+    emitter void clear_attr(int obj, int attr) { @clear_attr $obj $attr; }
+
+    //── Variables (all versions) ────────────────────────────────────────
+    emitter void inc(int variable)       { @inc $variable; }
+    emitter void dec(int variable)       { @dec $variable; }
+
+    //── I/O (all versions) ──────────────────────────────────────────────
+    emitter void print_char(int ch)      { @print_char $ch; }
+    emitter void print_num(int n)        { @print_num $n; }
+    emitter void print_addr(int addr)    { @print_addr $addr; }
+    emitter void print_paddr(int addr)   { @print_paddr $addr; }
+    emitter void new_line()              { @new_line; }
+
+    //── Window / Display (Z3+) ──────────────────────────────────────────
+    emitter void split_window(int lines) { @split_window $lines; }
+    emitter void set_window(int win)     { @set_window $win; }
+
+    //── Streams (Z3+) ───────────────────────────────────────────────────
+    emitter void output_stream(int n)    { @output_stream $n; }
+    emitter void input_stream(int n)     { @input_stream $n; }
+
+    //── Random Numbers (all versions) ───────────────────────────────────
+    emitter int random(int range)        { @random $range -> $target }
+
+    //── Game State (all versions) ───────────────────────────────────────
+    emitter void quit()                  { @quit; }
+    emitter void restart()               { @restart; }
+    emitter int verify()                 { @verify; }
+
+    //── Sound (Z3+) ─────────────────────────────────────────────────────
+    emitter void sound_effect(int num, int effect, int vol) {
+        @sound_effect $num $effect $vol;
+    }
+}
+
+//─────────────────────────────────────────────────────────────────────────────
+// Z5+ opcodes (not available on Z3)
+//─────────────────────────────────────────────────────────────────────────────
+#if TARGET_ZCODE > 3
+extend class bglOpCodes {
+
+    //── Window / Display (Z4+) ──────────────────────────────────────────
+    emitter void erase_window(int win)   { @erase_window $win; }
+    emitter void erase_line(int v)       { @erase_line $v; }
+    emitter void set_cursor(int line, int col) { @set_cursor $line $col; }
+    emitter void get_cursor(int arr)     { @get_cursor $arr; }
+    emitter void set_text_style(int style) { @set_text_style $style; }
+    emitter void buffer_mode(int flag)   { @buffer_mode $flag; }
+
+    //── Input (Z4+) ─────────────────────────────────────────────────────
+    emitter int read_char(int dev)       { @read_char $dev -> $target }
+    emitter int scan_table(int x, int table, int len) {
+        @scan_table $x $table $len -> $target
+    }
+
+    //── Function Calls (Z4+) ────────────────────────────────────────────
+    emitter int call_1s(int routine)              { @call_1s $routine -> $target }
+    emitter int call_2s(int routine, int a)       { @call_2s $routine $a -> $target }
+
+    //── Bitwise (Z5+ EXT) ───────────────────────────────────────────────
+    emitter int log_shift(int a, int places)  { @log_shift $a $places -> $target }
+    emitter int art_shift(int a, int places)  { @art_shift $a $places -> $target }
+
+    //── Memory (Z5+) ────────────────────────────────────────────────────
+    emitter void copy_table(int src, int dst, int size) { @copy_table $src $dst $size; }
+
+    //── I/O (Z5+) ───────────────────────────────────────────────────────
+    emitter void print_unicode(int ch)   { @print_unicode $ch; }
+    emitter void set_colour(int fg, int bg)  { @set_colour $fg $bg; }
+    emitter int set_font(int font)       { @set_font $font -> $target }
+
+    //── Text Processing (Z5+) ───────────────────────────────────────────
+    emitter void tokenise(int text, int parse) { @tokenise $text $parse; }
+    emitter void encode_text(int zscii, int len, int from, int coded) {
+        @encode_text $zscii $len $from $coded;
+    }
+    emitter void print_table(int zscii, int width) { @print_table $zscii $width; }
+
+    //── Game State (Z5+ EXT) ────────────────────────────────────────────
+    emitter int save(int table, int bytes, int name) {
+        @save $table $bytes $name -> $target
+    }
+    emitter int restore(int table, int bytes, int name) {
+        @restore $table $bytes $name -> $target
+    }
+    emitter int save_undo()              { @save_undo -> $target }
+    emitter int restore_undo()           { @restore_undo -> $target }
+
+    //── Function Calls (Z5+) ────────────────────────────────────────────
+    emitter void call_1n(int routine)             { @call_1n $routine; }
+    emitter void call_2n(int routine, int a)      { @call_2n $routine $a; }
+
+    //── Unicode (Z5+ EXT) ───────────────────────────────────────────────
+    emitter int check_unicode(int ch)    { @check_unicode $ch -> $target }
+}
+#endif

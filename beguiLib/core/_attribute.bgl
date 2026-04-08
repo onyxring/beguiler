@@ -1,0 +1,17 @@
+#once
+//=============================================================================
+// type attribute
+    extern class attribute : _bglObject{ }
+    
+    extern class attributeList : _bglObject{ 
+        emitter void give(attribute attr){
+            give $self $attr
+        }
+        emitter void ungive(attribute attr){
+            give $self ~$attr
+        }
+        emitter bool has(attribute attr){
+            ($self has $attr)
+        }
+    }
+
