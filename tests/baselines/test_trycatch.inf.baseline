@@ -18,6 +18,10 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _bglutil
+;
+object bgl
+;
 [risky x;
     if (x>10) {
         if (_bgl_catch_cookie == 0) {
