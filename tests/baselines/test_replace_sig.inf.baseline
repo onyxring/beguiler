@@ -6,6 +6,10 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _bglutil
+;
+object bgl
+;
 [_bgl_replaced_add_0 a b;
     return a + b;
 ];

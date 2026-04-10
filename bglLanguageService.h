@@ -25,6 +25,7 @@ class bglLanguageService{
     bool switchTempNeeded = false;  // set true when any switch uses guards; drives conditional _bgl_sw emission
     
     bglLanguageService();
+        void reset();  // clear all state and re-register base types (for LSP re-parse)
         typeDef& getType(string);
         bool isObjectType(string);
         bool isClassType(string);  // true for classes/enums/types only, not object instances

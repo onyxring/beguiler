@@ -5,10 +5,12 @@
     outputPath = "tests/output";
 }
 
+attribute light;
+
 void main(){
-    // Optional chaining in expression
+    // Optional chaining in expression — method call through ?.
     object x = null;
-    object y = x?.parent() ?? x;
+    bool lit = x?.has(light);
 
     // Postfix query
     if(x?) print("present");
