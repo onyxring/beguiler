@@ -6,6 +6,10 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _bglutil
+;
+object bgl
+;
 [main val;
     val = 7;
     _bgl_sw = val;

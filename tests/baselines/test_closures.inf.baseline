@@ -9,6 +9,10 @@ global _bglCap3;
 global _bglCap2;
 global _bglCap1;
 global _bglCap0;
+object _bglutil
+;
+object bgl
+;
 [apply fn x result;
     result=fn(x);
 ];

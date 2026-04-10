@@ -58,8 +58,7 @@ class token {
         bool isOneOf(std::vector<eTokenType>);
         bool isOneOf(std::vector<std::string>);
         bool isNull();
-        bool isObjectType();
-        bool isDataType();
+        bool isDataType();   // true if the token value is a registered class/enum/base type
         bool isValidIdentifier();
         bool isNumeric();
         bool isString();   // true for both quote and rawQuote

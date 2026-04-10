@@ -5,6 +5,10 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _bglutil
+;
+object bgl
+;
 [main score;
     score = 42;
     print "Score: ";
