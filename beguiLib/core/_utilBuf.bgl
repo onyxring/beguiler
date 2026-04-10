@@ -1,0 +1,20 @@
+#once
+object _bglBuf{
+    bool isSized(array<char> _buf){         
+        int j=0;
+        
+        try{ 
+            print(10/j);
+            //#i6 return b->1=='\$90' && b->2=='\$84'; //FIXME 2: this works, but it shouldn't. The char literals are being transformed instead of passing through as-is (which should cause an error) 
+
+        } catch(int errorCode){ 
+             rfalse;
+        }
+        
+        return (_buf[-WORDSIZE-WORDSIZE-2]=='\$90' && _buf[-WORDSIZE-WORDSIZE-1]=='\$84');        
+    }
+}
+
+extend _bglUtil{
+    auto buf=_bglBuf;
+}

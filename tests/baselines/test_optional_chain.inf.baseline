@@ -6,11 +6,14 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
-[main x y;
+object _bglutil
+;
+object bgl
+;
+[main x lit;
     x = nothing;
-    _bgl_temp = x; if (_bgl_temp ~= nothing) { _bgl_temp = parent(_bgl_temp); }
-    _bgl_temp = _bgl_temp; if (~~(_bgl_temp ~= nothing)) _bgl_temp = x;
-    y = _bgl_temp;
+    _bgl_temp = x; if (_bgl_temp ~= nothing) { _bgl_temp = (_bgl_temp has light); }
+    lit=_bgl_temp;
     if (x ~= nothing) {
         print (string)"present";
     }
@@ -21,3 +24,4 @@ global _bglInitDone = 0;
     remove x;
     }
 ];
+attribute light;

@@ -42,14 +42,25 @@ private:
     json handleHover(const json& params);
     json handleCompletion(const json& params);
     json handleDefinition(const json& params);
+    json handleDocumentSymbol(const json& params);
+    json handleSignatureHelp(const json& params);
+    json handleReferences(const json& params);
+    json handleRename(const json& params);
+    json handleSemanticTokensFull(const json& params);
+    json handleWorkspaceSymbol(const json& params);
+
+    // Semantic token classification
+    int classifyWord(const std::string& word) const;
 
     // Compilation
     void parseDocument(const std::string& uri);
     void publishDiagnostics(const std::string& uri);
+    void resetAndReparse(const std::string& uri);
 
     // Document store
     std::map<std::string, std::string> openDocuments;  // uri → text content
     std::map<std::string, std::vector<std::string>> documentDiagnostics;  // uri → error messages
+    std::map<std::string, std::string> documentParsePaths;  // uri → canonical path used during last parse
 
     // Helpers
     std::string uriToPath(const std::string& uri);

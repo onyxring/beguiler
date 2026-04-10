@@ -113,6 +113,9 @@ bool beguiler::go(int argc, char* argv[]) {
     // LSP mode: run as language server instead of compiler
     for(int i = 1; i < argc; i++)
         if(string(argv[i]) == "--lsp") {
+            // Initialize library path — same as parseArgs() does for normal compilation
+            const char* envLib = getenv("BEGUILE_LIB");
+            settings.libPath = envLib ? string(envLib) : getPath(argv[0]) + "beguilib";
             LspServer lsp;
             lsp.run();
             return false;

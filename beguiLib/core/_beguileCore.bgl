@@ -21,16 +21,20 @@
     #include<core/_glulx>
 #endif
 
-emitter class bgl{
-    int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
-    auto asm = bglOpCodes;
+object _bglUtil{}
+object bgl{
+    emitter int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
+    //emitter auto asm = bglOpCodes;
+    //object util = _bglUtil;
+    //auto util = _bglUtil;
 }
+
 //=============================================================================
 // _bglObject - the base class for all Beguile objects
     emitter class _bglObject{
-        void print(){
-            print $self;    
-        }
+         void print(){
+             print $self;    
+         }
     }
 
 //=============================================================================

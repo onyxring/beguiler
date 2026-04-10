@@ -16,10 +16,99 @@ using namespace std;
 
 struct exitFileSignal {};   // thrown by #exit to unwind to the enclosing parseFile loop
 
+//=============================================================================
+// Grammar-driven pattern matching types (used by processNextStatementV2)
+//=============================================================================
+
+// One position in a syntax pattern.
+// Implicit constructors allow concise grammar tables:
+//   "("              → Literal match
+//   eTokenType::dataType → TokenType match
+//   pName            → Semantic predicate (pre-defined constant)
+//   anyOf({"a","b"}) → AnyOf match
+struct PatternElement {
+    enum class Kind { Literal, TokenType, AnyOf, Semantic, Wildcard };
+    Kind kind = Kind::Literal;
+    string literal;
+    eTokenType tokenType = eTokenType::unknown;
+    vector<string> anyOfValues;
+    function<bool(token&)> predicate;
+    string tag;  // for error messages; auto-derived if empty
+
+    // Implicit conversions — these make the grammar table concise
+    PatternElement() = default;
+    PatternElement(const char* s)       : kind(Kind::Literal), literal(s) {}   // "(" → Literal
+    PatternElement(const string& s)     : kind(Kind::Literal), literal(s) {}
+    PatternElement(eTokenType t)        : kind(Kind::TokenType), tokenType(t) {} // eTokenType::dataType → TokenType
+
+    // Named constructor for AnyOf
+    static PatternElement anyOf(vector<string> vs, string tag = "") {
+        PatternElement e; e.kind = Kind::AnyOf; e.anyOfValues = vs; e.tag = tag; return e;
+    }
+    // Named constructor for Semantic predicates
+    static PatternElement semantic(function<bool(token&)> pred, string tag = "") {
+        PatternElement e; e.kind = Kind::Semantic; e.predicate = pred; e.tag = tag; return e;
+    }
+};
+
+// Pre-defined pattern elements for grammar token positions
+// TYPE_NAME: a registered class/enum/base type (lexer: dataType). Object instances are NOT types.
+inline PatternElement TYPE_NAME(eTokenType::dataType);
+// NEW_NAME: an identifier being declared (variable, function, parameter, object instance name).
+// Also used for references to any non-type name (since those are lexed as identifier).
+inline PatternElement NEW_NAME(PatternElement::semantic(
+    [](token& t){ return t.is(eTokenType::identifier); }, "identifier"));
+
+// Qualifier flags parsed from declaration prefixes (replace, explicit, extern, emitter, const, static, extend, alias, default).
+// Defined here (before GrammarRule) so grammar handlers can reference it.
+struct Qualifiers {
+    bool isReplace  = false;
+    bool isExplicit = false;
+    bool isExtern   = false;
+    bool isEmitter  = false;
+    bool isConst    = false;
+    bool isStatic   = false;
+    bool isExtend   = false;
+    bool isAlias    = false;
+    bool isDefault  = false;
+};
+
+// Forward-declare bglParser so handler signature can reference it
+class bglParser;
+
+// Handler: member function pointer with standard signature.
+// Receives matched tokens, qualifiers, and context object.
+// Returns true if end-of-block reached, false otherwise.
+using GrammarHandler = bool (bglParser::*)(vector<token>&, Qualifiers&, abstractObject&);
+
+// One syntax rule: a pattern + handler method
+struct GrammarRule {
+    string name;                                        // human-readable name for error messages
+    vector<PatternElement> pattern;
+    GrammarHandler handler = nullptr;                   // called when this rule wins
+};
+
+// Result of matching against the grammar table
+struct GrammarMatch {
+    bool success = false;
+    string ruleName;
+    vector<token> matchedTokens;
+    GrammarHandler handler = nullptr;                   // handler from the winning rule
+    // Error info: what came closest before failing
+    struct FailedCandidate { string ruleName; int matchedUpTo; };
+    vector<FailedCandidate> failedCandidates;
+};
+struct lspRecoverySignal : public std::runtime_error {  // thrown by parsingError in LSP mode — caught by parseFile to continue
+    using runtime_error::runtime_error;
+};
+
 class bglParser {
     public:
         fileLexer file;    //what the parser reads from.  Tokens are produced by the filelexer.
+        bool lspMode = false;                  // when true, parsingError collects errors instead of halting
+        std::vector<std::string> lspErrors;    // errors collected during LSP-mode parsing
         bglParser();
+        void reset();  // clear all accumulated state for LSP re-parse
         void preScanFile(string filename);  // pass 1: register type/object stubs for forward-reference resolution
         bool parseFile(string);    //the main entry point: given a file, read it in, parse it, and store it in the parse tree
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
@@ -35,6 +124,48 @@ class bglParser {
         eCompileContext getCurrentCompileContext(); //what is the the current context?
         string processBglConditionals(const string& text); // evaluates ##ifdef/##ifndef/##else/##endif in raw emitter body text
 
+        // Grammar handler methods — standard GrammarHandler signature, called from the grammar table.
+        // Declarations
+        bool processEnum(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processClass(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processGrammar(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processArray(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processRoutine(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processObject(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processVariable(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processAliased(vector<token>& t, Qualifiers& q, abstractObject& c);
+        // Statements
+        bool processBreak(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processContinue(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processRtrue(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processRfalse(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processReturnVoid(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processReturnExpr(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processIf(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processWhile(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processDo(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processFor(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processSwitch(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processTry(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processThrow(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processDirectiveDispatch(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processFunc(vector<token>& t, Qualifiers& q, abstractObject& c);
+
+        // Parser handler methods — called from grammar handlers and processNextStatement.
+        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token());
+        bool processEnumDeclaration(token, bool, token nameOverride=token());
+        bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false);
+        bool processEmitterValueDeclaration(token typeTok, token nameTok);
+        bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false);
+        bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "");
+        bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false);
+        bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
+        bool processGrammarDeclaration(token nameOverride=token());
+        bool processObjectExtension(token nameTok);
+        bool processTypedObjectDeclaration(token typeTok, token nameTok, token classNameTok, Qualifiers& q, abstractObject& ctx);  // Type name : ClassName ...
+        bool processAliasedDeclaration(token typeTok, token nameTok, token aliasTok, Qualifiers& q, abstractObject& ctx);  // Type name as alias ...
+
     private:
         deque<eCompileContext> compileContextStack;
         set<string> onceFiles;        // absolute paths of files that declared #once
@@ -49,15 +180,19 @@ class bglParser {
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
         int ternaryDepth = 0;               // nesting depth of ternary expressions (max 1)
 
-        bool processNextStatement(abstractObject& =emptyContainer);
+        bool processNextStatementV2(abstractObject& =emptyContainer);  // grammar-driven dispatcher
+        bool processStatementDispatch(token tok, abstractObject& ctx);  // grammar dispatch for a pre-read token
         bool processParameterList(functionDef&);
 
-        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token());
-        bool processEnumDeclaration(token, bool);
+        // Grammar-driven pattern matching
+        vector<GrammarRule> grammarRules;
+        bool grammarInitialized = false;
+        void initGrammarTable();
+        GrammarMatch matchGrammar(token& firstToken);
+        bool matchElement(const PatternElement& elem, token& tok);
+        string describeExpected(const PatternElement& elem);
+
         bool processBeguilerSettings();
-        
-        bool processObjectDeclaration(token, token, bool, string className = "", string i6alias = "", bool hasBody = true);
-        bool processObjectExtension(token nameTok);  // extend <objectName> { }
         void processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod);
         void parsePropertyValue(variableDeclaration& prop, string typeName);
         void processI6InlineMember(objectDef& obj);
@@ -66,7 +201,6 @@ class bglParser {
         void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false);
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false);
         void processInheritedMember(objectDef& obj, token nameTok);
-        bool processGrammarDeclaration();
         bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members
         vector<grammarLine> parseGrammarLines();
         grammarLine parseGrammarLineContent();  // parses single grammar line (trigger + pattern tokens); assumes '{' consumed
@@ -74,9 +208,6 @@ class bglParser {
         string parseFuncType();             // reads <ReturnType,ParamType,...> from stream; returns "func<...>"
         string parseLambdaExpr(functionDef* func, statementBlock* body);  // parses lambda, lifts to global, returns lifted name
 
-        bool processVariableDeclaration(token, token, token, abstractObject& = emptyContainer, bool = false, bool = false, string i6alias = "");
-        bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false);
-        bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false);
         bool processStatement(token, abstractObject& = emptyContainer);
         bool processDirective(token, abstractObject& = emptyContainer);
 
@@ -97,19 +228,6 @@ class bglParser {
         vector<interpolatedSegment> parseInterpolatedSegments(functionDef* func, statementBlock* body); // parses $"..." segments from the live stream (consumes $ and string)
         typeMember* findMemberInHierarchy(classDef* cls, function<bool(typeMember*)> pred);
 
-        // Qualifier flags parsed from declaration prefixes (replace, explicit, extern, emitter, const, static, extend, alias, default).
-        // Parsed in any order via parseQualifiers(); validated for nonsensical combinations.
-        struct Qualifiers {
-            bool isReplace  = false;
-            bool isExplicit = false;
-            bool isExtern   = false;
-            bool isEmitter  = false;
-            bool isConst    = false;
-            bool isStatic   = false;
-            bool isExtend   = false;
-            bool isAlias    = false;
-            bool isDefault  = false;
-        };
         // Parse qualifier keywords from the token stream in any order. Consumes qualifying tokens,
         // leaves tok pointing at the first non-qualifier. Validates invalid combinations.
         Qualifiers parseQualifiers(token& tok);

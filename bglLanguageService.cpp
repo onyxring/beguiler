@@ -21,6 +21,27 @@ bglLanguageService::bglLanguageService(){
     registerType("func");
     // intliteral, stringliteral, charliteral are now declared as extern class in _beguileCore.bgl
 }
+void bglLanguageService::reset(){
+    // Clear all accumulated state (leak the old typeDef* — acceptable for LSP)
+    objectTypes.clear();
+    objectInstances.clear();
+    globals.clear();
+    globalInits.clear();
+    startupBlocks.clear();
+    emitFirstBlocks.clear();
+    emitLastBlocks.clear();
+    verbs.clear();
+    ternaryTempNeeded = false;
+    tryCatchNeeded = false;
+    tryCatchCounter = 0;
+    captureCounter = 0;
+    switchTempNeeded = false;
+    // Re-register the four base types
+    registerType("void");
+    registerType("var");
+    registerType("auto");
+    registerType("func");
+}
 bool bglLanguageService::isObjectType(string name){
     if(getType(name)==emptyTDef) return false;
     return true;

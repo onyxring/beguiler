@@ -43,8 +43,10 @@ const token _nullToken;
         return is(eTokenType::unknown); 
     }
     
+    // True if the token's value is a registered class/enum/base type.
+    // Object instances are NOT data types — they're lexed as eTokenType::identifier.
     bool token::isDataType(){
-        return languageService.isObjectType(value);    
+        return languageService.isClassType(value);
     }
     bool token::isString(){
         return tokenType == eTokenType::quote || tokenType == eTokenType::rawQuote;

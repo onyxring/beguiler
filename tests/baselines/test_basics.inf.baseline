@@ -6,6 +6,10 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _bglutil
+;
+object bgl
+;
 constant max = 100;
 constant title = "Test";
 [main a b c s ch flag i j;

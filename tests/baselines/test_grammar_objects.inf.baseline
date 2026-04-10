@@ -8,6 +8,10 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _bglutil
+;
+object bgl
+;
 constant story = "";
 constant headline = "";
 object whiff
