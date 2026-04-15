@@ -1,0 +1,39 @@
+/* Adversarial round 2: error recovery — multiple errors in one file.
+   Tests that the first error does not cause the parser to cascade into
+   infinite errors, crash, or lose track of brace nesting.
+
+   The file contains three intentional errors:
+   1. Undeclared variable in function body
+   2. Missing semicolon after a statement
+   3. Type mismatch in assignment
+
+   Expected: compiler reports all three errors (or at least the first two)
+   and terminates cleanly. No hang, no crash. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void goodFunc() {
+    int x = 5;
+    print(x);
+}
+
+void errorFunc1() {
+    // Error 1: undeclared variable
+    int y = undeclaredVar + 1;
+}
+
+void errorFunc2() {
+    // Error 2: missing semicolon (parser must resync at next statement)
+    int a = 5
+    int b = 10;
+    print(b);
+}
+
+void errorFunc3() {
+    // Error 3: type mismatch — assigning string to int
+    int n = "hello";
+}
+
+void anotherGoodFunc() {
+    int z = 42;
+    print(z);
+}

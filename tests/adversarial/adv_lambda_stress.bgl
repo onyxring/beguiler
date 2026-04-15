@@ -1,0 +1,25 @@
+/* Adversarial: lambda edge cases — empty lambda, lambda returning lambda,
+   lambda with no captures, lambda capturing loop var. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void apply(func<void, int> fn, int x) { fn(x); }
+func<int,int> makeAdder(int n){ return (int x) => { return x + n; }; }
+
+void main() {
+    // Empty lambda body
+    apply((int n) => {}, 1);
+
+    // Lambda with no captures — should not generate any _bglCap globals
+    apply((int n) => { print(n); }, 42);
+
+    // Lambda returning lambda (closure over closure)
+    func<int,int> add5 = makeAdder(5);
+    int result = add5(10);
+    print(result);
+
+    // Multiple lambdas capturing different variables in the same scope
+    int a = 1;
+    int b = 2;
+    apply((int n) => { print(a + n); }, 10);
+    apply((int n) => { print(b + n); }, 20);
+    apply((int n) => { print(a + b + n); }, 30);
+}

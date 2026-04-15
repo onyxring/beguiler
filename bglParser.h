@@ -55,9 +55,11 @@ struct PatternElement {
 // TYPE_NAME: a registered class/enum/base type (lexer: dataType). Object instances are NOT types.
 inline PatternElement TYPE_NAME(eTokenType::dataType);
 // NEW_NAME: an identifier being declared (variable, function, parameter, object instance name).
-// Also used for references to any non-type name (since those are lexed as identifier).
+// Also used for references to any non-type name. Accepts both identifier and dataType tokens so
+// that user-chosen names colliding with a registered class/enum produce a clean shadow error from
+// the downstream handler rather than a raw "Unrecognized statement" from the pattern matcher.
 inline PatternElement NEW_NAME(PatternElement::semantic(
-    [](token& t){ return t.is(eTokenType::identifier); }, "identifier"));
+    [](token& t){ return t.is(eTokenType::identifier) || t.is(eTokenType::dataType); }, "identifier"));
 
 // Qualifier flags parsed from declaration prefixes (replace, explicit, extern, emitter, const, static, extend, alias, default).
 // Defined here (before GrammarRule) so grammar handlers can reference it.
@@ -107,6 +109,15 @@ class bglParser {
         fileLexer file;    //what the parser reads from.  Tokens are produced by the filelexer.
         bool lspMode = false;                  // when true, parsingError collects errors instead of halting
         std::vector<std::string> lspErrors;    // errors collected during LSP-mode parsing
+
+        // Inactive source-line ranges — lines skipped because an enclosing #if/#elif/#else was
+        // false. Populated during pre-scan and main parse. Keyed by canonical file path so the
+        // LSP can report only ranges for the document being parsed. Half-open: [startLine0, endLine0Exclusive).
+        struct InactiveRegion { int startLine0; int endLine0Exclusive; };
+        std::map<std::string, std::vector<InactiveRegion>> inactiveRegions;
+        // Record a dead-code range from a 1-based inclusive [startLine1, endLine1]. Resolves the
+        // current file from the lexer stack. Silently ignores empty or inverted ranges.
+        void recordInactiveRange(int startLine1, int endLine1Inclusive);
         bglParser();
         void reset();  // clear all accumulated state for LSP re-parse
         void preScanFile(string filename);  // pass 1: register type/object stubs for forward-reference resolution
@@ -119,7 +130,7 @@ class bglParser {
         string contextToString(eCompileContext);
 
         //as we are parsing a file, we enter and exit "contexts" which help the parser determine what is and isn't valid.  For example, the global context allow different things than in the context of a routine.
-        void openCompileContext(eCompileContext);   //entering a new context
+        void openCompileContext(eCompileContext, statementBlock* body = nullptr);   //entering a new context
         void closeCompileContext(eCompileContext);  //closing out the current context and returning to the previous
         eCompileContext getCurrentCompileContext(); //what is the the current context?
         string processBglConditionals(const string& text); // evaluates ##ifdef/##ifndef/##else/##endif in raw emitter body text
@@ -168,16 +179,22 @@ class bglParser {
 
     private:
         deque<eCompileContext> compileContextStack;
+        // Stack of statement blocks currently being parsed, from outermost (function body) to
+        // innermost (current if/for/while body). Used by Tier 1c identifier resolution to find
+        // locals declared in ancestor blocks that haven't been added to the AST yet.
+        vector<statementBlock*> activeBlockStack;
         set<string> onceFiles;        // absolute paths of files that declared #once
         set<string> startupFiles;     // absolute paths of files whose #startup blocks have been registered
         set<string> emitFirstFiles;   // absolute paths of files whose #emitfirst blocks have been registered
         set<string> emitLastFiles;    // absolute paths of files whose #emitlast blocks have been registered
-        vector<classDef*> usingImports;     // imported scopes from #using directives (file-scoped)
+        vector<classDef*>  usingImports;         // imported class scopes from #using directives (file-scoped)
+        vector<objectDef*> usingObjectImports;   // imported object scopes from #using directives (file-scoped)
         int includeDepth = 0;               // current include nesting depth
         static constexpr int maxIncludeDepth = 255;
         int forInCounter = 0;               // counter for unique _bglfiN variable names
         int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
+        set<string> currentLoopVars;        // names of active for-loop init variables (for capture warnings)
         int ternaryDepth = 0;               // nesting depth of ternary expressions (max 1)
 
         bool processNextStatementV2(abstractObject& =emptyContainer);  // grammar-driven dispatcher
@@ -211,9 +228,19 @@ class bglParser {
         bool processStatement(token, abstractObject& = emptyContainer);
         bool processDirective(token, abstractObject& = emptyContainer);
 
-        expression* parseExpression(token firstToken, vector<string> terminators, functionDef* func, statementBlock* body);
+        // Namespace-scoped type resolution helpers
+        string resolveNamespacedType(const string& dottedPath); // walks namespace objects to resolve dotted type path
+        bool isNamespacedTypePath(token firstTok);               // peeks ahead to check if token starts a valid namespace type path
+        token consumeTypeToken(token first);                     // consumes dotted type tokens, returns synthetic dataType token
+        // Try to resolve `A.B.C.valueName` where `A.B.C` namespace-resolves to an enum/bnum type
+        // and `valueName` is a named value of that type. On success: consumes the dotted tokens
+        // past `first`, fills outFlatEmission (e.g. "_bglulxwindowplacement_above") and outEnumType
+        // (the enum's flat name), and returns true. On failure: no tokens consumed, returns false.
+        bool tryConsumeNamespacedEnumValue(token first, string& outFlatEmission, string& outEnumType);
+
+        expression* parseExpression(token firstToken, vector<string> terminators, functionDef* func, statementBlock* body, int startParenDepth = 0);
         // parseExpression sub-functions (extracted for readability)
-        void parseExprTernary(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body);
+        void parseExprTernary(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body, int parenDepth = 0);
         void parseExprNullCoalescing(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body);
         bool parseExprFunctionCall(expression* expr, const string& callName, bool isSelfCall, functionDef* func, statementBlock* body);
         bool parseExprPrefixNot(expression* expr, token operand, optional<token>& prefetched, functionDef* func, statementBlock* body);
@@ -232,10 +259,51 @@ class bglParser {
         // leaves tok pointing at the first non-qualifier. Validates invalid combinations.
         Qualifiers parseQualifiers(token& tok);
         string resolveIdentifierType(string name, functionDef* func, statementBlock* body);
+
+        // Return the declared element type of an array variable, or "" if `name` isn't an
+        // arrayDeclaration in any reachable scope. Walks locals, class/object members, globals.
+        string resolveArrayElementType(const string& name, functionDef* func, statementBlock* body);
+        // Same for dotted access — objName.propName where propName is an arrayDeclaration member.
+        string resolveArrayElementTypeDotted(const string& objName, const string& propName,
+                                              functionDef* func, statementBlock* body);
+        // Look up operator[] / operator[]= on an array class hierarchy matching a specific element
+        // type. For read (`[]`), matches by return type. For write (`[]=`), matches by second
+        // parameter type. If no explicit overload exists and the element type is a registered
+        // class (user-defined), synthesizes one using the `object`-typed overload as a template.
+        // Returns nullptr if no match and no synthesis possible.
+        functionDef* findArraySubscriptOp(classDef* arrCls, const string& elemType, bool isWrite);
         string resolvePathType(string path, functionDef* func, statementBlock* body);
         string qualifyIdentifier(string name, functionDef* func, statementBlock* body);
         bool isTypeCompatible(string argType, string paramType);
         void applyArgConversions(vector<expression*>& args, functionDef* fd);
+        // Canonicalize a parsed argument list against a resolved function signature. Performs:
+        //   (1) named-argument reordering, (2) default-value fill for trailing unspecified params,
+        //   (3) source-type conversion via operator() on argument classes. Mutates all three
+        //   vectors in place. Call site must have already validated arity. Any namedArgNames /
+        //   interpSegmentsPerArg vector may be empty if the caller doesn't track that information.
+        void finalizeCallArgs(vector<expression*>& args, vector<string>& namedArgNames,
+                              vector<vector<interpolatedSegment>>& interpSegmentsPerArg, functionDef* fd);
+
+        // Unified dotted method call binding. Performs (1) resolveMethodWithConversion (with LHS
+        // conversion-operator fallback), (2) nameFound/arity/overload validation with detailed
+        // error messages, (3) finalizeCallArgs. Updates objType in-place if conversion succeeded.
+        // Always returns non-null (errors throw via parsingError). Every dotted method call site
+        // must route through this so the five steps can't drift apart.
+        functionDef* bindMethodCall(string& objType, const string& objPath, const string& methodName,
+                                     vector<expression*>& args, vector<string>& namedArgNames,
+                                     vector<vector<interpolatedSegment>>& interpSegmentsPerArg);
+
+        // Unified global function call binding. Performs resolveGlobalCall + validateGlobalCall +
+        // finalizeCallArgs. For calls through a func<> variable, funcVarReturnType is set and
+        // method is nullptr (no signature to bind against).
+        struct GlobalCallBinding {
+            functionDef* method = nullptr;
+            string funcVarReturnType;   // non-empty for func<> variable calls
+        };
+        GlobalCallBinding bindGlobalCall(const string& name, vector<expression*>& args,
+                                          vector<string>& namedArgNames,
+                                          vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
+                                          functionDef* func, statementBlock* body);
 
         // Unified method resolution: searches class hierarchy, then objectDef members (with self→currentObject),
         // handles pre-scan stubs, default params, var fallback. Returns nullptr if not found.
@@ -246,6 +314,10 @@ class bglParser {
             bool nameFound = false;              // true if any method with the name exists
         };
         MethodMatch resolveMethod(const string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args);
+        // Same as resolveMethod, but on failure walks the LHS class's non-explicit operator() conversion
+        // emitters and retries on each converted type. If a conversion succeeds, typeName is updated
+        // in-place to the converted type name so the caller can substitute it.
+        MethodMatch resolveMethodWithConversion(string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args);
 
         // Shared argument list parsing: reads comma-separated expressions from stream (assumes '(' already consumed).
         // Returns parsed args, named arg names, and per-arg interpolated segments.
@@ -275,6 +347,9 @@ class bglParser {
         functionDef* currentFunc = nullptr;  // outermost function being parsed (not changed for nested if/while blocks)
         functionDef* lambdaOuterFunc = nullptr;    // set during lambda parsing to enable capture detection
         statementBlock* lambdaOuterBody = nullptr; // outer function body during lambda parsing
+        // Stack of enclosing functions for nested lambda capture resolution. Each entry is an
+        // outer function scope that may contain capturable variables. Innermost (most recent) first.
+        vector<functionDef*> lambdaOuterFuncStack;
         string addCapture(const string& outerName, const string& typeName); // register a closure capture, return global name
         sourceLocation currentStatementSrc;  // location of the first token of the current statement
 
@@ -292,6 +367,11 @@ class bglParser {
         void preScanSkipBodyContents();   // assumes '{' already consumed; skips to matching '}'
         void preScanSkipToSemicolon();    // consumes tokens up to and including ';'
         void preScanSkipParens();         // assumes '(' already consumed; skips to matching ')'
+        void preScanCaptureParams(vector<paramDef*>& out); // like preScanSkipParens but captures type/name of each parameter
+        // If typeTok is a generic base type (array/func) and the next token is '<', consume
+        // the generic parameter list ('<T>' for array, balanced '<...>' for func) so the caller
+        // can continue reading the identifier name. Used by pre-scan member header recognition.
+        void preScanConsumeGenericSuffix(const token& typeTok);
 
         vector<statement*> pendingInjections;  // pre-statements to emit before next main statement (e.g. from ternary lowering)
         vector<statement*> postInjections;     // post-statements to emit after next main statement (e.g. closing braces for ?. guards)

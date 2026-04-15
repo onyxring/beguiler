@@ -1,0 +1,8 @@
+/* Adversarial round 2: EOF inside a class declaration.
+   Tests that the parser terminates cleanly when EOF appears after
+   the colon in a class inheritance declaration.
+
+   NOTE: INTENTIONALLY MALFORMED. Expected: clean error, not hang. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Broken :

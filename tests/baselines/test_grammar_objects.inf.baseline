@@ -8,9 +8,13 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _glulx
+;
 object _bglutil
 ;
 object bgl
+  with glulx _glulx,
+       util _bglutil
 ;
 constant story = "";
 constant headline = "";

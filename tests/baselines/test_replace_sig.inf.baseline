@@ -9,6 +9,7 @@ global _bglInitDone = 0;
 object _bglutil
 ;
 object bgl
+  with util _bglutil
 ;
 [_bgl_replaced_add_0 a b;
     return a + b;

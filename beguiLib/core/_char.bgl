@@ -5,7 +5,7 @@ extern class charLiteral:_bglObject{
     replace emitter void print(){ print (char)$self; }
 }
 extern class char : _bglObject{ 
-    emitter char operator = (char c){ $self=$c; }
+    emitter char operator = (char c){ $target=$c; }
     //emitter char operator = (int v){ $self=$v; } //we avoid:  char c = 45;  Enforce: char c ='\45';
 
     emitter bool operator == (char c){ $self==$c}

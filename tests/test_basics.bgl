@@ -12,6 +12,12 @@
 const int MAX = 100;
 const string TITLE = "Test";
 
+// Raw string literal (spec §2.5.2a) — @"..." disables escape processing except
+// for \" (escaped double-quote). Embedded backslashes, quotes, and characters
+// pass through to the emitted I6 string as-is.
+const string RAW_MSG = @"raw \n stays literal and \t too";
+const string RAW_WITH_QUOTE = @"has a ""quoted"" word";
+
 void main(){
     // Variable declarations and assignments
     int a = 5;
@@ -20,6 +26,13 @@ void main(){
     string s = "hello";
     char ch = 'x';
     bool flag = true;
+
+    // `auto` type inference via operator auto() on literal pseudo-types.
+    // intLiteral.operator auto() returns int → autoInt resolves to int, not intLiteral,
+    // giving it full int operator support. Spec §7.9a.
+    auto autoInt = 7;
+    autoInt += 3;
+    auto autoChar = 'y';
 
     // Compound assignment
     a += 3;
@@ -62,6 +75,10 @@ void main(){
     for(int j in 1 to 5){
         print(j);
     }
+
+    // Raw string literals — reference them so they're not dead-stripped
+    print(RAW_MSG);
+    print(RAW_WITH_QUOTE);
 
     // Return
     print(TITLE);

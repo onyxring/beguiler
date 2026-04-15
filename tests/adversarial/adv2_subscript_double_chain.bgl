@@ -1,0 +1,51 @@
+/* Adversarial round 2: subscript-dot chaining, multi-level.
+   Tests arr[i].method().field (double chain), arr[arr[0]].field (nested
+   subscript expression), and subscript result used as a function argument.
+
+   Expected: compiles without error; element type propagates through each
+   dot-access and the I6 emission nests correctly. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Widget : object {
+    int id = 0;
+    int getId() { return id; }
+}
+
+Widget w0 { id = 0; }
+Widget w1 { id = 1; }
+Widget w2 { id = 2; }
+
+array<Widget> g_widgets = {w0, w1, w2};
+array<int>    g_indices = {2, 0, 1};
+
+void sink(int x) { print(x); }
+
+void main() {
+    // Basic subscript-dot: arr[i].field
+    int id0 = g_widgets[0].id;
+    print(id0);
+
+    // Subscript-dot-method: arr[i].method()
+    int id1 = g_widgets[1].getId();
+    print(id1);
+
+    // Nested subscript: arr[arr2[0]] — inner subscript as index expression
+    int idx = g_indices[0];
+    int id2 = g_widgets[idx].id;
+    print(id2);
+
+    // Subscript result as argument to function
+    sink(g_widgets[2].id);
+
+    // Subscript in if-condition
+    if (g_widgets[0].id == 0) {
+        print(1);
+    }
+
+    // Subscript in while-condition
+    int counter = 0;
+    while (g_widgets[counter].id < 2) {
+        counter++;
+    }
+    print(counter);
+}

@@ -1,0 +1,31 @@
+/*
+    test_array_return_type.bgl
+    Tests: array<T> as a function return type, array<T> as a parameter type,
+    and iterating over a returned array.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+array<int> g_src = {1, 2, 3};
+
+// array<int> as return type — fails today
+array<int> getList() {
+    return g_src;
+}
+
+// array<int> as parameter — already works; confirming here as a comparison point
+int sumList(array<int> xs) {
+    int total = 0;
+    for(int x in xs) { total = total + x; }
+    return total;
+}
+
+void main() {
+    // Once return types work, this should compile and iterate over the returned array
+    for(int x in getList()) { print(x); }
+    int total = sumList(g_src);
+    print(total);
+}

@@ -13,6 +13,8 @@ global _bgl_cv4;
 global _bgl_cvs4;
 global _bgl_cv5;
 global _bgl_cvs5;
+global _bgl_cv6;
+global _bgl_cvs6;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -21,6 +23,7 @@ global _bglInitDone = 0;
 object _bglutil
 ;
 object bgl
+  with util _bglutil
 ;
 [risky x;
     if (x>10) {
@@ -64,7 +67,22 @@ object bgl
 [middle;
     deep();
 ];
-[main e a b c d;
+class risk
+  class object
+  with
+    n 0,
+    trigger[;
+        if (self.n==0) {
+            if (_bgl_catch_cookie == 0) {
+                print "^[Unhandled exception]^";
+                quit;
+            }
+            @throw 101 _bgl_catch_cookie;
+        }
+    ]
+;
+risk g_risk;
+[main e a b c d e5;
     _bgl_cvs1 = _bgl_catch_cookie;
     @catch -> _bgl_cv1;
     if (_bgl_catch_cookie == _bgl_cv1) {
@@ -123,5 +141,17 @@ object bgl
     } else {
         _bgl_catch_cookie = _bgl_cvs5;
         d = _bgl_cv5;
+    }
+    _bgl_cvs6 = _bgl_catch_cookie;
+    @catch -> _bgl_cv6;
+    if (_bgl_catch_cookie == _bgl_cv6) {
+        _bgl_catch_cookie = _bgl_cv6;
+        if (g_risk ~= nothing) {
+        g_risk.trigger();
+        }
+        _bgl_catch_cookie = _bgl_cvs6;
+    } else {
+        _bgl_catch_cookie = _bgl_cvs6;
+        e5 = _bgl_cv6;
     }
 ];

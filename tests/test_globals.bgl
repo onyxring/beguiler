@@ -1,0 +1,38 @@
+/* test_globals.bgl — global variables, constants, arrays, extern declarations */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// Primitive globals with/without initializer
+bool   g_isActive    = true;
+bool   g_isInactive;
+int    g_score       = 0;
+int    g_moves;
+var    g_scratch;
+
+// Constants
+const int    MAX_ROOMS  = 20;
+const int    MAX_ITEMS  = 10;
+const string TITLE      = "test";
+
+// Arrays: sized (uninitialized) and literal-initialized
+array<int> g_roomExits[6];
+array<int> g_itemIds[10];
+array<int> g_primes    = {2, 3, 5, 7, 11};
+array<int> g_fibonacci = {1, 1, 2, 3, 5, 8};
+
+// Extern declarations
+extern int       g_externCounter;
+extern const int G_MAX_SCORE;
+
+void main() {
+    g_score    = 0;
+    g_moves    = 0;
+    g_scratch  = 42;
+
+    // Array indexing (read into var — typed subscript not yet supported)
+    var first = g_primes[0];
+    var total = g_primes[0];
+}

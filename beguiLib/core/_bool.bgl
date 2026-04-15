@@ -16,8 +16,8 @@
         emitter eBool operator == (eBool v){ $self == $v }
         emitter eBool operator != (bool v){ $self ~= $v }
         emitter eBool operator != (eBool v){ $self ~= $v }
-        emitter bool operator = (bool v){ $self=$v; }
-        emitter bool operator = (eBool v){ $self=$v; }
+        emitter bool operator = (bool v){ $target=$v; }
+        emitter bool operator = (eBool v){ $target=$v; }
         emitter eBool operator && (bool v){ $self && $v }
         emitter eBool operator && (eBool v){ $self && $v }
         emitter eBool operator || (bool v){ $self || $v }

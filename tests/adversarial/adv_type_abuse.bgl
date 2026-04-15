@@ -1,0 +1,30 @@
+/* Adversarial: type system edge cases.
+   Expected: clean errors for invalid constructs, correct behavior for legal ones. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+// Class inheriting from itself — should error
+// class Ouroboros : Ouroboros { int x = 0; }
+
+// Diamond inheritance — two parents share a common base
+class Base : object { int shared = 0; }
+class Left : Base { int leftVal = 1; }
+class Right : Base { int rightVal = 2; }
+class Diamond : Left, Right {
+    void test(){
+        int s = shared;      // ambiguous? or first-found via depth-first?
+        int l = leftVal;
+        int r = rightVal;
+    }
+}
+
+// Casting between unrelated types
+class Foo : object { int x = 1; }
+class Bar : object { int y = 2; }
+Foo f;
+Bar b;
+
+void main() {
+    Diamond d;
+    d.test();
+    // int cross = (int)f;  // cast Foo to int — should this work via explicit operator()?
+}

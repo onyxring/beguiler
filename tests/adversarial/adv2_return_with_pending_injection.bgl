@@ -1,0 +1,37 @@
+/* Adversarial round 2: return statement with pending injections.
+   Tests that pendingInjections (from ternary lowering, captures, etc.)
+   are correctly drained BEFORE the return statement emits its I6 `return`.
+   If the drain happens after the return, the injected code is dead.
+
+   Expected: compiles without error; ternary temporaries are initialized
+   before the return value expression uses them. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+int pickValue(int a, int b) {
+    // Ternary in return — injection must precede the return
+    return a > b ? a : b;
+}
+
+int pickComplex(int a, int b, int c) {
+    // Two ternaries in return — both injections must precede
+    return (a > b ? a : b) + (b > c ? 10 : 20);
+}
+
+void apply(func<void, int> fn, int x) { fn(x); }
+
+int captureAndReturn(int base) {
+    // Lambda capture + return — capture load must happen, then return
+    func<int, int> fn = (int n) => { return n + base; };
+    return fn(5);
+}
+
+void main() {
+    int r1 = pickValue(3, 7);
+    print(r1);
+
+    int r2 = pickComplex(1, 5, 3);
+    print(r2);
+
+    int r3 = captureAndReturn(10);
+    print(r3);
+}

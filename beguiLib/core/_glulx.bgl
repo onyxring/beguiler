@@ -1,1 +1,22 @@
 #include<core/_glulxOpCodes>
+
+extend bgl{ auto glulx=_glulx; } //extend the bgl namespace object to include glulx-specific things
+
+//the glulx namespace object
+object _glulx{
+   alias eStyleType for eGlulxStyleType; //bgl.glulx.eStyleType
+}
+
+enum eGlulxStyleType{
+        normal
+   ,    emphasized
+   ,    fixed
+   ,    header
+   ,    subheader
+   ,    alert
+   ,    note
+   ,    blockQuote
+   ,    input
+   ,    user1
+   ,    user2
+}

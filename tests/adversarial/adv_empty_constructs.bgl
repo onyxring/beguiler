@@ -1,0 +1,12 @@
+/* Adversarial: empty bodies everywhere.
+   Expected: compiles cleanly or produces clean errors — no crash. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Empty : object {}
+class AlsoEmpty : object { }
+void emptyFunc() {}
+void main() {
+    if(true){}
+    if(false){} else {}
+    while(false){}
+    for(int i=0; i<0; i++){}
+}
