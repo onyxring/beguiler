@@ -1,0 +1,48 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+class counter
+  class object
+  with
+    value 0,
+    get[;
+        return self.value;
+    ],
+    add[n;
+        return self.value + n;
+    ]
+;
+counter g_ctr
+  with value 5
+;
+[double n;
+    return n * 2;
+];
+[triple n;
+    return n * 3;
+];
+array g_arr table 10 20 30;
+[main r1 r2 r3 r4 r5 r6 acc;
+    r1=double(3) + triple(2) * 2;
+    print r1;
+    r2=g_ctr.get() * 2 + 1;
+    print r2;
+    r3= g_arr-->(0+1)  +  g_arr-->(1+1)  *  g_arr-->(2+1);
+    print r3;
+    r4=g_ctr.get()>3 && double(1)<5;
+    r5=(g_ctr.get() + 1) * (double(2) - 1);
+    print r5;
+    r6= g_arr-->(0+1)  + g_ctr.get()>10 || double(1)==2;
+    acc = 0;
+    acc = acc + g_ctr.get() * 2 + 1;
+    print acc;
+];

@@ -1,0 +1,25 @@
+/* Adversarial: emitter body edge cases. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Counter : object {
+    int n = 0;
+    // Emitter that uses $self multiple times
+    emitter int operator + (int v) { $self.n + $v }
+    // Emitter with no body (forward declaration style)
+    // emitter int operator - (int v);
+}
+
+// Global emitter with $param substitution
+emitter void logValue(int v) { ##if DEBUG print $v; ##endif }
+
+Counter c { n = 10; }
+
+void main() {
+    // Emitter call where the argument is itself an emitter result
+    int r = c + (c + 5);
+    print(r);
+
+    // Emitter with literal argument
+    int s = c + 0;
+    print(s);
+}

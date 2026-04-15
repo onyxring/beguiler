@@ -1,0 +1,50 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+class widget
+  class object
+  with
+    getextra[;
+        return self.extraval;
+    ],
+    baseval 1,
+    extraval 0
+;
+widget g_w
+  with baseval 10
+;
+object emptyobj
+;
+class calculator
+  class object
+  with
+    accumulator 0,
+    reset[;
+        self.accumulator = 0;
+    ],
+    addandreset[n temp;
+        accumulator=self.accumulator + n;
+        temp=self.accumulator;
+        self.reset();
+        print temp;
+    ]
+;
+global g_calc;
+[main v ref a;
+    g_w.extraval = 42;
+    v=g_w.getextra();
+    print v;
+    ref = emptyobj;
+    g_calc.addandreset(7);
+    a=g_calc.accumulator;
+    print a;
+];

@@ -1,0 +1,29 @@
+/*
+    test_subscript_method_dispatch.bgl
+    Tests: dot-access on subscript results — arr[i].method(), arr[i].field,
+    arr[i].method() with return value. Covers both statement-level and
+    expression-level subscript-dot chains.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Room : object {
+    int visits = 0;
+    void visit() { visits = visits + 1; }
+    int getVisits() { return visits; }
+}
+
+Room r1;
+Room r2;
+array<Room> g_rooms = {r1, r2};
+
+void main() {
+    // All four of these should work — dot-access on a subscript result.
+    g_rooms[0].visit();
+    int v = g_rooms[0].visits;
+    int v2 = g_rooms[0].getVisits();
+    g_rooms[1].visit();
+}

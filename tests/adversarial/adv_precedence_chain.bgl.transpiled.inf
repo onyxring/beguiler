@@ -1,0 +1,25 @@
+!% -v5
+!% -E1
+global _bgl_temp;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[main a b c d r q t;
+    a = 1;
+    b = 2;
+    c = 3;
+    d = 4;
+    r=a + b * c - d / 2 % 3 & 7 | (1 | 2) - (1 & 2);
+    q=a < b + 1 && c > d - 1||a==b*2&&c~=d;
+    if (a + b > c - d) _bgl_temp = 10; else _bgl_temp = 20;
+    t = _bgl_temp;
+    print r;
+    print t;
+];

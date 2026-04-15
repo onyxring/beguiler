@@ -1,0 +1,76 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+global _bglCap5;
+global _bglCap4;
+global _bglCap3;
+global _bglCap2;
+global _bglCap1;
+global _bglCap0;
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[apply fn x;
+    fn(x);
+];
+global g_saved;
+[main val fn1 mode i shared;
+    val = 5;
+    _bglCap0 = val;
+    fn1 = _bglLambda_0;
+    val = 10;
+    val = _bglCap0;
+    fn1(1);
+    mode = 1;
+    if (mode==1) {
+        _bglCap1 = val;
+        apply(_bglLambda_1, 100);
+        val = _bglCap1;
+    }
+    else {
+        _bglCap2 = val;
+        apply(_bglLambda_2, 100);
+        val = _bglCap2;
+    }
+    for (i = 0 : i<3 : i ++) {
+        _bglCap3 = i;
+        apply(_bglLambda_3, 0);
+        i = _bglCap3;
+    }
+    shared = 42;
+    _bglCap4 = shared;
+    apply(_bglLambda_4, 0);
+    shared = _bglCap4;
+    shared = 99;
+    _bglCap5 = shared;
+    apply(_bglLambda_5, 0);
+    shared = _bglCap5;
+];
+[_bglLambda_0 n r;
+    r=_bglCap0 + n;
+    print r;
+];
+[_bglLambda_1 n r;
+    r=_bglCap1 + n;
+    print r;
+];
+[_bglLambda_2 n r;
+    r=_bglCap2 * n;
+    print r;
+];
+[_bglLambda_3 n r;
+    r=_bglCap3 + n;
+    print r;
+];
+[_bglLambda_4 n;
+    print _bglCap4;
+];
+[_bglLambda_5 n;
+    print _bglCap5;
+];

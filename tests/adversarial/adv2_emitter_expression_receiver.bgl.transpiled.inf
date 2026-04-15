@@ -1,0 +1,42 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+class box
+  class object
+  with
+    capacity 0
+;
+box b1
+  with capacity 10
+;
+box b2
+  with capacity 20
+;
+array g_boxes table b1 b2;
+[getbox idx;
+    if (idx==0) {
+        return b1;
+    }
+    return b2;
+];
+[main c1 c2 c3;
+    g_boxes-->(0+1) .capacity = 42;
+    c1=g_boxes-->(0+1) .capacity;
+    print c1;
+    .capacity = 99;
+    c2=b2.capacity;
+    print c2;
+    b1.capacity = 5;
+    b1.capacity = b1.capacity + b2.capacity;
+    c3=b1.capacity;
+    print c3;
+];

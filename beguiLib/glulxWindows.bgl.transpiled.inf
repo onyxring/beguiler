@@ -1,0 +1,60 @@
+!% -G
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _glulx
+;
+constant _eglulxstyletype_normal = 1;
+constant _eglulxstyletype_emphasized = 2;
+constant _eglulxstyletype_fixed = 3;
+constant _eglulxstyletype_header = 4;
+constant _eglulxstyletype_subheader = 5;
+constant _eglulxstyletype_alert = 6;
+constant _eglulxstyletype_note = 7;
+constant _eglulxstyletype_blockquote = 8;
+constant _eglulxstyletype_input = 9;
+constant _eglulxstyletype_user1 = 10;
+constant _eglulxstyletype_user2 = 11;
+object _bglutil
+;
+object bgl
+  with glulx _glulx,
+       util _bglutil
+;
+constant _eglulxwindowtype_textgrid = 4;
+constant _eglulxwindowtype_textbuffer = 3;
+constant _eglulxwindowtype_graphics = 5;
+constant _eglulximagealign_inlineup = 1;
+constant _eglulximagealign_inlinedown = 2;
+constant _eglulximagealign_inlinecenter = 3;
+constant _eglulximagealign_marginleft = 4;
+constant _eglulximagealign_marginright = 5;
+constant _eglulximagealign_margincenter = 6;
+constant _bglulxwindowborder_border = 0;
+constant _bglulxwindowborder_noboarder = 256;
+constant _bglulxwindowplacement_left = 0;
+constant _bglulxwindowplacement_right = 1;
+constant _bglulxwindowplacement_above = 2;
+constant _bglulxwindowplacement_below = 3;
+constant _bglulxwindowscale_fixed = 16;
+constant _bglulxwindowscale_proportional = 32;
+constant _eglulximagedimension_original = -1;
+constant _eglulximagedimension_scaled = -2;
+global tmpwin;
+class _glulxwindow
+  with
+    id,
+    wintype,
+    parent,
+    winmethod,
+    splitwindow[type heightorwidth scale placement border retval;
+        retval = tmpwin;
+        retval.winmethod = (placement|scale|border);
+        retval.wintype = type;
+        retval.parent = self;
+        return retval;
+    ]
+;

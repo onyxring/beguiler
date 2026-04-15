@@ -1,0 +1,23 @@
+!% -v5
+!% -E1
+global _bgl_temp;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[main s1 s2 x fallback;
+    s1="";
+    s2=" ";
+    x = 42;
+    print x;
+    print (string)"she said ""hello""";
+    _bgl_temp = s1; if (~~(_bgl_temp ~= 0)) _bgl_temp = "default";
+    fallback=_bgl_temp;
+    print (string)fallback;
+];

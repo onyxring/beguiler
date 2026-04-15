@@ -232,7 +232,14 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 }
                 else if(find(languageService.operators.begin(), languageService.operators.end(), twoChars)!=languageService.operators.end()){
                     retval.value=twoChars; //note: this overwrites the previous value, which is just the first character
-                    readChar(); //dispose of the second character we previewed   
+                    readChar(); //dispose of the second character we previewed
+                    // Check for three-character operators (e.g. <<=, >>=) by peeking one more
+                    char nc3 = peekChar();
+                    string threeChars = twoChars + nc3;
+                    if(find(languageService.operators.begin(), languageService.operators.end(), threeChars)!=languageService.operators.end()){
+                        retval.value = threeChars;
+                        readChar();
+                    }
                     retval.tokenType=eTokenType::oper;
                 }
                 else{
@@ -399,6 +406,10 @@ string fileLexer::getRawTextThroughClosingBrace(){
     char c=readChar();
 
      while(count>0){
+         if(c == EOF){
+             parser.parsingError("Unexpected end of file — missing closing '}'");
+             break;
+         }
          // Skip // line comments — braces inside don't count
          if(c=='/' && peekChar()=='/'){
              retval += c; c = readChar();  // second /
@@ -438,6 +449,10 @@ string fileLexer::getRawTextThroughClosingBrace(){
          retval=retval+c;
          c=readChar();
      }
+     // The caller had already consumed the opening '{' via getToken(), which incremented
+     // braceDepth. We've now consumed the matching '}' here as raw char reads, so decrement to
+     // keep the counter balanced for LSP error recovery.
+     if(braceDepth > 0) braceDepth--;
      return retval;
 }
 
@@ -523,6 +538,7 @@ token fileLexer::getToken(){
             retval.value = "##" + next.value;
             retval.tokenType=eTokenType::directive;
             prevTokenType = eTokenType::directive;
+            retval.src = currentLocation();
             return retval;
         }
         next=getBasicToken(true); //to make sense, this MUST be a name directly connected to the # with no whitespaces in between
@@ -531,6 +547,7 @@ token fileLexer::getToken(){
         retval.value+=next.value;
         retval.tokenType=eTokenType::directive;
         prevTokenType = eTokenType::directive;
+        retval.src = currentLocation();
         return retval;
     }
 
@@ -706,8 +723,18 @@ token fileLexer::getToken(){
         }
     }
     
-    if(retval.isValidIdentifier()) retval.tokenType=eTokenType::identifier; //if it meets the identifier format, default classification an identifier; however, 
-                                                                            //  it may NOT be and could change below; other tokenTypes also meet the algorithmic 
+    // Reject C-style hex literals explicitly. A token that starts with "0x" or "0X" is almost
+    // certainly an attempt to write a hex literal in C notation; Beguile uses the I6 convention
+    // `$XX` instead. Catching it here gives a clear error instead of letting the mangled token
+    // leak into the AST and then into the emitted I6 (where I6 would reject it with a cryptic
+    // "applied to undeclared variable" style error).
+    if(retval.value.size() >= 3 && retval.value[0] == '0' &&
+       (retval.value[1] == 'x' || retval.value[1] == 'X')){
+        parser.parsingError(format("C-style hex literal '{0}' is not supported; use '${1}' for hex literals",
+            retval.value, retval.value.substr(2)));
+    }
+    if(retval.isValidIdentifier()) retval.tokenType=eTokenType::identifier; //if it meets the identifier format, default classification an identifier; however,
+                                                                            //  it may NOT be and could change below; other tokenTypes also meet the algorithmic
                                                                             //  rules for valid identifiers (data types for example)
     if(retval.isNumeric())retval.tokenType=eTokenType::integer;
     if(retval.isDataType()) retval.tokenType=eTokenType::dataType; //this would replace the previous identifier assumption
@@ -718,6 +745,9 @@ token fileLexer::getToken(){
     prevTokenType = retval.tokenType;
     prevTokenValue = retval.value;
     retval.src = currentLocation();
+    // Track brace depth for LSP error recovery — counts '{' and '}' tokens as they're emitted.
+    if(retval.is(token::braceOpen))  braceDepth++;
+    else if(retval.is(token::braceClose) && braceDepth > 0) braceDepth--;
     return retval;
 }
 token fileLexer::peekToken(){
@@ -728,6 +758,7 @@ token fileLexer::peekToken(int tokNum){
     auto savepos=currentStream()->tellg();
     eTokenType savedPrev = prevTokenType;
     string savedPrevValue = prevTokenValue;
+    int savedBraceDepth = braceDepth;
     // Save line/col from the current file's tuple (stream seek doesn't reset these)
     auto& [pStream, pName, pLine, pCol] = files.top();
     int saveLine = pLine;
@@ -738,6 +769,7 @@ token fileLexer::peekToken(int tokNum){
     currentStream()->seekg(savepos);
     prevTokenType = savedPrev;
     prevTokenValue = savedPrevValue;
+    braceDepth = savedBraceDepth;
     pLine = saveLine;
     pCol  = saveCol;
     return retval;

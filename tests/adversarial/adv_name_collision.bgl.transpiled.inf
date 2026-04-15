@@ -1,0 +1,27 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+class thing
+  class object
+  with
+    val 1,
+    test[val;
+        val = 2;
+        if (true) {
+            val = 3;
+        }
+    ]
+;
+global t;
+[main;
+    t.test();
+];

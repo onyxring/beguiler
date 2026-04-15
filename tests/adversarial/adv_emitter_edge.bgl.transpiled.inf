@@ -1,0 +1,26 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+class counter
+  class object
+  with
+    n 0
+;
+counter c
+  with n 10
+;
+[main r s;
+    r=c.n + (c.n + 5);
+    print r;
+    s=c.n + 0;
+    print s;
+];

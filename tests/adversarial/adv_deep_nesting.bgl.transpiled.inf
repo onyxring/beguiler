@@ -1,0 +1,29 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[main a b i c d e;
+    a = 1;
+    if (a>0) {
+        b = 2;
+        for (i = 0 : i<3 : i ++) {
+            c = 3;
+            while (c>0) {
+                d = 4;
+                if (d>0) {
+                    e=a + b + c + d;
+                    print e;
+                    c = 0;
+                }
+            }
+        }
+    }
+];

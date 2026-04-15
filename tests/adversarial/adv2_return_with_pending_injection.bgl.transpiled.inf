@@ -1,0 +1,45 @@
+!% -v5
+!% -E1
+global _bgl_temp0;
+global _bgl_temp1;
+global _bgl_temp2;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+global _bglCap0;
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[pickvalue a b;
+    if (a > b) _bgl_temp0 = a; else _bgl_temp0 = b;
+    return _bgl_temp0;
+];
+[pickcomplex a b c;
+    if (a > b) _bgl_temp1 = a; else _bgl_temp1 = b;
+    if (b > c) _bgl_temp2 = 10; else _bgl_temp2 = 20;
+    return (_bgl_temp1) + (_bgl_temp2);
+];
+[apply fn x;
+    fn(x);
+];
+[captureandreturn base fn;
+    _bglCap0 = base;
+    fn = _bglLambda_0;
+    return fn(5);
+];
+[main r1 r2 r3;
+    r1=pickvalue(3,7);
+    print r1;
+    base = _bglCap0;
+    r2=pickcomplex(1,5,3);
+    print r2;
+    r3=captureandreturn(10);
+    print r3;
+];
+[_bglLambda_0 n;
+    return n + _bglCap0;
+];

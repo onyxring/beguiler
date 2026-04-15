@@ -1,0 +1,51 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+class base
+  class object
+  with
+    shared 0
+;
+class left
+  class base
+  with
+    leftval 1
+;
+class right
+  class base
+  with
+    rightval 2
+;
+class diamond
+  class left right
+  with
+    test[s l r;
+        s=self.shared;
+        l=self.leftval;
+        r=self.rightval;
+    ]
+;
+class foo
+  class object
+  with
+    x 1
+;
+class bar
+  class object
+  with
+    y 2
+;
+global f;
+global b;
+[main d;
+    d.test();
+];

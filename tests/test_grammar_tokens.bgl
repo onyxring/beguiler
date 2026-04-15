@@ -1,0 +1,126 @@
+/*
+    test_grammar_tokens.bgl
+    Tests: new grammar pattern token features
+        - ANYNUMBER token
+        - attribute type as bare grammar token
+        - global function as bare grammar token (general token filter)
+        - OBJ(Routine) parameterized form  → emits noun=Routine in I6
+        - SCOPE(Routine) parameterized form → emits scope=Routine in I6
+        - Error cases are noted in comments (cannot be tested inline)
+*/
+
+#include <bindings/i6StandardLibrary>
+
+//-----------------------------------------------------------------------------
+// Support routines — used as grammar token filters below
+//-----------------------------------------------------------------------------
+
+// A routine used as OBJ(inScope) — must return bool
+bool inScope() {
+    return true;
+}
+
+// A routine used as SCOPE(setScope) — must return bool
+bool setScope() {
+    return true;
+}
+
+// A routine used as a bare general token filter
+bool myFilter() {
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+// ANYNUMBER — new token, accepts any number (no range check)
+// Expected I6: * anynumber -> ...
+//-----------------------------------------------------------------------------
+verb Measure {
+    grammar = {
+        {.measure, ANYNUMBER},
+    };
+    void perform() {
+        print("Measured.");
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Attribute as grammar token — matches objects with that attribute
+// Expected I6: * container -> ...
+//             * animate noun -> ...
+// (Avoid 'Fill' — conflicts with extern verb Fill in standard library)
+//-----------------------------------------------------------------------------
+verb Replenish {
+    grammar = {
+        {.replenish, container},
+        {.chat, animate, .about, TOPIC},
+    };
+    void perform() {
+        print("Replenished.");
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Global function as bare grammar token (general token filter)
+// Expected I6: * myFilter -> ...
+//-----------------------------------------------------------------------------
+verb Fiddle {
+    grammar = {
+        {.fiddle, myFilter},
+    };
+    void perform() {
+        print("Fiddled.");
+    }
+}
+
+//-----------------------------------------------------------------------------
+// OBJ(Routine) — parameterized noun filter
+// Expected I6: * noun=inScope -> ...
+//-----------------------------------------------------------------------------
+verb Grab {
+    grammar = {
+        {.grab, OBJ(inScope)},
+    };
+    void perform() {
+        print("Grabbed.");
+    }
+}
+
+//-----------------------------------------------------------------------------
+// SCOPE(Routine) — custom scope setter
+// Expected I6: * scope=setScope -> ...
+//-----------------------------------------------------------------------------
+verb Seek {
+    grammar = {
+        {.seek, SCOPE(setScope)},
+    };
+    void perform() {
+        print("Sought.");
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Mixed: attribute + OBJ(Routine) in same line
+// Expected I6: * container noun=inScope -> ...
+//-----------------------------------------------------------------------------
+verb Pour {
+    grammar = {
+        {.pour, container, OBJ(inScope)},
+    };
+    void perform() {
+        print("Poured.");
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Error cases (compile-time — tested by un-commenting one at a time):
+//
+//   verb Bad1 { grammar { {.bad, unknownToken}, } perform(){} }
+//   → error: 'unknownToken' in grammar pattern is not a declared grammarToken, attribute, or global function
+//
+//   void notBool() {}
+//   verb Bad2 { grammar { {.bad, OBJ(notBool)}, } perform(){} }
+//   → error: 'notBool' in 'OBJ(notBool)' must return bool (returns 'void')
+//
+//   verb Bad3 { grammar { {.bad, OBJ(undeclaredFn)}, } perform(){} }
+//   → error: 'undeclaredFn' in 'OBJ(undeclaredFn)' does not name a declared global function
+//-----------------------------------------------------------------------------

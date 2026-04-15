@@ -1,0 +1,32 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+class empty
+  class object
+;
+class alsoempty
+  class object
+;
+[emptyfunc;
+];
+[main i;
+    if (true) {
+    }
+    if (false) {
+    }
+    else {
+    }
+    while (false) {
+    }
+    for (i = 0 : i<0 : i ++) {
+    }
+];

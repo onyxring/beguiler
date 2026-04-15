@@ -1,0 +1,58 @@
+!% -v5
+!% -E1
+global _bgl_temp0;
+global _bgl_temp1;
+global _bgl_temp2;
+global _bgl_temp3;
+global _bgl_temp4;
+global _bgl_temp5;
+global _bgl_temp6;
+global _bgl_temp7;
+global _bgl_temp8;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[sink x;
+    print x;
+];
+[pick a b c;
+    if (c) _bgl_temp0 = a; else _bgl_temp0 = b;
+    return _bgl_temp0;
+];
+[main a b count i sum x fallback result val;
+    a = 3;
+    b = 7;
+    if (a > b) _bgl_temp1 = true; else _bgl_temp1 = false;
+    if (_bgl_temp1) {
+        print 1;
+    }
+    count = 0;
+    if (a>0) _bgl_temp2 = 3; else _bgl_temp2 = 1;
+    while (count<(_bgl_temp2)) {
+         count++ ;
+    }
+    for (i = 0 : i<(_bgl_temp3) : i ++) {
+        if (b>5) _bgl_temp3 = 4; else _bgl_temp3 = 2;
+        print i;
+    }
+    if (a > b) _bgl_temp4 = 100; else _bgl_temp4 = 200;
+    sink(_bgl_temp4);
+    if (a>0) _bgl_temp5 = 10; else _bgl_temp5 = 20;
+    if (b>0) _bgl_temp6 = 30; else _bgl_temp6 = 40;
+    sum=(_bgl_temp5) + (_bgl_temp6);
+    print sum;
+    x = nothing;
+    fallback = nothing;
+    _bgl_temp7 = x; if (~~(_bgl_temp7 ~= nothing)) _bgl_temp7 = fallback;
+    result = _bgl_temp7;
+    if (a>0) _bgl_temp8 = 1; else _bgl_temp8 = 0;
+    val = _bgl_temp8;
+    print val;
+];

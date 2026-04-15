@@ -1,0 +1,44 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[sink x;
+    print x;
+];
+[main a b c d e f g s1 s2 s3 s4 h;
+    a = 3;
+    b = 7;
+    c=a + b;
+    d=a * b + c;
+    e=a < b;
+    f=a >= b;
+    g=a + b * c - d;
+    print c;
+    print d;
+    sink(0 - 1);
+    if (a>0) {
+        print 1;
+    }
+    if (a>=3 && b<=7) {
+        print 2;
+    }
+    s1="curly braces: {} end";
+    s2="dollar: $ end";
+    s3="hash: # end";
+    s4="mixed: {$#} end";
+    print (string)s1;
+    h = 0;
+     h++ ;
+     h++ ;
+     h-- ;
+     h-- ;
+    print h;
+];

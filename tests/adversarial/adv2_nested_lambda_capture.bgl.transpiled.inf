@@ -1,0 +1,50 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+global _bglCap2;
+global _bglCap1;
+global _bglCap0;
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[apply fn x;
+    fn(x);
+];
+[transform fn x;
+    return fn(x);
+];
+[main base outer result;
+    base = 100;
+    apply(_bglLambda_0, 10);
+    outer = _bglLambda_2;
+    result=outer(3);
+    print result;
+    offset = _bglCap2;
+];
+[_bglLambda_1 innern r;
+    r=_bglCap0 + _bglCap1 + innern;
+    print r;
+];
+[_bglLambda_0 outern;
+    _bglCap0 = base;
+    _bglCap1 = outern;
+    apply(_bglLambda_1, 1);
+    base = _bglCap0;
+    outern = _bglCap1;
+];
+[_bglLambda_3 y;
+    return _bglCap2 + y;
+];
+[_bglLambda_2 x offset inner r;
+    offset=x * 2;
+    _bglCap2 = offset;
+    inner = _bglLambda_3;
+    r=inner(5);
+    return r;
+];

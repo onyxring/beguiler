@@ -1,0 +1,45 @@
+/* Adversarial round 2: lambda capture mutation timing.
+   Tests that captured variables reflect their value AT THE POINT of the
+   lambda call, not at the point of lambda definition — since captures use
+   global _bglCapN variables loaded immediately before the call.
+
+   Also tests: lambda in both branches of if/else capturing the same variable,
+   and lambda capturing a for-in loop element variable.
+
+   Expected: compiles without error; capture load/unload pairs are correctly
+   emitted around each call site. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void apply(func<void, int> fn, int x) { fn(x); }
+func<int, int> g_saved;
+
+void main() {
+    // Case 1: outer modifies variable between lambda definition and call.
+    // The capture should see the MODIFIED value (10, not 5).
+    int val = 5;
+    func<void, int> fn1 = (int n) => { int r = val + n; print(r); };
+    val = 10;
+    fn1(1);   // should use val=10 → print 11
+
+    // Case 2: lambda in both branches of if/else captures same variable.
+    // Only ONE branch executes, but both must generate correct capture code.
+    int mode = 1;
+    if (mode == 1) {
+        apply((int n) => { int r = val + n; print(r); }, 100);
+    } else {
+        apply((int n) => { int r = val * n; print(r); }, 100);
+    }
+
+    // Case 3: lambda capturing a for-loop variable — each iteration gets
+    // a fresh capture value.
+    for (int i = 0; i < 3; i++) {
+        apply((int n) => { int r = i + n; print(r); }, 0);
+    }
+
+    // Case 4: two lambdas in same scope capturing same variable — each
+    // needs its own capture slot OR they must share correctly.
+    int shared = 42;
+    apply((int n) => { print(shared); }, 0);
+    shared = 99;
+    apply((int n) => { print(shared); }, 0);
+}

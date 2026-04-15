@@ -1,0 +1,78 @@
+/*
+    test_bglWorld.bgl
+    Tests: bglWorld object iteration methods and for...in with call expressions
+        - bglWorld.getAll()         → objectloop over all objects
+        - bglWorld.getFiltered(pred) → objectloop filtered by lambda
+        - bglWorld.inParent(parent) → objectloop(o in parent)
+        - for(object o in callExpr) → expression RHS assigned to synthesised temp
+*/
+
+#include <bindings/i6StandardLibrary>
+
+//-- Sample world objects -----------------------------------------------------
+
+object Cave {
+    attributes = {light};
+}
+
+object Torch {
+    attributes = {light};
+    parent = Cave;
+}
+
+object Key {
+    parent = Cave;
+}
+
+object Stone {
+    parent = Cave;
+}
+
+//-- Tests --------------------------------------------------------------------
+
+// getAll: iterate every object in the game
+void testGetAll() {
+    for(object o in bglWorld.getAll()) {
+        print(o);
+    }
+}
+
+// Predicate for getFiltered — objects that have the light attribute
+bool isLit(object v) {
+    return v.has(light);
+}
+
+// getFiltered: only lit objects
+void testGetFiltered() {
+    for(object o in bglWorld.getFiltered(isLit)) {
+        print(o);
+    }
+}
+
+// inParent: only direct children of Cave
+void testInParent() {
+    for(object o in bglWorld.inParent(Cave)) {
+        print(o);
+    }
+}
+
+// Combined: filter children of Cave to those with light
+void testFilteredInParent() {
+    for(object o in bglWorld.inParent(Cave, isLit)) {
+        print(o);
+    }
+}
+
+// ofClass: all objects of a given class
+void testOfClass() {
+    for(object o in bglWorld.ofClass(Cave)) {
+        print(o);
+    }
+}
+
+// ofClass with filter: lit objects of a given class
+void testOfClassFiltered() {
+    for(object o in bglWorld.ofClass(Cave, isLit)) {
+        print(o);
+    }
+}

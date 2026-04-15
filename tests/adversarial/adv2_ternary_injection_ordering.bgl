@@ -1,0 +1,50 @@
+/* Adversarial round 2: ternary lowering injection ordering.
+   Tests ternary expressions in positions where pendingInjections must be
+   drained BEFORE the consuming statement — if-condition, while-condition,
+   for-condition, for-increment, method-call argument, and multiple ternaries
+   in one statement. Each case can mis-order injections if the drain point
+   is wrong.
+
+   Expected: compiles without error; each ternary resolves to the correct
+   temporary and the surrounding statement consumes it. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void sink(int x) { print(x); }
+int pick(int a, int b, bool c) { return c ? a : b; }
+
+void main() {
+    int a = 3;
+    int b = 7;
+
+    // Ternary in if-condition — injection must precede the if
+    if (a > b ? true : false) {
+        print(1);
+    }
+
+    // Ternary in while-condition — injection must repeat each iteration
+    int count = 0;
+    while (count < (a > 0 ? 3 : 1)) {
+        count++;
+    }
+
+    // Ternary in for-condition (works); ternary in for-increment requires paren-aware
+    // increment parsing (known limitation — for-increment reads raw tokens).
+    for (int i = 0; i < (b > 5 ? 4 : 2); i++) {
+        print(i);
+    }
+    // for (int i = 0; i < (b > 5 ? 4 : 2); i += (a > 1 ? 1 : 2)) { }  // TODO: paren-aware increment
+
+    // Ternary as argument to a function call
+    sink(a > b ? 100 : 200);
+
+    // Two ternaries in one statement — both must get separate temporaries
+    int sum = (a > 0 ? 10 : 20) + (b > 0 ? 30 : 40);
+    print(sum);
+
+    // Ternary + null coalescing in same expression
+    object x = null;
+    object fallback = null;
+    object result = x ?? fallback;
+    int val = a > 0 ? 1 : 0;
+    print(val);
+}

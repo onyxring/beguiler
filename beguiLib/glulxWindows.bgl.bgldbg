@@ -1,0 +1,74 @@
+[map]
+54	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindows.bgl	63
+55	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindows.bgl	64
+56	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindows.bgl	65
+57	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindows.bgl	66
+58	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindows.bgl	67
+[sym]
+_glulx	_glulx	object
+_glulx.styletype	styletype	property
+_glulx.window	window	property
+_glulx.wintype	wintype	property
+_glulx.winboarder	winboarder	property
+_glulx.winplacement	winplacement	property
+_glulx.winscale	winscale	property
+_glulx.imagealign	imagealign	property
+_glulx.imagedimention	imagedimention	property
+_bglutil	_bglutil	object
+bgl	bgl	object
+bgl.glulx	glulx	property
+bgl.asm	asm	property
+bgl.util	util	property
+tmpwin	tmpwin	global
+[types]
+enum eglulxstyletype
+  value normal 1
+  value emphasized 2
+  value fixed 3
+  value header 4
+  value subheader 5
+  value alert 6
+  value note 7
+  value blockquote 8
+  value input 9
+  value user1 10
+  value user2 11
+enum bglulxwindowmethodflags
+enum eglulxwindowtype
+  value textgrid 4
+  value textbuffer 3
+  value graphics 5
+enum eglulximagealign
+  value inlineup 1
+  value inlinedown 2
+  value inlinecenter 3
+  value marginleft 4
+  value marginright 5
+  value margincenter 6
+enum bglulxwindowborder
+  value border 0
+  value noboarder 256
+enum bglulxwindowplacement
+  value left 0
+  value right 1
+  value above 2
+  value below 3
+enum bglulxwindowscale
+  value fixed 16
+  value proportional 32
+enum eglulximagedimension
+  value original -1
+  value scaled -2
+type verb
+  prop grammar grammar grammarrulelist
+type _glulxwindow
+  prop id id int
+  prop wintype wintype eglulxwindowtype
+  prop winmethod winmethod int
+type bgl
+  prop glulx glulx object
+  prop util util object
+global _glulx object
+global _bglutil object
+global bgl object
+global tmpwin _glulxwindow

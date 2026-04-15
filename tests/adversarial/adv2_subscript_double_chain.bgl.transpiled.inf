@@ -1,0 +1,52 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+class widget
+  class object
+  with
+    id 0,
+    getid[;
+        return self.id;
+    ]
+;
+widget w0
+  with id 0
+;
+widget w1
+  with id 1
+;
+widget w2
+  with id 2
+;
+array g_widgets table w0 w1 w2;
+array g_indices table 2 0 1;
+[sink x;
+    print x;
+];
+[main id0 id1 idx id2 counter;
+    id0= g_widgets-->(0+1) .id;
+    print id0;
+    id1= g_widgets-->(1+1) .getid();
+    print id1;
+    idx= g_indices-->(0+1);
+    id2= g_widgets-->(idx+1) .id;
+    print id2;
+    sink( g_widgets-->(2+1) .id);
+    if ( g_widgets-->(0+1) .id==0) {
+        print 1;
+    }
+    counter = 0;
+    while ( g_widgets-->(counter+1) .id<2) {
+         counter++ ;
+    }
+    print counter;
+];

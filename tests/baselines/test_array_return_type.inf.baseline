@@ -1,0 +1,35 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+array g_src table 1 2 3;
+[getlist;
+    return g_src;
+];
+[sumlist xs total x _bglfi0;
+    total = 0;
+    _bglfi0 = 0;
+    for (: _bglfi0 < _orArray.getLength(xs, 0) : _bglfi0++) {
+        x = _orArray.get(xs, 0, _bglfi0);
+        total = total + x;
+    }
+    return total;
+];
+[main x _bglfia1 _bglfi2 total;
+    _bglfia1 = getlist();
+    _bglfi2 = 0;
+    for (: _bglfi2 < _orArray.getLength(_bglfia1, 0) : _bglfi2++) {
+        x = _orArray.get(_bglfia1, 0, _bglfi2);
+        print x;
+    }
+    total=sumlist(g_src);
+    print total;
+];

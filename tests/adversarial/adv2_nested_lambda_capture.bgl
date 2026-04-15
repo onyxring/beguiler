@@ -1,0 +1,35 @@
+/* Adversarial round 2: nested lambda capture — inner captures outer lambda's param.
+   Tests the case where a lambda body contains another lambda, and the inner one
+   captures a parameter from the outer lambda. This requires two levels of
+   _bglCap globals and correct nesting of load/unload pairs.
+
+   Expected: compiles without error; capture globals don't collide. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void apply(func<void, int> fn, int x) { fn(x); }
+func<int, int> transform(func<int, int> fn, int x) { return fn(x); }
+
+void main() {
+    int base = 100;
+
+    // Outer lambda captures `base`. Inner lambda captures outer's param `outerN`.
+    apply((int outerN) => {
+        apply((int innerN) => {
+            int r = base + outerN + innerN;
+            print(r);
+        }, 1);
+    }, 10);
+
+    // Lambda returning a lambda — the returned lambda must capture from the
+    // creating lambda's scope, which is itself a closure.
+    func<int, int> outer = (int x) => {
+        int offset = x * 2;
+        func<int, int> inner = (int y) => {
+            return offset + y;
+        };
+        int r = inner(5);
+        return r;
+    };
+    int result = outer(3);
+    print(result);  // offset=6, +5 = 11
+}

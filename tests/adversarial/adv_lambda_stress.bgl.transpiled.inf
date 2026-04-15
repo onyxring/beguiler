@@ -1,0 +1,62 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+global _bglCap4;
+global _bglCap3;
+global _bglCap2;
+global _bglCap1;
+global _bglCap0;
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[apply fn x;
+    fn(x);
+];
+[makeadder n;
+    _bglCap0 = n;
+    return _bglLambda_0;
+];
+[main add5 result a b;
+    apply(_bglLambda_1, 1);
+    n = _bglCap0;
+    apply(_bglLambda_2, 42);
+    add5 = makeadder(5);
+    result=add5(10);
+    print result;
+    a = 1;
+    b = 2;
+    _bglCap1 = a;
+    apply(_bglLambda_3, 10);
+    a = _bglCap1;
+    _bglCap2 = b;
+    apply(_bglLambda_4, 20);
+    b = _bglCap2;
+    _bglCap3 = a;
+    _bglCap4 = b;
+    apply(_bglLambda_5, 30);
+    a = _bglCap3;
+    b = _bglCap4;
+];
+[_bglLambda_0 x;
+    return x + _bglCap0;
+];
+[_bglLambda_1 n;
+];
+[_bglLambda_2 n;
+    print n;
+];
+[_bglLambda_3 n;
+    print _bglCap1 + n;
+];
+[_bglLambda_4 n;
+    print _bglCap2 + n;
+];
+[_bglLambda_5 n;
+    print _bglCap3 + _bglCap4 + n;
+];
