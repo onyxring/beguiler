@@ -1,0 +1,9 @@
+/* Adversarial round 2: EOF inside an interpolated string expression.
+   The lexer/parser must handle EOF inside the {expr} portion of a $"..." string.
+
+   NOTE: INTENTIONALLY MALFORMED. Expected: clean error, not hang. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void main() {
+    int x = 5;
+    print($"value is {x +

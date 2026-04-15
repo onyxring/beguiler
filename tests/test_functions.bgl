@@ -1,0 +1,75 @@
+/* test_functions.bgl — function declarations, params, locals, returns, nested calls */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// Void, no params
+void sayHello() {
+    print("hello");
+}
+
+// Void, one param
+void sayCount(int n) {
+    print(n);
+}
+
+// Typed return
+int add(int a, int b) {
+    int r = a + b;
+    return r;
+}
+
+// Early return from a bool
+bool isPositive(int n) {
+    if(n > 0) return true;
+    return false;
+}
+
+// Multi-param with multiple return paths
+int clamp(int value, int lo, int hi) {
+    if(value < lo) return lo;
+    if(value > hi) return hi;
+    return value;
+}
+
+// Nested function calls
+int doubleAdd(int a, int b, int c) {
+    int r = add(add(a, b), c);
+    return r;
+}
+
+// Local variable use with loop
+int sumTo(int n) {
+    int total = 0;
+    int i     = 1;
+    while(i <= n) {
+        total = total + i;
+        i     = i + 1;
+    }
+    return total;
+}
+
+// var-typed parameter
+void printAny(var v) {
+    print(v);
+}
+
+// bool parameter
+void printFlag(bool flag) {
+    if(flag) print("y");
+    else     print("n");
+}
+
+void main() {
+    sayHello();
+    sayCount(3);
+    int result  = add(4, 5);
+    int clamped = clamp(15, 0, 10);
+    int sum     = doubleAdd(1, 2, 3);
+    bool pos    = isPositive(result);
+    int total   = sumTo(5);
+    printAny(result);
+    printFlag(pos);
+}

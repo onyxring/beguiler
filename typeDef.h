@@ -157,6 +157,7 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         bool isConst = false;
         // isConst: for globals, emits as I6 Constant; for class members, prevents reassignment (property still has runtime storage)
         bool isStatic = false;   // static members: class-level state, emitted as mangled I6 global
+        bool isAlias = false;    // type alias member: `alias name for Type;` — compile-time type reference, no I6 backing
         expression* declaredExpressionValue = nullptr;
         string initEmitterBody;  // raw i6 body if operator= is an emitter, else ""
         string initEmitterParam; // parameter name to substitute in the body
@@ -215,6 +216,8 @@ class enumDef:public typeDef{
     public:
         sourceLocation src;
         vector<enumValueDef*> namedValues;
+        bool isBnum = false;          // bnum (bitwise int) vs plain enum
+        enumDef* baseBnum = nullptr;  // shared-base grouping: only valid when isBnum
 };
 
 // an if statement, with a condition expression and a then-block, and an optional else-block

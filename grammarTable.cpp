@@ -13,6 +13,10 @@ using P    = PatternElement;
 using Self = bglParser;
 
 void bglParser::initGrammarTable() {
+    // Shadow the global TYPE_NAME with a semantic predicate that also accepts namespace type paths
+    PatternElement TYPE_NAME = P::semantic(
+        [this](token& t){ return t.is(eTokenType::dataType) || isNamespacedTypePath(t); },
+        "type name");
     grammarRules = {
         //  name                         pattern                                                        handler
         {"enum declaration",         {P::anyOf({"enum","bnum"}), TYPE_NAME},                        &Self::processEnum},

@@ -9,16 +9,22 @@ global _bglInitDone = 0;
 object _bglutil
 ;
 object bgl
+  with util _bglutil
 ;
 constant max = 100;
 constant title = "Test";
-[main a b c s ch flag i j;
+constant raw_msg = "raw \n stays literal and \t too";
+constant raw_with_quote = "has a ""quoted"" word";
+[main a b c s ch flag autoint autochar i j;
     a = 5;
     b = 10;
     c=a + b;
     s="hello";
     ch = 'x';
     flag=true;
+    autoint = 7;
+    autoint = autoint + 3;
+    autochar = 'y';
     a = a + 3;
     b = b - 1;
     c = c * 2;
@@ -30,7 +36,7 @@ constant title = "Test";
     else {
         print (string)"no";
     }
-    for (i = 0 : i<10 : i ++) {
+    for (i = 0 : i<10 : i++) {
         print i;
     }
     while (a>0) {
@@ -49,5 +55,7 @@ constant title = "Test";
     for (j = 1 : j<=5 : j++) {
         print j;
     }
+    print (string)raw_msg;
+    print (string)raw_with_quote;
     print (string)title;
 ];

@@ -1,0 +1,28 @@
+/*
+    test_string_null_coalesce.bgl
+    Tests: null coalescing (`??`) on strings — direct, fallback for empty, and chained.
+    Requires `operator?()` on the core string class (_string.bgl).
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void main() {
+    // Case 1: direct null coalescing between two strings
+    string a = "hello";
+    string b = "world";
+    string c = a ?? b;
+
+    // Case 2: fallback for a missing / empty string
+    string maybeName = "";
+    string label = maybeName ?? "unnamed";
+
+    // Case 3: chained — pick the first non-null
+    string first = maybeName ?? label ?? "default";
+
+    print(c);
+    print(label);
+    print(first);
+}

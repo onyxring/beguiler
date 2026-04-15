@@ -1,0 +1,13 @@
+/* Adversarial round 2: EOF in unusual positions.
+   Tests that the parser terminates with an error (not hang/crash) when
+   EOF appears in the middle of various constructs.
+
+   NOTE: This file is INTENTIONALLY MALFORMED. Expected behavior is a clean
+   compiler error message, NOT an infinite loop or segfault.
+
+   The file ends after an unclosed if-condition parenthesis. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void main() {
+    int x = 5;
+    if (x >

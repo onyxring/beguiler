@@ -1,0 +1,9 @@
+/* Adversarial round 2: EOF inside a string literal.
+   Tests that the lexer terminates cleanly when EOF appears mid-string.
+   Also tests EOF inside an interpolated string expression.
+
+   NOTE: INTENTIONALLY MALFORMED. Expected: clean error, not hang. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void main() {
+    string s = "this string never closes

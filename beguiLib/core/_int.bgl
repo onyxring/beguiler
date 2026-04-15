@@ -6,9 +6,16 @@
         int operator auto();
     }
 
+    // Negative integer literals (e.g. -1, -42). Distinguished from intLiteral so the type
+    // system can restrict unsigned assignment: negativeIntLiteral converts to int implicitly
+    // but requires an explicit cast for uint.
+    extern class negativeIntLiteral:_bglObject{
+        emitter int operator();
+    }
+
     extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
         emitter char operator();
-        emitter int operator = (int v){ $self=$v; }
+        emitter int operator = (int v){ $target=$v; }
 
         // Arithmetic
         emitter int operator + (int v){ $self + $v }
@@ -35,5 +42,24 @@
         // Increment / decrement
         emitter int operator ++() { $self++ }
         emitter int operator --() { $self-- }
+
+        // Bitwise — I6 supports `&` and `|` natively on both Z-machine and Glulx, so the
+        // AND/OR operators are direct passthroughs. XOR and shifts have no native I6 op
+        // on Z-machine (Glulx has `@bitxor`/`@bitshl`/`@bitshr`); the stubs below need
+        // either a target-split implementation or a runtime helper before they can be
+        // enabled. See tests/broken/test_bitwise_int.bgl for the test that drives them.
+        emitter int operator & (int v){ $self & $v }
+        emitter int operator | (int v){ $self | $v }
+        emitter int operator &= (int v){ $self = $self & $v }
+        emitter int operator |= (int v){ $self = $self | $v }
+        emitter int operator ^  (int v){ ($self | $v) - ($self & $v) }
+        emitter int operator ^= (int v){ $self = (($self | $v) - ($self & $v)) }
+        
+        // emitter int operator <<= (int v){ /* TODO: same as << */ }
+        // emitter int operator >> (int v){ /* TODO: no native Z-machine shift.
+        //   Glulx: @bitshr $self $v sp;
+        //   Z: $self / (1 << $v) — same constant-only restriction */ }
+        // emitter int operator >>= (int v){ /* TODO: same as >> */ }
     }
+    
     emitter void print(int c){ print $c; }

@@ -1,0 +1,17 @@
+/* Adversarial: long operator chain with mixed precedence, no parens.
+   Tests that precedence climbing handles deep chains without stack overflow or misparse. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main() {
+    int a = 1;
+    int b = 2;
+    int c = 3;
+    int d = 4;
+    // All different precedence levels in one expression
+    int r = a + b * c - d / 2 % 3 & 7 | 1 ^ 2;
+    // Comparison chain feeding into logical
+    bool q = a < b + 1 && c > d - 1 || a == b * 2 && c != d;
+    // Ternary at the end of a complex expression
+    int t = a + b > c - d ? 10 : 20;
+    print(r);
+    print(t);
+}

@@ -1,0 +1,45 @@
+/* Adversarial round 2: emitter $self substitution with expression receivers.
+   Tests emitter calls where $self is not a simple identifier but the result
+   of a subscript, method call, or other expression. The $self substitution
+   must emit the full expression, not just a bare name.
+
+   Also tests emitter called with an emitter result as argument — i.e. the
+   argument itself requires inlining.
+
+   Expected: compiles without error; $self is correctly substituted. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Box : object {
+    int capacity = 0;
+    emitter void fillTo(int amt) { $self.capacity = $amt; }
+    emitter int getCapacity() { $self.capacity }
+    emitter void addTo(int extra) { $self.capacity = $self.capacity + $extra; }
+}
+
+Box b1 { capacity = 10; }
+Box b2 { capacity = 20; }
+array<Box> g_boxes = {b1, b2};
+
+Box getBox(int idx) {
+    if (idx == 0) return b1;
+    return b2;
+}
+
+void main() {
+    // Emitter on subscript result — $self = g_boxes[0]
+    g_boxes[0].fillTo(42);
+    int c1 = g_boxes[0].getCapacity();
+    print(c1);
+
+    // Emitter on function return — $self = getBox(1)
+    getBox(1).fillTo(99);
+    int c2 = b2.capacity;
+    print(c2);
+
+    // Emitter with emitter result as argument — getCapacity() inlines,
+    // then its result feeds into addTo().
+    b1.fillTo(5);
+    b1.addTo(b2.getCapacity());
+    int c3 = b1.capacity;
+    print(c3);
+}

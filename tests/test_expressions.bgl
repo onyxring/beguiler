@@ -1,0 +1,116 @@
+/*
+    test_expressions.bgl
+    Tests: arithmetic operators, comparison operators, logical operators,
+           compound assignment, increment/decrement, ternary, type cast
+*/
+
+// --- Arithmetic ---
+void testArithmetic() {
+    int a = 10;
+    int b = 3;
+
+    int sum  = a + b;
+    int diff = a - b;
+    int prod = a * b;
+    int quot = a / b;
+    int rem  = a % b;
+
+    int mixed = (a + b) * (a - b);
+    int neg   = -a;        // unary minus on variable
+}
+
+// --- Comparison ---
+void testComparison() {
+    int x = 5;
+    int y = 10;
+
+    bool eq  = x == y;
+    bool neq = x != y;
+    bool lt  = x <  y;
+    bool lte = x <= y;
+    bool gt  = x >  y;
+    bool gte = x >= y;
+}
+
+// --- Logical ---
+void testLogical() {
+    bool a = true;
+    bool b = false;
+
+    bool andResult = a && b;
+    bool orResult  = a || b;
+    bool notResult = !a;
+    bool complex   = !b;
+}
+
+// --- Compound assignment ---
+void testCompound() {
+    int n = 10;
+    n += 5;
+    n -= 2;
+    n *= 3;
+    n /= 4;
+    n %= 7;
+}
+
+// --- Increment / decrement ---
+void testIncDec() {
+    int i = 0;
+    i++;
+    i--;
+    ++i;
+    --i;
+}
+
+// --- Ternary ---
+// --- Ternary ---
+void testTernary() {
+    int x    = 7;
+    int tval = (x >= 0) ? x : 0;
+}
+
+// --- Type cast ---
+void testCast() {
+    var v  = 42;
+    int n  = (int) v;
+    bool b = (bool) n;
+}
+
+// --- Mixed expression in function call ---
+void printResult(int x) { print(x); }
+
+void testMixed() {
+    int a   = 4;
+    int b   = 6;
+    int r1  = a * a + b * b;       // 52
+    int apb = a + b;               // avoid (expr)*(expr) — emitter drops opening paren on second operand
+    int r2  = apb * apb;           // 100
+    int r3  = r2 - 1;              // 99
+    printResult(r1);
+    printResult(r3);
+}
+
+// --- Bitwise on int (working subset) ---
+// I6 has native `&` and `|` operators on both Z-machine and Glulx, so AND/OR work as
+// direct passthroughs. XOR and shifts are not yet implemented (no native Z-machine ops);
+// see tests/broken/test_bitwise_int.bgl for the remaining operators.
+void testBitwise() {
+    int a = 12;
+    int b = 10;
+    int and_ = a & b;
+    int or_  = a | b;
+    a &= 7;
+    b |= 4;
+}
+
+void testExpressions() {
+    testArithmetic();
+    testComparison();
+    testLogical();
+    testCompound();
+    testIncDec();
+    testTernary();
+    testCast();
+    testMixed();
+    testBitwise();
+}

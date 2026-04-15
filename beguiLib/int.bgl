@@ -1,0 +1,16 @@
+#include<math>
+
+extend class int {
+    emitter int operator << (int v){ 
+        bgl.util.math.shiftLeft($self,$v)            
+    }
+    emitter int operator <<= (int v){ 
+        $self=bgl.util.math.shiftLeft($self,$v)            
+    }
+    emitter int operator >> (int v){ 
+        bgl.util.math.shiftRight($self,$v)            
+    }
+    emitter int operator >>= (int v){ 
+        $self=bgl.util.math.shiftRight($self,$v)            
+    }
+}

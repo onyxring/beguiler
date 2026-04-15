@@ -8,6 +8,7 @@ global _bglInitDone = 0;
 object _bglutil
 ;
 object bgl
+  with util _bglutil
 ;
 class counter
   class object
@@ -26,9 +27,28 @@ counter a
 counter b
   with value 5
 ;
-[main sum;
+class temperature
+  class object
+  with
+    celsius 0
+;
+class distance
+  class object
+  with
+    meters 0
+;
+temperature t
+  with celsius 20
+;
+distance d
+  with meters 100
+;
+[main sum c doubled m;
     if (a._opeqeq(b)) {
         print (string)"equal";
     }
     sum=a._opadd(10);
+    c = t;
+    doubled=t + t;
+    m=d;
 ];

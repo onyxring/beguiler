@@ -1,0 +1,16 @@
+/* Adversarial: same name at every scope level.
+   Tests that scope resolution picks the right one and warnings fire correctly. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Thing : object {
+    int val = 1;
+    void test() {
+        int val = 2;        // shadows class member — should warn
+        if(true){
+            int val = 3;    // duplicate in nested scope — should error or warn
+        }
+    }
+}
+Thing t;
+void main() {
+    t.test();
+}

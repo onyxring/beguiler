@@ -24,9 +24,8 @@
 object _bglUtil{}
 object bgl{
     emitter int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
-    //emitter auto asm = bglOpCodes;
-    //object util = _bglUtil;
-    //auto util = _bglUtil;
+    emitter auto asm = bglOpCodes;     // compile-time alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>()
+    auto util = _bglUtil;
 }
 
 //=============================================================================
@@ -45,7 +44,7 @@ object bgl{
         
         emitter eBool operator ?() { $self ~= nothing }
         emitter object operator = (object v){
-            $self = $v
+            $target = $v
         }
         emitter eBool operator == (var v){
             $self == $v

@@ -16,6 +16,25 @@
     ! startup block test
 }
 
+// #emitfirst — raw I6 emitted near the top of the output file, after ICL headers but
+// before bglInit. Spec §3.5.6. Useful for I6 Replace directives and compile-time setup.
+#emitfirst {
+    Constant BGL_TEST_EARLY = 100;
+}
+
+// #emitlast — raw I6 emitted after everything else. Spec §3.5.7. Useful for helper
+// routines that must come after grammar or object tables.
+#emitlast {
+    [ BglTestHelper; return 0; ];
+}
+
+// #using — imports an emitter class's members into the file scope. Spec §3.5.8.
+// The imported `wordsize` value emitter can be referenced unqualified.
+emitter class platform {
+    int wordsize { 2 }
+}
+#using platform
+
 const string story = #beguilerSettings.title;
 const string author = #beguilerSettings.author;
 const int gameRelease = #beguilerSettings.release;
@@ -30,4 +49,8 @@ void main(){
     #endif
 
     print(story);
+
+    // Unqualified reference to the imported emitter — resolves through #using platform
+    int ws = wordsize;
+    print(ws);
 }

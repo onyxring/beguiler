@@ -1,0 +1,52 @@
+/* Adversarial round 2: precedence in for-loop control expressions.
+   Tests that operator precedence works correctly in all three for-loop
+   clauses (init, condition, increment) and in while-loop conditions.
+   These are parsed in expression context but bounded by `;` or `)`,
+   which could interact poorly with precedence climbing.
+
+   Expected: compiles without error; loop conditions evaluate correctly. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+int double(int n) { return n * 2; }
+
+void main() {
+    // Precedence in for-condition: * before <
+    int sum = 0;
+    for (int i = 0; i * 2 < 10; i++) {
+        sum = sum + i;
+    }
+    print(sum);  // i=0,1,2,3,4 → sum=10
+
+    // Precedence in for-increment: + before assignment
+    int total = 0;
+    for (int i = 0; i < 5; i += 1 + 0) {
+        total = total + 1;
+    }
+    print(total);
+
+    // Logical operators in while-condition with mixed precedence
+    int a = 5;
+    int b = 3;
+    int count = 0;
+    while (a > 0 && b > 0 || count == 0) {
+        count++;
+        a--;
+        b--;
+        if (count > 10) break;  // safety valve
+    }
+    print(count);
+
+    // Function call in for-condition combined with arithmetic
+    int x = 0;
+    for (int i = 0; double(i) + 1 < 10; i++) {
+        x = i;
+    }
+    print(x);
+
+    // Compound condition in for: comparison + logical
+    int y = 0;
+    for (int i = 0; i < 10 && i * i < 50; i++) {
+        y = i;
+    }
+    print(y);
+}

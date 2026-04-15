@@ -19,7 +19,7 @@ bglLanguageService::bglLanguageService(){
     registerType("var");
     registerType("auto");
     registerType("func");
-    // intliteral, stringliteral, charliteral are now declared as extern class in _beguileCore.bgl
+    // intliteral, stringliteral, charliteral are now declared as extern class in __beguileCore.bgl
 }
 void bglLanguageService::reset(){
     // Clear all accumulated state (leak the old typeDef* — acceptable for LSP)
@@ -31,7 +31,7 @@ void bglLanguageService::reset(){
     emitFirstBlocks.clear();
     emitLastBlocks.clear();
     verbs.clear();
-    ternaryTempNeeded = false;
+    ternaryTempCount = 0;
     tryCatchNeeded = false;
     tryCatchCounter = 0;
     captureCounter = 0;

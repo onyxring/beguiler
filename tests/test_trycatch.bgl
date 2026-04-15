@@ -27,6 +27,15 @@ void middle(){
     deep();
 }
 
+// --- Test 5: throw reached through optional chain ---
+// A method called via `?.` that throws — the throw should unwind past the optional-chain
+// frame and be caught by the enclosing try.
+class Risk : object {
+    int n = 0;
+    void trigger() { if(n == 0) throw 101; }
+}
+Risk g_risk;
+
 void main(){
     // Test 1: basic catch
     try {
@@ -55,5 +64,12 @@ void main(){
     try {
         risky(3);
     } catch(int d) {
+    }
+
+    // Test 5: throw via optional chain — g_risk?.trigger() throws when n == 0;
+    // the exception unwinds past the optional chain and is caught here.
+    try {
+        g_risk?.trigger();
+    } catch(int e5) {
     }
 }

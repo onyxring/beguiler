@@ -9,8 +9,9 @@ global _bglInitDone = 0;
 object _bglutil
 ;
 object bgl
+  with util _bglutil
 ;
-[main val;
+[main val cmd;
     val = 7;
     _bgl_sw = val;
     if (_bgl_sw == 0) {
@@ -38,5 +39,16 @@ object bgl
             print (string)"three to five";
         6, 7 to 9:
             print (string)"six or seven to nine";
+    }
+    cmd="look";
+    switch (cmd) {
+        "look":
+            print (string)"examining";
+        "take":
+            print (string)"grabbing";
+        "drop":
+            print (string)"releasing";
+        default:
+            print (string)"unknown";
     }
 ];

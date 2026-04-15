@@ -2,6 +2,9 @@
 !% -E1
 Serial "260330";
 Release 42;
+
+    Constant BGL_TEST_EARLY = 100;
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -13,12 +16,18 @@ global _bglInitDone = 0;
 object _bglutil
 ;
 object bgl
+  with util _bglutil
 ;
 constant story = "Directive Test";
 constant author = "Tester";
 constant gamerelease = 42;
-[main;
+[main ws;
     print (string)"Feature A enabled";
     print (string)"Many items";
     print (string)story;
+    ws=2;
+    print ws;
 ];
+
+    [ BglTestHelper; return 0; ];
+

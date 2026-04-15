@@ -7,6 +7,15 @@
 
 attribute light;
 
+class Room : object {
+    string description = "a room";
+    Room parent;
+    Room next;
+}
+
+Room foyer;
+Room cloakroom;
+
 void main(){
     // Optional chaining in expression — method call through ?.
     object x = null;
@@ -18,4 +27,34 @@ void main(){
 
     // Statement-level optional chaining
     x?.remove();
+
+    // Null coalescing ?? — select the first non-null value
+    object target = x ?? foyer;
+    Room r = cloakroom ?? foyer;
+
+    // ?? chained — evaluates left-to-right
+    object first = x ?? foyer ?? cloakroom;
+
+    // ?? on the RHS of an assignment
+    object dest;
+    dest = x ?? foyer;
+
+    // Mixed with ?. — if x is null, fall back to foyer then read description
+    Room pick = x ?? foyer;
+    string desc = pick.description;
+
+    // Multi-step optional chain — each ?. short-circuits independently. If any link is null,
+    // the whole chain yields null without throwing.
+    Room gp = foyer?.parent?.parent;
+    string d2 = foyer?.parent?.description;
+
+    // ?. mixed with regular . — once a ?. link resolves non-null, subsequent .member can
+    // proceed without further null-checks.
+    string d3 = foyer?.parent.description;
+
+    // Common pattern: optional chain combined with null coalescing. If the chain resolves
+    // to null, fall back to a default. Only works today for object-typed chains — a
+    // string-returning chain hits a library gap (string has no operator?() emitter).
+    Room result = foyer?.next ?? cloakroom;
+    Room nested = foyer?.parent?.next ?? cloakroom;
 }

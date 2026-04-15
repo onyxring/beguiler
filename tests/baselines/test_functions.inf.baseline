@@ -1,0 +1,72 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglutil
+;
+object bgl
+  with util _bglutil
+;
+[sayhello;
+    print (string)"hello";
+];
+[saycount n;
+    print n;
+];
+[add a b r;
+    r=a + b;
+    return r;
+];
+[ispositive n;
+    if (n>0) {
+        return true;
+    }
+    return false;
+];
+[clamp value lo hi;
+    if (value < lo) {
+        return lo;
+    }
+    if (value > hi) {
+        return hi;
+    }
+    return value;
+];
+[doubleadd a b c r;
+    r=add(add(a,b),c);
+    return r;
+];
+[sumto n total i;
+    total = 0;
+    i = 1;
+    while (i <= n) {
+        total = total + i;
+        i = i + 1;
+    }
+    return total;
+];
+[printany v;
+    if(v == true) print "true"; else print "false";
+];
+[printflag flag;
+    if (flag) {
+        print (string)"y";
+    }
+    else {
+        print (string)"n";
+    }
+];
+[main result clamped sum pos total;
+    sayhello();
+    saycount(3);
+    result=add(4,5);
+    clamped=clamp(15,0,10);
+    sum=doubleadd(1,2,3);
+    pos=ispositive(result);
+    total=sumto(5);
+    printany(result);
+    printflag(pos);
+];

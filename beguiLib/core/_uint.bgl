@@ -1,0 +1,108 @@
+#once
+//=============================================================================
+// type uint — unsigned integer wrapper over the same native word as int.
+// Same bit pattern as int, but comparison and division treat the value as unsigned.
+// Conversion to/from int is an explicit cast: (uint)i / (int)u — no implicit conversion.
+// On Z-machine that's 16 bits (0..65535); on Glulx 32 bits (0..4294967295).
+//=============================================================================
+    extern class uint : _bglObject { //--unsigned integer wrapper; same I6 representation as int
+        emitter int operator = (uint v){ $target=$v; }
+
+        // Arithmetic — bit-identical to signed for same width (overflow wraps).
+        emitter uint operator + (uint v){ $self + $v }
+        emitter uint operator - (uint v){ $self - $v }
+        emitter uint operator * (uint v){ $self * $v }
+
+        // Division and modulo — route through _bglMath.unsignedDiv/unsignedMod for correct
+        // unsigned semantics when either operand has the sign bit set.
+        emitter uint operator / (uint v){ _bglMath.unsignedDiv($self, $v) }
+        emitter uint operator % (uint v){ _bglMath.unsignedMod($self, $v) }
+
+        // Equality — identical signed and unsigned.
+        emitter bool operator == (uint v){ $self == $v }
+        emitter bool operator != (uint v){ $self ~= $v }
+
+        // Ordering — must route through unsignedCompare to get correct behavior at the high end
+        // of the range (values with the sign bit set, which signed `<` would treat as negative).
+        emitter bool operator <  (uint v){ _bglMath.unsignedCompare($self, $v) < 0 }
+        emitter bool operator <= (uint v){ _bglMath.unsignedCompare($self, $v) <= 0 }
+        emitter bool operator >  (uint v){ _bglMath.unsignedCompare($self, $v) > 0 }
+        emitter bool operator >= (uint v){ _bglMath.unsignedCompare($self, $v) >= 0 }
+
+        // Compound assignment
+        emitter uint operator += (uint v){ $self = $self + $v }
+        emitter uint operator -= (uint v){ $self = $self - $v }
+        emitter uint operator *= (uint v){ $self = $self * $v }
+        emitter uint operator /= (uint v){ $self = _bglMath.unsignedDiv($self, $v) }
+        emitter uint operator %= (uint v){ $self = _bglMath.unsignedMod($self, $v) }
+
+        // Increment / decrement — wrap-around is well-defined for uint.
+        emitter uint operator ++() { $self++ }
+        emitter uint operator --() { $self-- }
+
+        // Bitwise — identical at the bit level whether interpreted signed or unsigned.
+        emitter uint operator & (uint v){ $self & $v }
+        emitter uint operator | (uint v){ $self | $v }
+        emitter uint operator &= (uint v){ $self = $self & $v }
+        emitter uint operator |= (uint v){ $self = $self | $v }
+        emitter uint operator ^  (uint v){ ($self | $v) - ($self & $v) }
+        emitter uint operator ^= (uint v){ $self = (($self | $v) - ($self & $v)) }
+
+        // Explicit conversions to/from int — bit-preserving cast, no runtime work.
+        explicit emitter int  operator() { $self }
+    }
+
+    // Reverse cast: int → uint. Declared as an extension to int so `(uint)i` finds it.
+    extend extern class int {
+        explicit emitter uint operator() { $self }
+    }
+
+    // Literal assignment: `uint a = 12;` resolves through intLiteral's non-explicit conversion.
+    // Must be non-explicit so plain assignment (no cast) picks it up.
+    extend extern class intLiteral {
+        emitter uint operator() { $self }
+    }
+
+    // Negative literals require an explicit cast: `uint x = (uint)-1;` works, `uint x = -1;` errors.
+    // This catches accidental negative-to-unsigned assignments at compile time.
+    extend extern class negativeIntLiteral {
+        explicit emitter uint operator() { $self }
+    }
+
+    // print(uint): for values without the sign bit, native print works. For sign-bit values,
+    // extract decimal digits via unsigned division to avoid negative rendering.
+    void _bglPrintUint(int v){
+        if(v >= 0){ print(v); return; }
+        // Sign bit set: extract digits via unsigned div/mod
+        int digits = 0;
+        int buf0 = 0; int buf1 = 0; int buf2 = 0; int buf3 = 0; int buf4 = 0;
+        int buf5 = 0; int buf6 = 0; int buf7 = 0; int buf8 = 0; int buf9 = 0;
+        int tmp = v;
+        while(_bglMath.unsignedCompare(tmp, 0) > 0){
+            int d = _bglMath.unsignedMod(tmp, 10);
+            if(digits == 0) buf0 = d;
+            if(digits == 1) buf1 = d;
+            if(digits == 2) buf2 = d;
+            if(digits == 3) buf3 = d;
+            if(digits == 4) buf4 = d;
+            if(digits == 5) buf5 = d;
+            if(digits == 6) buf6 = d;
+            if(digits == 7) buf7 = d;
+            if(digits == 8) buf8 = d;
+            if(digits == 9) buf9 = d;
+            tmp = _bglMath.unsignedDiv(tmp, 10);
+            digits++;
+        }
+        // Print digits in reverse order
+        if(digits >= 10) print(buf9);
+        if(digits >= 9) print(buf8);
+        if(digits >= 8) print(buf7);
+        if(digits >= 7) print(buf6);
+        if(digits >= 6) print(buf5);
+        if(digits >= 5) print(buf4);
+        if(digits >= 4) print(buf3);
+        if(digits >= 3) print(buf2);
+        if(digits >= 2) print(buf1);
+        print(buf0);
+    }
+    emitter void print(uint c){ _bglPrintUint($c); }

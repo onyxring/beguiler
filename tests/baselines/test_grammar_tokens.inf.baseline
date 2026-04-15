@@ -1,0 +1,97 @@
+!% -G
+!% -E1
+
+    replace main _oldmain;
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _glulx
+;
+object _bglutil
+;
+object bgl
+  with glulx _glulx,
+       util _bglutil
+;
+constant story = "";
+constant headline = "";
+[inscope;
+    return true;
+];
+[setscope;
+    return true;
+];
+[myfilter;
+    return true;
+];
+object measure
+  with perform [;
+    print (string)"Measured.";
+  ]
+;
+[measuresub;
+                measure.perform();
+            ];
+verb 'measure'
+    * anynumber -> measure;
+object replenish
+  with perform [;
+    print (string)"Replenished.";
+  ]
+;
+[replenishsub;
+                replenish.perform();
+            ];
+verb 'replenish'
+    * container -> replenish;
+verb 'chat'
+    * animate 'about' topic -> replenish;
+object fiddle
+  with perform [;
+    print (string)"Fiddled.";
+  ]
+;
+[fiddlesub;
+                fiddle.perform();
+            ];
+verb 'fiddle'
+    * myfilter -> fiddle;
+object grab
+  with perform [;
+    print (string)"Grabbed.";
+  ]
+;
+[grabsub;
+                grab.perform();
+            ];
+verb 'grab'
+    * obj=inscope -> grab;
+object seek
+  with perform [;
+    print (string)"Sought.";
+  ]
+;
+[seeksub;
+                seek.perform();
+            ];
+verb 'seek'
+    * scope=setscope -> seek;
+object pour
+  with perform [;
+    print (string)"Poured.";
+  ]
+;
+[poursub;
+                pour.perform();
+            ];
+verb 'pour'
+    * container obj=inscope -> pour;
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

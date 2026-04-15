@@ -1,0 +1,8 @@
+/* Adversarial: missing semicolons at various positions.
+   Expected: clean error pointing at the right location, not cascading failures. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main() {
+    int a = 5
+    int b = 10;
+    print(a);
+}

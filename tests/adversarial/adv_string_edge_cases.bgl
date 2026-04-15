@@ -1,0 +1,18 @@
+/* Adversarial: string and interpolation edge cases. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main() {
+    // Empty string
+    string s1 = "";
+    // String with only whitespace
+    string s2 = " ";
+    // Interpolated string with empty expression
+    // print($"empty: {}");  // should this error or emit nothing?
+    // Interpolated string with just a variable
+    int x = 42;
+    print($"{x}");
+    // Interpolated string with nested quotes (raw string)
+    print(@"she said ""hello""");
+    // Null coalescing on empty string — is "" null or non-null?
+    string fallback = s1 ?? "default";
+    print(fallback);
+}

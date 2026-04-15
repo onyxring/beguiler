@@ -1,0 +1,32 @@
+/*
+    test_bitwise_int.bgl
+    Tests: XOR (`^`, `^=`), shift left (`<<`, `<<=`), shift right (`>>`, `>>=`).
+    AND/OR (`&`, `|`, `&=`, `|=`) are covered in test_expressions.bgl::testBitwise().
+    Shifts delegate to _bglMath.shiftLeft/shiftRight via `#include <int>`.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <int>
+
+void main() {
+    int a = 12;
+    int b = 10;
+
+    // XOR — needs (a|b) - (a&b) on Z, @bitxor on Glulx
+    int xor_ = a ^ b;
+    int shl = a << 3;    
+    int shr = a >> 1;
+
+    // Compound forms
+    a ^= 3;
+    a <<= 1;
+    b >>= 1;
+
+    print(xor_);
+    print(shl);
+    print(shr);
+}

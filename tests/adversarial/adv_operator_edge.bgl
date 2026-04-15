@@ -1,0 +1,28 @@
+/* Adversarial: operator edge cases — operators in unusual positions. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main() {
+    int a = 5;
+    int b = 10;
+
+    // Double negation (unary minus twice — if supported)
+    // int c = --a;   // is this decrement or double-negate?
+
+    // Chained comparison (should work with precedence: (a < b) && (b < 20))
+    bool chain = a < b && b < 20;
+
+    // Bitwise in condition context
+    if(a & 1) print(a);
+
+    // XOR as boolean toggle
+    int flag = 1;
+    flag = flag ^ 1;  // toggle to 0
+    flag = flag ^ 1;  // toggle to 1
+
+    // Compound assign on expression result — should error (not an lvalue)
+    // (a + b) += 1;
+
+    // Operator on literal — should work via intLiteral conversion
+    int r = 5 + 3;
+    bool t = 5 < 10;
+    print(r);
+}

@@ -31,6 +31,62 @@ class Dog : Animal {
     }
 }
 
+// Multiple inheritance — a class with two base classes. This covers the DECLARATION
+// path (parser accepts `class C : A, B`) and external member access. A deeper test
+// of inherited member resolution inside derived methods lives in tests/broken/
+// because base-class member lookup through a method body doesn't yet resolve.
+class Flyer : object {
+    int altitude = 0;
+}
+
+class Swimmer : object {
+    int depth = 0;
+}
+
+class FlyingFish : Flyer, Swimmer {
+    string species = "exocoetidae";
+}
+
+// Deep (4-level) single-inheritance chain. Each level adds a field; the most-derived
+// class can read all inherited fields via external member access.
+class Alpha : object { int valA = 1; }
+class Beta  : Alpha  { int valB = 2; }
+class Gamma : Beta   { int valG = 3; }
+class Delta : Gamma  { int valD = 4; }
+Delta g_delta;
+
+// Emitter method with parameter substitution — the emitter body uses $self (receiver)
+// and $amt (parameter name). Compiler substitutes both at call site. Spec §7.3.
+class Box : object {
+    int capacity = 0;
+    emitter void fillTo(int amt) { $self.capacity = $amt; }
+    emitter void scale(int factor) { $self.capacity = $self.capacity * $factor; }
+}
+Box g_box;
+
+// Self-implicit static member access. Static members on a class are normally referenced
+// as `ClassName.member`, but inside an instance method of the same class, a bare identifier
+// should resolve to the static via implicit self-qualification.
+class Tally : object {
+    static int total = 0;
+    void bump() {
+        // Bare `total` here must resolve to Tally's static member, not error as undeclared.
+        total = total + 1;
+    }
+}
+Tally g_tally;
+
+// `replace` on a `default` method. Spec §5.7.1 allows overriding a default method without
+// `replace`; this case exercises the opposite — explicitly replacing a default. The replaced
+// method keeps its semantic contract.
+class Greeter : object {
+    default void greet() { print("hello"); }
+}
+extend class Greeter {
+    replace void greet() { print("howdy"); }
+}
+Greeter g_greeter;
+
 // Alias class
 alias class room for object {}
 
@@ -54,9 +110,38 @@ place testRoom {
     attributeList attributes = {light};
 }
 
+// Instance of a multiply-inherited class. Note: `g_ff` to avoid name-collision
+// with the FlyingFish class's lowercased form.
+FlyingFish g_ff;
+
 void main(){
     Animal.count = Animal.count + 1;
     // myHelper.getValue() uses self-resolution
     int v = myHelper.getValue();
     print(v);
+    // Multiple inheritance — member access from outside the class. Read and write
+    // inherited fields from both base classes.
+    g_ff.altitude = 500;
+    g_ff.depth = 20;
+    int a = g_ff.altitude;
+    int d = g_ff.depth;
+
+    // Deep inheritance — read fields defined at every level of the chain.
+    int total = g_delta.valA + g_delta.valB + g_delta.valG + g_delta.valD;
+    print(total);
+
+    // Emitter param substitution — `fillTo(42)` substitutes $amt → 42 and $self → g_box.
+    g_box.fillTo(42);
+    g_box.scale(2);
+    print(g_box.capacity);
+
+    // Self-implicit static — bumping through an instance should resolve bare `total`
+    // inside bump() to Tally's static member.
+    g_tally.bump();
+    g_tally.bump();
+    int t = Tally.total;
+    print(t);
+
+    // Replaced default method — call site uses the replacement.
+    g_greeter.greet();
 }

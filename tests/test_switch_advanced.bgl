@@ -24,4 +24,15 @@ void main(){
         case 3 to 5: print("three to five");
         case 6, 7 to 9: print("six or seven to nine");
     }
+
+    // String switch via operator switch() — the `string` class defines an operator switch()
+    // emitter that lowers the switch to an if/else-if chain of .equals() calls. Per spec §10.10,
+    // any type with an `operator switch()` can be used as a switch expression.
+    string cmd = "look";
+    switch(cmd){
+        case "look":  print("examining");
+        case "take":  print("grabbing");
+        case "drop":  print("releasing");
+        default:      print("unknown");
+    }
 }

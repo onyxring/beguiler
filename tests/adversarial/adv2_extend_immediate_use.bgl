@@ -1,0 +1,55 @@
+/* Adversarial round 2: extend block edge cases.
+   Tests: empty extend block, extend adding a member then immediately
+   accessing it, extend adding a method then calling it, and extend
+   on a class that also has an object instance.
+
+   Expected: compiles without error. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Widget : object {
+    int baseVal = 1;
+}
+
+// Empty extend — should be a no-op, not a crash
+extend class Widget {
+}
+
+// Extend adding a field and a method
+extend class Widget {
+    int extraVal = 0;
+    int getExtra() { return extraVal; }
+}
+
+Widget g_w { baseVal = 10; }
+
+// Object with no members at all
+object emptyObj {
+}
+
+// Class with method calling another method on self via bare name
+class Calculator : object {
+    int accumulator = 0;
+    void reset() { accumulator = 0; }
+    void addAndReset(int n) {
+        accumulator = accumulator + n;
+        int temp = accumulator;
+        reset();
+        print(temp);
+    }
+}
+Calculator g_calc;
+
+void main() {
+    // Access extended member
+    g_w.extraVal = 42;
+    int v = g_w.getExtra();
+    print(v);
+
+    // Use object with no members — just verify it exists
+    object ref = emptyObj;
+
+    // Self-call: addAndReset calls reset() on self
+    g_calc.addAndReset(7);
+    int a = g_calc.accumulator;
+    print(a);  // should be 0 after reset
+}

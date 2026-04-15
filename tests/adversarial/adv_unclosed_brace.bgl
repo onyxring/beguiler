@@ -1,0 +1,7 @@
+/* Adversarial: unclosed brace in class body.
+   Expected: clean error, not a crash or hang. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Broken : object {
+    int x = 0;
+    void test(){ print(x);
+// missing closing braces

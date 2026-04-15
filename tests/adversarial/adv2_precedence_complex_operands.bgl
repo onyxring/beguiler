@@ -1,0 +1,55 @@
+/* Adversarial round 2: operator precedence with complex operands.
+   Tests precedence climbing when operands are function calls, method calls,
+   subscript results, and parenthesized sub-expressions — all of which require
+   the parser to correctly delimit the operand before looking for the next
+   binary operator.
+
+   Expected: compiles without error; precedence groups correctly. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Counter : object {
+    int value = 0;
+    int get() { return value; }
+    int add(int n) { return value + n; }
+}
+Counter g_ctr { value = 5; }
+
+int double(int n) { return n * 2; }
+int triple(int n) { return n * 3; }
+
+array<int> g_arr = {10, 20, 30};
+
+void main() {
+    // Function call as operand to * and +
+    int r1 = double(3) + triple(2) * 2;
+    // Expected grouping: double(3) + (triple(2) * 2) = 6 + 12 = 18
+    print(r1);
+
+    // Method call as operand
+    int r2 = g_ctr.get() * 2 + 1;
+    // Expected: (g_ctr.get() * 2) + 1 = 11
+    print(r2);
+
+    // Subscript as operand to arithmetic
+    int r3 = g_arr[0] + g_arr[1] * g_arr[2];
+    // Expected: 10 + (20 * 30) = 610
+    print(r3);
+
+    // Comparison feeding into logical with method calls
+    bool r4 = g_ctr.get() > 3 && double(1) < 5;
+    // Expected: (5 > 3) && (2 < 5) = true
+
+    // Parenthesized sub-expression as operand
+    int r5 = (g_ctr.get() + 1) * (double(2) - 1);
+    // Expected: 6 * 3 = 18
+    print(r5);
+
+    // Mixed: comparison + logical + arithmetic all in one
+    bool r6 = g_arr[0] + g_ctr.get() > 10 || double(1) == 2;
+    // Expected: (10 + 5 > 10) || (2 == 2) = true
+
+    // Compound assignment with precedence — RHS is a full expression
+    int acc = 0;
+    acc += g_ctr.get() * 2 + 1;
+    print(acc);
+}

@@ -1,0 +1,34 @@
+/* test_lambdas.bgl — non-capturing lambdas, func<> type, assignment, passing by value
+   (capturing closures are covered separately in test_closures.bgl) */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// Global func<>-typed variables
+func<void, int>     g_printer;
+func<int, int, int> g_combiner;
+
+// Functions that take a func<> by parameter
+void applyOnce(int x, func<void, int> fn) {
+    fn(x);
+}
+int combine(int x, int y, func<int, int, int> fn) {
+    int result = fn(x, y);
+    return result;
+}
+
+void main() {
+    // Assign lambda literal to func<> variable
+    g_printer  = (int n) => { print(n); };
+    g_combiner = (int a, int b) => { int r = a + b; return r; };
+
+    // Invoke via the variable
+    g_printer(42);
+    int sum = g_combiner(10, 20);
+
+    // Inline lambda passed directly as argument
+    applyOnce(42, (int n) => { print(n); });
+    int r = combine(10, 20, (int a, int b) => { int x = a + b; return x; });
+}

@@ -1,0 +1,48 @@
+/* Adversarial round 2: token boundary edge cases.
+   Tests operator-identifier adjacency (no spaces), negative literals as
+   arguments, and strings containing special characters that could confuse
+   the lexer ({, }, $, #).
+
+   Expected: compiles without error; all expressions parse correctly. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void sink(int x) { print(x); }
+
+void main() {
+    // No spaces around operators — lexer must still tokenize correctly
+    int a=3;
+    int b=7;
+    int c=a+b;
+    int d=a*b+c;
+    bool e=a<b;
+    bool f=a>=b;
+    int g=a+b*c-d;
+    print(c);
+    print(d);
+
+    // Negative literal as argument (0-N pattern, since unary minus may not work on vars)
+    sink(0 - 1);
+
+    // Comparison operators adjacent to parens
+    if(a>0){
+        print(1);
+    }
+    if(a>=3&&b<=7){
+        print(2);
+    }
+
+    // Strings with special characters
+    string s1 = "curly braces: {} end";
+    string s2 = "dollar: $ end";
+    string s3 = "hash: # end";
+    string s4 = "mixed: {$#} end";
+    print(s1);
+
+    // Increment/decrement without spaces
+    int h=0;
+    h++;
+    ++h;
+    h--;
+    --h;
+    print(h);
+}

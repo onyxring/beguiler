@@ -1,0 +1,52 @@
+/*
+    test_multi_inheritance_body.bgl
+    Tests: bare identifier access to inherited base-class members from inside a
+    derived method body with multiple inheritance (spec §5.7).
+
+    Also documents (via commented-out error cases) the shadowing rules for inherited
+    variable members. These are intentional compile errors — uncomment any one to verify
+    the compiler rejects it.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Flyer : object {
+    int altitude = 0;
+    void takeoff(){ altitude = 100; }
+}
+
+class Swimmer : object {
+    int depth = 0;
+    void dive(){ depth = 10; }
+}
+
+class FlyingFish : Flyer, Swimmer {
+    string species = "exocoetidae";
+    void describe(){
+        // These bare references resolve via the base classes:
+        //   altitude → self.altitude (inherited from Flyer)
+        //   depth    → self.depth    (inherited from Swimmer)
+        int a = altitude;
+        int d = depth;
+    }
+}
+
+FlyingFish g_ff;
+
+void main(){
+    g_ff.describe();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHADOWING NOTES
+//
+// Locals, params, and loop vars that shadow a DIRECT class member are hard errors.
+// Locals, params, and loop vars that shadow an INHERITED member produce a warning
+// (not an error) — the local wins, and `self.name` is still available to reach
+// the inherited member explicitly.
+// Member-overrides-parent-member is a separate rule: warning, suppressible with
+// `replace` or `default`.
+// ═══════════════════════════════════════════════════════════════════════════════

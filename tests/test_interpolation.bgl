@@ -7,15 +7,35 @@
 
 #define DEBUG
 
+class Score : object {
+    int value = 0;
+    int get() { return value; }
+}
+Score g_pts { value = 42; }
+
 void main(){
-    int score = 42;
+    int pts = 42;
+    int bonus = 8;
 
     // Basic interpolation with non-string types
-    print($"Score: {score}\n");
+    print($"Score: {pts}\n");
 
     // Escape sequences
     print($"Use \{braces} for interpolation.\n");
 
     // Log (debug-conditional)
-    log($"Debug score={score}\n");
+    log($"Debug pts={pts}\n");
+
+    // Arithmetic expression inside interpolation
+    print($"Total: {pts + bonus}\n");
+    print($"Product: {pts * 2}\n");
+
+    // Method call inside interpolation
+    print($"Final: {g_pts.get()}\n");
+
+    // Ternary inside interpolation
+    print($"Grade: {pts > 50 ? 1 : 0}\n");
+
+    // Multiple interpolations in one string
+    print($"{pts} plus {bonus} is {pts + bonus}\n");
 }
