@@ -1,0 +1,94 @@
+/*
+    test_uint.bgl
+    Tests the uint type: arithmetic, bitwise, comparison (via _bglMath.unsignedCompare),
+    compound assignment, increment/decrement, int↔uint conversion, and literal initialization.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <uint>
+
+// --- Literal and cast initialization ---
+void testInit() {
+    uint a = 42;          // intLiteral → uint via non-explicit operator()
+    int  i = 100;
+    uint b = (uint)i;     // explicit int → uint cast
+    int  j = (int)a;      // explicit uint → int cast
+}
+
+// --- Arithmetic ---
+void testArithmetic() {
+    uint a = 12;
+    uint b = 10;
+
+    uint sum  = a + b;
+    uint diff = a - b;
+    uint prod = a * b;
+    uint quot = a / b;
+    uint rem  = a % b;
+}
+
+// --- Bitwise ---
+void testBitwise() {
+    uint a = 12;
+    uint b = 10;
+
+    uint and_ = a & b;
+    uint or_  = a | b;
+    uint xor_ = a ^ b;
+    a &= 15;
+    b |= 4;
+    a ^= 3;
+}
+
+// --- Comparison — routes through _bglMath.unsignedCompare ---
+void testComparison() {
+    uint x = 5;
+    uint y = 10;
+
+    bool eq  = x == y;
+    bool neq = x != y;
+    bool lt  = x <  y;
+    bool lte = x <= y;
+    bool gt  = x >  y;
+    bool gte = x >= y;
+}
+
+// --- Compound assignment ---
+void testCompound() {
+    uint n = 10;
+    n += 5;
+    n -= 2;
+    n *= 3;
+    n /= 4;
+    n %= 7;
+}
+
+// --- Increment / decrement ---
+void testIncDec() {
+    uint i = 0;
+    i++;
+    i--;
+    ++i;
+    --i;
+}
+
+// --- Print ---
+// Values below the signed-range midpoint print correctly with the raw-passthrough
+// emitter. High-value printing is deferred until unsigned division lands.
+void testPrint() {
+    uint a = 42;
+    print(a);
+}
+
+void testUint() {
+    testInit();
+    testArithmetic();
+    testBitwise();
+    testComparison();
+    testCompound();
+    testIncDec();
+    testPrint();
+}

@@ -1,0 +1,34 @@
+/* Adversarial round 2: switch/case degenerate forms.
+   Tests edge cases in switch statement parsing and emission:
+   - switch with only a default (no case arms)
+   - switch with fall-through from one case to default
+   - switch with range AND comparison guard in the same switch
+   - empty switch body
+
+   Expected: compiles without error for valid forms; clean error for invalid. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void main() {
+    int val = 5;
+
+    // Switch with only default — should still compile
+    switch(val) {
+        default: print("only default");
+    }
+
+    // Range + comparison guard mixed — forces if/else-if lowering
+    switch(val) {
+        case 1 to 3: print("low range");
+        case > 10: print("high guard");
+        case 4, 5: print("four or five");
+        default: print("other");
+    }
+
+    // String switch with multiple cases including default
+    string cmd = "quit";
+    switch(cmd) {
+        case "look": print("looking");
+        case "quit", "exit": print("leaving");
+        default: print("huh?");
+    }
+}

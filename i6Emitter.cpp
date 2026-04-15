@@ -104,6 +104,35 @@ string i6Emitter::replaceWord(string str, const string& from, const string& to){
 // Resolve whether the named target is a Z-machine variant
 static bool isZTarget(const string& t){ return t=="z3"||t=="z5"||t=="z8"; }
 
+// Recursively walk a statementBlock, collecting every variableDeclaration reachable through
+// nested control-flow sub-blocks. Deduped by name — I6 allows only one declaration per routine
+// header, so the first occurrence of a given name wins and later same-named decls (e.g. a loop
+// counter reused in a sibling branch) share the slot.
+void i6Emitter::collectBodyLocals(statementBlock* body, vector<variableDeclaration*>& out, set<string>& seen){
+    if(body == nullptr) return;
+    for(statement* s : body->statements){
+        if(auto* vd = dynamic_cast<variableDeclaration*>(s)){
+            if(seen.insert(vd->name).second) out.push_back(vd);
+        } else if(auto* ifs = dynamic_cast<ifStatement*>(s)){
+            collectBodyLocals(ifs->thenBlock, out, seen);
+            collectBodyLocals(ifs->elseBlock, out, seen);
+        } else if(auto* fors = dynamic_cast<forStatement*>(s)){
+            collectBodyLocals(fors->body, out, seen);
+        } else if(auto* fis = dynamic_cast<forInStatement*>(s)){
+            collectBodyLocals(fis->body, out, seen);
+        } else if(auto* ws = dynamic_cast<whileStatement*>(s)){
+            collectBodyLocals(ws->body, out, seen);
+        } else if(auto* ds = dynamic_cast<doStatement*>(s)){
+            collectBodyLocals(ds->body, out, seen);
+        } else if(auto* sw = dynamic_cast<switchStatement*>(s)){
+            for(switchCase* sc : sw->cases) collectBodyLocals(sc->body, out, seen);
+        } else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){
+            collectBodyLocals(tc->tryBody, out, seen);
+            collectBodyLocals(tc->catchBody, out, seen);
+        }
+    }
+}
+
 // Check if a function would overflow Z-machine's 15-local limit (needs _bglFrm slot too → 14)
 // Returns true if the function needs the frame pool (body locals overflow I6's 14-slot limit).
 // Param overflow (>5 params) is handled separately via _bglXPn globals.
@@ -111,10 +140,10 @@ bool i6Emitter::funcNeedsSpill(functionDef* fd){
     if(!isZTarget(currentTarget)) return false;
     int effectiveParams = min((int)fd->params.size(), 5);
     statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
-    int locals = 0;
-    if(body) for(statement* s : body->statements)
-        if(dynamic_cast<variableDeclaration*>(s)) locals++;
-    return (effectiveParams + locals) > 14;
+    vector<variableDeclaration*> locals;
+    set<string> seen;
+    collectBodyLocals(body, locals, seen);
+    return (effectiveParams + (int)locals.size()) > 14;
 }
 
 // Build spill map for fd:
@@ -131,8 +160,8 @@ void i6Emitter::buildSpillMap(functionDef* fd){
     int effectiveParams = min((int)fd->params.size(), maxParams);
     statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
     vector<variableDeclaration*> locals;
-    if(body) for(statement* s : body->statements)
-        if(auto* vd = dynamic_cast<variableDeclaration*>(s)) locals.push_back(vd);
+    set<string> seen;
+    collectBodyLocals(body, locals, seen);
     int total = effectiveParams + (int)locals.size();
     if(total <= 14) return;
     int excess = total - 14;
@@ -424,8 +453,8 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     emitSettingsConstants(&beguilerSettings);
 
     // Emit scratch variables only when actually used
-    if(languageService.ternaryTempNeeded)
-        out << "global _bgl_temp;\n";
+    for(int i = 0; i < languageService.ternaryTempCount; i++)
+        out << format("global _bgl_temp{0};\n", i);
     if(languageService.switchTempNeeded)
         out << "global _bgl_sw;\n";
     if(languageService.tryCatchNeeded){
@@ -483,9 +512,89 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
         out << "    " << body << "\n";
     out << "];\n";
 
-    // Pass 3: emit everything else
-    for(typeDef* node : nodeList)
+    // Pass 3: emit in source order with lazy class emission. When we encounter an instance
+    // (variableDeclaration or objectDef whose declared class hasn't been emitted yet), emit
+    // the class first, then the instance. Classes at their original source position are
+    // emitted normally (unless already emitted by a prior lazy trigger). This keeps source
+    // order everywhere except for classes that must move up ahead of a forward-referenced
+    // instance — minimising reordering so extern attribute dependencies stay satisfied.
+    set<classDef*> emittedClasses;
+    auto resolveInstanceClass = [&](typeDef* node) -> classDef* {
+        if(auto* od = dynamic_cast<objectDef*>(node)){
+            if(dynamic_cast<verbObjectDef*>(node)) return nullptr;
+            return od->objectClass;
+        }
+        if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
+            if(vd->isExternal || vd->isConst) return nullptr;
+            if(dynamic_cast<arrayDeclaration*>(vd)) return nullptr;
+            if(vd->type.name == "attribute" || vd->type.name == "attributelist") return nullptr;
+            auto* cd = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+            if(!cd || cd->isEmitterClass || cd->isAlias || cd->isExternal) return nullptr;
+            // Only user classes with stored members require class-before-instance ordering.
+            for(typeMember* m : cd->members){
+                auto* mv = dynamic_cast<variableDeclaration*>(m);
+                if(!mv || mv->isStatic) continue;
+                if(mv->type.name == "attributelist") continue;
+                if(mv->type.name == "grammarrulelist" || mv->type.name == "grammarrule") continue;
+                return cd;
+            }
+            return nullptr;
+        }
+        return nullptr;
+    };
+    // Track extern attributes as we walk — they become "available" for `has` clauses at the
+    // position of their `extern attribute X;` declaration. This acts as a compile-time proxy
+    // for the #includeI6 directive that actually defines the attribute in I6; programmers
+    // should declare the bindings file before the corresponding #includeI6.
+    set<string> seenExternAttributes;
+    // Precompute the set of declared extern attributes so we can distinguish "not yet seen
+    // but will be declared later" (ordering error) from "never declared" (user typo — let
+    // I6 surface it since we have no way to verify).
+    set<string> declaredExternAttributes;
+    for(typeDef* n : nodeList)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(n))
+            if(vd->isExternal && vd->type.name == "attribute")
+                declaredExternAttributes.insert(vd->name);
+    // Recursive class emission: base classes are emitted before the class itself so that I6's
+    // `class Derived class Base with …` declaration sees Base already defined.
+    std::function<void(classDef*, const char*)> emitClassRecursive = [&](classDef* cd, const char* triggerReason){
+        if(!cd || !emittedClasses.insert(cd).second) return;
+        for(classDef* base : cd->baseClasses) emitClassRecursive(base, "base class");
+        // Extern-attribute check: each `has X` must refer to an extern attribute already
+        // declared at this point in source, or a non-extern identifier (which we don't police).
+        for(typeMember* m : cd->members){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(!vd || vd->type.name != "attributelist") continue;
+            auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue);
+            if(!list) continue;
+            for(expression* elem : list->elements){
+                string attrName = elem->text();
+                if(!declaredExternAttributes.count(attrName)) continue;  // not a known extern
+                if(seenExternAttributes.count(attrName)) continue;       // already seen — OK
+                // Declared later in source — emission here would reference an attribute I6
+                // hasn't declared yet. Diagnose with source ordering hint.
+                const string& clsLabel = cd->displayName.empty() ? cd->name : cd->displayName;
+                throw runtime_error(format(
+                    "class '{0}' uses `has {1}` but its bindings-file declaration `extern attribute {1};` "
+                    "comes later in source (triggered by: {2}). Move the bindings file before the class "
+                    "or its first instance.", clsLabel, attrName, triggerReason));
+            }
+        }
+        generateI6(cd);
+    };
+    for(typeDef* node : nodeList){
+        // Update extern-attribute availability as we pass each extern declaration.
+        if(auto* vd = dynamic_cast<variableDeclaration*>(node))
+            if(vd->isExternal && vd->type.name == "attribute")
+                seenExternAttributes.insert(vd->name);
+        if(auto* cd = dynamic_cast<classDef*>(node)){
+            emitClassRecursive(cd, "source-order class declaration");
+            continue;
+        }
+        if(classDef* needed = resolveInstanceClass(node))
+            emitClassRecursive(needed, "instance declaration");
         generateI6(node);
+    }
 
     // Emit #emitlast blocks at the very end of the I6 output
     for(const string& block : languageService.emitLastBlocks)
@@ -540,9 +649,13 @@ void i6Emitter::generateI6(typeDef* node){
      else if (typeid(*node) == typeid(i6RawNode)) out << ((i6RawNode*)node)->text << "\n";
 }
 
-void i6Emitter::emitEnum(enumDef* enumNode){    
-    for(enumValueDef* val : enumNode->namedValues)
-        out<<format("constant _{0}_{1} = {2};\n", enumNode->name, val->name, val->value);    
+void i6Emitter::emitEnum(enumDef* enumNode){
+    // Non-extern enum values are inlined as integer literals at use sites (see
+    // bglParser.cpp qualifyIdentifier / enum-qualified access / namespaced enum value).
+    // No I6 constants are emitted, avoiding unused-constant warnings from the I6 compiler.
+    // Extern enums produce no output here either — their values map to I6-defined names
+    // (e.g. true/false) resolved at use sites.
+    (void)enumNode;
 }
 void i6Emitter::emitClass(classDef* classNode){
     if(classNode->isExternal || classNode->isEmitterClass || classNode->isAlias) return;
@@ -598,11 +711,14 @@ void i6Emitter::emitClass(classDef* classNode){
                     if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
                         { out << sp << p->name; sp=" "; }
                 statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
-                if(body != nullptr)
-                    for(statement* s : body->statements)
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                            if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
-                                { out << sp << vd->name; sp=" "; }
+                if(body != nullptr){
+                    vector<variableDeclaration*> locals;
+                    set<string> seen;
+                    collectBodyLocals(body, locals, seen);
+                    for(variableDeclaration* vd : locals)
+                        if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
+                            { out << sp << vd->name; sp=" "; }
+                }
                 if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
                 out << ";\n";
                 if(currentSpillCount > 0)
@@ -650,10 +766,12 @@ void i6Emitter::emitFunction(functionDef* funcNode){
 
     statementBlock* body = dynamic_cast<statementBlock*>(funcNode->body);
     if(body != nullptr){
-        for(statement* stmt : body->statements)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(stmt))
-                if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
-                    out << format(" {0}", vd->name);
+        vector<variableDeclaration*> locals;
+        set<string> seen;
+        collectBodyLocals(body, locals, seen);
+        for(variableDeclaration* vd : locals)
+            if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
+                out << format(" {0}", vd->name);
     }
     if(currentSpillCount > 0) out << " _bglFrm";
     out << ";\n";
@@ -762,9 +880,11 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             for(size_t i=0; i<call->emitterParams.size() && i<call->args.size(); i++)
                 if((int)i != interpArgIdx)
                     b=replaceWord(b, "$" + call->emitterParams[i], exprText(call->args[i]));
-            // $target substitution: for discarded call statements, use _bgl_temp
-            b = replaceWord(b, "$target", "_bgl_temp");
-            if(b.find("_bgl_temp") != string::npos) languageService.ternaryTempNeeded = true;
+            // $target substitution: for discarded call statements, allocate a temp
+            {
+                string tempName = format("_bgl_temp{0}", languageService.ternaryTempCount++);
+                b = replaceWord(b, "$target", tempName);
+            }
             if(interpArgIdx >= 0){
                 // Splice interpolated print-block at the interpolated parameter's position
                 emitInterpolatedEmitterBody(b, call->emitterParams[interpArgIdx],
@@ -1161,8 +1281,29 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         return;
     }
     const string& varI6Name = varNode->i6name.empty() ? varNode->name : varNode->i6name;
-    bool isObject = dynamic_cast<objectDef*>(&languageService.getType(varNode->type.name)) != nullptr;
-    if(isObject){
+    // Emit as an I6 object instance when the declared type is a user class with stored
+    // (non-emitter, non-static, non-attribute) members. Primitive classes (int, bool, char,
+    // string, etc.) have emitter-only bodies and emit as plain globals. This lets user
+    // code write `Foo x;` without forcing `class Foo : object`.
+    bool emitAsObjectInstance = false;
+    {
+        typeDef& td = languageService.getType(varNode->type.name);
+        if(dynamic_cast<objectDef*>(&td)){
+            emitAsObjectInstance = true;  // dedicated objectDef type
+        } else if(auto* cd = dynamic_cast<classDef*>(&td)){
+            if(!cd->isEmitterClass && !cd->isAlias && !cd->isExternal){
+                for(typeMember* m : cd->members){
+                    auto* vd = dynamic_cast<variableDeclaration*>(m);
+                    if(!vd || vd->isStatic) continue;
+                    if(vd->type.name == "attributelist") continue;
+                    if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue;
+                    emitAsObjectInstance = true;
+                    break;
+                }
+            }
+        }
+    }
+    if(emitAsObjectInstance){
         string typeName = varNode->type.name;
         if(auto* cd = dynamic_cast<classDef*>(&languageService.getType(typeName))) typeName = cd->i6Name();
         out<<format("{0} {1}", typeName, varI6Name);
@@ -1222,6 +1363,7 @@ void i6Emitter::emitObject(objectDef* obj){
     bool hasProps = false;
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+            if(vd->isExternal) continue; // alias members have no I6 backing
             if(vd->type.name != "attributelist" && vd->type.name != "grammarrulelist" && vd->type.name != "grammarrule" && vd->name != "parent") { hasProps = true; break; }
         } else if(auto* fd = dynamic_cast<functionDef*>(m)){ if(!fd->isEmitter) { hasProps = true; break; } }
           else if(dynamic_cast<i6RawNode*>(m))  { hasProps = true; break; }
@@ -1245,6 +1387,7 @@ void i6Emitter::emitObject(objectDef* obj){
                 }
                 first = false;
             } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+                if(vd->isExternal) continue; // alias members: compile-time indirection only
                 if(vd->type.name == "attributelist") continue; // handled separately below
                 if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue; // emitted as I6 Verb directives
                 if(vd->name == "parent") continue; // emitted as positional argument, not 'with' property
@@ -1262,11 +1405,14 @@ void i6Emitter::emitObject(objectDef* obj){
                     if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
                         { out << sp << p->name; sp=" "; }
                 statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
-                if(body)
-                    for(statement* s : body->statements)
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                            if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
-                                { out << sp << vd->name; sp=" "; }
+                if(body){
+                    vector<variableDeclaration*> locals;
+                    set<string> seen;
+                    collectBodyLocals(body, locals, seen);
+                    for(variableDeclaration* vd : locals)
+                        if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
+                            { out << sp << vd->name; sp=" "; }
+                }
                 if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
                 out << ";\n";
                 if(currentSpillCount > 0)

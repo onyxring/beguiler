@@ -55,6 +55,7 @@
 ### Chapter 4 — Types
 - 4.1 Overview
 - 4.2 Primitive Types
+- 4.2a The `uint` Type
 - 4.3 Literal Pseudo-Types
 - 4.4 The `null` Keyword
 - 4.5 Enumerations
@@ -82,6 +83,7 @@
 - 5.8 `extend class` and `replace` for Members
 - 5.9 `extend` for Objects
 - 5.10 `_bglGlobalDeclaration`
+- 5.11 Namespace-Scoped Types
 
 ### Chapter 6 — Objects
 - 6.1 Overview
@@ -182,7 +184,8 @@
 - 15.2 `extern` Declarations
 - 15.3 `#includeI6`
 - 15.4 Emitter Bodies as Raw I6
-- 15.5 Debug Bundle
+- 15.5 I6 Emission Ordering
+- 15.6 Debug Bundle
 
 ### Chapter 16 — Beguile Language Extensions
 - 16.1 Overview
@@ -311,6 +314,8 @@ $10         // 16
 $0A         // 10
 $FFFF       // 65535
 ```
+
+C-style hex notation (`0xFF`) is not supported. The compiler rejects it with an error directing the user to use `$XX` syntax instead.
 
 #### Binary
 
@@ -772,7 +777,7 @@ The `##if` / `##else` / `##endif` forms (double-hash prefix) provide the same co
 
 The `#beguilerSettings` block configures the transpiler and the downstream Inform 6 invocation. Multiple `#beguilerSettings` blocks are allowed; properties follow **first-writer-wins** semantics (the first block to set a property wins; later blocks are ignored for that property), except for `includePaths`, which is **additive** — every occurrence adds a directory to the search path.
 
-The schema for this directive is declared as `extern class beguilerSettingsType` in `_beguileCore.bgl`. The parser validates property names and value types against this class.
+The schema for this directive is declared as `extern class beguilerSettingsType` in `__beguileCore.bgl`. The parser validates property names and value types against this class.
 
 Enum-typed properties accept either the bare value name or the optionally qualified `EnumType.Value` form — both are equivalent:
 
@@ -1049,10 +1054,22 @@ error: 'val' is ambiguous — found in both 'libA' and 'libB'; qualify explicitl
 | `#using` target | What's imported | How it resolves |
 |----------------|-----------------|-----------------|
 | Emitter class | Value emitters, emitter functions | Body expanded inline |
-| Object | Methods, properties | Compiler prepends object path |
+| Object | Methods, properties, type aliases | Compiler prepends object path |
 | Static members | Static variables | Compiler emits mangled name |
 
 `#using` a regular class with only non-static instance members is an error — instance methods require a receiver.
+
+**Type alias imports**: When an object contains type aliases (see §5.11), `#using` imports them as bare type names. For example, given `object _bglGlulx { alias window for glulxWindow; }` on `bgl.glulx`:
+
+```bgl
+#using bgl.glulx
+window myWin;           // resolves to glulxWindow via alias
+
+#using bgl
+glulx.window myWin;     // resolves through partial path
+```
+
+Both forms resolve through the same alias mechanism — `#using` simply controls how much of the namespace path can be omitted.
 
 ---
 
@@ -1067,12 +1084,46 @@ Beguile is statically typed. Every variable, parameter, and return value has a d
 | Type | Description |
 |------|-------------|
 | `int` | Integer value. Maps to the native I6 integer. |
+| `uint` | Unsigned integer value. Same bit pattern as `int`, but comparison operators use unsigned ordering. Requires `#include <uint>`. See §4.2a. |
 | `bool` | Boolean value. Backed by the `eBool` enum (`true`/`false`). |
 | `char` | A single ZSCII character value. |
 | `string` | A string value. The `<string>` language extension adds mutable string operations backed by a runtime utility class; without it, strings are immutable I6 print-only values. |
 | `object` | The base class for all world objects in the IF model. |
 | `verb` | A class for managing verb actions. Verb instances are declared with the `verb` keyword and compared in `switch`/`case` blocks against the current action. |
 | `void` | Not a value type. A return-type specifier indicating a function returns no value. |
+
+## 4.2a The `uint` Type
+
+The `uint` type is an unsigned integer. It shares the same underlying bit pattern as `int`, but its comparison operators route through `_bglMath.unsignedCompare` to produce correct unsigned ordering.
+
+`uint` is not part of the auto-loaded core library. To use it, include the language extension:
+
+```bgl
+#include <uint>
+```
+
+### Declaration and Initialization
+
+```bgl
+uint x = 12;       // intLiteral coercion
+uint y = (uint)n;  // explicit cast from int
+int z = (int)y;    // explicit cast back to int
+```
+
+### Operators
+
+- **Arithmetic** (`+`, `-`, `*`) — identical to `int` (passthrough to native I6).
+- **Division** (`/`) and **modulo** (`%`) — route through `_bglMath.unsignedDiv` / `_bglMath.unsignedMod` for correct unsigned semantics. When both operands are non-negative the fast path uses native `/` or `%`.
+- **Bitwise** (`&`, `|`, `^`, `<<`, `>>`) — identical to `int`.
+- **Equality** (`==`, `!=`) — direct passthroughs (identical for signed/unsigned bit patterns).
+- **Relational** (`<`, `<=`, `>`, `>=`) — use `_bglMath.unsignedCompare` from `math.bgl` for correct unsigned ordering.
+- **Unary minus** — not supported on `uint`.
+
+### Print
+
+`print(uint)` correctly displays large unsigned values, including those with the sign bit set (values ≥ 2^15 on Z-machine or ≥ 2^31 on Glulx). The implementation uses unsigned digit extraction so that, e.g., `print((uint)-1)` outputs `65535` (Z-machine) or `4294967295` (Glulx) rather than `-1`.
+
+---
 
 ## 4.3 Literal Pseudo-Types
 
@@ -1081,6 +1132,7 @@ Literal pseudo-types are not declared by user code. They are inferred automatica
 | Pseudo-type | Example | Notes |
 |-------------|---------|-------|
 | `intLiteral` | `42` | Compatible with `int` via `operator =` on the `int` class |
+| `negativeIntLiteral` | `-1` | A negative integer literal. Converts to `int` implicitly but requires an explicit `(uint)` cast for unsigned assignment. See below. |
 | `stringLiteral` | `"hello"`, `@"raw"` | Compatible with `string` via `operator =` on the `string` class; both regular and raw string literals share this pseudo-type |
 | `charLiteral` | `'a'` | Compatible with `char` via `operator =` on the `char` class |
 | `dictionaryWordLiteral` | `.cloak`, `..cloaks` | Dictionary word; plural form (`..`) sets an internal plural flag |
@@ -1097,6 +1149,18 @@ Literal pseudo-types are first-class types: they are declared as `extern class` 
 42.someMethod();       // calls someMethod() on intLiteral
 'x'.someMethod();      // calls someMethod() on charLiteral
 ```
+
+### `negativeIntLiteral`
+
+When a negative integer literal appears in an expression (e.g., `-1`, `-42`), the compiler assigns it the pseudo-type `negativeIntLiteral` rather than `intLiteral`. This type converts to `int` implicitly but is **not** implicitly compatible with `uint` — assigning a negative literal to a `uint` variable requires an explicit cast:
+
+```bgl
+int x = -5;            // OK: negativeIntLiteral → int
+uint u = -1;           // ERROR: negativeIntLiteral not compatible with uint
+uint u = (uint)-1;     // OK: explicit cast
+```
+
+This prevents accidental sign-related bugs when working with unsigned values while still allowing intentional conversions (e.g., `(uint)-1` for the maximum unsigned value).
 
 ## 4.4 The `null` Keyword
 
@@ -1124,13 +1188,19 @@ enum direction {
 }
 ```
 
-Individual members may be assigned explicit integer values. Auto-numbering resumes by incrementing from the last assigned value.  It is valid for two enum values to be assigned the same value; however, such cases will be indistinguishable at runtime.
+Individual members may be assigned explicit integer values, including negative values. Auto-numbering resumes by incrementing from the last assigned value.  It is valid for two enum values to be assigned the same value; however, such cases will be indistinguishable at runtime.
 
 ```bgl
 enum myPhase {
     setup  = 0,
     play   = 10,
     ending          // auto: 11
+}
+
+enum direction {
+    here = 0,
+    up   = -1,      // negative values allowed
+    down            // auto: 0 (same as `here` — legal but indistinguishable)
 }
 ```
 
@@ -1148,9 +1218,44 @@ bnum itemFlag {
 
 ```
 
-Individual members may be assigned an explicit starting value; auto-assignment resumes by doubling from the last assigned value. Explicit values must be a power of 2 — the compiler reports an error otherwise, since non-power-of-2 values defeat the purpose of bitmask flags.
+Individual members may be assigned an explicit starting value; auto-assignment resumes by doubling from the last assigned value. Explicit values must be a power of 2 — the compiler reports an error otherwise — and must be non-negative (since bnums are unsigned bit patterns).
 
 For Z-code, the maximum number of unique values in a `bnum` is 16; for Glulx this cap is 32. 
+
+#### Shared-base bnums
+
+A bnum may declare a common base bnum to indicate that it occupies a sub-field of the same packed integer:
+
+```bgl
+bnum winMethodFlags { }                      // empty marker base — defines the bit-field space
+
+bnum windowPlacement : winMethodFlags {
+    left  = 0, right = 1, above = 2, below = 3     // packed 2-bit sub-field
+}
+bnum windowScale : winMethodFlags {
+    fixed = 16, proportional = 32
+}
+bnum windowBorder : winMethodFlags {
+    border = 0, noBorder = 256
+}
+```
+
+The base must itself be a declared `bnum` (plain `enum` cannot participate). Shared-base bnums relax the power-of-2 rule for explicit values — children of a packed composite occupy sub-fields whose bit patterns need not be individual bits. `0` remains a legal value in any bnum.
+
+**Combining values**: bitwise `|`, `&`, and `^` between two bnums are permitted only when the operands share a common bnum ancestor (including one being the other's ancestor, or both being the same type). The result types as the shared ancestor. Bnums with no common base cannot be combined — this is a compile-time error.
+
+```bgl
+int winMethod = left | fixed | noBorder;     // OK: all share winMethodFlags
+int bad       = left | itemFlag.portable;    // ERROR: no common base
+```
+
+#### Widening to `int`
+
+Any bnum value converts implicitly to `int` (bnums are integer bitmasks by definition). The reverse direction — `int` to a specific bnum — requires an explicit cast. Enums do **not** widen; enum-to-int requires an explicit cast as well.
+
+#### Code generation
+
+Enum and bnum values are **inlined as integer literals** at every use site. No I6 `Constant` declarations are emitted for the named values; `north` compiles to `1`, `fixed` to `16`, etc. This keeps the generated I6 free of unused-constant warnings. The mapping from name to value is preserved in the symbol-table output for debuggers and tooling. `extern enum` values remain as bare names (e.g. `true`, `false`) since those are I6-defined.
 
 ### `extern enum` and `extern bnum`
 
@@ -1185,21 +1290,26 @@ emitter void print(stringLiteral s){ print (string)s; }    // preferred for stri
 
 ## 4.7 Arrays
 
-`array<T>` declares a typed word array. The element type `T` is used for type-checking operations on individual elements, which can be defined using a comma-separated list enclosed in braces.
+`array<T>` declares a typed word array. The element type `T` is mandatory — bare `array` is not a valid type and is rejected by the compiler. `T` can be any base type (`int`, `bool`, `string`, `object`, `char`, `dictionaryWord`) or any user-defined class.
 
 ```bgl
 array<int> scores[5];                    // sized, zero-initialized
 array<int> primes = {2, 3, 5, 7, 11};   // initialized with values
+array<Room> visited;                     // user-class element type
 ```
-Global arrays have no element count limit. However, arrays declared as object properties (see §6.5) are constrained by the Z-machine's property size limits: Z3 allows a maximum of 4 word-sized elements per property, Z5 and Z8 allow up to 32. Byte arrays (`array<char>`) on object properties do not suffer from this limitation limit.
+Global arrays have no element count limit. However, arrays declared as object properties (see §6.5) are constrained by the Z-machine's property size limits: Z3 allows a maximum of 4 word-sized elements per property, Z5 and Z8 allow up to 32. Byte arrays (`array<char>`) on object properties do not suffer from this limitation.
 
 Array elements are accessed using subscript syntax:
 
 ```bgl
-int x = scores[2];       // read element 2
-scores[0] = 99;          // write element 0
+int x = scores[2];       // read element 2 — type is int
+scores[0] = 99;          // write element 0 — value type must match int
 int n = scores.length(); // number of elements
 ```
+
+The element type is enforced at every subscript site. Reading an element produces a value of type `T`, and writing an element requires a value compatible with `T`. Cross-type assignments (e.g. assigning a `string` to an element of `array<int>`) are compile-time errors.
+
+The compiler implements this via standard operator overload resolution: `array` declares one `operator[]` and one `operator[]=` overload per supported intrinsic element type, and the call site picks the overload whose return type (read) or value parameter type (write) matches the array's declared element type. For user-defined classes, the compiler implicitly synthesizes a matching overload using the `object` overload as a template — so `array<Room>` works without the library having to declare a Room-specific overload. `array<char>` routes to the `byteArray` subclass which provides byte-access overrides for all character operations.
 
 # Chapter 5 — Classes
 
@@ -1507,6 +1617,14 @@ buf[3] = x + 1;    // calls operator[]= — emits: buf-->3 = x + 1
 
 `operator[]` takes one parameter (the index) and returns the element type. `operator[]=` takes two parameters — the index first, then the value. Its return type is the developer's choice — commonly the same type as assigned, allowing the assignment to be used as an expression value or enabling the operator to return a transformed value. Both operators are looked up via the class hierarchy, so a subclass inherits subscript support from a parent.
 
+**Subscript-dot chaining:** The result of a subscript read supports dot-access — the member is resolved against the array's element type:
+
+```bgl
+array<Room> rooms = {kitchen, hall};
+string s = rooms[0].description;    // field access on element type Room
+rooms[1].describe();                 // method call on element type Room
+```
+
 ### 5.6.4 Conversion Operator (`operator()`)
 
 A zero-parameter emitter named `operator()` declares that this type is compatible with the return type, enabling implicit type conversion (see §12). This may be declared on any class:
@@ -1590,6 +1708,20 @@ class FlyingFish : Fish, Bird { }
 ```
 
 Member lookup walks the inheritance hierarchy depth-first, left-to-right. The first matching member found wins. If two parent classes define the same member name, the first-listed parent's member is used.
+
+Inside a derived method body, bare identifiers resolve inherited **variable** members from all base classes via this depth-first search. Inherited functions are resolved separately through the method dispatch system. For example:
+
+```bgl
+class Flyer : object { int altitude = 0; }
+class Swimmer : object { int depth = 0; }
+
+class FlyingFish : Flyer, Swimmer {
+    void status() {
+        print(altitude);   // resolved from Flyer
+        print(depth);      // resolved from Swimmer
+    }
+}
+```
 
 To explicitly dispatch to a specific parent's version of a member, use the type-cast syntax (see §11.5):
 
@@ -1761,6 +1893,52 @@ alias class verb for object {
 ```
 
 This pattern is available to any user-defined class — not just `verb` — when additional top-level I6 declarations must accompany each instance.
+
+## 5.11 Namespace-Scoped Types
+
+Types can be accessed through dotted namespace paths on objects. This allows organizing types under a hierarchical namespace without polluting the global scope:
+
+```bgl
+bgl.glulx.window myWin;
+```
+
+To achieve this, types are declared flat at the top level and then aliased onto namespace objects using `alias name for TypeName;` inside the object body:
+
+```bgl
+class glulxWindow : object { int handle = 0; }
+
+object _bglGlulx { alias window for glulxWindow; }
+
+extend bgl { auto glulx = _bglGlulx; }
+
+// Now: bgl.glulx.window myWin;
+```
+
+The `alias memberName for TypeName;` syntax mirrors `alias class verb for object` at the class level (§5.2.4). The `for` keyword distinguishes type aliasing from instance assignment (`auto x = y;`).
+
+**What can be aliased**: Both classes and enums can be aliased onto objects.
+
+**Where namespace-scoped types work**: Dotted type paths are valid anywhere a type name is accepted — variable declarations, function parameters, return types, and globals:
+
+```bgl
+bgl.glulx.window w;                  // variable declaration
+void init(bgl.glulx.window win) { }  // function parameter
+bgl.glulx.window getWin() { ... }    // return type
+global bgl.glulx.window gWin;        // global variable
+```
+
+**Namespace-scoped enum values**: When the aliased type is an `enum` or `bnum`, one additional segment may follow to reference a named value of that type:
+
+```bgl
+object _bglGlulx { alias winPlacement for bGlulxWindowPlacement; }
+extend bgl { auto glulx = _bglGlulx; }
+
+int winMethod = bgl.glulx.winPlacement.above | bgl.glulx.winPlacement.left;
+```
+
+The final segment is resolved as an enum/bnum value lookup, equivalent to writing `bGlulxWindowPlacement.above` directly. Value access is permitted only after the path has fully resolved to an enum/bnum — paths ending at a class alias cannot continue into static or member access.
+
+**Interaction with `#using`**: Type aliases are importable via `#using` (§3.5.8). `#using bgl.glulx` makes `window` available as a bare type name; `#using bgl` makes `glulx.window` available as a partial path. Both resolve through the same alias mechanism.
 
 ---
 
@@ -2141,7 +2319,7 @@ Rules:
 
 ## 7.7 `print()` and `log()`
 
-`print()` and `log()` are core language output functions. They are mentioned here because they are implemented as global emitters in `_beguileCore.bgl`; however, they are fundamental to every Beguile program. See §10.13 for usage documentation.
+`print()` and `log()` are core language output functions. They are mentioned here because they are implemented as global emitters in `__beguileCore.bgl`; however, they are fundamental to every Beguile program. See §10.13 for usage documentation.
 
 ## 7.8 Operator Emitters
 
@@ -2511,6 +2689,7 @@ The return type precedes the function name. Every execution path in a non-`void`
 |-------------|---------|
 | `void` | The function produces no value. A bare `return;` is permitted; `return expr;` is an error. |
 | Any other type | The function must return a value of that type via `return expr;`. |
+| `array<T>` | The function returns a typed array. Example: `array<int> getList() { return g_src; }` |
 
 The I6 `rtrue` and `rfalse` keywords may also appear in functions with a return type as `bool`, serving as shorthand for `return true` and `return false` respectively. 
 
@@ -2618,7 +2797,7 @@ auto r = myRoom;       // inferred as the object's class type
 
 `auto` requires an initializer — `auto x;` without `=` is a compile error. The inferred type is locked in at declaration; subsequent assignments are type-checked against it. `auto` works in local, global, and member declarations.
 
-The variable is visible from the point of declaration to the end of the enclosing block. A local variable name may not shadow a global variable, a member of the enclosing class, or a member of the enclosing object — any of these is a compile-time error (§13.4).
+The variable is visible from the point of declaration to the end of the enclosing block. A local variable name may not shadow a global variable (compile-time error) or a member of the enclosing class/object (warning). See §13.4 for the full shadowing rules.
 
 If the variable's type defines an `init` emitter, it fires immediately after the declaration, before any initializer assignment (§7.7).
 
@@ -2665,7 +2844,9 @@ score -= penalty;
 x *= factor;
 ```
 
-Supported operators: `+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=`
+Supported operators: `+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=` `<<=` `>>=`
+
+The shift-assign operators `<<=` and `>>=` require `#include <int>`, since the underlying shift operators (`<<`, `>>`) are defined in the int extension.
 
 The LHS type must define the corresponding compound operator. If no matching operator is found and the variable has a known type (not `var`), a compile-time error is reported. The `int` class defines all standard compound assignment operators in the core library.
 
@@ -2680,7 +2861,7 @@ n--;    // postfix decrement
 --n;    // prefix decrement
 ```
 
-The variable's type must define the corresponding operator (`operator ++`, `operator --`, `operator prefix++`, `operator prefix--`). If no matching operator is found and the variable has a known type (not `var`), a compile-time error is reported.
+The variable's type must define the corresponding operator. The postfix operators (`operator ++`, `operator --`) are required; the prefix-specific overrides (`operator prefix++`, `operator prefix--`) are optional. When a prefix form (`++n`, `--n`) is used, the compiler first looks for the prefix-specific override and falls back to the plain postfix operator if no override exists. This means a type defining only `operator ++` supports both `n++` and `++n` using the same emitter body; a type may provide `operator prefix++` separately only when the two forms should emit different code. If no matching operator is found and the variable has a known type (not `var`), a compile-time error is reported.
 
 ## 10.6 Function and Method Calls
 
@@ -2993,7 +3174,7 @@ Without `DEBUG` defined, the above produces zero I6 output. Expressions inside `
 
 ### Implementation note
 
-Both `print()` and `log()` are implemented as global emitters in the core library (`_beguileCore.bgl`). The compiler has no special knowledge of them — they follow the same overload resolution and emitter substitution rules as any other emitter function. See §7.6.
+Both `print()` and `log()` are implemented as global emitters in the core library (`__beguileCore.bgl`). The compiler has no special knowledge of them — they follow the same overload resolution and emitter substitution rules as any other emitter function. See §7.6.
 
 ## 10.14 `try` / `catch` / `throw`
 
@@ -3094,9 +3275,25 @@ Binary operators join two operands. Resolution proceeds as follows:
 
 Comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`, `?=`, `=~`) produce `eBool` as their resolved type. Logical operators (`&&`, `||`) also produce `eBool`. Assignment and arithmetic operators preserve the LHS type. See §5.6.6 for the full list of overloadable operators.
 
-Most operators are resolved strictly left-to-right. However, the logical operators `&&` and `||` have **lower precedence**: their right-hand side is parsed as a complete sub-expression. This means `a > 0 && b < 10` is correctly parsed as `(a > 0) && (b < 10)`, not `((a > 0) && b) < 10`.
+Beguile follows standard C-style operator precedence. Operators at higher precedence levels bind more tightly. Within the same precedence level, operators associate left-to-right.
 
-For all other operators, chaining resolves left-to-right:
+| Precedence | Operators | Category |
+|:----------:|-----------|----------|
+| 11 | `*`  `/`  `%` | Multiplicative |
+| 10 | `+`  `-` | Additive |
+| 9 | `<<`  `>>` | Shift |
+| 8 | `<`  `<=`  `>`  `>=` | Relational |
+| 7 | `==`  `!=`  `?=`  `=~` | Equality |
+| 6 | `&` | Bitwise AND |
+| 5 | `^` | Bitwise XOR |
+| 4 | `\|` | Bitwise OR |
+| 3 | `&&` | Logical AND |
+| 2 | `\|\|` | Logical OR |
+| 1 | `? :` | Ternary (always lowest) |
+
+This means `a + b * c` is parsed as `a + (b * c)`, and `a > 0 && b < 10` is parsed as `(a > 0) && (b < 10)`.
+
+Within the same precedence level, chaining resolves left-to-right:
 
 ```bgl
 str + " followed" + apnd
@@ -3112,10 +3309,11 @@ The `?:` operator selects between two values based on a condition:
 condition ? trueExpr : falseExpr
 ```
 
-The ternary operator may appear as an argument to a function call or on the right-hand side of an assignment. The resolved type is taken from the true branch.
+The ternary operator may appear as an argument to a function call, on the right-hand side of an assignment, or inside a parenthesized sub-expression. The resolved type is taken from the true branch.
 
 ```bgl
 print(x > 0 ? "positive" : "non-positive");
+int result = (cond ? a : b) + extra;          // ternary inside parens
 ```
 
 **Constraints:**
@@ -3124,6 +3322,19 @@ print(x > 0 ? "positive" : "non-positive");
 - Ternaries may not be nested inside another ternary's condition.
 
 A function call argument that is itself a ternary counts as the one permitted ternary for that statement. A ternary in the true or false branch of another ternary is therefore not supported.
+
+### Ternary in `for`-Loop Conditions and Increments
+
+Ternary expressions are supported in `for`-loop conditions and increment clauses. Because I6 `for` syntax does not support ternary directly, the compiler lowers these:
+
+- **Condition**: A ternary in the condition is evaluated into a temporary variable before the `for` statement, and re-evaluated at the end of each iteration.
+- **Increment**: A ternary in the increment clause is moved to the end of the `for` body.
+
+```bgl
+for(int i = 0; i < (flag ? 10 : 5); i += (flag ? 2 : 1)) {
+    // works correctly
+}
+```
 
 ## 11.4b Optional Chaining, Null Coalescing, and Postfix Query
 
@@ -3189,9 +3400,11 @@ if(!noun?) print("nothing here");        // equivalent to: if(noun == null)
 
 `!v?` correctly negates the result using I6 `~~()` syntax.
 
+**Disambiguation with ternary `?`:** When `?` appears in a precedence sub-expression context — for example, as the right-hand side of `==` or another binary operator — it is treated as the ternary operator, not the postfix query. The postfix query only fires when `?` is not a terminator for the current expression (i.e., when the parser is not inside a sub-expression that `?` would close as a ternary condition).
+
 ### The `operator ?()` Emitter
 
-All three operators delegate to a zero-parameter emitter declared on the operand's type. The `object` class in `_beguileCore.bgl` defines it as:
+All three operators delegate to a zero-parameter emitter declared on the operand's type. The `object` class in `__beguileCore.bgl` defines it as:
 
 ```bgl
 extern class object {
@@ -3199,7 +3412,9 @@ extern class object {
 }
 ```
 
-Other types may define their own semantics. For example, a managed string type might define `operator ?()` as `$self ~= 0` to test for a valid handle. The compiler has no built-in knowledge of what "null" means — it is entirely type-defined.
+The core `string` class also defines `operator ?()` as `$self ~= 0`, testing for a valid (non-zero) string handle. This enables `string ?? string` null coalescing and `string?.method()` optional chaining without requiring `#include <string>`.
+
+Other types may define their own semantics. The compiler has no built-in knowledge of what "null" means — it is entirely type-defined.
 
 ## 11.5 Type Cast
 
@@ -3302,7 +3517,7 @@ An inline lambda in an argument position is lifted and passed by address, just l
 
 ### 11.6.4 Closures and Capture
 
-When a lambda references variables from the enclosing function's scope, the compiler creates **capture globals** — hidden global variables that store the captured values at lambda creation time. The lifted function reads from these globals instead of the (inaccessible) enclosing locals.
+When a lambda references variables from the enclosing function's scope, the compiler creates **capture globals** — hidden global variables that bridge the enclosing scope and the lifted function.
 
 ```bgl
 void test(int a, int b){
@@ -3311,8 +3526,12 @@ void test(int a, int b){
 }
 ```
 
+Capture works when the lambda appears inside any control-flow body — `for`, `while`, `do`, or `if`. The capture scan walks the full enclosing function scope, not just the immediate block.
+
 **Capture semantics:**
-- Captures are **by value** — the value is copied at the point the lambda is created, not when it is called. Changes to the outer variable after lambda creation are not reflected.
+- Captured locals are **loaded into globals** before the enclosing statement and **unloaded back** after the call returns. This is a round-trip mechanism, not a one-time copy.
+- For **inline lambdas** (passed directly as arguments), modifications to a captured variable inside the lambda body are visible to the enclosing scope after the call returns.
+- For **stored lambdas** (assigned to a `func<>` variable), the capture globals become the canonical storage for the captured values — the enclosing local and the global diverge after the assignment point.
 - Captures use **global storage** — each unique capture point gets its own global variable. This means captures work correctly for immediate callbacks (the dominant IF pattern), but a lambda stored for later invocation may see its capture globals overwritten by subsequent lambda creations.
 - Non-capturing lambdas incur no capture overhead.
 
@@ -3340,6 +3559,7 @@ A value of type `A` is compatible with a target of type `B` if any of the follow
 5. **Assignment operator** — type `B` defines `operator = (A v)` (the target type accepts the source type via an operator).
 6. **Conversion operator** — type `A` defines `operator()` returning `B` (the source type converts to the target type). Only implicit conversions participate; `explicit` conversions require a cast (see §11.5).
 7. **`func<>` / `array<>` generics** — `func` is compatible with any `func<...>` type; `array` is compatible with any `array<T>` type.
+8. **bnum → int widening** — any `bnum` value is compatible with `int` (see §4.5). The reverse direction (`int` → `bnum`) requires an explicit cast. Plain `enum` types do not widen.
 
 If none apply, the assignment or call is a compile-time type mismatch error.
 
@@ -3401,29 +3621,36 @@ If no tier matches, the identifier is undeclared — a compile-time error.
 
 `self` refers to the receiver object within a method body. Bare member names are automatically qualified with `self.` — see §5.4 for details. `self` is only valid inside a class or object method body.
 
-## 13.4 Variable Shadowing — Prohibited
+## 13.4 Variable Shadowing
 
-Local variables and function parameters may not shadow any of the following:
+Local variables, function parameters, and `for`-loop variables are checked against several scopes. The severity depends on the kind of symbol being shadowed:
+
+**Errors (always fatal):**
 - **Global variables** — I6 provides no mechanism to access a shadowed global.
-- **Class members** — when inside a class method body.
-- **Object members** — when inside an object method body.
+- **Registered type names** (classes, enums) — these are stored in the global namespace and collide with user-chosen identifiers by name, even though they lex as a distinct token kind.
 
-All three cases produce a compile-time error:
+**Warnings (non-fatal):**
+- **Direct class/object members** — when inside a class or object method body. Use `self.name` to access the shadowed member.
+- **Inherited members** — when a local/param/loop variable shadows a member inherited from a base class. Use `self.name` to access the inherited member.
+- **Lambda capture conflicts** — when a lambda-local variable shadows a capturable outer local or parameter.
+- **Member overriding parent member** — produces a warning; suppress with `replace` or `default` (see §5.8).
 
 ```bgl
 int score = 0;     // global
+class Counter { int n = 0; }
 
 void foo() {
-    int score = 5; // ERROR: local 'score' shadows global variable
+    int score = 5;                           // ERROR: shadows global variable
+    int Counter = 0;                         // ERROR: shadows class 'Counter'
+    for(int score = 0; score < 10; score++); // ERROR: loop variable shadows global
 }
 
 class Room : object {
     string description;
-    void init(string description) { }  // ERROR: parameter shadows class member
+    void init(string description) { }        // WARNING: parameter shadows class member
+                                             // use self.description to access the member
 }
 ```
-
-**Method shadowing** in derived classes is handled differently — it produces a warning, not an error, and can be suppressed with `replace` (see §5.8).
 
 ## 13.5 Verb Names vs. Variables
 
@@ -3715,7 +3942,45 @@ Emits an I6 `#include` directive into the generated output. See §3.2.4 for full
 
 Emitter bodies are raw I6 text inlined at call sites — the primary path for I6 capabilities that have no Beguile syntax equivalent. See Chapter 7 for full emitter syntax, substitution rules, and `##if` conditional directives within emitter bodies.
 
-## 15.5 Debug Bundle
+## 15.5 I6 Emission Ordering
+
+Inform 6 is sensitive to declaration order in several ways: a class must be defined before any instance or derived class that references it, an attribute must be declared before any `has` clause that uses it, and `class Derived class Base` requires `Base` to already exist. Beguile's emitter preserves **source order** almost everywhere, with three rules that guarantee valid I6 ordering:
+
+1. **Lazy class emission** — a `class` declaration is normally emitted at its source-order position. If an earlier declaration (in source order) references the class as an instance type (`ClassName varName;`, `object` instance of that class, etc.), the class is hoisted to emit immediately before its first such instance. This lets you write `_glulxWindow tmpWin;` followed later by `class _glulxWindow { ... }`; the class is pulled up to satisfy I6 without requiring the programmer to reorder the source.
+
+2. **Base classes before derived classes** — before a class is emitted (at its own position or lazily), its base classes (transitive) are emitted first. Because this is driven by the actual inheritance graph, it composes automatically with lazy hoisting.
+
+3. **Extern attributes as source-order gates** — when a class uses `has X`, and `X` is an `extern attribute` declared in a bindings file, the class cannot be emitted until the `extern attribute X;` declaration has been walked past in source order. The extern declaration acts as a **compile-time proxy** for the `#includeI6` that will actually define the attribute in I6 — its position marks where the attribute becomes available.
+
+   If a class with `has X` would emit at a position before `X`'s extern declaration, the compiler errors with:
+   ```
+   error: class 'Name' uses `has X` but its bindings-file declaration `extern attribute X;`
+   comes later in source. Move the bindings file before the class or its first instance.
+   ```
+
+   **Programmer convention**: include the bindings file before the corresponding `#includeI6`:
+   ```bgl
+   #include <bindings/i6StandardLibrary>   // activates extern attribute light, etc.
+   #includeI6 "parser"                     // actually defines them in I6
+   class room : object { attributes = {light}; }
+   ```
+   Pairing is not mechanically enforced — the compiler doesn't require a 1:1 relationship between bindings files and `#includeI6` directives — but following the convention keeps the source-order check in sync with the I6 reality.
+
+### Circular inheritance
+
+`class A : B` where `B` transitively inherits from `A` is a compile error, detected when the inheritance clause is parsed:
+
+```
+error: class 'A': circular inheritance — 'B' transitively inherits from 'A'
+```
+
+This covers direct self-inheritance (`class A : A`) and longer cycles (A → B → C → A). It is independent of emission ordering — a cycle can never produce valid I6.
+
+### Not restricted by ordering
+
+Member types (`class Foo { Bar bar; }`), method-body references, and value references to other classes do **not** impose emission ordering constraints. I6 is word-typed, so a member declaration is just a property name with no type cross-reference at the I6 level; method bodies resolve identifiers at link time. Only the three cases above (instances, base classes, extern attributes) are constrained.
+
+## 15.6 Debug Bundle
 
 When compiled with `--debug`, beguiler produces two debug files alongside the story file:
 

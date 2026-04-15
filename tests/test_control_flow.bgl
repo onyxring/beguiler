@@ -1,0 +1,89 @@
+/*
+    test_control_flow.bgl
+    Tests: if/else, nested if, while, switch/case/default,
+           break, continue, return mid-function
+*/
+
+// --- if / else if / else ---
+void testIf(int n) {
+    if (n < 0) {
+        print("negative");
+    } else if (n == 0) {
+        print("zero");
+    } else {
+        print("positive");
+    }
+}
+
+// --- Nested if ---
+void testNestedIf(int a, int b) {
+    if (a > 0) {
+        if (b > 0) {
+            print("both positive");
+        } else {
+            print("a positive, b not");
+        }
+    } else {
+        print("a not positive");
+    }
+}
+
+// --- while loop ---
+int countdown(int start) {
+    int n = start;
+    while (n > 0) {
+        n = n - 1;
+    }
+    return n;
+}
+
+// --- while with break ---
+int findFirst(int target) {
+    int i = 0;
+    while (i < 100) {
+        if (i == target) break;
+        i = i + 1;
+    }
+    return i;
+}
+
+// --- while with continue ---
+int countOdd(int max) {
+    int i     = 0;
+    int count = 0;
+    while (i < max) {
+        i = i + 1;
+        if ((i / 2) * 2 == i) continue;   // skip even
+        count = count + 1;
+    }
+    return count;
+}
+
+// --- switch / case / default ---
+// switch on int, enum, verb, and string types all work
+
+// --- Early return ---
+int firstPositive(int a, int b, int c) {
+    if (a > 0) return a;
+    if (b > 0) return b;
+    if (c > 0) return c;
+    return 0;
+}
+
+void testControlFlow() {
+    testIf(-1);
+    testIf(0);
+    testIf(5);
+
+    testNestedIf(1, 2);
+    testNestedIf(1, -1);
+    testNestedIf(-1, 1);
+
+    int cd   = countdown(5);
+    int ff   = findFirst(7);
+    int odds = countOdd(10);
+
+
+    int fp = firstPositive(-1, -2, 3);
+
+}

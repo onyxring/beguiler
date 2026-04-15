@@ -37,6 +37,10 @@ class i6Emitter{
         string spillName(const string& name);
         string spillWord(const string& text);
         bool funcNeedsSpill(functionDef* fd);
+        // Recursively collect variableDeclarations from a function body, walking into the
+        // sub-blocks of control-flow statements (if/for/while/do/switch/try-catch). Deduped by name
+        // so the first occurrence wins — matches I6's single-declaration-per-header requirement.
+        void collectBodyLocals(statementBlock* body, vector<variableDeclaration*>& out, set<string>& seen);
 
         void emit(vector<typeDef*>&);
         void generateI6(typeDef*);

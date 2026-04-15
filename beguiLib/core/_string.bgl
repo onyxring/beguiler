@@ -10,9 +10,10 @@ extern class interpolatedStringLiteral:_bglObject{} //interpolatedStrings are sm
 
 extern class string : _bglObject{
     emitter string operator = (stringLiteral v){
-        $self=$v
+        $target=$v
     }
-    replace emitter void print(){ print (string)$self; }    
+    emitter eBool operator ?() { $self ~= 0 }
+    replace emitter void print(){ print (string)$self; }
 }
 
 emitter void print(string str){ print (string)$str; }

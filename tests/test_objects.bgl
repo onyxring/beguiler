@@ -1,0 +1,46 @@
+/* test_objects.bgl — standalone object declarations, property read/write, array members */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// Object with no declared class — default 'object' base
+object startRoom {
+    int capacity = 4;
+    int lighting = 1;
+}
+
+// Object with multiple properties
+object lobby {
+    int exitNorth = 0;
+    int exitSouth = 0;
+    int visitCount = 0;
+}
+
+// Object with array member
+object inventory {
+    array<int> items[10];
+    int count = 0;
+}
+
+// Object used as a plain data record
+object gameState {
+    int gameScore = 0;
+    int gameMoves = 0;
+}
+
+void main() {
+    // Property read
+    int cap   = startRoom.capacity;
+    int north = lobby.exitNorth;
+
+    // Property write
+    startRoom.capacity  = 6;
+    gameState.gameScore = 10;
+    gameState.gameMoves = 1;
+    inventory.count     = 3;
+
+    // Array property indexing (read into var — typed subscript not yet supported)
+    var first = inventory.items[0];
+}

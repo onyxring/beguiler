@@ -1,0 +1,49 @@
+/* test_arrays.bgl — element-type-aware array subscripts */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// User class for synthesized Room operator[] overload
+class Room : object {
+    int visits = 0;
+}
+Room r1;
+Room r2;
+object plainObj1;
+object plainObj2;
+
+// Typed arrays
+array<int>    g_nums    = {1, 2, 3, 4, 5};
+array<int>    g_sized[10];
+array<bool>   g_flags   = {true, false, true};
+array<object> g_objs    = {plainObj1, plainObj2};
+array<Room>   g_rooms   = {r1, r2};
+array<char>   g_buf[32];   // routes to byteArray, retains char operator[]
+
+// Object with array property
+object inventory {
+    array<int>  slots[6];
+    int count = 0;
+}
+
+void main() {
+    // Typed reads — each must resolve to the matching element type
+    int i = g_nums[0];
+    bool b = g_flags[1];
+    Room r = g_rooms[0];
+    object o = g_objs[0];
+
+    // Typed writes
+    g_nums[0] = 42;
+    g_flags[0] = false;
+    g_rooms[0] = r2;
+    g_objs[0] = r1;
+
+    // Dotted reads (type-level — emission for dotted object arrays is a separate latent issue)
+    int c = inventory.count;
+
+    // byteArray (array<char>) still works via the char operator[] override on byteArray
+    char ch = g_buf[0];
+}

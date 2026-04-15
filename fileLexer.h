@@ -13,6 +13,10 @@ class fileLexer{
         std::stack<std::tuple<std::ifstream*, std::string, int, int>> files;
         eTokenType prevTokenType = eTokenType::unknown; // tracks last token returned by getToken()
         std::string prevTokenValue;                      // tracks last token's value (for symbol disambiguation)
+        // Running count of '{' minus '}' tokens delivered through getToken() (and consumed by
+        // getRawTextThroughClosingBrace). Used by LSP error recovery to unwind nested blocks
+        // correctly when an exception fires from deeply inside a class/function body.
+        int braceDepth = 0;
         
         void open(std::string);
         void close();

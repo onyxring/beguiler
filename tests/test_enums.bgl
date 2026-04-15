@@ -1,0 +1,54 @@
+/* test_enums.bgl — enum declarations, enum-typed vars, switch on enum */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// Basic enum (auto-numbered from 1)
+enum eDirection {
+    North, South, East, West, Up, Down
+}
+
+// Enum with explicit starting value
+enum eState {
+    Idle = 0, Running, Paused, Stopped
+}
+
+// bnum — power-of-2 bitmask values
+bnum eFlags {
+    Visible, Active, Locked, Selected
+}
+
+eDirection g_facing;
+eState     g_state;
+
+void setFacing(eDirection dir) {
+    g_facing = dir;
+}
+
+eDirection getFacing() {
+    return g_facing;
+}
+
+bool isFacing(eDirection dir) {
+    if(g_facing == dir) return true;
+    return false;
+}
+
+void describeDirection(eDirection dir) {
+    switch(dir) {
+        case North: print("north"); break;
+        case South: print("south"); break;
+        case East:  print("east");  break;
+        case West:  print("west");  break;
+        default:    print("other"); break;
+    }
+}
+
+void main() {
+    setFacing(North);
+    g_state = Running;
+    bool f = isFacing(North);
+    describeDirection(g_facing);
+}

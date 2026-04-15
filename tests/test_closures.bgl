@@ -30,9 +30,24 @@ void test4(){
     apply((int x) => { return x + 1; }, 5);
 }
 
+// --- Test 5: returning a lambda from a function ---
+// makeAdder captures `n` from its parameter list, then returns a lambda that uses the
+// captured `n`. Calling the returned lambda produces a value based on the captured state.
+// This exercises the closure-lifetime path where the capturing lambda outlives its
+// creating function.
+func<int,int> makeAdder(int n){
+    return (int x) => { int r = x + n; return r; };
+}
+
+void test5(){
+    func<int,int> add5 = makeAdder(5);
+    int y = add5(10);
+}
+
 void main(){
     test1(3);
     test2();
     test3(4, 5);
     test4();
+    test5();
 }
