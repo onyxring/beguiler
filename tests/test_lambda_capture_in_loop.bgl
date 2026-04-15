@@ -1,0 +1,95 @@
+/*
+    test_lambda_capture_in_loop.bgl
+    Tests: lambda closure capture across loop boundaries.
+    Case 1: capture local from before a for-loop
+    Case 2: capture loop variable
+    Case 3: capture local from before a while-loop
+    Case 4: nested lambda (lambda-in-loop-in-lambda)
+
+    Commented-out cases document planned but not-yet-implemented behavior:
+    Case 5: capture `self` inside an object method's lambda
+    Case 6: write-to-captured-local should warn (write to captured member is fine)
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void apply(func<void, int> fn, int x) { fn(x); }
+
+void main() {
+    int base = 10;
+
+    // Case 1: lambda inside a for body captures `base` from the enclosing function.
+    for(int i = 0; i < 3; i++) {
+        apply((int n) => { int total = base + n; print(total); }, 1);
+    }
+
+    // Case 2: lambda captures the loop variable `i`. Captured by value at each iteration.
+    for(int i = 0; i < 3; i++) {
+        apply((int n) => { int total = i + n; print(total); }, 1);
+    }
+
+    // Case 3: lambda inside a while body captures a local from outside the while.
+    int flag = 0;
+    int count = 0;
+    while(count < 2) {
+        apply((int n) => { int total = flag + n; print(total); }, 1);
+        count++;
+    }
+
+    // Case 4: nested lambda (lambda-in-loop-in-lambda).
+    // The innermost lambda captures from two levels of enclosing scope.
+    apply((int outerN) => {
+        int shared = 100;
+        for(int j = 0; j < 2; j++) {
+            apply((int innerN) => {
+                int total = shared + outerN + innerN;
+                print(total);
+            }, 1);
+        }
+    }, 5);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLANNED — not yet implemented
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// --- Case 5: capture `self` inside an object method's lambda ---
+// Implementation plan: capture `self` to _bglCapN before the lambda call, then
+// emit `self = _bglCapN;` at the top of the lambda's I6 body. I6's `self` is
+// assignable, so all `self.member` references inside the lambda work naturally.
+// Note: assigning self in a standalone I6 routine is a known I6 pattern.
+//
+// class Widget : object {
+//     int value = 42;
+//     void doWork() {
+//         apply((int n) => {
+//             int v = self.value + n;  // needs self captured from doWork's context
+//             print(v);
+//         }, 1);
+//     }
+// }
+
+// --- Case 6: write-to-captured-local warning ---
+// Captures are by value (_bglCapN = localVar before the lambda call). Writing to
+// the captured name inside the lambda modifies the COPY, not the original local.
+// This should produce a warning. Writing to MEMBERS of captured objects is fine
+// (the reference is shared, so obj.prop = v modifies the real object).
+//
+// void testCaptureWriteWarning() {
+//     int counter = 0;
+//     apply((int n) => {
+//         counter = counter + 1;     // WARNING: writes to captured copy, not original
+//     }, 1);
+//     // counter is still 0 here — the lambda wrote to _bglCapN, not counter
+// }
+//
+// class Holder : object { int count = 0; }
+// Holder h;
+// void testCaptureWriteMember() {
+//     apply((int n) => {
+//         h.count = h.count + 1;     // OK: h is captured by reference, member write is real
+//     }, 1);
+// }

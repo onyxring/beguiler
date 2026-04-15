@@ -6,6 +6,7 @@
 #include "bglLanguageService.h"
 #include "settings.h"
 #include <filesystem>
+#include <iostream>
 
 using namespace std;
 
@@ -13,6 +14,20 @@ using namespace std;
 filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& target);
 string resolveIncludePath(const string& name, const string& ext, const filesystem::path& baseDir, const vector<string>& includePaths);
 string rewritePathSeps(const string& path);
+
+// Record a 1-based inclusive [startLine1, endLine1] range as inactive in the currently-open file.
+// Used by #if/#elif/#else skip handlers to tell the LSP which lines are dead branches.
+void bglParser::recordInactiveRange(int startLine1, int endLine1Inclusive){
+    if(endLine1Inclusive < startLine1) return;
+    sourceLocation loc = file.currentLocation();
+    if(loc.file.empty()) return;
+    // Normalize path so the LSP can match against its canonicalized parse path.
+    string path;
+    try { path = filesystem::canonical(filesystem::absolute(loc.file)).string(); }
+    catch(...) { path = loc.file; }
+    InactiveRegion r{ startLine1 - 1, endLine1Inclusive };  // 0-based half-open
+    inactiveRegions[path].push_back(r);
+}
 
 //==================================================================
 // Pre-scanner (Pass 1): registers type/object/function stubs so that
@@ -35,24 +50,35 @@ void bglParser::preScanSkipBody(){
 // On #elif: evaluate condition and either continue scanning or skip again.
 // On #else: continue scanning (it's the true branch).
 // On #endif: done.
+// Records the skipped source-line range via recordInactiveRange() for LSP inactive-region reporting.
 void bglParser::preScanSkipConditionalBlock(){
     int depth = 1;
+    int startLine1 = file.currentLocation().line;  // first dead line (one past the #if)
     while(true){
         token t = file.getToken();
-        if(t.is(eTokenType::eof)) return;
+        if(t.is(eTokenType::eof)) { recordInactiveRange(startLine1, file.currentLocation().line); return; }
         if(!t.is(eTokenType::directive)) continue;
         if(t.is("#if")) { depth++; continue; }
-        if(t.is("#endif")) { depth--; if(depth == 0) return; continue; }
+        if(t.is("#endif")) {
+            depth--;
+            if(depth == 0) { recordInactiveRange(startLine1, t.src.line - 1); return; }
+            continue;
+        }
         if(depth == 1 && t.is("#elif")){
+            int elifLine = t.src.line;
             // Evaluate this branch's condition
             string condText;
             token ct = file.getBasicToken(true);
             while(ct.isNot("\n") && ct.isNot(eTokenType::eof)){ condText += ct.value; ct = file.getBasicToken(true); }
-            if(evaluateCondition(condText))
+            if(evaluateCondition(condText)) {
+                recordInactiveRange(startLine1, elifLine - 1);
                 return; // condition true — resume normal pre-scanning
-            // else continue skipping
+            }
+            // else continue skipping — will be rolled into the next recorded range when we hit
+            // the next depth-0 terminator
         }
         if(depth == 1 && t.is("#else")){
+            recordInactiveRange(startLine1, t.src.line - 1);
             return; // #else is the true branch — resume normal pre-scanning
         }
     }
@@ -74,6 +100,72 @@ void bglParser::preScanSkipParens(){
         if(t.is(token::parenOpen))  depth++;
         else if(t.is(token::parenClose)) depth--;
         else if(t.is(eTokenType::eof)) return;
+    }
+}
+
+void bglParser::preScanCaptureParams(vector<paramDef*>& out){
+    // Opening '(' already consumed. Capture each `type name [= default]` up to matching ')'.
+    // Defaults, nested parens (in default exprs), and generic suffixes on param types are all tolerated.
+    while(true){
+        token t = file.getToken();
+        if(t.is(token::parenClose) || t.is(eTokenType::eof)) return;
+        if(t.is(token::comma)) continue;
+        if(!t.isDataType() && !t.is(eTokenType::identifier)){
+            // Unrecognized token in param position — bail out safely by skipping to ')'
+            int depth = 1;
+            while(depth > 0){
+                if(t.is(token::parenOpen)) depth++;
+                else if(t.is(token::parenClose)){ depth--; if(depth == 0) return; }
+                else if(t.is(eTokenType::eof)) return;
+                t = file.getToken();
+            }
+            return;
+        }
+        string typeName = t.value;
+        preScanConsumeGenericSuffix(t);
+        token nameTok = file.getToken();
+        if(nameTok.is(token::parenClose)) return;
+        if(!nameTok.is(eTokenType::identifier)) continue;
+        paramDef* p = new paramDef();
+        p->name = nameTok.value;
+        p->type.name = typeName;
+        out.push_back(p);
+        token s = file.getToken();
+        if(s.is(token::parenClose)) return;
+        if(s.is(token::comma)) continue;
+        if(s.is(token::assignment)){
+            // Skip default value until top-level ',' or ')'
+            int depth = 0;
+            while(true){
+                token d = file.getToken();
+                if(d.is(eTokenType::eof)) return;
+                if(d.is(token::parenOpen)) depth++;
+                else if(d.is(token::parenClose)){
+                    if(depth == 0) return;
+                    depth--;
+                } else if(d.is(token::comma) && depth == 0) break;
+            }
+        }
+    }
+}
+
+void bglParser::preScanConsumeGenericSuffix(const token& typeTok){
+    if(!file.peekToken().is("<")) return;
+    if(typeTok.value == "array"){
+        file.getToken(); // '<'
+        file.getToken(); // element type
+        file.getToken(); // '>'
+        return;
+    }
+    if(typeTok.value == "func"){
+        file.getToken(); // '<'
+        int depth = 1;
+        while(depth > 0){
+            token t = file.getToken();
+            if(t.value == "<") depth++;
+            else if(t.value == ">") depth--;
+            else if(t.is(eTokenType::eof)) return;
+        }
     }
 }
 
@@ -154,18 +246,13 @@ void bglParser::preScanDirective(token tok){
             while(t.isNot("\n") && t.isNot(eTokenType::eof)) t = file.getBasicToken(true);
         }
     } else if(tok.is("#using")){
-        // Parse target name (class or object)
-        token t = file.getToken();
-        string targetName = t.value;
-        transform(targetName.begin(), targetName.end(), targetName.begin(), ::tolower);
-        // Resolve: try as a registered class, then as a global object (use its class)
-        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(targetName));
-        if(!cls){
-            for(typeDef* g : languageService.globals)
-                if(auto* od = dynamic_cast<objectDef*>(g))
-                    if(od->name == targetName){ cls = od->objectClass; break; }
+        // Consume the full dotted path: name(.name)*
+        // Resolution is deferred to the main parse (this is pre-scan).
+        file.getToken();
+        while(file.peekToken().is(token::period)){
+            file.getToken(); // consume '.'
+            file.getToken(); // consume member name
         }
-        if(cls) usingImports.push_back(cls);
     } else if(tok.is("#if")){
         // Evaluate condition and skip false branch
         string condText;
@@ -175,22 +262,28 @@ void bglParser::preScanDirective(token tok){
             preScanSkipConditionalBlock();
     } else if(tok.is("#elif")){
         // Reached here because prior #if branch was TRUE — skip to #endif
+        int startLine1 = tok.src.line + 1;  // first line after the #elif directive
         int depth = 1;
+        int endLine1 = startLine1;
         while(depth > 0){
             token t = file.getToken();
             if(t.is(eTokenType::eof)) break;
             if(t.is("#if")) depth++;
-            if(t.is("#endif")) depth--;
+            if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
         }
+        recordInactiveRange(startLine1, endLine1);
     } else if(tok.is("#else")){
         // Reached here because prior #if was TRUE — skip to #endif
+        int startLine1 = tok.src.line + 1;  // first line after the #else directive
         int depth = 1;
+        int endLine1 = startLine1;
         while(depth > 0){
             token t = file.getToken();
             if(t.is(eTokenType::eof)) break;
             if(t.is("#if")) depth++;
-            if(t.is("#endif")) depth--;
+            if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
         }
+        recordInactiveRange(startLine1, endLine1);
     } else if(tok.is("#endif")){
         // no-op — consumed naturally
     }
@@ -208,8 +301,8 @@ void bglParser::preScanFile(string filename){
     preScanDepth++;
 
     if(isFirst){
-        // Mirror main parse: always load _beguileCore.bgl first
-        filesystem::path sysPath = filesystem::path(settings.libPath) / "core" / "_beguileCore.bgl";
+        // Mirror main parse: always load __beguileCore.bgl first
+        filesystem::path sysPath = filesystem::path(settings.libPath) / "core" / "__beguileCore.bgl";
         preScanFile(sysPath.string());
         file.moveToStart();
     }
@@ -250,6 +343,7 @@ void bglParser::preScanFile(string filename){
                     if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
                     if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
                     if(t.isDataType()){
+                        preScanConsumeGenericSuffix(t);
                         token memberName = file.getToken();
                         if(memberName.is("operator")){
                             // operator declarations — just skip to body
@@ -268,7 +362,7 @@ void bglParser::preScanFile(string filename){
                             fd.returnType = languageService.getType(t.value);
                             fd.isEmitter = memberIsEmitter;
                             fd.isPrePassStub = true;
-                            preScanSkipParens();
+                            preScanCaptureParams(fd.params);
                             token bodyStart = file.getToken();
                             if(bodyStart.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
                             // Add if not already present (or if replace)
@@ -390,17 +484,40 @@ void bglParser::preScanFile(string filename){
             if(!languageService.isObjectType(nameStr)){
                 enumDef& newEnum = languageService.registerEnum(nameStr, isExtern);
                 newEnum.isPrePassStub = true;
+                newEnum.isBnum = isBnum;
+                // Optional shared-base clause: `bnum Name : Base { ... }` — only valid for bnums.
+                // Base grouping allows sibling bnums to combine via `|` (see spec). The base
+                // also relaxes the power-of-2 constraint (children occupy packed sub-fields).
+                if(file.peekToken().is(":")){
+                    file.getToken(); // consume ':'
+                    token baseTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+                    if(!isBnum)
+                        parsingError(format("enum '{0}': shared-base inheritance is only valid for bnum declarations", nameStr));
+                    enumDef* base = dynamic_cast<enumDef*>(&languageService.getType(baseTok.value));
+                    if(!base || !base->isBnum)
+                        parsingError(format("bnum '{0}': base '{1}' is not a declared bnum", nameStr, baseTok.originalValue));
+                    newEnum.baseBnum = base;
+                }
+                bool hasBase = newEnum.baseBnum != nullptr;
                 file.getToken(); // consume '{'
                 token t = file.getToken();
                 int val = 1;
                 while(t.isNot(token::braceClose)){
                     enumValueDef& ev = *(new enumValueDef());
                     ev.name = t.value;
+                    ev.displayName = t.originalValue;
                     t = file.getToken({token::braceClose, token::comma, token::assignment});
                     if(t.is(token::assignment)){
+                        bool negate = false;
+                        if(file.peekToken().is("-")){ file.getToken(); negate = true; }
                         token numTok = file.getToken(eTokenType::integer);
                         val = stoi(numTok.value);
-                        if(isBnum && val != 0 && (val & (val - 1)) != 0)
+                        if(negate) val = -val;
+                        if(isBnum && negate)
+                            parsingError(format("bnum '{0}': negative value {1} is not allowed", nameStr, val));
+                        // Power-of-2 check is relaxed for bnums with a shared base — children
+                        // of a packed composite may occupy sub-fields with non-power-of-2 patterns.
+                        if(isBnum && !hasBase && val != 0 && (val & (val - 1)) != 0)
                             parsingError(format("bnum '{0}': explicit value {1} is not a power of 2", nameStr, val));
                         t = file.getToken({token::braceClose, token::comma});
                     }
@@ -467,12 +584,7 @@ void bglParser::preScanFile(string filename){
                         if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
                         if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
                         if(t.isDataType()){
-                            // Skip array<T> generics
-                            if(t.value == "array" && file.peekToken().is("<")){
-                                file.getToken(); // consume <
-                                file.getToken(); // consume element type
-                                file.getToken(); // consume >
-                            }
+                            preScanConsumeGenericSuffix(t);
                             token memberName = file.getToken();
                             token afterName = file.getToken();
                             if(afterName.is(token::parenOpen)){
@@ -482,8 +594,7 @@ void bglParser::preScanFile(string filename){
                                 fd.returnType = languageService.getType(t.value);
                                 fd.isEmitter = memberIsEmitter;
                                 fd.isPrePassStub = true;
-                                // Skip params and body
-                                preScanSkipParens();
+                                preScanCaptureParams(fd.params);
                                 token bodyStart = file.getToken();
                                 if(bodyStart.is(token::braceOpen))
                                     file.getRawTextThroughClosingBrace();
@@ -550,7 +661,25 @@ void bglParser::preScanFile(string filename){
             continue;
         }
         if(tok.is("attribute")){
-            file.getToken(); // name
+            // Register a stub at this source position so the main-parse emitter can see the
+            // attribute's declaration index. Without this, `extern attribute light;` gets
+            // appended to globals at main-parse time (after class pre-scan stubs), which
+            // breaks source-order dependency checks for `has light` clauses.
+            token nameTok = file.getToken();
+            string nameStr = nameTok.value;
+            transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+            bool alreadyReg = false;
+            for(typeDef* g : languageService.globals)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                    if(vd->name == nameStr && vd->type.name == "attribute"){ alreadyReg = true; break; }
+            if(!alreadyReg){
+                variableDeclaration& stub = *(new variableDeclaration());
+                stub.name = nameStr;
+                stub.type.name = "attribute";
+                stub.isPrePassStub = true;
+                stub.isExternal = isExtern;
+                languageService.globals.push_back(&stub);
+            }
             preScanSkipToSemicolon();
             continue;
         }
@@ -558,26 +687,17 @@ void bglParser::preScanFile(string filename){
         // Data type declaration: function, typed object, or global variable
         if(tok.is(eTokenType::dataType) || tok.is(eTokenType::identifier)){
             string typeName = tok.value;
-
-            // Handle func<ReturnType,...> generic type
-            if(tok.value == "func" && file.peekToken().is("<")){
-                file.getToken(); // '<'
-                int depth = 1;
-                while(depth > 0){
-                    token t2 = file.getToken();
-                    if(t2.value == "<") depth++;
-                    else if(t2.value == ">") depth--;
-                    else if(t2.is(eTokenType::eof)) break;
-                }
+            preScanConsumeGenericSuffix(tok);
+            // Consume a dotted namespace type path: identifier.identifier.identifier …
+            // Without this, a decl like `bgl.glulx.window winStatus;` never registers a stub,
+            // so the variable gets appended to `globals` at the END of main-parse registration,
+            // causing it to be emitted after its uses (I6 "Variable must be defined before use").
+            while(file.peekToken().is(token::period)){
+                token seg = file.peekToken(2);
+                if(!seg.is(eTokenType::identifier) && !seg.is(eTokenType::dataType)) break;
+                file.getToken(); file.getToken();
+                typeName += "." + seg.value;
             }
-
-            // Handle array<T>
-            if(tok.value == "array" && file.peekToken().is("<")){
-                file.getToken(); // '<'
-                file.getToken(); // element type
-                file.getToken(); // '>'
-            }
-
             token nameTok = file.getToken();
             if(!nameTok.is(eTokenType::identifier)){ preScanSkipToSemicolon(); continue; }
             string nameStr = nameTok.value;
@@ -596,14 +716,17 @@ void bglParser::preScanFile(string filename){
                 for(typeDef* g : languageService.globals)
                     if(auto* fd = dynamic_cast<functionDef*>(g))
                         if(fd->name == nameStr){ alreadyReg = true; break; }
+                functionDef* stubPtr = nullptr;
                 if(!alreadyReg){
                     functionDef& stub = *(new functionDef());
                     stub.name = nameStr;
                     stub.returnType.name = typeName;
                     stub.isPrePassStub = true;
                     languageService.globals.push_back(&stub);
+                    stubPtr = &stub;
                 }
-                preScanSkipParens(); // skip parameter list
+                if(stubPtr != nullptr) preScanCaptureParams(stubPtr->params);
+                else preScanSkipParens();
                 token peek = file.peekToken();
                 if(peek.is(token::braceOpen)) preScanSkipBody();
                 else preScanSkipToSemicolon();

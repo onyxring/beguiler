@@ -1,0 +1,96 @@
+/*
+    test_verbs.bgl
+    Tests: custom verb with do handler, grammar declarations,
+           extern verb references, verb-typed parameters,
+           action comparisons, verb as function argument
+*/
+
+#include <bindings/i6StandardLibrary>
+
+// --- Custom verbs with inline grammar ---
+verb Whiff {
+    grammar = {
+        {.whiff},
+        {.waft, OBJ},
+    };
+    void perform() {
+        print("You take a whiff of the air.");
+    }
+}
+
+verb Nudge {
+    grammar = {
+        {.nudge, OBJ},
+        {.jostle, OBJ},
+    };
+    void perform() {
+        print("You nudge it.");
+    }
+}
+
+// --- Verb-typed parameter and action comparison ---
+void handleAction(verb a) {
+    if (a == Whiff) {
+        print("whiffing");
+    } else if (a == Nudge) {
+        print("nudging");
+    } else if (a == Examine) {
+        print("examining");
+    } else {
+        print("other");
+    }
+}
+
+void testVerbs() {
+    // Verb values as function arguments — now correctly emit with ## prefix
+    handleAction(Whiff);
+    handleAction(Examine);
+}
+
+// --- Dictionary word edge cases ---
+
+verb Possess {
+    // Apostrophe in grammar word: .carol's should emit 'carol^s'
+    grammar = {
+        {.carol's, OBJ},
+        {..carol's, OBJ},   // plural form: should emit 'carol^s/p'
+    };
+    void perform() {
+        print("Possessed.");
+    }
+}
+
+verb Greet {
+    // Trailing period: .mr. should warn and emit 'mr'
+    // Expected compiler warning: character '.' is not valid for dictionary words. ignoring.
+    grammar = {
+        {.mr., OBJ},
+    };
+    void perform() {
+        print("Greeted.");
+    }
+}
+
+// --- Dictionary word alternatives ---
+
+verb Stow {
+    // Alternatives without parens
+    grammar = {
+        {.stow, HELD, .on | .onto | .upon, OBJ},
+        {.stow, HELD, (.in | .into | .inside), OBJ},   // with optional parens
+    };
+    void perform() {
+        print("Stowed.");
+    }
+}
+
+// Member access: ensure .word dict syntax doesn't interfere with obj.method
+object testObj {
+    int score = 0;
+    void bump() { score = score + 1; }
+}
+
+void testMemberAccess() {
+    testObj.bump();          // member access — must NOT be treated as dict word
+    int s = testObj.score;   // property read — must NOT be treated as dict word
+}

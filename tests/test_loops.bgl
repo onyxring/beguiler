@@ -1,0 +1,85 @@
+/* test_loops.bgl — C-style for (typed + untyped init), nested loops, break/continue */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// C-style for with pre-declared loop var
+void forUntyped() {
+    int i;
+    for(i = 0; i < 5; i++) {
+        print(i);
+    }
+}
+
+// C-style for with loop-declared typed var
+void forTyped() {
+    for(int i = 0; i < 5; i++) {
+        print(i);
+    }
+}
+
+// Reusing typed loop variable in adjacent loops (same type — shares slot)
+void forTypedReuse() {
+    for(int i = 0; i < 3; i++) {
+        print(i);
+    }
+    for(int i = 0; i < 3; i++) {
+        print(i);
+    }
+}
+
+// Nested loops (pre-declared because typed init is scoped to its loop)
+void nestedLoops() {
+    int row;
+    int col;
+    int cell;
+    for(row = 0; row < 3; row++) {
+        for(col = 0; col < 3; col++) {
+            cell = row * 3 + col;
+            print(cell);
+        }
+    }
+}
+
+// while with break + continue
+void whileBreakContinue() {
+    int i = 0;
+    while(i < 10) {
+        i++;
+        if(i == 3) continue;
+        if(i == 7) break;
+        print(i);
+    }
+}
+
+// do-while
+void doWhileLoop() {
+    int n = 0;
+    do {
+        print(n);
+        n++;
+    } while(n < 3);
+}
+
+// do-until — distinct from do-while. Per spec §10.9a, `until(cond)` exits the loop
+// when cond becomes true, where do-while continues while cond is true. The two forms
+// are complementary — until(n >= 3) is equivalent to while(n < 3).
+void doUntilLoop() {
+    int n = 0;
+    do {
+        print(n);
+        n++;
+    } until(n >= 3);
+}
+
+void main() {
+    forUntyped();
+    forTyped();
+    forTypedReuse();
+    nestedLoops();
+    whileBreakContinue();
+    doWhileLoop();
+    doUntilLoop();
+}

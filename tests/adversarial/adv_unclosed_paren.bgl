@@ -1,0 +1,6 @@
+/* Adversarial: unclosed paren in expression.
+   Expected: clean error at EOF, not a hang. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main() {
+    int x = (5 + 3 * (2 + 1;
+}

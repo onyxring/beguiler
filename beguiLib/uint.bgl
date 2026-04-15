@@ -1,0 +1,13 @@
+//-----------------------------------------------------------------------------
+// uint.bgl — A standard Beguile extension adding the unsigned integer type.
+//
+// Usage:
+//   #include <uint> in your .bgl file to activate the uint type.
+//
+// Provides the `uint` wrapper over the native word, with operators that treat
+// the value as unsigned. Ordering and comparison go through _bglMath.unsignedCompare,
+// so this file implicitly depends on <math>.
+//-----------------------------------------------------------------------------
+#once
+#include <math>
+#include <core/_uint>

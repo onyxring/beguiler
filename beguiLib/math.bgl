@@ -1,0 +1,81 @@
+//-----------------------------------------------------------------------------
+// math.bgl - A standard Beguile extension for extended math helpers
+//
+//
+// Usage:
+//   #include <math> in your .bgl file to activate enhanced math support.
+//-----------------------------------------------------------------------------
+#once
+
+// Target-specific mask clearing the sign bit of a word. Z-machine words are 16 bits, Glulx 32.
+// Defined via top-level #if because inline ##if is only honored inside emitter bodies.
+#if TARGET_GLULX
+    #define BGL_SIGN_MASK $7FFFFFFF
+#else
+    #define BGL_SIGN_MASK $7FFF
+#endif
+
+object _bglMath{
+    // Compare two int values as if they were unsigned, returning -1 / 0 / 1 (x<y / x==y / x>y).
+    // Ported from the standard library's UnsignedCompare (parser.h) so Beguile has a target-agnostic
+    // unsigned comparator without depending on parser.h symbols. Needed by uint's ordering operators.
+    int unsignedCompare(int x, int y){
+        if(x == y) return 0;
+        if(x < 0 && y >= 0) return 1;
+        if(x >= 0 && y < 0) return -1;
+        int u = x & BGL_SIGN_MASK;
+        int v = y & BGL_SIGN_MASK;
+        if(u > v) return 1;
+        return -1;
+    }
+    int shiftLeft(int i, int numBits){
+	 	return i * pow(2,numBits);
+    }
+    int shiftRight(int i, int numBits){
+	 	return i / pow(2,numBits);
+    }
+    int abs(int p){ 
+        return (p<0)? -p:p; 
+    }
+    // Unsigned division: a / b treating both as unsigned. Fast path for the common case
+    // (both non-negative uses native /). Sign-bit cases use algebraic split instead of
+    // binary long division: a_unsigned = lowHalf + HIGHBIT, compute each part's quotient
+    // using native signed division on positive values. At most one recursive call.
+    int unsignedDiv(int a, int b){
+        if(b == 0) return 0;
+        if(a >= 0 && b > 0) return a / b;
+        // b has sign bit: b_unsigned >= HIGHBIT, so a/b is 0 or 1
+        if(b < 0) return unsignedCompare(a, b) >= 0 ? 1 : 0;
+        // a has sign bit, b is positive: split a into lowHalf + HIGHBIT
+        int lowHalf = a & BGL_SIGN_MASK;
+        // HIGHBIT / b = (BGL_SIGN_MASK + 1) / b, computed via BGL_SIGN_MASK which is positive
+        int hq = BGL_SIGN_MASK / b;
+        int hr = BGL_SIGN_MASK % b + 1;
+        if(hr >= b){ hq = hq + 1; hr = hr - b; }
+        // a / b = hq + (lowHalf + hr) / b
+        int combined = lowHalf + hr;
+        if(combined >= 0) return hq + combined / b;
+        // combined overflowed (sign bit set) — recurse once
+        return hq + unsignedDiv(combined, b);
+    }
+    // Unsigned modulo: a % b treating both as unsigned.
+    int unsignedMod(int a, int b){
+        if(b == 0) return 0;
+        if(a >= 0 && b > 0) return a % b;
+        return a - unsignedDiv(a, b) * b;
+    }
+    int pow(int i, int p){
+        if(p==0) return 1;
+        int retval = i;
+        if(p<0){
+            for(int t=0;t<(-p)-1;t++) retval=retval/i;
+            return retval;
+        }
+        for(int t=0;t < p-1;t++) retval=retval*i;
+        return retval;
+    }
+}
+
+extend _bglUtil{
+    auto math=_bglMath;
+}

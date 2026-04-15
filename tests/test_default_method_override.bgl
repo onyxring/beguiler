@@ -1,0 +1,33 @@
+/*
+    test_default_method_override.bgl
+    Tests: overriding a `default` method produces no shadow warning (spec §5.7.1).
+    Circle overrides Shape's default describe(), LittleCircle overrides Circle's.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Shape : object {
+    default void describe() { print("a shape"); }
+}
+
+// Overrides a default method — should NOT produce a shadow warning per spec.
+class Circle : Shape {
+    default void describe() { print("a circle"); }
+}
+
+// Overrides a default method without marking its own as default — should also not
+// produce a shadow warning, per spec.
+class LittleCircle : Circle {
+    void describe() { print("a little circle"); }
+}
+
+LittleCircle lc;
+Circle c;
+
+void main() {
+    lc.describe();
+    c.describe();
+}
