@@ -79,6 +79,9 @@ object bgl{
         emitter bool provides(var prop){
             $self provides $prop
         }
+        replace emitter void print(){
+            print (name)$self;    
+        }
     }
     
     //--setters
@@ -181,6 +184,7 @@ object bglWorld
 */
 
 emitter void print(var val){ print $val; } //the default, which will be used for all data types not defined
+emitter void print(_bglObject val){ if($val provides print) $val.print(); else print (name)$val;} //the default, which will be used for all data types not defined
 emitter void log(var msg){ ##if DEBUG print $msg; ##endif }
 
 //=============================================================================

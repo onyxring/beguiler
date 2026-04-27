@@ -1,0 +1,41 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+class point
+  class object
+  with
+    x,
+    y,
+    _opeq[other;
+        self.x=other.x;
+        self.y=other.y;
+        return self;
+    ]
+;
+class wrapper
+  class object
+  with
+    inner
+;
+point pa;
+point pb;
+point _bglField_w_inner;
+wrapper w with inner _bglField_w_inner;
+[makePoint p;
+    p = pa;
+    p.x = 7;
+    return p;
+];
+[main;
+    pb._opeq(makepoint());
+    w.inner._opeq(makepoint());
+];

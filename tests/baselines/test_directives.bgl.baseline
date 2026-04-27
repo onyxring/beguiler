@@ -1,0 +1,33 @@
+!% -v5
+!% -E1
+Serial "260330";
+Release 42;
+
+    Constant BGL_TEST_EARLY = 100;
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+
+    ! startup block test
+
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+constant story = "Directive Test";
+constant author = "Tester";
+constant gameRelease = 42;
+[main ws;
+    print (string)"Feature A enabled";
+    print (string)"Many items";
+    print (string)story;
+    ws=platform.wordsize;
+    print ws;
+];
+
+    [ BglTestHelper; return 0; ];
+

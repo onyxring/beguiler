@@ -1,0 +1,27 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+[demo f;
+];
+[main c f;
+    c = 1;
+    f = 4;
+    if (c==1) {
+        print (string)"c is red";
+    }
+    if (f==4) {
+        print (string)"f is also red";
+    }
+    c = 1;
+    f = 4;
+    demo(4);
+];

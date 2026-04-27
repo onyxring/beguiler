@@ -1,0 +1,43 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+global g_printer;
+global g_combiner;
+[applyOnce x fn;
+    fn(x);
+];
+[combine x y fn result;
+    result=fn(x,y);
+    return result;
+];
+[main sum r;
+    g_printer = _bglLambda_0;
+    g_combiner = _bglLambda_1;
+    g_printer(42);
+    sum=g_combiner(10,20);
+    applyonce(42, _bglLambda_2);
+    r=combine(10,20,_bglLambda_3);
+];
+[_bglLambda_0 n;
+    print n;
+];
+[_bglLambda_1 a b r;
+    r=a + b;
+    return r;
+];
+[_bglLambda_2 n;
+    print n;
+];
+[_bglLambda_3 a b x;
+    x=a + b;
+    return x;
+];

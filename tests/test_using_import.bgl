@@ -1,0 +1,24 @@
+/* test_using_import.bgl — `#using` namespace-imports resolve through the import scope.
+
+   Verifies:
+     • `#using ns;` lets bare member references work without the namespace prefix.
+     • Emission qualifies through the namespace path, so I6 resolves it correctly at runtime.
+     • Auto-aliased members (auto x = otherObj;) carry the redirected object's type identity. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object engine {
+    int counter = 0;
+    int increment() { self.counter = self.counter + 1; return self.counter; }
+}
+
+object app {
+    auto eng = engine;       // namespace-style auto-alias to engine
+}
+
+#using app
+
+void main(){
+    // Bare `eng` resolves through the #using import to app.eng (type: engine).
+    // The method-call site emits `app.eng.increment()` so I6 walks the property at runtime.
+    int n = eng.increment();
+}
