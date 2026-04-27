@@ -1,0 +1,23 @@
+/* test_class_field_backing.bgl — auto-synthesized backing globals for class-typed fields.
+
+   Rules locked in here:
+     • Field of a different class → backing global synthesized as `_bglField_<inst>_<field>`.
+     • Field of the SAME enclosing class type → backed at level 0 (so operator= has a real
+       slot to write into) but NOT recursively beyond level 1 (visited-set breaks the cycle).
+     • Class with its own `init` emitter manages its own allocation → no auto-backing.
+     • Primitive fields (int, etc.) → no backing.
+     • Const fields → no backing. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class point  : object { int x; int y; }
+class shape  : object {
+    int kind;
+    point origin;     // different-class field → auto-backed
+    shape next;       // SAME-class field → level-0 backed, level-1 left empty
+}
+
+shape s;              // expect: 'point _bglField_s_origin;' and 'shape _bglField_s_next;'
+                      // and the next-level backing has no further with-clauses.
+shape t;              // separate instance gets its own per-field backings
+
+void main(){ print("ok"); }

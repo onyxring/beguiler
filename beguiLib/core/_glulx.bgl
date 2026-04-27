@@ -7,6 +7,7 @@ object _glulx{
    alias eStyleType for eGlulxStyleType; //bgl.glulx.eStyleType
 }
 
+
 enum eGlulxStyleType{
         normal
    ,    emphasized

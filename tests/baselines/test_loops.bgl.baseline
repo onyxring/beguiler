@@ -1,0 +1,74 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+[forUntyped i;
+    for (i = 0 : i<5 : i++) {
+        print i;
+    }
+];
+[forTyped i;
+    for (i = 0 : i<5 : i++) {
+        print i;
+    }
+];
+[forTypedReuse i;
+    for (i = 0 : i<3 : i++) {
+        print i;
+    }
+    for (i = 0 : i<3 : i++) {
+        print i;
+    }
+];
+[nestedLoops row col cell;
+    for (row = 0 : row<3 : row++) {
+        for (col = 0 : col<3 : col++) {
+            cell = row * 3 + col;
+            print cell;
+        }
+    }
+];
+[whileBreakContinue i;
+    i = 0;
+    while (i<10) {
+         i++ ;
+        if (i==3) {
+            continue;
+        }
+        if (i==7) {
+            break;
+        }
+        print i;
+    }
+];
+[doWhileLoop n;
+    n = 0;
+    do {
+        print n;
+         n++ ;
+    } until (~~(n<3));
+];
+[doUntilLoop n;
+    n = 0;
+    do {
+        print n;
+         n++ ;
+    } until (n>=3);
+];
+[main;
+    foruntyped();
+    fortyped();
+    fortypedreuse();
+    nestedloops();
+    whilebreakcontinue();
+    dowhileloop();
+    dountilloop();
+];

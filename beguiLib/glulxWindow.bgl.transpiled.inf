@@ -1,0 +1,69 @@
+!% -G
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+[__glkHook _vararg_count api args retval;
+    @copy sp api;
+    args=_vararg_count - 1;
+    @glk api args retval;
+    return retval;
+];
+object _glulx
+  with createMainWindow [;
+    @setiosys 2 0;
+    tmpwin.id=__glkHook(35, 0, 256, 30, 3, 0);
+    __glkHook(47, tmpwin.id);
+    return tmpwin;
+  ]
+;
+object _bglUtil
+;
+object bgl
+  with glulx _glulx,
+       util _bglutil
+;
+class _glulxwindow
+  with
+    id,
+    winType,
+    parentWin,
+    winMethod,
+    splitWindow[type size scale placement border retval;
+        retval = tmpwin2;
+        retval.winmethod = (placement|scale|border);
+        retval.wintype = type;
+        retval.parentwin._opeq(self);
+        retval.id=__glkHook(35, self.id, retval.winmethod, size, type, 0);
+        return retval;
+    ],
+    drawImage[imgId x y w h;
+        __glkHook(226, self.id, imgId, x, y, w, h);
+    ],
+    getSize[;
+        __glkHook(37, self.id, (_glksizebuf) + bgl.wordsize, (_glksizebuf) + (2 * bgl.wordsize));
+        _tmpwindowsize.width= _glksizebuf-->(0+1) ;
+        _tmpwindowsize.height= _glksizebuf-->(1+1) ;
+        return _tmpwindowsize;
+    ],
+    _opeq[w;
+        self.id=w.id;
+        self.winmethod = w.winmethod;
+        self.wintype = w.wintype;
+        self.parentwin = w.parentwin;
+        return self;
+    ]
+;
+_glulxwindow _bglField_tmpWin_parentWin;
+_glulxwindow tmpWin with parentWin _bglField_tmpWin_parentWin;
+_glulxwindow _bglField_tmpWin2_parentWin;
+_glulxwindow tmpWin2 with parentWin _bglField_tmpWin2_parentWin;
+class _glulxwindowsize
+  with
+    width,
+    height
+;
+_glulxwindowsize _tmpWindowSize;
+array _glksizebuf table 2;

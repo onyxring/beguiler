@@ -1,0 +1,36 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+class point
+  class object
+  with
+    x,
+    y
+;
+class shape
+  class object
+  with
+    kind,
+    origin,
+    next
+;
+point _bglField_s_origin;
+point _bglField__bglField_s_next_origin;
+shape _bglField_s_next with origin _bglField__bglField_s_next_origin;
+shape s with origin _bglField_s_origin, next _bglField_s_next;
+point _bglField_t_origin;
+point _bglField__bglField_t_next_origin;
+shape _bglField_t_next with origin _bglField__bglField_t_next_origin;
+shape t with origin _bglField_t_origin, next _bglField_t_next;
+[main;
+    print (string)"ok";
+];

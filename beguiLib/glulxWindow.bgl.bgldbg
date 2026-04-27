@@ -1,0 +1,160 @@
+[map]
+4	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/__beguileCore.bgl	203
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_bool.bgl	28
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/__beguileCore.bgl	33
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_grammar.bgl	27
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_dictionaryWord.bgl	8
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_string.bgl	23
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_grammar.bgl	4
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/__beguileCore.bgl	41
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_verb.bgl	5
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	21
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	23
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	28
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	37
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	41
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	47
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	52
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	57
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	811
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	813
+8	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	813
+9	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	814
+10	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	815
+11	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	816
+12	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	817
+14	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	822
+14	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulx.bgl	6
+16	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	10
+17	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	11
+18	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	12
+19	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	13
+22	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulx.bgl	11
+22	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/__beguileCore.bgl	24
+24	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/__beguileCore.bgl	25
+28	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/__beguileCore.bgl	203
+28	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	39
+35	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	62
+36	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	63
+37	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	64
+38	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	65
+39	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	66
+40	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	67
+43	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	77
+46	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	95
+47	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	96
+48	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	97
+49	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	98
+52	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	47
+53	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	48
+54	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	49
+55	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	50
+56	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	51
+59	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	22
+61	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	23
+63	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	28
+68	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	32
+69	/Users/jim/projects/IF-Projects/beguile/beguiLib/glulxWindow.bgl	36
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_char.bgl	31
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_int.bgl	65
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_string.bgl	19
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_string.bgl	20
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_string.bgl	21
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_string.bgl	24
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_string.bgl	25
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	823
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	824
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	825
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	826
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	827
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/_glulxOpCodes.bgl	828
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/__beguileCore.bgl	186
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/__beguileCore.bgl	187
+70	/Users/jim/projects/IF-Projects/beguile/beguiLib/core/__beguileCore.bgl	188
+[sym]
+__glkhook	__glkhook	function
+_glulx	_glulx	object
+_glulx.ewintype	ewintype	property
+_glulx.eimgalign	eimgalign	property
+_glulx.eimgdimension	eimgdimension	property
+_glulx.bwinborder	bwinborder	property
+_glulx.bwinplacement	bwinplacement	property
+_glulx.bwinscale	bwinscale	property
+_glulx.estyletype	estyletype	property
+_glulx.window	window	property
+_glulx.size	size	property
+_bglutil	_bglutil	object
+bgl	bgl	object
+bgl.glulx	glulx	property
+bgl.asm	asm	property
+bgl.util	util	property
+tmpwin	tmpwin	global
+tmpwin2	tmpwin2	global
+_tmpwindowsize	_tmpwindowsize	global
+_glksizebuf	_glksizebuf	global
+sp	sp	global
+[types]
+enum bglulxwindowmethodflags
+enum eglulxwindowtype
+  value textgrid 4
+  value textbuffer 3
+  value graphics 5
+enum eglulximagealign
+  value inlineup 1
+  value inlinedown 2
+  value inlinecenter 3
+  value marginleft 4
+  value marginright 5
+  value margincenter 6
+enum bglulxwindowborder
+  value border 0
+  value noborder 256
+enum bglulxwindowplacement
+  value left 0
+  value right 1
+  value above 2
+  value below 3
+enum bglulxwindowscale
+  value fixed 16
+  value proportional 32
+enum eglulximagedimension
+  value original -1
+  value scaled -2
+enum eglulxstyletype
+  value normal 1
+  value emphasized 2
+  value fixed 3
+  value header 4
+  value subheader 5
+  value alert 6
+  value note 7
+  value blockquote 8
+  value input 9
+  value user1 10
+  value user2 11
+type verb
+  prop grammar grammar grammarrulelist
+type _glulxwindowsize
+  prop width width int
+  prop height height int
+type _glulxwindow
+  prop id id int
+  prop wintype wintype eglulxwindowtype
+  prop parentwin parentwin _glulxwindow
+  prop winmethod winmethod bglulxwindowmethodflags
+type bgl
+  prop glulx glulx _glulx
+  prop util util _bglutil
+routine __glkhook
+  local _vararg_count int
+  local api int
+  local args int
+  local retval int
+global sp var
+global _glulx object
+global _bglutil object
+global bgl object
+global tmpwin _glulxwindow
+global tmpwin2 _glulxwindow
+global _tmpwindowsize _glulxwindowsize
+global _glksizebuf array
