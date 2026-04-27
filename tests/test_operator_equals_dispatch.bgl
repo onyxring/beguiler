@@ -1,0 +1,39 @@
+/* test_operator_equals_dispatch.bgl — non-emitter `operator =` dispatches via `_opeq` method.
+
+   Three assignment shapes that all route through the same dispatch:
+     • bare-variable LHS:   a = b;            → a._opeq(b);
+     • dotted-property LHS: w.inner = b;      → w.inner._opeq(b);
+     • function-call RHS:   a = make();       → a._opeq(make());
+
+   The synthesized emitter body uses `$target` (full LHS path) — not `$self` (owner) —
+   so dotted assignment dispatches on the property, not its owner. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class point : object {
+    int x;
+    int y;
+    point operator = (point other){
+        self.x = other.x;
+        self.y = other.y;
+        return self;
+    }
+}
+
+class wrapper : object {
+    point inner;
+}
+
+point pa;
+point pb;
+wrapper w;
+
+point makePoint(){
+    point p = pa;
+    p.x = 7;
+    return p;
+}
+
+void main(){
+    pb = makePoint();        // bare-variable LHS
+    w.inner = makePoint();   // dotted-property LHS
+}

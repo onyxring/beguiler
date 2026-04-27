@@ -4,7 +4,9 @@
 #include <iostream>
 #include <chrono>
 #include <cstdlib>
+#include <cstdio>
 #include <random>
+#include <regex>
 
 #include "settings.h"
 #include "beguiler.h"
@@ -244,9 +246,67 @@ bool beguiler::go(int argc, char* argv[]) {
     }else{
         cout<<"Handing off to I6..."<<endl;
         string debugSwitch = settings.debugMode ? " -k" : "";  // -k: write debug info to gameinfo.dbg
-        cout<<(settings.informPath+debugSwitch+" "+settings.switches+" "+settings.tmpFile+" "+settings.outFile).c_str()<<endl<<endl;
-        if(system((settings.informPath+debugSwitch+" "+settings.switches+" "+settings.tmpFile+" "+settings.outFile).c_str())){
-            cerr<<"Error running I6!"<<endl;
+        string i6Cmd = settings.informPath + debugSwitch + " " + settings.switches + " " +
+                       settings.tmpFile + " " + settings.outFile;
+        cout << i6Cmd << endl << endl;
+        cout.flush(); cerr.flush();
+
+        // Run I6 via popen and rewrite its diagnostics so .inf line numbers map back to .bgl
+        // sources. The source map (i6Line → bglFile + bglLine) is built during emission and
+        // lives on the emitter regardless of --debug. Lines that don't match I6's diagnostic
+        // pattern pass through verbatim.
+        auto resolveBglSource = [&](int i6Line, string& outFile, int& outLine) -> bool {
+            // sourceMap is appended in emission order (ascending by i6Line). Find the last
+            // entry whose i6Line is <= the target — that gives the most-specific source for
+            // any line that falls inside an emitted block.
+            bool found = false;
+            for(auto& [il, bf, bl] : emitter.sourceMap){
+                if(il > i6Line) break;
+                outFile = bf; outLine = bl;
+                found = true;
+            }
+            return found;
+        };
+        // Format: `<file>(<line>): <Severity>: ...` (note: I6 may emit double spaces after `:`).
+        regex i6DiagRe(R"(^(.+\.inf)\((\d+)\):\s+(Error|Warning|Fatal error):\s+(.*)$)");
+
+        // Capture stderr too so I6 errors come through (I6 mostly writes to stdout, but be safe).
+        string popenCmd = i6Cmd + " 2>&1";
+        FILE* pipe = popen(popenCmd.c_str(), "r");
+        if(!pipe){
+            cerr << "Error running I6!" << endl;
+            return true;
+        }
+        char buf[4096];
+        bool sawError = false;
+        while(fgets(buf, sizeof(buf), pipe)){
+            string line(buf);
+            // Strip trailing newline for processing; restore on output.
+            while(!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
+            smatch m;
+            if(regex_match(line, m, i6DiagRe)){
+                string infFile = m[1];
+                int infLine   = stoi(m[2]);
+                string severity = m[3];
+                string message  = m[4];
+                // ERROR uppercase / warning lowercase — the visual contrast surfaces
+                // severity at a glance. Fatal errors collapse to ERROR for tooling consistency.
+                string sevTag;
+                if(severity == "Error" || severity == "Fatal error"){ sevTag = "ERROR"; sawError = true; }
+                else                                                   sevTag = "warning";
+                cout << infFile << ":" << infLine << ":1: " << sevTag << ": " << message << "\n";
+                string bglFile; int bglLine = 0;
+                if(resolveBglSource(infLine, bglFile, bglLine))
+                    cout << "  ↳ " << bglFile << ":" << bglLine << ":1\n";  // ↳
+                // Unmappable .inf lines simply omit the continuation — the absence is
+                // self-evident next to mapped errors that have one.
+            } else {
+                cout << line << "\n";
+            }
+        }
+        int rc = pclose(pipe);
+        if(rc != 0 || sawError){
+            cerr << "Error running I6!" << endl;
             return true;
         }
         // -k writes gameinfo.dbg to cwd; move it alongside the other debug files

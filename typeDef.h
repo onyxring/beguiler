@@ -294,6 +294,17 @@ class forInStatement : public statement {
 class i6RawNode : public typeDef, public statement, public typeMember {
     public:
         string text;
+        // If non-empty, the node contains a sequence of raw I6 text fragments interleaved with
+        // Beguile statements (each entry is either a string fragment or a pointer to a parsed
+        // statement). Used by `#i6{}` blocks that contain `#bgl{}` regions at global scope —
+        // the parsed Beguile statements emit inline among the raw text at emit time. When this
+        // vector is empty, the emitter falls back to the plain `text` field.
+        // Each entry: <textFragment, optional statement, sourceLocation for textFragment>.
+        // Emitted as text first (with per-line source-map entries anchored from textSrc),
+        // then statement if present. textSrc lets I6 diagnostics inside multi-line raw
+        // fragments map back to specific .bgl source lines.
+        struct rawPart { string text; statement* stmt; sourceLocation textSrc; };
+        vector<rawPart> parts;
 };
 
 // try/catch statement: structured exception handling using Z-machine @catch/@throw opcodes

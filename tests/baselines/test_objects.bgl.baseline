@@ -1,0 +1,38 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+object startRoom
+  with capacity 4,
+       lighting 1
+;
+object lobby
+  with exitnorth 0,
+       exitsouth 0,
+       visitcount 0
+;
+object inventory
+  with items 0 0 0 0 0 0 0 0 0 0 ,
+       count 0
+;
+object gameState
+  with gamescore 0,
+       gamemoves 0
+;
+[main cap north first;
+    cap=startroom.capacity;
+    north=lobby.exitnorth;
+    startroom.capacity = 6;
+    gamestate.gamescore = 10;
+    gamestate.gamemoves = 1;
+    inventory.count = 3;
+    first =  inventory-->(0+1) ;
+];

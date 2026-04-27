@@ -1,0 +1,30 @@
+/* test_resolution_objectdef_identity.bgl — every unclassed objectDef IS its own type.
+
+   Verifies that:
+     1. `auto x = SomeUnclassedObject;` infers `x`'s type as the object's own name, not "object".
+     2. Method dispatch on such a value finds methods declared on the objectDef.
+     3. The value remains assignable to a parameter of type `object` (universal supertype rule
+        in isTypeCompatible). */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object widget {
+    int count = 0;
+    int bump() { self.count = self.count + 1; return self.count; }
+}
+
+void takesAnyObject(object o) { }   // exercises objectDef → object compatibility
+
+void main(){
+    // Direct method dispatch on the global object: resolveMethod's Step 2 (a) finds
+    // 'bump' on the widget objectDef even though `widget` isn't a classDef.
+    int x = widget.bump();
+
+    // Auto-inferred type from an objectDef reference. Without the type-identity rule
+    // this would infer 'object' (which has no methods) and the next line would fail.
+    auto w = widget;
+    int y = w.bump();
+
+    // Pass an objectDef-typed value to an `object`-typed parameter. Must compile —
+    // every objectDef is implicitly an object (isTypeCompatible extension).
+    takesAnyObject(widget);
+}

@@ -1,0 +1,13 @@
+! Negative test: unclosed `#bgl{` inside a .inf file should produce a
+! "missing closing '}'" error from the lexer's brace-counter.
+!
+! This proves the eofTerminates flag in getRawTextUntilCloseOrBgl applies only to
+! the OUTER raw-I6 region (the file body), NOT to nested #bgl{} content. A truncated
+! Beguile block must still fail loudly so the user notices the typo.
+!
+! EXPECT_ERROR: Unexpected end of file — missing closing '}'
+
+[ Main;
+    #bgl{
+        bglInit();
+        ! never closes

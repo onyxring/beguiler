@@ -122,6 +122,12 @@ class bglParser {
         void reset();  // clear all accumulated state for LSP re-parse
         void preScanFile(string filename);  // pass 1: register type/object stubs for forward-reference resolution
         bool parseFile(string);    //the main entry point: given a file, read it in, parse it, and store it in the parse tree
+        // .inf-as-input mode: the entry file is treated as a single implicit raw-I6 region with
+        // `#bgl{...}` re-entry. Authors can add Beguile features to existing I6 source incrementally
+        // without converting the whole file. The Beguile Language Runtime is auto-loaded so types
+        // and emitters are available inside #bgl blocks, but no Beguile declarations may appear
+        // at the file's top level. Called by parseFile when the entry file ends in `.inf`.
+        bool parseInfFileBody(abstractObject& contextObj);
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
         void parsingWarning(string); //like parsingError but continues parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
@@ -258,7 +264,11 @@ class bglParser {
         // Parse qualifier keywords from the token stream in any order. Consumes qualifying tokens,
         // leaves tok pointing at the first non-qualifier. Validates invalid combinations.
         Qualifiers parseQualifiers(token& tok);
-        string resolveIdentifierType(string name, functionDef* func, statementBlock* body);
+        // memberHint: when non-empty, the resolver prefers candidates whose type has a member of
+        // that name. Used to disambiguate name collisions across tiers — e.g. an enum value and a
+        // class instance with the same name. If no candidate satisfies the hint, falls back to the
+        // normal first-match (so dispatch errors still surface against the natural type).
+        string resolveIdentifierType(string name, functionDef* func, statementBlock* body, const string& memberHint = "");
 
         // Return the declared element type of an array variable, or "" if `name` isn't an
         // arrayDeclaration in any reachable scope. Walks locals, class/object members, globals.
@@ -272,8 +282,15 @@ class bglParser {
         // class (user-defined), synthesizes one using the `object`-typed overload as a template.
         // Returns nullptr if no match and no synthesis possible.
         functionDef* findArraySubscriptOp(classDef* arrCls, const string& elemType, bool isWrite);
-        string resolvePathType(string path, functionDef* func, statementBlock* body);
-        string qualifyIdentifier(string name, functionDef* func, statementBlock* body);
+        // memberHint: forwarded to the underlying resolveIdentifierType for the path's head.
+        string resolvePathType(string path, functionDef* func, statementBlock* body, const string& memberHint = "");
+        // True if `typeName` resolves to a class (incl. base hierarchy) or objectDef that exposes
+        // a member (field/method) named `memberName`. Returns false for primitives, enums, and
+        // unknown types. Used by the resolver for member-aware tie-breaking.
+        bool typeHasMember(const string& typeName, const string& memberName);
+        // memberHint: same semantics as resolveIdentifierType — prefer candidates whose type
+        // exposes the named member, falling back to first-match if none satisfy.
+        string qualifyIdentifier(string name, functionDef* func, statementBlock* body, const string& memberHint = "");
         bool isTypeCompatible(string argType, string paramType);
         void applyArgConversions(vector<expression*>& args, functionDef* fd);
         // Canonicalize a parsed argument list against a resolved function signature. Performs:
@@ -346,6 +363,19 @@ class bglParser {
         classDef* currentClass = nullptr;    // set when parsing inside a class declaration
         functionDef* currentFunc = nullptr;  // outermost function being parsed (not changed for nested if/while blocks)
         functionDef* lambdaOuterFunc = nullptr;    // set during lambda parsing to enable capture detection
+        // Expected-type hint for the expression currently being parsed. Set by call sites that know
+        // the type they need (e.g. variable initializer RHS, operator RHS). Used by name resolution
+        // as a final tie-breaker when multiple candidates remain after memberHint filtering.
+        // Always saved/restored at sub-context boundaries (function args, etc.) so it doesn't leak.
+        string currentExpectedType;
+    public:
+        // True while parsing the contents of an `#bgl{}` block embedded in `#i6{}`. Unknown
+        // identifiers are passed through (qualifyIdentifier returns the name; resolveIdentifierType
+        // returns "var") so I6 names referenced from Beguile resolve at the I6 compile step.
+        // Public so fileLexer can consult it when deciding whether to treat EOF as benign
+        // (sub-parses of in-memory bgl content terminate at EOF, regardless of compile context).
+        bool looseIdentifierMode = false;
+    private:
         statementBlock* lambdaOuterBody = nullptr; // outer function body during lambda parsing
         // Stack of enclosing functions for nested lambda capture resolution. Each entry is an
         // outer function scope that may contain capturable variables. Innermost (most recent) first.

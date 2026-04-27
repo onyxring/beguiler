@@ -93,7 +93,9 @@ void i6Emitter::applyTemplate(string name, map<string,string> args, string inden
 string i6Emitter::replaceWord(string str, const string& from, const string& to){
     size_t pos=0;
     while((pos=str.find(from,pos))!=string::npos){
-        bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$');
+        // Word-boundary check. '.' on the left disqualifies so we don't rewrite property
+        // accesses (`obj.width` must stay intact when renaming a local `width`).
+        bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$' || str[pos-1]=='.');
         bool rightOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
         if(leftOk && rightOk){ str.replace(pos,from.size(),to); pos+=to.size(); }
         else pos+=from.size();
@@ -151,6 +153,24 @@ bool i6Emitter::funcNeedsSpill(functionDef* fd){
 //   - overflow body locals          → _bglFrm-->N frame slots
 void i6Emitter::buildSpillMap(functionDef* fd){
     clearSpillMap();
+    // Build the per-function display-name map regardless of target. Even on Glulx (no spill),
+    // this lets spillName preserve user-chosen casing for params and locals.
+    auto rememberDisplay = [&](const string& canonical, const string& display){
+        if(!display.empty() && display != canonical)
+            currentDisplayNames[canonical] = display;
+    };
+    for(paramDef* p : fd->params) rememberDisplay(p->name, p->displayName);
+    statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
+    vector<variableDeclaration*> locals;
+    set<string> seen;
+    collectBodyLocals(body, locals, seen);
+    for(variableDeclaration* vd : locals) rememberDisplay(vd->name, vd->displayName);
+
+    // Property-shadow rename pass — runs on every target (not just Z), since the I6 issue
+    // exists regardless of target. Must run AFTER displayName population so the mangled
+    // form preserves the user's chosen casing.
+    buildLocalRenameMap(fd);
+
     if(!isZTarget(currentTarget)) return;
     const int maxParams = 5;
     // Map excess params to _bglXPn globals
@@ -158,10 +178,6 @@ void i6Emitter::buildSpillMap(functionDef* fd){
         currentSpillAliases[fd->params[i]->name] = format("_bglXP{0}", i - maxParams);
     // Count only the params that fit in I6 locals
     int effectiveParams = min((int)fd->params.size(), maxParams);
-    statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
-    vector<variableDeclaration*> locals;
-    set<string> seen;
-    collectBodyLocals(body, locals, seen);
     int total = effectiveParams + (int)locals.size();
     if(total <= 14) return;
     int excess = total - 14;
@@ -171,33 +187,176 @@ void i6Emitter::buildSpillMap(functionDef* fd){
 
 void i6Emitter::clearSpillMap(){
     currentSpillAliases.clear();
+    currentDisplayNames.clear();
+    currentLocalRenames.clear();
     currentSpillCount = 0;
 }
 
-// Like expr->text() but substitutes spilled variable names token-by-token
+// ── property-shadow rename helpers ──────────────────────────────────────────────
+// Extract every identifier that appears after a '.' in `tok` and add to `out`.
+// `tok` may be a multi-segment chained access like "bgl.glulx.windowOpen" — all
+// segments after the first are property accesses. Stops at non-identifier chars.
+static void extractPropertyNamesFromToken(const string& tok, set<string>& out){
+    size_t pos = 0;
+    while((pos = tok.find('.', pos)) != string::npos){
+        pos++;
+        size_t end = pos;
+        while(end < tok.size() && (isalnum((unsigned char)tok[end]) || tok[end] == '_')) end++;
+        if(end > pos) out.insert(tok.substr(pos, end - pos));
+        pos = end;
+    }
+}
+
+// Same as token version, but for free-form raw-I6 text fragments (returnExpression,
+// for-loop init/increment, raw #i6{} text, emitter bodies). Conservative: any `.NAME`
+// pattern is treated as a property access.
+static void extractPropertyNamesFromText(const string& text, set<string>& out){
+    extractPropertyNamesFromToken(text, out);
+}
+
+static void extractPropertyNamesFromExpr(expression* expr, set<string>& out){
+    if(!expr) return;
+    for(const string& t : expr->tokens) extractPropertyNamesFromToken(t, out);
+    if(auto* il = dynamic_cast<initializerList*>(expr))
+        for(expression* e : il->elements) extractPropertyNamesFromExpr(e, out);
+}
+
+// Recursively walk a statementBlock collecting every identifier used as a property
+// accessor (`obj.NAME`) in any expression or raw-text fragment. Used to detect locals
+// that would shadow I6 property names.
+static void collectDottedAccessNames(statementBlock* body, set<string>& out){
+    if(!body) return;
+    for(statement* s : body->statements){
+        if(auto* asg = dynamic_cast<assignmentStatement*>(s)){
+            extractPropertyNamesFromExpr(asg->assignedExpression, out);
+            for(auto& seg : asg->interpSegments) extractPropertyNamesFromExpr(seg.expr, out);
+        } else if(auto* vd = dynamic_cast<variableDeclaration*>(s)){
+            extractPropertyNamesFromExpr(vd->declaredExpressionValue, out);
+            for(auto& seg : vd->interpSegments) extractPropertyNamesFromExpr(seg.expr, out);
+        } else if(auto* fcs = dynamic_cast<functionCallStatement*>(s)){
+            for(expression* e : fcs->args) extractPropertyNamesFromExpr(e, out);
+            extractPropertyNamesFromText(fcs->emitterBody, out);
+            for(auto& segs : fcs->interpSegmentsPerArg)
+                for(auto& seg : segs) extractPropertyNamesFromExpr(seg.expr, out);
+        } else if(auto* rs = dynamic_cast<returnStatement*>(s)){
+            extractPropertyNamesFromText(rs->returnExpression, out);
+        } else if(auto* ifs = dynamic_cast<ifStatement*>(s)){
+            extractPropertyNamesFromExpr(ifs->condition, out);
+            collectDottedAccessNames(ifs->thenBlock, out);
+            collectDottedAccessNames(ifs->elseBlock, out);
+        } else if(auto* sw = dynamic_cast<switchStatement*>(s)){
+            extractPropertyNamesFromExpr(sw->condition, out);
+            for(switchCase* sc : sw->cases){
+                for(auto& ce : sc->entries){
+                    extractPropertyNamesFromExpr(ce.value, out);
+                    extractPropertyNamesFromExpr(ce.rangeLow, out);
+                    extractPropertyNamesFromExpr(ce.rangeHigh, out);
+                }
+                collectDottedAccessNames(sc->body, out);
+            }
+        } else if(auto* ds = dynamic_cast<doStatement*>(s)){
+            extractPropertyNamesFromExpr(ds->condition, out);
+            collectDottedAccessNames(ds->body, out);
+        } else if(auto* ws = dynamic_cast<whileStatement*>(s)){
+            extractPropertyNamesFromExpr(ws->condition, out);
+            collectDottedAccessNames(ws->body, out);
+        } else if(auto* fors = dynamic_cast<forStatement*>(s)){
+            extractPropertyNamesFromExpr(fors->condition, out);
+            extractPropertyNamesFromText(fors->initText, out);
+            extractPropertyNamesFromText(fors->incrementText, out);
+            collectDottedAccessNames(fors->body, out);
+        } else if(auto* fis = dynamic_cast<forInStatement*>(s)){
+            for(expression* e : fis->inlineElements) extractPropertyNamesFromExpr(e, out);
+            collectDottedAccessNames(fis->body, out);
+        } else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){
+            collectDottedAccessNames(tc->tryBody, out);
+            collectDottedAccessNames(tc->catchBody, out);
+        } else if(auto* ts = dynamic_cast<throwStatement*>(s)){
+            extractPropertyNamesFromExpr(ts->value, out);
+        } else if(auto* raw = dynamic_cast<i6RawNode*>(s)){
+            extractPropertyNamesFromText(raw->text, out);
+            for(auto& part : raw->parts) extractPropertyNamesFromText(part.text, out);
+        }
+    }
+}
+
+void i6Emitter::buildLocalRenameMap(functionDef* fd){
+    statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
+    if(!body) return;
+    set<string> propNames;
+    collectDottedAccessNames(body, propNames);
+    if(propNames.empty()) return;
+    // Mangle params and locals whose canonical name matches a used property name.
+    // Preserve original-case (display name) inside the mangled form for readability.
+    auto maybeRename = [&](const string& canonical, const string& display){
+        if(currentLocalRenames.count(canonical)) return;
+        if(!propNames.count(canonical)) return;
+        const string& shown = display.empty() ? canonical : display;
+        currentLocalRenames[canonical] = "_l_" + shown;
+    };
+    for(paramDef* p : fd->params) maybeRename(p->name, p->displayName);
+    vector<variableDeclaration*> locals;
+    set<string> seen;
+    collectBodyLocals(body, locals, seen);
+    for(variableDeclaration* vd : locals) maybeRename(vd->name, vd->displayName);
+}
+
+// Like expr->text() but substitutes spilled variable names token-by-token, applies
+// property-shadow renames, and falls back to original-case display form when known.
+// The parser's binary-operator handling folds whole sub-expressions into single
+// concatenated tokens (e.g. "width==0"), so per-token lookup alone would miss embedded
+// names. After per-token substitution, we run a word-boundary replaceWord pass over
+// the assembled result for the spill and rename maps to catch those.
 string i6Emitter::exprText(expression* expr){
     if(!expr) return "";
-    if(currentSpillAliases.empty()) return expr->text();
+    if(currentSpillAliases.empty() && currentDisplayNames.empty() && currentLocalRenames.empty())
+        return expr->text();
     string result;
     for(const string& t : expr->tokens){
         string tok = (t=="!=") ? "~=" : t;
-        auto it = currentSpillAliases.find(tok);
-        result += (it != currentSpillAliases.end()) ? it->second : tok;
+        auto sp = currentSpillAliases.find(tok);
+        if(sp != currentSpillAliases.end()){ result += sp->second; continue; }
+        auto rn = currentLocalRenames.find(tok);
+        if(rn != currentLocalRenames.end()){ result += rn->second; continue; }
+        auto dn = currentDisplayNames.find(tok);
+        result += (dn != currentDisplayNames.end()) ? dn->second : tok;
     }
+    // Catch concatenated sub-expressions (parser folds binary ops like "width==0" into
+    // one token). replaceWord is word-boundary-safe and treats '.' as a left disqualifier,
+    // so property accesses (`info.width`) stay intact.
+    if(!currentLocalRenames.empty())
+        for(auto& [from, to] : currentLocalRenames)
+            result = replaceWord(result, from, to);
+    if(!currentSpillAliases.empty())
+        for(auto& [from, to] : currentSpillAliases)
+            result = replaceWord(result, from, to);
     return result;
 }
 
-// Single name lookup — returns alias if spilled, else the name unchanged
+// Single name lookup. Resolution order:
+//   1. spill alias  (Z-machine overflow → _bglFrm-->N or _bglXPn)
+//   2. local rename (property-shadow avoidance → _l_<name>)
+//   3. display name (user's original case)
+//   4. canonical name (lowercase fallback)
 string i6Emitter::spillName(const string& name){
     auto it = currentSpillAliases.find(name);
-    return (it != currentSpillAliases.end()) ? it->second : name;
+    if(it != currentSpillAliases.end()) return it->second;
+    auto rn = currentLocalRenames.find(name);
+    if(rn != currentLocalRenames.end()) return rn->second;
+    auto dn = currentDisplayNames.find(name);
+    return (dn != currentDisplayNames.end()) ? dn->second : name;
 }
 
-// Word-boundary substitution of all spill aliases in a raw string (for initText/incrementText)
+// Word-boundary substitution of all spill aliases AND local renames in a raw string
+// (for initText/incrementText/returnExpression). Renames apply on the same word-boundary
+// rules so a property access `obj.width` (where "width" is part of a multi-char span)
+// isn't touched by replaceWord, which matches whole tokens only.
 string i6Emitter::spillWord(const string& text){
-    if(currentSpillAliases.empty()) return text;
+    if(currentSpillAliases.empty() && currentLocalRenames.empty()) return text;
     string result = text;
     for(auto& [from, to] : currentSpillAliases)
+        result = replaceWord(result, from, to);
+    for(auto& [from, to] : currentLocalRenames)
         result = replaceWord(result, from, to);
     return result;
 }
@@ -501,7 +660,18 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     for(const string& block : languageService.emitFirstBlocks)
         out << block << "\n";
 
-    // Synthesise bglInit — always emitted, even if empty; guarded against double-call
+    // Synthesise bglInit — always emitted, even if empty; guarded against double-call.
+    // Anchor a source map entry at the routine header so I6 diagnostics about `bglInit`
+    // (most commonly "declared but not used" if no startup blocks contributed) point back
+    // to the extern declaration in the core library rather than appearing unmappable.
+    {
+        sourceLocation bglInitSrc;
+        for(typeDef* g : languageService.globals)
+            if(auto* fd = dynamic_cast<functionDef*>(g))
+                if(fd->name == "bglinit"){ bglInitSrc = fd->src; break; }
+        if(!bglInitSrc.file.empty() && bglInitSrc.line > 0)
+            sourceMap.push_back({currentLine() + 1, bglInitSrc.file, bglInitSrc.line});
+    }
     out << "global _bglInitDone = 0;\n";
     out << "[bglInit;\n";
     out << "    if(_bglInitDone) return;\n";
@@ -639,6 +809,21 @@ void i6Emitter::generateI6(typeDef* node){
      if(auto* fd = dynamic_cast<functionDef*>(node)){
          if(fd->isValueEmitter) return;
      }
+     // Record source mapping for the upcoming emission so I6 diagnostics can be remapped
+     // back to .bgl positions. Each node carries its own `src` (sourceLocation); pull it
+     // and push a sourceMap entry at the current output line. emitFunction / emitStatement
+     // push their own finer-grained entries inside; this is the coarse top-level anchor.
+     {
+         sourceLocation s;
+         if(auto* fd = dynamic_cast<functionDef*>(node))           s = fd->src;
+         else if(auto* cd = dynamic_cast<classDef*>(node))         s = cd->src;
+         else if(auto* od = dynamic_cast<objectDef*>(node))        s = od->src;
+         else if(auto* ed = dynamic_cast<enumDef*>(node))          s = ed->src;
+         else if(auto* vd = dynamic_cast<variableDeclaration*>(node)) s = vd->src;
+         else if(auto* rn = dynamic_cast<i6RawNode*>(node))        s = rn->src;
+         if(!s.file.empty() && s.line > 0)
+             sourceMap.push_back({currentLine(), s.file, s.line});
+     }
      if (typeid(*node) == typeid(enumDef))  emitEnum((enumDef*)node);
      else if (typeid(*node) == typeid(classDef)) emitClass((classDef*)node);
      else if (typeid(*node) == typeid(objectDef)) emitObject((objectDef*)node);
@@ -646,7 +831,49 @@ void i6Emitter::generateI6(typeDef* node){
      else if (auto* gtd = dynamic_cast<grammarRuleListDecl*>(node)) emitGrammarRuleListDecl(gtd);
      else if (auto* vd = dynamic_cast<variableDeclaration*>(node)) emitGlobal(vd);
      else if (typeid(*node) == typeid(functionDef)) emitFunction((functionDef*)node);
-     else if (typeid(*node) == typeid(i6RawNode)) out << ((i6RawNode*)node)->text << "\n";
+     else if (typeid(*node) == typeid(i6RawNode)) {
+         auto* raw = (i6RawNode*)node;
+         if(!raw->parts.empty()){
+             // Composite raw node: interleave text fragments with embedded Beguile statements.
+             // Used when `#i6{}` at global scope contains `#bgl{}` regions whose statements
+             // need to emit inline within the surrounding I6 stream. Each part carries its
+             // own source location for the text fragment, so per-line source mapping points
+             // at the correct .bgl line even across multiple #bgl interjections.
+             for(auto& part : raw->parts){
+                 if(!part.text.empty()) emitRawTextWithSourceMap(part.text, part.textSrc);
+                 if(part.stmt != nullptr) emitStatement(part.stmt, "");
+             }
+             out << "\n";
+         } else {
+             emitRawTextWithSourceMap(raw->text, raw->src);
+             out << "\n";
+         }
+     }
+}
+
+// Stream `text` to the output while pushing a sourceMap entry whenever a newline is
+// emitted, mapping the next .inf line to the corresponding line of the .bgl source.
+// `srcStart` carries the file and starting source line of `text`. The caller is expected
+// to have already established a sourceMap entry for the .inf line we begin writing on
+// (e.g. the coarse entry pushed in generateI6); pushing here only at newline boundaries
+// avoids overriding that initial entry.
+void i6Emitter::emitRawTextWithSourceMap(const string& text, const sourceLocation& srcStart){
+    if(srcStart.file.empty() || srcStart.line <= 0){
+        out << text;
+        return;
+    }
+    int srcOffset = 0;  // newlines passed within `text`
+    for(size_t i = 0; i < text.size(); i++){
+        out << text[i];
+        if(text[i] == '\n'){
+            srcOffset++;
+            // After the newline, currentLine() reflects the freshly-started .inf line.
+            // Map it to the corresponding source line. Skip when there's no content after
+            // (avoids a spurious entry past the end of the block).
+            if(i + 1 < text.size())
+                sourceMap.push_back({currentLine(), srcStart.file, srcStart.line + srcOffset});
+        }
+    }
 }
 
 void i6Emitter::emitEnum(enumDef* enumNode){
@@ -664,7 +891,7 @@ void i6Emitter::emitClass(classDef* classNode){
     for(typeMember* m : classNode->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
             if(vd->isStatic){
-                out << format("global _bgl_{0}_{1}", classNode->name, vd->name);
+                out << format("global _bgl_{0}_{1}", classNode->dName(), vd->dName());
                 if(vd->declaredExpressionValue != nullptr && !vd->declaredExpressionValue->text().empty())
                     out << format(" = {0}", vd->declaredExpressionValue->text());
                 out << ";\n";
@@ -698,18 +925,18 @@ void i6Emitter::emitClass(classDef* classNode){
             string sep = (i + 1 < emittable.size()) ? "," : "";
 
             if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-                out << format("    {0}", vd->name);
+                out << format("    {0}", vd->dName());
                 if(vd->declaredExpressionValue != nullptr && !vd->declaredExpressionValue->text().empty())
                     out << format(" {0}", vd->declaredExpressionValue->text());
                 out << sep << "\n";
             }
             else if(auto* fd = dynamic_cast<functionDef*>(m)){
                 buildSpillMap(fd);
-                out << format("    {0}[", fd->i6name.empty() ? fd->name : fd->i6name);
+                out << format("    {0}[", fd->i6name.empty() ? fd->dName() : fd->i6name);
                 string sp;
                 for(paramDef* p : fd->params)
                     if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
-                        { out << sp << p->name; sp=" "; }
+                        { out << sp << spillName(p->name); sp=" "; }
                 statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
                 if(body != nullptr){
                     vector<variableDeclaration*> locals;
@@ -717,7 +944,7 @@ void i6Emitter::emitClass(classDef* classNode){
                     collectBodyLocals(body, locals, seen);
                     for(variableDeclaration* vd : locals)
                         if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
-                            { out << sp << vd->name; sp=" "; }
+                            { out << sp << spillName(vd->name); sp=" "; }
                 }
                 if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
                 out << ";\n";
@@ -759,10 +986,10 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     buildSpillMap(funcNode);
     if(!funcNode->src.file.empty())
         sourceMap.push_back({currentLine(), funcNode->src.file, funcNode->src.line});
-    out << format("[{0}", funcNode->name);
+    out << format("[{0}", funcNode->i6name.empty() ? funcNode->dName() : funcNode->i6name);
     for(paramDef* param : funcNode->params)
         if(currentSpillAliases.find(param->name) == currentSpillAliases.end())
-            out << format(" {0}", param->name);
+            out << format(" {0}", spillName(param->name));
 
     statementBlock* body = dynamic_cast<statementBlock*>(funcNode->body);
     if(body != nullptr){
@@ -771,7 +998,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
         collectBodyLocals(body, locals, seen);
         for(variableDeclaration* vd : locals)
             if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
-                out << format(" {0}", vd->name);
+                out << format(" {0}", spillName(vd->name));
     }
     if(currentSpillCount > 0) out << " _bglFrm";
     out << ";\n";
@@ -1133,7 +1360,10 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         out << indent << "@throw " << val << " _bgl_catch_cookie;\n";
     }
     else if(typeid(*stmt) == typeid(i6RawNode)){
-        out << indent << ((i6RawNode*)stmt)->text << "\n";
+        auto* raw = (i6RawNode*)stmt;
+        out << indent;
+        emitRawTextWithSourceMap(raw->text, raw->src);
+        out << "\n";
     }
 }
 void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segments, string indent){
@@ -1236,51 +1466,100 @@ void i6Emitter::emitInterpolatedEmitterBody(const string& body, const string& pa
             out << indent << after << ";\n";
     }
 }
+string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited){
+    string clause;
+    bool first = true;
+    for(typeMember* m : cls->members){
+        auto* vd = dynamic_cast<variableDeclaration*>(m);
+        if(!vd || vd->isStatic || vd->isConst) continue;
+        // Skip non-data fields
+        if(vd->type.name == "attributelist") continue;
+        if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue;
+        // Field type must be a real, statically-instantiable class
+        classDef* fieldCls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+        if(!fieldCls || fieldCls->isEmitterClass || fieldCls->isAlias || fieldCls->isExternal) continue;
+        // Skip if already on the instantiation path — same-class fields and any indirect cycles
+        // are deliberately left at default (references owned elsewhere).
+        if(visited.count(fieldCls)) continue;
+        // Skip if the field's class manages its own allocation via init emitter (e.g. string).
+        bool hasInitEmitter = false;
+        for(typeMember* fm : fieldCls->members)
+            if(auto* fn = dynamic_cast<functionDef*>(fm))
+                if(fn->isEmitter && fn->name == "init" && fn->params.empty()){ hasInitEmitter = true; break; }
+        if(hasInitEmitter) continue;
+        // Skip if the field's class has no stored fields (it would emit as a plain global, not
+        // an object instance — no point auto-backing it).
+        bool storesFields = false;
+        for(typeMember* fm : fieldCls->members){
+            auto* fvd = dynamic_cast<variableDeclaration*>(fm);
+            if(!fvd || fvd->isStatic) continue;
+            if(fvd->type.name == "attributelist") continue;
+            if(fvd->type.name == "grammarrulelist" || fvd->type.name == "grammarrule") continue;
+            storesFields = true; break;
+        }
+        if(!storesFields) continue;
+
+        // Synthesize a backing instance global. Recurse for its own fields. The backing's
+        // mangled name uses the field's display form for human readability.
+        string backingName = format("_bglField_{0}_{1}", instanceName, vd->dName());
+        visited.insert(fieldCls);
+        string subClause = synthesizeFieldBackings(fieldCls, backingName, visited);
+        visited.erase(fieldCls);
+        out << format("{0} {1}", fieldCls->i6Name(), backingName);
+        if(!subClause.empty()) out << " " << subClause;
+        out << ";\n";
+
+        if(first){ clause = "with "; first = false; } else { clause += ", "; }
+        clause += format("{0} {1}", vd->dName(), backingName);
+    }
+    return clause;
+}
+
 void i6Emitter::emitGlobal(variableDeclaration* varNode){
     if(varNode->isExternal) return;  // extern declarations are type-system only
 
     //--Array declarations. We use I6 tables and buffers exclusively for Beguile constructs
     if(auto* arr = dynamic_cast<arrayDeclaration*>(varNode)){
         string arraySubtype;
-        if(arr->isByteArray) arraySubtype="buffer"; else arraySubtype="table"; 
+        if(arr->isByteArray) arraySubtype="buffer"; else arraySubtype="table";
 
         // initialize with string...
-        if(!arr->stringInitializer.empty()) { 
-            out << format("array {0} {1} {2};\n", arr->name, arraySubtype, arr->stringInitializer);
+        if(!arr->stringInitializer.empty()) {
+            out << format("array {0} {1} {2};\n", arr->dName(), arraySubtype, arr->stringInitializer);
             return;
         }
-        
+
         //no initialization, just allocating size
-        if(arr->arraySize > 0) { 
-            out << format("array {0} {1} {2};\n", arr->name, arraySubtype, arr->arraySize);
+        if(arr->arraySize > 0) {
+            out << format("array {0} {1} {2};\n", arr->dName(), arraySubtype, arr->arraySize);
             return;
         }
-        
+
         //initialize with a list of elements
-        if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){ 
-            out << format("array {0} {1}", arr->name, arraySubtype);
+        if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+            out << format("array {0} {1}", arr->dName(), arraySubtype);
             for(expression* elem : list->elements) out << " " << elem->text();
             out << ";\n";
             return;
-        } 
+        }
         //NOTE: if we got here, something's wrong.  The parser hasn't filled in what we need.
         throw ("i6Emitter: unable to emit array.");
         return;
     }
 
     if(varNode->isConst){
-        out << format("constant {0}", varNode->name);
+        out << format("constant {0}", varNode->dName());
         if(varNode->declaredExpressionValue != nullptr)
             out << format(" = {0}", varNode->declaredExpressionValue->text());
         out << ";\n";
         return;
     }
     if(varNode->type.name == "attribute"){
-        out << format("attribute {0}", varNode->name);
+        out << format("attribute {0}", varNode->dName());
         out << ";\n";
         return;
     }
-    const string& varI6Name = varNode->i6name.empty() ? varNode->name : varNode->i6name;
+    const string& varI6Name = varNode->i6name.empty() ? varNode->dName() : varNode->i6name;
     // Emit as an I6 object instance when the declared type is a user class with stored
     // (non-emitter, non-static, non-attribute) members. Primitive classes (int, bool, char,
     // string, etc.) have emitter-only bodies and emit as plain globals. This lets user
@@ -1305,8 +1584,21 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
     }
     if(emitAsObjectInstance){
         string typeName = varNode->type.name;
-        if(auto* cd = dynamic_cast<classDef*>(&languageService.getType(typeName))) typeName = cd->i6Name();
+        classDef* instCls = dynamic_cast<classDef*>(&languageService.getType(typeName));
+        if(instCls) typeName = instCls->i6Name();
+        // Synthesize backing globals for class-typed fields so that operator= and
+        // member-access on those fields write into a real instance, not object 0.
+        // The visited set starts empty so the FIRST level may back a self-typed field
+        // (giving operator= a real target). Recursion adds the field's class to visited,
+        // so the backing's own self-typed slot is left empty — breaking the cycle while
+        // still satisfying the "real instance to write into" requirement at level 0.
+        string backingClause;
+        if(instCls && varNode->declaredExpressionValue == nullptr){
+            set<classDef*> visited;
+            backingClause = synthesizeFieldBackings(instCls, varI6Name, visited);
+        }
         out<<format("{0} {1}", typeName, varI6Name);
+        if(!backingClause.empty()) out << " " << backingClause;
     }
     else
         out<<format("global {0}", varI6Name);
@@ -1352,7 +1644,7 @@ void i6Emitter::emitObject(objectDef* obj){
     // Use the declared class name (if any) as the I6 object prefix; fall back to 'Object'
     string i6ClassName = (obj->objectClass && obj->objectClass->name != "object")
                          ? obj->objectClass->i6Name() : "object";
-    const string& objI6Name = obj->i6name.empty() ? obj->name : obj->i6name;
+    const string& objI6Name = obj->i6name.empty() ? obj->dName() : obj->i6name;
     if(parentValue.empty())
         out << format("{0} {1}\n", i6ClassName, objI6Name);
     else
@@ -1374,7 +1666,7 @@ void i6Emitter::emitObject(objectDef* obj){
             if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
                 // Property array: emit as inline I6 property values
                 out << (first ? "  with " : ",\n       ");
-                out << arr->name << " ";
+                out << arr->dName() << " ";
                 auto extIt = externalArrayNames.find(arr->name);
                 if(extIt != externalArrayNames.end()){
                     // String-initialized array: emit pointer to external global array
@@ -1392,18 +1684,18 @@ void i6Emitter::emitObject(objectDef* obj){
                 if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue; // emitted as I6 Verb directives
                 if(vd->name == "parent") continue; // emitted as positional argument, not 'with' property
                 out << (first ? "  with " : ",\n       ");
-                out << vd->name << " ";
+                out << vd->dName() << " ";
                 if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
                 first = false;
             } else if(auto* fd = dynamic_cast<functionDef*>(m)){
                 if(fd->isEmitter) continue; // emitter methods are inlined at call sites, not emitted as properties
                 buildSpillMap(fd);
                 out << (first ? "  with " : ",\n       ");
-                out << fd->name << " [";
+                out << (fd->i6name.empty() ? fd->dName() : fd->i6name) << " [";
                 string sp;
                 for(paramDef* p : fd->params)
                     if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
-                        { out << sp << p->name; sp=" "; }
+                        { out << sp << p->dName(); sp=" "; }
                 statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
                 if(body){
                     vector<variableDeclaration*> locals;
@@ -1411,7 +1703,7 @@ void i6Emitter::emitObject(objectDef* obj){
                     collectBodyLocals(body, locals, seen);
                     for(variableDeclaration* vd : locals)
                         if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
-                            { out << sp << vd->name; sp=" "; }
+                            { out << sp << vd->dName(); sp=" "; }
                 }
                 if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
                 out << ";\n";

@@ -1,0 +1,78 @@
+!% -v5
+!% -E1
+global _bgl_temp0;
+global _bgl_temp1;
+global _bgl_temp2;
+global _bgl_temp3;
+global _bgl_temp4;
+global _bgl_temp5;
+global _bgl_temp6;
+global _bgl_temp7;
+global _bgl_temp8;
+global _bgl_temp9;
+global _bgl_temp10;
+global _bgl_temp11;
+global _bgl_temp12;
+global _bgl_temp13;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+attribute light;
+class room
+  class object
+  with
+    description "a room",
+    parent,
+    next
+;
+room _bglField_foyer_parent;
+room _bglField_foyer_next;
+room foyer with parent _bglField_foyer_parent, next _bglField_foyer_next;
+room _bglField_cloakroom_parent;
+room _bglField_cloakroom_next;
+room cloakroom with parent _bglField_cloakroom_parent, next _bglField_cloakroom_next;
+[main x lit target r first dest pick desc gp d2 d3 result nested;
+    x = nothing;
+    _bgl_temp0 = x; if (_bgl_temp0 ~= nothing) { _bgl_temp0 = (_bgl_temp0 has light); }
+    lit=_bgl_temp0;
+    if (x ~= nothing) {
+        print (string)"present";
+    }
+    if (~~(x ~= nothing)) {
+        print (string)"absent";
+    }
+    if (x ~= nothing) {
+    remove x;
+    }
+    _bgl_temp1 = x; if (~~(_bgl_temp1 ~= nothing)) _bgl_temp1 = foyer;
+    target = _bgl_temp1;
+    _bgl_temp2 = cloakroom; if (~~(_bgl_temp2 ~= nothing)) _bgl_temp2 = foyer;
+    r = _bgl_temp2;
+    _bgl_temp4 = foyer; if (~~(_bgl_temp4 ~= nothing)) _bgl_temp4 = cloakroom;
+    _bgl_temp3 = x; if (~~(_bgl_temp3 ~= nothing)) _bgl_temp3 = _bgl_temp4;
+    first = _bgl_temp3;
+    _bgl_temp5 = x; if (~~(_bgl_temp5 ~= nothing)) _bgl_temp5 = foyer;
+    dest = _bgl_temp5;
+    _bgl_temp6 = x; if (~~(_bgl_temp6 ~= nothing)) _bgl_temp6 = foyer;
+    pick = _bgl_temp6;
+    desc = pick.description;
+    _bgl_temp7 = foyer; if (_bgl_temp7 ~= nothing) { _bgl_temp7 = _bgl_temp7.parent; if (_bgl_temp7 ~= nothing) { _bgl_temp7 = _bgl_temp7.parent; } }
+    gp = _bgl_temp7;
+    _bgl_temp8 = foyer; if (_bgl_temp8 ~= nothing) { _bgl_temp8 = _bgl_temp8.parent; if (_bgl_temp8 ~= nothing) { _bgl_temp8 = _bgl_temp8.description; } }
+    d2 = _bgl_temp8;
+    _bgl_temp9 = foyer; if (_bgl_temp9 ~= nothing) { _bgl_temp9 = _bgl_temp9.parent; _bgl_temp9 = _bgl_temp9.description; }
+    d3 = _bgl_temp9;
+    _bgl_temp10 = foyer; if (_bgl_temp10 ~= nothing) { _bgl_temp10 = _bgl_temp10.next; }
+    _bgl_temp11 = _bgl_temp10; if (~~(_bgl_temp11 ~= nothing)) _bgl_temp11 = cloakroom;
+    result = _bgl_temp11;
+    _bgl_temp12 = foyer; if (_bgl_temp12 ~= nothing) { _bgl_temp12 = _bgl_temp12.parent; if (_bgl_temp12 ~= nothing) { _bgl_temp12 = _bgl_temp12.next; } }
+    _bgl_temp13 = _bgl_temp12; if (~~(_bgl_temp13 ~= nothing)) _bgl_temp13 = cloakroom;
+    nested = _bgl_temp13;
+];

@@ -1,0 +1,52 @@
+!% -G
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+[__glkHook _vararg_count api args retval;
+    @copy sp api;
+    args=_vararg_count - 1;
+    @glk api args retval;
+    return retval;
+];
+object _glulx
+;
+object _bglUtil
+;
+object bgl
+  with glulx _glulx,
+       util _bglutil
+;
+! test_inf_mode_basic.inf — .inf-as-input mode positive baseline.
+!
+! Exercises the full .inf-mode pipeline:
+!   1. The whole file is read as raw I6 (this comment passes through verbatim).
+!   2. The Beguile Language Runtime auto-loads at the top of the output, so types
+!      and emitters are available inside #bgl{} blocks.
+!   3. Multi-line #bgl{...} blocks compile as Beguile statements (loose mode), then
+!      splice back into the I6 stream where they appeared in source.
+!   4. Single-line `#bgl stmt;` form (terminated by newline) also works.
+!   5. Beguile-side identifier resolution finds Runtime symbols (bglInit, etc.)
+!      and Beguile types (eTarget) from inside the #bgl block.
+!   6. EOF terminates the implicit raw-I6 region naturally — no missing-brace error.
+
+[ Main x;
+    print "hello from raw I6.^";
+
+    ! Multi-line #bgl block — declares a local using a Beguile type, calls a
+    ! Runtime function, and stores the result back into x for I6 to use.
+    t = glulx;
+x = t;
+bglinit();
+
+
+    ! Single-line form — this writes one statement that emits inline.
+    x = x+1;
+
+
+    print "x = ", x, "^";
+    print "back in raw I6.^";
+];
+

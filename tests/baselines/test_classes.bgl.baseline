@@ -1,0 +1,124 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+attribute light;
+global _bgl_Animal_count = 0;
+class animal
+  class object
+  with
+    short_name,
+    description,
+    maxAge 20,
+    speak[;
+    ]
+;
+class dog
+  class animal
+  with
+    speak[;
+    ]
+;
+class flyer
+  class object
+  with
+    altitude 0
+;
+class swimmer
+  class object
+  with
+    depth 0
+;
+class flyingfish
+  class flyer swimmer
+  with
+    species "exocoetidae"
+;
+class alpha
+  class object
+  with
+    valA 1
+;
+class beta
+  class alpha
+  with
+    valB 2
+;
+class gamma
+  class beta
+  with
+    valG 3
+;
+class delta
+  class gamma
+  with
+    valD 4
+;
+delta g_delta;
+class box
+  class object
+  with
+    capacity 0
+;
+box g_box;
+global _bgl_Tally_total = 0;
+class tally
+  class object
+  with
+    bump[;
+        _bgl_Tally_total=_bgl_Tally_total + 1;
+    ]
+;
+global g_tally;
+class greeter
+  class object
+  with
+    greet[;
+        print (string)"hello";
+    ],
+    greet[;
+        print (string)"howdy";
+    ]
+;
+global g_greeter;
+object myHelper
+  with getValue [;
+    return self.value;
+  ],
+       value 0
+;
+place testRoom
+  with main [;
+  ],
+       short_name "Test Room",
+       description "A room for testing."
+  has light
+;
+flyingfish g_ff;
+[main v a d total t;
+    _bgl_animal_count=_bgl_animal_count + 1;
+    v=myhelper.getvalue();
+    print v;
+    g_ff.altitude = 500;
+    g_ff.depth = 20;
+    a=g_ff.altitude;
+    d=g_ff.depth;
+    total=g_delta.vala + g_delta.valb + g_delta.valg + g_delta.vald;
+    print total;
+    g_box.capacity = 42;
+    g_box.capacity = g_box.capacity * 2;
+    print g_box.capacity;
+    g_tally.bump();
+    g_tally.bump();
+    t=_bgl_tally_total;
+    print t;
+    g_greeter.greet();
+];

@@ -1,0 +1,19 @@
+/* Negative test: bare reference at file scope where no tie-breaker can disambiguate.
+
+   Two enums share value `Red`. The use site is a bare expression statement (no LHS type,
+   no operator context, no member-hint context, no expected-type), so neither memberHint
+   nor currentExpectedType can pick. The strict-ambiguity rule must error and require
+   explicit qualification. */
+// EXPECT_ERROR: 'red' is ambiguous
+// EXPECT_ERROR: enum value of 'ecolor'
+// EXPECT_ERROR: enum value of 'eflavor'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+enum eColor  { Red, Green, Blue }
+enum eFlavor { Sweet, Sour, Bitter, Red }
+
+void use(int v) { }
+
+void main(){
+    use(Red);   // function arg → currentExpectedType is cleared by parseCallArgList
+}

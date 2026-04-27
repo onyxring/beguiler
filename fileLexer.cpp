@@ -88,16 +88,25 @@ static uint32_t decodeUtf8(unsigned char lead, function<char()> readNext, functi
 using namespace std;
 
 //----------------------------------------------------------------------------------------
-//--Opening and closing files, and managing which of these is the "current file" 
+//--Opening and closing files, and managing which of these is the "current file"
 void fileLexer::open(string filename){
-    ifstream& inputFileStream=*(new ifstream(filename));  
-    
-    if (!inputFileStream.is_open()) parser.parsingError("Unable to open file "+filename+".");
-    files.push(make_tuple(&inputFileStream, filename, 1, 0)); //take the current file and push it on the stack    
+    ifstream* inputFileStream = new ifstream(filename);
+    if (!inputFileStream->is_open()) {
+        delete inputFileStream;
+        parser.parsingError("Unable to open file "+filename+".");
+    }
+    files.push(make_tuple(static_cast<istream*>(inputFileStream), filename, 1, 0));
+}
+void fileLexer::openText(const std::string& content, const std::string& virtualName, int startLine){
+    // Push a stringstream as a virtual file. Used to parse #bgl{} blocks extracted from
+    // surrounding raw I6 — gives Beguile its normal token-fetching path over an in-memory buffer.
+    istringstream* stream = new istringstream(content);
+    files.push(make_tuple(static_cast<istream*>(stream), virtualName, startLine, 0));
 }
 void fileLexer::close(){
-    auto[inputFileStream, fileName, curLine, curCol]=files.top(); 
-    inputFileStream->close();
+    auto[inputFileStream, fileName, curLine, curCol]=files.top();
+    // Virtual destructor on the istream-pointed-to object closes the file (ifstream) or
+    // frees the buffer (istringstream); no explicit close() needed.
     delete inputFileStream;
     files.pop();
 }
@@ -105,13 +114,13 @@ int fileLexer::getNumberOfOpenFiles(){
     return files.size();
 }
 void fileLexer::moveToStart(){
-    currentStream()->seekg(currentStream()->beg); 
+    currentStream()->seekg(0);
 }
-ifstream* fileLexer::currentStream(){
-    auto[inputFileStream, fileName, curLine, curCol]=files.top(); 
-    return inputFileStream;   
+istream* fileLexer::currentStream(){
+    auto[inputFileStream, fileName, curLine, curCol]=files.top();
+    return inputFileStream;
 }
-tuple<ifstream*, string, int, int> fileLexer::getCurrentFileDetail(){ //return saved information about the current file
+tuple<istream*, string, int, int> fileLexer::getCurrentFileDetail(){ //return saved information about the current file
     return files.top();
 }
 
@@ -394,7 +403,12 @@ token fileLexer::getBasicToken(bool suppressBleed){
 
     //a special case: we've reached the end of file.  If we are not at the global scope, then throw an error, because we've terminated early
     if(c==EOF) {
-        if(parser.getCurrentCompileContext()!=eCompileContext::global) parser.parsingError("End of file encountered prematurely");
+        // Sub-parses driven by openText (e.g. #bgl{} content lifted out of an #i6 raw block)
+        // legitimately end at EOF inside whatever compile context the caller is in.
+        // looseIdentifierMode is only set during those sub-parses, so use it as the signal
+        // that hitting EOF is benign rather than premature.
+        if(parser.getCurrentCompileContext()!=eCompileContext::global && !parser.looseIdentifierMode)
+            parser.parsingError("End of file encountered prematurely");
         retval.tokenType=eTokenType::eof;
     }
 
@@ -421,21 +435,30 @@ string fileLexer::getRawTextThroughClosingBrace(){
              if(c == '\n'){ retval += c; c = readChar(); }
              continue;
          }
-         // Skip string literals — braces inside don't count
+         // Skip I6 ! line comments — same reasoning. Critical: English contractions
+         // like "don't" inside ! comments would otherwise open a runaway char-literal
+         // skip that swallows braces in unrelated code far below.
+         if(c == '!'){
+             while(c != '\n' && c != EOF){ retval += c; c = readChar(); }
+             if(c == '\n'){ retval += c; c = readChar(); }
+             continue;
+         }
+         // Skip string literals — braces inside don't count. Raw I6 uses ^/~/@ for special
+         // chars rather than C-style backslash escapes, so we terminate at the next "
+         // without interpreting \" as an escaped quote.
          if(c=='"'){
              retval += c; c = readChar();
              while(c != '"' && c != EOF){
-                 if(c == '\\'){ retval += c; c = readChar(); } // skip escaped chars
                  retval += c; c = readChar();
              }
              if(c == '"'){ retval += c; c = readChar(); }
              continue;
          }
-         // Skip character literals
+         // Skip character/dict-word literals — same reasoning: I6 doesn't C-escape, so '\'
+         // is a 3-char literal that terminates at the second '.
          if(c=='\''){
              retval += c; c = readChar();
              while(c != '\'' && c != EOF){
-                 if(c == '\\'){  retval += c; c = readChar(); }
                  retval += c; c = readChar();
              }
              if(c == '\''){ retval += c; c = readChar(); }
@@ -454,6 +477,100 @@ string fileLexer::getRawTextThroughClosingBrace(){
      // keep the counter balanced for LSP error recovery.
      if(braceDepth > 0) braceDepth--;
      return retval;
+}
+
+// Variant that also stops on a `#bgl{` marker so the caller can switch to Beguile parsing.
+// Same comment/string/char-literal awareness as getRawTextThroughClosingBrace. On return:
+//   outFoundBgl = true   → consumed `#bgl{`; outRemainingDepth unchanged for caller.
+//   outFoundBgl = false  → consumed matching `}`; outRemainingDepth = 0.
+// The caller is responsible for re-entering the raw-skip after the embedded #bgl block
+// closes, with the same outRemainingDepth.
+string fileLexer::getRawTextUntilCloseOrBgl(bool& outFoundBgl, int& outRemainingDepth, int startDepth, bool eofTerminates){
+    string retval;
+    int count = startDepth;
+    outFoundBgl = false;
+    char c = readChar();
+    while(count > 0){
+        if(c == EOF){
+            if(eofTerminates){
+                // .inf-as-input mode: EOF is the natural end of the implicit raw-I6 region.
+                count = 0;
+                break;
+            }
+            parser.parsingError("Unexpected end of file — missing closing '}'");
+            break;
+        }
+        // Line comments
+        if(c == '/' && peekChar() == '/'){
+            retval += c; c = readChar();
+            retval += c; c = readChar();
+            while(c != '\n' && c != EOF){ retval += c; c = readChar(); }
+            if(c == '\n'){ retval += c; c = readChar(); }
+            continue;
+        }
+        // I6 ! line comments — must be skipped so contractions like "don't" inside
+        // a comment don't open a stray char-literal scan.
+        if(c == '!'){
+            while(c != '\n' && c != EOF){ retval += c; c = readChar(); }
+            if(c == '\n'){ retval += c; c = readChar(); }
+            continue;
+        }
+        // String literals — terminate at next " (no C-escape interpretation; I6 uses ^/~/@)
+        if(c == '"'){
+            retval += c; c = readChar();
+            while(c != '"' && c != EOF){ retval += c; c = readChar(); }
+            if(c == '"'){ retval += c; c = readChar(); }
+            continue;
+        }
+        // Char/dict-word literals
+        if(c == '\''){
+            retval += c; c = readChar();
+            while(c != '\'' && c != EOF){ retval += c; c = readChar(); }
+            if(c == '\''){ retval += c; c = readChar(); }
+            continue;
+        }
+        // #bgl{ marker — only `b`, `g`, `l`, `{` follow; none are line breaks, so
+        // we can roll back via tellg/seekg without disturbing curLine accounting.
+        if(c == '#'){
+            auto savedPos = currentStream()->tellg();
+            int savedCol;
+            { auto& [s, n, ln, cc] = files.top(); (void)s; (void)n; (void)ln; savedCol = cc; }
+            // Match "bgl" with a word boundary (next char must not extend the identifier).
+            // The caller handles single-line vs multi-line forms after this detection point.
+            const char idTarget[] = "bgl";
+            bool matched = true;
+            for(int i = 0; i < 3; i++){
+                char nc = readChar();
+                if(nc == EOF || nc != idTarget[i]){ matched = false; break; }
+            }
+            if(matched){
+                char boundary = peekChar();
+                if(boundary == EOF || isalnum((unsigned char)boundary) || boundary == '_')
+                    matched = false;
+            }
+            if(matched){
+                outFoundBgl = true;
+                outRemainingDepth = count;
+                return retval;
+            }
+            // Mismatch — rewind to position right after '#' and treat '#' as a regular char.
+            currentStream()->clear();
+            currentStream()->seekg(savedPos);
+            { auto& [s, n, ln, cc] = files.top(); (void)s; (void)n; (void)ln; cc = savedCol; }
+            // c is still '#'; fall through to normal handling below.
+        }
+
+        if(c == '}') count--;
+        if(count == 0) break;
+        if(c == '{') count++;
+        retval += c;
+        c = readChar();
+    }
+    if(!outFoundBgl){
+        if(braceDepth > 0) braceDepth--;
+        outRemainingDepth = 0;
+    }
+    return retval;
 }
 
 sourceLocation fileLexer::currentLocation(){

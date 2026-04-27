@@ -1,0 +1,39 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+class _info
+  with
+    width,
+    height
+;
+_info info;
+[scaleAndCheck _l_width _l_height a height2 width2;
+    if (_l_width==0 && _l_height==0) {
+        _l_width=info.width;
+    }
+    if (_l_width==-1) {
+        _l_width=info.width;
+    }
+    height2=a;
+    width2=info.width + _l_width + height2;
+    _l_height=info.height;
+];
+[localShadow _l_width sum;
+    _l_width = 5;
+    sum=info.width + _l_width;
+    print sum;
+];
+[main;
+    scaleandcheck(0, 0, 5);
+    scaleandcheck(50, 100, 9);
+    localshadow();
+];

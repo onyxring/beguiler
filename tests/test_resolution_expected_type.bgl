@@ -1,0 +1,28 @@
+/* test_resolution_expected_type.bgl — expected-type tie-breaker for ambiguous names.
+
+   Two enums each declare a value `Red`. Without expected-type disambiguation, bare `Red`
+   would be an ambiguity error. Each call site that can supply an expected type (variable
+   initializer RHS, operator RHS, default parameter value) must pick the right enum. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+enum eColor  { Red, Green, Blue }
+enum eFlavor { Sweet, Sour, Bitter, Red }   // collides with eColor.Red
+
+void demo(eFlavor f = Red) { }   // default parameter value resolved via param type
+
+void main(){
+    // Variable initializer: declared LHS type narrows the choice
+    eColor  c = Red;          // expected eColor  → eColor.Red  (value 1)
+    eFlavor f = Red;          // expected eFlavor → eFlavor.Red (value 4)
+
+    // Operator RHS: LHS type drives RHS resolution
+    if(c == Red) { print("c is red"); }    // expected eColor
+    if(f == Red) { print("f is also red"); } // expected eFlavor
+
+    // Assignment RHS picks up the LHS variable's type
+    c = Red;
+    f = Red;
+
+    // Default param value baked at declaration site uses param type
+    demo();
+}

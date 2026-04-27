@@ -294,10 +294,21 @@ void bglParser::preScanFile(string filename){
     string absPath = filesystem::canonical(filesystem::absolute(filename)).string();
     if(preScanOnceFiles.count(absPath)) return;
 
+    bool isFirst = (preScanDepth == 0);
+
+    // .inf-as-input mode: pre-scan only the Beguile Language Runtime (so its declarations are
+    // available inside #bgl{} blocks). The .inf body itself contains no Beguile declarations.
+    if(isFirst && filesystem::path(filename).extension() == ".inf"){
+        preScanDepth++;
+        filesystem::path sysPath = filesystem::path(settings.libPath) / "core" / "__beguileCore.bgl";
+        preScanFile(sysPath.string());
+        preScanDepth--;
+        return;
+    }
+
     try { file.open(absPath); }
     catch(runtime_error&){ return; } // silently skip missing files
 
-    bool isFirst = (preScanDepth == 0);
     preScanDepth++;
 
     if(isFirst){
@@ -365,11 +376,17 @@ void bglParser::preScanFile(string filename){
                             preScanCaptureParams(fd.params);
                             token bodyStart = file.getToken();
                             if(bodyStart.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
-                            // Add if not already present (or if replace)
+                            // Add if not already present. For `replace`, overwrite the existing
+                            // stub in place so the class ends up with one entry per method name.
                             bool exists = false;
-                            for(typeMember* m : cls->members)
-                                if(m->name == fd.name){ exists = true; break; }
-                            if(!exists || memberIsReplace) cls->members.push_back(&fd);
+                            for(auto it = cls->members.begin(); it != cls->members.end(); ++it){
+                                if((*it)->name == fd.name){
+                                    exists = true;
+                                    if(memberIsReplace) *it = &fd;
+                                    break;
+                                }
+                            }
+                            if(!exists) cls->members.push_back(&fd);
                         } else {
                             // Property — skip to ;
                             while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
@@ -468,6 +485,98 @@ void bglParser::preScanFile(string filename){
                           if(s.is(token::braceClose)) break;
                           bt = file.getToken();
                           continue;
+                      }
+                      // Method or property stub: [emitter] [replace] [default] TYPE NAME (...) | TYPE NAME [= ...] ;
+                      // Register a stub (functionDef for methods, variableDeclaration for properties)
+                      // so source-order is preserved when main parse fills them in. Without property
+                      // stubs, pre-scan adds method stubs first and main parse appends properties
+                      // last, scrambling the emission order relative to source.
+                      if(cls != nullptr && (bt.isDataType() || bt.is(eTokenType::identifier))){
+                          // Skip optional method-modifier keywords
+                          bool sawEmitter = false;
+                          while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit")){
+                              if(bt.is("emitter")) sawEmitter = true;
+                              bt = file.getToken();
+                          }
+                          if(bt.isDataType() || bt.is(eTokenType::identifier)){
+                              token typeTok = bt;
+                              token afterType = file.getToken();
+                              // Skip `operator` declarations — operator method names are composed
+                              // from the keyword + symbol (e.g. `operator()`, `operator+`) and need
+                              // the special handling already present in the extend pre-scan path.
+                              // Letting main parse register them avoids spurious "operator" stubs.
+                              if(afterType.value == "operator"){
+                                  // Drain through method body / declaration end and resume.
+                                  token op = file.getToken();
+                                  if(op.is(token::parenOpen)){
+                                      int depth = 1;
+                                      while(depth > 0){ token p = file.getToken(); if(p.is(eTokenType::eof)) break; if(p.is(token::parenOpen)) depth++; else if(p.is(token::parenClose)) depth--; }
+                                  }
+                                  // Skip remaining tokens until we land at body open / end-statement / close
+                                  token s = file.getToken();
+                                  while(!s.is(token::braceOpen) && !s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
+                                      s = file.getToken();
+                                  }
+                                  if(s.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                                  if(s.is(token::braceClose)) break;
+                                  bt = file.getToken();
+                                  continue;
+                              }
+                              if(afterType.is(eTokenType::identifier) && file.peekToken().is(token::parenOpen)){
+                                  // Method declaration — register functionDef stub
+                                  string mname = afterType.value;
+                                  bool exists = false;
+                                  for(typeMember* m : cls->members)
+                                      if(m->name == mname){ exists = true; break; }
+                                  if(!exists){
+                                      functionDef& fd = *(new functionDef());
+                                      fd.name = mname;
+                                      fd.returnType.name = typeTok.value;
+                                      fd.isEmitter = sawEmitter;
+                                      fd.isPrePassStub = true;
+                                      cls->members.push_back(&fd);
+                                  }
+                                  // Consume parens and body
+                                  file.getToken(); // '('
+                                  int depth = 1;
+                                  while(depth > 0){
+                                      token p = file.getToken();
+                                      if(p.is(eTokenType::eof)) break;
+                                      if(p.is(token::parenOpen)) depth++;
+                                      else if(p.is(token::parenClose)) depth--;
+                                  }
+                                  token bodyOrSemi = file.getToken();
+                                  if(bodyOrSemi.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                                  bt = file.getToken();
+                                  continue;
+                              }
+                              if(afterType.is(eTokenType::identifier)){
+                                  // Property declaration — register variableDeclaration stub
+                                  string pname = afterType.value;
+                                  bool exists = false;
+                                  for(typeMember* m : cls->members)
+                                      if(m->name == pname){ exists = true; break; }
+                                  if(!exists){
+                                      variableDeclaration& vd = *(new variableDeclaration());
+                                      vd.name = pname;
+                                      vd.type.name = typeTok.value;
+                                      vd.isPrePassStub = true;
+                                      cls->members.push_back(&vd);
+                                  }
+                                  // Skip to ';' — handle initializer, brace block, or bare decl
+                                  token s = file.getToken();
+                                  while(!s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
+                                      if(s.is(token::braceOpen)) { file.getRawTextThroughClosingBrace(); break; }
+                                      s = file.getToken();
+                                  }
+                                  if(s.is(token::braceClose)) break;
+                                  bt = file.getToken();
+                                  continue;
+                              }
+                              // Not a method or property — fall through
+                              bt = afterType;
+                              continue;
+                          }
                       }
                       bt = file.getToken();
                   }

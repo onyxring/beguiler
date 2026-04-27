@@ -1,0 +1,28 @@
+/* test_value_emitter_inlining.bgl — value emitters must inline regardless of whether
+   the parent is a class or an object. Regression for the case where `obj.member` was
+   silently emitting as a literal property access (= 0) instead of expanding the body.
+
+   Each access below should be replaced with the literal body of the emitter (the
+   integer literals and I6 keywords inside the {…}). The baseline pins the exact
+   I6 output, so any regression to the previous "emit as obj.prop" behavior fails. */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class _hostClass {
+    emitter int classConst {42}
+}
+
+object hostObj {
+    emitter int objConst {99}
+    emitter int objKeyword {WORDSIZE}
+}
+
+void main(){
+    int a = _hostClass.classConst;   // class-member value emitter — already worked
+    int b = hostObj.objConst;        // object-member value emitter — fix target
+    int c = hostObj.objKeyword;      // object-member value emitter wrapping I6 keyword
+    print(a); print(b); print(c);
+}

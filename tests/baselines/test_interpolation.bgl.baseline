@@ -1,0 +1,52 @@
+!% -v5
+!% -E1
+global _bgl_temp0;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+class score
+  class object
+  with
+    value 0,
+    get[;
+        return self.value;
+    ]
+;
+score g_pts
+  with value 42
+;
+[main pts bonus;
+    pts = 42;
+    bonus = 8;
+    print "Score: ";
+    print pts;
+    print "^";
+    print "Use {braces} for interpolation.^";
+     ;
+    print "Total: ";
+    print pts + bonus;
+    print "^";
+    print "Product: ";
+    print pts * 2;
+    print "^";
+    print "Final: ";
+    print g_pts.get();
+    print "^";
+    print "Grade: ";
+    if (pts>50) _bgl_temp0 = 1; else _bgl_temp0 = 0;
+    print _bgl_temp0;
+    print "^";
+    print pts;
+    print " plus ";
+    print bonus;
+    print " is ";
+    print pts + bonus;
+    print "^";
+];

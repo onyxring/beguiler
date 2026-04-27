@@ -2,20 +2,59 @@
 #if TARGET_ZCODE
     #error "ERROR: Glulx assembly binding are not compatible with Z-code."
 #endif
+
+// _glulx is the backing for namespace object bgl.glulx
+extend _glulx{      
+    alias eWinType for eGlulxWindowType;  
+    alias eImgAlign for eGlulxImageAlign; 
+    alias eImgDimension for eGlulxImageDimension; 
+    alias bWinBorder for bGlulxWindowBorder; 
+    alias bWinPlacement for bGlulxWindowPlacement; 
+    alias bWinScale for bGlulxWindowScale;  
+}
+
 //=============================================================================
-// asmGlulx — Glulx assembly opcode emitters
-// Provides typed access to raw Glulx VM instructions via the emitter namespace
-// pattern. Each emitter inlines the corresponding @opcode at the call site.
-//
-// Usage:
-//     int result = asmGlulx.add(a, b);
-//     asmGlulx.streamchar('A');
-//     if (asmGlulx.gestalt(gestalt_Version, 0) >= $00030102) { ... }
-//
-// Reference: https://eblong.com/zarf/glulx/glulx-spec_2.html
+// Glulx window/image enums and bnums — referenced by typed bglOpCodes overloads
+// (e.g. windowOpen). Kept in core so the typed overloads compile without
+// requiring callers to include glulxWindow.bgl.
+//=============================================================================
+bnum bGlulxWindowMethodFlags{ } //a container to define compatible bnums which can be legally be combined
+
+enum eGlulxWindowType{
+    textGrid = 4,
+    textBuffer = 3,
+    graphics = 5
+}
+enum eGlulxImageAlign{
+    inlineUp = 1,
+    inlineDown = 2,
+    inlineCenter = 3,
+    marginLeft = 4,
+    marginRight = 5,
+    marginCenter = 6
+}
+
+bnum bGlulxWindowBorder : bGlulxWindowMethodFlags{
+    border = 0,
+    noBorder = 256
+}
+bnum bGlulxWindowPlacement : bGlulxWindowMethodFlags{
+    left = 0,
+    right = 1,
+    above = 2,
+    below = 3
+}
+bnum bGlulxWindowScale : bGlulxWindowMethodFlags{
+    fixed = 16,
+    proportional = 32
+}
+
+enum eGlulxImageDimension{
+    original = -1,
+    scaled = -2
+}
 
 emitter class bglOpCodes {
-
     //── Integer Math ────────────────────────────────────────────────────
     emitter int add(int a, int b)        { @add $a $b $target }
     emitter int sub(int a, int b)        { @sub $a $b $target }
@@ -103,7 +142,7 @@ emitter class bglOpCodes {
     emitter int verify()                 { @verify $target }
 
     //── System ──────────────────────────────────────────────────────────
-    emitter int gestalt(int sel, int val) { @gestalt $sel $val $target }
+    //emitter int gestalt(int sel, int val) { @gestalt $sel $val $target }
     emitter void debugtrap(int val)      { @debugtrap $val; }
     emitter int glk(int sel, int argc)   { @glk $sel $argc $target }
 
@@ -135,5 +174,657 @@ emitter class bglOpCodes {
     //── Acceleration ────────────────────────────────────────────────────
     emitter void accelfunc(int idx, int addr) { @accelfunc $idx $addr; }
     emitter void accelparam(int idx, int val) { @accelparam $idx $val; }
+
+/*
+Constant evtype_Arrange = 5;
+Constant evtype_CharInput = 2;
+Constant evtype_Hyperlink = 8;
+Constant evtype_LineInput = 3;
+Constant evtype_MouseInput = 4;
+Constant evtype_None = 0;
+Constant evtype_Redraw = 6;
+Constant evtype_SoundNotify = 7;
+Constant evtype_Timer = 1;
+Constant evtype_VolumeNotify = 9;
+Constant filemode_Read = 2;
+Constant filemode_ReadWrite = 3;
+Constant filemode_Write = 1;
+Constant filemode_WriteAppend = 5;
+Constant fileusage_BinaryMode = 0;
+Constant fileusage_Data = 0;
+Constant fileusage_InputRecord = 3;
+Constant fileusage_SavedGame = 1;
+Constant fileusage_TextMode = 256;
+Constant fileusage_Transcript = 2;
+Constant fileusage_TypeMask = 15;
+Constant gestalt_CharInput = 1;
+Constant gestalt_CharOutput = 3;
+Constant gestalt_CharOutput_ApproxPrint = 1;
+Constant gestalt_CharOutput_CannotPrint = 0;
+Constant gestalt_CharOutput_ExactPrint = 2;
+Constant gestalt_DateTime = 20;
+Constant gestalt_DrawImage = 7;
+Constant gestalt_GarglkText = 4352;
+Constant gestalt_Graphics = 6;
+Constant gestalt_GraphicsCharInput = 23;
+Constant gestalt_GraphicsTransparency = 14;
+Constant gestalt_HyperlinkInput = 12;
+Constant gestalt_Hyperlinks = 11;
+Constant gestalt_LineInput = 2;
+Constant gestalt_LineInputEcho = 17;
+Constant gestalt_LineTerminatorKey = 19;
+Constant gestalt_LineTerminators = 18;
+Constant gestalt_MouseInput = 4;
+Constant gestalt_ResourceStream = 22;
+Constant gestalt_Sound = 8;
+Constant gestalt_Sound2 = 21;
+Constant gestalt_SoundMusic = 13;
+Constant gestalt_SoundNotify = 10;
+Constant gestalt_SoundVolume = 9;
+Constant gestalt_Timer = 5;
+Constant gestalt_Unicode = 15;
+Constant gestalt_UnicodeNorm = 16;
+Constant gestalt_Version = 0;
+Constant imagealign_InlineCenter = 3;
+Constant imagealign_InlineDown = 2;
+Constant imagealign_MarginLeft = 4;
+Constant imagealign_MarginRight = 5;
+Constant imagealign_InlineUp = 1;
+Constant keycode_Delete = 4294967289;
+Constant keycode_Down = 4294967291;
+Constant keycode_End = 4294967283;
+Constant keycode_Escape = 4294967288;
+Constant keycode_Func1 = 4294967279;
+Constant keycode_Func10 = 4294967270;
+Constant keycode_Func11 = 4294967269;
+Constant keycode_Func12 = 4294967268;
+Constant keycode_Func2 = 4294967278;
+Constant keycode_Func3 = 4294967277;
+Constant keycode_Func4 = 4294967276;
+Constant keycode_Func5 = 4294967275;
+Constant keycode_Func6 = 4294967274;
+Constant keycode_Func7 = 4294967273;
+Constant keycode_Func8 = 4294967272;
+Constant keycode_Func9 = 4294967271;
+Constant keycode_Home = 4294967284;
+Constant keycode_Left = 4294967294;
+Constant keycode_MAXVAL = 28;
+Constant keycode_PageDown = 4294967285;
+Constant keycode_PageUp = 4294967286;
+Constant keycode_Return = 4294967290;
+Constant keycode_Right = 4294967293;
+Constant keycode_Tab = 4294967287;
+Constant keycode_Unknown = 4294967295;
+Constant keycode_Up = 4294967292;
+Constant seekmode_Current = 1;
+Constant seekmode_End = 2;
+Constant seekmode_Start = 0;
+Constant style_Alert = 5;
+Constant style_BlockQuote = 7;
+Constant style_Emphasized = 1;
+Constant style_Header = 3;
+Constant style_Input = 8;
+Constant style_NUMSTYLES = 11;
+Constant style_Normal = 0;
+Constant style_Note = 6;
+Constant style_Preformatted = 2;
+Constant style_Subheader = 4;
+Constant style_User1 = 9;
+Constant style_User2 = 10;
+Constant stylehint_BackColor = 8;
+Constant stylehint_Indentation = 0;
+Constant stylehint_Justification = 2;
+Constant stylehint_NUMHINTS = 10;
+Constant stylehint_Oblique = 5;
+Constant stylehint_ParaIndentation = 1;
+Constant stylehint_Proportional = 6;
+Constant stylehint_ReverseColor = 9;
+Constant stylehint_Size = 3;
+Constant stylehint_TextColor = 7;
+Constant stylehint_Weight = 4;
+Constant stylehint_just_Centered = 2;
+Constant stylehint_just_LeftFlush = 0;
+Constant stylehint_just_LeftRight = 1;
+Constant stylehint_just_RightFlush = 3;
+Constant winmethod_Above = 2;
+Constant winmethod_Below = 3;
+Constant winmethod_Border = 0;
+Constant winmethod_BorderMask = 256;
+Constant winmethod_DirMask = 15;
+Constant winmethod_DivisionMask = 240;
+Constant winmethod_Fixed = 16;
+Constant winmethod_Left = 0;
+Constant winmethod_NoBorder = 256;
+Constant winmethod_Proportional = 32;
+Constant winmethod_Right = 1;
+Constant wintype_AllTypes = 0;
+Constant wintype_Blank = 2;
+Constant wintype_Graphics = 5;
+Constant wintype_Pair = 1;
+Constant wintype_TextBuffer = 3;
+Constant wintype_TextGrid = 4;
+*/
+    emitter void exit(){
+        __glkHook(1)
+    }
+
+    emitter void tick(){
+        __glkHook(3)
+    }
+
+    emitter int gestalt(int a, int b){
+        __glkHook(4, $a, $b)
+    }
+
+    emitter int gestaltExt(int a, int b, int c, int d){
+        __glkHook(5, $a, $b, $c, $d)
+    }
+
+    emitter int windowIterate(int a, int b){
+        __glkHook(32, $a, $b)
+    }
+
+    emitter int windowGetRock(int a){
+        __glkHook(33, $a)
+    }
+
+    emitter int windowGetRoot(){
+        __glkHook(34)
+    }
+    emitter int windowOpen(int splitWinId, eGlulxWindowType type, int size, bGlulxWindowMethodFlags winMethod=noBorder, int winRock=0){
+        __glkHook(35, $splitWinId, $winMethod, $size, $type, $winRock)
+    }
+
+    emitter void windowClose(int a, int b){
+        __glkHook(36, $a, $b)
+    }
+
+    emitter void windowGetSize(int a, int b, int c){
+        __glkHook(37, $a, $b, $c)
+    }
+
+    emitter void windowSetArrangement(int a, int b, int c, int d){
+        __glkHook(38, $a, $b, $c, $d)
+    }
+
+    emitter void windowGetArrangement(int a, int b, int c, int d){
+        __glkHook(39, $a, $b, $c, $d)
+    }
+
+    emitter int windowGetType(int a){
+        __glkHook(40, $a)
+    }
+
+    emitter int windowGetParent(int a){
+        __glkHook(41, $a)
+    }
+
+    emitter void windowClear(int a){
+        __glkHook(42, $a)
+    }
+
+    emitter void windowMoveCursor(int a, int b, int c){
+        __glkHook(43, $a, $b, $c)
+    }
+
+    emitter int windowGetStream(int a){
+        __glkHook(44, $a)
+    }
+
+    emitter void windowSetEchoStream(int a, int b){
+        __glkHook(45, $a, $b)
+    }
+
+    emitter int windowGetEchoStream(int a){
+        __glkHook(46, $a)
+    }
+
+    emitter void setWindow(int a){
+        __glkHook(47, $a)
+    }
+
+    emitter int windowGetSibling(int a){
+        __glkHook(48, $a)
+    }
+
+    emitter int streamIterate(int a, int b){
+        __glkHook(64, $a, $b)
+    }
+
+    emitter int streamGetRock(int a){
+        __glkHook(65, $a)
+    }
+
+    emitter int streamOpenFile(int a, int b, int c){
+        __glkHook(66, $a, $b, $c)
+    }
+
+    emitter int streamOpenMemory(int a, int b, int c, int d){
+        __glkHook(67, $a, $b, $c, $d)
+    }
+
+    emitter void streamClose(int a, int b){
+        __glkHook(68, $a, $b)
+    }
+
+    emitter void streamSetPosition(int a, int b, int c){
+        __glkHook(69, $a, $b, $c)
+    }
+
+    emitter int streamGetPosition(int a){
+        __glkHook(70, $a)
+    }
+
+    emitter void streamSetCurrent(int a){
+        __glkHook(71, $a)
+    }
+
+    emitter int streamGetCurrent(){
+        __glkHook(72)
+    }
+
+    emitter int streamOpenResource(int a, int b){
+        __glkHook(73, $a, $b)
+    }
+
+    emitter int filerefCreateTemp(int a, int b){
+        __glkHook(96, $a, $b)
+    }
+
+    emitter int filerefCreateByName(int a, int b, int c){
+        __glkHook(97, $a, $b, $c)
+    }
+
+    emitter int filerefCreateByPrompt(int a, int b, int c){
+        __glkHook(98, $a, $b, $c)
+    }
+
+    emitter void filerefDestroy(int a){
+        __glkHook(99, $a)
+    }
+
+    emitter int filerefIterate(int a, int b){
+        __glkHook(100, $a, $b)
+    }
+
+    emitter int filerefGetRock(int a){
+        __glkHook(101, $a)
+    }
+
+    emitter void filerefDeleteFile(int a){
+        __glkHook(102, $a)
+    }
+
+    emitter int filerefDoesFileExist(int a){
+        __glkHook(103, $a)
+    }
+
+    emitter int filerefCreateFromFileref(int a, int b, int c){
+        __glkHook(104, $a, $b, $c)
+    }
+
+    emitter void putChar(int a){
+        __glkHook(128, $a)
+    }
+
+    emitter void putCharStream(int a, int b){
+        __glkHook(129, $a, $b)
+    }
+
+    emitter void putString(int a){
+        __glkHook(130, $a)
+    }
+
+    emitter void putStringStream(int a, int b){
+        __glkHook(131, $a, $b)
+    }
+
+    emitter void putBuffer(int a, int b){
+        __glkHook(132, $a, $b)
+    }
+
+    emitter void putBufferStream(int a, int b, int c){
+        __glkHook(133, $a, $b, $c)
+    }
+
+    emitter void setStyle(int a){
+        __glkHook(134, $a)
+    }
+
+    emitter void setStyleStream(int a, int b){
+        __glkHook(135, $a, $b)
+    }
+
+    emitter int getCharStream(int a){
+        __glkHook(144, $a)
+    }
+
+    emitter int getLineStream(int a, int b, int c){
+        __glkHook(145, $a, $b, $c)
+    }
+
+    emitter int getBufferStream(int a, int b, int c){
+        __glkHook(146, $a, $b, $c)
+    }
+
+    emitter int charToLower(int a){
+        __glkHook(160, $a)
+    }
+
+    emitter int charToUpper(int a){
+        __glkHook(161, $a)
+    }
+
+    emitter void stylehintSet(int a, int b, int c, int d){
+        __glkHook(176, $a, $b, $c, $d)
+    }
+
+    emitter void stylehintClear(int a, int b, int c){
+        __glkHook(177, $a, $b, $c)
+    }
+
+    emitter int styleDistinguish(int a, int b, int c){
+        __glkHook(178, $a, $b, $c)
+    }
+
+    emitter int styleMeasure(int a, int b, int c, int d){
+        __glkHook(179, $a, $b, $c, $d)
+    }
+
+    emitter void select(int a){
+        __glkHook(192, $a)
+    }
+
+    emitter void selectPoll(int a){
+        __glkHook(193, $a)
+    }
+
+    emitter void requestLineEvent(int a, int b, int c, int d){
+        __glkHook(208, $a, $b, $c, $d)
+    }
+
+    emitter void cancelLineEvent(int a, int b){
+        __glkHook(209, $a, $b)
+    }
+
+    emitter void requestCharEvent(int a){
+        __glkHook(210, $a)
+    }
+
+    emitter void cancelCharEvent(int a){
+        __glkHook(211, $a)
+    }
+
+    emitter void requestMouseEvent(int a){
+        __glkHook(212, $a)
+    }
+
+    emitter void cancelMouseEvent(int a){
+        __glkHook(213, $a)
+    }
+
+    emitter void requestTimerEvents(int a){
+        __glkHook(214, $a)
+    }
+
+    emitter int imageGetInfo(int a, int b, int c){
+        __glkHook(224, $a, $b, $c)
+    }
+
+    emitter int imageDraw(int a, int b, int c, int d){
+        __glkHook(225, $a, $b, $c, $d)
+    }
+
+    emitter int imageDrawScaled(int a, int b, int c, int d, int e, int f){
+        __glkHook(226, $a, $b, $c, $d, $e, $f)
+    }
+
+    emitter void windowFlowBreak(int a){
+        __glkHook(232, $a)
+    }
+
+    emitter void windowEraseRect(int a, int b, int c, int d, int e){
+        __glkHook(233, $a, $b, $c, $d, $e)
+    }
+
+    emitter void windowFillRect(int a, int b, int c, int d, int e, int f){
+        __glkHook(234, $a, $b, $c, $d, $e, $f)
+    }
+
+    emitter void windowSetBackgroundColor(int a, int b){
+        __glkHook(235, $a, $b)
+    }
+
+    emitter int schannelIterate(int a, int b){
+        __glkHook(240, $a, $b)
+    }
+
+    emitter int schannelGetRock(int a){
+        __glkHook(241, $a)
+    }
+
+    emitter int schannelCreate(int a){
+        __glkHook(242, $a)
+    }
+
+    emitter void schannelDestroy(int a){
+        __glkHook(243, $a)
+    }
+
+    emitter int schannelCreateExt(int a, int b){
+        __glkHook(244, $a, $b)
+    }
+
+    emitter int schannelPlayMulti(int a, int b, int c, int d, int e){
+        __glkHook(247, $a, $b, $c, $d, $e)
+    }
+
+    emitter int schannelPlay(int a, int b){
+        __glkHook(248, $a, $b)
+    }
+
+    emitter int schannelPlayExt(int a, int b, int c, int d){
+        __glkHook(249, $a, $b, $c, $d)
+    }
+
+    emitter void schannelStop(int a){
+        __glkHook(250, $a)
+    }
+
+    emitter void schannelSetVolume(int a, int b){
+        __glkHook(251, $a, $b)
+    }
+
+    emitter void soundLoadHint(int a, int b){
+        __glkHook(252, $a, $b)
+    }
+
+    emitter void schannelSetVolumeExt(int a, int b, int c, int d){
+        __glkHook(253, $a, $b, $c, $d)
+    }
+
+    emitter void schannelPause(int a){
+        __glkHook(254, $a)
+    }
+
+    emitter void schannelUnpause(int a){
+        __glkHook(255, $a)
+    }
+
+    emitter void setHyperlink(int a){
+        __glkHook(256, $a)
+    }
+
+    emitter void setHyperlinkStream(int a, int b){
+        __glkHook(257, $a, $b)
+    }
+
+    emitter void requestHyperlinkEvent(int a){
+        __glkHook(258, $a)
+    }
+
+    emitter void cancelHyperlinkEvent(int a){
+        __glkHook(259, $a)
+    }
+
+    emitter int bufferToLowerCaseUni(int a, int b, int c){
+        __glkHook(288, $a, $b, $c)
+    }
+
+    emitter int bufferToUpperCaseUni(int a, int b, int c){
+        __glkHook(289, $a, $b, $c)
+    }
+
+    emitter int bufferToTitleCaseUni(int a, int b, int c, int d){
+        __glkHook(290, $a, $b, $c, $d)
+    }
+
+    emitter int bufferCanonDecomposeUni(int a, int b, int c){
+        __glkHook(291, $a, $b, $c)
+    }
+
+    emitter int bufferCanonNormalizeUni(int a, int b, int c){
+        __glkHook(292, $a, $b, $c)
+    }
+
+    emitter void putCharUni(int a){
+        __glkHook(296, $a)
+    }
+
+    emitter void putStringUni(int a){
+        __glkHook(297, $a)
+    }
+
+    emitter void putBufferUni(int a, int b){
+        __glkHook(298, $a, $b)
+    }
+
+    emitter void putCharStreamUni(int a, int b){
+        __glkHook(299, $a, $b)
+    }
+
+    emitter void putStringStreamUni(int a, int b){
+        __glkHook(300, $a, $b)
+    }
+
+    emitter void putBufferStreamUni(int a, int b, int c){
+        __glkHook(301, $a, $b, $c)
+    }
+
+    emitter int getCharStreamUni(int a){
+        __glkHook(304, $a)
+    }
+
+    emitter int getBufferStreamUni(int a, int b, int c){
+        __glkHook(305, $a, $b, $c)
+    }
+
+    emitter int getLineStreamUni(int a, int b, int c){
+        __glkHook(306, $a, $b, $c)
+    }
+
+    emitter int streamOpenFileUni(int a, int b, int c){
+        __glkHook(312, $a, $b, $c)
+    }
+
+    emitter int streamOpenMemoryUni(int a, int b, int c, int d){
+        __glkHook(313, $a, $b, $c, $d)
+    }
+
+    emitter int streamOpenResourceUni(int a, int b){
+        __glkHook(314, $a, $b)
+    }
+
+    emitter void requestCharEventUni(int a){
+        __glkHook(320, $a)
+    }
+
+    emitter void requestLineEventUni(int a, int b, int c, int d){
+        __glkHook(321, $a, $b, $c, $d)
+    }
+
+    emitter void setEchoLineEvent(int a, int b){
+        __glkHook(336, $a, $b)
+    }
+
+    emitter void setTerminatorsLineEvent(int a, int b, int c){
+        __glkHook(337, $a, $b, $c)
+    }
+
+    emitter void currentTime(int a){
+        __glkHook(352, $a)
+    }
+
+    emitter int currentSimpleTime(int a){
+        __glkHook(353, $a)
+    }
+
+    emitter void timeToDateUtc(int a, int b){
+        __glkHook(360, $a, $b)
+    }
+
+    emitter void timeToDateLocal(int a, int b){
+        __glkHook(361, $a, $b)
+    }
+
+    emitter void simpleTimeToDateUtc(int a, int b, int c){
+        __glkHook(362, $a, $b, $c)
+    }
+
+    emitter void simpleTimeToDateLocal(int a, int b, int c){
+        __glkHook(363, $a, $b, $c)
+    }
+
+    emitter void dateToTimeUtc(int a, int b){
+        __glkHook(364, $a, $b)
+    }
+
+    emitter void dateToTimeLocal(int a, int b){
+        __glkHook(365, $a, $b)
+    }
+
+    emitter int dateToSimpleTimeUtc(int a, int b){
+        __glkHook(366, $a, $b)
+    }
+
+    emitter int dateToSimpleTimeLocal(int a, int b){
+        __glkHook(367, $a, $b)
+    }
+
+    emitter void garglkSetZcolors(int a, int b){
+        __glkHook(4352, $a, $b)
+    }
+
+    emitter void garglkSetZcolorsStream(int a, int b, int c){
+        __glkHook(4353, $a, $b, $c)
+    }
+
+    emitter void garglkSetReversevideo(int a){
+        __glkHook(4354, $a)
+    }
+
+    emitter void garglkSetReversevideoStream(int a, int b){
+        __glkHook(4355, $a, $b)
+    }
 }
+
+extern var sp;
+//a simple helper: rather than specify each glk routine individually, we declare only one. This is referenced by emitters, eliminating the majority of unused routines generated
+int __glkHook(int _vararg_count){
+    int api = bglOpCodes.copy(sp);        //the first parameter is the api code expected by the glk dispatcher. Pull it off because we have to supply it separately from the other parameters.
+    int args=_vararg_count -1;         //adjust the count of arguments down by one (we just pulled off the opcode)
+    int retval=bglOpCodes.glk(api, args); //call the glk opcode
+    return retval;
+} 
+
+//A little voodoo. Here we tell the compiler that glkHook is externally defined.  We define overloads here, rather than a single declaration with a string of parameters with defaults, because
+//   I6 compiler will otherwise count all defaults when calculating the variable argument count identifier which I6 handles in special-case fashion
+extern void glkHook(){}
+extern void glkHook(int a=0){}
+extern void glkHook(int a=0, int b=0){}
+extern void glkHook(int a=0, int b=0, int c=0){}
+extern void glkHook(int a=0, int b=0, int c=0, int d=0){}
+extern void glkHook(int a=0, int b=0, int c=0, int d=0,int e=0){}
+extern void glkHook(int a=0, int b=0, int c=0, int d=0,int e=0,int f=0){}
+
 
