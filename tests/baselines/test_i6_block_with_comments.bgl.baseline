@@ -1,0 +1,28 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+
+    [ Demo ;
+        ! This is an I6 comment with English contractions: don't, can't,
+        ! aren't, you're, player's, room's. None should open a char literal.
+        ! Also: braces in a comment shouldn't unbalance things — { } { } .
+        ! Quotes inside comments — "north", "south" — also no problem.
+        if (true) { print "ok"; }
+        if (false) {
+            ! "isn't this great" — quote+contraction inside comment
+            print "never";
+        }
+    ];
+
+[main;
+    print (string)"compiled cleanly";
+];

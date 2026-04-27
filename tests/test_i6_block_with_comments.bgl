@@ -1,0 +1,23 @@
+/* test_i6_block_with_comments.bgl — `#i6{}` raw-block parser handles I6 `!` comments.
+
+   Regression test: the brace-counter in getRawTextThroughClosingBrace must skip I6
+   `!` comments to end-of-line. Without that, an apostrophe in an English contraction
+   inside an `!` comment opens a runaway char-literal scan that swallows braces in
+   unrelated code below — causing spurious "missing closing }" errors at EOF. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+#i6{
+    [ Demo ;
+        ! This is an I6 comment with English contractions: don't, can't,
+        ! aren't, you're, player's, room's. None should open a char literal.
+        ! Also: braces in a comment shouldn't unbalance things — { } { } .
+        ! Quotes inside comments — "north", "south" — also no problem.
+        if (true) { print "ok"; }
+        if (false) {
+            ! "isn't this great" — quote+contraction inside comment
+            print "never";
+        }
+    ];
+}
+
+void main(){ print("compiled cleanly"); }

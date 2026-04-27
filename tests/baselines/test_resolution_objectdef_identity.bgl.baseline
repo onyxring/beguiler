@@ -1,0 +1,27 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+object widget
+  with bump [;
+    self.count = self.count + 1;
+    return self.count;
+  ],
+       count 0
+;
+[takesAnyObject o;
+];
+[main x w y;
+    x=widget.bump();
+    w = widget;
+    y=w.bump();
+    takesanyobject(widget);
+];

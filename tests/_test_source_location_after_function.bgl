@@ -1,0 +1,21 @@
+/* Negative test: error location reset after a function body.
+
+   Regression for the `currentStatementSrc` staleness bug. After parsing a function body,
+   `currentStatementSrc` retained the last in-body statement's location. A subsequent
+   global-scope error then reported the WRONG file:line — pointing at a line inside
+   the function body rather than at the offending global-scope construct.
+
+   The trailing const declaration is missing both type and `=` (`const NAME 31;`),
+   triggering the "Missing type before identifier" error. The fix ensures the error
+   reports the actual const's line (20), not the last in-body statement (line 18). */
+// EXPECT_ERROR: _test_source_location_after_function.bgl:21
+// EXPECT_ERROR: Missing type before identifier
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void someFunction(){
+    int x = 1;
+    int y = 2;
+    int z = x + y;
+}
+
+const SOMENAME 31;

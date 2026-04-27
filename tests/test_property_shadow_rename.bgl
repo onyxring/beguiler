@@ -1,0 +1,53 @@
+/* test_property_shadow_rename.bgl — locals/params that share a name with a property
+   accessed in the same routine must be mangled in emission so I6 doesn't resolve
+   `obj.NAME` as indirect-property-via-local instead of as the named property.
+
+   The emitter detects the shadow by walking the function body for `.NAME` accesses
+   and renaming any matching local/param to `_l_<displayName>`. Property accesses
+   themselves stay intact (replaceWord treats '.' as a left disqualifier).
+
+   Verified shape of emission:
+     - Function signature:                lists `_l_width`, `_l_height` (renamed locals)
+     - Bare references:                   rewritten to `_l_width` / `_l_height`
+     - Property accesses (`info.width`):  unchanged
+     - Compound tokens (`width==0`):      both `width` AND in `if(width==0)` → rewritten
+     - Names that don't shadow (`a`,`b`): left alone */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class _info {
+    int width;
+    int height;
+}
+_info info;
+
+// Params named the same as accessed properties — both must be mangled.
+void scaleAndCheck(int width, int height, int a){
+    if(width == 0 && height == 0) width = info.width;
+    if(width == -1) width = info.width;
+    int height2 = a;        // local that shadows nothing — left alone
+    int width2 = info.width + width + height2;
+    height = info.height;
+}
+
+// A LOCAL (not param) that shadows an accessed property — must also be mangled.
+void localShadow(){
+    int width = 5;          // local with same name as info.width
+    int sum = info.width + width;
+    print(sum);
+}
+
+void main(){
+    // Plain positional call — works as before.
+    scaleAndCheck(0, 0, 5);
+
+    // Named-parameter call — name resolution happens in the parser against the
+    // canonical param name, so the renaming-at-emit-time can't break this.
+    // Argument order intentionally scrambled to prove name-based binding.
+    scaleAndCheck(a: 9, height: 100, width: 50);
+
+    localShadow();
+}

@@ -1,0 +1,46 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+global g_facing;
+global g_state;
+[setFacing dir;
+    g_facing = dir;
+];
+[getFacing;
+    return g_facing;
+];
+[isFacing dir;
+    if (g_facing==dir) {
+        return true;
+    }
+    return false;
+];
+[describeDirection dir;
+    switch (dir) {
+        1:
+            print (string)"north";
+        2:
+            print (string)"south";
+        3:
+            print (string)"east";
+        4:
+            print (string)"west";
+        default:
+            print (string)"other";
+    }
+];
+[main f;
+    setfacing(1);
+    g_state = 1;
+    f=isfacing(1);
+    describedirection(g_facing);
+];

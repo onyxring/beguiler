@@ -1,0 +1,25 @@
+!% -v5
+!% -E1
+Release 1;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+[add a b;
+    return a + b;
+];
+[main result;
+    result=add();
+];
+[add x;
+    return _bgl_replaced_add_0(x,10);
+];
+[add;
+    return _bgl_replaced_add_1(42);
+];

@@ -1,0 +1,41 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+class flyer
+  class object
+  with
+    altitude 0,
+    takeoff[;
+        self.altitude = 100;
+    ]
+;
+class swimmer
+  class object
+  with
+    depth 0,
+    dive[;
+        self.depth = 10;
+    ]
+;
+class flyingfish
+  class flyer swimmer
+  with
+    species "exocoetidae",
+    describe[a d;
+        a=self.altitude;
+        d=self.depth;
+    ]
+;
+flyingfish g_ff;
+[main;
+    g_ff.describe();
+];
