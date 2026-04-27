@@ -25,6 +25,16 @@ class i6Emitter{
         // Z-machine local variable spill state — active during a single function's emission
         string currentTarget;                              // lowercase: "glulx","z3","z5","z8"
         map<string,string> currentSpillAliases;            // varName → "_bglFrm-->N" or "_bglXPn"
+        // Original-case display names for params/locals of the function being emitted, keyed by
+        // canonical (lowercased) name. Populated by buildSpillMap, consulted by spillName.
+        // When a name has no spill alias, the display form is used so user case is preserved.
+        map<string,string> currentDisplayNames;
+        // Local/param renames for I6 property-name shadowing avoidance. When a function-local or
+        // parameter has the same name as something accessed as a property in the function body
+        // (`obj.NAME`), I6 may resolve `obj.NAME` as indirect property access through the local
+        // instead of the named property. We mangle the local to `_l_<name>` so the property
+        // access stays direct. Populated by buildLocalRenameMap, consulted by spillName.
+        map<string,string> currentLocalRenames;
         int currentSpillCount = 0;
         bool frameAllocEmitted = false;
         int xpGlobalsNeeded = 0;                           // how many _bglXPn globals were emitted
@@ -33,6 +43,12 @@ class i6Emitter{
         static string replaceWord(string str, const string& from, const string& to);
         void buildSpillMap(functionDef* fd);
         void clearSpillMap();
+        // Build the local-rename map for property-shadow avoidance. Walks the function body
+        // collecting every name accessed as a property (`obj.NAME` in any expression or raw
+        // text), then for any param/local whose name appears in that set, registers a mangled
+        // alias `_l_<displayName>`. Called from buildSpillMap so renames are in place before
+        // any signature or body emission.
+        void buildLocalRenameMap(functionDef* fd);
         string exprText(expression* expr);
         string spillName(const string& name);
         string spillWord(const string& text);
@@ -51,8 +67,20 @@ class i6Emitter{
         void emitObject(objectDef*);
         void emitMember(typeMember*);
         void emitGlobal(variableDeclaration*);
+        // Walks `cls`'s stored fields. For each field whose type is a different statically-
+        // instantiable class (no init emitter), emits a hidden backing global of that field's
+        // type to `out` and returns a `with field _backing, ...` clause string suitable for
+        // attaching to the instance declaration. Recurses into the backing's own fields.
+        // `visited` carries the class-instantiation path to break cycles (including the
+        // owner-class itself, so self-typed fields are left at default — these are
+        // intended as references managed elsewhere).
+        string synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited);
         void emitFunction(functionDef*);
         void emitStatement(statement*, string indent);
+        // Emit a raw I6 text block while pushing per-line entries into the source map so
+        // I6 diagnostics inside the block remap to the correct .bgl line. Used for `#i6{}`
+        // raw blocks (multi-line and single-line) and emitter-body inlinings.
+        void emitRawTextWithSourceMap(const string& text, const sourceLocation& srcStart);
         void emitInterpolatedSegments(const vector<interpolatedSegment>& segments, string indent);
         void emitInterpolatedEmitterBody(const string& body, const string& paramName, const vector<interpolatedSegment>& segments, string indent);
         void emitVerbObject(verbObjectDef*);

@@ -1,0 +1,106 @@
+!% -v5
+!% -E1
+global _bgl_temp0;
+global _bgl_temp1;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+  with math _bglmath
+;
+object bgl
+  with util _bglutil
+;
+object _bglMath
+  with unsignedCompare [x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x<0 && y>=0) {
+        return 1;
+    }
+    if (x>=0 && y<0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
+  ],
+       shiftLeft [i numBits;
+    return i * self.pow(2,numbits);
+  ],
+       shiftRight [i numBits;
+    return i / self.pow(2,numbits);
+  ],
+       abs [p;
+    if (p<0) _bgl_temp0 = -p; else _bgl_temp0 = p;
+    return _bgl_temp0;
+  ],
+       unsignedDiv [a b lowHalf hq hr combined;
+    if (b==0) {
+        return 0;
+    }
+    if (a>=0 && b>0) {
+        return a / b;
+    }
+    if (b<0) {
+        if (self.unsignedcompare(a,b)>=0) _bgl_temp1 = 1; else _bgl_temp1 = 0;
+        return _bgl_temp1;
+    }
+    lowHalf=a & 32767;
+    hq=32767 / b;
+    hr=32767 % b + 1;
+    if (hr >= b) {
+        hq = hq + 1;
+        hr = hr - b;
+    }
+    combined=lowhalf + hr;
+    if (combined>=0) {
+        return hq + combined / b;
+    }
+    return hq + self.unsigneddiv(combined,b);
+  ],
+       unsignedMod [a b;
+    if (b==0) {
+        return 0;
+    }
+    if (a>=0 && b>0) {
+        return a % b;
+    }
+    return a - self.unsigneddiv(a,b) * b;
+  ],
+       pow [i p retval t;
+    if (p==0) {
+        return 1;
+    }
+    retval=i;
+    if (p<0) {
+        for (t = 0 : t < (-p) - 1 : t++) {
+            retval = retval / i;
+        }
+        return retval;
+    }
+    for (t = 0 : t < p - 1 : t++) {
+        retval = retval * i;
+    }
+    return retval;
+  ]
+;
+[main a b xor_ shl shr;
+    a = 12;
+    b = 10;
+    xor_=(a | b) - (a & b);
+    shl=bgl.util.math.shiftLeft(a,3);
+    shr=bgl.util.math.shiftRight(a,1);
+    a = ((a | 3) - (a & 3));
+    a=bgl.util.math.shiftLeft(a,1);
+    b=bgl.util.math.shiftRight(b,1);
+    print xor_;
+    print shl;
+    print shr;
+];

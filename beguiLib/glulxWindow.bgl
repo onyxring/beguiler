@@ -1,0 +1,293 @@
+#once
+/* Extend the bgl.glulx namespace object to include all the stuff we are declaring in this file;
+    _glulx is object backing for bgl.glulx, so that what we extend.
+*/
+extend _glulx{
+    alias window for _glulxWindow;
+    alias size for _glulxWindowSize;
+
+    _glulxWindow createMainWindow(){
+        bgl.asm.setIoSys(2,0);
+        tmpWin.id = bgl.asm.windowOpen(0, eGlulxWindowType.textBuffer, 30);
+        bgl.asm.setWindow(tmpWin.id);
+        return tmpWin;
+    }
+}
+// Window/image enums and bnums moved to core/_glulxOpCodes.bgl so that typed
+// bglOpCodes overloads (e.g. windowOpen) can compile without requiring this file.
+
+// IMPORTANT — caller convention:
+//   Declare your _glulxWindow instances at FILE SCOPE, not as function-locals.
+//   Locals are bare I6 int slots (no backing storage), so `local = factory()`
+//   becomes pointer-assignment and every local ends up aliasing tmpWin.
+//   File-scope instances have their own field storage, so the assignment
+//   dispatches operator=(_glulxWindow) which copies tmpWin's values into
+//   the permanent instance — leaving tmpWin free to be reused on the next call.
+_glulxWindow tmpWin;
+
+// Size struct returned by getSize(). Two int fields populated from a Glk
+// glk_window_get_size call (which writes width/height to two consecutive
+// memory slots). Callers read .width / .height directly.
+class _glulxWindowSize {
+    int width;
+    int height;
+}
+_glulxWindowSize _tmpWindowSize;
+
+// Scratch array used as the out-buffer for glk_window_get_size and
+// glk_image_get_info. Two words wide — Glk writes [0]=width, [1]=height.
+array<int> _glkSizeBuf[2];
+
+// Reads an image's natural dimensions from the blorb. Reuses _glkSizeBuf and
+// _tmpWindowSize, so the returned struct is only valid until the next getSize()
+// or _getImageInfo() call.
+_glulxWindowSize _getImageInfo(int imgId){
+    bgl.asm.imageGetInfo(imgId, ((int)_glkSizeBuf) + bgl.wordsize, ((int)_glkSizeBuf) + (2 * bgl.wordsize));
+    _tmpWindowSize.width  = _glkSizeBuf[0];
+    _tmpWindowSize.height = _glkSizeBuf[1];
+    return _tmpWindowSize;
+}
+
+//-----------------------
+class _glulxWindow{
+    int id;
+    eGlulxWindowType winType;
+    _glulxWindow parentWin;
+    bGlulxWindowMethodFlags winMethod;
+    
+    _glulxWindow operator = (_glulxWindow w){ 
+        self.id=w.id; 
+        self.winMethod=w.winMethod; 
+        self.winType=w.winType; 
+        self.parentWin=w.parentWin; 
+        return self;
+    }
+
+    _glulxWindow splitWindow(eGlulxWindowType type, int size, bGlulxWindowScale scale=fixed, bGlulxWindowPlacement placement=left, bGlulxWindowBorder border=noBoarder){
+        // tmpWin is the scratch return slot. The caller's file-scope instance copies
+        // the values out via operator=, freeing tmpWin for the next call.
+        // Read self.id BEFORE windowOpen, since self may be the same instance the
+        // caller copied from tmpWin (their fields are independent now, but the
+        // reading-then-writing order keeps the intent clear).
+        
+        tmpWin.winMethod=(placement | scale | border);
+        tmpWin.winType=type;
+        tmpWin.parentWin=self;
+        tmpWin.id=bgl.asm.windowOpen(self.id, type, size, tmpWin.winMethod, 0);
+        return tmpWin;
+    }
+
+    // Draw an image into this window (graphics window: x/y are pixel coords, w/h are pixel dims).
+    // Scaling convention (mirrors orLibrary):
+    //   width=0, height=0                                → use image's natural dimensions
+    //   width>0, height=0                                → fit width, compute h to keep aspect ratio
+    //   width=0, height>0                                → fit height, compute w to keep aspect ratio
+    //   width=eGlulxImageDimension.original (-1)    → that dim becomes the image's natural size
+    //   any positive value                      → explicit pixel size (no scaling)
+    // imgId is `var` so callers can pass any int-shaped id (literal, int var, or enum).
+    
+    void drawImage(var imgId, int x, int y, int width=0, int height=0){
+        // Sentinel: -1 means "use natural dimension" (matches eGlulxImageDimension.original).
+        // The literal is used directly because Beguile doesn't auto-convert enum→int in
+        // assignments to plain int locals.
+        if(width == 0 && height == 0){ width = -1; height = -1; }
+        if(width == 0 || height == 0 || width == -1 || height == -1){
+            _glulxWindowSize info = _getImageInfo(imgId);
+            if(width==0)   width = (info.width * height) / info.height;
+            if(height == 0)   height = (info.height * width) / info.width;
+            if(width==-1)  width = info.width;
+            if(height == -1)  height = info.height;
+        }
+        bgl.asm.imageDrawScaled(self.id, imgId, x, y, width, height);
+    }
+    
+    /*void drawImage(var imgId, int x, int y, int w=0, int h=0){
+        // Sentinel: -1 means "use natural dimension" (matches eGlulxImageDimension.original).
+        // The literal is used directly because Beguile doesn't auto-convert enum→int in
+        // assignments to plain int locals.
+        if(w == 0 && h == 0){ w = -1; h = -1; }
+        if(w == 0 || h == 0 || w == -1 || h == -1){
+            _glulxWindowSize info = _getImageInfo(imgId);
+            if(w == 0)   w = (info.width * h) / info.height;
+            if(h == 0)   h = (info.height * w) / info.width;
+            if(w == -1)  w = info.width;
+            if(h == -1)  h = info.height;
+        }
+        bgl.asm.imageDrawScaled(self.id, imgId, x, y, w, h);
+    }
+    */
+    // Query the window's current dimensions. Glk writes width and height to consecutive
+    // memory slots; we point it at our scratch array and unpack into a struct.
+    // NOTE: array<int>[N] currently emits as an I6 `table` with a length-prefix word at
+    // offset 0; Beguile's [0]/[1] indexing skips that prefix. So the byte address of
+    // _glkSizeBuf[0] is (int)_glkSizeBuf + wordsize, and [1] is + 2*wordsize. We pass
+    // those exact addresses to Glk so writes land where [0]/[1] read from.
+    _glulxWindowSize getSize(){
+        // _glkSizeBuf is a length-prefixed table, so [0] lives at +wordsize and [1] at +2*wordsize.
+        // Pass those exact addresses so Glk's writes line up with what [0]/[1] read back.
+        bgl.asm.windowGetSize(self.id, ((int)_glkSizeBuf) + bgl.wordsize, ((int)_glkSizeBuf) + (2 * bgl.wordsize));
+        _tmpWindowSize.width  = _glkSizeBuf[0];
+        _tmpWindowSize.height = _glkSizeBuf[1];
+        return _tmpWindowSize;
+    }
+
+    //     ,  _splitWindow[win method size type
+    //            retval;
+    //         retval=glk_window_open(win, method, size, type, 0);
+    //         return retval;
+    //      ]
+
+    //          gg_statuswin = glk_window_open(gg_mainwin, $12,
+    //             gg_statuswin_cursize, 4, GG_STATUSWIN_ROCK);
+
+    //        emitter int glk(int sel, int argc)   { @glk $sel $argc $target }      
+
+         
+
+    //     //self._applyQueuedStyles(type);
+    //     //retval.id=util.orUi.glulx._splitWindow(self.id, retval.arrangement, heightOrWidth, type);
+
+    //     bgl.glulx.windowOpen
+        
+    //     return retval;         
+    // }
+
+} 
+//       with  id 0
+//       ,  parentWin 0
+//       ,  arrangement 0
+//       ,  _winType 0
+//       ,  create[;
+//             self.supports=_glulxWindowSupport.create(self);
+//          ]
+//       ,  splitLeft[type width scale;
+//             return self._splitWindow(type, width, scale, winmethod_Left);
+//          ]
+//       ,  splitRight[type width scale;
+//             return self._splitWindow(type, width, scale, winmethod_Right);
+//          ]
+//       ,  splitUp[type height scale;
+//             return self._splitWindow(type, height, scale, winmethod_Above);
+//          ]
+//       ,  splitDown[type height scale;
+//             return self._splitWindow(type, height, scale, winmethod_Below);
+//          ]
+//       ,  _splitWindow[type heightOrWidth scale arngmnt
+//                retval;
+//             if(scale==0) scale=imageScale.fixed;
+//             retval=_glulxWindow.create();
+//             retval.arrangement=arngmnt | scale | winmethod_NoBorder;
+//             self._applyQueuedStyles(type);
+//             retval.id=util.orUi.glulx._splitWindow(self.id, retval.arrangement, heightOrWidth, type);
+//             retval._winType=type;
+//             retval.parentWin=self;
+//             return retval;
+//          ]
+//       ,  _numStyles 0
+//       ,  queuedStyleDefinitions 0 0 0 0 0
+//       ,  queueStyle[styl
+//                retval;
+//             retval=styleDefinition.create();
+//             retval._styleType=styl;
+//             util.orArray.set(self, queuedStyleDefinitions, self._numStyles, retval);
+//             self._numStyles=self._numStyles+1;
+//             return retval;
+//          ]
+//       ,  getQueuedStyle[styl
+//                retval t;
+//             for(t=0:t<self._numStyles:t++){
+//                retval=util.orArray.get(self,queuedStyleDefinitions, t);
+//                if(retval._styleType==styl) return retval;
+//             }
+//             return 0;
+//          ]
+//       ,  _applyQueuedStyles[type
+//                t;
+//             for(t=0:t<self._numStyles:t++){
+//                util.orArray.get(self,queuedStyleDefinitions, t).apply(type);
+//             }
+//           ]
+//       ,  clearQueuedStyles[type
+//                t s;
+//             for(t=0:t<self._numStyles:t++) {
+//                s=util.orArray.get(self,queuedStyleDefinitions, t);
+//                s.clear(type);
+//                styleDefinition.destroy(s);
+//             }
+//             util.orArray.clear(self,queuedStyleDefinitions);
+//             self._numStyles=0;
+//          ]
+//       ,  validateQueuedStylesAgainst[win
+//                t s failed;
+
+//                for(t=0:t<self._numStyles:t++) {
+//                   s=util.orArray.get(self,queuedStyleDefinitions, t);
+//                   failed=failed+s.validateAgainst(win);
+//                }
+//                return failed;
+//          ]
+
+//       ! ,  moveUp[height scale
+//       !          par;
+//       !       if(scale==0) scale=imageScale.fixed;
+//       !       self.arrangement=winmethod_Above | scale | winmethod_NoBorder;
+//       !       par = glk_window_get_parent(self.id);
+//       !       glk_window_set_arrangement(par, self.arrangement, height, self.id);
+//       !    ]
+//       ! ,  moveDown[height scale
+//       !          par;
+//       !       if(scale==0) scale=imageScale.fixed;
+//       !       self.arrangement=winmethod_Below | scale | winmethod_NoBorder;
+//       !       par = glk_window_get_parent(self.id);
+//       !       glk_window_set_arrangement(par, self.arrangement, height, self.id);
+//       !    ]
+//       ! ,  moveLeft[width scale
+//       !          par;
+//       !       if(scale==0) scale=imageScale.fixed;
+//       !       self.arrangement=winmethod_Left | scale | winmethod_NoBorder;
+//       !       par = glk_window_get_parent(self.id);
+//       !       glk_window_set_arrangement(par, self.arrangement, height, self.id);
+//       !    ]
+//       ! ,  moveRight[width scale
+//       !          par;
+//       !       if(scale==0) scale=imageScale.fixed;
+//       !       self.arrangement=winmethod_Right | scale | winmethod_NoBorder;
+//       !       par = glk_window_get_parent(self.id);
+//       !       glk_window_set_arrangement(par, self.arrangement, height, self.id);
+//       !    ]
+//       ,  drawImage[imgId xOrAlignment yOrW wOrH hOrIgnore;
+//             util.orUi.glulx._drawImage(self, imgId, xOrAlignment, yOrW, wOrH, hOrIgnore);
+//          ]
+//       ,  getSize[retval;
+//             glk_window_get_size(self.id, gg_arguments, gg_arguments+WORDSIZE);
+//             retval=_tmpSizeStruct;
+//             retval.width=gg_arguments-->0;
+//             retval.height=gg_arguments-->1;
+//             return retval;
+//          ]
+//       ,  close[ c;
+//             if(self.id==0) return;
+//             objectloop(c ofclass _glulxWindow) if(c.parentWin==self) c.close();
+//             glk_window_close(self.id, 0);
+//             if(self.supports ofclass _glulxWindowSupport) _glulxWindowSupport.destroy(self.supports);
+//             _glulxWindow.destroy(self);
+//          ]
+//       ,  supports 0
+//       ,  resize[dim key
+//                p v;
+//             if(key==0) key=self.id;
+
+//              p=glk_window_get_parent(self.id);
+//              glk_window_get_arrangement(p, gg_arguments, gg_arguments+WORDSIZE, gg_arguments+(WORDSIZE*2));
+//              glk_window_set_arrangement(p, gg_arguments-->0, dim, key);
+//           ]
+//       ,  setBackgroundColor[col;
+//             if(self._winType==winType.graphics){
+//                glk_window_set_background_color(self.id, col);
+//                glk_window_clear(self.id);
+//             }
+//             else{
+//                print "Error: setBackgroundColor() is only valid for Graphics windows.";
+//             }
+//          ]
+//    ;

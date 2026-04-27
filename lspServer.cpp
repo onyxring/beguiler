@@ -246,6 +246,12 @@ void LspServer::handleDidOpen(const json& params) {
     string uri = params["textDocument"]["uri"];
     string text = params["textDocument"]["text"];
     openDocuments[uri] = text;
+    // Detect mode by URI extension. .inf-mode documents are I6-primary with #bgl{} islands.
+    DocMode mode = (uri.size() >= 4 && uri.compare(uri.size() - 4, 4, ".inf") == 0)
+                   ? DocMode::Inf : DocMode::Bgl;
+    documentModes[uri] = mode;
+    if(mode == DocMode::Inf)
+        documentBglRegions[uri] = findBglRegions(text);
     parseDocument(uri);
     publishDiagnostics(uri);
     publishInactiveRegions(uri);
@@ -257,6 +263,10 @@ void LspServer::handleDidChange(const json& params) {
     if(params.contains("contentChanges") && !params["contentChanges"].empty()) {
         openDocuments[uri] = params["contentChanges"][0]["text"];
     }
+    // Re-scan #bgl regions on every change (cheap; document is in memory).
+    auto it = documentModes.find(uri);
+    if(it != documentModes.end() && it->second == DocMode::Inf)
+        documentBglRegions[uri] = findBglRegions(openDocuments[uri]);
     resetAndReparse(uri);
 }
 
@@ -265,6 +275,8 @@ void LspServer::handleDidClose(const json& params) {
     openDocuments.erase(uri);
     documentDiagnostics.erase(uri);
     documentParsePaths.erase(uri);
+    documentModes.erase(uri);
+    documentBglRegions.erase(uri);
     // Clear diagnostics on close
     sendNotification("textDocument/publishDiagnostics", {
         {"uri", uri},
@@ -281,6 +293,111 @@ void LspServer::handleDidClose(const json& params) {
     parser.reset();
     languageService.reset();
     for(auto& [openUri, _] : openDocuments) parseDocument(openUri);
+}
+
+//=============================================================================
+// .inf-mode polyglot support
+//=============================================================================
+
+// Scan the document text for #bgl{...} (multi-line) and #bgl ...; (single-line, terminated
+// by newline) regions. Mirrors the lexer's getRawTextUntilCloseOrBgl logic but operates on
+// a string in memory. Skips //, "..." string, and '...' char/dict literals so a '#bgl' inside
+// a comment or string isn't a false positive. Brace-balanced for the multi-line form.
+std::vector<LspServer::BglRegion> LspServer::findBglRegions(const std::string& docText) {
+    std::vector<BglRegion> regions;
+    int n = (int)docText.size();
+    int i = 0;
+    while(i < n){
+        char c = docText[i];
+        // Skip // line comments
+        if(c == '/' && i+1 < n && docText[i+1] == '/'){
+            while(i < n && docText[i] != '\n') i++;
+            continue;
+        }
+        // Skip I6 ! line comments
+        if(c == '!'){
+            while(i < n && docText[i] != '\n') i++;
+            continue;
+        }
+        // Skip strings — terminate at next "
+        if(c == '"'){
+            i++;
+            while(i < n && docText[i] != '"') i++;
+            if(i < n) i++;
+            continue;
+        }
+        // Skip char/dict literals — terminate at next '
+        if(c == '\''){
+            i++;
+            while(i < n && docText[i] != '\'') i++;
+            if(i < n) i++;
+            continue;
+        }
+        // Detect #bgl
+        if(c == '#' && i+3 < n && docText[i+1] == 'b' && docText[i+2] == 'g' && docText[i+3] == 'l'){
+            // Word-boundary check: char after 'l' must not extend the identifier
+            int afterTag = i + 4;
+            char b = (afterTag < n) ? docText[afterTag] : '\0';
+            if(isalnum((unsigned char)b) || b == '_'){ i++; continue; }
+            // Skip horizontal whitespace looking for '{'
+            int p = afterTag;
+            while(p < n && (docText[p] == ' ' || docText[p] == '\t')) p++;
+            if(p < n && docText[p] == '{'){
+                // Multi-line: brace-balanced scan from after '{' to matching '}'
+                int regionStart = p + 1;
+                int depth = 1;
+                int q = p + 1;
+                while(q < n && depth > 0){
+                    char x = docText[q];
+                    if(x == '/' && q+1 < n && docText[q+1] == '/'){
+                        while(q < n && docText[q] != '\n') q++;
+                        continue;
+                    }
+                    if(x == '"'){ q++; while(q < n && docText[q] != '"') q++; if(q < n) q++; continue; }
+                    if(x == '\''){ q++; while(q < n && docText[q] != '\'') q++; if(q < n) q++; continue; }
+                    if(x == '{') depth++;
+                    else if(x == '}'){ depth--; if(depth == 0){ regions.push_back({regionStart, q}); q++; break; } }
+                    q++;
+                }
+                i = q;
+            } else {
+                // Single-line: from after #bgl up to end of line
+                int regionStart = afterTag;
+                int q = afterTag;
+                while(q < n && docText[q] != '\n') q++;
+                regions.push_back({regionStart, q});
+                i = q;
+            }
+            continue;
+        }
+        i++;
+    }
+    return regions;
+}
+
+// Convert (line, col) — both 0-based per LSP spec — to an absolute character offset.
+int LspServer::positionToOffset(const std::string& docText, int line, int col) {
+    int curLine = 0, i = 0, n = (int)docText.size();
+    while(i < n && curLine < line){
+        if(docText[i] == '\n') curLine++;
+        i++;
+    }
+    return i + col;
+}
+
+// True when the request at (line, col) should be served. For .bgl-mode docs: always true.
+// For .inf-mode docs: only true when the position is inside a #bgl region.
+bool LspServer::requestAllowedAt(const std::string& uri, int line, int col) {
+    auto modeIt = documentModes.find(uri);
+    if(modeIt == documentModes.end() || modeIt->second != DocMode::Inf) return true;
+    auto regionsIt = documentBglRegions.find(uri);
+    if(regionsIt == documentBglRegions.end()) return false;
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return false;
+    int offset = positionToOffset(docIt->second, line, col);
+    for(const BglRegion& r : regionsIt->second)
+        if(offset >= r.startOffset && offset < r.endOffset) return true;
+    return false;
 }
 
 //=============================================================================
@@ -752,6 +869,13 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
         out.declSrc = cd->src;
         return out;
     }
+    if(auto* ed = dynamic_cast<enumDef*>(&td)) {
+        out.kind = LspSymbolRef::Global;
+        out.typeName = ed->name;
+        out.displayName = ed->displayName.empty() ? ed->name : ed->displayName;
+        out.declSrc = ed->src;
+        return out;
+    }
     for(typeDef* g : languageService.globals) {
         if(g->name != loweredName) continue;
         out.kind = LspSymbolRef::Global;
@@ -781,6 +905,9 @@ json LspServer::handleHover(const json& params) {
     string uri = params["textDocument"]["uri"];
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
+
+    // .inf-mode gating: outside #bgl{} regions, no Beguile hover.
+    if(!requestAllowedAt(uri, line, col)) return nullptr;
 
     string path = uriToPath(uri);
 
@@ -991,6 +1118,10 @@ json LspServer::handleHover(const json& params) {
                 typeInfo = "class " + (cd->displayName.empty() ? cd->name : cd->displayName);
                 if(cd->isEmitterClass) typeInfo = "emitter " + typeInfo;
                 if(cd->isExternal) typeInfo = "extern " + typeInfo;
+            } else if(auto* ed = dynamic_cast<enumDef*>(&td)) {
+                typeInfo = (ed->isBnum ? "bnum " : "enum ") +
+                           (ed->displayName.empty() ? ed->name : ed->displayName);
+                if(ed->isExternal) typeInfo = "extern " + typeInfo;
             } else {
                 for(typeDef* g : languageService.globals) {
                     if(g->name != lower) continue;
@@ -1055,6 +1186,9 @@ json LspServer::handleCompletion(const json& params) {
     string uri = params["textDocument"]["uri"];
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
+
+    // .inf-mode gating: outside #bgl{} regions, defer to other providers / word fallback.
+    if(!requestAllowedAt(uri, line, col)) return nullptr;
 
     auto docIt = openDocuments.find(uri);
     if(docIt == openDocuments.end()) return nullptr;
@@ -1271,7 +1405,8 @@ json LspServer::handleCompletion(const json& params) {
                             if(!fd->isValueEmitter) label += "(...)";
                             items.push_back({{"label", label}, {"kind", 2}, {"detail", fd->returnType.name}});
                         } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                            items.push_back({{"label", vd->name}, {"kind", 6}, {"detail", vd->type.name}});
+                            string label = vd->displayName.empty() ? vd->name : vd->displayName;
+                            items.push_back({{"label", label}, {"kind", 6}, {"detail", vd->type.name}});
                         }
                     }
                     break;
@@ -1469,6 +1604,9 @@ json LspServer::handleDefinition(const json& params) {
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
 
+    // .inf-mode gating: outside #bgl{} regions, no Beguile go-to-definition.
+    if(!requestAllowedAt(uri, line, col)) return nullptr;
+
     auto docIt = openDocuments.find(uri);
     if(docIt == openDocuments.end()) return nullptr;
 
@@ -1613,6 +1751,13 @@ json LspServer::handleDefinition(const json& params) {
 
 json LspServer::handleDocumentSymbol(const json& params) {
     string uri = params["textDocument"]["uri"];
+
+    // .inf-mode: no Beguile declarations are allowed at the .inf top level, and #bgl{}
+    // bodies run in loose statement mode (no declarations either). Return empty so the
+    // outline is driven by whatever I6 tooling the user has installed.
+    auto modeIt = documentModes.find(uri);
+    if(modeIt != documentModes.end() && modeIt->second == DocMode::Inf) return json::array();
+
     string path = uriToPath(uri);
     json symbols = json::array();
 
@@ -1802,6 +1947,9 @@ json LspServer::handleSignatureHelp(const json& params) {
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
 
+    // .inf-mode gating: outside #bgl{} regions, no Beguile signature help.
+    if(!requestAllowedAt(uri, line, col)) return nullptr;
+
     auto docIt = openDocuments.find(uri);
     if(docIt == openDocuments.end()) return nullptr;
 
@@ -1973,6 +2121,9 @@ json LspServer::handleReferences(const json& params) {
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
 
+    // .inf-mode gating: outside #bgl{} regions, no Beguile references.
+    if(!requestAllowedAt(uri, line, col)) return json::array();
+
     auto docIt = openDocuments.find(uri);
     if(docIt == openDocuments.end()) return json::array();
 
@@ -2052,6 +2203,9 @@ json LspServer::handleRename(const json& params) {
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
     string newName = params["newName"];
+
+    // .inf-mode gating: outside #bgl{} regions, refuse to rename (would touch I6 code).
+    if(!requestAllowedAt(uri, line, col)) return nullptr;
 
     auto docIt = openDocuments.find(uri);
     if(docIt == openDocuments.end()) return nullptr;
@@ -2207,6 +2361,12 @@ json LspServer::handleSemanticTokensFull(const json& params) {
     string uri = params["textDocument"]["uri"];
     auto docIt = openDocuments.find(uri);
     if(docIt == openDocuments.end()) return {{"data", json::array()}};
+
+    // .inf-mode: don't classify the I6 host code. Beguile-aware highlighting inside #bgl{}
+    // regions is Tier-2 work (TextMate injection); for now we hand off to the I6 highlighter.
+    auto modeIt = documentModes.find(uri);
+    if(modeIt != documentModes.end() && modeIt->second == DocMode::Inf)
+        return {{"data", json::array()}};
 
     // Semantic tokens are encoded as delta-encoded quintuplets:
     // [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]

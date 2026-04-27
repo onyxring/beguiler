@@ -90,6 +90,23 @@ private:
     std::map<std::string, std::vector<std::string>> documentDiagnostics;  // uri → error messages
     std::map<std::string, std::string> documentParsePaths;  // uri → canonical path used during last parse
 
+    // .inf-mode polyglot support: when an opened file ends in `.inf`, the document is treated as
+    // I6 source with `#bgl{...}` islands. The LSP only responds to feature requests inside those
+    // islands; outside them, requests return null/empty so other providers (or VS Code's built-in
+    // word-based fallback) can handle them.
+    enum class DocMode { Bgl, Inf };
+    struct BglRegion { int startOffset; int endOffset; };  // half-open: [start, end)
+    std::map<std::string, DocMode> documentModes;
+    std::map<std::string, std::vector<BglRegion>> documentBglRegions;
+    // Scan the document text for #bgl{...} (multi-line) and #bgl ...; (single-line) regions.
+    // Brace-balanced like the lexer's getRawTextUntilCloseOrBgl, but operates on a string.
+    std::vector<BglRegion> findBglRegions(const std::string& docText);
+    // True when the cursor is inside a #bgl region in an .inf-mode document.
+    // Returns true unconditionally for .bgl-mode documents (no gating needed).
+    bool requestAllowedAt(const std::string& uri, int line, int col);
+    // Convert (line, col) to an absolute character offset in the document text.
+    int positionToOffset(const std::string& docText, int line, int col);
+
     // Helpers
     std::string uriToPath(const std::string& uri);
     std::string pathToUri(const std::string& path);

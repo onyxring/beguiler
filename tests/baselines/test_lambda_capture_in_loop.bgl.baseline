@@ -1,0 +1,68 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+global _bglCap4;
+global _bglCap3;
+global _bglCap2;
+global _bglCap1;
+global _bglCap0;
+object _bglUtil
+;
+object bgl
+  with util _bglutil
+;
+[apply fn x;
+    fn(x);
+];
+[main base i flag count;
+    base = 10;
+    for (i = 0 : i<3 : i++) {
+        _bglCap0 = base;
+        apply(_bglLambda_0, 1);
+        base = _bglCap0;
+    }
+    for (i = 0 : i<3 : i++) {
+        _bglCap1 = i;
+        apply(_bglLambda_1, 1);
+        i = _bglCap1;
+    }
+    flag = 0;
+    count = 0;
+    while (count<2) {
+        _bglCap2 = flag;
+        apply(_bglLambda_2, 1);
+        flag = _bglCap2;
+         count++ ;
+    }
+    apply(_bglLambda_3, 5);
+];
+[_bglLambda_0 n total;
+    total=_bglCap0 + n;
+    print total;
+];
+[_bglLambda_1 n total;
+    total=_bglCap1 + n;
+    print total;
+];
+[_bglLambda_2 n total;
+    total=_bglCap2 + n;
+    print total;
+];
+[_bglLambda_4 innern total;
+    total=_bglCap3 + _bglCap4 + innern;
+    print total;
+];
+[_bglLambda_3 outern shared j;
+    shared = 100;
+    for (j = 0 : j<2 : j++) {
+        _bglCap3 = shared;
+        _bglCap4 = outern;
+        apply(_bglLambda_4, 1);
+        shared = _bglCap3;
+        outern = _bglCap4;
+    }
+];
