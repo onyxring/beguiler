@@ -25,7 +25,7 @@ object _bglUtil{}
 object bgl{
     emitter int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
     emitter auto asm = bglOpCodes;     // compile-time alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>()
-    auto util = _bglUtil;
+    auto utilities = _bglUtil;
 }
 
 //=============================================================================

@@ -11,7 +11,7 @@ object _bglUtil
   with math _bglmath
 ;
 object bgl
-  with util _bglutil
+  with utilities _bglutil
 ;
 object _bglMath
   with unsignedCompare [x y u v;
@@ -95,11 +95,11 @@ object _bglMath
     a = 12;
     b = 10;
     xor_=(a | b) - (a & b);
-    shl=bgl.util.math.shiftLeft(a,3);
-    shr=bgl.util.math.shiftRight(a,1);
+    shl=bgl.utilities.math.shiftLeft(a,3);
+    shr=bgl.utilities.math.shiftRight(a,1);
     a = ((a | 3) - (a & 3));
-    a=bgl.util.math.shiftLeft(a,1);
-    b=bgl.util.math.shiftRight(b,1);
+    a=bgl.utilities.math.shiftLeft(a,1);
+    b=bgl.utilities.math.shiftRight(b,1);
     print xor_;
     print shl;
     print shr;

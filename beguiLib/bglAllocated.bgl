@@ -1,0 +1,40 @@
+//-----------------------------------------------------------------------------
+// bglAllocated.bgl — opt-in mixin for pool-allocated objects (`class Foo[N] {...}`).
+//
+// `[N]` on a class declaration grants `new` / `delete`. Inheriting from
+// `bglAllocated` adds two operations expected of allocator-managed objects:
+//
+//   instance.copy(other)   — bulk-copies properties from `other` into `instance`
+//                            (wraps I6's class-message copy via $class.copy(...))
+//   instance.remaining()   — returns the count of free slots in this class's pool
+//                            (wraps I6's built-in remaining op)
+//
+// Usage:
+//
+//   #include <bglAllocated>
+//
+//   class marbleClass[10] : object, bglAllocated {
+//       int weight = 0;
+//   }
+//
+//   marbleClass a = new marbleClass();
+//   marbleClass b = new marbleClass();
+//   b.copy(a);                          // bulk-copy a's properties into b
+//   int free = a.remaining();           // free slots in marbleClass's pool
+//
+// Why a method, not operator=?
+//   `marbleClass x = new marbleClass();` would otherwise dispatch through operator=,
+//   which would allocate a slot AND copy from it into uninitialized `x` — a wasted
+//   slot and meaningless copy. Keeping copy explicit avoids that trap.
+//-----------------------------------------------------------------------------
+#once
+
+emitter class bglAllocated {
+    // Bulk-copy all properties from src into self. Both must be active pool instances
+    // of the same (or compatible) pooled class. Wraps I6's class-message copy.
+    emitter void copy(var src) { $class.copy($self, $src); }
+
+    // Number of free slots remaining in this class's pool. Reads I6's built-in
+    // remaining op via the class-message dispatch.
+    emitter int remaining() { $class.remaining() }
+}

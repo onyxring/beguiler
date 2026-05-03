@@ -17,7 +17,7 @@ object _bglUtil
 ;
 object bgl
   with glulx _glulx,
-       util _bglutil
+       utilities _bglutil
 ;
 [testIf n;
     if (n<0) {

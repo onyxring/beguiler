@@ -23,7 +23,21 @@ class bglLanguageService{
     int tryCatchCounter = 0;         // unique ID for try/catch label generation
     int captureCounter = 0;          // unique ID for closure capture globals
     bool switchTempNeeded = false;  // set true when any switch uses guards; drives conditional _bgl_sw emission
-    
+
+    // .inf-mode anchor regions extracted from the source .inf file. When non-empty,
+    // signal the emitter to skip its own ICL generation (the user's `!%` block goes at
+    // the very top of the output) and to splice the trailer (from the first `end;`
+    // directive onward, including any text after) at the very bottom.
+    string infHeader;   // user's `!%` lines from the top of the .inf file (with newlines preserved)
+    string infTrailer;  // first `end;` directive through EOF (with newlines preserved)
+
+    // .inf-mode flags. `isInfMode` is set by parseFile when the entry file is `.inf`.
+    // `sawBglIsland` is set by parseInfFileBody when any #bgl/#bglDecl/#bglStmt island is
+    // encountered. Together they let the emitter suppress the bglInit synthesis (which is
+    // dead weight in a .inf with zero Beguile content).
+    bool isInfMode = false;
+    bool sawBglIsland = false;
+
     bglLanguageService();
         void reset();  // clear all state and re-register base types (for LSP re-parse)
         typeDef& getType(string);

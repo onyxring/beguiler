@@ -25,6 +25,7 @@ class abstractObject{
         string name;
         string displayName; // original-case name for error messages (empty = use 'name')
         string i6name;  // optional I6 alias: if non-empty, emitted under this name instead of 'name'
+        string docComment;  // user-authored doc-comment (`///` or `/** */`) preceding the declaration; rendered as Markdown in LSP hover
         bool operator == (abstractObject);
         bool isExternal;
         bool isPrePassStub = false; // true when registered by the pre-scanner; cleared when full pass processes the declaration
@@ -59,6 +60,11 @@ class classDef:public typeDef{
         vector<typeMember*> members;
         vector<classDef*> baseClasses;
         std::string globalDeclarationBody; // raw I6 body of 'emitter void globalDeclaration()'; emitted after each instance
+        // Pool size for `class Foo[N] {...}` — reserves N statically-allocated instances at compile time.
+        // 0  = not pooled (regular class).
+        // >0 = sized pool (emit as `Class Foo(N)`).
+        // -1 = extern marker `extern class Foo[]` — I6 owns the size; Beguile treats as pooled for new/delete checks.
+        int poolSize = 0;
 };
 //instances of classes, including overrides
 class objectDef: public typeDef{

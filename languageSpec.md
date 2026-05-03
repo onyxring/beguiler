@@ -181,26 +181,39 @@
 
 ### Chapter 15 — I6 Interoperability
 - 15.1 Overview
+  - 15.1.1 Two compilation modes
+  - 15.1.2 Islands
 - 15.2 `extern` Declarations
 - 15.3 `#includeI6`
 - 15.4 Emitter Bodies as Raw I6
-- 15.5 `#i6` — Inline Raw I6
-- 15.6 `#bgl` — Beguile Escapes Inside Raw I6
+- 15.5 `#i6` — I6 Islands (Inline Raw I6)
+- 15.6 `#bgl` — In-Routine Beguile Islands
+- 15.6b Precompiler Mode — File-Scope Beguile Islands
 - 15.7 I6 Emission Ordering
 - 15.8 Debug Bundle
 
-### Chapter 16 — Beguile Language Extensions
+### Chapter 16 — Runtime Library
 - 16.1 Overview
-- 16.2 Language Extension Files
-  - 16.2.2 `<char>` — Character Utilities
-  - 16.2.3 `<string>` — Mutable String Runtime
-  - 16.2.4 `<array>` — Extended Array Utilities (TBD)
-  - 16.2.5 `<math>` — Mathematical Functions (TBD)
-  - 16.2.6 `bglInit()` — Runtime Initialization
-- 16.3 IF Library Bindings
+- 16.2 The `bgl` Namespace
+- 16.3 IF-Domain Built-in Types
+  - 16.3.1 `attribute` and `attributeList`
+  - 16.3.2 `dictionaryWord`
+  - 16.3.3 `verb`
+  - 16.3.4 Grammar types
+  - 16.3.5 `parentProp`
+- 16.4 `bglWorld` — Object Tree Iteration (planned)
 
-### Chapter 17 — Runtime Library
-- 17.1 `bglWorld` — Object Tree Iteration (planned)
+### Chapter 17 — Opt-In Language Extensions
+- 17.1 Overview
+- 17.2 Core Language Extension Files
+  - 17.2.1 `<bglAllocated>` — Allocator-Managed Object Mixin
+  - 17.2.2 `<char>` — Character Utilities
+  - 17.2.3 `<string>` — Mutable String Runtime
+  - 17.2.4 `<uint>` — Unsigned Integer Type
+  - 17.2.5 `<math>` — Mathematical Functions
+  - 17.2.6 `<array>` — Extended Array Utilities (TBD)
+  - 17.2.7 `bglInit()` — Runtime Initialization
+- 17.3 IF Library Bindings
 
 ---
 # Chapter 1 — Introduction
@@ -221,14 +234,18 @@ Beguile is not a general-purpose language. Its type system and object model are 
 
 ## 1.3 Compilation Model
 
-A Beguile source file (`.bgl`) is processed in two passes by the Beguile compiler. The compiler:
+A Beguile source file (`.bgl`) is processed by the Beguile compiler through the following stages. Steps 1 and 6 are conditional and only run when blorb packaging is enabled (`generateBlorb = true` in `#beguilerSettings`); see §3.4.1.
 
-1. **Pre-scans** the source (and all included files) to register type, object, function, and variable stubs. This pass resolves forward references so that declarations may appear in any order.
-2. **Lexes and parses** the source in full, resolving types and checking compatibility against the stubs established in pass one.
-3. **Emits** an Inform 6 source file (`.inf`) that is semantically equivalent to the Beguile source.
-4. **Invokes the Inform 6 compiler** (`inform`) on the generated `.inf` file to produce the final story file (`.ulx` for Glulx or `.z8`, `.z5`, or `.z3` for Z-Machine).
+1. *(optional)* **Asset pre-scan** — when blorb packaging is enabled, the compiler scans `blorbAssetPath` for image and audio files and writes `_blorbAssets.bgl` containing an `eAssets` enum the source code can reference.
+2. **Pre-scans** the source (and all included files) to register type, object, function, and variable stubs. This pass resolves forward references so that declarations may appear in any order.
+3. **Lexes and parses** the source in full, resolving types and checking compatibility against the stubs established in the previous pass.
+4. **Emits** an Inform 6 source file (`.inf`) that is semantically equivalent to the Beguile source.
+5. **Invokes the Inform 6 compiler** (`inform`) on the generated `.inf` file to produce the story file (`.ulx` for Glulx or `.z8`, `.z5`, or `.z3` for Z-Machine).
+6. *(optional)* **Blorb assembly** — when blorb packaging is enabled and the I6 step succeeded, the compiler assembles a `.zblorb` (Z-Machine) or `.gblorb` (Glulx) file containing the story file plus all discovered assets and an iFiction metadata record.
 
 The intermediate `.inf` file is retained alongside the story file. When compiled with `--debug`, Beguile generates a debug file and triggers Inform 6 to do the same, supporting source-level debugging in the VS Code extension.
+
+Precompiler-mode files (`.inf` entry, see §15.1.1) follow the same pipeline with one variation: the source IS already an I6 file, so the Beguile passes (steps 2-4) run only over Beguile islands embedded in it; the surrounding I6 passes through to step 5 unchanged. Blorb packaging steps 1 and 6 work identically.
 
 ## 1.4 Relationship to Inform 6
 
@@ -653,7 +670,7 @@ When placed at the top of a Beguile source file, `#once` marks the file so that 
 
 The compiler also enforces a maximum include nesting depth of 255. Exceeding this limit — for example through circular includes in files without `#once` — is a compile-time error.
 
-### 3.2.5 Path resolution
+### 3.2.6 Path resolution
 
 All file paths in Beguile source — `#include` paths, `#includeI6` paths, and `#beguilerSettings` path properties (`informPath`, `outputPath`, `blorbAssetPath`, etc.) — receive two normalization passes at parse time.
 
@@ -662,6 +679,21 @@ All file paths in Beguile source — `#include` paths, `#includeI6` paths, and `
 **Case-insensitive resolution.** When searching for an include file, the compiler performs a case-insensitive match against the entries of the target directory. The first directory entry whose lowercased name equals the lowercased target filename is used. This applies to both `#include <name>` (library search) and `#include "path"` (relative search). If no entry matches, the literal path is used and a normal file-not-found error results.
 
 > Note: case-insensitive resolution only applies to the **filename** portion of the path, not to intermediate directory components. On a case-sensitive file system, directories in the path must still be cased correctly.
+
+**Resolved paths emitted to I6.** For `#includeI6`, the *fully resolved absolute path* is what gets written into the generated I6 stream — not the literal path the user typed. This isolates I6's own include lookup from the user's working-directory and search-path setup; I6 sees a single canonical filename and never has to re-search. (Beguile's `#include <bgl>` directives are processed entirely at the Beguile layer and don't appear in the I6 output at all.)
+
+### 3.2.7 Differences from I6 path conventions
+
+Beguile does **not** use I6's `>filename` prefix on `#include` or `#includeI6`. In I6, a leading `>` means "from the same directory as the entry-point source file." Beguile already searches the current source file's directory first for `#include "path"` and `#includeI6 "name"`, so the prefix is redundant.
+
+When porting I6 code into Beguile (`#include "..."` or `#includeI6 "..."`), drop any `>` prefix from the filename:
+
+```
+#include ">worldArea1.inf"   // ← I6 convention; Beguile rejects (file '>worldArea1.inf' not found)
+#include "worldArea1.inf"    // ← correct in Beguile; resolves relative to the current file
+```
+
+The `>` convention still works for I6's own `Include` directives appearing inside raw I6 regions of `.inf`-mode files, because Beguile passes raw I6 through to the I6 compiler untouched. Only Beguile-layer `#include` / `#includeI6` directives need the prefix dropped.
 
 ## 3.3 Preprocessor Symbols
 
@@ -1083,16 +1115,18 @@ Beguile is statically typed. Every variable, parameter, and return value has a d
 
 ## 4.2 Primitive Types
 
-| Type | Description |
-|------|-------------|
-| `int` | Integer value. Maps to the native I6 integer. |
-| `uint` | Unsigned integer value. Same bit pattern as `int`, but comparison operators use unsigned ordering. Requires `#include <uint>`. See §4.2a. |
-| `bool` | Boolean value. Backed by the `eBool` enum (`true`/`false`). |
-| `char` | A single ZSCII character value. |
-| `string` | A string value. The `<string>` language extension adds mutable string operations backed by a runtime utility class; without it, strings are immutable I6 print-only values. |
-| `object` | The base class for all world objects in the IF model. |
-| `verb` | A class for managing verb actions. Verb instances are declared with the `verb` keyword and compared in `switch`/`case` blocks against the current action. |
-| `void` | Not a value type. A return-type specifier indicating a function returns no value. |
+All primitive types in this table are part of the auto-loaded runtime library (Chapter 16) and require no `#include` — except `uint`, which is opt-in via `<uint>`.
+
+| Type | Auto-loaded | Description |
+|------|---|---|
+| `int` | ✓ | Signed integer value. Maps to the native I6 integer. |
+| `uint` |   | Unsigned integer value. Same bit pattern as `int`, but comparison and division operators use unsigned semantics. Requires `#include <uint>`. See §4.2a. |
+| `bool` | ✓ | Boolean value (`true` / `false`). |
+| `char` | ✓ | A single ZSCII character value. The `<char>` extension (§17.2.2) adds case-conversion and inspection methods. |
+| `string` | ✓ | A string value. Auto-loaded `string` provides print, equality, and literal assignment. The `<string>` extension (§17.2.3) adds mutable string operations backed by a runtime pool. |
+| `object` | ✓ | The base class for all world objects in the IF model. |
+| `verb` | ✓ | An alias class for declaring verb instances. See Chapter 14. |
+| `void` | ✓ | Not a value type. A return-type specifier indicating a function returns no value. |
 
 ## 4.2a The `uint` Type
 
@@ -1142,7 +1176,7 @@ Literal pseudo-types are not declared by user code. They are inferred automatica
 
 Literal pseudo-types are compatible with their corresponding runtime types exclusively through declared operators — specifically `operator =` on the target class. No compatibility rule for these is built-in to the compiler, but operator makes this distintion transparent to the user.
 
-`interpolatedStringLiteral` is unique among the literal pseudo-types: because an interpolated string contains multiple segments that emit as separate statements, it cannot be reduced to a single expression value. Instead, when an emitter parameter has this type, the parameter reference in the emitter body expands to the full block of print statements for all segments. This enables `print($"...")` and the extended syntax implemented by the `string` language extension: `string s = $"..."`. See §16.2 for details on language extensions.
+`interpolatedStringLiteral` is unique among the literal pseudo-types: because an interpolated string contains multiple segments that emit as separate statements, it cannot be reduced to a single expression value. Instead, when an emitter parameter has this type, the parameter reference in the emitter body expands to the full block of print statements for all segments. This enables `print($"...")` and the extended syntax implemented by the `string` language extension: `string s = $"..."`. See §17.2 for details on language extensions.
 
 Literal pseudo-types are first-class types: they are declared as `extern class` in the core library and can be extended to have operators and methods defined against them. This means method calls are valid directly on literal values, if defined in an emitter:
 
@@ -1164,16 +1198,26 @@ uint u = (uint)-1;     // OK: explicit cast
 
 This prevents accidental sign-related bugs when working with unsigned values while still allowing intentional conversions (e.g., `(uint)-1` for the maximum unsigned value).
 
-## 4.4 The `null` Keyword
+## 4.4 `nothing` and `null`
 
-`null` represents a null object reference. It maps to the I6 value `nothing` and has the resolved type `object`.
+`nothing` is the built-in absence/unset value. It is the same value I6 uses to mean "no object" (numerically 0) and Beguile exposes it under that name throughout the language. It has the resolved type `object` but is compatible with any type.
 
 ```bgl
-object o = null;
-if(o == null) print("nothing here");
+object o;
+if(o == nothing) print("not yet set");
+
+marbleClass m = new marbleClass();
+if(m == nothing) print("pool exhausted");
 ```
 
-`null` is compatible with any type. It emits as `nothing` in I6, which is the integer value `0`. For objects, it represents the absent/unset object reference. For integers and strings, it represents zero or an undefined reference.
+`null` is an accepted synonym for `nothing` for users coming from C-family languages. The two are interchangeable; Beguile emits both as I6's `nothing`.
+
+```bgl
+object o = null;          // identical to: object o = nothing;
+if(o == null) ...         // identical to: if(o == nothing) ...
+```
+
+For object references, `nothing` represents the absent/unset state — pool exhaustion, an uninitialized property, a missing parent, etc. For integers, `nothing` is the value `0`. Comparisons against `nothing` are the canonical check for "this allocation/reference didn't succeed."
 
 ## 4.5 Enumerations
 
@@ -1399,6 +1443,16 @@ Rules for `extern class` members:
 - **Variable declarations** (type and name only, no `=` initializer) are allowed and contribute to type inference on object instances.
 - **Variable definitions** (with `=` initializer) are syntactically valid but the initializer value is ignored at runtime — no code is generated for it. The value exists solely as metadata and is invisible to normal Beguile programs. Certain compiler-internal classes (such as `beguilerSettingsType`) treat these initializers as default values for directive properties.
 
+#### Marker form for I6-pooled types
+
+```bgl
+extern class object[];
+```
+
+The empty brackets `[]` mark the class as I6-pooled with the size determined by the I6 declaration — Beguile does not claim to know it. This unlocks `new ClassName(...)` and `delete instance` against the type for compile-time validation (see §5.2.5 and §11.X). The body may be omitted (`extern class object[];`) or present (`extern class object[] { ... }`) — same as a non-marker `extern class`.
+
+`extern class Foo[N]` (with a specific size) is a compile-time error: the pool size belongs to the I6 declaration, and Beguile can't enforce a size it doesn't own.
+
 #### Typical use
 
 Extern classes wrap I6 built-in types so that Beguile's type system can reason about them. The core library uses extern classes for all primitive types (`int`, `char`, `bool`, `string`, `object`) and for library-defined types like `attribute` and `attributeList`. Emitter methods on extern classes provide typed, operator-overloaded access to I6 operations that would otherwise require raw I6 code.
@@ -1475,6 +1529,74 @@ Rules for `alias class` members:
 
 `alias` and `extern` are mutually exclusive and serve differnt purposes.
 
+## 5.2.5 Pooled Classes
+
+A normal class can reserve a fixed number of statically-allocated instances at compile time by adding `[N]` after the class name. Instances are then allocated and deallocated dynamically from this pool with `new` and `delete` (see §11.X). This mirrors I6's `Class Foo(N) with ... has ...;` form.
+
+```bgl
+class marbleClass[10] : object {
+    int rolls = 0;
+
+    void create(){
+        rolls = 0;
+    }
+
+    void destroy(){
+        // cleanup before the slot returns to the pool
+    }
+}
+
+void main(){
+    marbleClass m = new marbleClass();
+    // ... use m ...
+    delete m;
+}
+```
+
+The `[10]` reserves ten instance slots in static memory. There is no dynamic allocation at runtime — `new` returns one of the pre-allocated slots, or `nothing` if the pool is exhausted. This matches the Z-machine and Glulx VM model: no malloc, all storage statically sized.
+
+#### Pool size
+
+- `[N]` (N is a positive integer) — sized pool, emits as I6 `Class Foo(N) ...`.
+- `[]` (empty brackets) — **only valid on `extern class`**, see §5.2.2 below. Marks the class as I6-pooled with size opaque to Beguile.
+- `[N]` is not valid on `emitter class` or `alias class` — those forms have no I6 instance backing.
+- `extend class Foo[...]` is not valid — pool size is part of the original declaration's contract.
+
+#### Pool inheritance
+
+Subclasses share the parent's pool. There is no per-subclass pool size — `class subMarble : marbleClass` adds members but draws instances from `marbleClass`'s pool of 10.
+
+#### `create()` and `destroy()` lifecycle methods
+
+A pooled class may define a `create()` method, called when the slot is allocated, and a `destroy()` method, called before the slot is returned to the pool. Both are optional. They map directly to I6's `create` and `destroy` properties on the class.
+
+```bgl
+class marbleClass[10] : object {
+    int weight = 0;
+
+    void create(int w){
+        weight = w;
+    }
+}
+
+marbleClass m = new marbleClass(5);   // calls create(5), m.weight = 5 after
+```
+
+Rules for `create()`:
+- **Return type must be `void`.** I6's create veneer ignores the return value.
+- **Up to 3 parameters on Z-machine.** I6's class-message dispatch (`Cl__Ms`) caps argument forwarding at 3 slots. Glulx may allow more — verify per target.
+- **One `create` per class.** Multiple Beguile overloads would collide in I6's single-property-per-class create dispatch. If you need multiple allocation styles, add separate `init`-style helpers and call them after `new`.
+
+Rules for `destroy()`:
+- **Return type must be `void`.** Like create, the return is ignored.
+- **No parameters.** I6's destroy veneer takes no forwarded args.
+- **One `destroy` per class.**
+
+#### Limitations
+
+- Z-machine class-message dispatch caps `create` arguments at 3.
+- A static-instance variable of a pooled type (e.g. `marbleClass M;` declared at file scope, not allocated via `new`) cannot be safely passed to `delete` — Beguile does not currently distinguish pool references from static instances at compile time. I6 will catch the misuse at runtime via `RT__Err`. Avoid mixing static and pool-allocated instances of the same type.
+
 ## 5.3 Member Variables
 
 Member variables declare properties on the class.
@@ -1486,6 +1608,20 @@ class Room {
     int visits = 0;
 }
 ```
+
+### Array Members
+
+Class members may be declared as `array<T>` with the same forms supported at file scope and in object bodies (see §13 — Arrays):
+
+```bgl
+class Inventory : object {
+    array<int>    slots[6];                       // sized, zero-initialized
+    array<object> heldRefs = { lamp, key };       // initializer list
+    array<char>   nameBuf[16];                    // byte array
+}
+```
+
+The class-property emission preserves the declared size and any initializer values, so each instance of the class gets its own per-property storage. Array members work identically in `class` bodies and `object` bodies.
 
 ### `const` Members
 
@@ -2783,6 +2919,17 @@ class Counter {
 
 The body of a function, method, or emitter is a sequence of statements. Statements are executed in order. Each statement is terminated by a semicolon unless it ends with a closing brace.
 
+**Stray semicolons are no-ops.** A `;` between statements with no statement before it is treated as an empty statement and discarded. This makes trailing semicolons on directives, declarations, and brace-terminated constructs optional and idempotent — `#include "x";`, `class Foo {...};`, and `{ ... };` all parse cleanly even though the `;` is technically extra:
+
+```bgl
+#include "myLib";              // trailing ; tolerated
+class Foo { int x = 0; };      // trailing ; after class body tolerated
+{ doStuff(); };                // trailing ; after block tolerated
+;;                             // empty — parses but does nothing
+```
+
+This applies at every statement boundary, including the top of a function body, between statements, and at file scope.
+
 ## 10.2 Variable Declaration
 
 A local variable is declared with a type, a name, and an optional initializer:
@@ -3165,7 +3312,7 @@ print "Score: ";
 print score;
 ```
 
-When the `<string>` extension is included, `print(string)` is replaced with the managed string printer. See §16.2.3.
+When the `<string>` extension is included, `print(string)` is replaced with the managed string printer. See §17.2.3.
 
 ### `log()`
 
@@ -3448,6 +3595,49 @@ string s = (string)myValue;            // invokes the explicit conversion
 **Disambiguation in expressions** — forcing operator resolution through a specific type when the inferred type would resolve differently.
 
 The cast applies to the immediately following identifier or method call. It does not propagate through a chain.
+
+## 11.5b `new` and `delete` for Pooled Classes
+
+`new TypeName(args)` allocates an instance from a pooled class's reserved slots; `delete instance` returns the slot to the pool. Both are valid only for classes declared with `[N]` (sized pool) or `extern class Foo[]` (extern marker). See §5.2.5 for the declaration form.
+
+```bgl
+class marbleClass[10] : object {
+    int weight = 0;
+    void create(int w){ weight = w; }
+}
+
+void main(){
+    marbleClass m = new marbleClass(5);   // allocate; calls create(5)
+    if(m == nothing){
+        // pool was exhausted
+        return;
+    }
+    // ... use m ...
+    delete m;                             // calls destroy() (if defined), returns slot to pool
+}
+```
+
+#### `new TypeName(args)` — expression
+
+- Returns a reference to an allocated pool slot, or `nothing` if the pool is exhausted. Always check the result before use.
+- Arguments are passed to the class's `create()` method. If `create` is not defined, `new TypeName()` (no args) is the only valid form.
+- Z-machine caps `create` arguments at 3.
+- Compile-time error: `new` on a non-pooled class.
+
+Emits as I6 `TypeName.create(args)` — the class-message form, dispatched through I6's `Cl__Ms` veneer.
+
+#### `delete identifier` — statement
+
+- Returns the slot to the pool. The class's `destroy()` method (if defined) is called immediately before the slot is freed.
+- Compile-time error: `delete` on a variable whose type is not a pooled class.
+
+Emits as I6 `TypeName.destroy(identifier);`.
+
+#### Pool exhaustion
+
+`new` returning `nothing` is the only signal that the pool is full. There is no automatic growth — pool size is fixed at compile time. Patterns:
+- Check `if(x == nothing)` after every `new` if exhaustion is recoverable.
+- Size the pool conservatively at declaration time if exhaustion would be a logic bug.
 
 ## 11.6 Lambda Functions
 
@@ -3922,7 +4112,82 @@ Since `extern verb` objects are defined in I6, only `grammar +=` is allowed — 
 
 ## 15.1 Overview
 
-Beguile is built on top of I6, and several mechanisms allow Beguile code to use I6 constructs directly, declare I6-defined entities for type-checking, and pass I6 directives through to the generated output unchanged.
+Beguile is built on top of I6: every Beguile program is transpiled to I6, then handed to the I6 compiler. Several language mechanisms exist to use I6 constructs directly, declare I6-defined entities for type-checking, and pass I6 directives through to the generated output unchanged.
+
+### 15.1.1 Two compilation modes
+
+Beguile operates in one of two modes, chosen automatically by the entry-file extension:
+
+| Mode | Entry file | Host language | Guest language | Migration story |
+|---|---|---|---|---|
+| **Default mode** | `.bgl` | Beguile | I6 (via `#i6{}` I6 islands, see §15.5) | New project, Beguile-from-the-ground-up |
+| **Precompiler mode** | `.inf` | I6 | Beguile (via `#bgl{}` Beguile islands, see §15.6b) | Existing I6 project, adopt Beguile incrementally |
+
+The two modes are structurally inverted versions of the same idea: *one language is the host, the other is reachable through islands embedded in the host stream* (see §15.1.2 for the formal definition of islands). Both modes produce the same kind of output (an `.inf` file the I6 compiler can build), and both can use every Beguile feature. They differ in **which language owns the file** and **how the user thinks about adding the other**.
+
+#### Default mode (entered via `.bgl`)
+
+The source file is Beguile. Classes, objects, methods, and statements are written in Beguile syntax. Raw I6 is reachable via `#i6{...}` blocks for capabilities that have no Beguile equivalent. The Beguile Language Runtime (BLR) is auto-loaded; the `bgl` namespace is implicitly imported.
+
+```bgl
+class Room : object {
+    string short_name;
+}
+
+Room foyer { short_name = "Foyer"; }
+
+#i6 {
+    [ DebugDump x ;
+        objectloop(x ofclass Room) print (name) x, "^";
+    ];
+}
+```
+
+#### Precompiler mode (entered via `.inf`)
+
+The source file is I6. The whole file is treated as raw I6 text and passed through to the I6 compiler. Beguile features are reached through file-scope Beguile islands (`#bgl`, `#bglDecl`, `#bglStmt`) or in-routine Beguile islands (the same `#bgl{...}` form as default mode). The BLR is still auto-loaded, but the `bgl` namespace requires explicit `#using bgl;` to import. ICL header lines (`!% -G`, etc.) at the top of the file are passed through verbatim — Beguile does not synthesize its own header.
+
+When Beguile is used as a precompiler in this mode, it serves a role analogous to the C preprocessor over a C source file: the author's source is recognizably the target language (I6), with the precompiler stage adding higher-level constructs that the downstream compiler doesn't natively understand.
+
+```inf
+!% -G
+
+[ Main ;
+    print "Welcome.^";
+    bglInit();
+    Initialise();
+];
+
+#bgl {
+    class magicButton[5] : object {
+        int strength = 0;
+        void create(int s) { strength = s; }
+    }
+}
+
+[ Initialise ;
+    new magicButton(10);
+];
+```
+
+Precompiler mode exists primarily as a **migration ramp**: an I6 author can convert one type, one global, or one routine at a time without restructuring their file or learning Beguile's full project layout. If a file contains zero Beguile islands, precompiler mode is a no-op pass-through (see §15.6b.6).
+
+### 15.1.2 Islands
+
+An **island** is a region of one language embedded in a stream of the other. The host stream is whichever language owns the file (Beguile in default mode, I6 in precompiler mode); islands let the author cross into the guest language and back without leaving the file.
+
+There are two kinds, named by their *content*, not by their host:
+
+- **I6 island** — a region of raw I6 embedded in a Beguile stream. Written `#i6 { ... }` or, for a single statement, `#i6 stmt;`. Detailed in §15.5.
+- **Beguile island** — a region of Beguile embedded in an I6 stream. Two forms exist:
+  - **In-routine Beguile islands** — `#bgl { ... }` inside an I6 routine (i.e., inside an I6 island, or inside the raw I6 of an `.inf` file). Statement-only. Detailed in §15.6.
+  - **File-scope Beguile islands** — `#bgl { ... }` / `#bglDecl { ... }` / `#bglStmt { ... }` at the top level of an `.inf` file in precompiler mode. May contain declarations or statements. Detailed in §15.6b.
+
+Throughout this spec, "Beguile island" and "I6 island" are used to disambiguate when the host language is ambiguous from context. Bare "island" appears only when context makes the type unambiguous.
+
+**Nesting.** Islands can nest arbitrarily — `#i6 { #bgl { #i6 { #bgl { ... } } } }` is valid in default mode, and the symmetric pattern works in precompiler mode. Each layer pushes its own context onto the file-parsing stack and inherits the loose-identifier-mode rules of its outermost containing Beguile island (see §15.6 and §15.6b.2).
+
+The remainder of this chapter covers the mechanisms that bridge the two modes: `extern` declarations (§15.2), `#includeI6` (§15.3), emitter bodies (§15.4), I6 islands via `#i6` (§15.5), in-routine Beguile islands via `#bgl` (§15.6), file-scope Beguile islands in precompiler mode (§15.6b), and emission ordering rules (§15.7).
 
 ## 15.2 `extern` Declarations
 
@@ -3948,7 +4213,7 @@ Emits an I6 `#include` directive into the generated output. See §3.2.4 for full
 
 Emitter bodies are raw I6 text inlined at call sites — the primary path for I6 capabilities that have no Beguile syntax equivalent. See Chapter 7 for full emitter syntax, substitution rules, and `##if` conditional directives within emitter bodies.
 
-## 15.5 `#i6` — Inline Raw I6
+## 15.5 `#i6` — I6 Islands (Inline Raw I6)
 
 The `#i6` directive injects a block of raw Inform 6 code at the directive's source position in the generated output. Useful for I6-specific declarations or routines that have no Beguile equivalent — global variables defined entirely in I6, replacement routines, top-level Verb extensions, and so on.
 
@@ -3969,7 +4234,7 @@ The block contents are emitted **verbatim** — Beguile does not parse, type-che
 
 `#i6` blocks are emitted in their source-order position relative to other declarations (see §15.7 for ordering guarantees around classes and instances).
 
-## 15.6 `#bgl` — Beguile Escapes Inside Raw I6
+## 15.6 `#bgl` — In-Routine Beguile Islands
 
 `#bgl` is the inverse of `#i6` — it lets you switch back to Beguile from inside a raw I6 block. The body is parsed as a sequence of Beguile statements (code-block scope: no variable, function, class, or other declarations) and the resulting I6 emission is spliced into the surrounding stream at that point.
 
@@ -3999,7 +4264,7 @@ Two forms (matching `#i6`):
 **Use cases**:
 - Calling Beguile emitters or methods from inline I6 code without breaking the surrounding `#i6{}` block into multiple pieces.
 - Using Beguile's compile-time facilities (closures, generics, namespace resolution) within an otherwise-I6 routine.
-- Using Beguile as a *precompiler* over a primarily-I6 source: most of the file is `#i6{...}`, with Beguile features sprinkled in via `#bgl{...}` islands.
+- Using Beguile as a *precompiler* over a primarily-I6 source: most of the file is `#i6{...}`, with Beguile features sprinkled in via `#bgl{...}` Beguile islands.
 
 **Restrictions**:
 - No variable declarations (`int x = 5;` is rejected). Locals must be declared in the surrounding I6 routine's locals list.
@@ -4040,6 +4305,109 @@ The trade-off: a real type bug (passing an `object` where the API truly expects 
 > ⚠️ **Caveat — typos pass through silently.** Loose mode trades early diagnostics for ergonomics. A misspelled Beguile name (e.g. `blg.asm.foo()` instead of `bgl.asm.foo()`) is treated as an opaque I6 reference, emitted literally, and the error surfaces only at I6 compile time, often in cryptic form (`No such constant as "foo"`). When debugging, double-check that any "I6 didn't recognize this" error inside a `#bgl{}` block isn't actually a typo'd Beguile reference.
 
 **Nesting**: `#bgl` and `#i6` can nest arbitrarily — `#i6{ #bgl{ #i6{ #bgl{ ... } } } }` is valid. Each layer pushes its own context onto the file-parsing stack.
+
+> See §15.6b for the parallel **precompiler-mode** model — Beguile islands at file scope inside an I6 source file, rather than this section's in-routine form.
+
+## 15.6b Precompiler Mode — File-Scope Beguile Islands
+
+When the compiler is invoked on a file with the `.inf` extension, it enters **precompiler mode** (introduced in §15.1.1). The entire file is treated as raw I6, and Beguile features are accessed through Beguile islands embedded in the I6 stream (see §15.1.2). This is the inverse of default mode's §15.6 setup: instead of Beguile source with `#i6{}` I6 islands, precompiler mode is I6 source with `#bgl{}` Beguile islands.
+
+Precompiler mode's primary purpose is the **migration ramp**: an I6 author can convert one piece of their codebase at a time without leaving their `.inf` file. Beguile-declared types, globals, and methods are added incrementally, with the surrounding I6 unchanged.
+
+### 15.6b.1 The three Beguile island directives
+
+Precompiler mode recognizes three Beguile-island directive forms at file scope:
+
+| Directive | Content |
+|---|---|
+| `#bgl { ... }` | Auto-detect — declarations or statements based on first 1-3 tokens |
+| `#bglDecl { ... }` | Declarations only (classes, enums, globals, functions). Statement → compile error. |
+| `#bglStmt { ... }` | Statements only (assignments, calls, control flow). Declaration → compile error. |
+
+`#bgl` is the predominant form. The explicit variants exist as escape hatches when the author wants the early-error or when content is genuinely ambiguous.
+
+```inf
+!% -G
+
+[ Main ;
+    print "Welcome.^";
+    bglInit();
+    Initialise();
+];
+
+#bgl {
+    class magicButton[5] : object {
+        int strength = 0;
+
+        void create(int s) { strength = s; }
+
+        bool before() {
+            switch(action) {
+                case push: print("Click. The button does nothing."); rtrue;
+            }
+            rfalse;
+        }
+    }
+}
+
+[ Initialise ;
+    new magicButton(10);
+    new magicButton(15);
+];
+```
+
+### 15.6b.2 Loose identifier mode
+
+**All precompiler-mode Beguile islands run in loose mode** — and this looseness propagates through any sub-parses, including class method bodies declared inside a `#bgl` or `#bglDecl` island. References to identifiers Beguile doesn't know about (I6-declared globals, objects, routines, constants) pass through verbatim to the I6 stream:
+
+```inf
+Object  RedSpell "redspell";
+Constant redtangent = 7;
+
+#bgl {
+    class wand : object {
+        void cast() {
+            switch(action) {
+                case redtangent:                              // I6 constant — passes through
+                    RedSpell.cast(player, 5);                 // I6 object + method — passes through
+            }
+        }
+    }
+}
+```
+
+This matches the loose-mode story for §15.6 in-routine Beguile islands, extended uniformly through the entire precompiler-mode Beguile-island sub-parse. The decl-vs-stmt distinction governs *what kind of content* the island accepts at the outer level — once we're inside a method body, references to I6 are always allowed.
+
+> The same trade-off applies as in §15.6: typos pass through silently. A misspelled I6 name surfaces only at I6 compile time.
+
+### 15.6b.3 Auto-loaded ICL header
+
+Beguile does not synthesize an ICL header (`!% -G`, etc.) in precompiler mode. The user's own `!%` directives at the top of the `.inf` file are the only authority. They must be on the first lines of the file with no blank lines between them, per I6's stricter ICL parsing.
+
+### 15.6b.4 Layout of generated output
+
+In precompiler mode, the generated I6 is laid out as:
+
+```
+[ user's !% header lines ]    extracted from the top of the .inf body
+[ emitFirst blocks         ]   contents of any #emitfirst islands
+[ bglInit synthesis        ]   routine declaration; body includes #startup content
+[ .inf middle              ]   .inf body between !% header and end;
+[ emitLast blocks          ]   contents of any #emitlast islands
+[ .inf trailer (end; ...)  ]   from the first end; to EOF, if present
+```
+
+`#startup` content lives inside `bglInit()`, which is *declared* between `emitFirstBlocks` and the `.inf` middle but doesn't *run* until something calls `bglInit()`. The `.inf` author is responsible for ensuring that call happens — either via a library binding or by calling `bglInit()` explicitly from `Initialise` or `Main`.
+
+### 15.6b.5 Required explicit `#using bgl`
+
+The `bgl` namespace is **not** auto-imported in precompiler mode. To use `bgl.glulx.window`, `bgl.asm.*`, etc., declare `#using bgl;` inside a `#bgl{}` Beguile island. Once declared, it applies to all subsequent Beguile islands in the file.
+
+This is opposite to default mode where `#using bgl` is implicit. The asymmetry exists because precompiler-mode authors are coming from I6 and may not want their global namespace populated by Beguile constructs they aren't using.
+
+### 15.6b.6 No-island fast path
+
+If an `.inf` file in precompiler mode contains zero `#bgl` / `#bglDecl` / `#bglStmt` Beguile islands, the compiler emits a byte-identical pass-through to the output `.transpiled.inf` — no ICL synthesis, no `bglInit`, no BLR scaffolding. This makes Beguile a no-op for `.inf` files that don't use any Beguile features, useful for incremental migration: drop the file in unchanged, then start adding Beguile islands.
 
 ## 15.7 I6 Emission Ordering
 
@@ -4110,167 +4478,116 @@ Together these two files give the VS Code extension everything it needs for sour
 
 ---
 
-# Chapter 16 — Beguile Language Extensions
+# Chapter 16 — Runtime Library
 
 ## 16.1 Overview
 
-The Beguile language extensions (`beguiLib/`) provide opt-in language features that are independent of any particular IF engine library. None are built into the compiler; each is included by the author as needed.
+The Beguile runtime library is the set of types, namespaces, and built-in objects that are auto-loaded into every Beguile program — both default-mode (`.bgl` files) and precompiler-mode (`.inf` files with file-scope Beguile islands, see §15.6b). No `#include` is needed; these constructs are available the moment the compiler starts processing a file.
 
-A separate category of files, **IF Library Bindings** (`beguiLib/bindings/`), expose a specific external IF library's symbols — attributes, globals, actions, and so on — to Beguile's type system using `extern` declarations. These are inherently target-dependent and entirely optional; projects that manage their own I6 bindings or use a different library do not need them.
+Where in this chapter we say a type or value is "auto-loaded", "built-in", or "always available", these all mean the same thing: it's part of every program by default, regardless of where its definition lives in the runtime library files.
 
-## 16.2 Core Language Extension Files
+This chapter documents:
+- The `bgl` namespace and its target-specific sub-namespaces (§16.2)
+- IF-domain built-in types — attributes, dictionary words, verbs, grammar (§16.3)
+- Built-in objects providing world-tree iteration (§16.4)
 
-Core files in `beguiLib/`. These are library-agnostic and work with any IF target. Each is included with `#include <name>`.
+The basic primitive types (`int`, `bool`, `char`, `string`, `object`, `var`) and their literal forms are documented in Chapter 4. They are all auto-loaded.
 
-### 16.2.2 `<char>` — Character Utilities
+For *opt-in* language extensions that require explicit `#include`, see Chapter 17.
+
+## 16.2 The `bgl` Namespace
+
+`bgl` is a built-in namespace object that organizes target-specific operations into sub-namespaces. It is reachable from any default-mode source file without any `#include` or `#using`. (In precompiler-mode, the `bgl` namespace is auto-loaded but requires an explicit `#using bgl;` to pull names into local scope — see §15.6b.5.)
+
+| Path | Contents | Target |
+|---|---|---|
+| `bgl.glulx.*` | Glulx-specific operations: window management, file I/O, asset access, ... | Glulx |
+| `bgl.zcode.*` | Z-machine-specific operations | Z3/Z5/Z8 |
+| `bgl.asm.*` | Direct opcode emitters for the active VM (target-routed) | Both |
+
+Each branch is itself a namespace object exposing typed methods (mostly emitters) for capabilities specific to that VM. The compiler does not enforce target-routing — referencing `bgl.glulx.window` from a Z-machine target build will compile through Beguile, but the resulting I6 will fail at the I6 stage because the underlying Glulx routines aren't available.
+
+A typical use of `bgl.glulx.window`:
 
 ```bgl
-#include <char>
+glulx.window mainWin = glulx.createMainWindow();
+mainWin.print("Hello, Glulx world.\n");
 ```
 
-Extends the built-in `char` type with character inspection, case conversion, and case-insensitive comparison. Includes full support for ZSCII extended characters (diacritics, ligatures, etc.).
+The `#using bgl.glulx;` directive imports the inner namespace so members become reachable bare (e.g. `window` instead of `bgl.glulx.window`). See §13 for namespace import details.
 
-**Case inspection:**
+## 16.3 IF-Domain Built-in Types
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `c.isLower()` | `bool` | True if `c` is a lowercase letter (including diacritics) |
-| `c.isUpper()` | `bool` | True if `c` is an uppercase letter (including diacritics) |
-| `c.isAlpha()` | `bool` | True if `c` is any letter |
-| `c.isNumeric()` | `bool` | True if `c` is a digit (`0`–`9`) |
-| `c.isAlphaNumeric()` | `bool` | True if `c` is a letter or digit |
-| `c.isVowel()` | `bool` | True if `c` is a vowel (including accented vowels) |
-| `c.isConsonant()` | `bool` | True if `c` is a consonant |
+Auto-loaded class types modeling IF-domain concepts: attributes, dictionary words, verbs, and grammar. Each has its own typed declaration site and operator/method behavior elsewhere in the spec; this section catalogs them as a group so users know what's available.
 
-**Case conversion:**
+### 16.3.1 `attribute` and `attributeList`
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `c.toUpper()` | `char` | Returns uppercase version of `c` |
-| `c.toLower()` | `char` | Returns lowercase version of `c` |
-
-**Operators:**
-
-| Operator | Description |
-|----------|-------------|
-| `c =~ d` | Case-insensitive equality. `'A' =~ 'a'` is true. |
-
-Does not require `bglInit()`.
-
-### 16.2.3 `<string>` — Mutable String Runtime
+`attribute` is the type of a single I6 attribute (`light`, `container`, `static`, etc.). `attributeList` is the type of a class or object's `has` line — a comma-separated list of attributes.
 
 ```bgl
-#include <string>
-```
+extern attribute light;
+extern attribute static;
 
-Provides a pool-based mutable string type. Requires `bglInit()` to initialize the string pool.
+class magicButton[5] : object {
+    attributeList attributes = {static};
+}
 
-**Lifecycle:**
-
-Strings are automatically allocated on declaration (`init`) and freed on function exit (`deinit`). The pool size is configurable via `beguilerSettings.framePoolSize`.
-
-**Assignment and concatenation:**
-
-| Method / Operator | Description |
-|-------------------|-------------|
-| `s = "text"` | Assign from a string literal |
-| `s = other` | Copy from another string |
-| `s + "text"` | Concatenate (returns new string) |
-
-**Comparison:**
-
-| Operator | Description |
-|----------|-------------|
-| `s == "text"` | Content equality |
-| `switch(s) { case "a": ... }` | Switch on string value (via `operator switch`) |
-
-**Subscript access:**
-
-| Operator | Description |
-|----------|-------------|
-| `s[i]` | Read character at position `i` |
-| `s[i] = c` | Write character at position `i` |
-
-**Methods:**
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `s.print()` | `string` | Print the string |
-| `s.append(v)` | `string` | Append a string or character |
-| `s.prepend(v)` | `string` | Prepend a value |
-| `s.toUpper()` | `string` | Convert to uppercase |
-| `s.toLower()` | `string` | Convert to lowercase |
-| `s.trim()` | `string` | Trim whitespace from both ends |
-| `s.trimLeft()` | `string` | Trim leading whitespace |
-| `s.trimRight()` | `string` | Trim trailing whitespace |
-| `s.reverse()` | `string` | Reverse the string |
-| `s.mid(start, count)` | `string` | Extract substring |
-| `s.left(count)` | `string` | Extract left substring |
-| `s.right(count)` | `string` | Extract right substring |
-| `s.insert(pos, src)` | `string` | Insert at position |
-| `s.delete(pos, count)` | `string` | Delete characters |
-| `s.replace(search, repl)` | `string` | Replace first occurrence |
-| `s.replaceAll(search, repl)` | `string` | Replace all occurrences |
-| `s.format(pattern, ...)` | `string` | Formatted output (up to 2 additional args) |
-| `s.getLength()` | `int` | String length |
-| `s.indexOf(search)` | `int` | Find first occurrence |
-| `s.startsWith(prefix)` | `eBool` | Prefix test |
-| `s.endsWith(suffix)` | `eBool` | Suffix test |
-| `s.contains(search)` | `eBool` | Substring test |
-| `s.isEmpty()` | `eBool` | True if empty |
-| `s.capture()` | `void` | Capture output to this string |
-| `s.release()` | `void` | Release captured output |
-
-### 16.2.4 `<array>` — Extended Array Utilities
-
-```bgl
-#include <array>
-```
-
-> *This extension is planned but not yet implemented.* It will provide higher-level array operations (sort, search, filter, map) beyond the built-in subscript and for-in support.
-
-### 16.2.5 `<math>` — Mathematical Functions
-
-```bgl
-#include <math>
-```
-
-> *This extension is planned but not yet implemented.* It will provide common mathematical functions (abs, min, max, clamp, random range, power) as emitters.
-
-### 16.2.6 `bglInit()` — Runtime Initialization
-
-Some language extensions allocate runtime resources (memory pools, buffers, etc.) that must be set up before use. These extensions register an initialization hook via `#startup` (see §3.5.5); all registered hooks are called by `bglInit()`.
-
-The standard IF library bindings (`i6StandardLibrary` and `punyInform`) call `bglInit()` automatically during game startup. **Most users do not need to call `bglInit()` themselves.** It is only necessary when building a game without a standard binding:
-
-```bgl
-void Initialise() {
-    bglInit();
-    // ... rest of setup
+extend myRoom {
+    attributes += {light};      // append
+    attributes -= {scenery};    // remove
 }
 ```
 
-`bglInit()` is always available — it is a no-op if no extensions that need it have been included. The call is harmless to include unconditionally.
+Attribute declarations are typically `extern` (declared in I6 libraries), but `attribute` declarations may also appear in user code via `attribute attrName;` (see §8.6).
 
-**Which extensions require it:** `string.bgl` requires `bglInit()` to initialize the string pool. Extensions that do not allocate runtime resources (such as `char.bgl`) do not require it but are unaffected by the call.
+`attributeList` accepts initializer lists `{a, b, c}`, supports `+=` and `-=` for in-place modification (in `extend` blocks, see §5.9), and is emitted as the I6 `has` line on the containing class or object.
 
-## 16.3 IF Library Bindings
+### 16.3.2 `dictionaryWord`
 
-Files in `beguiLib/bindings/`. Each binding file is a Beguile declaration layer over one particular external IF library, giving Beguile code typed, name-checked access to that library's attributes, globals, and actions. Binding files do not define behavior — they map existing I6 names into the Beguile type system using `extern` declarations.
+`dictionaryWord` is the type of an I6 dictionary word. Literals are written with `.word` (singular) or `..word` (plural prefix indicating "noun is plural"). See §2.5.4 for the literal syntax.
 
-Different IF libraries require different binding files and would not be used together.
+```bgl
+dictionaryWord w = .cloak;
+dictionaryWord pl = ..marbles;
+```
 
-### Available Bindings
+Dictionary words participate in grammar patterns (Chapter 14) and can be compared with `==`.
 
-**`bindings/i6StandardLibrary`** — Bindings for the Inform 6 standard library (`parser.h`, `verblib.h`, `grammar.h`). Declares standard world-model attributes, mutable library globals, parser variables, compass direction objects, and the full set of standard IF actions as typed verbs. Automatically maps `title`, `headline`, and `release` from `#beguilerSettings` to the I6 constants the library expects.
+### 16.3.3 `verb`
 
-**`bindings/punyInform`** — Bindings for the PunyInform library (`globals.h`, `puny.h`). Declares PunyInform's attributes (including `reactive`), globals, colour settings, and verb actions. PunyInform uses no classes — objects are distinguished by attributes alone. Automatically maps `title` and `headline` from `#beguilerSettings`.
+`verb` is an alias class (for `object`) used to declare verbs. Verbs are objects with grammar rules attached. See Chapter 14 for the full verb/grammar story.
 
----
+```bgl
+verb examine {
+    grammar = {{examine, {.x, NOUN}}};
+}
+```
 
-# Chapter 17 — Runtime Library
+### 16.3.4 Grammar types
 
-## 17.1 `bglWorld` — Object Tree Iteration
+| Type | Purpose |
+|---|---|
+| `grammarToken` | A grammar token in a pattern (e.g. `NOUN`, `HELD`, `CREATURE`) |
+| `grammarPattern` | A complete grammar pattern — sequence of tokens and dictionary words |
+| `grammarRule` | One verb-targeted pattern: `{verb, {pattern}}` |
+| `grammarRuleList` | A list of grammar rules — the `grammar` member of a verb or grammar object |
+| `grammarElement` | Common base for grammar tokens, dictionary words, and other pattern atoms |
+
+Most of these are handled implicitly through the grammar declaration syntax (§14.4) — users rarely manipulate them as named types. They are catalogued here because they're the receiver types for built-in operators on grammar declarations.
+
+### 16.3.5 `parentProp`
+
+`parentProp` is the type of an object's `parent` property. Assigning to `obj.parent` is sugar for the I6 statement `move obj to <newParent>`:
+
+```bgl
+extend bag {
+    parent = inventory;     // emits: move bag to inventory;
+}
+```
+
+`parentProp` is auto-declared on every class via the built-in `extern class object` definition. Users do not normally instantiate it.
+
+## 16.4 `bglWorld` — Object Tree Iteration
 
 > *This facility is designed but not yet implemented.*
 
@@ -4337,5 +4654,211 @@ Only user-defined `object` declarations and non-emitter, non-alias `extern class
 ### Buffer capacity
 
 The scratch buffer holds up to 256 objects. Games with more than 256 objects in a single category will be silently truncated. For typical IF games this limit is not a concern.
+
+---
+
+# Chapter 17 — Opt-In Language Extensions
+
+## 17.1 Overview
+
+The Beguile language extensions (`beguiLib/`) provide opt-in language features that build on the runtime library (Chapter 16) but are not auto-loaded. Authors include each one explicitly with `#include <name>` when needed.
+
+A separate category of files — **IF Library Bindings** (`beguiLib/bindings/`) — exposes specific external IF library symbols (attributes, globals, actions) to Beguile's type system using `extern` declarations. Bindings are inherently target-dependent and entirely optional; projects that manage their own I6 bindings or use a different library do not need them. See §17.3.
+
+## 17.2 Core Language Extension Files
+
+Core extension files in `beguiLib/`. Each is library-agnostic and works with any IF target. Each is included with `#include <name>`.
+
+### 17.2.1 `<bglAllocated>` — Allocator-Managed Object Mixin
+
+```bgl
+#include <bglAllocated>
+```
+
+Adds `copy()` and `remaining()` operations to a pooled class (one declared with `[N]`, see §5.2.5). The class opts in by inheriting from `bglAllocated`:
+
+```bgl
+class marbleClass[10] : object, bglAllocated {
+    int weight = 0;
+}
+
+marbleClass a = new marbleClass();
+marbleClass b = new marbleClass();
+b.copy(a);                      // bulk-copy a's properties into b
+int free = a.remaining();       // free slots in marbleClass's pool
+```
+
+| Method | Returns | Description |
+|---|---|---|
+| `instance.copy(other)` | `void` | Bulk-copies properties from `other` into `instance`. Both must be active pool instances of the same (or compatible) pooled class. Wraps I6's class-message `copy`. |
+| `instance.remaining()` | `int` | Number of free slots remaining in this class's pool. Wraps I6's built-in `remaining`. |
+
+`copy` is exposed as a method (rather than `operator=`) deliberately. Variable initialization (`marbleClass a = new marbleClass();`) would otherwise trigger `operator=` the same as a subsequent assignment, which would allocate a slot AND copy from it into uninitialized `a` — a wasted slot and meaningless copy. Keeping copy explicit avoids that trap.
+
+Does not require `bglInit()`.
+
+### 17.2.2 `<char>` — Character Utilities
+
+```bgl
+#include <char>
+```
+
+Extends the built-in `char` type with character inspection, case conversion, and case-insensitive comparison. Includes full support for ZSCII extended characters (diacritics, ligatures, etc.).
+
+**Case inspection:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `c.isLower()` | `bool` | True if `c` is a lowercase letter (including diacritics) |
+| `c.isUpper()` | `bool` | True if `c` is an uppercase letter (including diacritics) |
+| `c.isAlpha()` | `bool` | True if `c` is any letter |
+| `c.isNumeric()` | `bool` | True if `c` is a digit (`0`–`9`) |
+| `c.isAlphaNumeric()` | `bool` | True if `c` is a letter or digit |
+| `c.isVowel()` | `bool` | True if `c` is a vowel (including accented vowels) |
+| `c.isConsonant()` | `bool` | True if `c` is a consonant |
+
+**Case conversion:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `c.toUpper()` | `char` | Returns uppercase version of `c` |
+| `c.toLower()` | `char` | Returns lowercase version of `c` |
+
+**Operators:**
+
+| Operator | Description |
+|----------|-------------|
+| `c =~ d` | Case-insensitive equality. `'A' =~ 'a'` is true. |
+
+Does not require `bglInit()`.
+
+### 17.2.3 `<string>` — Mutable String Runtime
+
+```bgl
+#include <string>
+```
+
+Provides a pool-based mutable string type. Requires `bglInit()` to initialize the string pool.
+
+**Lifecycle:**
+
+Strings are automatically allocated on declaration (`init`) and freed on function exit (`deinit`). The pool size is configurable via `beguilerSettings.framePoolSize`.
+
+**Assignment and concatenation:**
+
+| Method / Operator | Description |
+|-------------------|-------------|
+| `s = "text"` | Assign from a string literal |
+| `s = other` | Copy from another string |
+| `s + "text"` | Concatenate (returns new string) |
+
+**Comparison:**
+
+| Operator | Description |
+|----------|-------------|
+| `s == "text"` | Content equality |
+| `switch(s) { case "a": ... }` | Switch on string value (via `operator switch`) |
+
+**Subscript access:**
+
+| Operator | Description |
+|----------|-------------|
+| `s[i]` | Read character at position `i` |
+| `s[i] = c` | Write character at position `i` |
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `s.print()` | `string` | Print the string |
+| `s.append(v)` | `string` | Append a string or character |
+| `s.prepend(v)` | `string` | Prepend a value |
+| `s.toUpper()` | `string` | Convert to uppercase |
+| `s.toLower()` | `string` | Convert to lowercase |
+| `s.trim()` | `string` | Trim whitespace from both ends |
+| `s.trimLeft()` | `string` | Trim leading whitespace |
+| `s.trimRight()` | `string` | Trim trailing whitespace |
+| `s.reverse()` | `string` | Reverse the string |
+| `s.mid(start, count)` | `string` | Extract substring |
+| `s.left(count)` | `string` | Extract left substring |
+| `s.right(count)` | `string` | Extract right substring |
+| `s.insert(pos, src)` | `string` | Insert at position |
+| `s.delete(pos, count)` | `string` | Delete characters |
+| `s.replace(search, repl)` | `string` | Replace first occurrence |
+| `s.replaceAll(search, repl)` | `string` | Replace all occurrences |
+| `s.format(pattern, ...)` | `string` | Formatted output (up to 2 additional args) |
+| `s.getLength()` | `int` | String length |
+| `s.indexOf(search)` | `int` | Find first occurrence |
+| `s.startsWith(prefix)` | `eBool` | Prefix test |
+| `s.endsWith(suffix)` | `eBool` | Suffix test |
+| `s.contains(search)` | `eBool` | Substring test |
+| `s.isEmpty()` | `eBool` | True if empty |
+| `s.capture()` | `void` | Capture output to this string |
+| `s.release()` | `void` | Release captured output |
+
+### 17.2.4 `<uint>` — Unsigned Integer Type
+
+```bgl
+#include <uint>
+```
+
+Provides the `uint` unsigned-integer type. Same bit pattern as `int`; comparison and division operators route through `_bglMath.unsigned*` for correct unsigned semantics. Full type details — operators, conversion, division semantics, print behavior — are documented in §4.2a.
+
+### 17.2.5 `<math>` — Mathematical Functions
+
+```bgl
+#include <math>
+```
+
+Numeric utility emitters not part of the auto-loaded core. The extension provides bit-shift, absolute value, power, and target-correct unsigned arithmetic helpers.
+
+| Function | Returns | Description |
+|---|---|---|
+| `abs(x)` | `int` | Absolute value of signed `int` |
+| `pow(base, exp)` | `int` | Integer exponentiation |
+| `shiftLeft(x, n)` | `int` | Logical left shift by `n` bits |
+| `shiftRight(x, n)` | `int` | Logical right shift by `n` bits |
+| `unsignedCompare(a, b)` | `int` | Returns -1/0/+1 from unsigned comparison; underpins `uint` relational operators |
+| `unsignedDiv(a, b)` | `int` | Unsigned integer division; underpins `uint /` |
+| `unsignedMod(a, b)` | `int` | Unsigned integer modulo; underpins `uint %` |
+
+The unsigned helpers exist primarily to back the `uint` type's operators (§4.2a) — including `<math>` directly is rarely necessary unless writing low-level bit manipulation.
+
+### 17.2.6 `<array>` — Extended Array Utilities
+
+```bgl
+#include <array>
+```
+
+> *This extension is planned but not yet implemented.* It will provide higher-level array operations (sort, search, filter, map) beyond the built-in subscript and for-in support.
+
+### 17.2.7 `bglInit()` — Runtime Initialization
+
+Some language extensions allocate runtime resources (memory pools, buffers, etc.) that must be set up before use. These extensions register an initialization hook via `#startup` (see §3.5.5); all registered hooks are called by `bglInit()`.
+
+The standard IF library bindings (`i6StandardLibrary` and `punyInform`) call `bglInit()` automatically during game startup. **Most users do not need to call `bglInit()` themselves.** It is only necessary when building a game without a standard binding:
+
+```bgl
+void Initialise() {
+    bglInit();
+    // ... rest of setup
+}
+```
+
+`bglInit()` is always available — it is a no-op if no extensions that need it have been included. The call is harmless to include unconditionally.
+
+**Which extensions require it:** `string.bgl` requires `bglInit()` to initialize the string pool. Extensions that do not allocate runtime resources (such as `char.bgl`) do not require it but are unaffected by the call.
+
+## 17.3 IF Library Bindings
+
+Files in `beguiLib/bindings/`. Each binding file is a Beguile declaration layer over one particular external IF library, giving Beguile code typed, name-checked access to that library's attributes, globals, and actions. Binding files do not define behavior — they map existing I6 names into the Beguile type system using `extern` declarations.
+
+Different IF libraries require different binding files and would not be used together.
+
+### Available Bindings
+
+**`bindings/i6StandardLibrary`** — Bindings for the Inform 6 standard library (`parser.h`, `verblib.h`, `grammar.h`). Declares standard world-model attributes, mutable library globals, parser variables, compass direction objects, and the full set of standard IF actions as typed verbs. Automatically maps `title`, `headline`, and `release` from `#beguilerSettings` to the I6 constants the library expects.
+
+**`bindings/punyInform`** — Bindings for the PunyInform library (`globals.h`, `puny.h`). Declares PunyInform's attributes (including `reactive`), globals, colour settings, and verb actions. PunyInform uses no classes — objects are distinguished by attributes alone. Automatically maps `title` and `headline` from `#beguilerSettings`.
 
 ---

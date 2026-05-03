@@ -485,10 +485,10 @@ string fileLexer::getRawTextThroughClosingBrace(){
 //   outFoundBgl = false  → consumed matching `}`; outRemainingDepth = 0.
 // The caller is responsible for re-entering the raw-skip after the embedded #bgl block
 // closes, with the same outRemainingDepth.
-string fileLexer::getRawTextUntilCloseOrBgl(bool& outFoundBgl, int& outRemainingDepth, int startDepth, bool eofTerminates){
+string fileLexer::getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& outRemainingDepth, int startDepth, bool eofTerminates){
     string retval;
     int count = startDepth;
-    outFoundBgl = false;
+    outDirective = eBglDirective::NotFound;
     char c = readChar();
     while(count > 0){
         if(c == EOF){
@@ -529,34 +529,69 @@ string fileLexer::getRawTextUntilCloseOrBgl(bool& outFoundBgl, int& outRemaining
             if(c == '\''){ retval += c; c = readChar(); }
             continue;
         }
-        // #bgl{ marker — only `b`, `g`, `l`, `{` follow; none are line breaks, so
-        // we can roll back via tellg/seekg without disturbing curLine accounting.
+        // #bgl / #bglDecl / #bglStmt marker — only ASCII letters follow; none are line
+        // breaks, so we can roll back via tellg/seekg without disturbing curLine accounting.
         if(c == '#'){
             auto savedPos = currentStream()->tellg();
             int savedCol;
             { auto& [s, n, ln, cc] = files.top(); (void)s; (void)n; (void)ln; savedCol = cc; }
-            // Match "bgl" with a word boundary (next char must not extend the identifier).
-            // The caller handles single-line vs multi-line forms after this detection point.
-            const char idTarget[] = "bgl";
-            bool matched = true;
+
+            auto rewindTo = [&](std::streampos pos, int col){
+                currentStream()->clear();
+                currentStream()->seekg(pos);
+                auto& [s, n, ln, cc] = files.top(); (void)s; (void)n; (void)ln; cc = col;
+            };
+
+            // Match "bgl" first; if matched and the boundary is alphabetic, try the
+            // recognized suffixes "Decl" and "Stmt" with a fresh boundary check.
+            bool bglMatched = true;
             for(int i = 0; i < 3; i++){
                 char nc = readChar();
-                if(nc == EOF || nc != idTarget[i]){ matched = false; break; }
+                if(nc == EOF || nc != "bgl"[i]){ bglMatched = false; break; }
             }
-            if(matched){
+            eBglDirective which = eBglDirective::NotFound;
+            if(bglMatched){
                 char boundary = peekChar();
-                if(boundary == EOF || isalnum((unsigned char)boundary) || boundary == '_')
-                    matched = false;
+                if(boundary != EOF && isalpha((unsigned char)boundary)){
+                    // Could be #bglDecl or #bglStmt. Try each suffix; rewind between attempts.
+                    auto afterBglPos = currentStream()->tellg();
+                    int afterBglCol;
+                    { auto& [s, n, ln, cc] = files.top(); (void)s; (void)n; (void)ln; afterBglCol = cc; }
+
+                    struct { const char* suffix; eBglDirective dir; } candidates[] = {
+                        { "Decl", eBglDirective::BglDecl },
+                        { "Stmt", eBglDirective::BglStmt },
+                    };
+                    for(auto& cand : candidates){
+                        bool sMatched = true;
+                        for(int j = 0; cand.suffix[j]; j++){
+                            char nc = readChar();
+                            if(nc == EOF || nc != cand.suffix[j]){ sMatched = false; break; }
+                        }
+                        if(sMatched){
+                            char b = peekChar();
+                            if(b != EOF && (isalnum((unsigned char)b) || b == '_'))
+                                sMatched = false;
+                        }
+                        if(sMatched){ which = cand.dir; break; }
+                        rewindTo(afterBglPos, afterBglCol);
+                    }
+                    // No recognized suffix — `#bglFoo` is not a Beguile directive opener.
+                } else if(boundary != EOF && (isdigit((unsigned char)boundary) || boundary == '_')){
+                    // `#bgl0`, `#bgl_x`, etc. — not a Beguile directive opener.
+                } else {
+                    // Plain word boundary after "bgl" (whitespace, '{', EOF, punctuation).
+                    which = eBglDirective::Bgl;
+                }
             }
-            if(matched){
-                outFoundBgl = true;
+
+            if(which != eBglDirective::NotFound){
+                outDirective = which;
                 outRemainingDepth = count;
                 return retval;
             }
             // Mismatch — rewind to position right after '#' and treat '#' as a regular char.
-            currentStream()->clear();
-            currentStream()->seekg(savedPos);
-            { auto& [s, n, ln, cc] = files.top(); (void)s; (void)n; (void)ln; cc = savedCol; }
+            rewindTo(savedPos, savedCol);
             // c is still '#'; fall through to normal handling below.
         }
 
@@ -566,7 +601,7 @@ string fileLexer::getRawTextUntilCloseOrBgl(bool& outFoundBgl, int& outRemaining
         retval += c;
         c = readChar();
     }
-    if(!outFoundBgl){
+    if(outDirective == eBglDirective::NotFound){
         if(braceDepth > 0) braceDepth--;
         outRemainingDepth = 0;
     }
@@ -633,11 +668,90 @@ token fileLexer::getToken(){
     token next;
     token retval;
     
-    //a special case: let's ignore all comment tokens
+    // Doc-comment capture (`///` line form, `/** */` block form):
+    // Comments are normally discarded, but doc-comments are accumulated into `pendingDocComment`
+    // and attached to the next non-comment token. A blank line between accumulated docs and the
+    // next non-doc-comment input orphans the buffer (it becomes free-floating narrative).
+    auto isDocLineForm   = [](const std::string& v){ return v.size() >= 3 && v[0]=='/' && v[1]=='/' && v[2]=='/'; };
+    auto isDocBlockForm  = [](const std::string& v){
+        // /** ... */ — two leading stars, but distinguish from /** / and from regular /* */
+        return v.size() >= 4 && v[0]=='/' && v[1]=='*' && v[2]=='*' && v[3] != '/';
+    };
+    auto extractDocText  = [&](const std::string& v) -> std::string {
+        if(isDocLineForm(v)){
+            // Strip leading `///` and at most one space; drop trailing newline if present
+            size_t s = 3;
+            if(s < v.size() && v[s] == ' ') s++;
+            std::string body = v.substr(s);
+            while(!body.empty() && (body.back()=='\n' || body.back()=='\r')) body.pop_back();
+            return body;
+        }
+        if(isDocBlockForm(v)){
+            // Strip `/**` and trailing `*/`. Then for each line, trim leading whitespace + leading `*` + one space.
+            std::string inner = v.substr(3);
+            if(inner.size() >= 2 && inner[inner.size()-2]=='*' && inner[inner.size()-1]=='/')
+                inner = inner.substr(0, inner.size()-2);
+            std::string out;
+            size_t pos = 0;
+            bool first = true;
+            while(pos <= inner.size()){
+                size_t nl = inner.find('\n', pos);
+                std::string line = (nl == std::string::npos) ? inner.substr(pos) : inner.substr(pos, nl - pos);
+                // Trim leading whitespace
+                size_t a = 0;
+                while(a < line.size() && (line[a]==' '||line[a]=='\t')) a++;
+                // Strip a single leading `*` followed by optional space
+                if(a < line.size() && line[a] == '*'){ a++; if(a < line.size() && line[a]==' ') a++; }
+                std::string trimmed = line.substr(a);
+                // Trim trailing whitespace
+                while(!trimmed.empty() && (trimmed.back()==' '||trimmed.back()=='\t'||trimmed.back()=='\r')) trimmed.pop_back();
+                if(first) { out = trimmed; first = false; }
+                else      { out += "\n"; out += trimmed; }
+                if(nl == std::string::npos) break;
+                pos = nl + 1;
+            }
+            // Trim leading/trailing blank lines
+            while(!out.empty() && out.front()=='\n') out.erase(0,1);
+            while(!out.empty() && out.back()=='\n')  out.pop_back();
+            return out;
+        }
+        return "";
+    };
+
+    //a special case: let's ignore all comment tokens (but capture doc-comments into pendingDocComment)
     do{
         retval=getBasicToken();
+        if(retval.tokenType==eTokenType::comment){
+            bool isDoc = isDocLineForm(retval.value) || isDocBlockForm(retval.value);
+            if(isDoc){
+                int lineNow = retval.src.line;
+                // If a previous doc was captured but this new doc is more than one line later,
+                // discard the prior buffer (blank line orphaned it).
+                if(!pendingDocComment.empty() && pendingDocLastLine >= 0 && lineNow > pendingDocLastLine + 1){
+                    pendingDocComment.clear();
+                }
+                std::string text = extractDocText(retval.value);
+                if(!pendingDocComment.empty()) pendingDocComment += "\n";
+                pendingDocComment += text;
+                pendingDocLastLine = lineNow;
+            }
+            // Either way, fall through and read the next basic token (comments are not returned)
+        }
     }while(retval.tokenType==eTokenType::comment);
-    
+
+    // If pending doc comment exists, check the blank-line orphan rule against this token.
+    // If the token starts more than one line after the doc's last line, the doc is orphaned.
+    if(!pendingDocComment.empty()){
+        if(pendingDocLastLine >= 0 && retval.src.line > pendingDocLastLine + 1){
+            pendingDocComment.clear();
+            pendingDocLastLine = -1;
+        } else {
+            retval.docComment = pendingDocComment;
+            pendingDocComment.clear();
+            pendingDocLastLine = -1;
+        }
+    }
+
     if(retval.isOneOf({eTokenType::eof, eTokenType::quote, eTokenType::rawQuote, eTokenType::charLiteral})){ prevTokenType = retval.tokenType; return retval; } //just return tokens which we know we can't expand
 
     // normalize to lowercase for case-insensitive parsing (string literals excluded above)

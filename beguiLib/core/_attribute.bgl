@@ -1,6 +1,8 @@
 #once
 //=============================================================================
 // type attribute
+    
+    ///Basic attributes used by I6 to assign runtime state to objects.
     extern class attribute : _bglObject{ }
     
     extern class attributeList : _bglObject{ 

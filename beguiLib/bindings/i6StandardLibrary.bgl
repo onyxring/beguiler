@@ -355,12 +355,12 @@ extern verb XTree;                  // tree
 const string story = #beguilerSettings.title;       // I6 standard library expects 'story'
 const string headline = #beguilerSettings.headline;
 
-#emitfirst{
-    replace main _oldmain;
-}
-#emitlast{
-    [main; 
-        bglInit();
-        _oldmain();
-    ];
-}
+// #emitfirst{
+//     replace main _oldmain;
+// }
+// #emitlast{
+//     [main; 
+//         bglInit();
+//         _oldmain();
+//     ];
+// }

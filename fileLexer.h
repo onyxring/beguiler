@@ -9,6 +9,17 @@
 
 using namespace std;
 
+// Beguile-region opener variants recognized by the raw-I6 scanner. Used in `.inf`-mode
+// (file scope) and inside `#i6{}` blocks (statement scope) to dispatch from raw I6 back
+// into Beguile parsing. `Bgl` is the predominant form; `BglDecl` and `BglStmt` are
+// explicit escape hatches when the author wants to constrain content type.
+enum class eBglDirective {
+    NotFound,   // not a #bgl directive (or not yet matched)
+    Bgl,        // #bgl{...} or #bgl ...;  — auto-detect declarations vs statements
+    BglDecl,    // #bglDecl{...}           — declarations only
+    BglStmt,    // #bglStmt{...}           — statements only
+};
+
 class fileLexer{
     public:
         // Stream pointer is istream so the stack can hold both ifstream (file-backed) and
@@ -22,6 +33,10 @@ class fileLexer{
         // getRawTextThroughClosingBrace). Used by LSP error recovery to unwind nested blocks
         // correctly when an exception fires from deeply inside a class/function body.
         int braceDepth = 0;
+        // Pending doc-comment text accumulated by getToken() — attached to the next non-comment
+        // token's docComment field. Cleared when consumed or when a blank line orphans it.
+        std::string pendingDocComment;
+        int         pendingDocLastLine = -1;  // last source line of the captured doc; -1 = none
 
         void open(std::string);
         void openText(const std::string& content, const std::string& virtualName, int startLine = 1);
@@ -45,14 +60,15 @@ class fileLexer{
         token peekToken(int);
 
         string getRawTextThroughClosingBrace();
-        // Same as above but stops also when `#bgl{` is encountered. On return, outFoundBgl
-        // is true if we stopped at #bgl{ (the marker is consumed; caller switches to Beguile
-        // parsing). Otherwise the matching closing brace was consumed and outFoundBgl=false.
-        // outRemainingDepth carries the brace count back to the caller for resumption.
+        // Same as above but stops also when `#bgl`, `#bglDecl`, or `#bglStmt` is encountered.
+        // On return, outDirective indicates which variant was found (or None if the matching
+        // closing brace was consumed). When a directive is found, the directive token (e.g.
+        // `#bgl` / `#bglDecl` / `#bglStmt`) has been consumed; the caller switches to Beguile
+        // parsing. outRemainingDepth carries the brace count back for resumption.
         // When eofTerminates is true, EOF is treated as a natural end-of-content rather than
         // an error — used for `.inf`-as-input mode where the whole file is one implicit raw-I6
         // region. outRemainingDepth is set to 0 on EOF in that mode.
-        string getRawTextUntilCloseOrBgl(bool& outFoundBgl, int& outRemainingDepth, int startDepth = 1, bool eofTerminates = false);
+        string getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& outRemainingDepth, int startDepth = 1, bool eofTerminates = false);
         sourceLocation currentLocation();
         //token getRunTokenEol();
         //token getRunTokenBraceClose();

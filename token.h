@@ -30,6 +30,7 @@ class token {
         eTokenType tokenType=eTokenType::unknown;
         std::string value;
         std::string originalValue; // pre-lowercase value, for case-sensitive I6 emission (e.g. verb/grammar names)
+        std::string docComment;    // accumulated /// or /** */ doc text the lexer attached to this token; transferred to a declaration's docComment at registration
         bool isPlural=false;       // true for ..word dictionary word literals
         sourceLocation src;        // file and line where this token was read
 

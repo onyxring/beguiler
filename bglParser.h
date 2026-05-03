@@ -17,7 +17,7 @@ using namespace std;
 struct exitFileSignal {};   // thrown by #exit to unwind to the enclosing parseFile loop
 
 //=============================================================================
-// Grammar-driven pattern matching types (used by processNextStatementV2)
+// Grammar-driven pattern matching types (used by processNextStatement)
 //=============================================================================
 
 // One position in a syntax pattern.
@@ -120,14 +120,31 @@ class bglParser {
         void recordInactiveRange(int startLine1, int endLine1Inclusive);
         bglParser();
         void reset();  // clear all accumulated state for LSP re-parse
-        void preScanFile(string filename);  // pass 1: register type/object stubs for forward-reference resolution
-        bool parseFile(string);    //the main entry point: given a file, read it in, parse it, and store it in the parse tree
+        // pass 1: register type/object stubs for forward-reference resolution.
+        // When contentOverride is non-null, the lexer reads from the in-memory string instead of
+        // the disk file (used by the LSP to parse the editor buffer without writing a temp file).
+        // The filename is still used for error messages, source tracking, and include resolution.
+        void preScanFile(string filename, const std::string* contentOverride = nullptr);
+        // The main entry point: given a file, read it in, parse it, and store it in the parse tree.
+        // contentOverride applies the same in-memory-buffer semantics as preScanFile.
+        bool parseFile(string filename, const std::string* contentOverride = nullptr);
         // .inf-as-input mode: the entry file is treated as a single implicit raw-I6 region with
         // `#bgl{...}` re-entry. Authors can add Beguile features to existing I6 source incrementally
         // without converting the whole file. The Beguile Language Runtime is auto-loaded so types
         // and emitters are available inside #bgl blocks, but no Beguile declarations may appear
         // at the file's top level. Called by parseFile when the entry file ends in `.inf`.
         bool parseInfFileBody(abstractObject& contextObj);
+        // Find the first top-level `end;` directive (word-boundary token followed by `;`)
+        // in `text`, masking I6 single-line comments (`!` to EOL), string literals (`"..."`),
+        // and char/dictionary literals (`'...'`). Returns the byte offset at the start of the
+        // matched `end` keyword, or string::npos if no match. Used by parseInfFileBody to
+        // extract the .inf trailer (everything from the first `end;` through EOF).
+        size_t findInfEndDirective(const std::string& text);
+        // Cross-language collision check (.inf-mode). Walks raw I6 text in compositeNodes
+        // for top-level I6 declarations (Object/Class/Constant/Global/Array/Attribute/
+        // Property/[name]) and warns when a name collides with a Beguile-declared global
+        // in the same compilation. Same-file scope only — included files aren't scanned.
+        void detectInfModeI6Collisions();
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
         void parsingWarning(string); //like parsingError but continues parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
@@ -166,6 +183,7 @@ class bglParser {
         bool processSwitch(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processTry(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processThrow(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processDelete(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processDirectiveDispatch(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processFunc(vector<token>& t, Qualifiers& q, abstractObject& c);
 
@@ -191,8 +209,6 @@ class bglParser {
         vector<statementBlock*> activeBlockStack;
         set<string> onceFiles;        // absolute paths of files that declared #once
         set<string> startupFiles;     // absolute paths of files whose #startup blocks have been registered
-        set<string> emitFirstFiles;   // absolute paths of files whose #emitfirst blocks have been registered
-        set<string> emitLastFiles;    // absolute paths of files whose #emitlast blocks have been registered
         vector<classDef*>  usingImports;         // imported class scopes from #using directives (file-scoped)
         vector<objectDef*> usingObjectImports;   // imported object scopes from #using directives (file-scoped)
         int includeDepth = 0;               // current include nesting depth
@@ -203,7 +219,7 @@ class bglParser {
         set<string> currentLoopVars;        // names of active for-loop init variables (for capture warnings)
         int ternaryDepth = 0;               // nesting depth of ternary expressions (max 1)
 
-        bool processNextStatementV2(abstractObject& =emptyContainer);  // grammar-driven dispatcher
+        bool processNextStatement(abstractObject& =emptyContainer);  // grammar-driven dispatcher
         bool processStatementDispatch(token tok, abstractObject& ctx);  // grammar dispatch for a pre-read token
         bool processParameterList(functionDef&);
 
@@ -219,7 +235,7 @@ class bglParser {
         void processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod);
         void parsePropertyValue(variableDeclaration& prop, string typeName);
         void processI6InlineMember(objectDef& obj);
-        void processArrayMember(objectDef& obj);
+        void processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules);
         void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false);
         void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false);
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false);
@@ -392,6 +408,12 @@ class bglParser {
         set<string> preScanOnceFiles;
         int preScanDepth = 0;
         void preScanDirective(token tok);
+        void preScanGlobalLoop();         // walks tokens in the currently-open file, registering type/global stubs until EOF
+        void preScanInfFileBodyForDecls(); // .inf-mode pass-1: scans .inf body for #bglDecl{} / #bgl(decl-mode){} islands and pre-scans their content as declarations
+        // Walk a string of bgl content and pre-scan declarations from it. Used for #bgl islands
+        // discovered inside an .inf file during Pass 1. The content is opened as a virtual file
+        // for the duration of the call.
+        void preScanBglIslandContent(const std::string& content, const std::string& virtualName, int startLine);
         void preScanSkipConditionalBlock(); // skips tokens in a false #if branch until #elif/#else/#endif
         void preScanSkipBody();           // consumes opening '{' and everything through matching '}'
         void preScanSkipBodyContents();   // assumes '{' already consumed; skips to matching '}'
