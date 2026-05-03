@@ -16,33 +16,42 @@ jobs:
           - os: macos-15
             target: macos-arm64
             artifact: beguiler-macos-arm64
+            cxx: c++
             cflags: '-arch arm64'
           - os: macos-15
             target: macos-x86_64
             artifact: beguiler-macos-x86_64
+            cxx: c++
             cflags: '-arch x86_64'
           - os: ubuntu-24.04
             target: linux-x64
             artifact: beguiler-linux-x64
+            cxx: g++-14
+            install: 'sudo apt-get update && sudo apt-get install -y g++-14'
             cflags: '-Disnumber=isdigit'
           - os: windows-2022
             target: windows-x64
             artifact: beguiler-windows-x64.exe
-            cflags: '-Disnumber=isdigit -Dpopen=_popen -Dpclose=_pclose'
+            cxx: clang++
+            cflags: '-Disnumber=isdigit -Dstrncasecmp=_strnicmp -Dpopen=_popen -Dpclose=_pclose'
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install toolchain
+        if: matrix.install != ''
+        run: ${{ matrix.install }}
+
       - name: Build (Unix)
         if: runner.os != 'Windows'
         run: |
-          c++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional ${{ matrix.cflags }} *.cpp -o beguiler
+          ${{ matrix.cxx }} -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional ${{ matrix.cflags }} *.cpp -o beguiler
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          clang++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional ${{ matrix.cflags }} (Get-ChildItem -Filter *.cpp).Name -o beguiler.exe
+          ${{ matrix.cxx }} -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional ${{ matrix.cflags }} (Get-ChildItem -Filter *.cpp).Name -o beguiler.exe
 
       - name: Rename artifact
         shell: bash
@@ -76,4 +85,5 @@ jobs:
         with:
           files: artifacts/*
           draft: true
+          prerelease: true
           generate_release_notes: true
