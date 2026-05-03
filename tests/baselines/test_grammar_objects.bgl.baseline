@@ -1,8 +1,5 @@
 !% -G
 !% -E1
-
-    replace main _oldmain;
-
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -20,7 +17,7 @@ object _bglUtil
 ;
 object bgl
   with glulx _glulx,
-       util _bglutil
+       utilities _bglutil
 ;
 constant story = "";
 constant headline = "";
@@ -62,9 +59,3 @@ verb 'study'
     * noun -> Examine;
 verb 'place'
     * held 'on' noun -> PutOn;
-
-    [main; 
-        bglInit();
-        _oldmain();
-    ];
-

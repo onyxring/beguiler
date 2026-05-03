@@ -8,17 +8,20 @@
 !      splice back into the I6 stream where they appeared in source.
 !   4. Single-line `#bgl stmt;` form (terminated by newline) also works.
 !   5. Beguile-side identifier resolution finds Runtime symbols (bglInit, etc.)
-!      and Beguile types (eTarget) from inside the #bgl block.
+!      and Beguile enum values (Glulx of eTarget) from inside the #bgl block.
 !   6. EOF terminates the implicit raw-I6 region naturally — no missing-brace error.
+!
+! Per the rule "no local variable declarations in statement islands", any `Type ident`
+! shape elevates to decl mode. This test stays in pure statement mode by referencing
+! the enum value directly (Glulx) instead of declaring a typed local.
 
 [ Main x;
     print "hello from raw I6.^";
 
-    ! Multi-line #bgl block — declares a local using a Beguile type, calls a
-    ! Runtime function, and stores the result back into x for I6 to use.
+    ! Multi-line #bgl block — pure statement mode: assigns a Beguile enum value
+    ! to an I6 local and calls a Runtime function.
     #bgl{
-        eTarget t = Glulx;
-        x = t;
+        x = Glulx;
         bglInit();
     }
 

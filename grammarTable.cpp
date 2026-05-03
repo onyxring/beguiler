@@ -45,6 +45,7 @@ void bglParser::initGrammarTable() {
         {"switch statement",         {"switch", "("},                                               &Self::processSwitch},
         {"try statement",            {"try", "{"},                                                  &Self::processTry},
         {"throw statement",          {"throw"},                                                     &Self::processThrow},
+        {"delete statement",         {"delete"},                                                    &Self::processDelete},
 
         // Directives (preprocessor) =============================================
         // All directives dispatch through processDirective via a single handler.

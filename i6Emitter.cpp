@@ -602,8 +602,31 @@ void i6Emitter::writeDebugBundle(const string& path){
 }
 
 void i6Emitter::emit(vector<typeDef*>& nodeList){
-    // Pass 1: emit ICL !% directives at the very top (Inform reads these before parsing)
-    emitICL(&beguilerSettings);
+    // .inf-mode with zero #bgl/#bglDecl/#bglStmt islands: the file is pure I6. None of
+    // the BLR-derived output (bglInit, _bglUtil, bgl, _glulx, __glkHook, etc.) is
+    // referenced by anything, so emit only the user's own content — !% header (if
+    // present), the raw I6 body (i6RawNode entries from `globals`), and the trailer.
+    // Settings-derived constants and emitFirst/Last blocks are skipped: in .inf-mode
+    // with no islands, the user owns ICL via !% and has no way to reach #emitfirst.
+    if(languageService.isInfMode && !languageService.sawBglIsland){
+        if(!languageService.infHeader.empty())
+            out << languageService.infHeader;
+        for(typeDef* node : nodeList)
+            if(dynamic_cast<i6RawNode*>(node))
+                generateI6(node);
+        if(!languageService.infTrailer.empty())
+            out << languageService.infTrailer;
+        return;
+    }
+
+    // .inf-mode: the user's own `!%` ICL block (extracted from the top of the .inf file
+    // during parsing) is emitted at the very top, and the compiler's ICL generation is
+    // skipped so the user's config remains the sole authority. .bgl-mode keeps the
+    // existing behavior — the compiler synthesizes ICL from beguilerSettings.
+    if(!languageService.infHeader.empty())
+        out << languageService.infHeader;
+    else
+        emitICL(&beguilerSettings);
     currentTarget = beguilerSettings.target;
     for(char& c : currentTarget) c = (char)tolower(c);
     framePoolSize = beguilerSettings.framePoolSize;
@@ -664,6 +687,8 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Anchor a source map entry at the routine header so I6 diagnostics about `bglInit`
     // (most commonly "declared but not used" if no startup blocks contributed) point back
     // to the extern declaration in the core library rather than appearing unmappable.
+    // (.inf-mode with zero islands skips this entire emit() body via the early return at
+    // the top — the no-Beguile-content fast path.)
     {
         sourceLocation bglInitSrc;
         for(typeDef* g : languageService.globals)
@@ -769,6 +794,12 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Emit #emitlast blocks at the very end of the I6 output
     for(const string& block : languageService.emitLastBlocks)
         out << block << "\n";
+
+    // .inf-mode trailer: the user's `end;` directive (and anything after it) was
+    // extracted from the .inf body during parsing and is splice in here so it appears as
+    // the last content of the file, after all generated I6.
+    if(!languageService.infTrailer.empty())
+        out << languageService.infTrailer;
 }
 void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     if(cfg->target == "glulx")     out << "!% -G\n";
@@ -779,8 +810,13 @@ void i6Emitter::emitICL(beguilerSettingsDef* cfg){
 
     // Emit all search paths so I6 can resolve its own internal includes.
     // Uses ++include_path (double +) to ADD to the path rather than replace it.
-    for(const string& p : cfg->includePaths)
-        out << "!% ++include_path=" << p << "\n";
+    // I6 implements ++include_path as a *prepend*: each new line is pushed onto
+    // the front of Include_Path. We must therefore emit in REVERSE declaration
+    // order so the final left-to-right search order matches what the user wrote.
+    // (A single comma-separated line would also work, but I6 has a PATHLEN cap
+    // that one consolidated line can blow past — so we keep one line per path.)
+    for(auto it = cfg->includePaths.rbegin(); it != cfg->includePaths.rend(); ++it)
+        out << "!% ++include_path=" << *it << "\n";
 }
 void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     // beguiler/beguilerMajor/beguilerMinor/beguilerPatch are resolved as compile-time
@@ -897,7 +933,36 @@ void i6Emitter::emitClass(classDef* classNode){
                 out << ";\n";
             }
 
-    out << format("class {0}\n", classNode->i6Name());
+    // Emit external global arrays for byte-array (array<char>) member arrays.
+    // Mirrors emitObject: byte arrays can't live as inline word-sized property values,
+    // so we emit a standalone Array and store a pointer in the property.
+    map<string, string> externalArrayNames; // member name → mangled global array name
+    for(typeMember* m : classNode->members){
+        if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
+            if(arr->isByteArray){
+                string mangledName = "_" + classNode->name + "_" + arr->name;
+                if(!arr->stringInitializer.empty()){
+                    out << format("Array {0} string {1};\n", mangledName, arr->stringInitializer);
+                } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+                    out << format("Array {0} -> {1}", mangledName, list->elements.size());
+                    for(expression* elem : list->elements) out << " " << elem->text();
+                    out << ";\n";
+                } else {
+                    out << format("Array {0} -> {1}", mangledName, arr->arraySize);
+                    for(int k = 0; k < arr->arraySize; k++) out << " 0";
+                    out << ";\n";
+                }
+                externalArrayNames[arr->name] = mangledName;
+            }
+        }
+    }
+
+    // Pooled class: emit `Class Foo(N)` to reserve N statically-allocated instances.
+    // poolSize == -1 is the extern marker form, which doesn't reach here (early return above).
+    if(classNode->poolSize > 0)
+        out << format("class {0}({1})\n", classNode->i6Name(), classNode->poolSize);
+    else
+        out << format("class {0}\n", classNode->i6Name());
 
     if(classNode->baseClasses.size() > 0){
         out << "  class";
@@ -924,7 +989,21 @@ void i6Emitter::emitClass(classDef* classNode){
             typeMember* m = emittable[i];
             string sep = (i + 1 < emittable.size()) ? "," : "";
 
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+            if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
+                // Property array on a class: emit inline I6 property values so each
+                // instance gets its declared storage. Mirrors emitObject's array path.
+                out << format("    {0} ", arr->dName());
+                auto extIt = externalArrayNames.find(arr->name);
+                if(extIt != externalArrayNames.end()){
+                    out << extIt->second;
+                } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+                    for(expression* elem : list->elements) out << elem->text() << " ";
+                } else {
+                    for(int k = 0; k < arr->arraySize; k++) out << "0 ";
+                }
+                out << sep << "\n";
+            }
+            else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 out << format("    {0}", vd->dName());
                 if(vd->declaredExpressionValue != nullptr && !vd->declaredExpressionValue->text().empty())
                     out << format(" {0}", vd->declaredExpressionValue->text());
@@ -1125,7 +1204,11 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             size_t maxDirectArgs = (isZTarget(currentTarget) && call->args.size() > 5) ? 5 : call->args.size();
             for(size_t i = maxDirectArgs; i < call->args.size(); i++)
                 out << format("{0}_bglXP{1} = {2};\n", indent, i - 5, exprText(call->args[i]));
-            out << indent << spillWord(call->functionName) << token::parenOpen;
+            // Prefer displayName (original case) over functionName (lowercased) — same
+            // convention as dName() for declared symbols. displayName is empty for
+            // resolved Beguile calls, so they continue to emit lowercase as before.
+            const string& emitName = call->displayName.empty() ? call->functionName : call->displayName;
+            out << indent << spillWord(emitName) << token::parenOpen;
             for(size_t i = 0; i < maxDirectArgs; i++){
                 if(i>0) out << ", ";
                 out << exprText(call->args[i]);
@@ -1410,7 +1493,12 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
             }
 
             if(rt == "void"){
-                out << indent << exprStr << "\n";
+                // Ensure exactly one trailing ';'. Some void emitter bodies include the ';'
+                // in their template; some don't. Strip-and-add normalizes both.
+                string s = exprStr;
+                size_t e = s.find_last_not_of(" \t\n\r;");
+                if(e != string::npos) s = s.substr(0, e+1);
+                out << indent << s << ";\n";
                 continue;
             }
 

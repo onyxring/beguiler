@@ -1,0 +1,52 @@
+! test_inf_mode_bgl_autodetect.inf — plain #bgl auto-detects between declaration
+! mode and statement mode by inspecting the first token(s).
+!
+! Per the rule "no local variable declarations in statement islands", any
+! `Type ident` shape (function form `Type ident(`, variable form `Type ident;`
+! or `Type ident = ...`) elevates to declaration mode — there is no typed-local
+! form in stmt-mode #bgl{} blocks.
+!
+! Cases exercised:
+!   - #bgl{ typed function }         → declaration mode; registers global routine
+!   - #bgl{ typed variable = ... }   → declaration mode; elevates to global
+!   - #bgl{ assignment / call }      → statement mode
+!   - #bgl single-line               → always statement mode
+!
+! Mixed-content blocks (decl-shaped first line followed by bare statements) are
+! covered by the negative test _test_inf_mode_bgl_mixed_content.inf.
+
+! Auto-detected as declaration mode (typed function): doubled() registers globally
+! and is callable from raw I6 below.
+#bgl{
+    int doubled(int n){
+        return n * 2;
+    }
+}
+
+! Auto-detected as declaration mode (typed function): tripled() registers globally too.
+#bgl{
+    int tripled(int n){
+        return n * 3;
+    }
+}
+
+! Auto-detected as declaration mode (typed variable): elevates to a global int.
+#bgl{
+    int counter = 0;
+}
+
+[ Main x;
+    x = 5;
+    print "before bgl.^";
+
+    ! Auto-detected as statement mode (assignment): runs as loose statements.
+    #bgl{
+        x = doubled(x);
+        counter = counter + 1;
+    }
+
+    ! Single-line #bgl is always statement-mode.
+    #bgl x = tripled(x);
+
+    print "x = ", x, "^";
+];

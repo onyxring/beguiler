@@ -1,0 +1,39 @@
+!% -v5
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+! test_inf_mode_user_trailer.inf — Slice 5b: trailer extraction. The first `end;`
+! directive in the trailing raw text and everything after it is hoisted to the very
+! bottom of the emitted output, after #emitlast blocks. This lets I6's "ignore
+! everything past end;" semantics still apply to the user's text in the .inf source.
+
+
+[doubled n;
+    return n * 2;
+];
+
+
+[ Main x;
+    x = 7;
+    print "before bgl.^";
+
+    x = doubled(x);
+
+
+    print "x = ", x, "^";
+];
+
+
+end;
+
+! Anything past `end;` is ignored by I6. Putting random text here proves the trailer
+! splice keeps it intact (vs. truncating at end; or losing the trailing comments).
+! Multiple `end;` lines are allowed past the first; only the first matters to I6.
+end;

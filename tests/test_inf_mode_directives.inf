@@ -1,0 +1,33 @@
+! test_inf_mode_directives.inf — recognition + dispatch of #bgl, #bglStmt, #bglDecl in .inf-mode.
+!
+! #bglDecl routes to the global declaration parser; #bglStmt routes to the loose-
+! statement parser; plain #bgl auto-detects (covered separately in
+! test_inf_mode_bgl_autodetect.inf).
+!
+! This test exercises:
+!   - #bglDecl declaring a global Beguile function callable from raw I6.
+!   - #bgl and #bglStmt running loose statements that reference it.
+!   - Single-line forms of #bgl and #bglStmt.
+
+#bglDecl{
+    int doubled(int n){
+        return n * 2;
+    }
+}
+
+[ Main x;
+    print "before bgl.^";
+
+    #bgl{
+        x = Glulx;
+    }
+
+    #bglStmt{
+        x = doubled(x);
+    }
+
+    #bgl x = x + 1;
+    #bglStmt x = doubled(x);
+
+    print "x = ", x, "^";
+];

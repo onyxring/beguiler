@@ -174,7 +174,13 @@ json LspServer::handleInitialize(const json& params) {
         }},
         {"hoverProvider", true},
         {"completionProvider", {
-            {"triggerCharacters", {".", "="}}
+            // Trigger characters that auto-pop the completion dropdown:
+            //   '.' — member access  (foo.bar)
+            //   '=' — RHS of #beguilerSettings property
+            //   '<' — `#include <…>` library completion (Phase 0)
+            //   ':' — class inheritance position after `class Foo :` (Phase 0.5)
+            //   ',' — multi-inheritance continuation `class Foo : object,` (Phase 0.5)
+            {"triggerCharacters", {".", "=", "<", ":", ","}}
         }},
         {"definitionProvider", true},
         {"documentSymbolProvider", true},
@@ -333,12 +339,33 @@ std::vector<LspServer::BglRegion> LspServer::findBglRegions(const std::string& d
             if(i < n) i++;
             continue;
         }
-        // Detect #bgl
+        // Detect #bgl / #bglDecl / #bglStmt
         if(c == '#' && i+3 < n && docText[i+1] == 'b' && docText[i+2] == 'g' && docText[i+3] == 'l'){
-            // Word-boundary check: char after 'l' must not extend the identifier
+            // Word-boundary check after `bgl`: a non-identifier follow-up means plain #bgl;
+            // an alphabetic follow-up may be the recognized suffixes "Decl" or "Stmt"
+            // (mirroring the lexer's getRawTextUntilCloseOrBgl matcher).
             int afterTag = i + 4;
             char b = (afterTag < n) ? docText[afterTag] : '\0';
-            if(isalnum((unsigned char)b) || b == '_'){ i++; continue; }
+            bool extended = false;
+            if(isalpha((unsigned char)b)){
+                auto matchSuffix = [&](const char* suf){
+                    int p = afterTag, k = 0;
+                    while(suf[k]){
+                        if(p >= n || docText[p] != suf[k]) return -1;
+                        p++; k++;
+                    }
+                    char e = (p < n) ? docText[p] : '\0';
+                    if(isalnum((unsigned char)e) || e == '_') return -1;
+                    return p;
+                };
+                int p = matchSuffix("Decl");
+                if(p < 0) p = matchSuffix("Stmt");
+                if(p >= 0){ afterTag = p; extended = true; }
+                else { i++; continue; }  // alphanumeric not matching a known suffix — skip
+            } else if(b == '_' || isdigit((unsigned char)b)){
+                i++; continue;  // identifier extension — not a directive
+            }
+            (void)extended;  // for now both forms participate as bgl regions for handler gating
             // Skip horizontal whitespace looking for '{'
             int p = afterTag;
             while(p < n && (docText[p] == ' ' || docText[p] == '\t')) p++;
@@ -408,23 +435,12 @@ void LspServer::parseDocument(const string& uri) {
     string path = uriToPath(uri);
     documentDiagnostics.clear();
 
-    // Write the in-memory content to a temp file for the parser
-    // (the parser reads from the filesystem — LSP sends content via didOpen/didChange)
+    // Pass the editor buffer to the parser via the in-memory contentOverride parameter, so we
+    // never write a temp file alongside the source. This avoids the workspace-file-list churn
+    // that the previous .lsp_tmp file caused on every keystroke. The parser still uses `path`
+    // for include resolution (sourceDir) and error reporting.
     auto docIt = openDocuments.find(uri);
-    string tempPath = path;
-    bool useTempFile = false;
-    if(docIt != openDocuments.end()) {
-        // If the file doesn't exist on disk or we have newer content, write a temp file
-        tempPath = path + ".lsp_tmp";
-        ofstream tmp(tempPath);
-        if(tmp.is_open()) {
-            tmp << docIt->second;
-            tmp.close();
-            useTempFile = true;
-        } else {
-            tempPath = path;  // fallback to original path
-        }
-    }
+    const string* content = (docIt != openDocuments.end()) ? &docIt->second : nullptr;
 
     // Suppress compiler stdout output
     streambuf* oldCout = cout.rdbuf();
@@ -433,9 +449,9 @@ void LspServer::parseDocument(const string& uri) {
 
     // Store the canonical path so documentSymbol can filter to this file
     try {
-        documentParsePaths[uri] = filesystem::canonical(filesystem::absolute(tempPath)).string();
+        documentParsePaths[uri] = filesystem::canonical(filesystem::absolute(path)).string();
     } catch(...) {
-        documentParsePaths[uri] = tempPath;
+        documentParsePaths[uri] = path;
     }
 
     // Enable LSP error recovery mode — parser collects errors instead of halting
@@ -481,8 +497,8 @@ void LspServer::parseDocument(const string& uri) {
 
     vector<string> errors;
     try {
-        parser.preScanFile(tempPath);
-        parser.parseFile(tempPath);
+        parser.preScanFile(path, content);
+        parser.parseFile(path, content);
     } catch(exception& e) {
         errors.push_back(e.what());
     } catch(...) {
@@ -493,9 +509,6 @@ void LspServer::parseDocument(const string& uri) {
     parser.lspMode = false;
 
     cout.rdbuf(oldCout);  // restore cout
-
-    // Clean up temp file
-    if(useTempFile) filesystem::remove(tempPath);
 
     documentDiagnostics[uri] = errors;
 }
@@ -699,6 +712,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                     out.enclosingClass = cd;
                     out.typeName = vd->type.name;
                     out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
+                    out.docComment = vd->docComment;
                     out.declSrc = vd->src;
                     return out;
                 }
@@ -708,6 +722,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                     out.enclosingClass = cd;
                     out.typeName = mfd->returnType.name;
                     out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
+                    out.docComment = mfd->docComment;
                     out.declSrc = mfd->src;
                     return out;
                 }
@@ -744,6 +759,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                     out.enclosingClass = od->objectClass;
                     out.typeName = vd->type.name;
                     out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
+                    out.docComment = vd->docComment;
                     sourceLocation clsSrc = findClassMemberSrc(od->objectClass, loweredName);
                     out.declSrc = clsSrc.line > 0 ? clsSrc : vd->src;
                     return out;
@@ -754,6 +770,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                     out.enclosingClass = od->objectClass;
                     out.typeName = mfd->returnType.name;
                     out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
+                    out.docComment = mfd->docComment;
                     sourceLocation clsSrc = findClassMemberSrc(od->objectClass, loweredName);
                     out.declSrc = clsSrc.line > 0 ? clsSrc : mfd->src;
                     return out;
@@ -774,6 +791,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                         out.kind = LspSymbolRef::Local;
                         out.typeName = vd->type.name;
                         out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
+                        out.docComment = vd->docComment;
                         out.declSrc = vd->src;
                         return out;
                     }
@@ -786,6 +804,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                 out.kind = LspSymbolRef::Parameter;
                 out.typeName = p->type.name;
                 out.displayName = p->displayName.empty() ? p->name : p->displayName;
+                out.docComment = p->docComment;
                 out.declSrc = fn->src;  // paramDef has no src; fall back to function signature
                 return out;
             }
@@ -817,6 +836,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                         out.enclosingClass = c;
                         out.typeName = vd->type.name;
                         out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
+                        out.docComment = vd->docComment;
                         out.declSrc = vd->src;
                         return true;
                     }
@@ -825,6 +845,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                         out.enclosingClass = c;
                         out.typeName = mfd->returnType.name;
                         out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
+                        out.docComment = mfd->docComment;
                         out.declSrc = mfd->src;
                         return true;
                     }
@@ -839,6 +860,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                         out.enclosingClass = encCls;
                         out.typeName = vd->type.name;
                         out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
+                        out.docComment = vd->docComment;
                         out.declSrc = vd->src;
                         return out;
                     }
@@ -847,6 +869,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                         out.enclosingClass = encCls;
                         out.typeName = mfd->returnType.name;
                         out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
+                        out.docComment = mfd->docComment;
                         out.declSrc = mfd->src;
                         return out;
                     }
@@ -866,6 +889,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
         out.kind = LspSymbolRef::Global;
         out.typeName = cd->name;
         out.displayName = cd->displayName.empty() ? cd->name : cd->displayName;
+        out.docComment = cd->docComment;
         out.declSrc = cd->src;
         return out;
     }
@@ -873,6 +897,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
         out.kind = LspSymbolRef::Global;
         out.typeName = ed->name;
         out.displayName = ed->displayName.empty() ? ed->name : ed->displayName;
+        out.docComment = ed->docComment;
         out.declSrc = ed->src;
         return out;
     }
@@ -882,14 +907,17 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
         if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
             out.typeName = vd->type.name;
             out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
+            out.docComment = vd->docComment;
             out.declSrc = vd->src;
         } else if(auto* fd = dynamic_cast<functionDef*>(g)) {
             out.typeName = fd->returnType.name;
             out.displayName = fd->displayName.empty() ? fd->name : fd->displayName;
+            out.docComment = fd->docComment;
             out.declSrc = fd->src;
         } else if(auto* od = dynamic_cast<objectDef*>(g)) {
             out.typeName = od->objectClass ? od->objectClass->name : "object";
             out.displayName = od->displayName.empty() ? od->name : od->displayName;
+            out.docComment = od->docComment;
             out.declSrc = od->src;
         }
         return out;
@@ -950,6 +978,9 @@ json LspServer::handleHover(const json& params) {
     transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
     string typeInfo;
+    // Doc-comment for the resolved symbol (if any). Populated alongside typeInfo at each
+    // resolution branch. Rendered as Markdown below the signature in the hover response.
+    string docComment;
 
     // ── #beguilerSettings block: resolve bare identifiers as beguilerSettingsType members ──
     // The block isn't a real AST node, so the regular resolver won't find these. Handle it here
@@ -1104,6 +1135,7 @@ json LspServer::handleHover(const json& params) {
     // Non-dotted: resolve as top-level identifier via shared scope resolver
     if(typeInfo.empty() && ownerName.empty()) {
         LspSymbolRef ref = resolveSymbol(uri, line, lower);
+        if(!ref.docComment.empty()) docComment = ref.docComment;
         if(ref.kind == LspSymbolRef::Local) {
             typeInfo = "local: " + typeDisplay(ref.typeName) + " " + ref.displayName;
         } else if(ref.kind == LspSymbolRef::Parameter) {
@@ -1157,16 +1189,26 @@ json LspServer::handleHover(const json& params) {
         // Check enum values
         if(typeInfo.empty()) {
             string enumType = languageService.getEnumType(lower);
-            if(!enumType.empty()) typeInfo = enumType + "." + word;
+            if(!enumType.empty()) {
+                typeInfo = enumType + "." + word;
+                // Pull doc-comment from the specific value
+                if(auto* ed = dynamic_cast<enumDef*>(&languageService.getType(enumType)))
+                    for(enumValueDef* ev : ed->namedValues)
+                        if(ev->name == lower){ docComment = ev->docComment; break; }
+            }
         }
     }
 
     if(typeInfo.empty()) return nullptr;
 
+    string markdown = "```bgl\n" + typeInfo + "\n```";
+    if(!docComment.empty())
+        markdown += "\n\n---\n\n" + docComment;
+
     return {
         {"contents", {
             {"kind", "markdown"},
-            {"value", "```bgl\n" + typeInfo + "\n```"}
+            {"value", markdown}
         }}
     };
 }
@@ -1221,6 +1263,145 @@ json LspServer::handleCompletion(const json& params) {
         return inStr;
     };
     if(isInsideStringLiteral()) return nullptr;
+
+    // ── Phase 0: `#include <…>` library completion ───────────────────────
+    // When the cursor is positioned inside the angle brackets of a `#include <…>` directive,
+    // scan beguiLib for .bgl files and offer them. Names are returned without the .bgl
+    // extension. Files starting with '_' (system/internal) or '.' are excluded.
+    {
+        int limit = col;
+        if(limit > (int)lineText.size()) limit = (int)lineText.size();
+        int i = limit - 1;
+        // Skip the partial name being typed (identifier-ish chars)
+        while(i >= 0 && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_' || lineText[i] == '.')) i--;
+        // Expect '<' next (after optional whitespace)
+        while(i >= 0 && isspace((unsigned char)lineText[i])) i--;
+        if(i >= 0 && lineText[i] == '<') {
+            i--;
+            while(i >= 0 && isspace((unsigned char)lineText[i])) i--;
+            // Walk back over the word right before the whitespace — should be "include" (case-insensitive)
+            int wordEnd = i + 1;
+            while(i >= 0 && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i--;
+            int wordStart = i + 1;
+            string word = lineText.substr(wordStart, wordEnd - wordStart);
+            for(char& c : word) c = (char)tolower((unsigned char)c);
+            // Expect '#' immediately before the word (this is `#include`, not a bare `include`)
+            if(word == "include" && i >= 0 && lineText[i] == '#') {
+                json items = json::array();
+                try {
+                    std::filesystem::path libRoot = settings.libPath;
+                    for(const auto& entry : std::filesystem::recursive_directory_iterator(libRoot)) {
+                        if(!entry.is_regular_file()) continue;
+                        std::filesystem::path p = entry.path();
+                        string filename = p.filename().string();
+                        // Filter: must end in .bgl (case-insensitive)
+                        if(filename.size() < 4) continue;
+                        string ext = filename.substr(filename.size() - 4);
+                        for(char& c : ext) c = (char)tolower((unsigned char)c);
+                        if(ext != ".bgl") continue;
+                        // Filter: skip files whose basename starts with '_' or '.' (system/internal/hidden)
+                        if(filename[0] == '_' || filename[0] == '.') continue;
+                        // Build the include name: relative path from lib root, drop .bgl extension,
+                        // normalize path separators to '/' (Beguile's #include syntax uses forward slashes).
+                        std::filesystem::path rel = std::filesystem::relative(p, libRoot);
+                        string relStr = rel.string();
+                        for(char& c : relStr) if(c == '\\') c = '/';
+                        if(relStr.size() >= 4)
+                            relStr = relStr.substr(0, relStr.size() - 4);  // strip ".bgl"
+                        items.push_back({
+                            {"label", relStr},
+                            {"kind", 17},  // CompletionItemKind.File
+                            {"detail", "Beguile language extension"}
+                        });
+                    }
+                } catch(...) { /* directory unreadable — fall back to empty list */ }
+                return items;  // authoritative for this context; empty is fine
+            }
+        }
+    }
+
+    // ── Phase 0.5: class inheritance position ────────────────────────────
+    // Detect cursor in:
+    //   `class Foo : <here>`                (single inheritance start)
+    //   `class Foo : object, <here>`        (multi-inheritance continuation)
+    //   `alias class Foo for <here>`        (alias-class single parent)
+    // Returns all known classes as completion items so users can discover available
+    // base classes (especially mixins like bglAllocated).
+    do {
+        // Build prefix through cursor
+        string prefix = lineText.substr(0, std::min((int)lineText.size(), col));
+        // Strip trailing partial identifier (the name being typed)
+        while(!prefix.empty() && (isalnum((unsigned char)prefix.back()) || prefix.back() == '_'))
+            prefix.pop_back();
+        // Strip trailing whitespace
+        while(!prefix.empty() && isspace((unsigned char)prefix.back())) prefix.pop_back();
+
+        bool isAfterColon = false, isAfterComma = false, isAfterFor = false;
+        if(!prefix.empty()) {
+            char last = prefix.back();
+            if(last == ':')      isAfterColon = true;
+            else if(last == ',') isAfterComma = true;
+            else if(prefix.size() >= 3 && prefix.substr(prefix.size()-3) == "for") {
+                size_t s = prefix.size() - 3;
+                if(s == 0 || isspace((unsigned char)prefix[s-1])) {
+                    isAfterFor = true;
+                    prefix.resize(s);
+                }
+            }
+        }
+        if(!isAfterColon && !isAfterComma && !isAfterFor) break;
+
+        if(isAfterColon || isAfterComma) prefix.pop_back();
+        while(!prefix.empty() && isspace((unsigned char)prefix.back())) prefix.pop_back();
+
+        // Comma case: walk back through the existing `id (, id)*` chain to find the originating `:`
+        if(isAfterComma) {
+            while(!prefix.empty() && (isalnum((unsigned char)prefix.back()) || prefix.back() == '_'))
+                prefix.pop_back();
+            while(!prefix.empty() && isspace((unsigned char)prefix.back())) prefix.pop_back();
+            while(!prefix.empty() && prefix.back() == ',') {
+                prefix.pop_back();
+                while(!prefix.empty() && isspace((unsigned char)prefix.back())) prefix.pop_back();
+                while(!prefix.empty() && (isalnum((unsigned char)prefix.back()) || prefix.back() == '_'))
+                    prefix.pop_back();
+                while(!prefix.empty() && isspace((unsigned char)prefix.back())) prefix.pop_back();
+            }
+            if(prefix.empty() || prefix.back() != ':') break;  // comma wasn't part of inheritance
+            prefix.pop_back();
+            while(!prefix.empty() && isspace((unsigned char)prefix.back())) prefix.pop_back();
+        }
+
+        // Verify `class` (and `alias` for the `for` case) appear as words in the remaining prefix.
+        // Beguile's `class` is only used in class declarations, so this is a reliable signal.
+        auto containsWord = [&prefix](const string& w) -> bool {
+            size_t pos = 0;
+            while((pos = prefix.find(w, pos)) != string::npos) {
+                bool leftOk  = (pos == 0) || (!isalnum((unsigned char)prefix[pos-1]) && prefix[pos-1] != '_');
+                bool rightOk = (pos + w.size() >= prefix.size()) ||
+                               (!isalnum((unsigned char)prefix[pos + w.size()]) && prefix[pos + w.size()] != '_');
+                if(leftOk && rightOk) return true;
+                pos += w.size();
+            }
+            return false;
+        };
+        if(!containsWord("class")) break;
+        if(isAfterFor && !containsWord("alias")) break;
+
+        // We're in inheritance position — emit class completions
+        json items = json::array();
+        for(typeDef* t : languageService.objectTypes) {
+            auto* cd = dynamic_cast<classDef*>(t);
+            if(!cd) continue;
+            if(!cd->name.empty() && cd->name[0] == '_') continue;  // skip system internals
+            const string& label = cd->displayName.empty() ? cd->name : cd->displayName;
+            items.push_back({
+                {"label", label},
+                {"kind", 7},   // CompletionItemKind.Class
+                {"detail", "class"}
+            });
+        }
+        return items;
+    } while(false);
 
     // ── Phase 1: dotted access ────────────────────────────────────────────
     // Detect `identifier.|` — if the char immediately before the cursor (skipping a partial

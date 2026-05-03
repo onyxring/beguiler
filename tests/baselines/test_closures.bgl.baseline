@@ -13,7 +13,7 @@ global _bglCap0;
 object _bglUtil
 ;
 object bgl
-  with util _bglutil
+  with utilities _bglutil
 ;
 [apply fn x result;
     result=fn(x);

@@ -9,7 +9,7 @@ global _bglInitDone = 0;
 object _bglUtil
 ;
 object bgl
-  with util _bglutil
+  with utilities _bglutil
 ;
 [greet x;
     return x + 1;

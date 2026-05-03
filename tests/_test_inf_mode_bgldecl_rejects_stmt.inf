@@ -1,0 +1,14 @@
+! Negative test: #bglDecl content must be declarations only. A bare statement (no
+! type prefix, no declaration keyword) fired through the global declaration parser
+! must trigger a parser error.
+!
+! Proves Slice 2 actually dispatches #bglDecl through the global path rather than
+! the loose-statement path that would silently accept this.
+!
+! EXPECT_ERROR: Missing type before identifier 'x'
+
+[ Main x;
+    #bglDecl{
+        x = x + 1;
+    }
+];

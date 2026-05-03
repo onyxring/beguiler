@@ -23,7 +23,7 @@ global _bglInitDone = 0;
 object _bglUtil
 ;
 object bgl
-  with util _bglutil
+  with utilities _bglutil
 ;
 [risky x;
     if (x>10) {

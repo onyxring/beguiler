@@ -1,0 +1,55 @@
+!% -G
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+[__glkHook _vararg_count api args retval;
+    @copy sp api;
+    args=_vararg_count - 1;
+    @glk api args retval;
+    return retval;
+];
+object _glulx
+;
+object _bglUtil
+;
+object bgl
+  with glulx _glulx,
+       utilities _bglutil
+;
+! test_inf_mode_directives.inf — recognition + dispatch of #bgl, #bglStmt, #bglDecl in .inf-mode.
+!
+! #bglDecl routes to the global declaration parser; #bglStmt routes to the loose-
+! statement parser; plain #bgl auto-detects (covered separately in
+! test_inf_mode_bgl_autodetect.inf).
+!
+! This test exercises:
+!   - #bglDecl declaring a global Beguile function callable from raw I6.
+!   - #bgl and #bglStmt running loose statements that reference it.
+!   - Single-line forms of #bgl and #bglStmt.
+
+
+[doubled n;
+    return n * 2;
+];
+
+
+[ Main x;
+    print "before bgl.^";
+
+    x = glulx;
+
+
+    x = doubled(x);
+
+
+    x = x+1;
+
+    x = doubled(x);
+
+
+    print "x = ", x, "^";
+];
+

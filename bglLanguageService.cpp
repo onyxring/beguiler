@@ -3,6 +3,7 @@
 #include <string_view>
 #include <sstream>
 #include <vector>
+#include <algorithm>
 
 #include "helpers.h"
 #include "bglParser.h"
@@ -10,6 +11,18 @@
 #include "typeDef.h"
 
 using namespace std;
+
+// Re-push a stub being filled in (registerClass/registerObject/registerEnum/...) to
+// `globals` if it has been removed since pre-scan time. Background: .inf-mode pre-scan
+// erases its own globals additions on each island return so source-order interleaving
+// with raw-I6 compositeNodes is preserved during main parse. For .bgl files, the stub
+// is still in `globals` at its pre-scan position, so this is a no-op (the find succeeds).
+template <typename T>
+static void rePushIfMissing(vector<typeDef*>& globals, T* existing, bool isExternal, bool atGlobalScope){
+    if(!atGlobalScope || isExternal) return;
+    if(find(globals.begin(), globals.end(), (typeDef*)existing) == globals.end())
+        globals.push_back((typeDef*)existing);
+}
 
 typeDef emptyTDef;
 beguilerSettingsDef beguilerSettings;
@@ -36,6 +49,10 @@ void bglLanguageService::reset(){
     tryCatchCounter = 0;
     captureCounter = 0;
     switchTempNeeded = false;
+    infHeader.clear();
+    infTrailer.clear();
+    isInfMode = false;
+    sawBglIsland = false;
     // Re-register the four base types
     registerType("void");
     registerType("var");
@@ -97,6 +114,8 @@ enumDef& bglLanguageService::registerEnum(string name, bool isExternal, string d
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
             if(!dspName.empty()) existing->displayName = dspName;
+            rePushIfMissing(globals, existing, isExternal,
+                            parser.getCurrentCompileContext() == eCompileContext::global);
             return *existing;
         }
         string loc = existing ? fmtSrc(existing->src) : "unknown location";
@@ -120,6 +139,8 @@ classDef& bglLanguageService::registerClass(string name, bool isExternal, string
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
             if(!dspName.empty()) existing->displayName = dspName;
+            rePushIfMissing(globals, existing, isExternal,
+                            parser.getCurrentCompileContext() == eCompileContext::global);
             return *existing;
         }
         string loc = existing ? fmtSrc(existing->src) : "unknown location";
@@ -144,6 +165,8 @@ objectDef& bglLanguageService::registerObject(string name, bool isExternal, stri
             existing->isExternal = isExternal;
             existing->src = parser.file.currentLocation();
             if(!dspName.empty()) existing->displayName = dspName;
+            rePushIfMissing(globals, existing, isExternal,
+                            parser.getCurrentCompileContext() == eCompileContext::global);
             return *existing;
         }
         string loc = existing ? fmtSrc(existing->src) : "unknown location";

@@ -1,0 +1,53 @@
+! test_inf_mode_class_in_island.inf — Slice 4: pre-scan walks .inf body for #bgl-island
+! declarations so class/enum names register as types before Pass 2 grammar matching.
+!
+! Without Slice 4, `class counter {}` inside #bgl{} fails with "Near 'class': expected
+! type name (in class declaration)" because the grammar rule `{"class", TYPE_NAME}`
+! requires the class name to already be a registered type at match time.
+!
+! Cases exercised:
+!   - #bglDecl declares a class; raw I6 below references the class via instance.
+!   - #bgl auto-detects a class declaration and routes to declaration mode.
+!   - Forward reference: a class declared in a LATER island, referenced earlier in the
+!     .inf body via raw I6, resolves because pre-scan walks all islands first.
+
+! Class declared via #bglDecl. Pre-scan registers `counter` as a type so the grammar
+! rule {class, TYPE_NAME} matches in Pass 2.
+#bglDecl{
+    class counter {
+        int value = 0;
+        int increment(){
+            value = value + 1;
+            return value;
+        }
+    }
+}
+
+! Class declared via auto-detect #bgl. Same pre-scan path.
+#bgl{
+    class doubler {
+        int factor = 2;
+        int apply(int n){
+            return n * factor;
+        }
+    }
+}
+
+! File-scope instance of counter (Beguile-side declaration, but referenced from raw I6).
+#bglDecl{
+    counter myCounter;
+    doubler myDoubler;
+}
+
+[ Main x;
+    print "before bgl.^";
+
+    #bglStmt{
+        myCounter.increment();
+        myCounter.increment();
+        x = myCounter.value;
+        x = myDoubler.apply(x);
+    }
+
+    print "x = ", x, "^";
+];

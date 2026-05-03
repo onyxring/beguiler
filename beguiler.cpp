@@ -21,6 +21,74 @@ namespace fs = std::filesystem;
 
 settingsStruct settings;
 
+// .inf-mode pre-pass: walk the file's leading `!%` block and detect the target. Sets
+// beguilerSettings.target and the target_zcode / target_glulx compile-time symbols so
+// BLR's `#if TARGET_ZCODE` chooses the right branch when it's pre-scanned right after.
+//
+// I6 ICL switches recognized:
+//   -G          → Glulx target
+//   -z          → Z-machine target (no version specified; default to z5)
+//   -v3/v5/v8   → explicit Z-machine version
+//
+// First match wins. If none found, leaves beguilerSettings.target alone — beguiler.cpp's
+// later default-fill (line ~155) will set Glulx as the fallback for non-.inf files; for
+// .inf files without a target indicator, the BLR's `#if TARGET_ZCODE` falls through to
+// `_glulx` by default.
+void beguiler::extractInfTargetFromIcl(const string& filename){
+    if(fs::path(filename).extension() != ".inf") return;
+    ifstream f(filename);
+    if(!f.is_open()) return;
+
+    string line;
+    string detectedTarget;
+    string zcodeVersion;
+    while(getline(f, line)){
+        // Strip trailing CR so CRLF-terminated files tokenize the same as LF — otherwise
+        // a switch like `-z` at end-of-line is read as `"-z\r"` and never matches.
+        if(!line.empty() && line.back() == '\r') line.pop_back();
+        // Trim leading whitespace.
+        size_t s = 0;
+        while(s < line.size() && (line[s] == ' ' || line[s] == '\t')) s++;
+        // Per I6, `!%` only counts when on a line at the head of the file. Stop scanning
+        // at the first non-`!%` line.
+        if(s + 1 >= line.size() || line[s] != '!' || line[s+1] != '%') break;
+        // Examine the rest of the line for switch tokens. Tokens are whitespace-separated;
+        // `!` introduces a comment to EOL. We don't need full robustness — just find the
+        // first target-relevant flag.
+        size_t i = s + 2;
+        while(i < line.size()){
+            // Skip whitespace
+            while(i < line.size() && (line[i] == ' ' || line[i] == '\t')) i++;
+            if(i >= line.size()) break;
+            // I6 ICL inline comment continues to EOL — stop scanning this line
+            if(line[i] == '!') break;
+            // Token starts here; collect to next whitespace
+            size_t ts = i;
+            while(i < line.size() && line[i] != ' ' && line[i] != '\t') i++;
+            string tok = line.substr(ts, i - ts);
+            // Match target flags
+            if(tok == "-G" || tok == "-g"){
+                detectedTarget = "glulx";
+                break;
+            } else if(tok == "-z" || tok == "-Z"){
+                if(detectedTarget.empty()){ detectedTarget = "z5"; zcodeVersion = "5"; }
+            } else if(tok.size() == 3 && (tok[0] == '-') && (tok[1] == 'v' || tok[1] == 'V')
+                      && (tok[2] == '3' || tok[2] == '5' || tok[2] == '8')){
+                detectedTarget = string("z") + tok[2];
+                zcodeVersion = string(1, tok[2]);
+            }
+        }
+        if(detectedTarget == "glulx") break;  // explicit Glulx wins; stop scanning further `!%`
+    }
+
+    if(detectedTarget.empty()) return;
+    if(beguilerSettings.target.empty()) beguilerSettings.target = detectedTarget;
+    if(detectedTarget == "glulx")
+        parser.defineSymbol("target_glulx");
+    else
+        parser.defineSymbol("target_zcode", zcodeVersion);
+}
+
 // Simple pre-scan to extract blorb settings before the full parse.
 // Looks for #beguilerSettings { ... generateBlorb = true/false ... blorbAssetPath = "..." ... }
 // using basic string search — no lexer needed.
@@ -129,6 +197,10 @@ bool beguiler::go(int argc, char* argv[]) {
     // Pre-scan for blorb settings so asset scan can run before preScanFile
     extractBlorbSettings(settings.inFile);
 
+    // .inf-mode pre-pass: detect target from the user's `!%` ICL block so BLR's
+    // `#if TARGET_ZCODE` resolves correctly during preScanFile (BLR is loaded next).
+    extractInfTargetFromIcl(settings.inFile);
+
     // Phase 1: asset scan — runs before preScanFile so _blorbAssets.bgl exists during parse
     Blorb blorb;
     vector<BlorbAsset> blorbAssets;
@@ -146,6 +218,9 @@ bool beguiler::go(int argc, char* argv[]) {
 
     parser.preScanFile(settings.inFile);  // pass 1: register all type/object stubs for forward-reference resolution
     if(parser.parseFile(settings.inFile)) return true;
+
+    // .inf-mode cross-language collision check (no-op for .bgl-mode; gated on infHeader/Trailer).
+    parser.detectInfModeI6Collisions();
 
     // Apply defaults declared on beguilerSettingsType schema members for any unset fields
     parser.applySchemaDefaults();
@@ -368,7 +443,22 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
             } else if(arg.substr(1,7)=="inform="){
                 settings.informName = arg.substr(8);
             } else if(arg.substr(1,13)=="includepaths="){
-                beguilerSettings.includePaths.push_back(arg.substr(14));
+                // Comma-separated, matching I6 ICL `+include_path=a,b,c` convention.
+                string val = arg.substr(14);
+                size_t i = 0;
+                while(i < val.size()){
+                    size_t comma = val.find(',', i);
+                    string entry = val.substr(i, comma == string::npos ? string::npos : comma - i);
+                    size_t a = entry.find_first_not_of(" \t");
+                    size_t b = entry.find_last_not_of(" \t");
+                    if(a != string::npos){
+                        string path = entry.substr(a, b - a + 1);
+                        if(find(beguilerSettings.includePaths.begin(), beguilerSettings.includePaths.end(), path) == beguilerSettings.includePaths.end())
+                            beguilerSettings.includePaths.push_back(path);
+                    }
+                    if(comma == string::npos) break;
+                    i = comma + 1;
+                }
             } else if(arg == "-G" || arg == "-g") {
                 beguilerSettings.target = "glulx";
             } else if(arg == "-z3" || arg == "-Z3") {

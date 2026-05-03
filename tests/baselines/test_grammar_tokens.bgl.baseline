@@ -1,8 +1,5 @@
 !% -G
 !% -E1
-
-    replace main _oldmain;
-
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -20,7 +17,7 @@ object _bglUtil
 ;
 object bgl
   with glulx _glulx,
-       util _bglutil
+       utilities _bglutil
 ;
 constant story = "";
 constant headline = "";
@@ -95,9 +92,3 @@ object pour
             ];
 verb 'pour'
     * container obj=inscope -> pour;
-
-    [main; 
-        bglInit();
-        _oldmain();
-    ];
-

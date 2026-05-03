@@ -11,7 +11,7 @@ object _bglUtil
   with math _bglmath
 ;
 object bgl
-  with util _bglutil
+  with utilities _bglutil
 ;
 object _bglMath
   with unsignedCompare [x y u v;
