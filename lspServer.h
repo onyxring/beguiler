@@ -23,6 +23,7 @@ struct LspSymbolRef {
     classDef*    enclosingClass = nullptr; // set for ClassMember (if applicable)
     std::string typeName;                   // resolved type name of the symbol
     std::string displayName;                // original-case name
+    std::string docComment;                 // user-authored doc-comment, if any (rendered in hover)
     sourceLocation declSrc;                 // declaration location (if known)
 };
 

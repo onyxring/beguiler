@@ -11,7 +11,7 @@
         int             release        = 0;             // story release number
         string          serial         = "";            // serial number: exactly 6 digits (e.g. "250328")
         int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
-        string          includePaths;                   // adds one directory to the include search path for both Beguile and I6 (additive)
+        string          includePaths;                   // include search path entries for both Beguile and I6 (additive); comma-separated allowed: "../a,../b,../c"
         bool            rewritePaths   = true;          // substitute path separators to match OS
         bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)
         string          blorbAssetPath = "assets";      // asset directory relative to source .bgl file

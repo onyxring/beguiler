@@ -18,7 +18,7 @@ object _bglUtil
 ;
 object bgl
   with glulx _glulx,
-       util _bglutil
+       utilities _bglutil
 ;
 [testArithmetic a b sum diff prod quot rem mixed neg;
     a = 10;

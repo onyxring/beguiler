@@ -22,7 +22,7 @@ global _bglInitDone = 0;
 object _bglUtil
 ;
 object bgl
-  with util _bglutil
+  with utilities _bglutil
 ;
 attribute light;
 class room
