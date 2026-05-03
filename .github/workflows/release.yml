@@ -13,22 +13,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             target: macos-arm64
             artifact: beguiler-macos-arm64
-            ext: ''
-          - os: macos-13
+            cflags: '-arch arm64'
+          - os: macos-15
             target: macos-x86_64
             artifact: beguiler-macos-x86_64
-            ext: ''
-          - os: ubuntu-22.04
+            cflags: '-arch x86_64'
+          - os: ubuntu-24.04
             target: linux-x64
             artifact: beguiler-linux-x64
-            ext: ''
+            cflags: '-Disnumber=isdigit'
           - os: windows-2022
             target: windows-x64
             artifact: beguiler-windows-x64.exe
-            ext: '.exe'
+            cflags: '-Disnumber=isdigit -Dpopen=_popen -Dpclose=_pclose'
 
     steps:
       - uses: actions/checkout@v4
@@ -36,17 +36,22 @@ jobs:
       - name: Build (Unix)
         if: runner.os != 'Windows'
         run: |
-          c++ -std=c++20 -O2 -Wno-deprecated-declarations *.cpp -o beguiler${{ matrix.ext }}
+          c++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional ${{ matrix.cflags }} *.cpp -o beguiler
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          clang++ -std=c++20 -O2 -Wno-deprecated-declarations (Get-ChildItem -Filter *.cpp).Name -o beguiler.exe
+          clang++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional ${{ matrix.cflags }} (Get-ChildItem -Filter *.cpp).Name -o beguiler.exe
 
       - name: Rename artifact
         shell: bash
-        run: mv beguiler${{ matrix.ext }} ${{ matrix.artifact }}
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            mv beguiler.exe ${{ matrix.artifact }}
+          else
+            mv beguiler ${{ matrix.artifact }}
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
