@@ -1,1 +1,47 @@
-/.DS_Store
+# Compiler binary + debug info
+beguiler
+beguiler.exe
+beguiler.dSYM/
+
+# Object files
+*.o
+*.obj
+
+# Compiler output (transient artifacts)
+*.bgldbg
+*.transpiled.inf
+*.transpiled.inf.dbg
+*.transpiled.inf.map
+*.transpiled.inf.bgldbg
+
+# Inform 6 outputs
+gameinfo.dbg
+*.z3
+*.z5
+*.z8
+*.ulx
+*.gblorb
+*.zblorb
+
+# Internal/AI tooling
+.claude/
+.cursor/
+.cursorrules
+.aider*
+
+# Internal docs / planning notes (kept locally, not tracked)
+/CLAUDE.md
+/claude.md
+/TODOs.md
+/summaryOfChanges.md
+/designNewDelete.md
+/docs/ARCHITECTURE.md
+/docs/GOTCHAS.md
+/docs/NAME_RESOLUTION.md
+
+# Test directory not shipped publicly
+/tests/broken/
+
+# OS
+.DS_Store
+Thumbs.db
