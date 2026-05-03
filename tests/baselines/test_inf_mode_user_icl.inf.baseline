@@ -1,0 +1,31 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+! test_inf_mode_user_icl.inf — Slice 5a: user's `!%` ICL block at the top of the .inf
+! file is hoisted to the top of the emitted output, and the compiler's own emitICL is
+! skipped. Per I6 rules, only the consecutive `!%` lines from line 1 are honored as
+! ICL — the lines above must be the very first lines of the output.
+!
+! This file declares a Z-machine v5 target via `!% -v5`. The compiler's default target
+! is Glulx, so without Slice 5a, the output would lead with `!% -G` and the user's `-v5`
+! would be a buried comment that I6 ignores. With Slice 5a, the output leads with `-v5`
+! and `-G` does not appear.
+
+[ Main x;
+    print "hello, glulx world.^";
+
+    x = 42;
+
+
+    print "x = ", x, "^";
+];
+

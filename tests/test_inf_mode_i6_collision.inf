@@ -1,0 +1,28 @@
+!% -v5
+! test_inf_mode_i6_collision.inf — Slice 6: cross-language symbol collision warning.
+!
+! When an I6 top-level declaration shares a name with a Beguile-declared global from a
+! #bgl-island in the same .inf, the compiler emits a warning. Same-file scope only.
+!
+! This test declares both a Beguile function `myhelper` (via #bglDecl) and an I6 routine
+! `myhelper` (in raw I6) — names overlap → warning. Compilation still succeeds (warning-
+! level diagnostic, not error), so the .transpiled.inf is still produced and baselined.
+
+#bglDecl{
+    int myhelper(int n){
+        return n + 1;
+    }
+}
+
+! I6 routine with the same name — should warn at compile time. (The actual emitted I6
+! would still have a name conflict at I6 compile time, but the Beguile compiler's job
+! here is just to surface it early.)
+[ myhelper x;
+    return x + 100;
+];
+
+[ Main;
+    print "hi.^";
+];
+
+end;

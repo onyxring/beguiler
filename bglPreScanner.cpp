@@ -290,23 +290,42 @@ void bglParser::preScanDirective(token tok){
     // Other directives (#message, #error, #warning, #exit, ##ifdef, etc.) are ignored during pre-scan
 }
 
-void bglParser::preScanFile(string filename){
-    string absPath = filesystem::canonical(filesystem::absolute(filename)).string();
+void bglParser::preScanFile(string filename, const std::string* contentOverride){
+    string absPath;
+    try { absPath = filesystem::canonical(filesystem::absolute(filename)).string(); }
+    catch(...) { absPath = filename; }  // contentOverride callers may pass paths that don't exist on disk
     if(preScanOnceFiles.count(absPath)) return;
 
     bool isFirst = (preScanDepth == 0);
 
-    // .inf-as-input mode: pre-scan only the Beguile Language Runtime (so its declarations are
-    // available inside #bgl{} blocks). The .inf body itself contains no Beguile declarations.
+    // .inf-as-input mode: pre-scan the Beguile Language Runtime (so its declarations are
+    // available inside #bgl islands), then walk the .inf body for #bglDecl{} / #bgl{} blocks
+    // whose content is declaration-mode and pre-scan them too. This makes types declared in
+    // an island visible to all #bgl content in the file (forward refs across the .inf body).
     if(isFirst && filesystem::path(filename).extension() == ".inf"){
         preScanDepth++;
         filesystem::path sysPath = filesystem::path(settings.libPath) / "core" / "__beguileCore.bgl";
         preScanFile(sysPath.string());
+        // Open the .inf file (or use the in-memory override for the LSP path).
+        // Missing-file exception is silent (matches the .bgl path); any other exception
+        // (parsing errors raised while pre-scanning Beguile islands) must propagate,
+        // but the file still has to be closed first.
+        try {
+            if(contentOverride) file.openText(*contentOverride, absPath, 1);
+            else                file.open(absPath);
+        }
+        catch(runtime_error&){ preScanDepth--; return; }
+        try { preScanInfFileBodyForDecls(); }
+        catch(...){ file.close(); preScanDepth--; throw; }
+        file.close();
         preScanDepth--;
         return;
     }
 
-    try { file.open(absPath); }
+    try {
+        if(contentOverride) file.openText(*contentOverride, absPath, 1);
+        else                file.open(absPath);
+    }
     catch(runtime_error&){ return; } // silently skip missing files
 
     preScanDepth++;
@@ -318,6 +337,16 @@ void bglParser::preScanFile(string filename){
         file.moveToStart();
     }
 
+    preScanGlobalLoop();
+
+    file.close();
+    preScanDepth--;
+}
+
+// Walks tokens in the currently-open file, registering type/global stubs until EOF.
+// Extracted from preScanFile so .inf-mode declaration islands (opened as virtual files)
+// can run the same registration logic.
+void bglParser::preScanGlobalLoop(){
     while(true){
         token tok = file.getToken();
         if(tok.is(eTokenType::eof)) break;
@@ -615,6 +644,7 @@ void bglParser::preScanFile(string filename){
                     enumValueDef& ev = *(new enumValueDef());
                     ev.name = t.value;
                     ev.displayName = t.originalValue;
+                    ev.docComment = t.docComment;
                     t = file.getToken({token::braceClose, token::comma, token::assignment});
                     if(t.is(token::assignment)){
                         bool negate = false;
@@ -892,7 +922,99 @@ void bglParser::preScanFile(string filename){
         // Anything else — skip to next semicolon or brace block
         preScanSkipToSemicolon();
     }
+}
 
+// Pre-scan the bgl content of one #bgl-variant island as if it were a fragment of a
+// .bgl file at global scope. Opens `content` as a virtual file, runs preScanGlobalLoop,
+// closes. Caller is responsible for having already loaded any prerequisite types
+// (typically BLR via the outer preScanFile call).
+//
+// Source-order discipline: any entries pushed to `languageService.globals` during the
+// island's pre-scan are erased on return. Type registrations in `objectTypes` (and the
+// equivalent enum/object/verb lists) persist so forward type-references resolve in main
+// parse. Main parse will push the declarations into `globals` at their correct source
+// positions via parseInfFileBody's interleave-with-compositeNode flow; the modified
+// register* helpers in bglLanguageService re-push entries when filling in a stub that
+// has been removed from globals.
+void bglParser::preScanBglIslandContent(const std::string& content, const std::string& virtualName, int startLine){
+    size_t globalsBefore = languageService.globals.size();
+    file.openText(content, virtualName, startLine);
+    preScanGlobalLoop();
     file.close();
-    preScanDepth--;
+    if(languageService.globals.size() > globalsBefore){
+        languageService.globals.erase(
+            languageService.globals.begin() + globalsBefore,
+            languageService.globals.end());
+    }
+}
+
+// .inf-mode Pass 1: walk the open .inf file looking for #bgl-variant islands.
+// For #bglDecl islands and #bgl islands whose first content token signals declaration
+// mode (matching the runtime discriminator in parseInfFileBody), pre-scan the island
+// content via preScanBglIslandContent so types declared there register before Pass 2.
+// #bglStmt islands and statement-mode #bgl islands contain no top-level declarations
+// and are skipped.
+void bglParser::preScanInfFileBodyForDecls(){
+    int depth = 1;  // pseudo-depth: stays > 0 until EOF (forced to 0 by getRawText...'s eofTerminates)
+    while(depth > 0){
+        eBglDirective directive = eBglDirective::NotFound;
+        // Discard the raw I6 text between islands — pre-scan only cares about Beguile
+        // content. The full body is re-walked during Pass 2 (parseInfFileBody).
+        (void)file.getRawTextUntilCloseOrBgl(directive, depth, depth, /*eofTerminates=*/true);
+        if(directive == eBglDirective::NotFound) break;
+
+        // Capture the island's bgl content (multi-line or single-line form).
+        sourceLocation hereLoc = file.currentLocation();
+        bool isMultiLine = false;
+        while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
+        if(file.peekChar() == '{'){
+            file.readChar();
+            isMultiLine = true;
+        }
+        string bglContent;
+        if(isMultiLine){
+            file.braceDepth++;
+            bglContent = file.getRawTextThroughClosingBrace();
+        } else {
+            char c = file.peekChar();
+            while(c != '\n' && c != (char)EOF){
+                file.readChar();
+                bglContent += c;
+                c = file.peekChar();
+            }
+        }
+
+        // Decide whether this island contains declarations that need pre-scanning.
+        bool shouldPreScan = false;
+        if(directive == eBglDirective::BglDecl){
+            shouldPreScan = true;
+        } else if(directive == eBglDirective::Bgl){
+            // Mirror the auto-detect logic in parseInfFileBody. We open a temporary virtual
+            // file just to peek the first few tokens, then close it (the actual pre-scan
+            // re-opens fresh below).
+            file.openText(bglContent, hereLoc.file, hereLoc.line);
+            file.bleedSpaces();
+            if(file.peekChar() != (char)EOF){
+                token t1 = file.peekToken();
+                if(t1.is(eTokenType::directive)){
+                    shouldPreScan = true;
+                } else if(t1.is("class") || t1.is("enum") || t1.is("namespace") ||
+                          t1.is("grammar") || t1.is("emitter") || t1.is("extend") ||
+                          t1.is(token::external) || t1.is("static") || t1.is("explicit")){
+                    shouldPreScan = true;
+                } else if(t1.is("void") || t1.isDataType()){
+                    token t2 = file.peekToken(2);
+                    if(t2.is(eTokenType::identifier)){
+                        token t3 = file.peekToken(3);
+                        if(t3.is(token::parenOpen)) shouldPreScan = true;
+                    }
+                }
+            }
+            file.close();
+        }
+        // BglStmt: never pre-scan (no top-level declarations).
+
+        if(shouldPreScan)
+            preScanBglIslandContent(bglContent, hereLoc.file, hereLoc.line);
+    }
 }

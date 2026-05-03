@@ -1,0 +1,21 @@
+! Negative test: plain #bgl{} that mixes a declaration-shaped first line with
+! subsequent bare statements must error.
+!
+! The autodetect peeks the first token(s): a `Type ident <terminator>` shape
+! (here `attribute redtangent;`) routes the whole block to declaration mode.
+! The following `x = 1;` is a bare assignment, which the global declaration
+! parser rejects — proving the autodetect actually elevates and the mixed
+! content is caught.
+!
+! Distinct from _test_inf_mode_bgldecl_rejects_stmt.inf, which exercises the
+! same downstream error via explicit `#bglDecl{}`. This test covers the
+! autodetect routing decision specifically.
+!
+! EXPECT_ERROR: Missing type before identifier 'x'
+
+[ Main x;
+    #bgl{
+        attribute redtangent;
+        x = 1;
+    }
+];
