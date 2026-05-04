@@ -15,25 +15,25 @@ jobs:
         include:
           - os: macos-15
             target: macos-arm64
-            artifact: beguiler-macos-arm64
             cxx: c++
             cflags: '-arch arm64'
+            archive: tar.gz
           - os: macos-15
             target: macos-x86_64
-            artifact: beguiler-macos-x86_64
             cxx: c++
             cflags: '-arch x86_64'
+            archive: tar.gz
           - os: ubuntu-24.04
             target: linux-x64
-            artifact: beguiler-linux-x64
             cxx: clang++
             install: 'sudo apt-get update && sudo apt-get install -y clang libc++-dev libc++abi-dev'
             cflags: '-stdlib=libc++ -Disnumber=isdigit'
+            archive: tar.gz
           - os: windows-2022
             target: windows-x64
-            artifact: beguiler-windows-x64.exe
             cxx: clang++
             cflags: '-Disnumber=isdigit -Dstrncasecmp=_strnicmp -Dpopen=_popen -Dpclose=_pclose'
+            archive: zip
 
     steps:
       - uses: actions/checkout@v4
@@ -53,19 +53,28 @@ jobs:
         run: |
           ${{ matrix.cxx }} -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional ${{ matrix.cflags }} (Get-ChildItem -Filter *.cpp).Name -o beguiler.exe
 
-      - name: Rename artifact
+      - name: Bundle release archive
         shell: bash
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            mv beguiler.exe ${{ matrix.artifact }}
+          BUNDLE="beguile-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir "$BUNDLE"
+          if [ -f beguiler.exe ]; then cp beguiler.exe "$BUNDLE/"; else cp beguiler "$BUNDLE/"; fi
+          cp -R beguiLib "$BUNDLE/"
+          cp -R docs "$BUNDLE/"
+          cp LICENSE README.md CHANGELOG.md "$BUNDLE/"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            7z a "${BUNDLE}.zip" "$BUNDLE" >/dev/null
           else
-            mv beguiler ${{ matrix.artifact }}
+            tar czf "${BUNDLE}.tar.gz" "$BUNDLE"
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          name: ${{ matrix.target }}
+          path: |
+            beguile-*.tar.gz
+            beguile-*.zip
+          if-no-files-found: error
 
   release:
     needs: build
