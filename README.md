@@ -5,7 +5,7 @@ Beguile is a compiler that transpiles a clean, type-aware language inspired by C
 
 ## Status: Preview
 
-This is an **experimental preview**. The language and compiler are evolving rapidly, breaking changes between versions are expected, and not all features are stable. Feedback and bug reports are welcome via [GitHub Issues](https://github.com/onyxring/beguile/issues).
+This is an **experimental preview**. The language and compiler are evolving rapidly, breaking changes between versions are expected, and not all features are stable. Feedback and bug reports are welcome via [GitHub Issues](https://github.com/onyxring/beguiler/issues).
 
 ## Companion: VS Code Extension
 
@@ -15,7 +15,7 @@ This is an **experimental preview**. The language and compiler are evolving rapi
 
 ### Download
 
-Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are attached to each [Release](https://github.com/onyxring/beguile/releases).
+Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are attached to each [Release](https://github.com/onyxring/beguiler/releases).
 
 ### Build from source
 
