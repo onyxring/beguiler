@@ -1,6 +1,6 @@
 # Beguiler
 
-***Beguile*** is a a clean, type-aware language inspired by C++, C#, and TypeScript.  It is used to create Z-Machine (z3, z5, or z8) and Glulx story files.
+***Beguile*** is a a clean, type-aware language inspired by C++, C#, and TypeScript.  It is used to create Z-Machine and Glulx story files.
 
 ***Beguiler*** is the compiler which transpiles Beguile into the Inform 6 language and instruments the [Inform 6][i6] compiler. 
 
