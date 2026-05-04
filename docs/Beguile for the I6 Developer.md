@@ -1,3 +1,5 @@
+> NOTE: This document is only just started.  I'll develop it over time an Beguile develops.
+
 # Beguile for the I6 Developer 
 
 This document serves as a introduction to the Beguile programming language for developers already experienced with the I6 language.  
@@ -44,27 +46,5 @@ Arguably, the fastest way to familiarize yourself with a language is to review a
 ### A Two Room Example
 The following is a short, two-room example, written in Beguile with Puny Inform.
 ```
-/* Blah: a Two-Room Example.
-
-*/
-#beguileSettings{ 
-    target=Z5;
-    includePath="../"; 
-}
-
-#includeI6 "parser"
-#include <bindings/punyInform>
-
-object snackRoom{
-    string short_name = "Snack Room";
-    object w_to = lobby;
-    string description = "blah";
-}
-object lobby{
-    string short_name = "Lobby";
-    object w_to = lobby;
-    string description = "blah";
-}
-
-
+TBD
 ```
