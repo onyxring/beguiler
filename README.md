@@ -1,5 +1,4 @@
-# Beguile 
- *Beautifully deceptive.  A modern programming language for Interactive Fiction.*
+# Beguiler
 
 ***Beguile*** is a a clean, type-aware language inspired by C++, C#, and TypeScript.  It is used to create Z-Machine (z3, z5, or z8) and Glulx story files.
 
