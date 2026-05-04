@@ -59,8 +59,8 @@ jobs:
           BUNDLE="beguile-${{ github.ref_name }}-${{ matrix.target }}"
           mkdir "$BUNDLE"
           if [ -f beguiler.exe ]; then cp beguiler.exe "$BUNDLE/"; else cp beguiler "$BUNDLE/"; fi
-          cp -R beguiLib "$BUNDLE/"
-          cp -R docs "$BUNDLE/"
+          tar cf - beguiLib | tar xf - -C "$BUNDLE"
+          tar cf - docs     | tar xf - -C "$BUNDLE"
           cp LICENSE README.md CHANGELOG.md "$BUNDLE/"
           if [ "${{ matrix.archive }}" = "zip" ]; then
             7z a "${BUNDLE}.zip" "$BUNDLE" >/dev/null
