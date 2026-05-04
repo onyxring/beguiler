@@ -39,6 +39,9 @@ gameinfo.dbg
 /docs/GOTCHAS.md
 /docs/NAME_RESOLUTION.md
 
+# Local convenience symlink (case-insensitive shorthand for beguiLib/)
+/beguilib
+
 # Test directory not shipped publicly
 /tests/broken/
 
