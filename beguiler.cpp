@@ -184,8 +184,7 @@ bool beguiler::go(int argc, char* argv[]) {
     for(int i = 1; i < argc; i++)
         if(string(argv[i]) == "--lsp") {
             // Initialize library path — same as parseArgs() does for normal compilation
-            const char* envLib = getenv("BEGUILE_LIB");
-            settings.libPath = envLib ? string(envLib) : getPath(argv[0]) + "beguilib";
+            resolveLibPath(argc, argv);
             LspServer lsp;
             lsp.run();
             return false;
@@ -426,6 +425,7 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
         cout << "  -E1, -E2             Error format: E1=Microsoft, E2=Macintosh\n";
         cout << "  -inform=<name>       I6 compiler binary name (use 'none' to skip I6)\n";
         cout << "  -includepaths=<dir>  Add a directory to the include search path\n";
+        cout << "  -lib=<dir>           Path to the Beguile system library (default: beguiLib/ next to binary)\n";
         cout << "  --debug              Enable debug mode (emit .bgldbg debug info)\n";
         cout << "\n";
         cout << "Most options can also be set via #beguilerSettings in the source file.\n";
@@ -498,10 +498,28 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
     #endif
 
     settings.tmpFile = fs::absolute(settings.inFile).string()+".transpiled.inf";
-    const char* envLib = getenv("BEGUILE_LIB");
-    settings.libPath = envLib ? string(envLib) : getPath(argv[0])+"beguilib";
+    resolveLibPath(argc, argv);
 
     return false;
+}
+void beguiler::resolveLibPath(int argc, char* argv[]) {
+    // Path separator may not have been set yet (e.g. LSP path skips parseArgs).
+    #if defined(_WIN32) || defined(_WIN64)
+        if(settings.pathSep == 0) settings.pathSep = '\\';
+    #else
+        if(settings.pathSep == 0) settings.pathSep = '/';
+    #endif
+
+    // Explicit -lib=<path> overrides the default.
+    for(int i = 1; i < argc; i++) {
+        string arg = argv[i];
+        if(arg.size() > 5 && arg.substr(0, 5) == "-lib=") {
+            settings.libPath = arg.substr(5);
+            return;
+        }
+    }
+    // Default: a beguiLib/ subfolder next to the beguiler binary.
+    settings.libPath = getPath(argv[0]) + "beguiLib";
 }
 string beguiler::getPath(string filename){
     string filePath="";
