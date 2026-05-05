@@ -510,11 +510,13 @@ void beguiler::resolveLibPath(int argc, char* argv[]) {
         if(settings.pathSep == 0) settings.pathSep = '/';
     #endif
 
-    // Explicit -lib=<path> overrides the default.
+    // Explicit -lib=<path> overrides the default. Absolute paths are taken verbatim;
+    // relative paths anchor to the binary's directory (same anchor as the default).
     for(int i = 1; i < argc; i++) {
         string arg = argv[i];
         if(arg.size() > 5 && arg.substr(0, 5) == "-lib=") {
-            settings.libPath = arg.substr(5);
+            string val = arg.substr(5);
+            settings.libPath = fs::path(val).is_absolute() ? val : getPath(argv[0]) + val;
             return;
         }
     }
