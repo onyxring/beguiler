@@ -473,6 +473,8 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
                 beguilerSettings.errorFormat = arg.substr(2);
             } else if(arg == "--debug") {
                 settings.debugMode = true;
+            } else if(arg.size() >= 5 && arg.substr(1,4)=="lib=") {
+                // Consumed by resolveLibPath; recognized here so it doesn't leak into I6 switches.
             } else {
                 settings.switches = settings.switches + " " + arg;
             }
