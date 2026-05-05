@@ -8281,12 +8281,22 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             return false;
         }
         case chk("#if"):{
-            // collect condition text up to end of line
+            // Collect condition text up to end of line, optional `;` no-op, EOF, or the
+            // start of the next #-directive. Single-line forms like `#if cond; …; #endif`
+            // and `#if cond #includeI6 … #endif` both parse correctly. When stopping on
+            // a #-directive, hand it off to processDirective recursively.
             string condText;
             token t = file.getBasicToken(true);
-            while(t.isNot("\n") && t.isNot(eTokenType::eof)){ condText += t.value; t = file.getBasicToken(true); }
+            bool stoppedOnDirective = false;
+            while(t.isNot("\n") && t.isNot(";") && t.isNot(eTokenType::eof)){
+                if(!t.value.empty() && t.value[0] == '#'){ stoppedOnDirective = true; break; }
+                condText += t.value;
+                t = file.getBasicToken(true);
+            }
             if(!evaluateCondition(condText))
                 skipConditionalBlock(contextObj);
+            else if(stoppedOnDirective)
+                processDirective(t, contextObj);
             return false;
         }
         case chk("#elif"):{
