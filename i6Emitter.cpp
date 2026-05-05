@@ -964,9 +964,14 @@ void i6Emitter::emitClass(classDef* classNode){
     else
         out << format("class {0}\n", classNode->i6Name());
 
-    if(classNode->baseClasses.size() > 0){
+    // Filter out emitter base classes — they have no I6 representation, so referencing
+    // them in the I6 inheritance chain would produce an undefined symbol.
+    vector<classDef*> emittableBases;
+    for(classDef* base : classNode->baseClasses)
+        if(!base->isEmitterClass) emittableBases.push_back(base);
+    if(!emittableBases.empty()){
         out << "  class";
-        for(classDef* base : classNode->baseClasses) out << format(" {0}", base->i6Name());
+        for(classDef* base : emittableBases) out << format(" {0}", base->i6Name());
         out << "\n";
     }
 
