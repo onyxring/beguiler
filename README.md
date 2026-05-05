@@ -1,6 +1,6 @@
 # Beguiler
 
-First some terms:
+First some context:
 
 ***Beguile*** is a clean, type-aware language inspired by C++, C#, and TypeScript.  You can use it to create Z-Machine and Glulx story files.
 
@@ -62,3 +62,8 @@ MIT — see [LICENSE](LICENSE).
 
 [i6]: https://github.com/DavidKinder/Inform6
 [Beguilex]: https://github.com/OnyxRing/Beguilex
+
+## Use of AI
+
+I've been writing code for nearly 50 years (since my TRS-80 model I), but this AI-assisted coding thing is new (as I write this) and I wanted to explore it.  Beguile - including the compiler (Beguiler) and the extension (Beguilex) - is my first exploration into what Claude Code is capable of.  I used it to different degrees with each project.
+
