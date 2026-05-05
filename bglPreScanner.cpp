@@ -254,12 +254,23 @@ void bglParser::preScanDirective(token tok){
             file.getToken(); // consume member name
         }
     } else if(tok.is("#if")){
-        // Evaluate condition and skip false branch
+        // Evaluate condition and skip false branch. The condition ends at the first
+        // newline, optional `;` no-op, EOF, or the start of the next #-directive — so
+        // single-line forms like `#if cond; #includeI6 …; #endif` and `#if cond #includeI6 …
+        // #endif` both parse correctly. When stopping on a #-directive, hand it off to
+        // preScanDirective recursively so it isn't lost.
         string condText;
         token t = file.getBasicToken(true);
-        while(t.isNot("\n") && t.isNot(eTokenType::eof)){ condText += t.value; t = file.getBasicToken(true); }
+        bool stoppedOnDirective = false;
+        while(t.isNot("\n") && t.isNot(";") && t.isNot(eTokenType::eof)){
+            if(!t.value.empty() && t.value[0] == '#'){ stoppedOnDirective = true; break; }
+            condText += t.value;
+            t = file.getBasicToken(true);
+        }
         if(!evaluateCondition(condText))
             preScanSkipConditionalBlock();
+        else if(stoppedOnDirective)
+            preScanDirective(t);
     } else if(tok.is("#elif")){
         // Reached here because prior #if branch was TRUE — skip to #endif
         int startLine1 = tok.src.line + 1;  // first line after the #elif directive
