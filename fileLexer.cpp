@@ -435,6 +435,22 @@ string fileLexer::getRawTextThroughClosingBrace(){
              if(c == '\n'){ retval += c; c = readChar(); }
              continue;
          }
+         // Skip /* … */ block comments — same reasoning as // and !: braces inside
+         // don't count, and (critically) apostrophes inside ("Edaw's") would otherwise
+         // open a runaway char-literal skip that swallows braces far below.
+         if(c=='/' && peekChar()=='*'){
+             retval += c; c = readChar();  // consume first '/'
+             retval += c; c = readChar();  // consume the '*'
+             while(c != EOF){
+                 if(c == '*' && peekChar() == '/'){
+                     retval += c; c = readChar();  // consume the '*'
+                     retval += c; c = readChar();  // consume the closing '/'
+                     break;
+                 }
+                 retval += c; c = readChar();
+             }
+             continue;
+         }
          // Skip I6 ! line comments — same reasoning. Critical: English contractions
          // like "don't" inside ! comments would otherwise open a runaway char-literal
          // skip that swallows braces in unrelated code far below.
@@ -506,6 +522,22 @@ string fileLexer::getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& ou
             retval += c; c = readChar();
             while(c != '\n' && c != EOF){ retval += c; c = readChar(); }
             if(c == '\n'){ retval += c; c = readChar(); }
+            continue;
+        }
+        // /* … */ block comments — same reasoning as // and !: braces inside don't
+        // count, and apostrophes inside ("Edaw's") would otherwise open a runaway
+        // char-literal skip that swallows braces far below.
+        if(c == '/' && peekChar() == '*'){
+            retval += c; c = readChar();
+            retval += c; c = readChar();
+            while(c != EOF){
+                if(c == '*' && peekChar() == '/'){
+                    retval += c; c = readChar();
+                    retval += c; c = readChar();
+                    break;
+                }
+                retval += c; c = readChar();
+            }
             continue;
         }
         // I6 ! line comments — must be skipped so contractions like "don't" inside
