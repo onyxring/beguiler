@@ -65,6 +65,12 @@ class classDef:public typeDef{
         // >0 = sized pool (emit as `Class Foo(N)`).
         // -1 = extern marker `extern class Foo[]` — I6 owns the size; Beguile treats as pooled for new/delete checks.
         int poolSize = 0;
+        // Type parameters declared on this class (e.g., `class array<T>` → ["t"]).
+        // Empty for non-generic classes. Stored on the classDef but NOT registered as global
+        // types (that would collide with same-named instances like `Temperature t;`).
+        // bglLanguageService::isClassType / getType consult parser.currentClass to recognize
+        // them inside the class body; method lookup substitutes parameter→concrete at call sites.
+        vector<string> typeParameters;
 };
 //instances of classes, including overrides
 class objectDef: public typeDef{

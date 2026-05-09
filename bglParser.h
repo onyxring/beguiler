@@ -329,7 +329,8 @@ class bglParser {
         // must route through this so the five steps can't drift apart.
         functionDef* bindMethodCall(string& objType, const string& objPath, const string& methodName,
                                      vector<expression*>& args, vector<string>& namedArgNames,
-                                     vector<vector<interpolatedSegment>>& interpSegmentsPerArg);
+                                     vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
+                                     const string& elementType = "");
 
         // Unified global function call binding. Performs resolveGlobalCall + validateGlobalCall +
         // finalizeCallArgs. For calls through a func<> variable, funcVarReturnType is set and
@@ -351,11 +352,11 @@ class bglParser {
             functionDef* arityMatch = nullptr;   // first method with matching arity (for error context)
             bool nameFound = false;              // true if any method with the name exists
         };
-        MethodMatch resolveMethod(const string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args);
+        MethodMatch resolveMethod(const string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args, const string& elementType = "");
         // Same as resolveMethod, but on failure walks the LHS class's non-explicit operator() conversion
         // emitters and retries on each converted type. If a conversion succeeds, typeName is updated
         // in-place to the converted type name so the caller can substitute it.
-        MethodMatch resolveMethodWithConversion(string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args);
+        MethodMatch resolveMethodWithConversion(string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args, const string& elementType = "");
 
         // Shared argument list parsing: reads comma-separated expressions from stream (assumes '(' already consumed).
         // Returns parsed args, named arg names, and per-arg interpolated segments.
@@ -400,6 +401,10 @@ class bglParser {
         // Public so fileLexer can consult it when deciding whether to treat EOF as benign
         // (sub-parses of in-memory bgl content terminate at EOF, regardless of compile context).
         bool looseIdentifierMode = false;
+        // Public read accessor for the class currently being parsed. Used by
+        // bglLanguageService::isClassType to recognize the class's type parameters
+        // (e.g. T in `class array<T>`) as data types within the class body.
+        classDef* getCurrentClass() const { return currentClass; }
     private:
         statementBlock* lambdaOuterBody = nullptr; // outer function body during lambda parsing
         // Stack of enclosing functions for nested lambda capture resolution. Each entry is an

@@ -64,6 +64,7 @@
 
 ### Chapter 5 — Classes
 - 5.1 Defining a Class
+  - 5.1.1 Type Parameters
 - 5.2 The Four Class Forms
   - 5.2.1 Normal Classes
   - 5.2.2 `extern class`
@@ -1358,7 +1359,7 @@ int n = scores.length(); // number of elements
 
 The element type is enforced at every subscript site. Reading an element produces a value of type `T`, and writing an element requires a value compatible with `T`. Cross-type assignments (e.g. assigning a `string` to an element of `array<int>`) are compile-time errors.
 
-The compiler implements this via standard operator overload resolution: `array` declares one `operator[]` and one `operator[]=` overload per supported intrinsic element type, and the call site picks the overload whose return type (read) or value parameter type (write) matches the array's declared element type. For user-defined classes, the compiler implicitly synthesizes a matching overload using the `object` overload as a template — so `array<Room>` works without the library having to declare a Room-specific overload. `array<char>` routes to the `byteArray` subclass which provides byte-access overrides for all character operations.
+The compiler implements this via the type-parameter mechanism (see §5.1.1): `array` is declared as `class array<T>`, and its subscript operators are written using `T` for the element-typed slot. At each subscript site `arr[i]`, the compiler clones the relevant operator with `T` substituted for the use-site element type, producing a typed signature like `Room operator[](int)` for `array<Room>`. No per-element-type overloads in the library; the substitution covers every `T`. `array<char>` routes to the `byteArray` subclass, which overrides the subscript operators with concrete `char` types and byte-access I6 emission.
 
 # Chapter 5 — Classes
 
@@ -1381,6 +1382,35 @@ class Point {
 Member variable declarations follow the same type-name syntax as global variables. An optional default value may be provided with `=`.
 
 A class declaration requires a unique type name which is used to instantiate instances of that type. 
+
+## 5.1.1 Type Parameters
+
+A class may declare a type parameter after its name in angle brackets:
+
+```bgl
+class Box<T> : object {
+    T payload;
+    int weight;
+}
+```
+
+The parameter (here `T`) is a name scoped to the class body. Member declarations may use it wherever a type is expected — return types, parameter types, member-variable types. At use sites, the binding is supplied:
+
+```bgl
+Box<Room> roomBox;          // T binds to Room
+Box<int>  scoreBox;          // T binds to int
+```
+
+Method dispatch on a typed instance substitutes the binding through every `T` in the relevant member's signature. So `roomBox.payload` is typed `Room`, `roomBox` accepts `Room`-typed assignments, and incompatible writes are compile-time errors. The substitution is purely static — no runtime cost, no I6 type information, just a compile-time clone of the method signature with `T` replaced.
+
+Restrictions in the current cut:
+
+- Single type parameter only (`<T>`, not `<K, V>`). Multi-parameter declarations parse but only the first binds; multi-parameter generics are a planned extension.
+- The parameter is not registered as a global type, so it cannot collide with same-named instances elsewhere (e.g. a global `Temperature t;`). It exists only inside its declaring class.
+- `extend class Foo<…>` and `alias class Foo<…>` are rejected — type parameters belong to the original declaration.
+- Use-site binding is supported in declarations (`Box<int> b;`) but not yet in inheritance position (`class byteArray : array<char>` parses today via the legacy class-name path; once use-site `<X>` parsing extends to inheritance, `array<char>` will become the explicit form).
+
+The standard library's `array<T>` is the primary client of this mechanism; see §4.7.
 
 ## 5.2 The Four Class Forms
 

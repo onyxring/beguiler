@@ -482,6 +482,23 @@ void bglParser::preScanGlobalLoop(){
             } else {
                 cls = dynamic_cast<classDef*>(&languageService.getType(nameStr));
             }
+            // Type parameter clause: `class Foo<T> {…}` — store names on the classDef
+            // stub. Not registered as global types (would collide with same-named
+            // instances). Member signatures parse T as identifier-typed; substitution
+            // at method-lookup time replaces T with the use-site binding.
+            if(file.peekToken().is("<")){
+                file.getToken(); // consume '<'
+                while(true){
+                    token paramTok = file.getToken();
+                    if(paramTok.is(eTokenType::identifier) || paramTok.isDataType()){
+                        string paramName = paramTok.value;
+                        if(cls != nullptr) cls->typeParameters.push_back(paramName);
+                    }
+                    token sep = file.getToken();
+                    if(sep.value == ">") break;
+                    if(!sep.is(token::comma)) break; // malformed — let main pass produce the diagnostic
+                }
+            }
             // Skip past any inheritance clause to find '{'
             { token t = file.getToken();
               while(!t.is(token::braceOpen) && !t.is(token::endStatement) && !t.is(eTokenType::eof))

@@ -1,0 +1,36 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+class room
+  class object
+  with
+    visits 0
+;
+room kitchen;
+room hall;
+room studio;
+array nums table 1 2 3;
+array flags table true false true;
+array names table "alpha" "beta";
+array rooms table kitchen hall studio;
+[main i b s r n1 n2;
+    i= nums-->(0+1);
+    b= flags-->(1+1);
+    s =  names-->(0+1) ;
+    r =  rooms-->(2+1) ;
+    nums-->(0+1) = 42;
+    flags-->(1+1) = false;
+    names-->(0+1) = "gamma";
+    rooms-->(0+1) = hall;
+    n1=nums-->0;
+    n2=rooms-->0;
+];
