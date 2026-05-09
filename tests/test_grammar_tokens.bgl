@@ -4,7 +4,7 @@
         - ANYNUMBER token
         - attribute type as bare grammar token
         - global function as bare grammar token (general token filter)
-        - OBJ(Routine) parameterized form  → emits noun=Routine in I6
+        - noun(Routine) parameterized form  → emits noun=Routine in I6
         - SCOPE(Routine) parameterized form → emits scope=Routine in I6
         - Error cases are noted in comments (cannot be tested inline)
 */
@@ -15,7 +15,7 @@
 // Support routines — used as grammar token filters below
 //-----------------------------------------------------------------------------
 
-// A routine used as OBJ(inScope) — must return bool
+// A routine used as noun(inScope) — must return bool
 bool inScope() {
     return true;
 }
@@ -73,12 +73,12 @@ verb Fiddle {
 }
 
 //-----------------------------------------------------------------------------
-// OBJ(Routine) — parameterized noun filter
+// noun(Routine) — parameterized noun filter
 // Expected I6: * noun=inScope -> ...
 //-----------------------------------------------------------------------------
 verb Grab {
     grammar = {
-        {.grab, OBJ(inScope)},
+        {.grab, noun(inScope)},
     };
     void perform() {
         print("Grabbed.");
@@ -99,12 +99,12 @@ verb Seek {
 }
 
 //-----------------------------------------------------------------------------
-// Mixed: attribute + OBJ(Routine) in same line
+// Mixed: attribute + noun(Routine) in same line
 // Expected I6: * container noun=inScope -> ...
 //-----------------------------------------------------------------------------
 verb Pour {
     grammar = {
-        {.pour, container, OBJ(inScope)},
+        {.pour, container, noun(inScope)},
     };
     void perform() {
         print("Poured.");
@@ -118,9 +118,9 @@ verb Pour {
 //   → error: 'unknownToken' in grammar pattern is not a declared grammarToken, attribute, or global function
 //
 //   void notBool() {}
-//   verb Bad2 { grammar { {.bad, OBJ(notBool)}, } perform(){} }
-//   → error: 'notBool' in 'OBJ(notBool)' must return bool (returns 'void')
+//   verb Bad2 { grammar { {.bad, noun(notBool)}, } perform(){} }
+//   → error: 'notBool' in 'noun(notBool)' must return bool (returns 'void')
 //
-//   verb Bad3 { grammar { {.bad, OBJ(undeclaredFn)}, } perform(){} }
-//   → error: 'undeclaredFn' in 'OBJ(undeclaredFn)' does not name a declared global function
+//   verb Bad3 { grammar { {.bad, noun(undeclaredFn)}, } perform(){} }
+//   → error: 'undeclaredFn' in 'noun(undeclaredFn)' does not name a declared global function
 //-----------------------------------------------------------------------------

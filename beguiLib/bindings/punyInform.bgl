@@ -129,17 +129,21 @@ extern object thedark;              // the darkness object (in-scope when no lig
 extern object selfobj;              // the player self object
 
 //-- Standard grammar tokens --------------------------------------------------
-extern grammarToken OBJ as noun;    // a noun object
-extern grammarToken ANYNUMBER;      // any number typed by the player
-extern grammarToken HELD;           // object currently held by the actor
-extern grammarToken CREATURE;       // an animate object
-extern grammarToken TOPIC;          // a conversational topic
-extern grammarToken MULTI;          // one or more nouns
-extern grammarToken MULTIHELD;      // one or more held nouns
-extern grammarToken MULTIEXCEPT;    // multiple nouns except one
-extern grammarToken MULTIINSIDE;    // multiple nouns inside a container
-extern grammarToken SPECIAL;        // a special token
-extern grammarToken NUMBER;         // a number typed by the player
+// Both bare (held) and qualified (grammarToken.held) access work; lexical scope
+// wins so a local/param of the same name doesn't collide.
+extern enum grammarToken {
+    noun,           // a noun object
+    held,           // object currently held by the actor
+    creature,       // an animate object
+    topic,          // a conversational topic
+    multi,          // one or more nouns
+    multiheld,      // one or more held nouns
+    multiexcept,    // multiple nouns except one
+    multiinside,    // multiple nouns inside a container
+    special,        // a special token
+    anynumber,      // any number typed by the player
+    number          // a number typed by the player
+}
 
 //-- Standard game actions ----------------------------------------------------
 extern verb Answer;

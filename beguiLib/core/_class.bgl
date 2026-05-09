@@ -1,0 +1,11 @@
+#once
+//=============================================================================
+// type bglClass
+
+    /// Inform 6 class reference. Any name of a registered Beguile class
+    /// (`class Foo {}` or `extern class Foo;`) resolves as `bglClass` when
+    /// passed as a value, so it can be the operand of `obj.is(cls)`. Mirrors
+    /// the way `property` works for `obj.provides(prop)`. In loose-mode
+    /// (#bgl islands) unknown names pass through to I6 unchanged.
+    extern class bglClass : _bglObject{ }
+

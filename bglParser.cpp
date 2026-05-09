@@ -960,13 +960,32 @@ bool bglParser::processReturnVoid(vector<token>& t, Qualifiers&, abstractObject&
 bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     if(getCurrentCompileContext() == eCompileContext::global)
         parsingError("'return' is not valid at global scope");
+    // ctx is the synthetic functionDef for the current block (carries the body the return
+    // should land in — possibly a nested if/else block, not the outer function root).
     functionDef* func = dynamic_cast<functionDef*>(&ctx);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
-    if(func != nullptr && func->returnType.name == "void")
-        parsingError(format("Cannot return a value from void routine '{0}'", func->name));
-    // Read the return expression — caller has consumed only the "return" keyword
+    // For diagnostics, prefer currentFunc's name — the synthetic block contexts have no name.
+    const string& funcName = (currentFunc && !currentFunc->name.empty()) ? currentFunc->name
+                              : (func ? func->name : string());
+    // Read the return expression first so we can see its type. A `return <void-typed expr>;`
+    // from a void function is the C/I6 tail-call idiom (`return f();` ≡ `f(); return;`); we
+    // accept it because the wrapping return adds nothing observable. Any other value-bearing
+    // return from a void function remains an error. The allowVoidReturnExpr flag suppresses
+    // the parseExpression-level guard that would otherwise reject void calls in expressions.
+    bool savedAllowVoid = allowVoidReturnExpr;
+    allowVoidReturnExpr = (func != nullptr && func->returnType.name == "void");
     token first = file.getToken();
     expression* retExpr = parseExpression(first, {token::endStatement}, func, body);
+    allowVoidReturnExpr = savedAllowVoid;
+    if(func != nullptr && func->returnType.name == "void"){
+        // Allow `return <void-typed expr>;` as the C/I6 idiom shorthand. In loose-mode
+        // contexts (`#bgl{}` islands and `.inf` precompiler mode), unresolved identifiers
+        // resolve to `var`; treat `var` as compatible too so `return f()` ports verbatim
+        // when `f` was declared in I6 and isn't visible to the Beguile resolver.
+        string retType = retExpr ? retExpr->resolvedType : "";
+        if(retType != "void" && retType != "var")
+            parsingError(format("Cannot return a value from void routine '{0}'", funcName));
+    }
     returnStatement& rs = *(new returnStatement());
     rs.src = file.currentLocation();
     rs.returnExpression = retExpr ? retExpr->text() : "";
@@ -1078,8 +1097,13 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         // or an object member. Matches the parameter/local-variable shadow checks elsewhere.
         auto checkShadow = [&](const string& name) {
             for(typeDef* g : languageService.globals)
-                if(g->name == name)
+                if(g->name == name){
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+                        const string& t = vd->type.name;
+                        if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
+                    }
                     parsingError("Loop variable '" + name + "' shadows global variable of the same name. Rename the loop variable.");
+                }
             if(currentClass != nullptr){
                 for(typeMember* m : currentClass->members)
                     if(m->name == name)
@@ -2728,10 +2752,18 @@ bool bglParser::processParameterList(functionDef& funcDef){
             param.displayName=tok.originalValue;
             // Disallow parameter names that shadow a global, a class member, or an object member.
             // Emitters are skipped: their parameter names are template substitution keys, not I6 locals.
+            // Symbolic-constant globals (grammartoken, attribute, property, verb) are also skipped:
+            // they're I6 constants used in grammar/give/provides contexts, not writable storage,
+            // so a parameter of the same name doesn't actually shadow anything reachable in code.
             if(!funcDef.isEmitter){
                 for(typeDef* g : languageService.globals)
-                    if(g->name == param.name)
+                    if(g->name == param.name){
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+                            const string& t = vd->type.name;
+                            if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
+                        }
                         parsingError("Parameter '" + param.name + "' shadows global variable of the same name. Rename the parameter.");
+                    }
                 if(currentClass != nullptr){
                     for(typeMember* m : currentClass->members)
                         if(m->name == param.name)
@@ -2836,10 +2868,12 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
     }
     if(!result.method) result.method = varFallback;
 
-    // Step 2: fallback — search objectDef's own members.
-    // Three lookup strategies, tried in order:
-    //   a) typeName itself resolves to an objectDef (an unclassed `object Foo {…}` declares a
-    //      type identity equal to Foo's name — see resolveIdentifierType).
+    // Step 2: fallback — search objectDef's own members, then walk its objectClass hierarchy.
+    // An objectDef's identity is itself, so its own member overrides win over inherited ones.
+    // After local members, walk objectClass + baseClasses so inherited methods (give/has/provides
+    // on `object`, plus any explicit class members) are reachable. Mirrors Step 1's hierarchy walk.
+    // Three lookup strategies for finding the target objectDef:
+    //   a) typeName itself resolves to an objectDef.
     //   b) objPath names a global objectDef (covers receivers like `_glulx.method()`).
     //   c) self / current-object short-circuits.
     if(!result.method){
@@ -2861,9 +2895,21 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
                     if(auto* od = dynamic_cast<objectDef*>(g)){ targetObj = od; break; }
         if(targetObj != nullptr){
             varFallback = nullptr;
+            // Local members first — overrides win over inherited.
             for(typeMember* m : targetObj->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     checkMethod(fd);
+            // Then walk the objectClass hierarchy.
+            if(!result.method && targetObj->objectClass){
+                std::function<void(classDef*)> searchHierarchy = [&](classDef* c){
+                    for(typeMember* m : c->members)
+                        if(auto* fd = dynamic_cast<functionDef*>(m))
+                            checkMethod(fd);
+                    if(!result.method)
+                        for(classDef* base : c->baseClasses){ searchHierarchy(base); if(result.method) return; }
+                };
+                searchHierarchy(targetObj->objectClass);
+            }
             if(!result.method) result.method = varFallback;
         }
     }
@@ -2924,15 +2970,11 @@ bool bglParser::typeHasMember(const string& typeName, const string& memberName){
 std::string bglParser::resolveIdentifierType(std::string name, functionDef* func, statementBlock* body, const string& memberHint){
     if(name == "null") return "object";
     if(name == "self" && lambdaOuterFunc == nullptr){
-        // `self` inside an objectDef resolves to that object's own type identity. The implicit
-        // `object` parent class is treated as "no explicit class" so the object's own name wins.
-        // (Compatibility with the bare `object` type is handled by isTypeCompatible.)
-        if(currentObject != nullptr){
-            bool explicitNonObjectClass = currentObject->objectClass && currentObject->objectClass->name != "object";
-            return explicitNonObjectClass ? currentObject->objectClass->name : currentObject->name;
-        }
-        if(currentClass != nullptr)
-            return currentClass->name;
+        // `self` inside an objectDef is the objectDef's own identity, regardless of base class.
+        // resolveMethod walks `objectClass`'s hierarchy for inherited methods, so this works
+        // whether the base is `object`, a user class, or anything else — no special-casing.
+        if(currentObject != nullptr) return currentObject->name;
+        if(currentClass != nullptr) return currentClass->name;
         return "object";
     }
 
@@ -3008,6 +3050,11 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
                 // Type-identity rule: an objectDef IS its own type unless it explicitly
                 // inherits from a non-`object` class. The implicit `object` parent doesn't
                 // count — it's the universal supertype, not a specific identity.
+                // (TODO: this `name != "object"` check is asymmetric and undermines the
+                // "object is not special" principle. Removing it requires teaching the ~80
+                // dynamic_cast<classDef*>(getType(...)) operator-dispatch sites to also walk
+                // an objectDef's objectClass — out of scope for now; resolveMethod already
+                // does this so unclassed `object Foo{}` reaches inherited methods.)
                 bool explicitNonObjectClass = od->objectClass && od->objectClass->name != "object";
                 ct = explicitNonObjectClass ? od->objectClass->name : od->name;
                 origin = format("global object '{0}'", g->name);
@@ -3080,6 +3127,19 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
             if(!dup) deduped.push_back(c);
         }
         candidates = deduped;
+    }
+    // Globals beat enum values: when a non-enum candidate exists alongside enum-value
+    // candidates, drop the enum candidates. Lets a global like `extern object noun` win
+    // over an enum value `grammarToken.noun` for bare `noun` references; the enum value
+    // is still reachable via `grammarToken.noun` qualified access.
+    {
+        bool hasNonEnum = false;
+        for(auto& c : candidates) if(!c.isEnum){ hasNonEnum = true; break; }
+        if(hasNonEnum){
+            vector<Candidate> filtered;
+            for(auto& c : candidates) if(!c.isEnum) filtered.push_back(c);
+            candidates = filtered;
+        }
     }
     // Resolve the candidate set. Cases:
     //   • 1 candidate         → use it (let dispatch produce type-mismatch errors if any).
@@ -3167,6 +3227,15 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     // Loose mode: see qualifyIdentifier for rationale. Unknown identifiers inside #bgl{}
     // blocks are typed `var` so the type checker passes them through.
     if(looseIdentifierMode) return "var";
+    // Property-name fallback: a bare identifier that matches any class/object member or
+    // free-standing `property foo;` decl resolves to type `property`. Lets `obj.provides(name)`
+    // accept names that aren't otherwise in scope, including class members.
+    if(languageService.isKnownPropertyName(name)) return "property";
+    // Class-name fallback: a bare identifier that matches a registered class resolves to
+    // type `bglclass`. Picks up `extern class Foo;` (which never enters `globals`) so
+    // `obj.is(Foo)` accepts bare class names. Non-extern classes resolve earlier as their
+    // own type and reach `bglclass` via the isTypeCompatible rule.
+    if(languageService.isKnownClassName(name)) return "bglclass";
     return "";
 }
 
@@ -3614,7 +3683,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     // Same principle as resolveIdentifierType: enum values, globals, verbs, emitter objects,
     // #defines, and #using imports share one conceptual namespace. Multiple matches across
     // these tiers indicates a real ambiguity, not legitimate scope shadowing.
-    struct Candidate { string qualified; string type; string origin; };
+    struct Candidate { string qualified; string type; string origin; bool isEnum; };
     vector<Candidate> candidates;
 
     // Enum values: walk EVERY enum containing this name so multiple enums sharing a value
@@ -3629,7 +3698,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         string enumQualified;
         if(ed->isExternal) enumQualified = name;
         else                enumQualified = to_string(matchedValue);
-        candidates.push_back({enumQualified, ed->name, format("enum value of '{0}'", ed->name)});
+        candidates.push_back({enumQualified, ed->name, format("enum value of '{0}'", ed->name), true});
     }
     // Globals (variable, function, objectDef, classDef, enumDef)
     for(typeDef* g : languageService.globals){
@@ -3654,7 +3723,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             }
             else if(auto* od = dynamic_cast<objectDef*>(g)){
                 // Same type-identity rule as resolveIdentifierType: implicit `object`
-                // parent is not a distinguishing class.
+                // parent is not a distinguishing class. (Same TODO applies — see above.)
                 bool explicitNonObjectClass = od->objectClass && od->objectClass->name != "object";
                 ct = explicitNonObjectClass ? od->objectClass->name : od->name;
                 qual = g->i6name.empty() ? name : g->i6name;
@@ -3667,7 +3736,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                 ct = name;  // type identifies itself
                 origin = format("type '{0}'", g->name);
             }
-            if(!qual.empty()) candidates.push_back({qual, ct, origin});
+            if(!qual.empty()) candidates.push_back({qual, ct, origin, false});
             break;
         }
     }
@@ -3698,7 +3767,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                 origin = format("#using-imported variable '{0}.{1}'", imp->dName(), name);
                 matched = true;
             }
-            if(matched){ candidates.push_back({qual, ct, origin}); break; }
+            if(matched){ candidates.push_back({qual, ct, origin, false}); break; }
         }
     }
     // #using object imports
@@ -3728,7 +3797,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                 origin = format("#using-imported member '{0}.{1}'", imp->name, name);
                 matched = true;
             }
-            if(matched){ candidates.push_back({qual, ct, origin}); break; }
+            if(matched){ candidates.push_back({qual, ct, origin, false}); break; }
         }
     }
     // Verb names (action constants)
@@ -3736,7 +3805,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         string lower = vd->name;
         transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
         if(lower == name){
-            candidates.push_back({vd->name, "verb", format("verb '{0}'", vd->name)});
+            candidates.push_back({vd->name, "verb", format("verb '{0}'", vd->name), false});
             break;
         }
     }
@@ -3745,7 +3814,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         typeDef& td = languageService.getType(name);
         if(auto* cd = dynamic_cast<classDef*>(&td))
             if(cd->isGlobalEmitterObject || cd->isEmitterClass)
-                candidates.push_back({name, name, format("emitter object '{0}'", name)});
+                candidates.push_back({name, name, format("emitter object '{0}'", name), false});
     }
     // #define symbols (substitute literal value)
     {
@@ -3753,7 +3822,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         if(it != definedSymbols.end() && !it->second.empty()){
             bool isNumeric = !it->second.empty() && (isdigit(it->second[0]) || (it->second[0] == '-' && it->second.size() > 1));
             string ct = isNumeric ? "intliteral" : "stringliteral";
-            candidates.push_back({it->second, ct, format("#define symbol '{0}'", name)});
+            candidates.push_back({it->second, ct, format("#define symbol '{0}'", name), false});
         }
     }
 
@@ -3768,6 +3837,16 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             if(!dup) deduped.push_back(c);
         }
         candidates = deduped;
+    }
+    // Globals beat enum values: see resolveIdentifierType for rationale.
+    {
+        bool hasNonEnum = false;
+        for(auto& c : candidates) if(!c.isEnum){ hasNonEnum = true; break; }
+        if(hasNonEnum){
+            vector<Candidate> filtered;
+            for(auto& c : candidates) if(!c.isEnum) filtered.push_back(c);
+            candidates = filtered;
+        }
     }
     // Resolve the candidate set. Cases:
     //   • 1 candidate         → use it.
@@ -3874,6 +3953,12 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     // names in the surrounding I6 stream (locals, globals, properties) rather than Beguile
     // declarations. Pass them through verbatim so the I6 compiler resolves them.
     if(looseIdentifierMode) return name;
+    // Property-name fallback: see resolveIdentifierType for rationale. The bare name is
+    // emitted verbatim so `obj.provides(weight)` becomes `obj provides weight` in I6.
+    if(languageService.isKnownPropertyName(name)) return name;
+    // Class-name fallback: see resolveIdentifierType for rationale. Bare class identifiers
+    // emit verbatim so `obj.is(Container)` becomes `obj ofclass Container` in I6.
+    if(languageService.isKnownClassName(name)) return name;
     return "";
 }
 
@@ -3893,10 +3978,21 @@ string bglParser::addCapture(const string& outerName, const string& typeName){
     return globalName;
 }
 
+classDef* bglParser::getDispatchClass(const string& typeName){
+    typeDef& td = languageService.getType(typeName);
+    if(auto* cls = dynamic_cast<classDef*>(&td)) return cls;
+    if(auto* obj = dynamic_cast<objectDef*>(&td)) return obj->objectClass;
+    return nullptr;
+}
+
 bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     if(paramType == "var") return true;  // var accepts any type without checking
     if(argType == "var") return true;    // var is assignable to any type (untyped source)
     if(argType == paramType) return true;
+    // bglclass accepts any registered class as an operand. Lets `obj.is(Foo)` work for
+    // every class regardless of whether `Foo` resolved as its own type (non-extern,
+    // visible in `globals`) or fell through to the isKnownClassName fallback (extern).
+    if(paramType == "bglclass" && languageService.isClassType(argType)) return true;
     // bnum → int implicit widening: bnums are int-valued bitmasks by definition.
     // Narrowing (int → bnum) still requires an explicit cast.
     if(paramType == "int"){
@@ -3928,8 +4024,8 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     // only classes that actually inherit from 'object' are compatible with it.
     // Class hierarchy: argType is compatible with paramType if argType inherits from paramType
     {
-        classDef* argCls2 = dynamic_cast<classDef*>(&languageService.getType(argType));
-        classDef* paramCls2 = dynamic_cast<classDef*>(&languageService.getType(paramType));
+        classDef* argCls2 = getDispatchClass(argType);
+        classDef* paramCls2 = getDispatchClass(paramType);
         if(argCls2 && paramCls2){
             std::function<bool(classDef*)> inheritsFrom = [&](classDef* c) -> bool {
                 for(classDef* base : c->baseClasses){
@@ -3944,8 +4040,8 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     // from the base should not be used to allow assigning a less-specific type to a more-specific one.
     // e.g. assigning an 'object' to a 'room' variable must fail even though room inherits object's operator=.
     {
-        classDef* argCls3  = dynamic_cast<classDef*>(&languageService.getType(argType));
-        classDef* paramCls3 = dynamic_cast<classDef*>(&languageService.getType(paramType));
+        classDef* argCls3  = getDispatchClass(argType);
+        classDef* paramCls3 = getDispatchClass(paramType);
         if(argCls3 && paramCls3 && argCls3 != paramCls3){
             std::function<bool(classDef*)> isAncestorOf = [&](classDef* c) -> bool {
                 for(classDef* base : c->baseClasses)
@@ -3957,7 +4053,7 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     }
     // Check target type's operator = (argType)
     // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all
-    classDef* cls = dynamic_cast<classDef*>(&languageService.getType(paramType));
+    classDef* cls = getDispatchClass(paramType);
     if(cls != nullptr){
         if(findMemberInHierarchy(cls, [&](typeMember* m){
             auto* fn = dynamic_cast<functionDef*>(m);
@@ -3969,7 +4065,7 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
         })) return true;
     }
     // Check source type's conversion operator: emitter <paramType> operator()
-    classDef* argCls = dynamic_cast<classDef*>(&languageService.getType(argType));
+    classDef* argCls = getDispatchClass(argType);
     if(argCls != nullptr && findMemberInHierarchy(argCls, [&](typeMember* m){
         auto* fn = dynamic_cast<functionDef*>(m);
         return fn && fn->name == "operator()" && fn->params.empty() && !fn->isExplicit && fn->returnType.name == paramType;
@@ -4056,7 +4152,7 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
         }
         if(paramType == "var" || argType == paramType || argType.empty()) continue;
         // Look for conversion operator on arg's class
-        classDef* argCls = dynamic_cast<classDef*>(&languageService.getType(argType));
+        classDef* argCls = getDispatchClass(argType);
         if(argCls == nullptr) continue;
         typeMember* found = findMemberInHierarchy(argCls, [&](typeMember* m){
             auto* fn = dynamic_cast<functionDef*>(m);
@@ -4164,7 +4260,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
                         }
                 for(classDef* base : c->baseClasses) gatherLoose(base);
             };
-            if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(objType)))
+            if(auto* cls = getDispatchClass(objType))
                 gatherLoose(cls);
             if(matchCount == 1){
                 mm.method = sole;
@@ -4193,7 +4289,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
                     }
             for(classDef* base : c->baseClasses) gather(base);
         };
-        if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(objType)))
+        if(auto* cls = getDispatchClass(objType))
             gather(cls);
         string detail;
         for(functionDef* fd : candidates){
@@ -4523,7 +4619,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
             auto* convFn = dynamic_cast<functionDef*>(m);
             if(!convFn || convFn->name != "operator()" || !convFn->params.empty() || !convFn->isEmitter || convFn->isExplicit) continue;
             string convertedType = convFn->returnType.name;
-            classDef* convCls = dynamic_cast<classDef*>(&languageService.getType(convertedType));
+            classDef* convCls = getDispatchClass(convertedType);
             if(!convCls) continue;
             if(typeMember* m2 = findMemberInHierarchy(convCls, [&](typeMember* m){
                 auto* opFn = dynamic_cast<functionDef*>(m);
@@ -4552,7 +4648,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
 
     // RHS conversion fallback: RHS type has operator() → type that LHS has the operator for
     if(!matchedOp && !useRawFallback && !rhsType.empty()){
-        classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(rhsType));
+        classDef* rhsCls = getDispatchClass(rhsType);
         if(rhsCls != nullptr){
             for(typeMember* rm : rhsCls->members){
                 auto* convFn = dynamic_cast<functionDef*>(rm);
@@ -4723,7 +4819,7 @@ void bglParser::parseExprNullCoalescing(expression* expr, const vector<string>& 
     string tempName = format("_bgl_temp{0}", languageService.ternaryTempCount++);
     string lhsText = expr->text();
     string lhsType = expr->resolvedType;
-    classDef* lhsCls = !lhsType.empty() ? dynamic_cast<classDef*>(&languageService.getType(lhsType)) : nullptr;
+    classDef* lhsCls = !lhsType.empty() ? getDispatchClass(lhsType) : nullptr;
     functionDef* nullTestFn = nullptr;
     if(lhsCls != nullptr)
         nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(lhsCls, [](typeMember* m){
@@ -4758,7 +4854,11 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
     // Resolve and validate
     string retType;
     if(isSelfCall){
-        if(currentObject != nullptr)
+        // Recursive self-call: currentFunc is the function being parsed and isn't yet in
+        // currentObject->members. Use it directly for retType when names match.
+        if(currentFunc != nullptr && currentFunc->name == callName)
+            retType = currentFunc->returnType.name;
+        if(retType.empty() && currentObject != nullptr)
             for(typeMember* m : currentObject->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     if(fd->name == callName){ retType = fd->returnType.name; break; }
@@ -4788,7 +4888,7 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
             }
         }
     }
-    if(retType == "void")
+    if(retType == "void" && !allowVoidReturnExpr)
         parsingError(format("Cannot use void function '{0}' in an expression", callName));
     if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
     // Flatten parsed args back to tokens for the enclosing expression
@@ -4812,7 +4912,7 @@ bool bglParser::parseExprPrefixNot(expression* expr, token operand, optional<tok
         if(opText.empty()) opText = operand.value;
         // Check for !v? (negated postfix query) — only if type has operator?()
         if(file.peekToken(1).is("?")){
-            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(opType));
+            classDef* cls = getDispatchClass(opType);
             functionDef* queryFn = nullptr;
             if(cls != nullptr)
                 queryFn = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [](typeMember* m){
@@ -4832,7 +4932,7 @@ bool bglParser::parseExprPrefixNot(expression* expr, token operand, optional<tok
             }
         }
         // Try operator! emitter on the type
-        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(opType));
+        classDef* cls = getDispatchClass(opType);
         if(cls){
             if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* tm){
                 auto* fn = dynamic_cast<functionDef*>(tm);
@@ -4899,7 +4999,7 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
     }
     if(!curObj){
         // Also check class (for emitter namespace objects registered as classes)
-        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(head));
+        classDef* cls = getDispatchClass(head);
         if(cls != nullptr){
             // Walk class members for the next segment
             while(!rest.empty()){
@@ -4911,7 +5011,7 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
                     if(vd && vd->name == seg){
                         if(rest.empty() && vd->isAlias && languageService.isClassType(vd->type.name))
                             return vd->type.name;
-                        cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+                        cls = getDispatchClass(vd->type.name);
                         break;
                     }
                 }
@@ -4958,7 +5058,7 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
                         if(od->name == nextType){ curObj = od; break; }
             if(!curObj){
                 // Try class
-                classDef* nextCls = dynamic_cast<classDef*>(&languageService.getType(nextType));
+                classDef* nextCls = getDispatchClass(nextType);
                 if(nextCls){
                     // Switch to class-walking for the rest
                     while(!rest.empty()){
@@ -4971,7 +5071,7 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
                             if(iv && iv->name == innerSeg){
                                 if(rest.empty() && iv->isAlias && languageService.isClassType(iv->type.name))
                                     return iv->type.name;
-                                nextCls = dynamic_cast<classDef*>(&languageService.getType(iv->type.name));
+                                nextCls = getDispatchClass(iv->type.name);
                                 innerFound = true;
                                 break;
                             }
@@ -5294,7 +5394,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         // Returns `nothing` at runtime if the pool is exhausted.
         else if(cur.is("new")){
             token typeTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
-            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(typeTok.value));
+            classDef* cls = getDispatchClass(typeTok.value);
             if(cls == nullptr)
                 parsingError(format("'new {0}': '{0}' is not a class", typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue));
             if(cls->poolSize == 0)
@@ -5331,7 +5431,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             if(next.is(token::bracketOpen)){
                 string arrName = cur.value;
                 string arrType = resolveIdentifierType(arrName, func, body);
-                classDef* arrCls = dynamic_cast<classDef*>(&languageService.getType(arrType));
+                classDef* arrCls = getDispatchClass(arrType);
                 expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
                 // Element-type-aware lookup: find operator[] whose return type matches the
                 // array's declared element type. byteArray (array<char>) keeps its char operator[];
@@ -5399,7 +5499,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(!method->returnType.name.empty()) expr->resolvedType = method->returnType.name;
                     } else {
                         // Property access: arr[0].field
-                        classDef* elemCls = dynamic_cast<classDef*>(&languageService.getType(elemType));
+                        classDef* elemCls = getDispatchClass(elemType);
                         if(elemCls != nullptr){
                             function<string(classDef*)> findPropType = [&](classDef* c) -> string {
                                 for(typeMember* m : c->members)
@@ -5435,7 +5535,13 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 // the global path has proper arity matching and should win (e.g. print).
                 bool isSelfCall = false;
                 if(func != nullptr && callName.find('.') == string::npos){
-                    if(currentObject != nullptr)
+                    // Recursive self-call: the function being parsed isn't yet in
+                    // currentObject->members (registered post-body), so match by name
+                    // against currentFunc when we're inside an object/class method.
+                    if((currentObject != nullptr || currentClass != nullptr) &&
+                       currentFunc != nullptr && currentFunc->name == callName)
+                        isSelfCall = true;
+                    if(!isSelfCall && currentObject != nullptr)
                         for(typeMember* m : currentObject->members)
                             if(auto* fd = dynamic_cast<functionDef*>(m))
                                 if(fd->name == callName){ isSelfCall = true; break; }
@@ -5475,7 +5581,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 castType = "";
                 if(lhsType.empty()) parsingError(format("Unknown variable '{0}' in optional chain", lhsName));
                 // Look up operator?() on LHS type for the null test
-                classDef* lhsCls = dynamic_cast<classDef*>(&languageService.getType(lhsType));
+                classDef* lhsCls = getDispatchClass(lhsType);
                 if(lhsCls == nullptr) parsingError(format("Type '{0}' does not support optional chaining (not a class)", lhsType));
                 functionDef* nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(lhsCls, [](typeMember* m){
                     auto* fn = dynamic_cast<functionDef*>(m);
@@ -5503,7 +5609,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     if(afterMember.is(token::parenOpen)){
                         // ?.method(args) — find method, inline emitter or call
                         string methName = member.value;
-                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                        classDef* cls = getDispatchClass(currentType);
                         vector<expression*> callArgs;
                         token firstArg = file.getToken();
                         while(firstArg.isNot(token::parenClose)){
@@ -5540,7 +5646,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // ?.property — simple property access
                         string propType = resolvePathType("_x_." + member.value, func, body);
                         // We can't resolve the runtime path, so check the class for a member
-                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                        classDef* cls = getDispatchClass(currentType);
                         if(cls != nullptr)
                             for(typeMember* m : cls->members)
                                 if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -5551,7 +5657,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     // Check for continuation: another ?. or regular .
                     if(afterMember.is("?.")){
                         // Another optional step: look up operator?() on the current type
-                        classDef* nextCls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                        classDef* nextCls = getDispatchClass(currentType);
                         nullTestFn = nullptr;
                         if(nextCls != nullptr)
                             nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(nextCls, [](typeMember* m){
@@ -5568,7 +5674,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(afterNext.is(token::parenOpen)){
                             // .method(args) — build as non-guarded call
                             string methName = nextMember.value;
-                            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                            classDef* cls = getDispatchClass(currentType);
                             vector<expression*> callArgs;
                             token firstArg = file.getToken();
                             while(firstArg.isNot(token::parenClose)){
@@ -5603,7 +5709,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             else prefetched = afterMember;
                         } else {
                             // .property
-                            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(currentType));
+                            classDef* cls = getDispatchClass(currentType);
                             string propType;
                             if(cls != nullptr)
                                 for(typeMember* m : cls->members)
@@ -5736,12 +5842,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                 size_t e = b.find_last_not_of(" \t\n\r"); if(e != string::npos) b = b.substr(0, e+1);
                                 b = replaceWord(b, "$self", objName);
-                                b = replaceWord(b, "$prop", exprPropValue);
                                 // $class — declared type of the receiver. Ignores multiple inheritance:
                                 // resolves to the variable's static type, not the type that owns the
                                 // inherited emitter. Useful for emitters that emit class-message I6
                                 // (e.g. `$class.copy($self, $src)` from the bglAllocated mixin).
-                                if(auto* recvCls = dynamic_cast<classDef*>(&languageService.getType(objType)))
+                                if(auto* recvCls = getDispatchClass(objType))
                                     b = replaceWord(b, "$class", recvCls->i6Name());
                                 for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++){
                                     // Raw bodies preserve original case; substitute both forms.
@@ -5751,6 +5856,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                     if(display != p->name)
                                         b = replaceWord(b, "$" + p->name, callArgs[i]->text());
                                 }
+                                // $prop fallback — fills any remaining $prop with the array-style
+                                // receiver-path value. Done after param sub so emitters with a
+                                // `prop` parameter (e.g. `provides(property prop)`) win.
+                                b = replaceWord(b, "$prop", exprPropValue);
                                 expr->tokens.push_back(b);
                             }
                         } else {
@@ -5769,7 +5878,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         string objName = cur.value;
                         string propName = member.value;
                         string propType = resolvePathType(objName + "." + propName, func, body);
-                        classDef* arrCls = dynamic_cast<classDef*>(&languageService.getType(propType));
+                        classDef* arrCls = getDispatchClass(propType);
                         expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
                         string elemType = resolveArrayElementTypeDotted(objName, propName, func, body);
                         if(elemType.empty() && propType == "bytearray") elemType = "char";
@@ -5797,7 +5906,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // static member access (ClassName.staticMember → _bgl_ClassName_memberName),
                         // from object/variable property access (obj.prop → obj.prop)
                         bool isEnum = dynamic_cast<enumDef*>(&languageService.getType(cur.value)) != nullptr;
-                        classDef* maybeCls = dynamic_cast<classDef*>(&languageService.getType(cur.value));
+                        classDef* maybeCls = getDispatchClass(cur.value);
                         bool isStaticAccess = false;
                         if(maybeCls != nullptr){
                             for(typeMember* m : maybeCls->members)
@@ -5858,7 +5967,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 for(typeMember* m : instObj->members)
                                     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                                         if(vd->isExternal && vd->name == member.value &&
-                                           dynamic_cast<classDef*>(&languageService.getType(vd->type.name)) != nullptr){
+                                           getDispatchClass(vd->type.name) != nullptr){
                                             cur.value = vd->type.name;
                                             cur.tokenType = eTokenType::identifier;
                                             expr->resolvedType = "";
@@ -5893,7 +6002,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                                 isAliasMember = true;
                                             } else {
                                                 // Auto pointing to an emitter class (e.g. emitter auto asm = bglOpCodes)
-                                                auto* cd = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+                                                auto* cd = getDispatchClass(vd->type.name);
                                                 if(cd && cd->isEmitterClass){
                                                     cur.value = vd->type.name;
                                                     cur.tokenType = eTokenType::identifier;
@@ -6152,9 +6261,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                     size_t e = b.find_last_not_of(" \t\n\r"); if(e != string::npos) b = b.substr(0, e+1);
                     b = replaceWord(b, "$self", selfText);
-                    b = replaceWord(b, "$prop", "<$prop undefined>");
                     for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
                         b = replaceWord(b, "$" + method->params[i]->name, callArgs[i]->text());
+                    // Any leftover $prop is unresolved (no matching parameter — see array
+                    // emitters that consume property names from outside the call).
+                    b = replaceWord(b, "$prop", "<$prop undefined>");
                     expr->tokens.push_back(b);
                 }
             } else {
@@ -7052,11 +7163,6 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             b.replace(pos, 5, selfValue);
                             pos += selfValue.size();
                         }
-                        pos = 0;
-                        while((pos = b.find("$prop", pos)) != string::npos){
-                            b.replace(pos, 5, propValue);
-                            pos += propValue.size();
-                        }
                         // $class — declared receiver type (ignores multiple inheritance).
                         // Resolves to the variable's static type, not the type that owns the
                         // inherited emitter. Powers class-message I6 emission from mixins.
@@ -7066,6 +7172,19 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             while((pos = b.find("$class", pos)) != string::npos){
                                 b.replace(pos, 6, className);
                                 pos += className.size();
+                            }
+                        }
+                        // $prop fallback — done before staging callStmt.emitterBody so that
+                        // resolveEmitterText's later param substitution can still substitute
+                        // a `prop`-named parameter when present (e.g. `provides(property prop)`).
+                        // Skip if any parameter is named `prop` so the param sub wins.
+                        bool hasPropParam = false;
+                        for(paramDef* p : method->params) if(p->name == "prop"){ hasPropParam = true; break; }
+                        if(!hasPropParam){
+                            pos = 0;
+                            while((pos = b.find("$prop", pos)) != string::npos){
+                                b.replace(pos, 5, propValue);
+                                pos += propValue.size();
                             }
                         }
                         callStmt.emitterBody = b;
@@ -7393,8 +7512,13 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                     if(vd->name == varDecl.name)
                         parsingError(format("Variable '{0}' is already declared in this scope", varDecl.name));
         for(typeDef* g : languageService.globals)
-            if(g->name == varDecl.name)
+            if(g->name == varDecl.name){
+                if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+                    const string& t = vd->type.name;
+                    if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
+                }
                 parsingError("Local variable '" + varDecl.name + "' shadows global variable of the same name. Rename the local.");
+            }
         if(currentClass != nullptr){
             for(typeMember* m : currentClass->members)
                 if(m->name == varDecl.name)
@@ -10187,17 +10311,36 @@ grammarLine bglParser::parseGrammarLineContent(){
             string tokenStr = pt.value;
             string display = pt.originalValue.empty() ? pt.value : pt.originalValue;
 
-            // resolve declared type; apply i6name alias if present
+            // Resolve declared type. Grammar-line context: prefer enum-value matches
+            // (e.g. `extern enum grammarToken { noun, held, ... }`) over global decls,
+            // because some grammar-token names (`noun`) shadow extern globals of the same
+            // name (the I6 runtime `noun` object). In a grammar line position the token
+            // meaning always wins; outside grammar lines the global wins via normal
+            // ambiguity resolution.
             string resolvedType;
-            for(typeDef* g : languageService.globals){
-                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                    if(vd->name == tokenStr){
-                        resolvedType = vd->type.name;
-                        if(!vd->i6name.empty()) tokenStr = vd->i6name;
-                        break;
+            for(typeDef* t : languageService.objectTypes){
+                auto* ed = dynamic_cast<enumDef*>(t);
+                if(!ed) continue;
+                bool found = false;
+                for(enumValueDef* v : ed->namedValues)
+                    if(v->name == tokenStr){
+                        resolvedType = ed->name;
+                        tokenStr = ed->isExternal ? v->name : to_string(v->value);
+                        found = true; break;
                     }
-                if(auto* fd = dynamic_cast<functionDef*>(g))
-                    if(fd->name == tokenStr){ resolvedType = "function"; break; }
+                if(found) break;
+            }
+            if(resolvedType.empty()){
+                for(typeDef* g : languageService.globals){
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                        if(vd->name == tokenStr){
+                            resolvedType = vd->type.name;
+                            if(!vd->i6name.empty()) tokenStr = vd->i6name;
+                            break;
+                        }
+                    if(auto* fd = dynamic_cast<functionDef*>(g))
+                        if(fd->name == tokenStr){ resolvedType = "function"; break; }
+                }
             }
 
             if(file.peekToken().is("(")){

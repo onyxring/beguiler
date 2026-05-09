@@ -1,0 +1,32 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+class container
+  class object
+;
+class box
+  class container
+  with
+    weight
+;
+box g_box;
+[main;
+    if (g_box ofclass container) {
+        print (string)"box is container";
+    }
+    if (g_box ofclass box) {
+        print (string)"box is box";
+    }
+    if (g_box ofclass libdefinedclass) {
+        print (string)"box is libDefinedClass";
+    }
+];

@@ -11,7 +11,7 @@
 verb Whiff {
     grammar = {
         {.whiff},
-        {.waft, OBJ},
+        {.waft, noun},
     };
     void perform() {
         print("You take a whiff of the air.");
@@ -20,8 +20,8 @@ verb Whiff {
 
 verb Nudge {
     grammar = {
-        {.nudge, OBJ},
-        {.jostle, OBJ},
+        {.nudge, noun},
+        {.jostle, noun},
     };
     void perform() {
         print("You nudge it.");
@@ -52,8 +52,8 @@ void testVerbs() {
 verb Possess {
     // Apostrophe in grammar word: .carol's should emit 'carol^s'
     grammar = {
-        {.carol's, OBJ},
-        {..carol's, OBJ},   // plural form: should emit 'carol^s/p'
+        {.carol's, noun},
+        {..carol's, noun},   // plural form: should emit 'carol^s/p'
     };
     void perform() {
         print("Possessed.");
@@ -64,7 +64,7 @@ verb Greet {
     // Trailing period: .mr. should warn and emit 'mr'
     // Expected compiler warning: character '.' is not valid for dictionary words. ignoring.
     grammar = {
-        {.mr., OBJ},
+        {.mr., noun},
     };
     void perform() {
         print("Greeted.");
@@ -76,8 +76,8 @@ verb Greet {
 verb Stow {
     // Alternatives without parens
     grammar = {
-        {.stow, HELD, .on | .onto | .upon, OBJ},
-        {.stow, HELD, (.in | .into | .inside), OBJ},   // with optional parens
+        {.stow, HELD, .on | .onto | .upon, noun},
+        {.stow, HELD, (.in | .into | .inside), noun},   // with optional parens
     };
     void perform() {
         print("Stowed.");
