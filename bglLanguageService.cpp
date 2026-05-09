@@ -67,6 +67,13 @@ bool bglLanguageService::isClassType(string name){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     for(typeDef* ot : objectTypes)
         if(ot->name == name) return true;
+    // Recognize type parameters of the currently-being-parsed class as types.
+    // Scoped to the class body via parser.currentClass; substitution at method-lookup
+    // time replaces them with concrete types, so global registration isn't required
+    // (and would collide with same-named instances like `Temperature t;`).
+    if(parser.getCurrentClass() != nullptr)
+        for(const string& tp : parser.getCurrentClass()->typeParameters)
+            if(tp == name) return true;
     return false;
 }
 typeDef& bglLanguageService::getType(string name){
@@ -76,6 +83,25 @@ typeDef& bglLanguageService::getType(string name){
     }
     for (typeDef* oi : objectInstances) {
         if(oi->name == name) return *oi;
+    }
+    // Type-parameter fallback: when `name` matches a type parameter of the currently-being-
+    // parsed class, return a synthesized typeDef carrying that name. Lets callers like
+    // `funcDef.returnType = getType("t")` preserve the parameter name through to the
+    // method-resolution layer where substitution applies. Stored per-name in a static map
+    // for stable references; allocated lazily on first request.
+    if(parser.getCurrentClass() != nullptr){
+        for(const string& tp : parser.getCurrentClass()->typeParameters){
+            if(tp == name){
+                static map<string, typeDef*> tparamSlots;
+                auto it = tparamSlots.find(name);
+                if(it == tparamSlots.end()){
+                    typeDef* td = new typeDef();
+                    td->name = name;
+                    it = tparamSlots.emplace(name, td).first;
+                }
+                return *it->second;
+            }
+        }
     }
     return emptyTDef;
 }

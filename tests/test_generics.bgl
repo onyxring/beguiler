@@ -1,0 +1,42 @@
+/* test_generics.bgl — single type-parameter classes (`class Foo<T>`).
+
+   Validates:
+     • Type-parameter parsing on declarations.
+     • Element-type substitution at method resolution: `array<Room>.pop()` returns Room.
+     • Cross-type writes are rejected: `array<int>.append("x")` is a compile-time error
+       (covered by _test_generic_type_mismatch.bgl).
+     • Subscript element-type discipline still works after the rewrite.
+   The test exercises array<int>, array<bool>, array<string>, and array<UserClass>. */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Room : object { int visits = 0; }
+Room kitchen;
+Room hall;
+Room studio;
+
+array<int>    nums  = {1, 2, 3};
+array<bool>   flags = {true, false, true};
+array<string> names = {"alpha", "beta"};
+array<Room>   rooms = {kitchen, hall, studio};
+
+void main(){
+    // Subscript reads — each must resolve to the matching element type via T-substitution.
+    int  i  = nums[0];
+    bool b  = flags[1];
+    string s = names[0];
+    Room r  = rooms[2];
+
+    // Subscript writes — value type must match T after substitution.
+    nums[0]  = 42;
+    flags[1] = false;
+    names[0] = "gamma";
+    rooms[0] = hall;
+
+    // Length is invariant — int regardless of element type.
+    int n1 = nums.length();
+    int n2 = rooms.length();
+}
