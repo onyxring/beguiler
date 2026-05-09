@@ -1,0 +1,29 @@
+/* test_class_test.bgl — `obj.is(SomeClass)` class-test emitter.
+   Covers the four buckets, mirroring test_property.bgl:
+     • non-extern class declared in this file
+     • non-extern class with a base — passed bare to is()
+     • `extern class Foo;` (registers name only; no I6 emission)
+     • class never declared — caught by the strict-mode error in
+       _test_class_undeclared.bgl                                    */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+/// Provided by an external I6 library; we never define it here.
+extern class libDefinedClass : object { }
+
+class Container : object { }
+class Box : Container { int weight; }
+
+Box g_box;
+
+void main(){
+    // Bucket 1 — class declared in this file
+    if(g_box.is(Container))      print("box is container");
+    // Bucket 2 — class declared in this file, exact match
+    if(g_box.is(Box))            print("box is box");
+    // Bucket 3 — extern class (no I6 emission for the name)
+    if(g_box.is(libDefinedClass)) print("box is libDefinedClass");
+}

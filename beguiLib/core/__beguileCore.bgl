@@ -6,6 +6,8 @@
 //-- Pull in all the core features
 #include <core/_array>
 #include <core/_attribute>
+#include <core/_property>
+#include <core/_class>
 #include <core/_beguilerSettings>
 #include <core/_bool>
 #include <core/_char>
@@ -76,8 +78,11 @@ object bgl{
         emitter object sibling{
             sibling($self)
         }
-        emitter bool provides(var prop){
+        emitter bool provides(property prop){
             $self provides $prop
+        }
+        emitter bool is(bglClass cls){
+            $self ofclass $cls
         }
         replace emitter void print(){
             print (name)$self;    
@@ -88,6 +93,15 @@ object bgl{
     extern class parentProp{   //obj.parent=loc; -> move obj to loc;
         emitter parentProp operator = (object v){
             move $self to $v
+        }
+        emitter parentProp operator == (object v){
+            $self == $v
+        }
+        emitter parentProp operator != (object v){
+            $self ~= $v
+        }
+        emitter object operator(){
+            $self
         }
     }
 

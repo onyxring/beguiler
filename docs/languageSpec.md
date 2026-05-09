@@ -117,6 +117,7 @@
 - 8.4 Global Functions
 - 8.5 Extern Variables
 - 8.6 Attributes
+- 8.6a Properties
 - 8.7 I6 Name Aliasing — the `as` Clause
 
 ### Chapter 9 — Functions
@@ -197,6 +198,7 @@
 - 16.2 The `bgl` Namespace
 - 16.3 IF-Domain Built-in Types
   - 16.3.1 `attribute` and `attributeList`
+  - 16.3.1a `property`
   - 16.3.2 `dictionaryWord`
   - 16.3.3 `verb`
   - 16.3.4 Grammar types
@@ -584,6 +586,7 @@ Beguile uses these as language constructs, but they also appear verbatim in the 
 | `object` | `Object` — I6 object declaration |
 | `array` | `Array` — I6 array declaration |
 | `attribute` | `Attribute` — I6 attribute declaration |
+| `property` | `Property` — I6 property declaration |
 | `grammar` | `Grammar` — I6 grammar directive |
 | `verb` | `Verb` — I6 verb table directive |
 | `replace` | `Replace` — I6 routine replacement directive |
@@ -1484,9 +1487,9 @@ Rules for `emitter class` members:
 Emitter classes group related inline I6 operations under a conceptual type without any runtime backing. They are useful for defining unit types (temperature, distance) with conversion operators, or for organizing emitter-only functionality into a namespace-like structure. The `style` emitter class in the core library is an example — it provides `style.italics()` and `style.roman()` as pure inline I6 calls.
 
 ```bgl
-emitter class grammarToken : _bglObject {
-    emitter var operator(){}
-    emitter eBool operator == (var v){ $self == $v }
+emitter class style {
+    emitter void italics() { style underline; }
+    emitter void roman()   { style roman; }
 }
 ```
 
@@ -2230,6 +2233,17 @@ object bar {
 }
 ```
 
+### 6.6.1 Method dispatch on object receivers
+
+When a method is called on an object — including via `self.method()` from inside an object's own method body — the compiler looks for the method in this order:
+
+1. The object's own member methods (per-instance overrides).
+2. The hierarchy of the object's class: the class itself, then its base classes recursively.
+
+The class hierarchy walk is what makes inherited methods like `give`, `provides`, `has`, and `is` from the `object` base class reachable from any object instance. Inside `object Foo {…}`, both `self.give(attr)` and `obj.give(attr)` resolve through this two-step walk; per-instance methods declared on `Foo` shadow the inherited versions.
+
+This dispatch rule applies uniformly: an `object Foo {…}` declared without an explicit class still inherits from `object` implicitly, and the class-hierarchy walk reaches the methods defined there. There is no special-casing of the `object` base class — it is an ordinary class whose methods are reached through the same hierarchy walk as any user-defined base class.
+
 ## 6.7 Complete Example
 
 The following is a representative object from the Cloak of Darkness demonstration. Note the use of `give`, `ungive`, and `has` methods on objects — these and the `attributes` property are covered in §8.6.
@@ -2784,12 +2798,62 @@ extern attribute light;        // defined externally; no I6 output
 
 Once declared, attributes are available as identifiers of type `attribute` and can be passed to the `give`, `ungive`, and `has` methods defined on `object` and `attributeList`.
 
+## 8.6a Properties
+
+Inform 6 maintains a single global property table, populated implicitly by every member name that appears in any class or object definition. The `obj.provides(name)` test (the I6 `obj provides name` operator, surfaced as a method on `object`) returns whether a given object carries that property at runtime. Beguile auto-registers every class and object member name into this table — so for any member of any declared class, `obj.provides(member)` Just Works without further declaration.
+
+For names that are not members of any Beguile class — typically because they live in I6 code that Beguile interoperates with, or because they are runtime-attached flags with no compile-time owner — Beguile provides a `property` declaration that operates analogously to `attribute`:
+
+```bgl
+property hidden_flag;          // new property name; emits 'Property hidden_flag;' to I6
+extern property libDefinedProp; // defined externally (e.g. by an I6 library); no I6 output
+```
+
+Both forms register the name with the compiler so `obj.provides(name)` resolves in strict mode. The non-`extern` form additionally emits an I6 `Property` directive so I6 itself knows about the name even when no class declares a member of that name. The `extern` form trusts that the I6 stream will declare it elsewhere.
+
+```bgl
+class Box : object { int weight; }
+Box g_box;
+void main(){
+    if(g_box.provides(weight))         { ... }   // class member — implicit
+    if(g_box.provides(hidden_flag))    { ... }   // free-standing property decl
+    if(g_box.provides(libDefinedProp)) { ... }   // extern property decl
+}
+```
+
+Both forms accept doc comments (`///` and `/** */`), which surface in LSP hover.
+
+`property` decls are intentionally untyped: the same property name may appear as a member of two unrelated classes with different Beguile types, and a free-standing decl cannot honestly pick one. A `property` identifier has type `property` and is accepted only where the parameter type is `property` (currently `object.provides`); it does not support direct `obj.someName` field access for free-standing decls. Use `provides()` to test, or declare the name as a class member when you want to read or write it.
+
+In strict mode, `obj.provides(unknownName)` is a compile error: declare the name as a class member, or with `property unknownName;` / `extern property unknownName;` at file scope. In loose mode (`#bgl` islands and `.inf` precompiler mode — see §15.6), the check is skipped and the name passes through verbatim, matching the loose-identifier policy applied to all other identifiers in those contexts.
+
+## 8.6b Class Tests
+
+Inform 6 supports a runtime class test via `obj ofclass Cls`, which checks whether an object is an instance of a given class (or any subclass thereof). Beguile surfaces this as the `is()` method on `object`:
+
+```bgl
+class Container : object { }
+class Box : Container { int weight; }
+extern class libDefinedClass : object { }   // defined externally; no I6 emission
+
+Box g_box;
+void main(){
+    if(g_box.is(Container))      { ... }   // Box inherits Container — true at runtime
+    if(g_box.is(Box))            { ... }   // exact class
+    if(g_box.is(libDefinedClass)){ ... }   // external class — name registered, no I6 emission
+}
+```
+
+The argument must be a registered class — either a `class Foo {…}` declaration or `extern class Foo : object {…}`. Both forms register the name with the compiler. The `extern` form additionally trusts that I6 declares the class itself; `is()` accepts the bare name in either case.
+
+The bare class identifier resolves with type `bglClass`, the parameter type of `object.is()`. Any registered class is type-compatible with `bglClass`, so all class names are accepted. As with `provides()`, strict mode requires the class to be declared; loose mode passes the name through verbatim.
+
 ## 8.7 I6 Name Aliasing — the `as` Clause
 
 Global instance declarations may carry an optional `as i6name` clause that specifies the name to emit in the generated I6. The Beguile name is used throughout `.bgl` source for type-checking and identifier resolution; the alias is substituted transparently at every emission site.
 
 ```bgl
-extern grammarToken OBJ as noun;   // Beguile name: OBJ  →  I6 name: noun
+extern attribute lit as light;     // Beguile name: lit  →  I6 name: light
 object myHook as hook { ... }      // Beguile name: myHook  →  I6 name: hook
 ```
 
@@ -3278,7 +3342,20 @@ return a + b * c;          // arithmetic expression
 
 The return value may be any expression — identifier, method call, arithmetic, or ternary. The expression is type-checked against the function's declared return type.
 
-Returning a value from a `void` function is a compile-time error. A non-`void` function must guarantee that every execution path returns a value — the compiler performs control-flow analysis and reports an error if any path can fall off the end of the function without a `return`. Specifically:
+Returning a value from a `void` function is a compile-time error, with one shorthand exception: `return <void-typed expr>;` is permitted as a synonym for `<void-typed expr>; return;`. This makes the C/I6 idiom `return f();` work when `f` is itself void, allowing tail-call patterns to port verbatim. The expression must resolve to type `void` — any other value-bearing expression in a `void` function still errors:
+
+```bgl
+void cleanup() { … }
+
+void doWork(){
+    if(skipFastPath) return cleanup();   // OK — cleanup() is void; equivalent to: cleanup(); return;
+    if(error)        return 42;          // ERROR — int is not void
+}
+```
+
+In loose-mode contexts (`#bgl{}` islands and `.inf` precompiler mode — see §15.6), the same shorthand also accepts an expression that resolves to `var`. Unresolved identifiers in those contexts pass through with type `var`; treating that as compatible means `return f();` ports verbatim when `f` is declared in surrounding I6 and not visible to the Beguile resolver.
+
+A non-`void` function must guarantee that every execution path returns a value — the compiler performs control-flow analysis and reports an error if any path can fall off the end of the function without a `return`. Specifically:
 
 - An unconditional `return` at the top level of the function body satisfies the requirement.
 - An `if-else` where both the then-block and else-block each satisfy the requirement also satisfies it.
@@ -3822,7 +3899,7 @@ If no tier matches, the identifier is undeclared — a compile-time error.
 Local variables, function parameters, and `for`-loop variables are checked against several scopes. The severity depends on the kind of symbol being shadowed:
 
 **Errors (always fatal):**
-- **Global variables** — I6 provides no mechanism to access a shadowed global.
+- **Global variables** — I6 provides no mechanism to access a shadowed global. Exception: globals declared as symbolic-constant types — `attribute`, `property`, `verb`, and `grammarToken` enum values — do not trigger the shadow error. They name compile-time constants used in specific syntactic contexts (`give`, `provides`, action comparisons, grammar lines), not writable runtime storage, so a parameter or local of the same name doesn't actually shadow anything reachable in code.
 - **Registered type names** (classes, enums) — these are stored in the global namespace and collide with user-chosen identifiers by name, even though they lex as a distinct token kind.
 
 **Warnings (non-fatal):**
@@ -3944,15 +4021,15 @@ Grammar rules define what the player can type and which verb action is triggered
 
 | Type | Purpose |
 |------|---------|
-| `grammarToken` | A grammar token used in patterns (`OBJ`, `HELD`, `CREATURE`, etc.). Supports parameterized forms: `OBJ(Routine)` filters matches, `SCOPE(Routine)` sets scope. |
+| `grammarToken` | An extern enum declared by the library binding (i6StandardLibrary, punyInform). Values include `noun`, `held`, `creature`, etc. Supports parameterized forms: `noun(Routine)` filters matches, `scope(Routine)` sets scope. |
 | `dictionaryWord` | A dictionary word used in patterns (`.examine`, `.put`, etc.). Supports `\|` alternatives and plural forms (`..words`). |
-| `grammarPattern` | A sequence of tokens and dictionary words describing player input: `{.examine, OBJ}`. |
-| `grammarRule` | Pairs a verb with a pattern: `{Examine, {.examine, OBJ}}`. |
+| `grammarPattern` | A sequence of tokens and dictionary words describing player input: `{.examine, noun}`. |
+| `grammarRule` | Pairs a verb with a pattern: `{Examine, {.examine, noun}}`. |
 | `grammarRuleList` | A collection of grammar rules. The type of the `grammar` member on `verb` and of standalone grammar objects. |
 
 These types can be used as members on any object. A `grammarRule` has two initializer forms:
-- **Explicit verb**: `grammarRule r = {Examine, {.examine, OBJ}}` — works in any context.
-- **Inferred verb**: `grammarRule r = {.examine, OBJ}` — the verb is inferred from the owning object. The owning object should be a `verb` or a subclass of `verb`; a warning is issued otherwise.
+- **Explicit verb**: `grammarRule r = {Examine, {.examine, noun}}` — works in any context.
+- **Inferred verb**: `grammarRule r = {.examine, noun}` — the verb is inferred from the owning object. The owning object should be a `verb` or a subclass of `verb`; a warning is issued otherwise.
 
 `grammarRuleList` is a container for `grammarRule` entries in either form.
 
@@ -3965,23 +4042,23 @@ Each element of a pattern is one of:
 | `.word` | Dictionary word literal — matches the player typing that exact word |
 | `..words` | Plural dictionary word |
 | `.word1 \| .word2` | Alternative dictionary words — matches any one of them; may be wrapped in optional parentheses |
-| `OBJ` | Matches any in-scope object (emits as the I6 `noun` grammar token via `as noun`) |
-| `HELD` | Matches a held object |
-| `CREATURE` | Matches a creature or actor |
-| `TOPIC` | Matches a topic phrase |
-| `MULTI` | Matches one or more in-scope objects |
-| `MULTIHELD` | Matches one or more held objects |
-| `NUMBER` | Matches a number typed by the player (range-checked) |
-| `ANYNUMBER` | Matches any number (no range check) |
-| `SPECIAL` | Matches a number or dictionary word |
+| `noun` | Matches any in-scope object |
+| `held` | Matches a held object |
+| `creature` | Matches a creature or actor |
+| `topic` | Matches a topic phrase |
+| `multi` | Matches one or more in-scope objects |
+| `multiheld` | Matches one or more held objects |
+| `number` | Matches a number typed by the player (range-checked) |
+| `anynumber` | Matches any number (no range check) |
+| `special` | Matches a number or dictionary word |
 | `attributeName` | Matches objects that have that attribute (e.g. `container`, `animate`) |
 | `RoutineName` | General parsing routine — a declared global function called by the parser as a custom token; handles its own input matching |
-| `OBJ(Routine)` | Noun filter — the parser matches nouns normally, then calls Routine for each candidate to accept or reject it |
-| `SCOPE(Routine)` | Scope setter — Routine modifies which objects the parser considers in scope for this grammar line |
+| `noun(Routine)` | Noun filter — the parser matches nouns normally, then calls Routine for each candidate to accept or reject it |
+| `scope(Routine)` | Scope setter — Routine modifies which objects the parser considers in scope for this grammar line |
 
-`OBJ` is used instead of the I6 name `noun` because `noun` is also declared as a runtime variable in Beguile (`extern object noun`). Using `OBJ` avoids this collision — `OBJ` is declared as `extern grammarToken OBJ as noun`, so it carries the Beguile-facing name `OBJ` and emits as the I6 grammar token `noun`. Grammar tokens (`OBJ`, `HELD`, `CREATURE`, etc.) are written in ALL_CAPS by convention to distinguish them visually from dictionary word literals (`.word`). Since Beguile identifiers are case-insensitive, this is a matter of style, not enforced by the compiler.
+Grammar tokens are values of the `grammarToken` extern enum (declared in the library binding). Both bare access (`noun`) and qualified access (`grammarToken.noun`) are accepted in pattern position. The grammar-line parser walks enum values first when resolving a bare name, so `noun` in a pattern resolves to the grammar-token value even when an `extern object noun` of the same name exists at file scope (e.g. the I6 runtime `noun` global). Outside grammar lines, the global wins — the enum-value interpretation is reachable via `grammarToken.noun` qualified access if needed.
 
-The compiler validates that bare identifiers in grammar patterns are declared as `grammarToken`, `attribute`, or a global function. Plain object or variable declarations (such as the runtime variable `noun`) are not valid in this position — use the corresponding `grammarToken` alias instead (e.g. `OBJ`). The identifier emits as its I6 name, respecting any `as` alias on the declaration. Unrecognized or wrong-typed names are a compile error.
+The compiler validates that bare identifiers in grammar patterns are declared as `grammarToken`, `attribute`, or a global function. Plain object or variable declarations are not valid in this position. Unrecognized or wrong-typed names are a compile error.
 
 ### Advanced Pattern Syntax
 
@@ -3990,23 +4067,23 @@ The compiler validates that bare identifiers in grammar patterns are declared as
 ```bgl
 verb Stow {
     grammar = {
-        {.stow, HELD, .on | .onto | .upon, OBJ},
-        {.stow, HELD, (.in | .into | .inside), OBJ},
+        {.stow, held, .on | .onto | .upon, noun},
+        {.stow, held, (.in | .into | .inside), noun},
     }
 }
 ```
 
-**Parameterized grammar tokens** — `OBJ(Routine)` and `SCOPE(Routine)` pass a routine to the I6 parser. The routine must be a declared global function returning `bool`:
+**Parameterized grammar tokens** — `noun(Routine)` and `scope(Routine)` pass a routine to the I6 parser. The routine must be a declared global function returning `bool`:
 
-- `OBJ(Routine)` — the I6 parser matches nouns normally, then calls Routine with each candidate object as a parameter. The routine returns true to accept or false to reject.
-- `SCOPE(Routine)` — the I6 parser calls Routine to determine which objects are in scope. The routine uses I6 library functions like `PlaceInScope()` or `ScopeWithin()` to add objects.
+- `noun(Routine)` — the I6 parser matches nouns normally, then calls Routine with each candidate object as a parameter. The routine returns true to accept or false to reject.
+- `scope(Routine)` — the I6 parser calls Routine to determine which objects are in scope. The routine uses I6 library functions like `PlaceInScope()` or `ScopeWithin()` to add objects.
 
 ```bgl
 bool isEdible(object obj) { return obj.has(edible); }
 
 verb Taste {
     grammar = {
-        {.taste, OBJ(isEdible)},      // only matches edible objects
+        {.taste, noun(isEdible)},     // only matches edible objects
     }
 }
 ```
@@ -4542,6 +4619,17 @@ Attribute declarations are typically `extern` (declared in I6 libraries), but `a
 
 `attributeList` accepts initializer lists `{a, b, c}`, supports `+=` and `-=` for in-place modification (in `extend` blocks, see §5.9), and is emitted as the I6 `has` line on the containing class or object.
 
+### 16.3.1a `property`
+
+`property` is the type of a free-standing I6 property name — an entry in I6's global property table that is not a member of any Beguile class. Member names auto-register as properties when their containing class is emitted, so most code does not need this type. `property` decls are used when a property name has no Beguile class to live on (typical for I6 interop) but still needs to participate in `obj.provides(name)` checks. See §8.6a for declaration syntax and `obj.provides()` semantics.
+
+```bgl
+property hidden_flag;            // emits 'Property hidden_flag;' to I6
+extern property libDefinedProp;   // no I6 output; trusts an I6 library to declare it
+```
+
+`property` decls are intentionally untyped. The single supported parameter site is `object.provides(property prop)`; direct `obj.someName` field access on free-standing property decls is not supported.
+
 ### 16.3.2 `dictionaryWord`
 
 `dictionaryWord` is the type of an I6 dictionary word. Literals are written with `.word` (singular) or `..word` (plural prefix indicating "noun is plural"). See §2.5.4 for the literal syntax.
@@ -4567,13 +4655,17 @@ verb examine {
 
 | Type | Purpose |
 |---|---|
-| `grammarToken` | A grammar token in a pattern (e.g. `NOUN`, `HELD`, `CREATURE`) |
+| `grammarToken` | An extern enum whose values are the I6 grammar-token names (`noun`, `held`, `creature`, …). Library bindings (i6StandardLibrary, punyInform) declare it. Both bare values (`held`) and qualified access (`grammarToken.held`) are valid in pattern position. |
 | `grammarPattern` | A complete grammar pattern — sequence of tokens and dictionary words |
 | `grammarRule` | One verb-targeted pattern: `{verb, {pattern}}` |
 | `grammarRuleList` | A list of grammar rules — the `grammar` member of a verb or grammar object |
-| `grammarElement` | Common base for grammar tokens, dictionary words, and other pattern atoms |
+| `grammarElement` | Common base for dictionary words and other pattern atoms |
 
 Most of these are handled implicitly through the grammar declaration syntax (§14.4) — users rarely manipulate them as named types. They are catalogued here because they're the receiver types for built-in operators on grammar declarations.
+
+### 16.3.4a `bglClass`
+
+The operand type of `object.is(cls)` (see §8.6b). Any registered class — declared with `class Foo {…}` or `extern class Foo : object {…}` — is type-compatible with `bglClass`, so all class names are accepted. Like `property` for `provides()`, `bglClass` is intentionally narrow: a `bglClass` value carries enough type identity to drive the class-test emitter, no more.
 
 ### 16.3.5 `parentProp`
 

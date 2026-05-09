@@ -71,7 +71,7 @@ object grab
                 grab.perform();
             ];
 verb 'grab'
-    * obj=inscope -> grab;
+    * noun=inscope -> grab;
 object seek
   with perform [;
     print (string)"Sought.";
@@ -91,4 +91,4 @@ object pour
                 pour.perform();
             ];
 verb 'pour'
-    * container obj=inscope -> pour;
+    * container noun=inscope -> pour;

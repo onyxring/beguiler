@@ -308,6 +308,11 @@ class bglParser {
         // exposes the named member, falling back to first-match if none satisfy.
         string qualifyIdentifier(string name, functionDef* func, statementBlock* body, const string& memberHint = "");
         bool isTypeCompatible(string argType, string paramType);
+        // Returns the classDef whose member/operator hierarchy applies to `typeName`-typed
+        // values. For a classDef-typed name, returns that classDef. For an objectDef-typed
+        // name, returns the objectDef's `objectClass`. nullptr if `typeName` isn't a class
+        // or instance type. Use anywhere dispatch needs to walk methods/operators by type.
+        classDef* getDispatchClass(const string& typeName);
         void applyArgConversions(vector<expression*>& args, functionDef* fd);
         // Canonicalize a parsed argument list against a resolved function signature. Performs:
         //   (1) named-argument reordering, (2) default-value fill for trailing unspecified params,
@@ -384,6 +389,10 @@ class bglParser {
         // as a final tie-breaker when multiple candidates remain after memberHint filtering.
         // Always saved/restored at sub-context boundaries (function args, etc.) so it doesn't leak.
         string currentExpectedType;
+        // True while parsing the operand of `return ...;` inside a void function. Permits a
+        // void function call to appear as the return expression — the C/I6 idiom
+        // `return f();` ≡ `f(); return;`. Cleared at every other expression-context boundary.
+        bool allowVoidReturnExpr = false;
     public:
         // True while parsing the contents of an `#bgl{}` block embedded in `#i6{}`. Unknown
         // identifiers are passed through (qualifyIdentifier returns the name; resolveIdentifierType

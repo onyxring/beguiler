@@ -1,12 +1,9 @@
 #once
 //=============================================================================
-// type grammarToken
-    emitter class grammarToken : grammarElement{ //--an I6 grammar token (noun, held, creature, etc.); used in grammar line patterns
-        emitter var operator();              //--declares I6 compatibility with var, enabling mixed expressions
-        emitter eBool operator == (var v){ $self == $v }
-        emitter eBool operator != (var v){ $self ~= $v }
-        emitter grammarToken operator = (var v){ $self = $v }
-    }
+// type grammarToken — declared as an extern enum by each library binding
+// (i6StandardLibrary, punyInform, etc.) since the available token set is
+// library-specific. Bare and qualified access both work via the existing
+// extern-enum resolution: `held` → I6 `held`; `grammarToken.held` → same.
 
 //=============================================================================
 // type grammarPattern — a sequence of grammar tokens and dictionary words describing player input

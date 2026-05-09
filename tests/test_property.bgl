@@ -1,0 +1,40 @@
+/* test_property.bgl — free-floating `property` decls + `provides()` semantics.
+   Covers the four buckets:
+     • implicit (class member name auto-registers in I6 property table)
+     • cross-class (member of a different class still resolves)
+     • explicit `property foo;` (emits `Property foo;` to I6)
+     • `extern property foo;` (registers name only, no emission)                */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+/// Set on objects that should be hidden from the room listing.
+property hidden_flag;
+
+/// Provided by a hypothetical I6 library; we never define it.
+extern property libDefinedProp;
+
+class Box : object {
+    int weight;
+    string description;
+}
+
+class Crate : object {
+    int volume;
+}
+
+Box g_box;
+Crate g_crate;
+
+void main(){
+    // Bucket 1 — class member, in the same class as the receiver
+    if(g_box.provides(weight))         print("box has weight");
+    // Bucket 2 — class member, registered by a different class entirely
+    if(g_box.provides(volume))         print("box may have volume");
+    // Bucket 3 — explicit local `property` decl
+    if(g_box.provides(hidden_flag))    print("box has hidden_flag");
+    // Bucket 4 — extern `property` decl (no I6 emission for the name)
+    if(g_box.provides(libDefinedProp)) print("box has libDefinedProp");
+}
