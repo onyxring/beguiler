@@ -52,8 +52,20 @@ class bglLanguageService{
         variableDeclaration& registerInstance(variableDeclaration&);
         verbObjectDef& registerVerbObject(string name, bool isExternal=false);
         string getEnumType(string valueName); //returns the enum type name for a given enum value name, or "" if not found
-        
-        
+
+        // True when `name` matches a known I6 property name — i.e. either a member of any
+        // declared class/object (auto-registered by I6) or a free-standing `property foo;`
+        // (or `extern property foo;`) declaration. Lets `obj.provides(name)` resolve
+        // against names that have no in-scope identifier of their own. Lowercased
+        // comparison; expects `name` to already be lowercased by the lexer.
+        bool isKnownPropertyName(const string& name) const;
+
+        // True when `name` matches a registered class — `class Foo {}` or
+        // `extern class Foo;`. Lets `obj.is(name)` resolve a bare class identifier
+        // even when the class has no corresponding in-scope value (extern classes
+        // never enter `globals`). Mirrors `isKnownPropertyName` for `provides()`.
+        bool isKnownClassName(const string& name) const;
+
         vector<string> operators={"-=","+=","?=","==","!=","<=",">=","=~","&&","||","++","--","<<",">>","<<=",">>=","*=","/=","%=","&=","|=","^=","=>","?.","??"};
 };
 

@@ -1,0 +1,13 @@
+/* Negative test: passing an unknown name to `is()` in strict mode must error.
+   No `class Foo {}` or `extern class Foo {}` declares this name, so the
+   identifier is genuinely undeclared and the class-name fallback shouldn't
+   rescue it. */
+// EXPECT_ERROR: Undeclared identifier 'mistypedclass'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Container : object { }
+Container g_thing;
+void main(){
+    // Typo of `Container`. Strict mode should reject it.
+    if(g_thing.is(MistypedClass)) print("nope");
+}

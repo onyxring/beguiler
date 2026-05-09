@@ -1,0 +1,40 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+property hidden_flag;
+class box
+  class object
+  with
+    weight,
+    description
+;
+class crate
+  class object
+  with
+    volume
+;
+box g_box;
+crate g_crate;
+[main;
+    if (g_box provides weight) {
+        print (string)"box has weight";
+    }
+    if (g_box provides volume) {
+        print (string)"box may have volume";
+    }
+    if (g_box provides hidden_flag) {
+        print (string)"box has hidden_flag";
+    }
+    if (g_box provides libdefinedprop) {
+        print (string)"box has libDefinedProp";
+    }
+];

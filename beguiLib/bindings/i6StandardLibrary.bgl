@@ -199,20 +199,23 @@ extern const int PAST_TENSE;
 
 //-- Standard grammar tokens --------------------------------------------------
 // These appear in grammar line patterns inside grammar { } blocks.
-// By convention, grammar tokens are written in ALL_CAPS at their use sites to
-// distinguish them visually from dictionary word literals (.word).
-extern grammarToken OBJ as noun;    // a noun object; 'as noun' causes it to emit as the I6 'noun' grammar token
-extern grammarToken ANYNUMBER;      // any number typed by the player (no range check)
-extern grammarToken HELD;           // object currently held by the actor
-extern grammarToken CREATURE;       // an animate object (has 'animate' attribute)
-extern grammarToken TOPIC;          // a conversational topic (any text)
-extern grammarToken MULTI;          // one or more nouns
-extern grammarToken MULTIHELD;      // one or more held nouns
-extern grammarToken MULTIEXCEPT;    // multiple nouns except one
-extern grammarToken MULTIINSIDE;    // multiple nouns inside a container
-extern grammarToken SPECIAL;        // a special token (number or dictionary word)
-extern grammarToken NUMBER;         // a number typed by the player
-extern grammarToken SCOPE;          // placeholder; use scope=Routine form in grammar lines
+// As an extern enum the values both qualify (grammarToken.held) and bare-resolve
+// (held) — same mechanism as any extern enum value. Bare names won't shadow
+// locals/params: lexical scope wins, mirroring enum-value semantics.
+extern enum grammarToken {
+    noun,           // a noun object
+    held,           // object currently held by the actor
+    creature,       // an animate object (has 'animate' attribute)
+    topic,          // a conversational topic (any text)
+    multi,          // one or more nouns
+    multiheld,      // one or more held nouns
+    multiexcept,    // multiple nouns except one
+    multiinside,    // multiple nouns inside a container
+    special,        // a special token (number or dictionary word)
+    anynumber,      // any number typed by the player (no range check)
+    number,         // a number typed by the player
+    scope           // placeholder; use scope=Routine form in grammar lines
+}
 
 //-- Standard game actions ----------------------------------------------------
 // Use these in before() / after() switch(action) blocks.

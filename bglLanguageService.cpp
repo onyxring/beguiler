@@ -86,6 +86,38 @@ static string fmtSrc(const sourceLocation& src){
     return format("{0}:{1}", src.file, src.line);
 }
 
+bool bglLanguageService::isKnownPropertyName(const string& name) const {
+    if(name.empty()) return false;
+    // Free-standing `property foo;` / `extern property foo;` — registered as a global
+    // variableDeclaration with type "property".
+    for(typeDef* g : globals)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+            if(vd->type.name == "property" && vd->name == name) return true;
+    // Class members — every member name auto-registers in I6's property table when its class
+    // is emitted, so any of them is a valid `provides()` operand.
+    for(typeDef* t : objectTypes){
+        if(auto* cd = dynamic_cast<classDef*>(t))
+            for(typeMember* m : cd->members)
+                if(m->name == name) return true;
+    }
+    // Object instance members — a stand-alone `object foo { int bar; }` registers `bar`
+    // in the I6 property table just like a class member would.
+    for(typeDef* t : objectInstances){
+        if(auto* od = dynamic_cast<objectDef*>(t))
+            for(typeMember* m : od->members)
+                if(m->name == name) return true;
+    }
+    return false;
+}
+
+bool bglLanguageService::isKnownClassName(const string& name) const {
+    if(name.empty()) return false;
+    for(typeDef* t : objectTypes)
+        if(auto* cd = dynamic_cast<classDef*>(t))
+            if(cd->name == name) return true;
+    return false;
+}
+
 // Find a global variable by name (case-insensitive). Returns nullptr if not found.
 static variableDeclaration* findGlobal(vector<typeDef*>& globals, const string& lowerName){
     for(typeDef* g : globals){

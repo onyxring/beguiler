@@ -1,0 +1,11 @@
+#once
+//=============================================================================
+// type property
+
+    /// Inform 6 property name. Declared free-standing with `property foo;` (or
+    /// `extern property foo;` for names provided by external I6 code) so it can
+    /// be passed to `obj.provides(prop)` even when no class declares a member
+    /// of that name. Class/object members auto-register as property names with
+    /// no decl needed.
+    extern class property : _bglObject{ }
+

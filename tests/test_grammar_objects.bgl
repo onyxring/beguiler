@@ -19,7 +19,7 @@
 //=============================================================================
 extend PutOn {
     grammar += {
-        {.hang, HELD, .on, OBJ},
+        {.hang, HELD, .on, noun},
     }
 }
 
@@ -27,7 +27,7 @@ extend PutOn {
 // Test 2: standalone grammar object with explicit grammarRule members
 //=============================================================================
 grammar explicitRules {
-    grammarRule rule1 = {Take, {.grab, OBJ}};
+    grammarRule rule1 = {Take, {.grab, noun}};
     grammarRule rule2 = {Drop, {.toss, HELD}};
 }
 
@@ -35,24 +35,24 @@ grammar explicitRules {
 // Test 3: standalone grammar object with inferred grammarRule type
 //=============================================================================
 grammar inferredRules {
-    rule1 = {Take, {.snatch, OBJ}};
-    rule2 = {Examine, {.inspect, OBJ}};
+    rule1 = {Take, {.snatch, noun}};
+    rule2 = {Examine, {.inspect, noun}};
 }
 
 //=============================================================================
 // Test 4: standalone grammar object with array of grammarRule
 //=============================================================================
 grammar arrayRules {
-    array<grammarRule> rules = {{Take, {.nab, OBJ}},
+    array<grammarRule> rules = {{Take, {.nab, noun}},
                                 {Drop, {.discard, HELD}},
-                                {Examine, {.study, OBJ}}};
+                                {Examine, {.study, noun}}};
 }
 
 //=============================================================================
 // Test 5: old-style standalone grammar (backward compat)
 //=============================================================================
 grammar PutOn {
-    {.place, HELD, .on, OBJ},
+    {.place, HELD, .on, noun},
 }
 
 //=============================================================================
@@ -72,7 +72,7 @@ verb Whiff {
 //=============================================================================
 verb Nudge {
     grammarRuleList grammar = {
-        {.nudge, OBJ},
+        {.nudge, noun},
     };
     void perform() {
         print("You nudge it.");

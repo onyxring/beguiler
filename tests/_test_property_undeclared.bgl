@@ -1,0 +1,15 @@
+/* Negative test: passing an unknown name to `provides()` in strict mode must error.
+   No class/object declares a member of this name, and there is no `property foo;` or
+   `extern property foo;` at file scope, so the `provides` argument is genuinely
+   undeclared. */
+// EXPECT_ERROR: Undeclared identifier 'wieght'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Box : object {
+    int weight;
+}
+Box g_box;
+void main(){
+    // Typo of `weight`. Strict mode should reject it.
+    if(g_box.provides(wieght)) print("nope");
+}

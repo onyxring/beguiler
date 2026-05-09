@@ -723,6 +723,7 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             if(vd->isExternal || vd->isConst) return nullptr;
             if(dynamic_cast<arrayDeclaration*>(vd)) return nullptr;
             if(vd->type.name == "attribute" || vd->type.name == "attributelist") return nullptr;
+            if(vd->type.name == "property") return nullptr;
             auto* cd = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
             if(!cd || cd->isEmitterClass || cd->isAlias || cd->isExternal) return nullptr;
             // Only user classes with stored members require class-before-instance ordering.
@@ -1649,6 +1650,11 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
     }
     if(varNode->type.name == "attribute"){
         out << format("attribute {0}", varNode->dName());
+        out << ";\n";
+        return;
+    }
+    if(varNode->type.name == "property"){
+        out << format("property {0}", varNode->dName());
         out << ";\n";
         return;
     }
