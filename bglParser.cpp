@@ -2067,6 +2067,28 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     currentClass = &newClass;
     openCompileContext(eCompileContext::objectDef);
 
+    // Type parameter clause (optional, before pool/inheritance):
+    //   `class Foo<T> { … }` — declares T as a type parameter scoped to the class body.
+    //   Parameters are stored on the classDef but NOT registered globally — collisions
+    //   with same-named instances (e.g. `Temperature t;`) would otherwise occur. Member
+    //   signatures parse T as an identifier-typed token; substitution at method-lookup
+    //   time replaces T with the use-site binding before any type query runs.
+    //   Skipped on `extend class Foo<…>` — type parameters are part of the original decl.
+    if(file.peekToken().is("<")){
+        if(isExtend) parsingError(format("extend class '{0}': type parameters cannot be added by extend — they are part of the original declaration", (string)nameTok));
+        if(isAlias)  parsingError(format("alias class '{0}': type parameters are not supported on alias classes", (string)nameTok));
+        file.getToken(); // consume '<'
+        while(true){
+            token paramTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            // Don't double-add when claiming a pre-pass stub that already populated this list.
+            bool already = false;
+            for(const string& tp : newClass.typeParameters) if(tp == paramTok.value){ already = true; break; }
+            if(!already) newClass.typeParameters.push_back(paramTok.value);
+            token sep = file.getToken({token::comma, ">"});
+            if(sep.value == ">") break;
+        }
+    }
+
     // Pool size clause (optional, before any inheritance):
     //   `class Foo[N]`              — sized pool, N statically-allocated instances (emit `Class Foo(N)`)
     //   `extern class Foo[]`        — marker: I6-pooled type, size opaque to Beguile
@@ -2822,13 +2844,73 @@ typeMember* bglParser::findMemberInHierarchy(classDef* cls, std::function<bool(t
 //   1. Class hierarchy (via typeName → classDef)
 //   2. ObjectDef instance members (via objPath in globals, or currentObject if objPath is "self")
 // Handles: default parameters, var-fallback, pre-scan stub name-only matching.
-bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args){
+// Apply type-parameter bindings to a method's signature. Returns either:
+//   • the original `fd` unchanged, when no substitution applies, OR
+//   • a freshly-allocated functionDef* clone with substituted return / param types.
+// Body is shared (raw I6 emitter bodies are type-erased so substitution doesn't affect them).
+// Caller treats the result as the canonical method to bind against. Clones are never freed —
+// matches the existing findArraySubscriptOp leak convention.
+static functionDef* substituteMethodForBindings(functionDef* fd, const unordered_map<string,string>& bindings){
+    if(!fd || bindings.empty()) return fd;
+    auto sub = [&](const string& t) -> string {
+        auto it = bindings.find(t);
+        return (it == bindings.end()) ? t : it->second;
+    };
+    string newRet = sub(fd->returnType.name);
+    bool anyChange = (newRet != fd->returnType.name);
+    vector<string> newParamTypes;
+    newParamTypes.reserve(fd->params.size());
+    for(paramDef* p : fd->params){
+        string nt = sub(p->type.name);
+        if(nt != p->type.name) anyChange = true;
+        newParamTypes.push_back(nt);
+    }
+    if(!anyChange) return fd;
+    functionDef* clone = new functionDef();
+    clone->name = fd->name;
+    clone->displayName = fd->displayName;
+    clone->src = fd->src;
+    clone->isEmitter = fd->isEmitter;
+    clone->isExplicit = fd->isExplicit;
+    clone->isDefault = fd->isDefault;
+    clone->isValueEmitter = fd->isValueEmitter;
+    clone->returnType.name = newRet;
+    clone->body = fd->body; // shared
+    clone->cleanups = fd->cleanups;
+    clone->replacedTarget = fd->replacedTarget;
+    clone->replacedFunc = fd->replacedFunc;
+    clone->captures = fd->captures;
+    clone->isPrePassStub = fd->isPrePassStub;
+    for(size_t i = 0; i < fd->params.size(); i++){
+        paramDef* pc = new paramDef();
+        pc->name = fd->params[i]->name;
+        pc->displayName = fd->params[i]->displayName;
+        pc->type.name = newParamTypes[i];
+        pc->defaultValue = fd->params[i]->defaultValue;
+        clone->params.push_back(pc);
+    }
+    return clone;
+}
+
+bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args, const string& elementType){
     MethodMatch result;
     functionDef* varFallback = nullptr;
 
-    // Helper: check one function definition against the method name and args
-    auto checkMethod = [&](functionDef* fd) {
-        if(fd->name != methodName) return;
+    // Build type-parameter bindings if the receiver class is generic and the caller supplied
+    // an element-type binding. Single-parameter case only — sufficient for array<T>; multi-
+    // param classes (map<K,V> etc.) will need the parameter list extended.
+    classDef* cls = dynamic_cast<classDef*>(&languageService.getType(typeName));
+    unordered_map<string,string> bindings;
+    if(cls && !cls->typeParameters.empty() && !elementType.empty())
+        bindings[cls->typeParameters[0]] = elementType;
+
+    // Helper: check one function definition against the method name and args.
+    // If type-parameter bindings apply, substitute on a clone before signature checking; the
+    // caller's MethodMatch carries the substituted clone so downstream type queries (return
+    // type, param types, isTypeCompatible, emission) all see concrete types.
+    auto checkMethod = [&](functionDef* fdIn) {
+        if(fdIn->name != methodName) return;
+        functionDef* fd = substituteMethodForBindings(fdIn, bindings);
         if(!result.nameMatch) result.nameMatch = fd;
         result.nameFound = true;
 
@@ -2855,7 +2937,6 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
     };
 
     // Step 1: search class hierarchy
-    classDef* cls = dynamic_cast<classDef*>(&languageService.getType(typeName));
     if(cls != nullptr){
         std::function<void(classDef*)> searchHierarchy = [&](classDef* c){
             for(typeMember* m : c->members)
@@ -2923,15 +3004,15 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
 // successful match. On success, updates typeName in-place so the caller's type variable reflects
 // the conversion target. On failure, returns the original (failed) match so the caller can use
 // nameFound/nameMatch/arityMatch for error reporting.
-bglParser::MethodMatch bglParser::resolveMethodWithConversion(string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args){
-    MethodMatch mm = resolveMethod(typeName, objPath, methodName, args);
+bglParser::MethodMatch bglParser::resolveMethodWithConversion(string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args, const string& elementType){
+    MethodMatch mm = resolveMethod(typeName, objPath, methodName, args, elementType);
     if(mm.method) return mm;
     classDef* srcCls = dynamic_cast<classDef*>(&languageService.getType(typeName));
     if(!srcCls) return mm;
     for(typeMember* m : srcCls->members){
         auto* convOp = dynamic_cast<functionDef*>(m);
         if(!convOp || convOp->name != "operator()" || !convOp->isEmitter || convOp->isExplicit) continue;
-        MethodMatch mm2 = resolveMethod(convOp->returnType.name, objPath, methodName, args);
+        MethodMatch mm2 = resolveMethod(convOp->returnType.name, objPath, methodName, args, elementType);
         if(mm2.method){
             typeName = convOp->returnType.name;
             return mm2;
@@ -3310,57 +3391,37 @@ string bglParser::resolveArrayElementTypeDotted(const string& objName, const str
 // Find operator[] or operator[]= on an array class hierarchy matching a specific element type.
 // For read (isWrite=false), matches the operator's return type against elemType.
 // For write (isWrite=true), matches the operator's second parameter type against elemType.
-// If no explicit overload exists and elemType is a registered class (user-defined), synthesizes
-// a new functionDef using the 'object'-typed overload as a template — same I6 body, substituted
-// return/value type. Caller owns the synthesized functionDef (it's not added to any class).
+//
+// When the receiving class declares a type parameter (e.g. `class array<T>`), the search applies
+// type-parameter→element substitution so `T operator[](int)` resolves as if it were
+// `<elemType> operator[](int)`. Subclasses that override with a concrete element type
+// (e.g. `byteArray.operator[](int) → char`) win via Pass 1's exact match.
 functionDef* bglParser::findArraySubscriptOp(classDef* arrCls, const string& elemType, bool isWrite){
     if(!arrCls) return nullptr;
     const string opName = isWrite ? "[]=" : "[]";
     const size_t expectedParams = isWrite ? 2u : 1u;
-    // Pass 1: exact element-type match
     auto matches = [&](functionDef* fd, const string& t) {
         if(!fd || fd->name != opName || fd->params.size() != expectedParams) return false;
         if(isWrite) return fd->params[1]->type.name == t;
         return fd->returnType.name == t;
     };
+    // Walk the hierarchy. For each class along the way, build bindings if it declares a type
+    // parameter (single-param case for now — array<T>), and apply substitution before matching.
     functionDef* found = nullptr;
     function<void(classDef*)> search = [&](classDef* c) {
         if(!c || found) return;
+        unordered_map<string,string> bindings;
+        if(!c->typeParameters.empty() && !elemType.empty())
+            bindings[c->typeParameters[0]] = elemType;
         for(typeMember* m : c->members)
-            if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(matches(fd, elemType)) { found = fd; return; }
+            if(auto* fd = dynamic_cast<functionDef*>(m)){
+                functionDef* effective = substituteMethodForBindings(fd, bindings);
+                if(matches(effective, elemType)) { found = effective; return; }
+            }
         for(classDef* base : c->baseClasses) { if(found) return; search(base); }
     };
     search(arrCls);
-    if(found) return found;
-    // Pass 2: synthesize from the 'object'-typed template for user-defined classes.
-    // Only fires when elemType is a registered class (not a primitive we'd expect explicit overloads for).
-    classDef* elemCls = dynamic_cast<classDef*>(&languageService.getType(elemType));
-    if(!elemCls) return nullptr;
-    functionDef* templ = nullptr;
-    function<void(classDef*)> searchTempl = [&](classDef* c) {
-        if(!c || templ) return;
-        for(typeMember* m : c->members)
-            if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(matches(fd, "object")) { templ = fd; return; }
-        for(classDef* base : c->baseClasses) { if(templ) return; searchTempl(base); }
-    };
-    searchTempl(arrCls);
-    if(!templ) return nullptr;
-    // Clone the template with elemType substituted
-    functionDef* synth = new functionDef();
-    synth->name = opName;
-    synth->returnType.name = isWrite ? templ->returnType.name : elemType;
-    synth->isEmitter = true;
-    synth->body = templ->body;
-    for(size_t i = 0; i < templ->params.size(); i++) {
-        paramDef* p = new paramDef();
-        p->name = templ->params[i]->name;
-        p->displayName = templ->params[i]->displayName;
-        p->type.name = (isWrite && i == 1) ? elemType : templ->params[i]->type.name;
-        synth->params.push_back(p);
-    }
-    return synth;
+    return found;
 }
 
 // Returns the I6-qualified form of an identifier based on scope:
@@ -4211,8 +4272,9 @@ void bglParser::finalizeCallArgs(vector<expression*>& args, vector<string>& name
 // at the statement-level method call, method call in expression, and chain-continuation sites.
 functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, const string& methodName,
                                         vector<expression*>& args, vector<string>& namedArgNames,
-                                        vector<vector<interpolatedSegment>>& interpSegmentsPerArg){
-    MethodMatch mm = resolveMethodWithConversion(objType, objPath, methodName, args);
+                                        vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
+                                        const string& elementType){
+    MethodMatch mm = resolveMethodWithConversion(objType, objPath, methodName, args, elementType);
     // If type-resolution failed but we have named args and a unique arity-matching candidate,
     // reorder against that candidate's parameter positions and retry. This covers the common
     // case where named args are bound out-of-positional-order: type-check needs the args
@@ -4226,7 +4288,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
             bool reorderOk = reorderNamedArgsImpl(args, namedArgNames, interpSegmentsPerArg, mm.arityMatch,
                 [](string){ return false; });  // silent — let the second pass produce diagnostics
             if(reorderOk)
-                mm = resolveMethodWithConversion(objType, objPath, methodName, args);
+                mm = resolveMethodWithConversion(objType, objPath, methodName, args, elementType);
         }
     }
     if(!mm.nameFound)
@@ -5811,8 +5873,13 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             expr->tokens.push_back(call);
                             expr->resolvedType = "var";
                         } else {
+                        // Element-type binding for generic receivers (array<T>, etc.):
+                        // look up the receiver path's element type so the method-resolver
+                        // can substitute T → concrete type.
+                        string recvElemType = resolveArrayElementType(objName, func, body);
                         method = bindMethodCall(objType, objName, methName,
-                                                               callArgs, pal.namedArgNames, pal.interpSegmentsPerArg);
+                                                               callArgs, pal.namedArgNames, pal.interpSegmentsPerArg,
+                                                               recvElemType);
 
                         expr->resolvedType = method->returnType.name;
 
@@ -7151,8 +7218,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 chainReturnType = "var";
                 callStmt.displayName = tok.originalValue;
             } else {
+                // Element-type binding for generic receivers (array<T>, etc.).
+                string recvElemType = resolveArrayElementType(selfValue, currentFunc, currentFunc ? dynamic_cast<statementBlock*>(currentFunc->body) : nullptr);
                 functionDef* method = bindMethodCall(objectType, objectPath, methodName,
-                                                       callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg);
+                                                       callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
+                                                       recvElemType);
                 cls = dynamic_cast<classDef*>(&languageService.getType(objectType));
                 // if emitter, pre-substitute $self, $prop, and $class
                 if(method->isEmitter)

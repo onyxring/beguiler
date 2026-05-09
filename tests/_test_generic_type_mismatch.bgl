@@ -1,0 +1,9 @@
+/* Negative test: writing a wrong-typed value through a generic subscript must error. */
+// EXPECT_ERROR: to element of array<int>
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+array<int> nums = {1, 2, 3};
+
+void main(){
+    nums[0] = "wrong";   // ERROR: writing string to array<int>
+}
