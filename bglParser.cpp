@@ -1103,7 +1103,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                         const string& t = vd->type.name;
                         if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                     }
-                    parsingError("Loop variable '" + name + "' shadows global variable of the same name. Rename the loop variable.");
+                    parsingWarning("Loop variable '" + name + "' shadows global of the same name; the global is unreachable from this loop body.");
                 }
             if(currentClass != nullptr){
                 for(typeMember* m : currentClass->members)
@@ -2775,7 +2775,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
             param.displayName=tok.originalValue;
             // Disallow parameter names that shadow a global, a class member, or an object member.
             // Emitters are skipped: their parameter names are template substitution keys, not I6 locals.
-            // Symbolic-constant globals (grammartoken, attribute, property, verb) are also skipped:
+            // Symbolic-constant globals (grammartoken, attribute, property, verb) are skipped:
             // they're I6 constants used in grammar/give/provides contexts, not writable storage,
             // so a parameter of the same name doesn't actually shadow anything reachable in code.
             if(!funcDef.isEmitter){
@@ -2785,7 +2785,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
                             const string& t = vd->type.name;
                             if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                         }
-                        parsingError("Parameter '" + param.name + "' shadows global variable of the same name. Rename the parameter.");
+                        parsingWarning("Parameter '" + param.name + "' shadows global of the same name; the global is unreachable from this routine's scope.");
                     }
                 if(currentClass != nullptr){
                     for(typeMember* m : currentClass->members)
@@ -3102,6 +3102,63 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         }
     }
 
+    // Closure capture: check outer function's scope for type. This is a lexical-scope walk
+    // (the lambda's enclosing function), so it runs BEFORE file-scope candidates — standard
+    // scoping rule that captures shadow same-named globals.
+    if(lambdaOuterFunc != nullptr){
+        for(paramDef* p : lambdaOuterFunc->params)
+            if(p->name == name) return p->type.name;
+        if(lambdaOuterBody != nullptr)
+            for(statement* s : lambdaOuterBody->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                    if(vd->name == name) return vd->type.name;
+        statementBlock* rootBody = dynamic_cast<statementBlock*>(lambdaOuterFunc->body);
+        if(rootBody != nullptr && rootBody != lambdaOuterBody){
+            function<string(statementBlock*)> findInBlock = [&](statementBlock* blk) -> string {
+                if(!blk) return "";
+                for(statement* s : blk->statements){
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == name) return vd->type.name;
+                    if(auto* ifs = dynamic_cast<ifStatement*>(s)){
+                        string t = findInBlock(ifs->thenBlock); if(!t.empty()) return t;
+                        t = findInBlock(ifs->elseBlock); if(!t.empty()) return t;
+                    } else if(auto* fors = dynamic_cast<forStatement*>(s)){
+                        string t = findInBlock(fors->body); if(!t.empty()) return t;
+                    } else if(auto* fis = dynamic_cast<forInStatement*>(s)){
+                        string t = findInBlock(fis->body); if(!t.empty()) return t;
+                    } else if(auto* ws = dynamic_cast<whileStatement*>(s)){
+                        string t = findInBlock(ws->body); if(!t.empty()) return t;
+                    } else if(auto* ds = dynamic_cast<doStatement*>(s)){
+                        string t = findInBlock(ds->body); if(!t.empty()) return t;
+                    } else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){
+                        string t = findInBlock(tc->tryBody); if(!t.empty()) return t;
+                        t = findInBlock(tc->catchBody); if(!t.empty()) return t;
+                    }
+                }
+                return "";
+            };
+            string t = findInBlock(rootBody);
+            if(!t.empty()) return t;
+        }
+        // Capture chaining: walk the full lambda nesting stack
+        for(int si = (int)lambdaOuterFuncStack.size() - 1; si >= 0; si--){
+            functionDef* ancestor = lambdaOuterFuncStack[si];
+            if(ancestor == lambdaOuterFunc) continue;
+            for(paramDef* p : ancestor->params)
+                if(p->name == name) return p->type.name;
+            statementBlock* ancestorBody = dynamic_cast<statementBlock*>(ancestor->body);
+            if(ancestorBody != nullptr)
+                for(statement* s : ancestorBody->statements)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == name) return vd->type.name;
+            for(auto& cap : ancestor->captures)
+                if(cap.outerName == name) return cap.typeName;
+        }
+        // `self` type resolution for capture
+        if(name == "self" && (currentClass != nullptr || currentObject != nullptr))
+            return currentClass ? currentClass->name : "object";
+    }
+
     // ── FILE SCOPE — collect all matches, then apply ambiguity rule ───────────
     // Enum values, globals, verbs, emitter objects, #defines, and #using imports all live
     // at file/module scope. They share one conceptual namespace — collisions there are
@@ -3251,61 +3308,6 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         parsingError(msg);
     }
 
-    // Closure capture: check outer function's scope for type. This is a lexical-scope walk
-    // (the lambda's enclosing function), so first match wins — same rule as inner lexical scope.
-    if(lambdaOuterFunc != nullptr){
-        for(paramDef* p : lambdaOuterFunc->params)
-            if(p->name == name) return p->type.name;
-        if(lambdaOuterBody != nullptr)
-            for(statement* s : lambdaOuterBody->statements)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                    if(vd->name == name) return vd->type.name;
-        statementBlock* rootBody = dynamic_cast<statementBlock*>(lambdaOuterFunc->body);
-        if(rootBody != nullptr && rootBody != lambdaOuterBody){
-            function<string(statementBlock*)> findInBlock = [&](statementBlock* blk) -> string {
-                if(!blk) return "";
-                for(statement* s : blk->statements){
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == name) return vd->type.name;
-                    if(auto* ifs = dynamic_cast<ifStatement*>(s)){
-                        string t = findInBlock(ifs->thenBlock); if(!t.empty()) return t;
-                        t = findInBlock(ifs->elseBlock); if(!t.empty()) return t;
-                    } else if(auto* fors = dynamic_cast<forStatement*>(s)){
-                        string t = findInBlock(fors->body); if(!t.empty()) return t;
-                    } else if(auto* fis = dynamic_cast<forInStatement*>(s)){
-                        string t = findInBlock(fis->body); if(!t.empty()) return t;
-                    } else if(auto* ws = dynamic_cast<whileStatement*>(s)){
-                        string t = findInBlock(ws->body); if(!t.empty()) return t;
-                    } else if(auto* ds = dynamic_cast<doStatement*>(s)){
-                        string t = findInBlock(ds->body); if(!t.empty()) return t;
-                    } else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){
-                        string t = findInBlock(tc->tryBody); if(!t.empty()) return t;
-                        t = findInBlock(tc->catchBody); if(!t.empty()) return t;
-                    }
-                }
-                return "";
-            };
-            string t = findInBlock(rootBody);
-            if(!t.empty()) return t;
-        }
-        // Capture chaining: walk the full lambda nesting stack
-        for(int si = (int)lambdaOuterFuncStack.size() - 1; si >= 0; si--){
-            functionDef* ancestor = lambdaOuterFuncStack[si];
-            if(ancestor == lambdaOuterFunc) continue;
-            for(paramDef* p : ancestor->params)
-                if(p->name == name) return p->type.name;
-            statementBlock* ancestorBody = dynamic_cast<statementBlock*>(ancestor->body);
-            if(ancestorBody != nullptr)
-                for(statement* s : ancestorBody->statements)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == name) return vd->type.name;
-            for(auto& cap : ancestor->captures)
-                if(cap.outerName == name) return cap.typeName;
-        }
-        // `self` type resolution for capture
-        if(name == "self" && (currentClass != nullptr || currentObject != nullptr))
-            return currentClass ? currentClass->name : "object";
-    }
     // Loose mode: see qualifyIdentifier for rationale. Unknown identifiers inside #bgl{}
     // blocks are typed `var` so the type checker passes them through.
     if(looseIdentifierMode) return "var";
@@ -3741,6 +3743,76 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             if(!disp.empty()) return "self." + disp;
         }
     }
+
+    // Tier 7 (hoisted): closure capture — inside a lambda, check the outer function's scope
+    // BEFORE file-scope candidates. Captures shadow same-named globals, matching standard
+    // lexical-scoping semantics in any closure-bearing language.
+    if(lambdaOuterFunc != nullptr && currentFunc != nullptr){
+        // Check outer function's params
+        for(paramDef* p : lambdaOuterFunc->params)
+            if(p->name == name)
+                return addCapture(name, p->type.name);
+        // Check immediate enclosing body (e.g. for-loop body)
+        if(lambdaOuterBody != nullptr)
+            for(statement* s : lambdaOuterBody->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                    if(vd->name == name)
+                        return addCapture(name, vd->type.name);
+        // Check function root body recursively — covers locals declared before/outside the
+        // enclosing block (e.g. `int base = 10;` declared before a for-loop).
+        statementBlock* rootBody = dynamic_cast<statementBlock*>(lambdaOuterFunc->body);
+        if(rootBody != nullptr && rootBody != lambdaOuterBody){
+            function<variableDeclaration*(statementBlock*)> findInBlock = [&](statementBlock* blk) -> variableDeclaration* {
+                if(!blk) return nullptr;
+                for(statement* s : blk->statements){
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == name) return vd;
+                    if(auto* ifs = dynamic_cast<ifStatement*>(s)){
+                        if(auto* r = findInBlock(ifs->thenBlock)) return r;
+                        if(auto* r = findInBlock(ifs->elseBlock)) return r;
+                    } else if(auto* fors = dynamic_cast<forStatement*>(s)){
+                        if(auto* r = findInBlock(fors->body)) return r;
+                    } else if(auto* fis = dynamic_cast<forInStatement*>(s)){
+                        if(auto* r = findInBlock(fis->body)) return r;
+                    } else if(auto* ws = dynamic_cast<whileStatement*>(s)){
+                        if(auto* r = findInBlock(ws->body)) return r;
+                    } else if(auto* ds = dynamic_cast<doStatement*>(s)){
+                        if(auto* r = findInBlock(ds->body)) return r;
+                    } else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){
+                        if(auto* r = findInBlock(tc->tryBody)) return r;
+                        if(auto* r = findInBlock(tc->catchBody)) return r;
+                    }
+                }
+                return nullptr;
+            };
+            if(auto* vd = findInBlock(rootBody))
+                return addCapture(name, vd->type.name);
+        }
+        // Capture chaining: walk the full lambda nesting stack.
+        for(int si = (int)lambdaOuterFuncStack.size() - 1; si >= 0; si--){
+            functionDef* ancestor = lambdaOuterFuncStack[si];
+            if(ancestor == lambdaOuterFunc) continue;
+            for(paramDef* p : ancestor->params)
+                if(p->name == name)
+                    return addCapture(name, p->type.name);
+            statementBlock* ancestorBody = dynamic_cast<statementBlock*>(ancestor->body);
+            if(ancestorBody != nullptr)
+                for(statement* s : ancestorBody->statements)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == name)
+                            return addCapture(name, vd->type.name);
+            for(auto& cap : ancestor->captures)
+                if(cap.outerName == name)
+                    return addCapture(cap.globalName, cap.typeName);
+        }
+        // `self` capture: when a lambda is inside an object method, `self` refers to the
+        // enclosing object. Capture it to a global.
+        if(name == "self" && (currentClass != nullptr || currentObject != nullptr)){
+            string selfType = currentClass ? currentClass->name : "object";
+            return addCapture("self", selfType);
+        }
+    }
+
     // ── FILE SCOPE — collect all matches, then apply ambiguity rule ───────────
     // Same principle as resolveIdentifierType: enum values, globals, verbs, emitter objects,
     // #defines, and #using imports share one conceptual namespace. Multiple matches across
@@ -3935,81 +4007,6 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         }
         msg += ". Qualify the use explicitly to disambiguate.";
         parsingError(msg);
-    }
-    // Tier 7: closure capture — inside a lambda, check the outer function's scope.
-    // Walks the function root body recursively so locals declared at any nesting level
-    // (e.g. before a for-loop that contains the lambda) are found.
-    if(lambdaOuterFunc != nullptr && currentFunc != nullptr){
-        // Check outer function's params
-        for(paramDef* p : lambdaOuterFunc->params)
-            if(p->name == name)
-                return addCapture(name, p->type.name);
-        // Check immediate enclosing body (e.g. for-loop body)
-        if(lambdaOuterBody != nullptr)
-            for(statement* s : lambdaOuterBody->statements)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                    if(vd->name == name)
-                        return addCapture(name, vd->type.name);
-        // Check function root body recursively — covers locals declared before/outside the
-        // enclosing block (e.g. `int base = 10;` declared before a for-loop).
-        statementBlock* rootBody = dynamic_cast<statementBlock*>(lambdaOuterFunc->body);
-        if(rootBody != nullptr && rootBody != lambdaOuterBody){
-            function<variableDeclaration*(statementBlock*)> findInBlock = [&](statementBlock* blk) -> variableDeclaration* {
-                if(!blk) return nullptr;
-                for(statement* s : blk->statements){
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == name) return vd;
-                    if(auto* ifs = dynamic_cast<ifStatement*>(s)){
-                        if(auto* r = findInBlock(ifs->thenBlock)) return r;
-                        if(auto* r = findInBlock(ifs->elseBlock)) return r;
-                    } else if(auto* fors = dynamic_cast<forStatement*>(s)){
-                        if(auto* r = findInBlock(fors->body)) return r;
-                    } else if(auto* fis = dynamic_cast<forInStatement*>(s)){
-                        if(auto* r = findInBlock(fis->body)) return r;
-                    } else if(auto* ws = dynamic_cast<whileStatement*>(s)){
-                        if(auto* r = findInBlock(ws->body)) return r;
-                    } else if(auto* ds = dynamic_cast<doStatement*>(s)){
-                        if(auto* r = findInBlock(ds->body)) return r;
-                    } else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){
-                        if(auto* r = findInBlock(tc->tryBody)) return r;
-                        if(auto* r = findInBlock(tc->catchBody)) return r;
-                    }
-                }
-                return nullptr;
-            };
-            if(auto* vd = findInBlock(rootBody))
-                return addCapture(name, vd->type.name);
-        }
-        // Capture chaining: walk the full lambda nesting stack. If the immediate outer lambda
-        // doesn't have the variable, check its outer scope, and so on. Each level may have
-        // the variable as a local, param, or capture. When found as a capture, chain through
-        // the capture global (inner captures the outer's global, not the original variable).
-        for(int si = (int)lambdaOuterFuncStack.size() - 1; si >= 0; si--){
-            functionDef* ancestor = lambdaOuterFuncStack[si];
-            if(ancestor == lambdaOuterFunc) continue; // already checked above
-            // Check ancestor's params
-            for(paramDef* p : ancestor->params)
-                if(p->name == name)
-                    return addCapture(name, p->type.name);
-            // Check ancestor's body locals
-            statementBlock* ancestorBody = dynamic_cast<statementBlock*>(ancestor->body);
-            if(ancestorBody != nullptr)
-                for(statement* s : ancestorBody->statements)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == name)
-                            return addCapture(name, vd->type.name);
-            // Check ancestor's captures (chaining)
-            for(auto& cap : ancestor->captures)
-                if(cap.outerName == name)
-                    return addCapture(cap.globalName, cap.typeName);
-        }
-        // `self` capture: when a lambda is inside an object method, `self` refers to the
-        // enclosing object. Capture it to a global; parseLambdaExpr will emit `self = _bglCapN;`
-        // at the top of the lambda's I6 body so all self.member references work naturally.
-        if(name == "self" && (currentClass != nullptr || currentObject != nullptr)){
-            string selfType = currentClass ? currentClass->name : "object";
-            return addCapture("self", selfType);
-        }
     }
     // Loose mode: when parsing #bgl{} content, unknown identifiers are assumed to refer to
     // names in the surrounding I6 stream (locals, globals, properties) rather than Beguile
@@ -7588,7 +7585,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                     const string& t = vd->type.name;
                     if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                 }
-                parsingError("Local variable '" + varDecl.name + "' shadows global variable of the same name. Rename the local.");
+                parsingWarning("Local variable '" + varDecl.name + "' shadows global of the same name; the global is unreachable from this scope.");
             }
         if(currentClass != nullptr){
             for(typeMember* m : currentClass->members)

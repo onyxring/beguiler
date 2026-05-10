@@ -820,11 +820,11 @@ int __glkHook(int _vararg_count){
 //A little voodoo. Here we tell the compiler that glkHook is externally defined.  We define overloads here, rather than a single declaration with a string of parameters with defaults, because
 //   I6 compiler will otherwise count all defaults when calculating the variable argument count identifier which I6 handles in special-case fashion
 extern void glkHook(){}
-extern void glkHook(int a=0){}
-extern void glkHook(int a=0, int b=0){}
-extern void glkHook(int a=0, int b=0, int c=0){}
-extern void glkHook(int a=0, int b=0, int c=0, int d=0){}
-extern void glkHook(int a=0, int b=0, int c=0, int d=0,int e=0){}
-extern void glkHook(int a=0, int b=0, int c=0, int d=0,int e=0,int f=0){}
+extern void glkHook(int _a=0){}
+extern void glkHook(int _a=0, int _b=0){}
+extern void glkHook(int _a=0, int _b=0, int _c=0){}
+extern void glkHook(int _a=0, int _b=0, int _c=0, int _d=0){}
+extern void glkHook(int _a=0, int _b=0, int _c=0, int _d=0,int _e=0){}
+extern void glkHook(int _a=0, int _b=0, int _c=0, int _d=0,int _e=0,int _f=0){}
 
 
