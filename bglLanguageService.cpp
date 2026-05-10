@@ -287,6 +287,11 @@ verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExtern
             v->src = parser.file.currentLocation();
             if(classDef* vc = dynamic_cast<classDef*>(&getType("verb")))
                 v->objectClass = vc;
+            // Re-push to globals if the pre-scan removed it (.inf-mode islands erase
+            // their pre-scan additions; main pass re-pushes here at the correct
+            // source-order position).
+            rePushIfMissing(globals, v, isExternal,
+                            parser.getCurrentCompileContext() == eCompileContext::global);
             return *v;
         }
     }

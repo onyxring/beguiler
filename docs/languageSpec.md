@@ -3998,8 +3998,8 @@ A `verb` declaration creates a named Beguile object that is an instance of the `
 ```bgl
 verb Examine {
     grammarRuleList grammar = {
-        {.examine, OBJ},
-        {.x, OBJ},
+        {.examine, NOUN},
+        {.x, NOUN},
     }
     void perform() {
         print("You examine it closely.");
@@ -4129,7 +4129,7 @@ bool parseColor(int context) {
 
 verb Paint {
     grammar = {
-        {.paint, OBJ, parseColor},    // "paint <object> <color>"
+        {.paint, NOUN, parseColor},    // "paint <object> <color>"
     }
 }
 ```
@@ -4152,9 +4152,9 @@ The `grammar` member on a verb is of type `grammarRuleList`. Grammar patterns de
 ```bgl
 verb Examine {
     grammar = {
-        {.examine, OBJ},
-        {.x, OBJ},
-        {.look, .at, OBJ},
+        {.examine, NOUN},
+        {.x, NOUN},
+        {.look, .at, NOUN},
     }
     void perform() {
         print("You examine it closely.");
@@ -4172,8 +4172,8 @@ verb Examine {
 
 ```bgl
 grammar PutOn {
-    {.hang, HELD, .on, OBJ},
-    {.put, HELD, .on, OBJ},
+    {.hang, HELD, .on, NOUN},
+    {.put, HELD, .on, NOUN},
 }
 ```
 
@@ -4181,8 +4181,8 @@ grammar PutOn {
 
 ```bgl
 grammar customPatterns {
-    grammarRule rule1 = {PutOn, {.hang, HELD, .on, OBJ}};
-    grammarRule rule2 = {Insert, {.put, HELD, .in, OBJ}};
+    grammarRule rule1 = {PutOn, {.hang, HELD, .on, NOUN}};
+    grammarRule rule2 = {Insert, {.put, HELD, .in, NOUN}};
 }
 ```
 
@@ -4190,9 +4190,9 @@ Type can be inferred, and `array<grammarRule>` is supported for multiple rules i
 
 ```bgl
 grammar customPatterns {
-    rule1 = {PutOn, {.hang, HELD, .on, OBJ}};
-    array<grammarRule> rules = {{PutOn, {.put, HELD, .on, OBJ}},
-                                {Insert, {.put, HELD, .in, OBJ}}};
+    rule1 = {PutOn, {.hang, HELD, .on, NOUN}};
+    array<grammarRule> rules = {{PutOn, {.put, HELD, .on, NOUN}},
+                                {Insert, {.put, HELD, .in, NOUN}}};
 }
 ```
 
@@ -4206,7 +4206,7 @@ Grammar can be added to an existing verb (including `extern verb` declarations) 
 extern verb PutOn;
 extend PutOn {
     grammar += {
-        {.hang, HELD, .on, OBJ},
+        {.hang, HELD, .on, NOUN},
     }
 }
 ```
@@ -4272,8 +4272,8 @@ When Beguile is used as a precompiler in this mode, it serves a role analogous t
     }
 }
 
-[ Initialise ;
-    new magicButton(10);
+[ Initialise mb;
+    mb=magicButton(10).create();
 ];
 ```
 
