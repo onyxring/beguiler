@@ -49,10 +49,13 @@ grammar arrayRules {
 }
 
 //=============================================================================
-// Test 5: old-style standalone grammar (backward compat)
+// Test 5: extend an extern verb with a single line via extend verb syntax
+// (replaces the obsolete `grammar VerbName { {pattern}, }` shorthand)
 //=============================================================================
-grammar PutOn {
-    {.place, HELD, .on, noun},
+extend PutOn {
+    grammar += {
+        {.place, HELD, .on, noun},
+    };
 }
 
 //=============================================================================

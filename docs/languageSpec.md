@@ -4166,18 +4166,7 @@ verb Examine {
 
 ### Grammar Objects
 
-`grammar` is a shorthand for declaring an object of class `grammarRuleList`. Grammar objects provide a grammar-centric alternative to declaring rules on verbs.
-
-**Single-verb form** — the object name identifies the target verb:
-
-```bgl
-grammar PutOn {
-    {.hang, HELD, .on, NOUN},
-    {.put, HELD, .on, NOUN},
-}
-```
-
-**Multi-verb form** — `grammarRule` members pair patterns with explicit verb references:
+`grammar` is a shorthand for declaring an object of class `grammarRuleList`. Grammar objects provide a grammar-centric, cross-cutting alternative to declaring rules on individual verbs — one grammar object can carry rules targeting many different verbs. Each rule's `grammarRule` member pairs a pattern with an explicit verb reference:
 
 ```bgl
 grammar customPatterns {
