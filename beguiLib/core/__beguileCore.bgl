@@ -201,12 +201,10 @@ emitter void print(var val){ print $val; } //the default, which will be used for
 emitter void print(_bglObject val){ if($val provides print) $val.print(); else print (name)$val;} //the default, which will be used for all data types not defined
 emitter void log(var msg){ ##if DEBUG print $msg; ##endif }
 
-/*
-emitter void cThe(object o){ (The)$o }
-emitter void the(object o){ (the)$o }
-emitter void cA(object o){ (A)$o }
-emitter void a(object o){ (a)$o }
-*/
+emitter void a(object o){ print (a)$o; }
+emitter void cA(object o){ print (A)$o; }
+emitter void the(object o){ print (the)$o; }
+emitter void cThe(object o){ print (The)$o; }
 
 //=============================================================================
 // style emitter namespace.  TODO: add the rest of these.

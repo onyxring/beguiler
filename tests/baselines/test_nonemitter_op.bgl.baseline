@@ -21,10 +21,10 @@ class counter
         return self.value + n;
     ]
 ;
-counter a
+counter ctrA
   with value 5
 ;
-counter b
+counter ctrB
   with value 5
 ;
 class temperature
@@ -44,10 +44,10 @@ distance d
   with meters 100
 ;
 [main sum c doubled m;
-    if (a._opeqeq(b)) {
+    if (ctra._opeqeq(ctrb)) {
         print (string)"equal";
     }
-    sum=a._opadd(10);
+    sum=ctra._opadd(10);
     c = t;
     doubled=t + t;
     m=d;

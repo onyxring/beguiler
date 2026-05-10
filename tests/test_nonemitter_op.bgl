@@ -17,8 +17,8 @@ class Counter : object {
     }
 }
 
-Counter a { value = 5; }
-Counter b { value = 5; }
+Counter ctrA { value = 5; }
+Counter ctrB { value = 5; }
 
 // Conversion operators (spec §5.6.4) — operator() with zero params declares that this type
 // is implicitly convertible to the return type. Wrapping a raw int in a typed class gives
@@ -40,8 +40,8 @@ Temperature t { celsius = 20; }
 Distance    d { meters = 100; }
 
 void main(){
-    if(a == b) print("equal");
-    int sum = a + 10;
+    if(ctrA == ctrB) print("equal");
+    int sum = ctrA + 10;
 
     // Implicit conversion — t flows into int context without any cast
     int c = t;

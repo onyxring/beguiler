@@ -11,7 +11,7 @@ object bgl
   with utilities _bglutil
 ;
 [caller;
-    (the)myobj;
+    print (the)myobj;
 ];
 
 ! test_inf_mode_forward_emitter.inf — emitter functions declared inside a `#bgl{}`
