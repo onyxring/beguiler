@@ -10172,39 +10172,10 @@ bool bglParser::processGrammarDeclaration(token nameOverride){
     token name = nameOverride.tokenType != eTokenType::unknown ? nameOverride : file.getToken(eTokenType::identifier);
     string grammarName = name.originalValue.empty() ? name.value : name.originalValue;
 
-    // Peek inside the body to detect old-style grammar lines vs new-style member declarations.
-    // Old-style: grammar VerbName { {.word, TOKEN}, ... } — first body token is '{'
-    // New-style: grammar ObjName { grammarRule rule = ...; ... } — first body token is type/identifier
     file.getToken(token::braceOpen);
-    token peek = file.peekToken();
-    if(peek.is(token::braceOpen)){
-        // Old-style: single-verb grammar lines — each becomes a grammarRuleDecl with inferred verb
-        grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
-        gtd.name = "grammar";
-        gtd.type = languageService.getType("grammarrulelist");
-        gtd.verbName = grammarName;
-        token tok = file.getToken();
-        while(tok.isNot(token::braceClose)){
-            if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside grammar declaration — missing closing '}'");
-            tok.assert(token::braceOpen, "Expected '{' to start a grammar line");
-            grammarLine gl = parseGrammarLineContent();
-            grammarRuleDecl& rd = *(new grammarRuleDecl());
-            rd.name = "grammar";
-            rd.type = languageService.getType("grammarrule");
-            rd.line = gl;
-            rd.targetVerb = grammarName;
-            gtd.rules.push_back(&rd);
-            gl.targetVerb = grammarName;
-            gtd.grammarLines.push_back(gl);
-            tok = file.getToken({token::comma, token::braceClose});
-            if(tok.is(token::comma)) tok = file.getToken();
-        }
-        languageService.globals.push_back(&gtd);
-    } else {
-        // New-style: grammar object with grammarRule members
-        return processGrammarObjectDeclaration(grammarName);
-    }
-    return false;
+    if(file.peekToken().is(token::braceOpen))
+        parsingError(format("Bare grammar lines in 'grammar {0} {{ ... }}' are no longer supported. To add lines to an existing verb use 'extend {0} {{ grammar += {{ ... }}; }}'; to author a cross-cutting grammar object use 'grammar {0} {{ grammarRule r = {{Verb, {{ ... }}}}; }}'.", grammarName));
+    return processGrammarObjectDeclaration(grammarName);
 }
 
 // Parse a grammar object body with grammarRule members.

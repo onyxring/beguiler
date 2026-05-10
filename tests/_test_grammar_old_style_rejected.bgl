@@ -1,0 +1,17 @@
+// _test_grammar_old_style_rejected.bgl
+// The verb-named single-verb shorthand `grammar VerbName { {pattern}, }`
+// was removed; the parser must direct authors to `extend VerbName { grammar += {...}; }`
+// or to a multi-verb grammar object.
+// EXPECT_ERROR: Bare grammar lines in 'grammar PutOn
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+grammar PutOn {
+    {.hang, HELD, .on, noun},
+}

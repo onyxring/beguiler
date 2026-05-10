@@ -43,6 +43,8 @@ verb 'nudge'
     * noun -> nudge;
 verb 'hang'
     * held 'on' noun -> puton;
+verb 'place'
+    * held 'on' noun -> puton;
 verb 'grab'
     * noun -> Take;
 verb 'toss'
@@ -57,5 +59,3 @@ verb 'discard'
     * held -> Drop;
 verb 'study'
     * noun -> Examine;
-verb 'place'
-    * held 'on' noun -> PutOn;
