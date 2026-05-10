@@ -1,0 +1,32 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+[caller;
+    (the)myobj;
+];
+
+! test_inf_mode_forward_emitter.inf — emitter functions declared inside a `#bgl{}`
+! island must be reachable as forward calls from earlier members. This requires
+! three pieces working together:
+!   (1) preScanBglIslandContent keeps functionDef stubs for the second pass
+!       (otherwise the stub is erased and forward-call lookup fails).
+!   (2) The emitter qualifier is propagated to the stub's `isEmitter` field.
+!   (3) The emitter's I6 body is captured during prescan so the call site can
+!       inline it (without a body, dispatch falls back to verbatim emission).
+
+
+constant story = "";
+constant headline = "";
+global myObj;
+
+
+end;

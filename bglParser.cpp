@@ -473,7 +473,8 @@ bool bglParser::parseInfFileBody(abstractObject& contextObj){
                         isDecl = true;
                     } else if(t1.is("void") || t1.isDataType()){
                         // `Type ident <terminator>` at file scope = declaration. Terminators:
-                        //   '(' → function form;  ';' or '=' → variable form.
+                        //   '(' → function form;  ';' or '=' → variable form;
+                        //   '{' → object instance with init block, or verb body, etc.
                         // Local variable declarations are not allowed in statement islands;
                         // any `Type ident` form elevates to a global decl. Mixed-content blocks
                         // (a decl-shaped first line followed by bare statements) get caught
@@ -481,7 +482,7 @@ bool bglParser::parseInfFileBody(abstractObject& contextObj){
                         token t2 = file.peekToken(2);
                         if(t2.is(eTokenType::identifier)){
                             token t3 = file.peekToken(3);
-                            if(t3.is(token::parenOpen) || t3.is(token::endStatement) || t3.is(token::assignment))
+                            if(t3.is(token::parenOpen) || t3.is(token::endStatement) || t3.is(token::assignment) || t3.is(token::braceOpen))
                                 isDecl = true;
                         }
                     }

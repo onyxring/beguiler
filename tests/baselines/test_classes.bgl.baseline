@@ -96,9 +96,7 @@ object myHelper
        value 0
 ;
 place testRoom
-  with main [;
-  ],
-       short_name "Test Room",
+  with short_name "Test Room",
        description "A room for testing."
   has light
 ;

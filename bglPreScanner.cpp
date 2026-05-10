@@ -85,8 +85,14 @@ void bglParser::preScanSkipConditionalBlock(){
 }
 void bglParser::preScanSkipToSemicolon(){
     while(true){
-        token t = file.getToken();
-        if(t.is(token::endStatement) || t.is(eTokenType::eof)) return;
+        token t = file.peekToken();
+        // Stop at the enclosing scope's closing brace WITHOUT consuming it — the caller's
+        // outer loop (e.g. an object-body walk) needs the `}` to terminate naturally.
+        // Without this, members like `grammar = {…}` that lack a trailing `;` cause this
+        // function to over-run past the enclosing block's `}` into the next declaration.
+        if(t.is(token::braceClose) || t.is(eTokenType::eof)) return;
+        file.getToken();
+        if(t.is(token::endStatement)) return;
         if(t.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
         // After consuming a {…} block, continue reading to find the ';'
     }
@@ -888,6 +894,7 @@ void bglParser::preScanGlobalLoop(){
                     functionDef& stub = *(new functionDef());
                     stub.name = nameStr;
                     stub.returnType.name = typeName;
+                    stub.isEmitter = isEmitter;
                     stub.isPrePassStub = true;
                     languageService.globals.push_back(&stub);
                     stubPtr = &stub;
@@ -895,8 +902,19 @@ void bglParser::preScanGlobalLoop(){
                 if(stubPtr != nullptr) preScanCaptureParams(stubPtr->params);
                 else preScanSkipParens();
                 token peek = file.peekToken();
-                if(peek.is(token::braceOpen)) preScanSkipBody();
-                else preScanSkipToSemicolon();
+                if(peek.is(token::braceOpen)){
+                    // For emitter functions, capture the body during prescan so forward
+                    // calls inside the same .inf island (where the stub remains in globals)
+                    // can inline correctly. Without this, the stub has a null body and the
+                    // call site falls back to verbatim emission. Main pass will replace the
+                    // stub with a fresh functionDef when it processes the actual declaration.
+                    if(stubPtr != nullptr && isEmitter){
+                        file.getToken(); // consume '{'
+                        i6Block* body = new i6Block();
+                        body->i6Body = file.getRawTextThroughClosingBrace();
+                        stubPtr->body = body;
+                    } else preScanSkipBody();
+                } else preScanSkipToSemicolon();
             } else if(sym.is(token::braceOpen) && isEmitter){
                 // Emitter value: emitter Type name { body } — register stub, skip body
                 bool alreadyReg = false;
@@ -970,9 +988,18 @@ void bglParser::preScanBglIslandContent(const std::string& content, const std::s
     preScanGlobalLoop();
     file.close();
     if(languageService.globals.size() > globalsBefore){
-        languageService.globals.erase(
-            languageService.globals.begin() + globalsBefore,
-            languageService.globals.end());
+        // Erase the additions to preserve source-order interleaving with raw-I6 compositeNodes
+        // during Pass 2. Exception: keep functionDef stubs (regular and emitter functions).
+        // These need to remain visible during Pass 2 so forward calls — `the(noun)` referencing
+        // `emitter void the(object)` declared later in the island — resolve correctly. The
+        // stub gets claimed in place by the main-parse register helper when the actual decl
+        // is processed; positional drift relative to raw-I6 is acceptable for functions
+        // because their I6 emission is order-independent (forward references work in I6 too).
+        auto it = languageService.globals.begin() + globalsBefore;
+        while(it != languageService.globals.end()){
+            if(dynamic_cast<functionDef*>(*it)) ++it;
+            else it = languageService.globals.erase(it);
+        }
     }
 }
 
