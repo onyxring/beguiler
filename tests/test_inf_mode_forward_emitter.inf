@@ -15,14 +15,15 @@
 
     object myObj;
 
-    // Use of `the(myObj)` precedes its declaration. The auto-detector treats this
+    // Use of `myArticle(myObj)` precedes its declaration. The auto-detector treats this
     // whole island as declarations because the first content token is a directive.
+    // The emitter name is project-local to avoid colliding with core's `the` / `a`.
     void caller() {
-        the(myObj);
+        myArticle(myObj);
     }
 
-    emitter void the(object o){
-        (the)$o
+    emitter void myArticle(object o){
+        print (the)$o;
     }
 }
 end;
