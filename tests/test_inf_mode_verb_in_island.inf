@@ -1,0 +1,25 @@
+!% -v5
+!% -E1
+
+! test_inf_mode_verb_in_island.inf — verb declarations inside `#bgl{}` islands
+! must emit the corresponding `object <verbname>`, `[<verbname>sub;…]` action
+! routine, and `verb '<word>'` grammar block. Two regressions blocked this:
+!   (1) The `#bgl{}` auto-detector only recognised `Type Name (`/`;`/`=` as a
+!       declaration form, not `Type Name {`, so `verb foo {…}` got routed to
+!       the statement parser and silently dropped.
+!   (2) `registerVerbObject` didn't re-push to globals when claiming a pre-pass
+!       stub, so even when parsing succeeded the verb never reached emit.
+
+#bgl{
+    #include <bindings/i6StandardLibrary>
+
+    verb HelloVerb {
+        grammar = {
+            {.greet, noun}
+        }
+        void perform() {
+            print("hello");
+        }
+    }
+}
+end;

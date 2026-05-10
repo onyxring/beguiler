@@ -19,6 +19,12 @@ object bgl
   with glulx _glulx,
        utilities _bglutil
 ;
+[doubled n;
+    return n * 2;
+];
+[tripled n;
+    return n * 3;
+];
 ! test_inf_mode_bgl_autodetect.inf — plain #bgl auto-detects between declaration
 ! mode and statement mode by inspecting the first token(s).
 !
@@ -39,16 +45,10 @@ object bgl
 ! Auto-detected as declaration mode (typed function): doubled() registers globally
 ! and is callable from raw I6 below.
 
-[doubled n;
-    return n * 2;
-];
 
 
 ! Auto-detected as declaration mode (typed function): tripled() registers globally too.
 
-[tripled n;
-    return n * 3;
-];
 
 
 ! Auto-detected as declaration mode (typed variable): elevates to a global int.

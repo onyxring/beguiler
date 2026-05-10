@@ -19,6 +19,9 @@ object bgl
   with glulx _glulx,
        utilities _bglutil
 ;
+[doubled n;
+    return n * 2;
+];
 ! test_inf_mode_directives.inf — recognition + dispatch of #bgl, #bglStmt, #bglDecl in .inf-mode.
 !
 ! #bglDecl routes to the global declaration parser; #bglStmt routes to the loose-
@@ -31,9 +34,6 @@ object bgl
 !   - Single-line forms of #bgl and #bglStmt.
 
 
-[doubled n;
-    return n * 2;
-];
 
 
 [ Main x;
