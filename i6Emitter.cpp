@@ -1938,15 +1938,35 @@ void i6Emitter::emitVerbGrammar(const string& verbName, int anchor, bool isMeta,
         else if(gl.priority < anchor) lessThan.push_back(gl);
         else                          gteNonOwn.push_back(gl);
     }
-    // Ascending priority within each batch; stable sort preserves source order within a priority.
-    // Inside one Extend directive, earlier patterns match first — so ascending priority (lower
-    // number = higher matching priority) lands them in the correct in-directive order.
-    stable_sort(lessThan.begin(),  lessThan.end(),  [](const grammarLine& a, const grammarLine& b){ return a.priority < b.priority; });
-    stable_sort(gteNonOwn.begin(), gteNonOwn.end(), [](const grammarLine& a, const grammarLine& b){ return a.priority < b.priority; });
+    // Emit lessThan in DESCENDING priority order, one `Extend 'w' first` directive per priority
+    // bucket. Each `Extend first` prepends to the head of I6's rule list, so emitting the highest
+    // priority number first and the lowest priority number last leaves the lowest-number bucket
+    // at the top of the rule list — exactly the right matching order (lower priority number =
+    // higher matching priority). Stable sort within a bucket preserves source order.
+    //
+    // Emit gteNonOwn in ASCENDING priority order, one `Extend 'w'` directive per priority bucket.
+    // Each `Extend` appends to the tail; emitting lower priority numbers first lands them closer
+    // to the anchor, with higher priority numbers further down (matched last, as expected).
+    auto bucketize = [](vector<grammarLine>& lines, bool descending){
+        // Stable-sort within priority; build a list of (priority, lines) buckets in the requested order.
+        stable_sort(lines.begin(), lines.end(),
+            [descending](const grammarLine& a, const grammarLine& b){
+                return descending ? (a.priority > b.priority) : (a.priority < b.priority);
+            });
+        vector<vector<grammarLine>> buckets;
+        for(const grammarLine& gl : lines){
+            if(buckets.empty() || buckets.back().back().priority != gl.priority)
+                buckets.push_back({});
+            buckets.back().push_back(gl);
+        }
+        return buckets;
+    };
 
-    if(!anchorOwn.empty())    emitGrammarLines(verbName, anchorOwn,    isMeta, extendDirective::First);
-    if(!lessThan.empty())     emitGrammarLines(verbName, lessThan,     isMeta, extendDirective::First);
-    if(!gteNonOwn.empty())    emitGrammarLines(verbName, gteNonOwn,    isMeta, extendDirective::Last);
+    if(!anchorOwn.empty()) emitGrammarLines(verbName, anchorOwn, isMeta, extendDirective::First);
+    for(auto& bucket : bucketize(lessThan,  /*descending*/true))
+        emitGrammarLines(verbName, bucket, isMeta, extendDirective::First);
+    for(auto& bucket : bucketize(gteNonOwn, /*descending*/false))
+        emitGrammarLines(verbName, bucket, isMeta, extendDirective::Last);
     // Replace lines emit last so all earlier trigger-word occurrences for this verb have
     // already been declared — they'll emit as `Extend 'w' replace`, wiping prior rules.
     if(!replaceLines.empty()) emitGrammarLines(verbName, replaceLines, isMeta, extendDirective::Replace);
