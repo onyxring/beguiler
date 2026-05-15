@@ -2,28 +2,28 @@
 //=============================================================================
 // type array<T>
 //-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
-// $self = array name (global) or owning object (if property)
+// $val = array name (global) or owning object (if property)
 // $prop = 0 (global) or property name (property)
 //
 // Element-type-aware via the type parameter T. Subscripts emit identical I6
-// for any word-sized element type (`$self-->($i+1)`); the type-parameter
+// for any word-sized element type (`$val-->($i+1)`); the type-parameter
 // substitution produces typed signatures like `Room operator[](int)` at
 // instantiation sites without per-T library overloads.
 //
 // `array<char>` routes to the byteArray subclass below, which overrides the
 // subscript and length emitters with byte-access (`->` instead of `-->`).
 extern class array<T>  : _bglObject{
-    replace emitter T    operator[](int i)        { $self-->($i+1) }
-    replace emitter T    operator[]=(int i, T v)  { $self-->($i+1) = $v }
-    replace emitter int  length()                 { $self-->0 }
+    replace emitter T    operator[](int i)        { $val-->($i+1) }
+    replace emitter T    operator[]=(int i, T v)  { $val-->($i+1) = $v }
+    replace emitter int  length()                 { $val-->0 }
 }
 
 // byteArray — byte-sized element array, used internally for array<char>.
 // Overrides array's word-access emitters with byte-access (`->`).
 // I6 buffer layout: byte 0 = max length, byte 1 = current length, data starts at byte 2.
 extern class byteArray : array {
-    replace emitter char operator[](int i)          { $self->($i+2) }
-    replace emitter char operator[]=(int i, char v) { $self->($i+2) = $v }
-    replace emitter int  length()                   { $self->0 }
+    replace emitter char operator[](int i)          { $val->($i+2) }
+    replace emitter char operator[]=(int i, char v) { $val->($i+2) = $v }
+    replace emitter int  length()                   { $val->0 }
 }
 

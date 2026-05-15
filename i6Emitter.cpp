@@ -1115,11 +1115,13 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                 // Interpolated string literal: split emitter body at parameter, splice print-block
                 string b = var->initEmitterBody;
                 b = replaceWord(b, "$self", spillName(var->name));
+                b = replaceWord(b, "$val",  spillName(var->name));
                 emitInterpolatedEmitterBody(b, var->initEmitterParam, var->interpSegments, indent);
             } else if(!var->initEmitterBody.empty()){
                 string b = var->initEmitterBody;
                 b = replaceWord(b, "$" + var->initEmitterParam, exprText(var->declaredExpressionValue));
                 b = replaceWord(b, "$self",              spillName(var->name));
+                b = replaceWord(b, "$val",               spillName(var->name));
                 b = replaceWord(b, "$target",            spillName(var->name));
                 size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
                 size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
@@ -1141,6 +1143,7 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             // Interpolated string literal: split emitter body at parameter, splice print-block
             string b = assign->emitterBody;
             b=replaceWord(b,"$self", assign->emitterSelf.empty() ? spillName(assign->variableLeft) : spillName(assign->emitterSelf));
+            b=replaceWord(b,"$val",  spillName(assign->variableLeft));
             emitInterpolatedEmitterBody(b, assign->emitterParam, assign->interpSegments, indent);
         } else if(!assign->emitterBody.empty()){
             string b = assign->emitterBody;
@@ -1149,6 +1152,7 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             // Substitute params before $self to avoid double-substitution when param name matches the LHS variable
             b=replaceWord(b,"$" + assign->emitterParam, assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "");
             b=replaceWord(b,"$self", assign->emitterSelf.empty() ? spillName(assign->variableLeft) : spillName(assign->emitterSelf));
+            b=replaceWord(b,"$val",  spillName(assign->variableLeft));
             b=replaceWord(b,"$target", spillName(assign->variableLeft));
             while(!b.empty() && b.back()==';') b.pop_back();
             out << indent << b << ";\n";
@@ -1317,6 +1321,7 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                                 // Inline the operator switch() emitter
                                 string b = it->second;
                                 b = replaceWord(b, "$self", "_bgl_sw");
+                                b = replaceWord(b, "$val",  "_bgl_sw");
                                 // Find the parameter name — stored as part of the emitter body placeholder
                                 // We need to substitute the first non-$self word. Use a generic approach:
                                 // The emitter body has one parameter; replace all non-$self param names.
@@ -1337,6 +1342,7 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                                     string body = b.substr(colonPos + 1);
                                     body = replaceWord(body, "$" + paramName, valText);
                                     body = replaceWord(body, "$self", "_bgl_sw");
+                                    body = replaceWord(body, "$val",  "_bgl_sw");
                                     size_t s = body.find_first_not_of(" \t\n\r"); if(s!=string::npos) body=body.substr(s);
                                     size_t e2 = body.find_last_not_of(" \t\n\r;"); if(e2!=string::npos) body=body.substr(0,e2+1);
                                     out << "(" << body << ")";
@@ -1486,6 +1492,7 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
                     if(auto* blk = dynamic_cast<i6Block*>(printFn->body)){
                         string b = parser.processBglConditionals(blk->i6Body);
                         b = replaceWord(b, "$self", exprStr);
+                        b = replaceWord(b, "$val",  exprStr);
                         size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                         size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                         out << indent << b << ";\n";
@@ -1751,10 +1758,13 @@ void i6Emitter::emitObject(objectDef* obj){
 
     // collect property members (includes raw i6 blocks, which emit as 'with' properties)
     // 'parent' is excluded — it's emitted as a positional argument, not a 'with' property
+    // 'meta' on a verb is excluded — it's lifted to the Verb directive (`Verb meta '…'`)
+    bool isVerbInstance = (dynamic_cast<verbObjectDef*>(obj) != nullptr);
     bool hasProps = false;
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
             if(vd->isExternal) continue; // alias members have no I6 backing
+            if(isVerbInstance && vd->name == "meta") continue;
             if(vd->type.name != "attributelist" && vd->type.name != "grammarrulelist" && vd->type.name != "grammarrule" && vd->name != "parent") { hasProps = true; break; }
         } else if(auto* fd = dynamic_cast<functionDef*>(m)){ if(!fd->isEmitter) { hasProps = true; break; } }
           else if(dynamic_cast<i6RawNode*>(m))  { hasProps = true; break; }
@@ -1782,6 +1792,7 @@ void i6Emitter::emitObject(objectDef* obj){
                 if(vd->type.name == "attributelist") continue; // handled separately below
                 if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue; // emitted as I6 Verb directives
                 if(vd->name == "parent") continue; // emitted as positional argument, not 'with' property
+                if(isVerbInstance && vd->name == "meta") continue; // lifted to the Verb directive (`Verb meta …`)
                 out << (first ? "  with " : ",\n       ");
                 out << vd->dName() << " ";
                 if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
@@ -1851,6 +1862,7 @@ void i6Emitter::emitObject(objectDef* obj){
         size_t e = body.find_last_not_of(" \t\n\r");  if(e != string::npos) body = body.substr(0, e+1);
         body = replaceWord(body, "$selfsub", objI6Name + "sub");
         body = replaceWord(body, "$self",    objI6Name);
+        body = replaceWord(body, "$val",     objI6Name);
         out << body << "\n";
     }
 }
@@ -1861,18 +1873,39 @@ void i6Emitter::emitObject(objectDef* obj){
 
 void i6Emitter::emitVerbObject(verbObjectDef* vd){
     if(vd->isExternal) return;
+    // Lift `bool meta = true;` from the verb body into the verbObjectDef flag so
+    // emitObject can suppress emitting it as a regular I6 property and so
+    // emitGrammarLines can prepend the `meta` keyword on the Verb directive.
+    for(typeMember* m : vd->members){
+        auto* mv = dynamic_cast<variableDeclaration*>(m);
+        if(mv && mv->name == "meta" && mv->declaredExpressionValue){
+            string v = mv->declaredExpressionValue->text();
+            if(v == "true" || v == "1") vd->isMeta = true;
+        }
+    }
     emitObject(vd);   // also fires globalDeclaration emitter if defined on the verb class
-    if(!vd->grammarLines.empty()) emitGrammarLines(vd->name, vd->grammarLines);
+    if(!vd->grammarLines.empty()) emitGrammarLines(vd->name, vd->grammarLines, vd->isMeta);
 }
 
 void i6Emitter::emitGrammarRuleListDecl(grammarRuleListDecl* gtd){
-    emitGrammarLines(gtd->verbName, gtd->grammarLines);
+    // If the grammar list targets a single verb (typical for `extend Verb { grammar += { ... } }`
+    // and old-style verb-named grammar blocks), propagate that verb's meta status so new
+    // Verb directives emitted from this grammar inherit `meta` correctly.
+    bool isMeta = false;
+    if(!gtd->verbName.empty()){
+        string lower = gtd->verbName;
+        transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        for(verbObjectDef* v : languageService.verbs)
+            if(v->name == lower){ isMeta = v->isMeta; break; }
+    }
+    emitGrammarLines(gtd->verbName, gtd->grammarLines, isMeta);
 }
 
 // Group grammar lines by verb trigger word; emit one Verb/Extend block per unique trigger word.
 // First occurrence of a trigger word → Verb 'word'; subsequent → Extend 'word' first.
 // Per-line targetVerb overrides verbName (for multi-verb grammar objects).
-void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLine>& lines){
+// When isMeta is true, the first emission of each trigger word emits as `Verb meta 'word'`.
+void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLine>& lines, bool isMeta){
     // Each entry: {triggerWord, patternTokens, actionName}
     struct lineEntry { vector<string> patternTokens; string actionName; };
     vector<string> wordOrder;
@@ -1893,7 +1926,10 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
         bool isFirst = declaredVerbWords.find(word) == declaredVerbWords.end();
         if(isFirst){
             declaredVerbWords.insert(word);
-            out << format("verb {0}\n", toI6Word(word));
+            if(isMeta)
+                out << format("verb meta {0}\n", toI6Word(word));
+            else
+                out << format("verb {0}\n", toI6Word(word));
         } else {
             out << format("extend {0} first\n", toI6Word(word));
         }

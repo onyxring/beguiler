@@ -85,7 +85,7 @@ class i6Emitter{
         void emitInterpolatedEmitterBody(const string& body, const string& paramName, const vector<interpolatedSegment>& segments, string indent);
         void emitVerbObject(verbObjectDef*);
         void emitGrammarRuleListDecl(grammarRuleListDecl*);
-        void emitGrammarLines(const string& verbName, const vector<grammarLine>& lines);
+        void emitGrammarLines(const string& verbName, const vector<grammarLine>& lines, bool isMeta = false);
         int currentLine();
         void writeSourceMap(const string& path);
         void writeSymbolTable(const string& path);

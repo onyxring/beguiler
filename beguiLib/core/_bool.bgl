@@ -7,22 +7,22 @@
     }
     extern class bool : _bglObject{ //--base type bool, declared as external because it wraps the type-less I6 type
         replace emitter void print(){
-            if($self == true)
+            if($val == true)
                 print "true";
             else
                 print "false";
         }
-        emitter eBool operator == (bool v){ $self == $v }
-        emitter eBool operator == (eBool v){ $self == $v }
-        emitter eBool operator != (bool v){ $self ~= $v }
-        emitter eBool operator != (eBool v){ $self ~= $v }
+        emitter eBool operator == (bool v){ $val == $v }
+        emitter eBool operator == (eBool v){ $val == $v }
+        emitter eBool operator != (bool v){ $val ~= $v }
+        emitter eBool operator != (eBool v){ $val ~= $v }
         emitter bool operator = (bool v){ $target=$v; }
         emitter bool operator = (eBool v){ $target=$v; }
-        emitter eBool operator && (bool v){ $self && $v }
-        emitter eBool operator && (eBool v){ $self && $v }
-        emitter eBool operator || (bool v){ $self || $v }
-        emitter eBool operator || (eBool v){ $self || $v }
-        emitter eBool operator ! (){ ~~$self }
+        emitter eBool operator && (bool v){ $val && $v }
+        emitter eBool operator && (eBool v){ $val && $v }
+        emitter eBool operator || (bool v){ $val || $v }
+        emitter eBool operator || (eBool v){ $val || $v }
+        emitter eBool operator ! (){ ~~$val }
     }
 
     emitter void print(bool b){ if($b == true) print "true"; else print "false"; }
