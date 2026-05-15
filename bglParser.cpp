@@ -2490,8 +2490,9 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             }
             if(tok.isNot(token::endStatement) && tok.isNot(token::assignment))
                 parsingError(format("Expected '=' or ';' after member '{0}'", (string)name));
-            if(newClass.isAlias && tok.is(token::assignment))
-                parsingError(format("Member '{0}' in an alias class may not have a definition (value); declarations only", (string)name));
+            // Note: alias-class members may carry a default value (e.g. `int priority = 10;` on
+            // `class verb`). The value is a compile-time default consulted by the emitter when
+            // lifting the field from an instance body; it is not emitted as an I6 property.
             variableDeclaration& varDef=*(new variableDeclaration());
             varDef.name=(string) name;
             varDef.displayName = name.originalValue;
@@ -8866,6 +8867,9 @@ void bglParser::processArrayMember(vector<typeMember*>& members, const string& o
             file.getToken(token::comma);
             file.getToken(token::braceOpen);
             rd.line = parseGrammarLineContent();
+            // Optional `, priority` third element (default 10 from BLR `class verb`).
+            rd.line.priority   = parseOptionalGrammarRulePriority(languageService.getClassFieldIntDefault("verb", "priority", 10));
+            rd.line.isOwnLine  = false;
             file.getToken(token::braceClose);  // closing } of this rule
             // Add to verb's grammarLines if applicable
             if(vodForGrammarRules){
@@ -9052,6 +9056,9 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
         file.getToken(token::comma);
         file.getToken(token::braceOpen);
         rd.line = parseGrammarLineContent();
+        // Optional `, priority` third element (default 10 from BLR `class verb`).
+        rd.line.priority   = parseOptionalGrammarRulePriority(languageService.getClassFieldIntDefault("verb", "priority", 10));
+        rd.line.isOwnLine  = false;
         file.getToken(token::braceClose);  // closing } of outer initializer
         if(file.peekToken().is(token::endStatement)) file.getToken();
         // If on a grammarRuleList-bearing object, also add to its grammarLines
@@ -9156,6 +9163,9 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
         file.getToken(token::comma);
         file.getToken(token::braceOpen);
         rd.line = parseGrammarLineContent();
+        // Optional `, priority` third element (default 10 from BLR `class verb`).
+        rd.line.priority   = parseOptionalGrammarRulePriority(languageService.getClassFieldIntDefault("verb", "priority", 10));
+        rd.line.isOwnLine  = false;
         file.getToken(token::braceClose);
         if(file.peekToken().is(token::endStatement)) file.getToken();
         if(auto* vod = dynamic_cast<verbObjectDef*>(&obj)){
@@ -9882,6 +9892,16 @@ bool bglParser::processObjectExtension(token nameTok){
     currentObject = obj;
     openCompileContext(eCompileContext::objectDef);
 
+    // For verb extend blocks, track the block's grammar priority. `priority = N;` inside this
+    // extend body acts as a block-local directive (it stamps the priority onto grammar lines
+    // added by `grammar +=` here) rather than mutating a persistent member on the verb. The
+    // default comes from `class verb`'s BLR-declared `int priority = N;` default so the value
+    // lives in Beguile, not buried in C++.
+    int verbPriorityDefault = (vod != nullptr) ? languageService.getClassFieldIntDefault("verb", "priority", 10) : 0;
+    int extendBlockPriority = verbPriorityDefault;
+    bool extendHadReplaceGrammar = false;  // tracks `grammar = { ... }` (replace) — used to error
+                                           // out a later `priority = N;` set in the same block
+
     token tok = file.getToken();
     while(tok.isNot(token::braceClose)){
         if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside object — missing closing '}'");
@@ -9918,18 +9938,24 @@ bool bglParser::processObjectExtension(token nameTok){
         }
         if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
         if(isExternalObj && !q.isEmitter){
-            // For extern objects, only compound assignment on grammar is allowed
-            // Check for += which is handled below; everything else is an error
-            bool isCompound = false;
+            // For extern objects, only compound assignment on collection members is allowed,
+            // plus a few block-local directives that don't actually mutate the extern object
+            // (e.g. verb extend's `priority = N;` is captured into extendBlockPriority and
+            // stamped onto added grammar lines — it never becomes a member on the extern verb).
+            bool isAllowed = false;
             if(tok.isDataType()){
                 token peekName = file.peekToken();
                 token peekOp = file.peekToken(2);
-                if(peekOp.is("+=") || peekOp.is("-=")) isCompound = true;
+                if(peekOp.is("+=") || peekOp.is("-=")) isAllowed = true;
             } else if(tok.is(eTokenType::identifier)){
                 token peekOp = file.peekToken();
-                if(peekOp.is("+=") || peekOp.is("-=")) isCompound = true;
+                if(peekOp.is("+=") || peekOp.is("-=")) isAllowed = true;
+                else if(vod != nullptr && tok.value == "priority" && peekOp.is(token::assignment))
+                    isAllowed = true;  // block-local priority directive (see identifier branch below)
+                else if(vod != nullptr && tok.value == "grammar" && peekOp.is(token::assignment))
+                    isAllowed = true;  // replace semantics: `grammar = { ... }` (see identifier branch below)
             }
-            if(!isCompound)
+            if(!isAllowed)
                 parsingError(format("Cannot add members to extern object '{0}'; only compound assignment (+=) on collection members is allowed",
                     nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
         }
@@ -9977,7 +10003,7 @@ bool bglParser::processObjectExtension(token nameTok){
             if((peekOp.is("+=") || peekOp.is("-=")) && peekName.is(eTokenType::identifier)){
                 token memberName = file.getToken();
                 token op = file.getToken();
-                processExtendCompoundAssignment(*obj, memberName, op.value, vod);
+                processExtendCompoundAssignment(*obj, memberName, op.value, vod, extendBlockPriority);
             } else {
                 processTypedMember(*obj, tok, memberIsReplace);
             }
@@ -9987,7 +10013,57 @@ bool bglParser::processObjectExtension(token nameTok){
             token peekOp = file.peekToken();
             if(peekOp.is("+=") || peekOp.is("-=")){
                 token op = file.getToken();
-                processExtendCompoundAssignment(*obj, tok, op.value, vod);
+                processExtendCompoundAssignment(*obj, tok, op.value, vod, extendBlockPriority);
+            } else if(vod != nullptr && tok.value == "priority" && peekOp.is(token::assignment)){
+                // Verb extend block: `priority = N;` is a block-local directive that sets the
+                // priority stamped onto subsequent `grammar +=` contributions. It is NOT a
+                // persistent member on the verb (which would conflict with multiple extend
+                // blocks at different priorities, all merging into the same verbObjectDef).
+                file.getToken(token::assignment);
+                token valTok = file.getToken();
+                int newPriority = extendBlockPriority;
+                try { newPriority = stoi(valTok.value); }
+                catch(...) { parsingError(format("priority: expected integer literal, got '{0}'", valTok.value)); }
+                if(extendHadReplaceGrammar && newPriority != verbPriorityDefault)
+                    parsingError("priority is meaningless with `grammar = { ... }` (replace); remove one or set priority to the default");
+                extendBlockPriority = newPriority;
+                file.getToken(token::endStatement);
+            } else if(vod != nullptr && tok.value == "grammar" && peekOp.is(token::assignment)){
+                // Verb extend block: `grammar = { ... }` is REPLACE semantics — emits I6
+                // `Extend 'v' replace …` directives, wiping the verb's previous rules for
+                // each trigger word. Priority is meaningless under replace; if the block also
+                // set a non-default `priority = N;`, that's a contradiction.
+                if(extendBlockPriority != verbPriorityDefault)
+                    parsingError("`grammar = { ... }` (replace) cannot be combined with a non-default `priority = N;` in the same extend block — priority is meaningless under replace");
+                file.getToken(token::assignment);
+                vector<grammarLine> lines = parseGrammarLines();
+                if(file.peekToken().is(token::endStatement)) file.getToken();
+                string inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
+
+                // Find or create the verb's "grammar" rule-list and route lines through it.
+                // This mirrors the `+=` path: extern verbs are emitted via the globals-level
+                // grammarRuleListDecl (since emitVerbObject early-returns for extern), and
+                // non-extern verbs pick the same lines up via vod->grammarLines.
+                grammarRuleListDecl* gtd = nullptr;
+                for(typeMember* m : obj->members)
+                    if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+                        if(g->name == "grammar"){ gtd = g; break; }
+                if(!gtd){
+                    gtd = new grammarRuleListDecl();
+                    gtd->name = "grammar";
+                    gtd->type = languageService.getType("grammarrulelist");
+                    gtd->verbName = inferredVerb;
+                    obj->members.push_back(gtd);
+                    if(vod->isExternal) languageService.globals.push_back(gtd);
+                }
+                for(grammarLine& gl : lines){
+                    gl.targetVerb     = inferredVerb;
+                    gl.isOwnLine      = false;
+                    gl.isReplaceMode  = true;
+                    gtd->grammarLines.push_back(gl);
+                    vod->grammarLines.push_back(gl);
+                }
+                extendHadReplaceGrammar = true;
             } else {
                 processInheritedMember(*obj, tok);
             }
@@ -10012,7 +10088,7 @@ bool bglParser::processObjectExtension(token nameTok){
 
 // Compound assignment (+= / -=) on an existing collection member inside an extend body.
 // Supports: grammarRuleList, attributeList, array<T>.
-void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod){
+void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod, int blockPriority){
     string memberNameStr = memberName.value;
     string display = memberName.originalValue.empty() ? memberName.value : memberName.originalValue;
 
@@ -10066,6 +10142,8 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
                 if(vod && vod->isExternal) languageService.globals.push_back(gtd);
             }
             for(grammarLine& gl : lines){
+                gl.priority = blockPriority;
+                gl.isOwnLine = false;        // extend-block contribution, sorts against verb's anchor
                 grammarRuleDecl& rd = *(new grammarRuleDecl());
                 rd.name = memberNameStr;
                 rd.type = languageService.getType("grammarrule");
@@ -10234,8 +10312,9 @@ bool bglParser::processGrammarObjectDeclaration(const string& grammarName){
         return "";
     };
 
-    // Helper: parse a single grammarRule initializer {VerbRef, {.word, TOKEN, ...}}
-    // Assumes outer '{' already consumed.
+    // Helper: parse a single grammarRule initializer {VerbRef, {.word, TOKEN, ...}, priority?}
+    // Assumes outer '{' already consumed. Optional 3rd positional element is the line's sort
+    // priority (default 10 from BLR `class verb`).
     auto parseGrammarRuleInit = [&](grammarRuleDecl& rd){
         // First element: verb reference
         token verbTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
@@ -10244,6 +10323,9 @@ bool bglParser::processGrammarObjectDeclaration(const string& grammarName){
         // Second element: grammar line pattern {.word, TOKEN, ...}
         file.getToken(token::braceOpen);
         rd.line = parseGrammarLineContent();
+        // Optional 3rd element: priority
+        rd.line.priority   = parseOptionalGrammarRulePriority(languageService.getClassFieldIntDefault("verb", "priority", 10));
+        rd.line.isOwnLine  = false;
         // Closing } of the outer initializer
         file.getToken(token::braceClose);
     };
@@ -10331,6 +10413,22 @@ bool bglParser::processGrammarObjectDeclaration(const string& grammarName){
 
     languageService.globals.push_back(&gtd);
     return false;
+}
+
+// After parseGrammarLineContent has consumed the inner `}` of a `{Verb, {pattern}}` literal,
+// peek for an optional third positional element — `, priority` — and return it. Returns
+// `defaultPriority` (caller-supplied; typically BLR's `class verb` default of 10) when no
+// third element is present.
+int bglParser::parseOptionalGrammarRulePriority(int defaultPriority){
+    if(!file.peekToken().is(token::comma)) return defaultPriority;
+    file.getToken();  // consume the comma
+    token prioTok = file.getToken();
+    try { return stoi(prioTok.value); }
+    catch(...) {
+        parsingError(format("grammarRule priority: expected integer literal, got '{0}'",
+            prioTok.originalValue.empty() ? prioTok.value : prioTok.originalValue));
+    }
+    return defaultPriority;
 }
 
 // Parse a single grammar line's content: trigger word + pattern tokens.

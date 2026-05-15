@@ -2,6 +2,10 @@
 // `meta` is a property on `class verb`. Authors set it like any other property:
 // `meta = true;` inside the verb body. The compiler suppresses it from the I6
 // `with` clause and lifts it onto the Verb directive (`Verb meta '...' -> Action;`).
+//
+// Uses fresh dict words (.census, .tally, .ponder) that don't collide with the
+// stdlib's existing extern verbs — otherwise the new trigger word would be treated
+// as an Extend on an already-declared verb (no meta directive emitted there).
 #beguilerSettings {
     target = z5;
     informName = "none";
@@ -11,21 +15,21 @@
 #include <bindings/i6StandardLibrary>
 
 // Beguile-defined meta verb — `meta = true;` lifts to `Verb meta` directive
-verb Inventory {
+verb Census {
     meta = true;
     grammar = {
-        {.inv},
-        {.i},
+        {.census},
+        {.tally},
     };
-    void perform(){ print("inv"); }
+    void perform(){ print("census"); }
 }
 
 // Non-meta verb — emits as plain `Verb`
-verb Take {
+verb Ponder {
     grammar = {
-        {.take, noun},
+        {.ponder, noun},
     };
-    void perform(){ print("take"); }
+    void perform(){ print("ponder"); }
 }
 
 void main(){}

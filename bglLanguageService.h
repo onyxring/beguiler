@@ -66,6 +66,12 @@ class bglLanguageService{
         // never enter `globals`). Mirrors `isKnownPropertyName` for `provides()`.
         bool isKnownClassName(const string& name) const;
 
+        // Read the integer default value declared on a class field in BLR. Returns the field's
+        // `declaredExpressionValue` parsed as an int, or `fallback` if the field is absent / has no
+        // default / isn't an int literal. Used to resolve compile-time defaults (e.g. `class verb`'s
+        // `int priority = 10;`) without hardcoding the value in C++.
+        int getClassFieldIntDefault(const string& className, const string& fieldName, int fallback);
+
         vector<string> operators={"-=","+=","?=","==","!=","<=",">=","=~","&&","||","++","--","<<",">>","<<=",">>=","*=","/=","%=","&=","|=","^=","=>","?.","??"};
 };
 

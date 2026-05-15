@@ -306,6 +306,19 @@ verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExtern
     return vd;
 }
 
+int bglLanguageService::getClassFieldIntDefault(const string& className, const string& fieldName, int fallback){
+    classDef* cd = dynamic_cast<classDef*>(&getType(className));
+    if(!cd) return fallback;
+    for(typeMember* m : cd->members){
+        auto* vd = dynamic_cast<variableDeclaration*>(m);
+        if(!vd || vd->name != fieldName) continue;
+        if(!vd->declaredExpressionValue) return fallback;
+        try { return stoi(vd->declaredExpressionValue->text()); }
+        catch(...) { return fallback; }
+    }
+    return fallback;
+}
+
 string bglLanguageService::getEnumType(string valueName){
     transform(valueName.begin(), valueName.end(), valueName.begin(), ::tolower);
     for(typeDef* t : objectTypes){

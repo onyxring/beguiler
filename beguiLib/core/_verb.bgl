@@ -5,6 +5,8 @@
     alias class verb for object{
         grammarRuleList grammar;
         bool meta;               // when true, emits as I6 `Verb meta '...'` — verb does not increment the turn counter
+        int priority = 10;       // grammar sort priority. Anchor for this verb's own block; extends compare against it.
+                                 // < anchor → I6 `Extend 'v' first` (matches first); > anchor → `Extend 'v'` (matches last).
         default emitter void perform(){ $selfsub; }    // bridges to I6 <verbName>Sub; override without 'replace'
         emitter eBool operator == (verb v){ $self == ##$v }
         emitter void _bglGlobalDeclaration() {
