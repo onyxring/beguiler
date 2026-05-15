@@ -118,6 +118,8 @@ class expression {
         vector<string> tokens;     // raw token strings making up the expression
         string resolvedType;       // inferred Beguile type name, or "" if unknown
         string terminator;         // which terminator token ended this expression
+        string emitterSelf;        // host text for $self when this expr is a property access
+                                   // (e.g. for `o.parent` → "o"); empty for non-property-access exprs
 
         string text() const {
             string result;
@@ -355,6 +357,7 @@ struct grammarLine {
 class verbObjectDef : public objectDef {
     public:
         bool isExternal = false;
+        bool isMeta = false;                // I6 meta verb (declared via `meta = true;` or `extern meta verb …`)
         functionDef* doFunc = nullptr;      // action routine; I6 name = verbName + "sub"
         vector<grammarLine> grammarLines;   // inline grammar (from verb { grammar { } })
 };

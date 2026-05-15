@@ -9,64 +9,64 @@
         emitter int operator = (uint v){ $target=$v; }
 
         // Arithmetic — bit-identical to signed for same width (overflow wraps).
-        emitter uint operator + (uint v){ $self + $v }
-        emitter uint operator - (uint v){ $self - $v }
-        emitter uint operator * (uint v){ $self * $v }
+        emitter uint operator + (uint v){ $val + $v }
+        emitter uint operator - (uint v){ $val - $v }
+        emitter uint operator * (uint v){ $val * $v }
 
         // Division and modulo — route through _bglMath.unsignedDiv/unsignedMod for correct
         // unsigned semantics when either operand has the sign bit set.
-        emitter uint operator / (uint v){ _bglMath.unsignedDiv($self, $v) }
-        emitter uint operator % (uint v){ _bglMath.unsignedMod($self, $v) }
+        emitter uint operator / (uint v){ _bglMath.unsignedDiv($val, $v) }
+        emitter uint operator % (uint v){ _bglMath.unsignedMod($val, $v) }
 
         // Equality — identical signed and unsigned.
-        emitter bool operator == (uint v){ $self == $v }
-        emitter bool operator != (uint v){ $self ~= $v }
+        emitter bool operator == (uint v){ $val == $v }
+        emitter bool operator != (uint v){ $val ~= $v }
 
         // Ordering — must route through unsignedCompare to get correct behavior at the high end
         // of the range (values with the sign bit set, which signed `<` would treat as negative).
-        emitter bool operator <  (uint v){ _bglMath.unsignedCompare($self, $v) < 0 }
-        emitter bool operator <= (uint v){ _bglMath.unsignedCompare($self, $v) <= 0 }
-        emitter bool operator >  (uint v){ _bglMath.unsignedCompare($self, $v) > 0 }
-        emitter bool operator >= (uint v){ _bglMath.unsignedCompare($self, $v) >= 0 }
+        emitter bool operator <  (uint v){ _bglMath.unsignedCompare($val, $v) < 0 }
+        emitter bool operator <= (uint v){ _bglMath.unsignedCompare($val, $v) <= 0 }
+        emitter bool operator >  (uint v){ _bglMath.unsignedCompare($val, $v) > 0 }
+        emitter bool operator >= (uint v){ _bglMath.unsignedCompare($val, $v) >= 0 }
 
         // Compound assignment
-        emitter uint operator += (uint v){ $self = $self + $v }
-        emitter uint operator -= (uint v){ $self = $self - $v }
-        emitter uint operator *= (uint v){ $self = $self * $v }
-        emitter uint operator /= (uint v){ $self = _bglMath.unsignedDiv($self, $v) }
-        emitter uint operator %= (uint v){ $self = _bglMath.unsignedMod($self, $v) }
+        emitter uint operator += (uint v){ $val = $val + $v }
+        emitter uint operator -= (uint v){ $val = $val - $v }
+        emitter uint operator *= (uint v){ $val = $val * $v }
+        emitter uint operator /= (uint v){ $val = _bglMath.unsignedDiv($val, $v) }
+        emitter uint operator %= (uint v){ $val = _bglMath.unsignedMod($val, $v) }
 
         // Increment / decrement — wrap-around is well-defined for uint.
-        emitter uint operator ++() { $self++ }
-        emitter uint operator --() { $self-- }
+        emitter uint operator ++() { $val++ }
+        emitter uint operator --() { $val-- }
 
         // Bitwise — identical at the bit level whether interpreted signed or unsigned.
-        emitter uint operator & (uint v){ $self & $v }
-        emitter uint operator | (uint v){ $self | $v }
-        emitter uint operator &= (uint v){ $self = $self & $v }
-        emitter uint operator |= (uint v){ $self = $self | $v }
-        emitter uint operator ^  (uint v){ ($self | $v) - ($self & $v) }
-        emitter uint operator ^= (uint v){ $self = (($self | $v) - ($self & $v)) }
+        emitter uint operator & (uint v){ $val & $v }
+        emitter uint operator | (uint v){ $val | $v }
+        emitter uint operator &= (uint v){ $val = $val & $v }
+        emitter uint operator |= (uint v){ $val = $val | $v }
+        emitter uint operator ^  (uint v){ ($val | $v) - ($val & $v) }
+        emitter uint operator ^= (uint v){ $val = (($val | $v) - ($val & $v)) }
 
         // Explicit conversions to/from int — bit-preserving cast, no runtime work.
-        explicit emitter int  operator() { $self }
+        explicit emitter int  operator() { $val }
     }
 
     // Reverse cast: int → uint. Declared as an extension to int so `(uint)i` finds it.
     extend extern class int {
-        explicit emitter uint operator() { $self }
+        explicit emitter uint operator() { $val }
     }
 
     // Literal assignment: `uint a = 12;` resolves through intLiteral's non-explicit conversion.
     // Must be non-explicit so plain assignment (no cast) picks it up.
     extend extern class intLiteral {
-        emitter uint operator() { $self }
+        emitter uint operator() { $val }
     }
 
     // Negative literals require an explicit cast: `uint x = (uint)-1;` works, `uint x = -1;` errors.
     // This catches accidental negative-to-unsigned assignments at compile time.
     extend extern class negativeIntLiteral {
-        explicit emitter uint operator() { $self }
+        explicit emitter uint operator() { $val }
     }
 
     // print(uint): for values without the sign bit, native print works. For sign-bit values,

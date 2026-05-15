@@ -1,0 +1,31 @@
+// test_meta_verbs.bgl — meta verb declarations.
+// `meta` is a property on `class verb`. Authors set it like any other property:
+// `meta = true;` inside the verb body. The compiler suppresses it from the I6
+// `with` clause and lifts it onto the Verb directive (`Verb meta '...' -> Action;`).
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Beguile-defined meta verb — `meta = true;` lifts to `Verb meta` directive
+verb Inventory {
+    meta = true;
+    grammar = {
+        {.inv},
+        {.i},
+    };
+    void perform(){ print("inv"); }
+}
+
+// Non-meta verb — emits as plain `Verb`
+verb Take {
+    grammar = {
+        {.take, noun},
+    };
+    void perform(){ print("take"); }
+}
+
+void main(){}

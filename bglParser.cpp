@@ -3670,6 +3670,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                         if(auto* blk = dynamic_cast<i6Block*>(fd->body)){
                             string b = processBglConditionals(blk->i6Body);
                             b = i6Emitter::replaceWord(b, "$self", qualifiedHead);
+                            b = i6Emitter::replaceWord(b, "$val",  qualifiedHead);
                             size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                             size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                             return b;
@@ -3887,6 +3888,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                     if(auto* blk = dynamic_cast<i6Block*>(fd->body)){
                         string b = processBglConditionals(blk->i6Body);
                         b = i6Emitter::replaceWord(b, "$self", imp->name);
+                        b = i6Emitter::replaceWord(b, "$val",  imp->name);
                         size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                         size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                         qual = b;
@@ -3917,6 +3919,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                     if(auto* blk = dynamic_cast<i6Block*>(fd->body)){
                         string b = processBglConditionals(blk->i6Body);
                         b = i6Emitter::replaceWord(b, "$self", imp->name);
+                        b = i6Emitter::replaceWord(b, "$val",  imp->name);
                         size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                         size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                         qual = b;
@@ -4227,9 +4230,13 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
                 // Empty body = pass-through conversion; just update the type
                 args[i]->resolvedType = paramType;
             } else {
-                string argText = args[i]->text();
-                size_t pos = 0;
-                while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
+                // $self = host of property access (parentProp's `parent($self)` etc.).
+                // $val  = full receiver expression as written (`obj.parent`, `5`, `localInt`).
+                // For non-property contexts the two coincide.
+                string selfText = !args[i]->emitterSelf.empty() ? args[i]->emitterSelf : args[i]->text();
+                string valText  = args[i]->text();
+                b = i6Emitter::replaceWord(b, "$self", selfText);
+                b = i6Emitter::replaceWord(b, "$val",  valText);
                 args[i]->tokens.clear();
                 args[i]->tokens.push_back(b);
                 args[i]->resolvedType = paramType;
@@ -4577,7 +4584,9 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
             if(auto* blk = dynamic_cast<i6Block*>(postfixOp->body)){
                 string b = processBglConditionals(blk->i6Body);
                 string lhsText = expr->text();
-                b = i6Emitter::replaceWord(b, "$self", lhsText);
+                string selfText = !expr->emitterSelf.empty() ? expr->emitterSelf : lhsText;
+                b = i6Emitter::replaceWord(b, "$self", selfText);
+                b = i6Emitter::replaceWord(b, "$val",  lhsText);
                 if(cls != nullptr) b = i6Emitter::replaceWord(b, "$class", cls->i6Name());
                 size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                 size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
@@ -4725,8 +4734,11 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
                         string convBody = processBglConditionals(convBlk->i6Body);
                         size_t s = convBody.find_first_not_of(" \t\n\r"); if(s != string::npos) convBody = convBody.substr(s);
                         size_t e = convBody.find_last_not_of(" \t\n\r;"); if(e != string::npos) convBody = convBody.substr(0, e+1);
-                        if(!convBody.empty())
-                            rhsText = i6Emitter::replaceWord(convBody, "$self", rhsText);
+                        if(!convBody.empty()){
+                            convBody = i6Emitter::replaceWord(convBody, "$self", rhsText);
+                            convBody = i6Emitter::replaceWord(convBody, "$val",  rhsText);
+                            rhsText = convBody;
+                        }
                     }
                     break;
                 }
@@ -4790,7 +4802,12 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         // a parameter name matches the LHS identifier (e.g. emitter body "$self>=c"
         // with $self=c and param c='0' would incorrectly become '0'>='0' if $self is first).
         b = replaceWord(b, "$" + matchedOp->params[0]->name, rhsText);
-        b = replaceWord(b, "$self", lhsText);
+        // $self = host of property access (parentProp's `parent($self) == $v` etc.).
+        // $val  = full receiver expression as written (`obj.parent`, `5`, `localInt`).
+        // For non-property contexts the two coincide.
+        string selfText = !expr->emitterSelf.empty() ? expr->emitterSelf : lhsText;
+        b = replaceWord(b, "$self", selfText);
+        b = replaceWord(b, "$val",  lhsText);
         if(cls != nullptr) b = replaceWord(b, "$class", cls->i6Name());
         expr->tokens.clear();
         for(auto& p : prefix) expr->tokens.push_back(p);
@@ -4891,6 +4908,7 @@ void bglParser::parseExprNullCoalescing(expression* expr, const vector<string>& 
     auto* blk = dynamic_cast<i6Block*>(nullTestFn->body);
     string nullTest = processBglConditionals(blk->i6Body);
     nullTest = replaceWord(nullTest, "$self", tempName);
+    nullTest = replaceWord(nullTest, "$val",  tempName);
     { size_t s=nullTest.find_first_not_of(" \t\n\r"); if(s!=string::npos) nullTest=nullTest.substr(s);
       size_t e=nullTest.find_last_not_of(" \t\n\r;"); if(e!=string::npos) nullTest=nullTest.substr(0,e+1); }
     expression* fallback = parseExpression(file.getToken(), terminators, func, body);
@@ -4984,6 +5002,7 @@ bool bglParser::parseExprPrefixNot(expression* expr, token operand, optional<tok
                 auto* blk = dynamic_cast<i6Block*>(queryFn->body);
                 string b = processBglConditionals(blk->i6Body);
                 b = replaceWord(b, "$self", opText);
+                b = replaceWord(b, "$val",  opText);
                 { size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
                   size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1); }
                 expr->tokens.push_back("~~(" + b + ")");
@@ -5005,6 +5024,7 @@ bool bglParser::parseExprPrefixNot(expression* expr, token operand, optional<tok
                     size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
                     size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
                     b = replaceWord(b, "$self", opText);
+                    b = replaceWord(b, "$val",  opText);
                     expr->tokens.push_back(b);
                     if(expr->resolvedType.empty()) expr->resolvedType = notOp->returnType.name;
                     return true;
@@ -5515,6 +5535,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         string b = processBglConditionals(blk->i6Body);
                         string pv = (arrType == "array" || arrType == "bytearray") ? "0" : "<$prop undefined>";
                         b = replaceWord(b, "$self", arrName);
+                        b = replaceWord(b, "$val",  arrName);
                         b = replaceWord(b, "$prop", pv);
                         if(!getMethod->params.empty())
                             b = replaceWord(b, "$" + getMethod->params[0]->name, indexExpr->text());
@@ -5542,6 +5563,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 for(size_t pi = 0; pi < method->params.size() && pi < pal.args.size(); pi++)
                                     b = replaceWord(b, "$" + method->params[pi]->name, pal.args[pi]->text());
                                 b = replaceWord(b, "$self", subscriptText);
+                                b = replaceWord(b, "$val",  subscriptText);
                                 size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                 size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                                 expr->tokens.push_back(b);
@@ -5653,6 +5675,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     auto* blk = dynamic_cast<i6Block*>(fn->body);
                     string b = processBglConditionals(blk->i6Body);
                     b = replaceWord(b, "$self", selfText);
+                    b = replaceWord(b, "$val",  selfText);
                     size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                     size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                     return b;
@@ -5687,6 +5710,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                 size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                                 b = replaceWord(b, "$self", optTemp);
+                                b = replaceWord(b, "$val",  optTemp);
                                 for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
                                     b = replaceWord(b, "$" + method->params[i]->name, callArgs[i]->text());
                                 injText += " " + optTemp + " = " + b + ";";
@@ -5752,6 +5776,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                     size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                     size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                                     b = replaceWord(b, "$self", optTemp);
+                                    b = replaceWord(b, "$val",  optTemp);
                                     for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
                                         b = replaceWord(b, "$" + method->params[i]->name, callArgs[i]->text());
                                     injText += " " + optTemp + " = " + b + ";";
@@ -5826,6 +5851,9 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(!qualified.empty()) selfText = qualified;
                     }
                     expr->tokens.push_back(selfText + "." + member.value);
+                    // Capture host for $self substitution in rvalue property-class operators
+                    // (mirrors the non-self property-access path).
+                    expr->emitterSelf = selfText;
                 } else {
                     // Non-self identifier, or self.method(args).
                     // afterMember was already read above; resolveIdentifierType("self",...)
@@ -5907,6 +5935,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                 size_t e = b.find_last_not_of(" \t\n\r"); if(e != string::npos) b = b.substr(0, e+1);
                                 b = replaceWord(b, "$self", objName);
+                                b = replaceWord(b, "$val",  objName);
                                 // $class — declared type of the receiver. Ignores multiple inheritance:
                                 // resolves to the variable's static type, not the type that owns the
                                 // inherited emitter. Useful for emitters that emit class-message I6
@@ -5960,6 +5989,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)) {
                                 string b = processBglConditionals(blk->i6Body);
                                 b = replaceWord(b, "$self", objName);
+                                b = replaceWord(b, "$val",  objName);
                                 b = replaceWord(b, "$prop", propName);
                                 if(!getMethod->params.empty())
                                     b = replaceWord(b, "$" + getMethod->params[0]->name, indexExpr->text());
@@ -5993,6 +6023,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                         if(auto* blk = dynamic_cast<i6Block*>(fd->body)){
                                             string b = processBglConditionals(blk->i6Body);
                                             b = i6Emitter::replaceWord(b, "$self", cur.value);
+                                            b = i6Emitter::replaceWord(b, "$val",  cur.value);
                                             size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                             size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                                             expr->tokens.push_back(b);
@@ -6100,6 +6131,9 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             string propType = resolvePathType(cur.value + "." + member.value, func, body);
                             if(expr->resolvedType.empty() && !propType.empty()) expr->resolvedType = propType;
                             expr->tokens.push_back(cur.value + "." + member.value);
+                            // Capture host text for $self substitution in rvalue property-class
+                            // operator emitters (parent($self), give $self $attr, etc.).
+                            expr->emitterSelf = cur.value;
                         }
                     }
                 }
@@ -6130,6 +6164,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     auto* blk = dynamic_cast<i6Block*>(queryFn->body);
                     string b = processBglConditionals(blk->i6Body);
                     b = replaceWord(b, "$self", qualified);
+                    b = replaceWord(b, "$val",  qualified);
                     { size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
                       size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1); }
                     expr->tokens.push_back(b);
@@ -6326,6 +6361,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                     size_t e = b.find_last_not_of(" \t\n\r"); if(e != string::npos) b = b.substr(0, e+1);
                     b = replaceWord(b, "$self", selfText);
+                    b = replaceWord(b, "$val",  selfText);
                     for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
                         b = replaceWord(b, "$" + method->params[i]->name, callArgs[i]->text());
                     // Any leftover $prop is unresolved (no matching parameter — see array
@@ -6492,8 +6528,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             auto* opFunc = dynamic_cast<functionDef*>(m);
             auto* blk = dynamic_cast<i6Block*>(opFunc->body);
             string b = processBglConditionals(blk->i6Body);
-            size_t pos = 0;
-            while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, lhs); pos += lhs.size(); }
+            b = replaceWord(b, "$self", lhs);
+            b = replaceWord(b, "$val",  lhs);
             i6RawNode& node = *(new i6RawNode());
             node.text = b + ";";
             node.src = stmtLoc;
@@ -6556,6 +6592,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             auto* blk = dynamic_cast<i6Block*>(nullTestFn->body);
             string guard = processBglConditionals(blk->i6Body);
             guard = i6Emitter::replaceWord(guard, "$self", pathSoFar);
+            guard = i6Emitter::replaceWord(guard, "$val",  pathSoFar);
             { size_t s=guard.find_first_not_of(" \t\n\r"); if(s!=string::npos) guard=guard.substr(s);
               size_t e=guard.find_last_not_of(" \t\n\r;"); if(e!=string::npos) guard=guard.substr(0,e+1); }
             i6RawNode* openNode = new i6RawNode();
@@ -6670,6 +6707,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     size_t innerDot = arrPath.rfind('.');
                     if(innerDot != string::npos){ selfValue = arrPath.substr(0, innerDot); pv = arrPath.substr(innerDot + 1); }
                     b = replaceWord(b, "$self", selfValue);
+                    b = replaceWord(b, "$val",  arrPath);
                     b = replaceWord(b, "$prop", pv);
                     if(!getMethod->params.empty())
                         b = replaceWord(b, "$" + getMethod->params[0]->name, indexExpr->text());
@@ -6699,6 +6737,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         for(size_t i = 0; i < method->params.size() && i < pal.args.size(); i++)
                             b = replaceWord(b, "$" + method->params[i]->name, pal.args[i]->text());
                         b = replaceWord(b, "$self", subscriptText);
+                        b = replaceWord(b, "$val",  subscriptText);
                         callStmt.emitterBody = b;
                     }
                 file.getToken(token::endStatement);
@@ -6774,6 +6813,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 for(size_t i = 0; i < setMethod->params.size() && i < callStmt.args.size(); i++)
                     b = replaceWord(b, "$" + setMethod->params[i]->name, callStmt.args[i]->text());
                 b = replaceWord(b, "$self", selfValue);
+                b = replaceWord(b, "$val",  arrPath);
                 b = replaceWord(b, "$prop", propValue);
                 callStmt.emitterBody = b;
             }
@@ -7107,8 +7147,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 auto* opFunc = dynamic_cast<functionDef*>(m);
                 auto* blk = dynamic_cast<i6Block*>(opFunc->body);
                 string b = processBglConditionals(blk->i6Body);
-                size_t pos = 0;
-                while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, lhs); pos += lhs.size(); }
+                b = replaceWord(b, "$self", lhs);
+                b = replaceWord(b, "$val",  lhs);
                 i6RawNode& node = *(new i6RawNode());
                 node.text = b + ";";
                 node.src = stmtLoc;
@@ -7226,35 +7266,21 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 if(method->isEmitter)
                     if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                         string b = processBglConditionals(blk->i6Body);
-                        size_t pos = 0;
-                        while((pos = b.find("$self", pos)) != string::npos){
-                            b.replace(pos, 5, selfValue);
-                            pos += selfValue.size();
-                        }
+                        b = replaceWord(b, "$self", selfValue);
+                        b = replaceWord(b, "$val",  objectPath);
                         // $class — declared receiver type (ignores multiple inheritance).
                         // Resolves to the variable's static type, not the type that owns the
                         // inherited emitter. Powers class-message I6 emission from mixins.
-                        if(cls != nullptr){
-                            string className = cls->i6Name();
-                            pos = 0;
-                            while((pos = b.find("$class", pos)) != string::npos){
-                                b.replace(pos, 6, className);
-                                pos += className.size();
-                            }
-                        }
+                        if(cls != nullptr)
+                            b = replaceWord(b, "$class", cls->i6Name());
                         // $prop fallback — done before staging callStmt.emitterBody so that
                         // resolveEmitterText's later param substitution can still substitute
                         // a `prop`-named parameter when present (e.g. `provides(property prop)`).
                         // Skip if any parameter is named `prop` so the param sub wins.
                         bool hasPropParam = false;
                         for(paramDef* p : method->params) if(p->name == "prop"){ hasPropParam = true; break; }
-                        if(!hasPropParam){
-                            pos = 0;
-                            while((pos = b.find("$prop", pos)) != string::npos){
-                                b.replace(pos, 5, propValue);
-                                pos += propValue.size();
-                            }
-                        }
+                        if(!hasPropParam)
+                            b = replaceWord(b, "$prop", propValue);
                         callStmt.emitterBody = b;
                         for(paramDef* p : method->params)
                             callStmt.emitterParams.push_back(p->name);
@@ -7360,6 +7386,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             i6Block* chainBlk = dynamic_cast<i6Block*>(chainMethod->body);
             string b = processBglConditionals(chainBlk->i6Body);
             b = replaceWord(b, "$self", selfText);
+            b = replaceWord(b, "$val",  selfText);
             for(size_t i=0; i<chainMethod->params.size() && i<chainArgs.size(); i++)
                 b = replaceWord(b, "$" + chainMethod->params[i]->name, chainArgs[i]->text());
             callStmt.emitterBody = b;
@@ -7804,8 +7831,9 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                 size_t s=bodyText.find_first_not_of(" \t\n\r"); if(s!=string::npos) bodyText=bodyText.substr(s);
                 size_t e=bodyText.find_last_not_of(" \t\n\r");  if(e!=string::npos) bodyText=bodyText.substr(0,e+1);
                 if(bodyText.empty()) continue;
-                // substitute $self with variable name
+                // substitute $self / $val with variable name
                 string substituted = replaceWord(bodyText, "$self", varDecl.name);
+                substituted = replaceWord(substituted, "$val",  varDecl.name);
                 if(fn->name == "init"){
                     i6RawNode& initNode = *(new i6RawNode());
                     initNode.text = substituted;
@@ -7831,7 +7859,9 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                 size_t s=bodyText.find_first_not_of(" \t\n\r"); if(s!=string::npos) bodyText=bodyText.substr(s);
                 size_t e=bodyText.find_last_not_of(" \t\n\r");  if(e!=string::npos) bodyText=bodyText.substr(0,e+1);
                 if(bodyText.empty()) continue;
-                languageService.globalInits.push_back({varDecl.name, replaceWord(bodyText, "$self", varDecl.name)});
+                string subbed = replaceWord(bodyText, "$self", varDecl.name);
+                subbed = replaceWord(subbed, "$val", varDecl.name);
+                languageService.globalInits.push_back({varDecl.name, subbed});
             }
         }
     }

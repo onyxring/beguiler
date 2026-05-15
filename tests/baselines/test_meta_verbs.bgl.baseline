@@ -1,0 +1,38 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+constant story = "";
+constant headline = "";
+object inventory
+  with perform [;
+    print (string)"inv";
+  ]
+;
+[inventorysub;
+                inventory.perform();
+            ];
+verb meta 'inv'
+    * -> inventory;
+verb meta 'i//'
+    * -> inventory;
+[main;
+];
+object take
+  with perform [;
+    print (string)"take";
+  ]
+;
+[takesub;
+                take.perform();
+            ];
+verb 'take'
+    * noun -> take;

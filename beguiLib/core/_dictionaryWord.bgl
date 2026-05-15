@@ -3,11 +3,11 @@
 // type dictionary word
     extern class dictionaryWordLiteral:_bglObject{
         dictionaryWord operator auto();
-        replace emitter void print(){ print (address) $self }
+        replace emitter void print(){ print (address) $val }
     }
     emitter class dictionaryWord : grammarElement{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
         emitter dictionaryWordLiteral operator();                           //--I6 passthrough; enables mixed expressions
         emitter dictionaryWord operator = (dictionaryWordLiteral v){ $target = $v; }
         emitter dictionaryWord operator = (dictionaryWord v){ $target = $v; }
-        replace emitter void print(){ print (address) $self }
+        replace emitter void print(){ print (address) $val }
     }

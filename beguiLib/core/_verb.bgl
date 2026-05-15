@@ -4,6 +4,7 @@
     //--Note: verb identifiers emit as ##Name in comparison context in i6.  This is hardcoded in the compiler.  Consider a mechanism to wrap this in an new overload emitter instead.  That way, anything could go into a switch statement if it could emit an appropriate constant value.
     alias class verb for object{
         grammarRuleList grammar;
+        bool meta;               // when true, emits as I6 `Verb meta '...'` — verb does not increment the turn counter
         default emitter void perform(){ $selfsub; }    // bridges to I6 <verbName>Sub; override without 'replace'
         emitter eBool operator == (verb v){ $self == ##$v }
         emitter void _bglGlobalDeclaration() {

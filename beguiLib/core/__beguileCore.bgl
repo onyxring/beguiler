@@ -34,7 +34,7 @@ object bgl{
 // _bglObject - the base class for all Beguile objects
     emitter class _bglObject{
          void print(){
-             print $self;    
+             print $val;
          }
     }
 
@@ -43,49 +43,49 @@ object bgl{
     extern class object:_bglObject{ //--the base I6 object, declared as external because it is defined in the I6 compiler
         parentProp parent;           //--initial parent object; emitted as I6 third positional argument
         attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
-        
-        emitter eBool operator ?() { $self ~= nothing }
+
+        emitter eBool operator ?() { $val ~= nothing }
         emitter object operator = (object v){
             $target = $v
         }
         emitter eBool operator == (var v){
-            $self == $v
+            $val == $v
         }
         emitter eBool operator != (var v){
-            $self ~= $v
+            $val ~= $v
         }
         emitter void give(attribute attr){
-            give $self $attr
+            give $val $attr
         }
         emitter void ungive(attribute attr){
-            give $self ~$attr
+            give $val ~$attr
         }
         emitter bool has(attribute attr){
-            ($self has $attr)
+            ($val has $attr)
         }
         emitter bool hasnt(attribute attr){
-            ($self hasnt $attr)
+            ($val hasnt $attr)
         }
         emitter void remove(){
-            remove $self
+            remove $val
         }
         emitter object child{
-            child($self)
+            child($val)
         }
         emitter int children{
-            children($self)
+            children($val)
         }
         emitter object sibling{
-            sibling($self)
+            sibling($val)
         }
         emitter bool provides(property prop){
-            $self provides $prop
+            $val provides $prop
         }
         emitter bool is(bglClass cls){
-            $self ofclass $cls
+            $val ofclass $cls
         }
         replace emitter void print(){
-            print (name)$self;    
+            print (name)$val;
         }
     }
     
@@ -95,13 +95,13 @@ object bgl{
             move $self to $v
         }
         emitter parentProp operator == (object v){
-            $self == $v
+            parent($self) == $v
         }
         emitter parentProp operator != (object v){
-            $self ~= $v
+            parent($self) ~= $v
         }
         emitter object operator(){
-            $self
+            parent($self)
         }
     }
 

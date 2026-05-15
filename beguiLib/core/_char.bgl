@@ -2,30 +2,30 @@
 extern class charLiteral:_bglObject{
     emitter char operator();                   //implicitly converts to char type
     char operator auto();
-    replace emitter void print(){ print (char)$self; }
+    replace emitter void print(){ print (char)$val; }
 }
 extern class char : _bglObject{ 
     emitter char operator = (char c){ $target=$c; }
-    //emitter char operator = (int v){ $self=$v; } //we avoid:  char c = 45;  Enforce: char c ='\45';
+    //emitter char operator = (int v){ $val=$v; } //we avoid:  char c = 45;  Enforce: char c ='\45';
 
-    emitter bool operator == (char c){ $self==$c}
-    emitter bool operator != (char c){ $self~=$c}
-    emitter bool operator < (char c)	{ $self<$c}
-    emitter bool operator > (char c)	{ $self>$c}
-    emitter bool operator <= (char c){ $self<=$c}
-    emitter bool operator >= (char c){ $self>=$c}
+    emitter bool operator == (char c){ $val==$c}
+    emitter bool operator != (char c){ $val~=$c}
+    emitter bool operator < (char c)	{ $val<$c}
+    emitter bool operator > (char c)	{ $val>$c}
+    emitter bool operator <= (char c){ $val<=$c}
+    emitter bool operator >= (char c){ $val>=$c}
                                     
     //By design, int and char are NOT the same. For example, we don't support an integer test against a character by default (intA == 'c'); however, we do overload character for the reverse test for convenience (charA==64).
-    // emitter bool operator == (int i){ $self==i} 
-    // emitter bool operator != (int i){ $self~=i} 
-    // emitter bool operator < (int i)	{ $self<i} 
-    // emitter bool operator > (int i)	{ $self>i} 
-    // emitter bool operator <= (int i){ $self<+i} 
-    // emitter bool operator >= (int i){ $self>=i} 
+    // emitter bool operator == (int i){ $val==i} 
+    // emitter bool operator != (int i){ $val~=i} 
+    // emitter bool operator < (int i)	{ $val<i} 
+    // emitter bool operator > (int i)	{ $val>i} 
+    // emitter bool operator <= (int i){ $val<+i} 
+    // emitter bool operator >= (int i){ $val>=i} 
 
-    emitter char operator + (int c){$self+$c}
-    emitter char operator - (int c){$self-$c}
+    emitter char operator + (int c){$val+$c}
+    emitter char operator - (int c){$val-$c}
         
-    replace emitter void print(){ print (char)$self; }
+    replace emitter void print(){ print (char)$val; }
 }
 emitter void print(char c){ print (char)$c; }
