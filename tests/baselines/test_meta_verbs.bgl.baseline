@@ -12,27 +12,27 @@ object bgl
 ;
 constant story = "";
 constant headline = "";
-object inventory
+object census
   with perform [;
-    print (string)"inv";
+    print (string)"census";
   ]
 ;
-[inventorysub;
-                inventory.perform();
+[censussub;
+                census.perform();
             ];
-verb meta 'inv'
-    * -> inventory;
-verb meta 'i//'
-    * -> inventory;
+verb meta 'census'
+    * -> census;
+verb meta 'tally'
+    * -> census;
+object ponder
+  with perform [;
+    print (string)"ponder";
+  ]
+;
+[pondersub;
+                ponder.perform();
+            ];
+verb 'ponder'
+    * noun -> ponder;
 [main;
 ];
-object take
-  with perform [;
-    print (string)"take";
-  ]
-;
-[takesub;
-                take.perform();
-            ];
-verb 'take'
-    * noun -> take;

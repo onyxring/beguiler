@@ -85,7 +85,22 @@ class i6Emitter{
         void emitInterpolatedEmitterBody(const string& body, const string& paramName, const vector<interpolatedSegment>& segments, string indent);
         void emitVerbObject(verbObjectDef*);
         void emitGrammarRuleListDecl(grammarRuleListDecl*);
-        void emitGrammarLines(const string& verbName, const vector<grammarLine>& lines, bool isMeta = false);
+        // Lift compile-time-only fields (`meta`, `priority`) from all verb instances into
+        // `verbObjectDef.isMeta` / `verbObjectDef.priority`. Idempotent. Called once at the
+        // start of `emit()` so the lifted values are available to ALL emission paths
+        // regardless of source order (grammar objects can precede their target verb decls).
+        void liftAllVerbCompileTimeFields();
+        // Partition a verb's grammar contributions against the verb's anchor and emit them
+        // as the right mix of Verb / Extend first / Extend directives. Shared by
+        // emitVerbObject (own + extends) and emitGrammarRuleListDecl (grammar-object rules).
+        void emitVerbGrammar(const string& verbName, int anchor, bool isMeta, const vector<grammarLine>& lines);
+        // I6 directive form used when a trigger word is encountered after its first declaration:
+        //   First   → `Extend 'w' first` (insert before existing rules — higher matching priority)
+        //   Last    → `Extend 'w'`       (append after existing — default last)
+        //   Replace → `Extend 'w' replace` (wipe existing rules for 'w', substitute these)
+        // First-occurrence of a trigger word always emits as `Verb 'w'` regardless of mode.
+        enum class extendDirective { First, Last, Replace };
+        void emitGrammarLines(const string& verbName, const vector<grammarLine>& lines, bool isMeta = false, extendDirective mode = extendDirective::First);
         int currentLine();
         void writeSourceMap(const string& path);
         void writeSymbolTable(const string& path);

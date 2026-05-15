@@ -1,0 +1,71 @@
+// test_verb_priority.bgl — per-verb numeric grammar priority.
+//
+// `class verb` exposes an `int priority = 10;` field (default from BLR _verb.bgl).
+// The verb's own block sets the anchor; extend blocks compare against it:
+//   priority < anchor → I6 `Extend 'w' first` (matches before anchor rules)
+//   priority > anchor → I6 `Extend 'w'`       (matches after anchor — default last)
+// Extend-block priority is a block-local directive (`priority = N;` inside the extend body)
+// — it does NOT add a persistent member on the verb, so two extend blocks at different
+// priorities don't collide.
+//
+// Uses fresh verb names (Tickle, Burnish) not present in standard-library bindings to
+// avoid conflicts with pre-declared extern verbs.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Default-priority verb. No `priority = ...;` in body → anchor is BLR default (10).
+verb Tickle {
+    grammar = {
+        {.tickle, noun},
+    };
+    void perform(){ print("tickle"); }
+}
+
+// Extend Tickle with priority < anchor (5 < 10) → `extend 'tickle' first`
+extend Tickle {
+    priority = 5;
+    grammar += {
+        {.tickle, .gently, noun},
+    };
+}
+
+// Extend Tickle with priority > anchor (15 > 10) → `extend 'tickle'` (default last)
+extend Tickle {
+    priority = 15;
+    grammar += {
+        {.tickle, .roughly, noun},
+    };
+}
+
+// Verb with custom anchor. Extends compare against this anchor, not the BLR default.
+verb Burnish {
+    priority = 20;
+    grammar = {
+        {.burnish},
+    };
+    void perform(){ print("burnish"); }
+}
+
+// priority 8 < anchor 20 → `extend 'burnish' first`
+extend Burnish {
+    priority = 8;
+    grammar += {
+        {.burnish, .carefully},
+    };
+}
+
+// priority 25 > anchor 20 → `extend 'burnish'` (default last)
+extend Burnish {
+    priority = 25;
+    grammar += {
+        {.burnish, .casually},
+    };
+}
+
+void main(){}

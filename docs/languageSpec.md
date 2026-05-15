@@ -4115,7 +4115,7 @@ The compiler validates that bare identifiers in grammar patterns are declared as
 
 ### Advanced Pattern Syntax
 
-**Dictionary word alternatives** — multiple dictionary words separated by `|` match any one of them. Parentheses are optional and purely for readability:
+**Dictionary word alternatives** — multiple dictionary words separated by `|` match any one of them. 
 
 ```bgl
 verb Stow {

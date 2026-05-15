@@ -1,0 +1,61 @@
+// test_verb_priority_grammar_object.bgl — per-rule priority on grammarRule literals.
+//
+// §3 of the verb-priority design: the grammarRule initializer accepts an optional third
+// positional element specifying priority. Without it, priority defaults to BLR's
+// `class verb` default (10). Grammar object lines target distinct verbs per rule, so
+// the sort happens per target verb against that verb's anchor.
+//
+// Verifies:
+//   - default priority (no third element) → priority 10
+//   - explicit priority < anchor → Extend 'w' first (matches before anchor)
+//   - explicit priority > anchor → Extend 'w'       (matches after anchor — default last)
+//   - multi-verb grammar object emits one Verb/Extend group per target verb
+//   - array<grammarRule> form supports the third element too
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Two Beguile-defined target verbs with their own anchors.
+verb Trundle {
+    priority = 15;
+    grammar = {
+        {.trundle, noun},
+    };
+    void perform(){ print("trundle"); }
+}
+
+verb Smelt {
+    grammar = {
+        {.smelt, noun},
+    };
+    void perform(){ print("smelt"); }
+}
+
+// Grammar object: per-rule priority via optional 3rd positional element.
+grammar perRulePriority {
+    // Default priority (10): targets Smelt (anchor 10) → = anchor, non-own → `extend 'smelt'`
+    grammarRule defaulted = {Smelt, {.smelt, .quickly, noun}};
+    // Explicit < anchor on Smelt (5 < 10) → `extend 'smelt' first`
+    grammarRule overrideEarly = {Smelt, {.smelt, .urgently, noun}, 5};
+    // Explicit > anchor on Smelt (20 > 10) → `extend 'smelt'`
+    grammarRule overrideLate = {Smelt, {.smelt, .lazily, noun}, 20};
+    // Explicit < anchor on Trundle (8 < 15) → `extend 'trundle' first`
+    grammarRule trundleEarly = {Trundle, {.trundle, .softly, noun}, 8};
+    // Explicit > anchor on Trundle (25 > 15) → `extend 'trundle'`
+    grammarRule trundleLate = {Trundle, {.trundle, .heavily, noun}, 25};
+}
+
+// Array form exercising the same optional 3rd element.
+grammar perRuleArray {
+    array<grammarRule> rules = {
+        {Smelt,   {.smelt, .gingerly, noun}, 3},  // 3 < anchor 10 → extend first
+        {Trundle, {.trundle, .briskly, noun}, 30}, // 30 > anchor 15 → extend
+    };
+}
+
+void main(){}

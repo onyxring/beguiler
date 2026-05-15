@@ -1,0 +1,44 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+constant story = "";
+constant headline = "";
+object tickle
+  with perform [;
+    print (string)"tickle";
+  ]
+;
+[ticklesub;
+                tickle.perform();
+            ];
+verb 'tickle'
+    * noun -> tickle;
+extend 'tickle' first
+    * 'gently' noun -> tickle;
+extend 'tickle'
+    * 'roughly' noun -> tickle;
+object burnish
+  with perform [;
+    print (string)"burnish";
+  ]
+;
+[burnishsub;
+                burnish.perform();
+            ];
+verb 'burnish'
+    * -> burnish;
+extend 'burnish' first
+    * 'carefully' -> burnish;
+extend 'burnish'
+    * 'casually' -> burnish;
+[main;
+];

@@ -1,0 +1,58 @@
+// test_verb_replace.bgl — `grammar = { ... }` replace semantics in extend bodies (§4).
+//
+// Inside an `extend V { }` body, `grammar = { ... }` (plain assignment, not `+=`) emits
+// I6 `Extend 'w' replace ...` for already-declared trigger words, wiping prior rules
+// for that word. A replace line whose first dict word is NEW emits as `Verb 'newword'`
+// (Beguile groups grammar by line-first-dict-word — a brand-new word can't replace
+// rules that don't exist yet).
+//
+// Verifies:
+//   - Replace on existing trigger word (own block's word) → `extend 'w' replace`
+//   - Replace introducing a NEW dict word → `verb 'newword'` (no replace can happen)
+//   - Replace on extern verb's existing trigger word → `extend 'word' replace`
+//   - Replace can coexist with the verb's own block (emits last; replace overrides at runtime)
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Beguile-defined verb with its own grammar.
+verb Quaff {
+    grammar = {
+        {.quaff, noun},
+    };
+    void perform(){ print("quaff"); }
+}
+
+// Replace extend on Quaff: line uses the existing 'quaff' trigger word, so it emits as
+// `extend 'quaff' replace * 'deeply' noun -> quaff;` — at runtime, this REPLACES the
+// rules from Quaff's own block ('* noun') with the new pattern.
+extend Quaff {
+    grammar = {
+        {.quaff, .deeply, noun},
+    };
+}
+
+// Replace extend on an extern verb (Take from stdlib). The 'take' trigger word already
+// exists (from the I6 stdlib), so this emits `extend 'take' replace ... -> Take;`,
+// wiping the stdlib's 'take' grammar.
+extend Take {
+    grammar = {
+        {.take, .firmly, noun},
+    };
+}
+
+// Replace extend introducing a brand-new dict word. Since 'pilfer' isn't a declared
+// trigger anywhere, this emits `verb 'pilfer' * noun -> Take;` (a fresh Verb directive,
+// not an Extend replace — Beguile groups grammar by the line's first dict word).
+extend Take {
+    grammar = {
+        {.pilfer, noun},
+    };
+}
+
+void main(){}
