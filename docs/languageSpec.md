@@ -4046,6 +4046,81 @@ extern verb Go;
 
 `extern verb` declarations register the name in Beguile's type system for use in `switch(action)` comparisons, grammar lines, and method calls. Because the `verb` class defines `default emitter void perform()`, calling `Take.perform()` on an extern verb emits a call to the I6 action routine (`TakeSub`), bridging Beguile code to I6-defined verb handlers.
 
+### Meta Verbs
+
+The `verb` class exposes a `bool meta` property. Setting it to `true` lifts the I6 `meta` keyword onto the emitted `Verb` directive, marking the verb as out-of-world (it runs without advancing game turns or triggering daemons):
+
+```bgl
+verb Inventory {
+    meta = true;
+    grammar = {
+        {.inventory},
+        {.i},
+    };
+    void perform() { /* ... */ }
+}
+```
+
+Emits one I6 `Verb meta` directive per distinct trigger word the verb owns (Beguile groups grammar lines by their first dictionary word):
+
+```inf
+verb meta 'inventory'
+    * -> inventory;
+verb meta 'i//'
+    * -> inventory;
+```
+
+(`'i//'` is the I6 single-character dictionary-word form, automatically emitted for one-letter words.)
+
+The `meta` property is recognized only on `verb` instances — the compiler suppresses it from the I6 `with` clause and lifts it onto each emitted Verb directive. The author writes ordinary Beguile property syntax; no new keyword is involved.
+
+Extern verbs cannot be marked meta from Beguile. An extern verb is defined in I6, and the I6 declaration already carries `meta` (or doesn't) — there is no Beguile-side runtime use case for re-marking it.
+
+### Verb Priority
+
+The `verb` class exposes an `int priority` property (default `10`, declared in the Beguile Language Runtime's `_verb.bgl`). Priority controls how grammar rules from multiple sources are ordered when they target the same trigger word. It applies at the **verb** level — to all grammar lines authored in the verb's own block — and also at the **extend** level, where it acts as a block-local directive.
+
+```bgl
+verb Take {
+    priority = 5;             // this verb's anchor (default would be 10)
+    grammar = {
+        {.take, noun},
+        {.grab, noun},
+    };
+    void perform() { /* ... */ }
+}
+```
+
+The priority on a Beguile-defined verb's own block is the **anchor** — the pivot against which extends sort. For purely extern verbs (no Beguile-defined block), the implicit anchor is the BLR default (`10`).
+
+Inside `extend V { … }`, a bare `priority = N;` is a **block-local directive** — it does not become a persistent property on the verb. It stamps onto every grammar line added by the surrounding `grammar += { … }` and is consumed at emit time. This lets multiple `extend` blocks at different priorities coexist on the same verb without colliding.
+
+```bgl
+extend verb Look {
+    priority = 5;          // 5 < anchor 10 → emits I6 `Extend 'look' first`
+    grammar += { {.peek, noun}; }
+}
+
+extend verb Look {
+    priority = 12;         // 12 > anchor 10 → emits I6 `Extend 'look'` (default last)
+    grammar += { {.look, .carefully, noun}; }
+}
+```
+
+**Emission rules.** For each trigger word grouped under a verb, grammar lines are partitioned by priority relative to the anchor:
+
+| Bucket | Condition | I6 directive |
+|---|---|---|
+| Anchor-own | Lines authored in the verb's own block | `Verb 'w' …` (or `Extend 'w' first …` when the verb's own block adds new trigger words to an extern verb) |
+| Less than anchor | `priority < anchor` | `Extend 'w' first …` |
+| Greater than or equal | `priority ≥ anchor`, not in the verb's own block | `Extend 'w' …` (default last) |
+
+A lower priority *number* means a higher matching priority — the I6 parser tries `Extend first` rules before the anchor's own rules, and the anchor's own rules before plain `Extend` rules. Per-rule priority on grammar objects (see §14.4) participates in the same sort.
+
+`priority` is recognized only on `verb` instances. The compiler suppresses it from the I6 `with` clause; it influences emission ordering and is not emitted as a runtime property.
+
+Extern verbs cannot carry a Beguile-side priority. Extends of extern verbs whose only Beguile-side contribution is a `grammar += { … }` with no `priority = N;` use the default anchor (10) against the extern verb's implicit anchor.
+
 ## 14.3 Action Comparisons
 
 The `action` library variable has type `verb`. Comparing it against a verb name uses the `verb` class's `operator ==` emitter, which emits the `##VerbName` prefix:
@@ -4081,8 +4156,8 @@ Grammar rules define what the player can type and which verb action is triggered
 | `grammarRuleList` | A collection of grammar rules. The type of the `grammar` member on `verb` and of standalone grammar objects. |
 
 These types can be used as members on any object. A `grammarRule` has two initializer forms:
-- **Explicit verb**: `grammarRule r = {Examine, {.examine, noun}}` — works in any context.
-- **Inferred verb**: `grammarRule r = {.examine, noun}` — the verb is inferred from the owning object. The owning object should be a `verb` or a subclass of `verb`; a warning is issued otherwise.
+- **Explicit verb**: `grammarRule r = {Examine, {.examine, noun}}` — works in any context. Accepts an optional **trailing positional priority** (third element): `grammarRule r = {Examine, {.examine, noun}, 5}`. Omitted, priority defaults to the BLR `class verb` default (`10`). See *Per-Rule Priority on Grammar Objects* below.
+- **Inferred verb**: `grammarRule r = {.examine, noun}` — the verb is inferred from the owning object. The owning object should be a `verb` or a subclass of `verb`; a warning is issued otherwise. Inferred-verb lines inherit their priority from the owning verb's anchor (or from `priority = N;` in the enclosing `extend` block, see §14.2); the per-rule third-element form does not apply here.
 
 `grammarRuleList` is a container for `grammarRule` entries in either form.
 
@@ -4208,7 +4283,35 @@ grammar customPatterns {
 }
 ```
 
-`grammarRule` and `array<grammarRule>` have strict initializer shapes — a `grammarRule` member takes a single `{verb, {pattern}}` pair, while `array<grammarRule>` takes a list of them. Mismatched shapes are a compile error.
+`grammarRule` and `array<grammarRule>` have strict initializer shapes — a `grammarRule` member takes a single `{verb, {pattern}}` pair (optionally followed by a priority), while `array<grammarRule>` takes a list of them. Mismatched shapes are a compile error.
+
+### Per-Rule Priority on Grammar Objects
+
+Grammar objects bind a different verb per rule, so a block-level priority would have no consistent target. Priority is therefore expressed as the optional **third positional element** on each `grammarRule` initializer:
+
+```bgl
+grammar additions {
+    grammarRule r1 = {Take, {.grab, noun}};             // default 10
+    grammarRule r2 = {Drop, {.toss, held}, 5};          // priority 5
+    grammarRule r3 = {Look, {.peek, noun}, 15};         // priority 15
+}
+```
+
+The `array<grammarRule>` form accepts the same third element:
+
+```bgl
+grammar additions {
+    array<grammarRule> rules = {
+        {Take,    {.nab, noun}},
+        {Drop,    {.discard, held}, 5},
+        {Examine, {.study, noun}, 15},
+    };
+}
+```
+
+Omitted priority is `10` (the `class verb` default). Each rule is sorted against its **target verb's** anchor — not against the grammar object — and contributes to that verb's emission per the rules in §14.2.
+
+There is no block-level default on grammar objects. Authors wanting a layer-wide priority repeat the value on each rule, or split into multiple grammar objects.
 
 ### Extending Verb Grammar
 
@@ -4218,12 +4321,53 @@ Grammar can be added to an existing verb (including `extern verb` declarations) 
 extern verb PutOn;
 extend PutOn {
     grammar += {
-        {.hang, HELD, .on, NOUN},
+        {.hang, held, .on, noun},
     }
 }
 ```
 
-Since `extern verb` objects are defined in I6, only `grammar +=` is allowed — new members, methods, and `-=` are not supported on extern objects.
+A bare `priority = N;` inside an `extend` body sets a **block-local priority** that applies to every line in that block's `grammar +=` (see §14.2). The `priority = N;` directive is consumed at emit time; it is not added as a persistent property on the verb, so independent `extend` blocks at different priorities never collide.
+
+Since `extern verb` objects are defined in I6, only `grammar +=` and `grammar =` (replace, below) are allowed — new members, methods, and `-=` are not supported on extern objects.
+
+### Replacing Verb Grammar
+
+Inside `extend V { … }`, **plain assignment** `grammar = { … }` (as opposed to `+=`) emits I6 `Extend 'w' replace` directives — wiping any prior rules whose first trigger word matches:
+
+```bgl
+extend Quaff {
+    grammar = {
+        {.quaff, .deeply, noun},
+    }
+}
+```
+
+Emits:
+
+```inf
+extend 'quaff' replace
+    * 'deeply' noun -> quaff;
+```
+
+Behavior:
+
+- For trigger words that are **already declared** (in the verb's own block, in a prior `extend`, or by an extern verb declared in an I6 library), the line emits as `Extend 'w' replace …`, removing earlier rules for that word.
+- For trigger words that are **brand new** (not previously declared for this verb), the line emits as a fresh `Verb 'w' …` directive — there are no prior rules to replace, so a `replace` form would be ill-formed.
+- Replace lines emit **after** all `+=` and own-block contributions for the verb, so the replacement reliably overrides everything that came before in source order.
+- Combining `grammar = { … }` with a non-default `priority = N;` in the same `extend` block is a compile error: replace semantics wipe the sort target, making priority meaningless.
+
+Replace is the path to override stdlib grammar — for example, taking over the I6 library's `'take'` grammar entirely:
+
+```bgl
+extend Take {
+    grammar = {
+        {.take, .firmly, noun},
+    }
+}
+// Emits: extend 'take' replace * 'firmly' noun -> Take;
+```
+
+I6's `Extend 'w' only` directive (which is rare in practice) has no Beguile-side keyword; if needed, reach for it through `#i6 { ... }` raw I6 escape (§15.5).
 
 ---
 
