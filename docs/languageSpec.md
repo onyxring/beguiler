@@ -1436,7 +1436,7 @@ class Animal : object {
 
     void speak(){}
 
-    emitter bool operator == (Animal v){ $self == $v }
+    emitter bool operator == (Animal v){ $val == $v }
 }
 ```
 
@@ -1465,8 +1465,8 @@ class Dog : Animal {
 extern class object {
     parentProp parent;
     attributeList attributes;
-    emitter void give(attribute attr){ give $self $attr }
-    emitter eBool has(attribute attr){ $self has $attr }
+    emitter void give(attribute attr){ give $val $attr }
+    emitter eBool has(attribute attr){ $val has $attr }
 }
 ```
 
@@ -1492,8 +1492,8 @@ Extern classes wrap I6 built-in types so that Beguile's type system can reason a
 
 ```bgl
 extern class int : _bglObject {
-    emitter int operator + (int v){ $self + $v }
-    emitter bool operator == (int v){ $self == $v }
+    emitter int operator + (int v){ $val + $v }
+    emitter bool operator == (int v){ $val == $v }
 }
 ```
 
@@ -1503,8 +1503,8 @@ extern class int : _bglObject {
 
 ```bgl
 emitter class celsius {
-    fahrenheit operator(){ $self * 9 / 5 + 32 }
-    celsius operator = (celsius v){ $self = v; }
+    fahrenheit operator(){ $val * 9 / 5 + 32 }
+    celsius operator = (celsius v){ $target = $v; }
 }
 ```
 
@@ -1773,8 +1773,8 @@ class Animal : object {
 
 ```bgl
 extern class myBuf {
-    emitter var  operator[]  (int i)        { $self-->$i }
-    emitter void operator[]= (int i, var v) { $self-->$i = $v }
+    emitter var  operator[]  (int i)        { $val-->$i }
+    emitter void operator[]= (int i, var v) { $val-->$i = $v }
 }
 ```
 
@@ -1802,7 +1802,7 @@ A zero-parameter emitter named `operator()` declares that this type is compatibl
 
 ```bgl
 class celsius {
-    emitter fahrenheit operator(){ $self * 9 / 5 + 32 }
+    emitter fahrenheit operator(){ $val * 9 / 5 + 32 }
 }
 ```
 
@@ -1810,10 +1810,10 @@ A **pass-through** conversion (value unchanged) is declared with a semicolon ter
 
 ```bgl
 emitter int operator();                        // pass-through: value is used as-is
-emitter fahrenheit operator(){ $self * 9 / 5 + 32 }  // custom: body transforms the value
+emitter fahrenheit operator(){ $val * 9 / 5 + 32 }  // custom: body transforms the value
 ```
 
-The semicolon form is equivalent to writing `{ $self }` — the value passes through with no transformation. Use the body form when the conversion requires computation.
+The semicolon form is equivalent to writing `{ $val }` — the value passes through with no transformation. Use the body form when the conversion requires computation.
 
 #### Implicit vs. explicit conversions
 
@@ -2364,14 +2364,37 @@ When an emitter is called, the compiler performs textual substitution on the bod
 
 | Placeholder | Replaced with |
 |-------------|---------------|
-| `$self` | The receiver — the variable or expression on the left-hand side of a method call or operator. For dotted assignments (`obj.prop = v`), `$self` binds to the **owner** (`obj`), not the full lvalue. This supports property-wrapper emitters that need to operate on the owning object (e.g. `parentProp.operator=` emits `move $self to $v`). |
+| `$self` | The **host** — the owning object of the receiver. For a property access (`obj.parent`), `$self` is `obj`. For a bare identifier (`localVar`, global `foo`) or a literal (`5`), there is no separate host, so `$self` equals the expression itself. Mirrors I6's `self` keyword (which refers to the routine's owning object) — use this when the body needs to act on the *owner* rather than the property value. |
+| `$val` | The **full receiver expression** as written by the author. For a property access (`obj.parent`), `$val` is `obj.parent`. For a bare identifier or literal, `$val` equals the identifier/literal — same as `$self` in those non-property cases. Use this in value-type operators (`int.operator+` etc.) where the body needs to read the property *value*, not the host. |
 | `$paramName` | The corresponding argument expression at the call site. Each parameter is referenced by `$` followed by its declared name. |
 | `$prop` | (For array emitters) The property name when the array is an object property; `0` for global arrays. |
 | `$target` | The assignment target — the **full lvalue path** (e.g. `obj.prop` for a dotted assignment, just `x` for a bare assignment). Used by primitive `operator=` emitters that perform a literal store, and by emitters that need to store a result directly (e.g. assembly opcodes). When assigned (`int r = foo();`), `$target` is the LHS variable. When called as a statement without assignment (`foo();`), `$target` is a compiler-generated temporary. When `$target` appears in the body, the normal `LHS = RHS` assignment is suppressed — the emitter body handles the store itself. |
 
 All emitter placeholders use the `$` prefix to distinguish them from raw I6 identifiers. This prevents substitution collisions — for example, if a parameter is named `c` and the emitter body also references a variable named `c`, using `$c` for the parameter ensures only the intended token is replaced.
 
-**Choosing `$self` vs. `$target` for assignment operators**: primitive types whose `operator=` is a literal store (`int`, `bool`, `char`, `string`, etc.) should use `$target` so that `obj.prop = v` correctly emits `obj.prop = v` rather than `obj = v`. Property-wrapper types like `parentProp` (whose `operator=` redirects to a non-store I6 statement, e.g. `move`) should use `$self` so the wrapper sees the owning object, not the property path.
+### Choosing `$self` vs `$val`
+
+The distinction matters only when the receiver is a property access. For other expressions (locals, globals, literals), the two are identical.
+
+| Class style | Body token | Why |
+|---|---|---|
+| **Value type** (`int`, `bool`, `string`, …) | `$val` | The body acts on the *value* the property holds. `obj.score + 1` must emit `obj.score + 1`, not `obj + 1`. |
+| **Property proxy** (`parentProp`, `attributeList`) | `$self` | The body acts on the host. `o.parent == bar` must emit `parent(o) == bar`, not `parent(o.parent) == bar`. The class has no I6 storage of its own; its operators forward to host-targeting I6 directives (`move`, `give`, `parent()`). |
+
+```bgl
+extern class int : _bglObject {
+    emitter int  operator +  (int v){ $val + $v }       // value semantics
+    emitter int  operator =  (int v){ $target = $v; }   // store the new value into the lvalue
+}
+
+extern class parentProp {
+    emitter parentProp operator =  (object v){ move $self to $v }  // I6 wants the host
+    emitter parentProp operator == (object v){ parent($self) == $v }
+    emitter object     operator()              { parent($self) }
+}
+```
+
+**Choosing `$self`/`$val` vs `$target` for assignment operators**: primitive `operator=` emitters that perform a literal store use `$target` (the full lvalue path), so `obj.prop = v` emits as `obj.prop = v` rather than `obj = v`. Property-proxy `operator=` emitters that redirect to a non-store I6 statement (e.g. `move`) use `$self` so the wrapper sees the owning object, not the property path.
 
 ```bgl
 extern class bool {

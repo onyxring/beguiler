@@ -3,7 +3,7 @@
 // type string
 extern class stringLiteral:_bglObject{
     emitter string operator();
-    replace emitter void print(){ print (string)$self; }
+    replace emitter void print(){ print (string)$val; }
 }       
 
 extern class interpolatedStringLiteral:_bglObject{} //interpolatedStrings are smoke and mirrors.  All functionality is implemented by the compiler. TODO: _bglObject has print which I don't think works here.  Either remove this inheritance, or make @"{actor} was here".print(); a thing, as it is for other literals.
@@ -12,8 +12,8 @@ extern class string : _bglObject{
     emitter string operator = (stringLiteral v){
         $target=$v
     }
-    emitter eBool operator ?() { $self ~= 0 }
-    replace emitter void print(){ print (string)$self; }
+    emitter eBool operator ?() { $val ~= 0 }
+    replace emitter void print(){ print (string)$val; }
 }
 
 emitter void print(string str){ print (string)$str; }

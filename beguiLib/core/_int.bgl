@@ -18,47 +18,47 @@
         emitter int operator = (int v){ $target=$v; }
 
         // Arithmetic
-        emitter int operator + (int v){ $self + $v }
-        emitter int operator - (int v){ $self - $v }
-        emitter int operator * (int v){ $self * $v }
-        emitter int operator / (int v){ $self / $v }
-        emitter int operator % (int v){ $self % $v }
+        emitter int operator + (int v){ $val + $v }
+        emitter int operator - (int v){ $val - $v }
+        emitter int operator * (int v){ $val * $v }
+        emitter int operator / (int v){ $val / $v }
+        emitter int operator % (int v){ $val % $v }
 
         // Comparison
-        emitter bool operator == (int v){ $self == $v }
-        emitter bool operator != (int v){ $self ~= $v }
-        emitter bool operator < (int v){ $self < $v }
-        emitter bool operator <= (int v){ $self <= $v }
-        emitter bool operator > (int v){ $self > $v }
-        emitter bool operator >= (int v){ $self >= $v }
+        emitter bool operator == (int v){ $val == $v }
+        emitter bool operator != (int v){ $val ~= $v }
+        emitter bool operator < (int v){ $val < $v }
+        emitter bool operator <= (int v){ $val <= $v }
+        emitter bool operator > (int v){ $val > $v }
+        emitter bool operator >= (int v){ $val >= $v }
 
         // Compound assignment
-        emitter int operator += (int v){ $self = $self + $v }
-        emitter int operator -= (int v){ $self = $self - $v }
-        emitter int operator *= (int v){ $self = $self * $v }
-        emitter int operator /= (int v){ $self = $self / $v }
-        emitter int operator %= (int v){ $self = $self % $v }
+        emitter int operator += (int v){ $val = $val + $v }
+        emitter int operator -= (int v){ $val = $val - $v }
+        emitter int operator *= (int v){ $val = $val * $v }
+        emitter int operator /= (int v){ $val = $val / $v }
+        emitter int operator %= (int v){ $val = $val % $v }
 
         // Increment / decrement
-        emitter int operator ++() { $self++ }
-        emitter int operator --() { $self-- }
+        emitter int operator ++() { $val++ }
+        emitter int operator --() { $val-- }
 
         // Bitwise — I6 supports `&` and `|` natively on both Z-machine and Glulx, so the
         // AND/OR operators are direct passthroughs. XOR and shifts have no native I6 op
         // on Z-machine (Glulx has `@bitxor`/`@bitshl`/`@bitshr`); the stubs below need
         // either a target-split implementation or a runtime helper before they can be
         // enabled. See tests/broken/test_bitwise_int.bgl for the test that drives them.
-        emitter int operator & (int v){ $self & $v }
-        emitter int operator | (int v){ $self | $v }
-        emitter int operator &= (int v){ $self = $self & $v }
-        emitter int operator |= (int v){ $self = $self | $v }
-        emitter int operator ^  (int v){ ($self | $v) - ($self & $v) }
-        emitter int operator ^= (int v){ $self = (($self | $v) - ($self & $v)) }
+        emitter int operator & (int v){ $val & $v }
+        emitter int operator | (int v){ $val | $v }
+        emitter int operator &= (int v){ $val = $val & $v }
+        emitter int operator |= (int v){ $val = $val | $v }
+        emitter int operator ^  (int v){ ($val | $v) - ($val & $v) }
+        emitter int operator ^= (int v){ $val = (($val | $v) - ($val & $v)) }
         
         // emitter int operator <<= (int v){ /* TODO: same as << */ }
         // emitter int operator >> (int v){ /* TODO: no native Z-machine shift.
-        //   Glulx: @bitshr $self $v sp;
-        //   Z: $self / (1 << $v) — same constant-only restriction */ }
+        //   Glulx: @bitshr $val $v sp;
+        //   Z: $val / (1 << $v) — same constant-only restriction */ }
         // emitter int operator >>= (int v){ /* TODO: same as >> */ }
     }
     
