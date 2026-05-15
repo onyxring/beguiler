@@ -602,6 +602,12 @@ void i6Emitter::writeDebugBundle(const string& path){
 }
 
 void i6Emitter::emit(vector<typeDef*>& nodeList){
+    // Lift compile-time-only verb fields (`meta`, `priority`) onto their verbObjectDefs and stamp
+    // own-block grammar lines with the verb's anchor. Done once up-front so the values are visible
+    // to every downstream emit path regardless of source order — grammar objects can target a
+    // verb whose own-body declaration comes later in source.
+    liftAllVerbCompileTimeFields();
+
     // .inf-mode with zero #bgl/#bglDecl/#bglStmt islands: the file is pure I6. None of
     // the BLR-derived output (bglInit, _bglUtil, bgl, _glulx, __glkHook, etc.) is
     // referenced by anything, so emit only the user's own content — !% header (if
@@ -1758,13 +1764,14 @@ void i6Emitter::emitObject(objectDef* obj){
 
     // collect property members (includes raw i6 blocks, which emit as 'with' properties)
     // 'parent' is excluded — it's emitted as a positional argument, not a 'with' property
-    // 'meta' on a verb is excluded — it's lifted to the Verb directive (`Verb meta '…'`)
+    // 'meta' / 'priority' on a verb are excluded — they're compile-time-only fields lifted by the
+    // verb emitter (meta → `Verb meta '…'` directive; priority → grammar sort anchor).
     bool isVerbInstance = (dynamic_cast<verbObjectDef*>(obj) != nullptr);
     bool hasProps = false;
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
             if(vd->isExternal) continue; // alias members have no I6 backing
-            if(isVerbInstance && vd->name == "meta") continue;
+            if(isVerbInstance && (vd->name == "meta" || vd->name == "priority")) continue;
             if(vd->type.name != "attributelist" && vd->type.name != "grammarrulelist" && vd->type.name != "grammarrule" && vd->name != "parent") { hasProps = true; break; }
         } else if(auto* fd = dynamic_cast<functionDef*>(m)){ if(!fd->isEmitter) { hasProps = true; break; } }
           else if(dynamic_cast<i6RawNode*>(m))  { hasProps = true; break; }
@@ -1792,7 +1799,7 @@ void i6Emitter::emitObject(objectDef* obj){
                 if(vd->type.name == "attributelist") continue; // handled separately below
                 if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue; // emitted as I6 Verb directives
                 if(vd->name == "parent") continue; // emitted as positional argument, not 'with' property
-                if(isVerbInstance && vd->name == "meta") continue; // lifted to the Verb directive (`Verb meta …`)
+                if(isVerbInstance && (vd->name == "meta" || vd->name == "priority")) continue; // compile-time-only verb fields
                 out << (first ? "  with " : ",\n       ");
                 out << vd->dName() << " ";
                 if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
@@ -1871,41 +1878,123 @@ void i6Emitter::emitObject(objectDef* obj){
 // Verb and grammar emission
 //===============================================================================================================================
 
+void i6Emitter::liftAllVerbCompileTimeFields(){
+    int defaultPriority = languageService.getClassFieldIntDefault("verb", "priority", 10);
+    for(verbObjectDef* vd : languageService.verbs){
+        vd->priority = defaultPriority;
+        vd->isMeta = false;
+        for(typeMember* m : vd->members){
+            auto* mv = dynamic_cast<variableDeclaration*>(m);
+            if(!mv || !mv->declaredExpressionValue) continue;
+            if(mv->name == "meta"){
+                string v = mv->declaredExpressionValue->text();
+                if(v == "true" || v == "1") vd->isMeta = true;
+            } else if(mv->name == "priority"){
+                try { vd->priority = stoi(mv->declaredExpressionValue->text()); }
+                catch(...) {} // non-int literal: leave anchor at BLR default
+            }
+        }
+        // Stamp own-block grammar lines with the resolved anchor. Extend-block lines and
+        // grammar-object rules had their priority stamped during parsing.
+        for(grammarLine& gl : vd->grammarLines)
+            if(gl.isOwnLine) gl.priority = vd->priority;
+    }
+    // Extern verbs are declared in I6 code we don't emit. By convention (true for the
+    // standard library and customary throughout the I6 ecosystem), an extern verb's
+    // lowercased name IS its primary I6 trigger word. Pre-seed declaredVerbWords so an
+    // `extend ExternVerb { grammar = { {.name, ...} }; }` emits as `Extend 'name' replace`
+    // rather than `Verb 'name'` (which would duplicate the stdlib's Verb directive).
+    //
+    // Exception: if a non-extern verb claims the same trigger word in its own block
+    // (e.g. `verb Inventory { grammar = { {.inv} }; }` while the stdlib also has
+    // `extern verb Inv;`), don't pre-seed — the non-extern verb is taking ownership of
+    // that trigger word in this compilation, and it should emit as a fresh Verb directive.
+    set<string> claimedByNonExtern;
+    for(verbObjectDef* vd : languageService.verbs)
+        if(!vd->isExternal)
+            for(const grammarLine& gl : vd->grammarLines)
+                if(gl.isOwnLine) claimedByNonExtern.insert(gl.verbWord);
+    for(verbObjectDef* vd : languageService.verbs)
+        if(vd->isExternal && !claimedByNonExtern.count(vd->name))
+            declaredVerbWords.insert(vd->name);
+}
+
+void i6Emitter::emitVerbGrammar(const string& verbName, int anchor, bool isMeta, const vector<grammarLine>& lines){
+    // Separate replace lines from priority-sorted lines. Replace lines emit LAST so I6's
+    // `Extend 'w' replace` wipes prior rules for that trigger word.
+    vector<grammarLine> replaceLines, normalLines;
+    for(const grammarLine& gl : lines){
+        if(gl.isReplaceMode) replaceLines.push_back(gl);
+        else                 normalLines.push_back(gl);
+    }
+
+    // Partition normal contributions relative to the anchor:
+    //   anchorOwn  — verb's own block (priority == anchor && isOwnLine)
+    //   lessThan   — priority < anchor → I6 `Extend 'w' first` (matches before anchor)
+    //   gteNonOwn  — priority >= anchor (non-own) → I6 `Extend 'w'` (matches after anchor — default last)
+    vector<grammarLine> anchorOwn, lessThan, gteNonOwn;
+    for(const grammarLine& gl : normalLines){
+        if(gl.isOwnLine)             anchorOwn.push_back(gl);
+        else if(gl.priority < anchor) lessThan.push_back(gl);
+        else                          gteNonOwn.push_back(gl);
+    }
+    // Ascending priority within each batch; stable sort preserves source order within a priority.
+    // Inside one Extend directive, earlier patterns match first — so ascending priority (lower
+    // number = higher matching priority) lands them in the correct in-directive order.
+    stable_sort(lessThan.begin(),  lessThan.end(),  [](const grammarLine& a, const grammarLine& b){ return a.priority < b.priority; });
+    stable_sort(gteNonOwn.begin(), gteNonOwn.end(), [](const grammarLine& a, const grammarLine& b){ return a.priority < b.priority; });
+
+    if(!anchorOwn.empty())    emitGrammarLines(verbName, anchorOwn,    isMeta, extendDirective::First);
+    if(!lessThan.empty())     emitGrammarLines(verbName, lessThan,     isMeta, extendDirective::First);
+    if(!gteNonOwn.empty())    emitGrammarLines(verbName, gteNonOwn,    isMeta, extendDirective::Last);
+    // Replace lines emit last so all earlier trigger-word occurrences for this verb have
+    // already been declared — they'll emit as `Extend 'w' replace`, wiping prior rules.
+    if(!replaceLines.empty()) emitGrammarLines(verbName, replaceLines, isMeta, extendDirective::Replace);
+}
+
 void i6Emitter::emitVerbObject(verbObjectDef* vd){
     if(vd->isExternal) return;
-    // Lift `bool meta = true;` from the verb body into the verbObjectDef flag so
-    // emitObject can suppress emitting it as a regular I6 property and so
-    // emitGrammarLines can prepend the `meta` keyword on the Verb directive.
-    for(typeMember* m : vd->members){
-        auto* mv = dynamic_cast<variableDeclaration*>(m);
-        if(mv && mv->name == "meta" && mv->declaredExpressionValue){
-            string v = mv->declaredExpressionValue->text();
-            if(v == "true" || v == "1") vd->isMeta = true;
-        }
-    }
+    // Compile-time fields (meta, priority) have already been lifted by liftAllVerbCompileTimeFields,
+    // called once at the start of emit(). Own-block grammar lines have been stamped with the anchor.
     emitObject(vd);   // also fires globalDeclaration emitter if defined on the verb class
-    if(!vd->grammarLines.empty()) emitGrammarLines(vd->name, vd->grammarLines, vd->isMeta);
+    if(vd->grammarLines.empty()) return;
+    emitVerbGrammar(vd->name, vd->priority, vd->isMeta, vd->grammarLines);
 }
 
 void i6Emitter::emitGrammarRuleListDecl(grammarRuleListDecl* gtd){
-    // If the grammar list targets a single verb (typical for `extend Verb { grammar += { ... } }`
-    // and old-style verb-named grammar blocks), propagate that verb's meta status so new
-    // Verb directives emitted from this grammar inherit `meta` correctly.
-    bool isMeta = false;
-    if(!gtd->verbName.empty()){
-        string lower = gtd->verbName;
+    // A grammar object's rules may bind different target verbs per line, so group lines by
+    // target verb first. For each verb, look up its lifted anchor + meta and emit via the
+    // shared verb-grammar helper so per-rule priority sorts correctly relative to that
+    // verb's anchor.
+    if(gtd->grammarLines.empty()) return;
+    map<string, vector<grammarLine>> byVerb;
+    vector<string> verbOrder;
+    for(const grammarLine& gl : gtd->grammarLines){
+        string target = gl.targetVerb.empty() ? gtd->verbName : gl.targetVerb;
+        if(byVerb.find(target) == byVerb.end()) verbOrder.push_back(target);
+        byVerb[target].push_back(gl);
+    }
+    int defaultPriority = languageService.getClassFieldIntDefault("verb", "priority", 10);
+    for(const string& targetVerb : verbOrder){
+        int anchor = defaultPriority;
+        bool isMeta = false;
+        string lower = targetVerb;
         transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
         for(verbObjectDef* v : languageService.verbs)
-            if(v->name == lower){ isMeta = v->isMeta; break; }
+            if(v->name == lower){ anchor = v->priority; isMeta = v->isMeta; break; }
+        emitVerbGrammar(targetVerb, anchor, isMeta, byVerb[targetVerb]);
     }
-    emitGrammarLines(gtd->verbName, gtd->grammarLines, isMeta);
 }
 
 // Group grammar lines by verb trigger word; emit one Verb/Extend block per unique trigger word.
-// First occurrence of a trigger word → Verb 'word'; subsequent → Extend 'word' first.
+// First occurrence of a trigger word → Verb 'word' (always — Extend requires a prior Verb directive).
+// Subsequent occurrences emit per `mode`:
+//   First   → `extend 'w' first`
+//   Last    → `extend 'w'`
+//   Replace → `extend 'w' replace`
 // Per-line targetVerb overrides verbName (for multi-verb grammar objects).
 // When isMeta is true, the first emission of each trigger word emits as `Verb meta 'word'`.
-void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLine>& lines, bool isMeta){
+void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLine>& lines, bool isMeta, extendDirective mode){
     // Each entry: {triggerWord, patternTokens, actionName}
     struct lineEntry { vector<string> patternTokens; string actionName; };
     vector<string> wordOrder;
@@ -1922,16 +2011,27 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
         return (e.size() == 1) ? ("'" + e + "//'") : ("'" + e + "'");
     };
 
+    // Beguile convention: a verb's name (lowercased) is its primary I6 trigger word. For
+    // Replace mode we treat that name as "already declared" even when declaredVerbWords doesn't
+    // contain it (e.g. extern verbs whose stdlib `Verb 'take' ...` directive Beguile never
+    // emitted but knows exists by convention). Without this, `extend Take { grammar = {{.take,
+    // .firmly, noun}}; }` would emit a fresh `verb 'take'` instead of `extend 'take' replace`.
+    string verbNameLower = verbName;
+    transform(verbNameLower.begin(), verbNameLower.end(), verbNameLower.begin(), ::tolower);
+
     for(const string& word : wordOrder){
         bool isFirst = declaredVerbWords.find(word) == declaredVerbWords.end();
+        if(mode == extendDirective::Replace && word == verbNameLower) isFirst = false;
         if(isFirst){
             declaredVerbWords.insert(word);
-            if(isMeta)
-                out << format("verb meta {0}\n", toI6Word(word));
-            else
-                out << format("verb {0}\n", toI6Word(word));
+            if(isMeta) out << format("verb meta {0}\n", toI6Word(word));
+            else       out << format("verb {0}\n",      toI6Word(word));
         } else {
-            out << format("extend {0} first\n", toI6Word(word));
+            switch(mode){
+                case extendDirective::First:   out << format("extend {0} first\n",   toI6Word(word)); break;
+                case extendDirective::Last:    out << format("extend {0}\n",         toI6Word(word)); break;
+                case extendDirective::Replace: out << format("extend {0} replace\n", toI6Word(word)); break;
+            }
         }
         const auto& entries = byWord[word];
         for(size_t i = 0; i < entries.size(); i++){

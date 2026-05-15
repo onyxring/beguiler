@@ -232,7 +232,11 @@ class bglParser {
         string describeExpected(const PatternElement& elem);
 
         bool processBeguilerSettings();
-        void processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod);
+        void processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod, int blockPriority = 0);
+        // After parseGrammarLineContent has consumed the inner `}` of `{Verb, {pattern}}`, peek for
+        // a `, priority` third positional element. Returns parsed int priority, or `defaultPriority`
+        // when no third element is present.
+        int parseOptionalGrammarRulePriority(int defaultPriority);
         void parsePropertyValue(variableDeclaration& prop, string typeName);
         void processI6InlineMember(objectDef& obj);
         void processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules);

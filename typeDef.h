@@ -351,6 +351,13 @@ struct grammarLine {
     string verbWord;                // raw word without quotes, e.g. "put" (emitter adds them)
     vector<string> patternTokens;   // I6-ready: "'on'", "noun", "'up/p'", etc.
     string targetVerb;              // per-line verb override (multi-verb grammar objects); empty = use parent context
+    int priority = 0;               // sort priority. The canonical default lives on `class verb` in BLR (_verb.bgl);
+                                    // own-block lines get the verb's anchor in emitVerbObject; extend-block lines get
+                                    // their block's priority during parse. 0 here is a sentinel meaning "not yet set".
+    bool isOwnLine = true;          // false for extend-block and grammar-object contributions
+    bool isReplaceMode = false;     // true → emit as I6 `Extend 'w' replace …` (drops existing rules for that
+                                    // trigger word). Set when an extend body uses `grammar = { … }` (not `+=`).
+                                    // Priority is meaningless under replace.
 };
 
 // a verb declaration — an objectDef of class 'verb'; holds optional action body and inline grammar
@@ -358,6 +365,8 @@ class verbObjectDef : public objectDef {
     public:
         bool isExternal = false;
         bool isMeta = false;                // I6 meta verb (declared via `meta = true;` or `extern meta verb …`)
+        int priority = 0;                   // anchor priority. Resolved in emitVerbObject from BLR's `class verb`
+                                            // default, then overridden by any `priority = N;` in the verb body.
         functionDef* doFunc = nullptr;      // action routine; I6 name = verbName + "sub"
         vector<grammarLine> grammarLines;   // inline grammar (from verb { grammar { } })
 };

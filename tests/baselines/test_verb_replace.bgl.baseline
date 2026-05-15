@@ -1,0 +1,32 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+constant story = "";
+constant headline = "";
+object quaff
+  with perform [;
+    print (string)"quaff";
+  ]
+;
+[quaffsub;
+                quaff.perform();
+            ];
+verb 'quaff'
+    * noun -> quaff;
+extend 'quaff' replace
+    * 'deeply' noun -> quaff;
+[main;
+];
+extend 'take' replace
+    * 'firmly' noun -> take;
+verb 'pilfer'
+    * noun -> take;
