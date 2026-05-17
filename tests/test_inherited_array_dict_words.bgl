@@ -1,0 +1,49 @@
+// test_inherited_array_dict_words.bgl — inherited `array<dictionaryWord>` member
+// reassignment in subclass and instance bodies emits the words as inline I6
+// property values.
+//
+// Regression for two coupled bugs surfaced 2026-05-16 while porting wadeWar3:
+//   (a) Subclass body: `class Sub : Base { name = {.w1, .w2}; }` silently dropped
+//       the initializer. The class declaration emitted as `name,` with no values —
+//       breaking the player's ability to refer to the object by any of its words.
+//       Root cause: the inherited-member type-inference path stored the value as a
+//       generic variableDeclaration whose declaredExpressionValue is an
+//       initializerList, and the emitter's variableDeclaration branch called
+//       expression::text() — which returns empty for initializer lists since their
+//       content lives in `elements`, not `tokens`.
+//   (b) Instance body: `Base widget { name = {.w1, .w2}; }` errored with the bogus
+//       message `Element 0 has type 'dictionarywordliteral', expected 'int'`. Root
+//       cause: processInheritedMember passed the bare type name `array` (without
+//       the templated element-type) to parsePropertyValue, which fell through to
+//       a fallback that read `operator[]`'s int index parameter as the element
+//       type. Fix builds the full `array<dictionaryWord>` name from the
+//       arrayDeclaration's elementType field.
+//
+// Verifies:
+//   - Subclass-of-base form emits the dict words inline in the class declaration.
+//   - Instance-of-base form emits the dict words inline in the object declaration.
+//   - Plural form (`..word`) round-trips as `'word/p'` in both forms.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+emitter class thing {
+    array<dictionaryWord> name;
+}
+
+// (a) Subclass form
+class marble : thing {
+    name = {.chocolate, .covered, .marble, ..marbles};
+}
+
+// (b) Instance form
+thing widget {
+    name = {.gadget, .gizmo};
+}
+
+void main(){}

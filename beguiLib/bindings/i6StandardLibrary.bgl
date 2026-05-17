@@ -198,10 +198,11 @@ extern const int PRESENT_TENSE;
 extern const int PAST_TENSE;
 
 //-- Standard grammar tokens --------------------------------------------------
-// These appear in grammar line patterns inside grammar { } blocks.
-// As an extern enum the values both qualify (grammarToken.held) and bare-resolve
-// (held) — same mechanism as any extern enum value. Bare names won't shadow
-// locals/params: lexical scope wins, mirroring enum-value semantics.
+// These appear in grammar line patterns inside grammar { } blocks. Conceptually
+// each value is a kind of `patternElement` (see _grammar.bgl) — the documented
+// base for everything that can appear in a grammar pattern. The enum form is
+// the practical mechanism: bare-resolve (held) or qualified (grammarToken.held).
+// Bare names won't shadow locals/params — lexical scope wins.
 extern enum grammarToken {
     noun,           // a noun object
     held,           // object currently held by the actor
@@ -214,146 +215,152 @@ extern enum grammarToken {
     special,        // a special token (number or dictionary word)
     anynumber,      // any number typed by the player (no range check)
     number,         // a number typed by the player
-    scope           // placeholder; use scope=Routine form in grammar lines
+    scope,          // placeholder; use scope=Routine form in grammar lines
+    reverse         // action-target modifier — must appear as the LAST element in a grammar
+                    // line literal: `{.give, creature, held, reverse}`. Emits I6's
+                    // `-> Action reverse` form, which swaps noun/second_noun before the
+                    // action routine runs (e.g. `give X to Y` and `give Y X` both land
+                    // X in noun, Y in second_noun). Not a pattern token — does not match
+                    // user input. Compile error if it appears anywhere other than last.
 }
 
 //-- Standard game actions ----------------------------------------------------
 // Use these in before() / after() switch(action) blocks.
-extern verb Answer;                 // answer <topic> to <creature>
-extern verb Ask;                    // ask <creature> about <topic>
-extern verb AskFor;                 // ask <creature> for <noun>
-extern verb AskTo;                  // ask <creature> to <topic>
-extern verb Attack;                 // attack / hit / kill <noun>
-extern verb Blow;                   // blow <held>
-extern verb Burn;                   // burn / light <noun>
-extern verb Buy;                    // buy / purchase <noun>
-extern verb Climb;                  // climb / scale <noun>
-extern verb Close;                  // close / shut <noun>
-extern verb Consult;                // consult <noun> about <topic>
-extern verb Cut;                    // cut / chop <noun>
-extern verb Dig;                    // dig <noun>
-extern verb Disrobe;                // disrobe / take off <worn>
-extern verb Drink;                  // drink / sip <noun>
-extern verb Drop;                   // drop <multiheld>
-extern verb Eat;                    // eat <held>
-extern verb Empty;                  // empty <noun>
-extern verb EmptyT;                 // empty <noun> into <noun>
-extern verb Enter;                  // enter / go into <noun>
-extern verb Examine;                // examine / x <noun>
-extern verb Exit;                   // exit / out
-extern verb Fill;                   // fill <noun>
-extern verb GetOff;                 // get off <noun>
-extern verb Give;                   // give <held> to <creature>
-extern verb Go;                     // go <direction>
-extern verb Going;                     // go <direction>
-extern verb GoIn;                   // go in / enter
-extern verb Insert;                 // insert <noun> into <noun>
-extern verb Inv;                    // inventory / i
-extern verb InvTall;                // inventory tall
-extern verb InvWide;                // inventory wide
-extern verb Jump;                   // jump / hop
-extern verb JumpIn;                 // jump in/into <noun>
-extern verb JumpOn;                 // jump on <noun>
-extern verb JumpOver;               // jump over <noun>
-extern verb Kiss;                   // kiss / hug <creature>
-extern verb Listen;                 // listen / hear
-extern verb Lock;                   // lock <noun> with <held>
-extern verb Look;                   // look / l
-extern verb LookUnder;              // look under <noun>
-extern verb Mild;                   // mild expletive
-extern verb No;                     // no
-extern verb Open;                   // open <noun>
-extern verb Pray;                   // pray
-extern verb Pull;                   // pull / drag <noun>
-extern verb Push;                   // push / move <noun>
-extern verb PushDir;                // push <noun> <direction>
-extern verb PutOn;                  // put <noun> on <noun>
-extern verb Remove;                 // remove <noun> from <noun>
-extern verb Rub;                    // rub / clean / polish <noun>
-extern verb Search;                 // search <noun>
-extern verb Set;                    // set / adjust <noun>
-extern verb SetTo;                  // set <noun> to <value>
-extern verb Show;                   // show <held> to <creature>
-extern verb Sing;                   // sing
-extern verb Sleep;                  // sleep / nap
-extern verb Smell;                  // smell / sniff
-extern verb Sorry;                  // sorry
-extern verb Squeeze;                // squeeze / squash <noun>
-extern verb Strong;                 // strong expletive
-extern verb SwitchOff;              // switch <noun> off / turn off <noun>
-extern verb SwitchOn;               // switch <noun> on / turn on <noun>
-extern verb Take;                   // take / get / pick up <noun>
-extern verb Taste;                  // taste <noun>
-extern verb Tell;                   // tell <creature> about <topic>
-extern verb Think;                  // think
-extern verb ThrowAt;                // throw <held> at <noun>
-extern verb Tie;                    // tie / attach <noun> to <noun>
-extern verb Touch;                  // touch / feel <noun>
-extern verb Transfer;               // transfer <noun> to <noun>
-extern verb Turn;                   // turn / rotate <noun>
-extern verb Unlock;                 // unlock <noun> with <held>
-extern verb VagueGo;                // go (without direction)
-extern verb Wait;                   // wait / z
-extern verb Wake;                   // wake / awake
-extern verb WakeOther;              // wake <creature>
-extern verb Wave;                   // wave <noun>
-extern verb WaveHands;              // wave (no object)
-extern verb Wear;                   // wear / don <held>
-extern verb Yes;                    // yes
+extern verb Answer { .answer|.say|.shout|.speak }                   // answer <topic> to <creature>
+extern verb Ask { .ask }                                            // ask <creature> about <topic>
+extern verb AskFor { .ask }                                         // ask <creature> for <noun>
+extern verb AskTo { .ask|.tell }                                    // ask/tell <creature> to <topic>
+extern verb Attack { .attack|.break|.smash|.hit|.fight|.wreck|.crack }  // attack / hit / kill <noun>
+extern verb Blow { .blow }                                          // blow <held>
+extern verb Burn { .burn|.light }                                   // burn / light <noun>
+extern verb Buy { .buy|.purchase }                                  // buy / purchase <noun>
+extern verb Climb { .climb|.scale }                                 // climb / scale <noun>
+extern verb Close { .close|.shut|.cover }                           // close / shut <noun>
+extern verb Consult { .consult }                                    // consult <noun> about <topic>
+extern verb Cut { .cut|.slice|.prune|.chop }                        // cut / chop <noun>
+extern verb Dig { .dig }                                            // dig <noun>
+extern verb Disrobe { .shed|.doff|.disrobe }                        // shed / doff / disrobe <worn>
+extern verb Drink { .drink|.swallow|.sip }                          // drink / sip <noun>
+extern verb Drop { .drop|.throw|.discard }                          // drop <multiheld>
+extern verb Eat { .eat }                                            // eat <held>
+extern verb Empty { .empty }                                        // empty <noun>
+extern verb EmptyT { .empty }                                       // empty <noun> into <noun>
+extern verb Enter { .enter|.cross }                                 // enter / go into <noun>
+extern verb Examine { .examine|.x|.watch|.describe|.check|.read }   // examine / x <noun>
+extern verb Exit { .exit|.out|.outside|.stand }                     // exit / out
+extern verb Fill { .fill }                                          // fill <noun>
+extern verb GetOff { .get }                                         // get off <noun>
+extern verb Give { .give|.pay|.offer|.feed }                        // give <held> to <creature>
+extern verb Go { .go|.run|.walk }                                   // go <direction>
+extern verb Going { .go|.run|.walk }                                // go <direction>
+extern verb GoIn { .enter|.cross|.in|.inside }                      // go in / enter
+extern verb Insert { .insert }                                      // insert <noun> into <noun>
+extern verb Inv { .inventory|.inv|.i }                              // inventory / i
+extern verb InvTall { .inventory|.inv|.i }                          // inventory tall
+extern verb InvWide { .inventory|.inv|.i }                          // inventory wide
+extern verb Jump { .jump|.skip|.hop }                               // jump / hop
+extern verb JumpIn { .jump|.hop|.skip }                             // jump in/into <noun>
+extern verb JumpOn { .jump|.hop|.skip }                             // jump on <noun>
+extern verb JumpOver { .jump|.hop|.skip }                           // jump over <noun>
+extern verb Kiss { .kiss|.embrace|.hug }                            // kiss / hug <creature>
+extern verb Listen { .hear|.listen }                                // listen / hear
+extern verb Lock { .lock }                                          // lock <noun> with <held>
+extern verb Look { .look|.l }                                       // look / l
+extern verb LookUnder { .look|.l }                                  // look under <noun>
+extern verb Mild { .bother|.curses|.drat|.darn }                    // mild expletive
+extern verb No { .no }                                              // no
+extern verb Open { .open|.unwrap|.uncover|.undo }                   // open <noun>
+extern verb Pray { .pray }                                          // pray
+extern verb Pull { .pull|.drag }                                    // pull / drag <noun>
+extern verb Push { .push|.move|.shift|.clear|.press }               // push / move <noun>
+extern verb PushDir { .push|.move|.shift|.clear|.press }            // push <noun> <direction>
+extern verb PutOn { .put }                                          // put <noun> on <noun>
+extern verb Remove { .remove }                                      // remove <noun> from <noun>
+extern verb Rub { .rub|.shine|.polish|.sweep|.clean|.dust|.wipe|.scrub }  // rub / clean / polish <noun>
+extern verb Search { .search }                                      // search <noun>
+extern verb Set { .set|.adjust }                                    // set / adjust <noun>
+extern verb SetTo { .set|.adjust }                                  // set <noun> to <value>
+extern verb Show { .show|.present|.display }                        // show <held> to <creature>
+extern verb Sing { .sing }                                          // sing
+extern verb Sleep { .sleep|.nap }                                   // sleep / nap
+extern verb Smell { .smell|.sniff }                                 // smell / sniff
+extern verb Sorry { .sorry }                                        // sorry
+extern verb Squeeze { .squeeze|.squash }                            // squeeze / squash <noun>
+extern verb Strong { .shit|.fuck|.damn|.sod }                       // strong expletive
+extern verb SwitchOff { .switch|.turn }                             // switch <noun> off / turn off <noun>
+extern verb SwitchOn { .switch|.turn }                              // switch <noun> on / turn on <noun>
+extern verb Take { .take|.carry|.hold|.get|.pick|.peel }            // take / get / pick up <noun>
+extern verb Taste { .taste }                                        // taste <noun>
+extern verb Tell { .tell }                                          // tell <creature> about <topic>
+extern verb Think { .think }                                        // think
+extern verb ThrowAt { .throw }                                      // throw <held> at <noun>
+extern verb Tie { .tie|.attach|.fasten|.fix }                       // tie / attach <noun> to <noun>
+extern verb Touch { .touch|.fondle|.feel|.grope }                   // touch / feel <noun>
+extern verb Transfer { .transfer }                                  // transfer <noun> to <noun>
+extern verb Turn { .turn|.rotate|.twist|.unscrew|.screw }           // turn / rotate <noun>
+extern verb Unlock { .unlock|.pry|.prise|.prize|.lever|.jemmy|.force }  // unlock / pry open <noun> with <held>
+extern verb VagueGo { .go|.walk|.run|.leave }                       // go (without direction)
+extern verb Wait { .wait|.z }                                       // wait / z
+extern verb Wake { .wake|.awake|.awaken }                           // wake / awake
+extern verb WakeOther { .wake|.awake|.awaken }                      // wake <creature>
+extern verb Wave { .wave }                                          // wave <noun>
+extern verb WaveHands { .wave }                                     // wave (no object)
+extern verb Wear { .wear|.don }                                     // wear / don <held>
+extern verb Yes { .yes|.y }                                         // yes
 
 //-- Meta actions -------------------------------------------------------------
 // Issued as commands to the game system, not in-world actions.
-extern verb CommandsOff;            // recording off
-extern verb CommandsOn;             // recording / recording on
-extern verb CommandsRead;           // replay
-extern verb FullScore;              // fullscore
-extern verb LMode1;                 // brief
-extern verb LMode2;                 // verbose
-extern verb LMode3;                 // superbrief
-extern verb LModeNormal;            // normal
-extern verb NotifyOff;              // notify off
-extern verb NotifyOn;               // notify / notify on
-extern verb Objects;                // objects
-extern verb ObjectsTall;            // objects tall
-extern verb ObjectsWide;            // objects wide
-extern verb Places;                 // places
-extern verb PlacesTall;             // places tall
-extern verb PlacesWide;             // places wide
-extern verb Pronouns;               // pronouns / nouns
-extern verb Quit;                   // quit / q
-extern verb Restart;                // restart
-extern verb Restore;                // restore
-extern verb Save;                   // save
-extern verb Score;                  // score
-extern verb ScriptOff;              // noscript / unscript
-extern verb ScriptOn;               // script / transcript
-extern verb Verify;                 // verify
-extern verb Version;                // version
+extern verb CommandsOff { .recording }                              // recording off
+extern verb CommandsOn { .recording }                               // recording / recording on
+extern verb CommandsRead { .replay }                                // replay
+extern verb FullScore { .fullscore|.full }                          // fullscore / full
+extern verb LMode1 { .brief|.normal }                               // brief / normal
+extern verb LMode2 { .verbose|.long }                               // verbose / long
+extern verb LMode3 { .superbrief|.short }                           // superbrief / short
+extern verb LModeNormal { .normal }                                 // normal
+extern verb NotifyOff { .notify }                                   // notify off
+extern verb NotifyOn { .notify }                                    // notify / notify on
+extern verb Objects { .objects }                                    // objects
+extern verb ObjectsTall { .objects }                                // objects tall
+extern verb ObjectsWide { .objects }                                // objects wide
+extern verb Places { .places }                                      // places
+extern verb PlacesTall { .places }                                  // places tall
+extern verb PlacesWide { .places }                                  // places wide
+extern verb Pronouns { .pronouns|.nouns }                           // pronouns / nouns
+extern verb Quit { .q|.quit|.die }                                  // q / quit / die
+extern verb Restart { .restart }                                    // restart
+extern verb Restore { .restore }                                    // restore
+extern verb Save { .save }                                          // save
+extern verb Score { .score }                                        // score
+extern verb ScriptOff { .noscript|.unscript }                       // noscript / unscript
+extern verb ScriptOn { .script|.transcript }                        // script / transcript
+extern verb Verify { .verify }                                      // verify
+extern verb Version { .version }                                    // version
 
 //-- Debug actions (only available in DEBUG builds) ---------------------------
-extern verb ActionsOff;             // actions off
-extern verb ActionsOn;              // actions / actions on
-extern verb ChangesOff;             // changes off
-extern verb ChangesOn;              // changes / changes on
-extern verb Glklist;                // glklist (Glulx only)
-extern verb GoNear;                 // gonear <noun>
-extern verb Goto;                   // goto <number>
-extern verb Predictable;            // random
-extern verb RoutinesOff;            // routines off
-extern verb RoutinesOn;             // routines / routines on
-extern verb RoutinesVerbose;        // routines verbose
-extern verb Scope;                  // scope
-extern verb ShowDict;               // showdict / dict
-extern verb ShowObj;                // showobj
-extern verb ShowVerb;               // showverb
-extern verb TimersOff;              // timers / daemons off
-extern verb TimersOn;               // timers / daemons on
-extern verb TraceLevel;             // trace <number>
-extern verb TraceOff;               // trace off
-extern verb TraceOn;                // trace / trace on
-extern verb XAbstract;              // abstract <noun> to <noun>
-extern verb XPurloin;               // purloin <noun>
-extern verb XTree;                  // tree
+extern verb ActionsOff { .actions }             // actions off
+extern verb ActionsOn { .actions }              // actions / actions on
+extern verb ChangesOff { .changes }             // changes off
+extern verb ChangesOn { .changes }              // changes / changes on
+extern verb Glklist { .glklist }                // glklist (Glulx only)
+extern verb GoNear { .gonear }                  // gonear <noun>
+extern verb Goto { .goto }                      // goto <number>
+extern verb Predictable { .random }             // random
+extern verb RoutinesOff { .routines|.messages } // routines off
+extern verb RoutinesOn { .routines|.messages }  // routines / routines on
+extern verb RoutinesVerbose { .routines|.messages }  // routines verbose
+extern verb Scope { .scope }                    // scope
+extern verb ShowDict { .showdict|.dict }        // showdict / dict
+extern verb ShowObj { .showobj }                // showobj
+extern verb ShowVerb { .showverb }              // showverb
+extern verb TimersOff { .timers|.daemons }      // timers / daemons off
+extern verb TimersOn { .timers|.daemons }       // timers / daemons on
+extern verb TraceLevel { .trace }               // trace <number>
+extern verb TraceOff { .trace }                 // trace off
+extern verb TraceOn { .trace }                  // trace / trace on
+extern verb XAbstract { .abstract }             // abstract <noun> to <noun>
+extern verb XPurloin { .purloin }               // purloin <noun>
+extern verb XTree { .tree }                     // tree
 
 const string story = #beguilerSettings.title;       // I6 standard library expects 'story'
 const string headline = #beguilerSettings.headline;

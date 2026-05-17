@@ -1,0 +1,80 @@
+// test_verb_words.bgl — extern verb claimed-words declaration via `grammar = {...}`.
+//
+// Syntax is identical to non-extern verbs. The difference is purely emission: extern verbs
+// never emit I6 grammar (their I6 grammar is defined externally), so only the FIRST dict
+// word of each grammar line (plus any |-alternation extras) is meaningful — those words
+// populate the verb's claimed-words list for emitter pre-seeding. Pattern tokens beyond
+// the first position are ignored; a warning is issued.
+//
+// Verifies:
+//   - extern verb body with `grammar = { {.w1|.w2|.w3} }` declares trigger words.
+//   - extern verb body with `grammar = { {.w1}, {.w2}, {.w3} }` is equivalent for trigger
+//     collection (multiple lines, same union).
+//   - Beguile-side extends of an extern verb targeting one of its declared alias triggers
+//     emit as I6 Extend, not as fresh Verb directives.
+//   - A non-extern verb that claims a word an extern verb also claims routes through
+//     Extend (I6 treats all triggers as equivalent synonyms — emitting a fresh Verb 'w'
+//     when 'w' is already declared causes I6's "two different verb definitions" error).
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Declare a fresh extern verb with multiple trigger words via the pretty-form ("syntax
+// sweetener"): when an extern verb's body begins with a dictionary-word literal, the body
+// is interpreted as a single grammar line's trigger-word section. Desugars to:
+//   extern verb MyExtVerb { grammar = { {.foo|.bar|.baz} }; }
+extern verb MyExtVerb { .foo|.bar|.baz }
+
+// Declare another extern verb using the canonical multi-line form. The two should
+// produce identical verbWords sets — both forms are supported.
+extern verb MyExtVerb2 {
+    grammar = {
+        {.alpha},
+        {.beta},
+        {.gamma},
+    };
+}
+
+// Extend MyExtVerb using its primary trigger — should emit `extend 'foo' first`
+// (priority 5 < anchor 10).
+extend MyExtVerb {
+    priority = 5;
+    grammar += {
+        {.foo, noun},
+    };
+}
+
+// Extend MyExtVerb using an ALIAS trigger — also Extend (not fresh Verb), because
+// 'bar' is now pre-seeded via MyExtVerb's grammar declaration.
+extend MyExtVerb {
+    grammar += {
+        {.bar, noun, .down},
+    };
+}
+
+// Extend MyExtVerb2 using a middle alias — also routes to Extend.
+extend MyExtVerb2 {
+    grammar += {
+        {.beta, noun},
+    };
+}
+
+// A new Beguile verb whose trigger word collides with an extern alias. Because
+// 'gamma' is already claimed by MyExtVerb2, MyOwn's line emits as
+// `extend 'gamma' * 'check' -> myown;` — a fresh Verb directive would produce
+// I6's "two different verb definitions" error. The default-last form (no `first`)
+// is used because MyOwn's priority (default 10) is not lower than the implicit
+// extern anchor (10); a verb declared with `priority = 5` would emit `extend first`.
+verb MyOwn {
+    grammar = {
+        {.gamma, .check},
+    };
+    void perform(){ print("own"); }
+}
+
+void main(){}

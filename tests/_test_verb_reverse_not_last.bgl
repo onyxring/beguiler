@@ -1,0 +1,18 @@
+// EXPECT_ERROR: 'reverse' must be the last element in a grammar line literal
+//
+// The `reverse` pseudo-token is an action-target modifier, not a pattern token,
+// and must appear at the end of the grammar line literal. Any token after it
+// (here, `noun`) is a compile error — there's no I6 semantics for "reverse, then
+// more pattern matching."
+
+#beguilerSettings { target = z5; informName = "none"; }
+#include <bindings/i6StandardLibrary>
+
+verb Bad {
+    grammar = {
+        {.foo, reverse, noun},
+    };
+    void perform(){}
+}
+
+void main(){}

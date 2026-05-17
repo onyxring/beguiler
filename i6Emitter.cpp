@@ -1017,7 +1017,16 @@ void i6Emitter::emitClass(classDef* classNode){
             }
             else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 out << format("    {0}", vd->dName());
-                if(vd->declaredExpressionValue != nullptr && !vd->declaredExpressionValue->text().empty())
+                // Inherited array<T> members reassigned in a subclass body (`name = {...}`)
+                // produce a variableDeclaration (not arrayDeclaration) carrying an
+                // initializerList in declaredExpressionValue. expression::text() returns
+                // empty for initializer lists since their content lives in `elements`,
+                // not `tokens` — walk elements explicitly so the inline I6 property
+                // values land in the `with` clause.
+                if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
+                    out << " ";
+                    for(expression* elem : list->elements) out << elem->text() << " ";
+                } else if(vd->declaredExpressionValue != nullptr && !vd->declaredExpressionValue->text().empty())
                     out << format(" {0}", vd->declaredExpressionValue->text());
                 out << sep << "\n";
             }
@@ -1802,7 +1811,13 @@ void i6Emitter::emitObject(objectDef* obj){
                 if(isVerbInstance && (vd->name == "meta" || vd->name == "priority")) continue; // compile-time-only verb fields
                 out << (first ? "  with " : ",\n       ");
                 out << vd->dName() << " ";
-                if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
+                // Initializer-list value (typically an inherited array<T> member reassigned
+                // here as `name = {...}`). expression::text() returns empty for these since
+                // their content lives in `elements`, so walk elements explicitly. See the
+                // matching comment in emitClass.
+                if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
+                    for(expression* elem : list->elements) out << elem->text() << " ";
+                } else if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
                 first = false;
             } else if(auto* fd = dynamic_cast<functionDef*>(m)){
                 if(fd->isEmitter) continue; // emitter methods are inlined at call sites, not emitted as properties
@@ -1899,24 +1914,41 @@ void i6Emitter::liftAllVerbCompileTimeFields(){
         for(grammarLine& gl : vd->grammarLines)
             if(gl.isOwnLine) gl.priority = vd->priority;
     }
-    // Extern verbs are declared in I6 code we don't emit. By convention (true for the
-    // standard library and customary throughout the I6 ecosystem), an extern verb's
-    // lowercased name IS its primary I6 trigger word. Pre-seed declaredVerbWords so an
-    // `extend ExternVerb { grammar = { {.name, ...} }; }` emits as `Extend 'name' replace`
-    // rather than `Verb 'name'` (which would duplicate the stdlib's Verb directive).
+    // Populate verbWords from grammar lines. Walk each verb's OWN-BODY grammarLines only —
+    // these are the lines that declare the verb's identity (trigger words). Extend-block
+    // contributions (isOwnLine=false) are NOT counted here: those add new grammar to the
+    // verb (which the emitter will emit as fresh Verb directives for new trigger words),
+    // they don't define which words the verb already claims.
     //
-    // Exception: if a non-extern verb claims the same trigger word in its own block
-    // (e.g. `verb Inventory { grammar = { {.inv} }; }` while the stdlib also has
-    // `extern verb Inv;`), don't pre-seed — the non-extern verb is taking ownership of
-    // that trigger word in this compilation, and it should emit as a fresh Verb directive.
-    set<string> claimedByNonExtern;
+    // For extern verbs the same rule applies — but extern verbs typically declare their
+    // claimed words via the `grammar = {...}` body form (which sets isOwnLine=true on the
+    // parsed lines). A bare `extern verb V;` with no body falls back to [lowercased name].
+    for(verbObjectDef* vd : languageService.verbs){
+        set<string> seen;
+        for(const grammarLine& gl : vd->grammarLines){
+            if(!gl.isOwnLine) continue;
+            if(seen.insert(gl.verbWord).second) vd->verbWords.push_back(gl.verbWord);
+            for(const string& w : gl.additionalVerbWords)
+                if(seen.insert(w).second) vd->verbWords.push_back(w);
+        }
+        if(vd->verbWords.empty() && vd->isExternal)
+            vd->verbWords.push_back(vd->name);
+    }
+
+    // Pre-seed declaredVerbWords with every extern verb's claimed dictionary words. This makes
+    // grammar lines whose first trigger is stdlib-claimed (e.g. {.i, ...} for Inv) route through
+    // Extend rather than emit a duplicate Verb directive at I6 level.
+    //
+    // I6 treats all trigger words on a verb directive as equivalent synonyms — there is no
+    // notion of a "primary" word. So if a non-extern verb's grammar mentions a word the
+    // stdlib already claims (whether as the line's first dict word or as a `|` alternate),
+    // we must emit it as `Extend 'w'` to avoid I6's "two different verb definitions refer
+    // to 'w'" error. The fan-out path in emitGrammarLines handles mixed first/existing
+    // trigger sets by emitting one I6 directive per word.
     for(verbObjectDef* vd : languageService.verbs)
-        if(!vd->isExternal)
-            for(const grammarLine& gl : vd->grammarLines)
-                if(gl.isOwnLine) claimedByNonExtern.insert(gl.verbWord);
-    for(verbObjectDef* vd : languageService.verbs)
-        if(vd->isExternal && !claimedByNonExtern.count(vd->name))
-            declaredVerbWords.insert(vd->name);
+        if(vd->isExternal)
+            for(const string& w : vd->verbWords)
+                declaredVerbWords.insert(w);
 }
 
 void i6Emitter::emitVerbGrammar(const string& verbName, int anchor, bool isMeta, const vector<grammarLine>& lines){
@@ -1962,7 +1994,17 @@ void i6Emitter::emitVerbGrammar(const string& verbName, int anchor, bool isMeta,
         return buckets;
     };
 
-    if(!anchorOwn.empty()) emitGrammarLines(verbName, anchorOwn, isMeta, extendDirective::First);
+    // Own-block lines whose trigger word collides with an existing (extern) verb must
+    // emit as Extend rather than Verb (the fan-out path in emitGrammarLines handles this
+    // automatically). The First-vs-Last choice for those extends is driven by the verb's
+    // own priority against the extern's implicit anchor (the BLR `class verb` default):
+    //   priority <  default → Extend first (this verb's rules match before stdlib's)
+    //   priority >= default → Extend       (default last; appends to stdlib's rules)
+    // Brand-new trigger words on the same own-line are unaffected — emitDirectiveHead
+    // emits them as `verb 'w'` regardless of mode.
+    int externAnchor = languageService.getClassFieldIntDefault("verb", "priority", 10);
+    extendDirective ownMode = (anchor < externAnchor) ? extendDirective::First : extendDirective::Last;
+    if(!anchorOwn.empty()) emitGrammarLines(verbName, anchorOwn, isMeta, ownMode);
     for(auto& bucket : bucketize(lessThan,  /*descending*/true))
         emitGrammarLines(verbName, bucket, isMeta, extendDirective::First);
     for(auto& bucket : bucketize(gteNonOwn, /*descending*/false))
@@ -2015,15 +2057,21 @@ void i6Emitter::emitGrammarRuleListDecl(grammarRuleListDecl* gtd){
 // Per-line targetVerb overrides verbName (for multi-verb grammar objects).
 // When isMeta is true, the first emission of each trigger word emits as `Verb meta 'word'`.
 void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLine>& lines, bool isMeta, extendDirective mode){
-    // Each entry: {triggerWord, patternTokens, actionName}
-    struct lineEntry { vector<string> patternTokens; string actionName; };
-    vector<string> wordOrder;
-    map<string, vector<lineEntry>> byWord;
+    // Group by full trigger set. Multi-trigger lines (additionalVerbWords non-empty) emit as
+    // one combined `verb 'w1' 'w2' 'w3' …` directive when all triggers are first-occurrence;
+    // single-trigger lines fall through to the per-trigger byWord path. Two lines with the
+    // SAME trigger set get consolidated into one directive with multiple `*` pattern entries.
+    struct lineEntry { vector<string> patternTokens; string actionName; bool isReverse; };
+    vector<vector<string>> setOrder;
+    map<vector<string>, vector<lineEntry>> bySet;
     for(const grammarLine& line : lines){
-        if(byWord.find(line.verbWord) == byWord.end())
-            wordOrder.push_back(line.verbWord);
+        vector<string> triggerSet;
+        triggerSet.push_back(line.verbWord);
+        for(const string& w : line.additionalVerbWords) triggerSet.push_back(w);
+        if(bySet.find(triggerSet) == bySet.end())
+            setOrder.push_back(triggerSet);
         string action = line.targetVerb.empty() ? verbName : line.targetVerb;
-        byWord[line.verbWord].push_back({line.patternTokens, action});
+        bySet[triggerSet].push_back({line.patternTokens, action, line.isReverse});
     }
 
     auto toI6Word = [](const string& w) -> string {
@@ -2031,17 +2079,28 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
         return (e.size() == 1) ? ("'" + e + "//'") : ("'" + e + "'");
     };
 
-    // Beguile convention: a verb's name (lowercased) is its primary I6 trigger word. For
-    // Replace mode we treat that name as "already declared" even when declaredVerbWords doesn't
-    // contain it (e.g. extern verbs whose stdlib `Verb 'take' ...` directive Beguile never
-    // emitted but knows exists by convention). Without this, `extend Take { grammar = {{.take,
-    // .firmly, noun}}; }` would emit a fresh `verb 'take'` instead of `extend 'take' replace`.
+    // Look up this verb's full verbWords list (declared via BLR / extern body, defaulted at
+    // lift time). Used for the Replace-mode special case below.
     string verbNameLower = verbName;
     transform(verbNameLower.begin(), verbNameLower.end(), verbNameLower.begin(), ::tolower);
+    const vector<string>* verbWords = nullptr;
+    for(verbObjectDef* vd : languageService.verbs)
+        if(vd->name == verbNameLower){ verbWords = &vd->verbWords; break; }
 
-    for(const string& word : wordOrder){
-        bool isFirst = declaredVerbWords.find(word) == declaredVerbWords.end();
-        if(mode == extendDirective::Replace && word == verbNameLower) isFirst = false;
+    auto isFirstOccurrence = [&](const string& w){
+        if(declaredVerbWords.find(w) != declaredVerbWords.end()) return false;
+        // Replace mode treats any of this verb's claimed trigger words as pre-declared, so
+        // `extend Take { grammar = { {.take, .firmly, noun} }; }` emits `extend 'take' replace`
+        // rather than a fresh Verb directive. Extern triggers are already in declaredVerbWords
+        // via the lift-time pre-seed; this catches non-extern verbs whose own block hasn't yet
+        // emitted by the time the replace directive runs.
+        if(mode == extendDirective::Replace && verbWords)
+            for(const string& vw : *verbWords)
+                if(vw == w) return false;
+        return true;
+    };
+
+    auto emitDirectiveHead = [&](const string& word, bool isFirst){
         if(isFirst){
             declaredVerbWords.insert(word);
             if(isMeta) out << format("verb meta {0}\n", toI6Word(word));
@@ -2053,13 +2112,47 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
                 case extendDirective::Replace: out << format("extend {0} replace\n", toI6Word(word)); break;
             }
         }
-        const auto& entries = byWord[word];
+    };
+
+    auto emitPatterns = [&](const vector<lineEntry>& entries){
         for(size_t i = 0; i < entries.size(); i++){
             out << "    *";
             for(const string& pt : entries[i].patternTokens) out << " " << pt;
             out << format(" -> {0}", entries[i].actionName);
+            if(entries[i].isReverse) out << " reverse";
             if(i + 1 == entries.size()) out << ";";
             out << "\n";
+        }
+    };
+
+    for(const vector<string>& triggerSet : setOrder){
+        const vector<lineEntry>& entries = bySet[triggerSet];
+
+        // Combined multi-trigger Verb directive: only legal when ALL triggers are first-
+        // occurrence (I6's `Verb 'w1' 'w2' …` doesn't accept already-claimed words without
+        // warnings), AND we're emitting a Verb-mode directive (Extend takes a single trigger).
+        bool allFirst = true;
+        for(const string& w : triggerSet)
+            if(!isFirstOccurrence(w)){ allFirst = false; break; }
+
+        if(triggerSet.size() > 1 && allFirst){
+            // Single I6 directive listing all triggers.
+            string heads;
+            for(size_t i = 0; i < triggerSet.size(); i++){
+                if(i > 0) heads += " ";
+                heads += toI6Word(triggerSet[i]);
+                declaredVerbWords.insert(triggerSet[i]);
+            }
+            if(isMeta) out << format("verb meta {0}\n", heads);
+            else       out << format("verb {0}\n",      heads);
+            emitPatterns(entries);
+        } else {
+            // Single-trigger, or multi-trigger with mixed first/existing — fan out per trigger.
+            // Each trigger gets the same pattern list (one I6 directive per trigger).
+            for(const string& word : triggerSet){
+                emitDirectiveHead(word, isFirstOccurrence(word));
+                emitPatterns(entries);
+            }
         }
     }
 }

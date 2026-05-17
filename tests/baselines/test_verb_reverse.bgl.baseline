@@ -1,0 +1,30 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+constant story = "";
+constant headline = "";
+object give2
+  with perform [;
+    print (string)"give";
+  ]
+;
+[give2sub;
+                give2.perform();
+            ];
+extend 'give'
+    * held 'to' creature -> give2
+    * creature held -> give2 reverse;
+[main;
+];
+verb 'donate'
+    * held 'to' creature -> Give2
+    * creature held -> Give2 reverse;

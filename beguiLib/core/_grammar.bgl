@@ -1,25 +1,42 @@
 #once
 //=============================================================================
-// type grammarToken — declared as an extern enum by each library binding
-// (i6StandardLibrary, punyInform, etc.) since the available token set is
-// library-specific. Bare and qualified access both work via the existing
-// extern-enum resolution: `held` → I6 `held`; `grammarToken.held` → same.
+// Grammar type facade
+//
+// The classes below document the shape of grammar pattern elements and rules.
+// They are facade types — the parser handles grammar literal syntax directly,
+// and user code does not instantiate or reference these types in expressions.
+// They exist so the language model can be read and documented.
 
 //=============================================================================
-// type grammarPattern — a sequence of grammar tokens and dictionary words describing player input
-    extern class grammarPattern : _bglObject{ }
+// type patternElement — base class for one element of a grammar pattern.
+// A pattern element is one of:
+//   • dictionaryWord — a literal word the player must type, written `.word`
+//   • grammarToken   — a pattern keyword (noun, held, creature, ...); see the
+//                       grammarToken enum in the library binding
+//   • attribute      — an attribute name that filters acceptable nouns
+//   • a global function used as a parser hook
+    extern class patternElement : _bglObject { }
 
 //=============================================================================
-// type grammarRule — pairs a verb reference with a grammarPattern
-    extern class grammarRule : _bglObject{ }
-
-//=============================================================================
-// type grammarRuleList — collection of grammarRules; emits as I6 Verb directives
-    extern class grammarRuleList : _bglObject{
-        grammarRule rule;            // class-level member for type inference (individual and array rules)
+// type grammarRule — pairs a verb with a pattern and priority.
+// Constructed via literal syntax, inside a verb body or a grammar object:
+//   verb V { grammar = { {.trig, noun} }; }                 // implicit verb=V
+//   grammar G { grammarRule r = {V, {.trig, noun}, 5}; }    // explicit verb
+//
+// To emit I6's `-> Action reverse` (swaps noun/second_noun before the action runs),
+// place the `reverse` grammarToken value as the LAST element in the pattern:
+//   {.give, creature, held, reverse}
+// `reverse` is a patternElement like any other — the emitter detects it at the
+// tail of the pattern and renders it on the action side rather than the input side.
+    extern class grammarRule : _bglObject {
+        verb verb;                       // target action when this rule matches
+        array<patternElement> pattern;   // sequence of pattern elements
+        int priority;                    // sort priority (default 10 — see class verb)
     }
 
 //=============================================================================
-// type grammarElement — base class for grammar line elements (grammarToken, dictionaryWord)
-    extern class grammarElement : _bglObject{ }
-
+// type grammarRuleList — collection type for a verb's `grammar` property.
+// Conceptually array<grammarRule> with the verb implicit (the enclosing one).
+    extern class grammarRuleList : _bglObject {
+        grammarRule rule;            // class-level member used for type inference
+    }

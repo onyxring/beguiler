@@ -14,7 +14,7 @@
 - 2.2 Comments
 - 2.3 Case Sensitivity
 - 2.4 Identifiers
-  - 2.4.1 Reserved Prefix `_bgl`
+  - 2.4.1 Special Prefixes `_bgl`
 - 2.5 Literals
   - 2.5.1 Integer Literals
   - 2.5.2 String Literals
@@ -235,11 +235,26 @@ Beguile is not a general-purpose language. Its type system and object model are 
 - **Extensibility through emitters.** Performance-sensitive or platform-specific operations can be expressed as *emitters* — inline I6 fragments that are substituted at the call site. This gives library authors full control over the generated code without sacrificing type safety at the Beguile level.
 - **IF-native constructs.** Verbs, grammar, attributes, and world objects are first-class concepts in the language, not simulated through generic data structures.
 
+### Pretty Lies — Shorthand over a Consistent Core
+
+Beguile aims for **one consistent set of rules**.  For example: declarations live in member bodies; assignments end in `;`; types precede variable names... The canonical form of every construct follows those rules.
+
+But strict adherence to a consistent syntax can require needless boiler plate.  Some languages address this by introducing shorthand idioms or special-case syntaxes.  I6's implied `switch(action)` statement in `before` routines is one example of this, so is the micro-grammar used to define verbs.  These additions save keystrokes, but can feel inconsistent with rest of language.
+
+Beguile takes the other side of that trade: **shorthand forms ("pretty lies") translate into the canonical form** at parse time. The author sees a compact, readable surface; the canonical form remains the underlying truth, available whenever the shorthand doesn't fit.
+
+Here's a list of current pretty lies, supported in Beguile:
+- **Inferred member type for inherited properties.** Inside an object body, members may be declared without a type if it is declared anywhere in the object's ancestry. The parser looks this up and infers the type as though it had been specified. This rule saves restating `bool meta`, `int priority`, `grammarRuleList grammar`, and the like for every standard property each time an object is authored.  For example, `meta = true;` and `priority = 5;` inside a `verb` body lean on this rule, with `bool` and `int` carried in from `class verb`.
+  
+- **Extern verb trigger-word declarations** (§14.2): `extern verb V { .w1|.w2|.w3 }` is equivalent to `extern verb V { grammarRuleList grammar = { {.w1|.w2|.w3} }; }`.
+
+- **Single-line grammar shorthand** (§14.2): when a `grammar = { ... }` assignment contains a single line, the inner braces may be omitted — `grammar = {.trigger, pattern...}` is equivalent to `grammar = { {.trigger, pattern...} }`. Detected by a dictionary-word literal as the first content token after the outer `{`.
+
 ## 1.3 Compilation Model
 
 A Beguile source file (`.bgl`) is processed by the Beguile compiler through the following stages. Steps 1 and 6 are conditional and only run when blorb packaging is enabled (`generateBlorb = true` in `#beguilerSettings`); see §3.4.1.
 
-1. *(optional)* **Asset pre-scan** — when blorb packaging is enabled, the compiler scans `blorbAssetPath` for image and audio files and writes `_blorbAssets.bgl` containing an `eAssets` enum the source code can reference.
+1. *(optional)* **Asset pre-scan** — when blorb packaging is enabled, the compiler scans `blorbAssetPath` for image and audio files and writes `_blorbAssets.bgl` containing an `eAssets` enum the source code can reference. The user must include this file to make use of it.
 2. **Pre-scans** the source (and all included files) to register type, object, function, and variable stubs. This pass resolves forward references so that declarations may appear in any order.
 3. **Lexes and parses** the source in full, resolving types and checking compatibility against the stubs established in the previous pass.
 4. **Emits** an Inform 6 source file (`.inf`) that is semantically equivalent to the Beguile source.
@@ -306,7 +321,7 @@ Examples of valid identifiers: `score`, `myVar`, `_internal`, `room1`, `velvetCl
 
 Identifiers that match a reserved keyword (§2.8) may not be used as variable or function names.
 
-### 2.4.1 Reserved Prefixes `_bgl` and `bgl`
+### 2.4.1 Special Prefixes `_bgl` and `bgl`
 
 Identifiers beginning with `_bgl` or `bgl` are earmarked for language-generated symbols and runtime infrastructure (loop counters, frame pool variables, lambda functions, scratch temporaries, `bglInit`, `bglWorld`, etc.). This is a convention, rather than a hard requirement; however, it is best practice for user code to avoid names that begin with either prefix as collisions may produce undefined or erroneous I6 output.
 
@@ -427,16 +442,6 @@ Common accented characters can be written using shorthand escape sequences that 
 "café"          // emits as "caf@'e"
 'ñ'             // emits as 206 (ZSCII code)
 .café           // emits as 'caf@'e'
-```
-
-#### Raw Unicode characters in strings
-
-In addition to escape sequences, diacritical characters may be typed directly in source code. The compiler automatically translates recognized Unicode characters to their I6 accent notation. Both UTF-8 and Latin-1 encoded source files are supported.
-
-```bgl
-"Héllo wörld"    // emits as "H@'ello w@:orld"
-"café"           // emits as "caf@'e"
-"señor"          // emits as "se@~nor"
 ```
 
 The full ZSCII extended character set is supported (codes 155–224): diaeresis, acute, grave, circumflex, angstrom, slashed o, tilde, æ/Æ, ç/Ç, þ/Þ, ð/Ð, œ/Œ, ß, £, ¡, ¿. Unrecognized Unicode characters produce a compile-time error.
@@ -4032,6 +4037,22 @@ verb Examine {
 
 The type `grammarRuleList` can be inferred from the class declaration, so `grammar = { ... }` without the type name is also valid.
 
+**Single-line shorthand** (a *pretty lie* — see §1.2). When the `grammar = { ... }` assignment's first content token is a dictionary-word literal, the outer braces are interpreted as the lone grammar line's braces — the inner braces may be omitted:
+
+```bgl
+verb Whistle {
+    grammar = {.whistle, noun};                 // shorthand
+    void perform() { print("You whistle."); }
+}
+
+verb Whistle {
+    grammar = { {.whistle, noun} };             // canonical, equivalent
+    void perform() { print("You whistle."); }
+}
+```
+
+Multi-trigger via `|`-alternation still works in the shorthand: `grammar = {.hum|.murmur, noun};`. The shorthand only applies when a single grammar line is being declared; multi-line grammars use the canonical form with one set of braces per line. The shorthand is recognized wherever `grammar = { ... }` is accepted — verb bodies, `extend` blocks, standalone grammar objects, and extern verb bodies — because both forms go through the same parser path.
+
 `perform()` is the verb's action handler — it is called automatically when the player enters a command matching the verb's grammar. The base `verb` class declares `perform()` as a `default` method (see §5.8) that bridges to the I6 action routine. Since it is declared as `default`, overriding it requires no `replace` qualifier. A non-extern verb that does not define `perform()` produces a compiler warning.
 
 ### External Verbs
@@ -4045,6 +4066,58 @@ extern verb Go;
 ```
 
 `extern verb` declarations register the name in Beguile's type system for use in `switch(action)` comparisons, grammar lines, and method calls. Because the `verb` class defines `default emitter void perform()`, calling `Take.perform()` on an extern verb emits a call to the I6 action routine (`TakeSub`), bridging Beguile code to I6-defined verb handlers.
+
+#### Declaring Claimed Dictionary Words
+
+An I6 verb may claim multiple trigger words (e.g. `'inventory' 'inv' 'i'` all triggering Inv). To make those claims visible to the Beguile compiler — so a new grammar line in user code referencing one of those words emits as an `Extend` directive rather than a duplicate `Verb` directive — declare them inside the extern verb's body using the same `grammar` syntax used by non-extern verbs.
+
+**Pretty form** (most common; a *pretty lie* — see §1.2). When the extern verb's body begins with a dictionary-word literal, the body content is interpreted as the trigger-word section of a single grammar line:
+
+```bgl
+extern verb Inv  { .inventory|.inv|.i }
+extern verb Take { .take|.carry|.hold|.get|.pick|.peel }
+extern verb Quit { .q|.quit|.die }
+```
+
+**Canonical form**, equivalent to the pretty form above. Identical to non-extern verb body syntax:
+
+```bgl
+extern verb Inv {
+    grammar = {
+        {.inventory|.inv|.i},
+    };
+}
+```
+
+Both forms produce the same internal AST and the same claimed-words set; choose whichever reads better at the call site. The pretty form is typical for BLR bindings and single-line declarations; the canonical form when the body contains multiple grammar lines or other members.
+
+Three rules apply (canonical form examples shown):
+
+- **Multi-trigger uses `|`-alternation** (see §14.4 *Multi-trigger grammar lines*). The two canonical forms below produce the same claimed-word set:
+
+  ```bgl
+  extern verb V { grammar = { {.a|.b}, {.c|.d} }; }   // two lines
+  extern verb V { grammar = { {.a|.b|.c|.d} }; }      // one line
+  ```
+
+  The pretty form is the second shape:
+  ```bgl
+  extern verb V { .a|.b|.c|.d }
+  ```
+
+- **Pattern tokens after the trigger are ignored** (canonical form only; the pretty form's syntax accepts only trigger words). Beguile never emits I6 grammar for extern verbs (the I6 grammar is defined externally), so anything past the trigger position has no effect. Writing one is allowed (it can document the expected pattern shape) but the compiler issues a warning so the author isn't surprised:
+
+  ```bgl
+  extern verb PutOn { grammar = { {.put, noun, .on, noun} }; }
+  // warning: extern verb 'PutOn': pattern tokens after the trigger word(s)
+  //          in `grammar = {...}` are ignored — extern verbs don't emit
+  //          I6 grammar; only the dict words in the first position
+  //          contribute to the verb's claimed-words list
+  ```
+
+- **A bare `extern verb V;` defaults to a single claimed word — the lowercased verb name.** The body form is only needed when the verb claims additional words or when the primary word differs from the lowercased name.
+
+The first dict word in the first grammar line is the verb's **primary trigger** — the one used as the target word when the verb is extended via `extend V { grammar += { … } }`. Order matters only for that primary-trigger selection; all listed words are equally claimed for collision-detection purposes.
 
 ### Meta Verbs
 
@@ -4190,7 +4263,7 @@ The compiler validates that bare identifiers in grammar patterns are declared as
 
 ### Advanced Pattern Syntax
 
-**Dictionary word alternatives** — multiple dictionary words separated by `|` match any one of them. 
+**Dictionary word alternatives** — multiple dictionary words separated by `|` match any one of them. Alternation is allowed in any position, including the **first** (the verb trigger word):
 
 ```bgl
 verb Stow {
@@ -4200,6 +4273,30 @@ verb Stow {
     }
 }
 ```
+
+**Multi-trigger grammar lines** — when `|`-alternation appears in the first position, the line declares a single shared pattern that fires on any of the listed trigger words:
+
+```bgl
+verb TypeNum {
+    grammar = {
+        {.type | .enter | .put, number, .into | .in | .on | .onto, noun},
+    }
+    void perform() { print("You can't type anything there."); }
+}
+```
+
+When all listed trigger words are first-occurrence in the program, the compiler emits one combined I6 directive listing every trigger:
+
+```inf
+verb 'type' 'enter' 'put'
+    * number 'into'/'in'/'on'/'onto' noun -> typenum;
+```
+
+If any of the triggers is already declared (by a prior verb in this compilation, or pre-claimed by an extern verb), the emission **fans out** to one directive per trigger: a fresh `Verb` for the new triggers and `Extend` for the existing ones. Each emitted directive carries the same pattern. Multi-trigger lines inside `extend V { grammar += { … } }` always fan out, since I6's `Extend` directive accepts only one trigger word.
+
+Multi-trigger lines sharing the *same* trigger set across multiple grammar entries are consolidated into a single I6 directive with multiple `*` pattern lines — the trigger words are listed once.
+
+**Stdlib collisions.** When a trigger word in a multi-trigger line is already claimed by an I6 library verb (e.g. `'enter'`, `'put'`), the combined-Verb emission will produce an I6 "verb already defined" warning. Authors who need to add a pattern to existing stdlib verbs without warnings should write the line as separate `extend StdlibVerb { grammar += { … } }` blocks per trigger word.
 
 **Parameterized grammar tokens** — `noun(Routine)` and `scope(Routine)` pass a routine to the I6 parser. The routine must be a declared global function returning `bool`:
 

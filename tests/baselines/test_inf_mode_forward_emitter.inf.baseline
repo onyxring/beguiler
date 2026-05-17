@@ -10,9 +10,6 @@ object _bglUtil
 object bgl
   with utilities _bglutil
 ;
-[caller;
-    print (the)myobj;
-];
 
 ! test_inf_mode_forward_emitter.inf — emitter functions declared inside a `#bgl{}`
 ! island must be reachable as forward calls from earlier members. This requires
@@ -27,6 +24,9 @@ object bgl
 constant story = "";
 constant headline = "";
 global myObj;
+[caller;
+    print (the)myobj;
+];
 
 
 end;
