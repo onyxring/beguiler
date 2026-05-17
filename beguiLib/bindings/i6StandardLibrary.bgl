@@ -204,24 +204,36 @@ extern const int PAST_TENSE;
 // the practical mechanism: bare-resolve (held) or qualified (grammarToken.held).
 // Bare names won't shadow locals/params — lexical scope wins.
 extern enum grammarToken {
-    noun,           // a noun object
-    held,           // object currently held by the actor
-    creature,       // an animate object (has 'animate' attribute)
-    topic,          // a conversational topic (any text)
-    multi,          // one or more nouns
-    multiheld,      // one or more held nouns
-    multiexcept,    // multiple nouns except one
-    multiinside,    // multiple nouns inside a container
-    special,        // a special token (number or dictionary word)
-    anynumber,      // any number typed by the player (no range check)
-    number,         // a number typed by the player
-    scope,          // placeholder; use scope=Routine form in grammar lines
-    reverse         // action-target modifier — must appear as the LAST element in a grammar
-                    // line literal: `{.give, creature, held, reverse}`. Emits I6's
-                    // `-> Action reverse` form, which swaps noun/second_noun before the
-                    // action routine runs (e.g. `give X to Y` and `give Y X` both land
-                    // X in noun, Y in second_noun). Not a pattern token — does not match
-                    // user input. Compile error if it appears anywhere other than last.
+    /// Any in-scope object.
+    noun,
+    /// An object the actor is currently holding.
+    held,
+    /// An animate object — one with the `animate` attribute.
+    creature,
+    /// A free-form topic phrase (any sequence of words the player types).
+    topic,
+    /// One or more in-scope objects.
+    multi,
+    /// One or more held objects.
+    multiheld,
+    /// Multiple in-scope objects, excluding one already matched (commonly used after a preposition).
+    multiexcept,
+    /// Multiple objects inside a specific container.
+    multiinside,
+    /// A number or a single dictionary word.
+    special,
+    /// Any number typed by the player (no range check).
+    anynumber,
+    /// A number typed by the player (range-checked to fit a word).
+    number,
+    /// Placeholder marker — use the `scope=Routine` form on a real grammar line to set scope.
+    scope,
+    /// Action-target modifier — must appear as the LAST element of a grammar line literal,
+    /// e.g. `{.give, creature, held, reverse}`. Emits I6's `-> Action reverse`, which swaps
+    /// `noun` and `second_noun` before the action routine runs (so `give X to Y` and
+    /// `give Y X` both land X in `noun`, Y in `second_noun`). Not a pattern token — does
+    /// not match user input. Compile error if it appears anywhere other than last.
+    reverse
 }
 
 //-- Standard game actions ----------------------------------------------------
