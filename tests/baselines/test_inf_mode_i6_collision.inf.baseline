@@ -9,9 +9,6 @@ object _bglUtil
 object bgl
   with utilities _bglutil
 ;
-[myhelper n;
-    return n + 1;
-];
 ! test_inf_mode_i6_collision.inf — Slice 6: cross-language symbol collision warning.
 !
 ! When an I6 top-level declaration shares a name with a Beguile-declared global from a
@@ -22,6 +19,9 @@ object bgl
 ! level diagnostic, not error), so the .transpiled.inf is still produced and baselined.
 
 
+[myhelper n;
+    return n + 1;
+];
 
 
 ! I6 routine with the same name — should warn at compile time. (The actual emitted I6

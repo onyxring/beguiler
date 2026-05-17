@@ -1,0 +1,79 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+constant story = "";
+constant headline = "";
+object typenum
+  with perform [;
+    print (string)"type num";
+  ]
+;
+[typenumsub;
+                typenum.perform();
+            ];
+verb 'typo' 'entrz' 'putz'
+    * number 'into'/'in'/'on'/'onto' noun -> typenum;
+object toggle
+  with perform [;
+    print (string)"toggle";
+  ]
+;
+[togglesub;
+                toggle.perform();
+            ];
+verb 'flip' 'flop'
+    * noun -> toggle
+    * noun 'twice' -> toggle;
+object beep
+  with perform [;
+    print (string)"beep";
+  ]
+;
+[beepsub;
+                beep.perform();
+            ];
+verb 'beep'
+    * noun -> beep;
+object chirp
+  with perform [;
+    print (string)"chirp";
+  ]
+;
+[chirpsub;
+                chirp.perform();
+            ];
+verb 'chirp'
+    * noun -> chirp;
+extend 'beep'
+    * noun -> chirp;
+verb 'tweet'
+    * noun -> chirp;
+object squelch
+  with perform [;
+    print (string)"squelch";
+  ]
+;
+[squelchsub;
+                squelch.perform();
+            ];
+verb 'squelch'
+    * noun -> squelch;
+verb 'mash' 'squish'
+    * noun -> squelch;
+extend 'squelch'
+    * noun 'firmly' -> squelch;
+verb 'crush'
+    * noun 'firmly' -> squelch;
+verb 'grind'
+    * noun 'firmly' -> squelch;
+[main;
+];

@@ -37,7 +37,8 @@ verb 'smelt'
 extend 'smelt' first
     * 'urgently' noun -> Smelt;
 extend 'smelt'
-    * 'quickly' noun -> Smelt
+    * 'quickly' noun -> Smelt;
+extend 'smelt'
     * 'lazily' noun -> Smelt;
 extend 'trundle' first
     * 'softly' noun -> Trundle;

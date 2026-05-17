@@ -1,0 +1,47 @@
+// test_grammar_single_line_shorthand.bgl — single-line grammar shorthand.
+//
+// `grammar = {.trigger, pattern...}` is sugar for `grammar = { {.trigger, pattern...} }`
+// — the outer braces are interpreted as the one and only grammar line when the first
+// content token is a dictionaryWord. Detected by parseGrammarLines (the same parser path
+// the canonical multi-line form uses) and mirrors the existing extern-verb body shorthand
+// (parseObjectBody) so the same shape works wherever a grammar list is accepted.
+//
+// Verifies:
+//   - verb body: single-line shorthand emits identically to canonical form
+//   - mixing shorthand and canonical forms across verbs in the same file is supported
+//   - canonical multi-line form continues to work unchanged
+//
+// Negative case (sibling-type rejection, etc.) is covered by the existing
+// _test_array_dict_sibling_*.bgl tests; the shorthand path runs the same content parser
+// (parseGrammarLineContent) so it inherits all the same validation.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Single-line shorthand
+verb Whistle {
+    grammar = {.whistle, noun};
+    void perform(){ print("whistle"); }
+}
+
+// Single-line shorthand with multi-trigger via |-alternation
+verb Hum {
+    grammar = {.hum|.murmur, noun};
+    void perform(){ print("hum"); }
+}
+
+// Canonical multi-line form (unchanged)
+verb Tap {
+    grammar = {
+        {.tap, noun},
+        {.knock, noun},
+    };
+    void perform(){ print("tap"); }
+}
+
+void main(){}

@@ -346,9 +346,16 @@ class arrayDeclaration : public variableDeclaration {
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
 };
 
-// a single grammar line: verbWord is the player's trigger word; patternTokens are I6-ready strings
+// a single grammar line: verbWord is the player's trigger word; patternTokens are I6-ready strings.
+// additionalVerbWords holds any extra triggers from |-alternation in the first position
+// (e.g. `{.type|.enter|.put, number, noun}` → verbWord="type", additionalVerbWords=["enter","put"]).
+// When all triggers are first-occurrence in emitGrammarLines, they emit as one combined I6 Verb
+// directive: `Verb 'type' 'enter' 'put' * pat -> Action;`. If any trigger is already declared (or
+// the mode is Extend/Replace, which I6 only accepts one trigger word for), the emitter fans out
+// to per-trigger directives.
 struct grammarLine {
     string verbWord;                // raw word without quotes, e.g. "put" (emitter adds them)
+    vector<string> additionalVerbWords;  // extra triggers from |-alternation in first position; empty for single-trigger lines
     vector<string> patternTokens;   // I6-ready: "'on'", "noun", "'up/p'", etc.
     string targetVerb;              // per-line verb override (multi-verb grammar objects); empty = use parent context
     int priority = 0;               // sort priority. The canonical default lives on `class verb` in BLR (_verb.bgl);
@@ -358,6 +365,9 @@ struct grammarLine {
     bool isReplaceMode = false;     // true → emit as I6 `Extend 'w' replace …` (drops existing rules for that
                                     // trigger word). Set when an extend body uses `grammar = { … }` (not `+=`).
                                     // Priority is meaningless under replace.
+    bool isReverse = false;         // true → emit as I6 `* pattern -> Action reverse;` (swaps noun/second_noun
+                                    // when the action receives the parsed args). Set by the trailing `reverse`
+                                    // pseudo-token in the line literal: `{.give, creature, held, reverse}`.
 };
 
 // a verb declaration — an objectDef of class 'verb'; holds optional action body and inline grammar
@@ -367,6 +377,11 @@ class verbObjectDef : public objectDef {
         bool isMeta = false;                // I6 meta verb (declared via `meta = true;` or `extern meta verb …`)
         int priority = 0;                   // anchor priority. Resolved in emitVerbObject from BLR's `class verb`
                                             // default, then overridden by any `priority = N;` in the verb body.
+        vector<string> verbWords;           // dict words this verb claims. For extern verbs, declared via
+                                            // `extern verb V { verbWords = {.w1, .w2}; }` body block; bare
+                                            // `extern verb V;` defaults to {lowercased-name}. For non-extern
+                                            // verbs, auto-populated from grammar lines if not explicitly set.
+                                            // First entry is the primary trigger word.
         functionDef* doFunc = nullptr;      // action routine; I6 name = verbName + "sub"
         vector<grammarLine> grammarLines;   // inline grammar (from verb { grammar { } })
 };

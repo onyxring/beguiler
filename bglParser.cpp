@@ -2205,11 +2205,20 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(peek.is(token::assignment) || peek.is(token::endStatement)){
                 string memberName = tok.value;
                 string inferredType;
-                // Search base classes for a member with this name
+                // Search base classes for a member with this name. For arrayDeclaration members,
+                // reconstruct the full templated typeName (`array<dictionaryWord>`) so downstream
+                // element-type validation has the T to check against — `vd->type.name` alone is
+                // just `array` and loses the elementType.
                 std::function<void(classDef*)> searchBases = [&](classDef* c){
                     for(typeMember* m : c->members)
                         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                            if(vd->name == memberName){ inferredType = vd->type.name; return; }
+                            if(vd->name == memberName){
+                                if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
+                                    inferredType = "array<" + arr->elementType + ">";
+                                else
+                                    inferredType = vd->type.name;
+                                return;
+                            }
                     for(classDef* base : c->baseClasses){ searchBases(base); if(!inferredType.empty()) return; }
                 };
                 for(classDef* base : newClass.baseClasses){ searchBases(base); if(!inferredType.empty()) break; }
@@ -2530,6 +2539,25 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                         t2 = file.getToken();
                     }
                     file.getToken(token::endStatement);
+                    // Element-type validation for inherited array members reassigned in this
+                    // class body. Mirrors parsePropertyValue's check — `returnType` here is the
+                    // full templated form (`array<dictionaryWord>`) when the inferred base member
+                    // is an arrayDeclaration, so we can extract T and reject sibling/supertype
+                    // values (e.g. `name = {.gadget, noun}` where `noun` is a grammarToken).
+                    {
+                        string rtStr = (string)returnType;
+                        string expectedElemType;
+                        if(rtStr.size() > 6 && rtStr.substr(0, 6) == "array<" && rtStr.back() == '>')
+                            expectedElemType = rtStr.substr(6, rtStr.size() - 7);
+                        if(!expectedElemType.empty())
+                            for(size_t i = 0; i < list->elements.size(); i++){
+                                expression* elem = list->elements[i];
+                                if(elem->resolvedType.empty())
+                                    parsingError(format("Undeclared identifier in initializer list (element {0})", i));
+                                else if(!isTypeCompatible(elem->resolvedType, expectedElemType))
+                                    parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
+                            }
+                    }
                     varDef.declaredExpressionValue = list;
                 } else {
                     varDef.declaredExpressionValue = parseExpression(first, {token::endStatement}, nullptr, nullptr);
@@ -8638,19 +8666,45 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // Register into globals EARLY (replacing any pre-scan stub) so that LSP error recovery
     // preserves partial parse state even if the body parse throws. The full body and params
     // are populated via references into this same object below.
+    //
+    // In .inf-mode, Pass 1 walks every #bgl island before Pass 2 starts, so all function
+    // stubs cluster at the front of `globals` regardless of where their islands sit in the
+    // .inf body. Replacing the stub in place would leave the funcDef there too — emitting
+    // it ahead of compositeNodes for raw I6 (and `#includeI6` directives) that Pass 2
+    // push_backs later. WadeWar3 hit this: `[initialise; ... location = ...]` was emitted
+    // before `#include "...#parser.h"` (which declares `location`), and I6 rejected the
+    // assignment. So in .inf-mode we erase the stub and push_back the real funcDef,
+    // landing it at the current Pass-2 position. Other stubs remain visible for
+    // forward-reference resolution during this function's body parse.
+    //
+    // In .bgl-mode, Pass 1 walks the source in order, so prescan stubs are already at
+    // their source-order positions — claim in place preserves source order naturally.
     bool registeredEarly = false;
-    for(typeDef*& g : languageService.globals){
-        if(auto* stub = dynamic_cast<functionDef*>(g)){
-            if(stub->name == funcDef.name && stub->isPrePassStub){
-                g = &funcDef;
-                registeredEarly = true;
-                break;
+    if(languageService.isInfMode){
+        for(auto it = languageService.globals.begin(); it != languageService.globals.end(); ++it){
+            if(auto* stub = dynamic_cast<functionDef*>(*it)){
+                if(stub->name == funcDef.name && stub->isPrePassStub){
+                    languageService.globals.erase(it);
+                    break;
+                }
             }
         }
-    }
-    if(!registeredEarly){
         languageService.globals.push_back(&funcDef);
         registeredEarly = true;
+    } else {
+        for(typeDef*& g : languageService.globals){
+            if(auto* stub = dynamic_cast<functionDef*>(g)){
+                if(stub->name == funcDef.name && stub->isPrePassStub){
+                    g = &funcDef;
+                    registeredEarly = true;
+                    break;
+                }
+            }
+        }
+        if(!registeredEarly){
+            languageService.globals.push_back(&funcDef);
+            registeredEarly = true;
+        }
     }
 
     processParameterList(funcDef);
@@ -9126,12 +9180,21 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
 
 void bglParser::processInheritedMember(objectDef& obj, token nameTok){
     string propTypeName;
-    // Search the object's declared class first (if any), then fall back to the base 'object' class
+    // Search the object's declared class first (if any), then fall back to the base 'object' class.
+    // For arrayDeclaration members, reconstruct the full templated typeName (e.g. `array<dictionaryWord>`)
+    // so parsePropertyValue can extract the element type — otherwise `vd->type.name` returns just `array`
+    // and parsePropertyValue's fallback misidentifies the element type as int (from operator[]'s index param).
     std::function<void(classDef*)> searchClass = [&](classDef* cls){
         if(!cls || !propTypeName.empty()) return;
         for(typeMember* m : cls->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->name == nameTok.value){ propTypeName = vd->type.name; return; }
+                if(vd->name == nameTok.value){
+                    if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
+                        propTypeName = "array<" + arr->elementType + ">";
+                    else
+                        propTypeName = vd->type.name;
+                    return;
+                }
         for(classDef* base : cls->baseClasses)
             searchClass(base);
     };
@@ -9339,6 +9402,34 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
             objectDef* savedObject = currentObject;
             currentObject = &newObj;
             openCompileContext(eCompileContext::objectDef);
+
+            // Syntax sweetener ("pretty lie") for extern verb claimed-words: when the body
+            // begins with a dictionary-word literal, the entire body is interpreted as the
+            // trigger-words section of a single grammar line. Desugars to the canonical form
+            // `extern verb V { grammar = { {.w1|.w2|.w3} }; }`. Triggers may be combined with
+            // `|`-alternation; no pattern tokens are allowed in this form (extern verbs don't
+            // emit grammar). The canonical body parsing path below handles all other cases.
+            if(file.peekToken().is(eTokenType::dictionaryWord)){
+                auto* vod = dynamic_cast<verbObjectDef*>(&newObj);
+                if(!vod)
+                    parsingError(format("extern object '{0}': dictionary-word body shorthand is only valid on extern verbs", newObj.dName()));
+                grammarLine line;
+                token trigger = file.getToken(eTokenType::dictionaryWord);
+                line.verbWord = trigger.value;
+                while(file.peekToken().is("|")){
+                    file.getToken();  // consume |
+                    token alt = file.getToken(eTokenType::dictionaryWord);
+                    line.additionalVerbWords.push_back(alt.value);
+                }
+                file.getToken(token::braceClose);
+                line.targetVerb = newObj.displayName.empty() ? newObj.name : newObj.displayName;
+                line.isOwnLine = true;
+                vod->grammarLines.push_back(line);
+                closeCompileContext(eCompileContext::objectDef);
+                currentObject = savedObject;
+                return false;
+            }
+
             token tok = file.getToken();
             while(tok.isNot(token::braceClose) && tok.isNot(eTokenType::eof)){
                 Qualifiers q = parseQualifiers(tok);
@@ -9403,6 +9494,29 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
                     prop.type = languageService.getType(tok.value);
                     prop.isExternal = true;
                     newObj.members.push_back((typeMember*)&prop);
+                } else if(tok.is(eTokenType::identifier) && tok.value == "grammar"){
+                    // Extern verb body: `grammar = { {.w1|.w2|.w3, ...}, ... };` declares the dict
+                    // words this verb claims at the I6 level. Identical syntax to non-extern verbs;
+                    // the difference is purely emission: extern verbs never emit grammar (their I6
+                    // grammar is defined externally), so only the trigger words (first dict word
+                    // of each line plus |-alternation extras) are meaningful here. Pattern tokens
+                    // after the trigger position are parsed (for syntax validation) but ignored;
+                    // a warning is issued so the author knows they have no effect.
+                    auto* vod = dynamic_cast<verbObjectDef*>(&newObj);
+                    if(!vod)
+                        parsingError(format("'grammar' is only valid inside a verb body (on '{0}')", newObj.dName()));
+                    file.getToken(token::assignment);
+                    vector<grammarLine> lines = parseGrammarLines();
+                    string verbDisplayName = newObj.displayName.empty() ? newObj.name : newObj.displayName;
+                    for(grammarLine& gl : lines){
+                        if(!gl.patternTokens.empty())
+                            parsingWarning(format("extern verb '{0}': pattern tokens after the trigger word(s) in `grammar = {{...}}` are ignored — extern verbs don't emit I6 grammar; only the dict words in the first position contribute to the verb's claimed-words list",
+                                verbDisplayName));
+                        gl.targetVerb = verbDisplayName;
+                        gl.isOwnLine = true;
+                        vod->grammarLines.push_back(gl);
+                    }
+                    if(file.peekToken().is(token::endStatement)) file.getToken();
                 } else {
                     parsingError(format("Unexpected '{0}' in extern object body", tok.value));
                 }
@@ -10164,7 +10278,7 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
                     for(const grammarLine& rem : toRemove){
                         g->grammarLines.erase(
                             remove_if(g->grammarLines.begin(), g->grammarLines.end(),
-                                [&](const grammarLine& gl){ return gl.verbWord == rem.verbWord && gl.patternTokens == rem.patternTokens; }),
+                                [&](const grammarLine& gl){ return gl.verbWord == rem.verbWord && gl.additionalVerbWords == rem.additionalVerbWords && gl.patternTokens == rem.patternTokens; }),
                             g->grammarLines.end());
                     }
                 }
@@ -10447,9 +10561,17 @@ grammarLine bglParser::parseGrammarLineContent(){
 
     grammarLine line;
 
-    // First token: the verb trigger word — must be a singular dict word
+    // First token: the verb trigger word — a dict word, with optional |-alternation for
+    // multi-trigger lines (e.g. `.type|.enter|.put`). Extras land in additionalVerbWords;
+    // they emit as one combined `verb 'w1' 'w2' 'w3' ...` directive when all are first-
+    // occurrence, or fan out to per-trigger directives otherwise (see emitGrammarLines).
     token trigger = file.getToken(eTokenType::dictionaryWord);
     line.verbWord = trigger.value;   // raw word, e.g. "put"
+    while(file.peekToken().is("|")) {
+        file.getToken();  // consume '|'
+        token alt = file.getToken(eTokenType::dictionaryWord);
+        line.additionalVerbWords.push_back(alt.value);
+    }
 
     // Remaining pattern tokens, comma-separated until }
     token tok = file.getToken({token::comma, token::braceClose});
@@ -10510,6 +10632,18 @@ grammarLine bglParser::parseGrammarLineContent(){
                 }
             }
 
+            // `reverse` pseudo-token — action-target modifier, not a pattern token.
+            // Must be the LAST element in the line literal (next token must be `}`).
+            // Sets line.isReverse and skips push_back so it doesn't end up in the I6 pattern.
+            if(resolvedType == "grammartoken" && tokenStr == "reverse"){
+                token next = file.peekToken();
+                if(next.isNot(token::braceClose))
+                    parsingError("'reverse' must be the last element in a grammar line literal — no tokens may follow it");
+                line.isReverse = true;
+                tok = file.getToken({token::comma, token::braceClose});  // consume `}`
+                break;
+            }
+
             if(file.peekToken().is("(")){
                 // NOUN(Routine) / SCOPE(Routine) — parameterized grammar token
                 if(resolvedType != "grammartoken")
@@ -10542,10 +10676,26 @@ grammarLine bglParser::parseGrammarLineContent(){
 // Parse a grammar line list: { {.put, held, .on, noun}, {.hang, held, .on, noun} }
 // First token of each line is the verb trigger word (must be a dictionaryWord).
 // Remaining tokens are pattern tokens: dict words become I6 'word', identifiers stay as-is.
+//
+// Single-line shorthand ("pretty lie"): when the first content token after the outer `{`
+// is a dictionaryWord, the entire outer braces are treated as the one and only grammar
+// line — `grammar = {.give, held, .to, creature}` desugars to
+// `grammar = { {.give, held, .to, creature} }`. Mirrors the existing extern-verb body
+// shorthand (parseObjectBody) so the same shape works at any grammar-list site.
 vector<grammarLine> bglParser::parseGrammarLines(){
     vector<grammarLine> result;
 
     file.getToken(token::braceOpen);   // outer {
+
+    // Single-line shorthand: outer `{` directly followed by a dictionaryWord means the
+    // outer braces ARE the line literal. parseGrammarLineContent reads from the current
+    // position (just past `{`) and consumes through the matching `}` — which is the
+    // outer close here.
+    if(file.peekToken().is(eTokenType::dictionaryWord)){
+        result.push_back(parseGrammarLineContent());
+        return result;
+    }
+
     token tok = file.getToken();
     while(tok.isNot(token::braceClose)){
         if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside grammar — missing closing '}'");

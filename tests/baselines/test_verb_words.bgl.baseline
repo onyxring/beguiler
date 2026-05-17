@@ -1,0 +1,32 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+constant story = "";
+constant headline = "";
+object myown
+  with perform [;
+    print (string)"own";
+  ]
+;
+[myownsub;
+                myown.perform();
+            ];
+extend 'gamma'
+    * 'check' -> myown;
+[main;
+];
+extend 'foo' first
+    * noun -> myextverb;
+extend 'bar'
+    * noun 'down' -> myextverb;
+extend 'beta'
+    * noun -> myextverb2;
