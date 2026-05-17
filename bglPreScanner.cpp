@@ -368,6 +368,12 @@ void bglParser::preScanGlobalLoop(){
         token tok = file.getToken();
         if(tok.is(eTokenType::eof)) break;
 
+        // Stray top-level `;` — silently skip. Authors sometimes write trailing `;` after a
+        // brace block (e.g. `extern verb V { ... };`), which would otherwise fall through to
+        // preScanSkipToSemicolon at the loop tail and swallow the next statement looking for
+        // the next `;`.
+        if(tok.is(token::endStatement)) continue;
+
         if(tok.is(eTokenType::directive)){ preScanDirective(tok); continue; }
 
         Qualifiers q = parseQualifiers(tok);

@@ -1,0 +1,48 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+constant story = "";
+constant headline = "";
+object whistle
+  with perform [;
+    print (string)"whistle";
+  ]
+;
+[whistlesub;
+                whistle.perform();
+            ];
+verb 'whistle'
+    * noun -> whistle;
+object hum
+  with perform [;
+    print (string)"hum";
+  ]
+;
+[humsub;
+                hum.perform();
+            ];
+verb 'hum' 'murmur'
+    * noun -> hum;
+object tap
+  with perform [;
+    print (string)"tap";
+  ]
+;
+[tapsub;
+                tap.perform();
+            ];
+verb 'tap'
+    * noun -> tap;
+verb 'knock'
+    * noun -> tap;
+[main;
+];

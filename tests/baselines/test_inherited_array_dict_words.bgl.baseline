@@ -1,0 +1,23 @@
+!% -v5
+!% -E1
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+constant story = "";
+constant headline = "";
+class marble
+  with
+    name 'chocolate' 'covered' 'marble' 'marbles/p' 
+;
+thing widget
+  with name 'gadget' 'gizmo' 
+;
+[main;
+];

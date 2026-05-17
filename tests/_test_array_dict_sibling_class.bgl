@@ -1,0 +1,21 @@
+// Negative test: subclass-decl rejects sibling-type values in array<dictionaryWord>.
+//
+// Parallel to _test_array_dict_sibling_instance.bgl but exercises the class-body
+// inheritance path (which doesn't route through parsePropertyValue and previously
+// had no element-type validation at all — initializer was silently emitted as
+// `name 'gadget' noun ,` producing invalid I6). The class-body initializer
+// parse site now runs the same element-type check as the instance path.
+// EXPECT_ERROR: expected 'dictionaryword'
+
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <bindings/i6StandardLibrary>
+
+emitter class thing {
+    array<dictionaryWord> name;
+}
+
+class widget : thing {
+    name = {.gadget, noun};   // noun is a grammarToken — sibling, not dictionaryWord
+}
+
+void main(){}

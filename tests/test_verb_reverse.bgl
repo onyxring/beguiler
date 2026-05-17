@@ -1,0 +1,42 @@
+// test_verb_reverse.bgl — `reverse` pseudo-token for I6 `-> Action reverse` emission.
+//
+// `reverse` lives in the grammarToken extern enum but is not a real pattern token —
+// it's an action-target modifier. When it appears as the LAST element in a grammar
+// line literal, the parser strips it from the pattern and sets line.isReverse, which
+// the emitter renders as ` reverse` after the action target in the I6 directive.
+//
+// Used by symmetric verbs like Give whose natural grammar (`give X to Y`) and inverse
+// (`give Y X`) need to land args in the same slots — I6's `reverse` swaps noun and
+// second_noun before the action routine runs.
+//
+// Verifies:
+//   - In a verb-body grammar line: `{.trig, ..., reverse}` emits `-> Verb reverse`.
+//   - In a standalone grammarRule literal: same pseudo-token, same emission.
+//   - reverse is optional; lines without it emit normally.
+//   - reverse must be the last element — covered by the matching negative test
+//     `_test_verb_reverse_not_last.bgl`.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Verb-body: one line with reverse, one without — different patterns map to the same action
+verb Give2 {
+    grammar = {
+        {.give, held, .to, creature},                // give X to Y → noun=X, second_noun=Y
+        {.give, creature, held, reverse},            // give Y X    → I6 swaps so still noun=X, second_noun=Y
+    };
+    void perform(){ print("give"); }
+}
+
+// grammarRule form: reverse on a standalone literal (and one without, for comparison)
+grammar gifts {
+    grammarRule r1 = {Give2, {.donate, held, .to, creature}};
+    grammarRule r2 = {Give2, {.donate, creature, held, reverse}};
+}
+
+void main(){}

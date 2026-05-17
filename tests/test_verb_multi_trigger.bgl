@@ -1,0 +1,83 @@
+// test_verb_multi_trigger.bgl — multi-trigger grammar-line syntax via |-alternation in first position.
+//
+// `{.w1|.w2|.w3, pat...}` declares a grammar line that fires on any of the listed trigger words,
+// with one shared pattern. When all triggers are first-occurrence in this verb's emission, Beguile
+// emits a single combined I6 directive: `verb 'w1' 'w2' 'w3' * pat -> Action;`.
+//
+// When any trigger is already declared (or the line is contributed via extend/+= or replace mode),
+// the emitter fans out to one I6 directive per trigger word, each with the same pattern.
+//
+// Verifies:
+//   - Single multi-trigger line → combined Verb directive
+//   - Multiple multi-trigger lines with the SAME trigger set → consolidated under one directive
+//     with multiple `*` patterns
+//   - Multi-trigger line whose triggers overlap a prior single-trigger declaration → fan-out
+//     emission (one Verb for the new trigger, Extend for the existing one)
+//   - Multi-trigger line inside `extend V { grammar += { ... } }` → fan-out emission (I6 Extend
+//     directives accept only one trigger word)
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Single multi-trigger line — emits as one combined Verb directive
+verb TypeNum {
+    grammar = {
+        {.typo|.entrz|.putz, number, .into|.in|.on|.onto, noun},
+    };
+    void perform(){ print("type num"); }
+}
+
+// Two multi-trigger lines sharing the SAME trigger set — consolidated under one directive
+verb Toggle {
+    grammar = {
+        {.flip|.flop, noun},
+        {.flip|.flop, noun, .twice},
+    };
+    void perform(){ print("toggle"); }
+}
+
+// A single-trigger verb whose word later appears in a multi-trigger line for another verb —
+// the multi-trigger line must fan out (Beep already declared 'beep')
+verb Beep {
+    grammar = {
+        {.beep, noun},
+    };
+    void perform(){ print("beep"); }
+}
+
+verb Chirp {
+    grammar = {
+        {.chirp|.beep|.tweet, noun},   // 'beep' is already declared → fan out
+    };
+    void perform(){ print("chirp"); }
+}
+
+// Multi-trigger inside an extend block, all triggers brand new — still emits as one combined
+// Verb directive (each new word is a fresh I6 verb mapping to the action; there's nothing to Extend)
+verb Squelch {
+    grammar = {
+        {.squelch, noun},
+    };
+    void perform(){ print("squelch"); }
+}
+
+extend Squelch {
+    grammar += {
+        {.mash|.squish, noun},
+    };
+}
+
+// Multi-trigger inside an extend, mixed state — one trigger already exists, two are new.
+// Emits fan-out: extend for the existing trigger, fresh Verbs for the new ones.
+extend Squelch {
+    grammar += {
+        {.squelch|.crush|.grind, noun, .firmly},
+    };
+}
+
+void main(){}

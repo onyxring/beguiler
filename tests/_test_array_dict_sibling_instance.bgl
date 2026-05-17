@@ -1,0 +1,21 @@
+// Negative test: instance-decl rejects sibling-type values in array<dictionaryWord>.
+//
+// `array<dictionaryWord>` should only accept dictionaryWord values. A grammarToken
+// (sibling subtype under patternElement) is NOT acceptable — siblings aren't subtypes
+// of each other. The error message must name 'dictionaryword' as the expected type,
+// NOT 'int' (the pre-fix bug, traced to operator[]'s int-index parameter being read
+// as the element type when the templated typeName was truncated to bare `array`).
+// EXPECT_ERROR: expected 'dictionaryword'
+
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <bindings/i6StandardLibrary>
+
+emitter class thing {
+    array<dictionaryWord> name;
+}
+
+thing widget {
+    name = {.gadget, noun};   // noun is a grammarToken — sibling, not dictionaryWord
+}
+
+void main(){}

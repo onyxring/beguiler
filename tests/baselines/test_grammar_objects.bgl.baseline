@@ -55,7 +55,7 @@ verb 'inspect'
     * noun -> Examine;
 verb 'nab'
     * noun -> Take;
-verb 'discard'
+extend 'discard'
     * held -> Drop;
 verb 'study'
     * noun -> Examine;
