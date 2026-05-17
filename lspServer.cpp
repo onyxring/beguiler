@@ -1242,10 +1242,11 @@ json LspServer::handleCompletion(const json& params) {
     for(int i = 0; i <= line; i++) getline(stream, lineText);
 
     // ── Phase order ──
-    //   1. Dotted access (foo.|)           — return members of foo's type / enum values if foo is an enum
-    //   2. Enum RHS in bs-block (prop = |) — return enum values for the property's declared type
-    //   3. Bare identifier in bs-block     — return beguilerSettingsType property names
-    //   4. Fallthrough                      — return nullptr (let client do word completion)
+    //   1.   Dotted access (foo.|)           — return members of foo's type / enum values if foo is an enum
+    //   1.5. Grammar pattern literal         — cursor inside `grammar [+]= { … ▮ … }` → grammarToken values
+    //   2.   Enum RHS in bs-block (prop = |) — return enum values for the property's declared type
+    //   3.   Bare identifier in bs-block     — return beguilerSettingsType property names
+    //   4.   Fallthrough                     — return nullptr (let client do word completion)
     // Dotted-access wins over bs-block member completion so `target = eTarget.` correctly
     // offers Glulx/Z3/Z5/Z8 instead of the 24 property names.
 
@@ -1594,6 +1595,77 @@ json LspServer::handleCompletion(const json& params) {
                 }
 
         return items;
+    }
+
+    // ── Phase 1.5: grammar pattern literal context ────────────────────────
+    // Detect cursor inside a grammar pattern literal:
+    //   verb V { grammar = { {.w, ▮} } }            (canonical)
+    //   verb V { grammar = {.w, ▮} }                (single-line shorthand)
+    //   extend V { grammar += { {.w, ▮} } }
+    //   grammarRule r = {Verb, {.w, ▮}}              (rule literal form)
+    // Offers grammarToken enum members (noun, held, creature, reverse, etc.).
+    //
+    // Detection: find the cursor's immediately-enclosing `{`. If its first
+    // non-whitespace content is a `.` (dictionaryWord literal prefix), the
+    // brace opens a grammar pattern. This catches all four shapes above while
+    // rejecting non-pattern braces (function bodies, class bodies, object
+    // bodies, outer `grammar = { ▮ }` between lines, rule-literal verb slot,
+    // etc.). Strings/comments not specially handled — grammar patterns don't
+    // contain them, and incidental string braces in surrounding scope are
+    // matched in their own pairs and don't change the walk.
+    {
+        // Compute byte offset of (line, col) in docText.
+        size_t cursorOffset = 0;
+        {
+            int curLine = 0;
+            size_t i = 0;
+            while(i < docText.size() && curLine < line) {
+                if(docText[i] == '\n') curLine++;
+                i++;
+            }
+            cursorOffset = i + (size_t)col;
+            if(cursorOffset > docText.size()) cursorOffset = docText.size();
+        }
+
+        // Walk back to find the immediately-enclosing `{`.
+        ptrdiff_t openerPos = -1;
+        int depth = 0;
+        for(ptrdiff_t i = (ptrdiff_t)cursorOffset - 1; i >= 0; i--) {
+            char c = docText[(size_t)i];
+            if(c == '}') depth++;
+            else if(c == '{') {
+                depth--;
+                if(depth < 0) { openerPos = i; break; }
+            }
+        }
+
+        bool inGrammar = false;
+        if(openerPos >= 0) {
+            size_t j = (size_t)openerPos + 1;
+            while(j < docText.size() && isspace((unsigned char)docText[j])) j++;
+            inGrammar = (j < docText.size() && docText[j] == '.');
+        }
+
+        if(inGrammar) {
+            json items = json::array();
+            for(typeDef* t : languageService.objectTypes) {
+                auto* ed = dynamic_cast<enumDef*>(t);
+                if(!ed) continue;
+                if(ed->name != "grammartoken") continue;
+                for(enumValueDef* ev : ed->namedValues) {
+                    json item = {
+                        {"label", ev->name},
+                        {"kind", 13},  // CompletionItemKind.EnumMember
+                        {"detail", "grammarToken"}
+                    };
+                    if(!ev->docComment.empty())
+                        item["documentation"] = {{"kind", "markdown"}, {"value", ev->docComment}};
+                    items.push_back(item);
+                }
+                break;
+            }
+            return items;
+        }
     }
 
     // ── Phases 2 & 3: #beguilerSettings block ─────────────────────────────
