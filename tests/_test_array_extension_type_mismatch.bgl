@@ -1,0 +1,14 @@
+// Negative test: array<T>.contains rejects values of the wrong element type.
+// array<int>.contains("hi") must error — the `T item` signature rejects a
+// string literal at the call site.
+// EXPECT_ERROR: 'stringLiteral'
+// EXPECT_ERROR: not compatible
+
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <array>
+
+array<int> g_nums = {1, 2, 3};
+
+void main(){
+    if(g_nums.contains("hi")) print(1);
+}
