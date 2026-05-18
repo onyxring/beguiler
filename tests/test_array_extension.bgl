@@ -1,0 +1,218 @@
+/*
+    test_array_extension.bgl
+    <array> extension: length, indexOf/find/contains, clear, swap, reverse,
+    setLength, isTracked, the writes-don't-change-length contract, the
+    length-changing mutators (append, prepend, insert, remove, removeValue),
+    and the deque view (push/pop/peek/enqueue/dequeue/peekEnd/popEnd).
+
+    Slice 2/3/4 fixtures stay file-scope (so we don't risk perturbing prior
+    coverage). Local-array support (Path A — framePool-backed) is covered
+    separately in test_local_arrays.bgl.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <array>
+
+class Room : object { int visits = 0; }
+Room r1;
+Room r2;
+Room r3;
+
+// Under the length-tracking model, the compiler sets length = element count
+// at allocation time for list-init arrays. Zero is just data — not a sentinel.
+array<int>  g_nums      = {10, 20, 30, 40, 50};   // length = 5
+array<int>  g_sparse[8];                            // length = 0 (sized uninit)
+array<int>  g_partial   = {7, 8, 0, 9, 0};         // length = 5 (zeros are data)
+array<Room> g_rooms     = {r1, r2, r3};            // length = 3
+
+// Slice 2 / 3 fixtures
+array<int> g_sw   = {1, 2, 3, 4, 5};
+array<int> g_rev  = {10, 20, 30};
+array<int> g_cl   = {1, 2, 3};
+array<int> g_sl[5];
+array<int> g_w[5];
+array<int> g_ap[5];
+array<int> g_pp[5];
+array<int> g_ins[5];
+array<int> g_full[2];
+array<int> g_rm   = {10, 20, 30, 40, 50};
+array<int> g_rv   = {1, 7, 2, 7, 3, 7};
+
+// Slice 4 (deque) fixtures
+array<int> g_stack[5];
+array<int> g_queue[5];
+array<int> g_back = {10, 20, 30};
+
+// Slice 5 (sort) fixtures
+array<int> g_unsorted   = {30, 10, 50, 20, 40};
+array<int> g_descending = {1, 2, 3, 4, 5};
+
+void main(){
+    // isTracked — every Beguile-decl array is tracked
+    if(g_nums.isTracked())   print(1);
+    if(g_sparse.isTracked()) print(1);
+
+    // length() — explicit, set by compiler at allocation
+    print(g_nums.length());      // 5
+    print(g_sparse.length());    // 0
+    print(g_partial.length());   // 5 (zeros are data, not sentinels)
+
+    // size() — capacity, immutable
+    print(g_nums.size());        // 5
+    print(g_sparse.size());      // 8
+    print(g_partial.size());     // 5
+
+    // indexOf — full size scan
+    print(g_nums.indexOf(30));   // 2
+    print(g_nums.indexOf(99));   // -1
+    print(g_partial.indexOf(9)); // 3
+
+    // find — alias
+    print(g_nums.find(40));      // 3
+
+    // contains — exercises direct + negated forms
+    if(g_nums.contains(20)) print(1);
+    if(!g_nums.contains(99)) print(1);
+    if(!g_nums.contains(20)) print(0); else print(1);
+    if(g_nums.contains(99)) print(0); else print(1);
+
+    // Object element type — T binds to Room
+    print(g_rooms.indexOf(r2));  // 1
+    print(g_rooms.contains(r3) ? 1 : 0);  // 1
+
+    // swap — exchange two slots, size-bounded
+    g_sw.swap(0, 4);
+    print(g_sw[0]);  // 5
+    print(g_sw[4]);  // 1
+
+    // reverse — length-bounded
+    g_rev.reverse();
+    print(g_rev[0]);    // 30
+    print(g_rev[2]);    // 10
+
+    // clear — zeros all data slots AND sets length to 0
+    g_cl.clear();
+    print(g_cl[0]);          // 0
+    print(g_cl.length());    // 0
+    print(g_cl.size());      // 3 (capacity unchanged)
+
+    // setLength — explicit length write
+    g_sl[0] = 100;
+    g_sl[1] = 200;
+    g_sl[2] = 300;
+    g_sl.setLength(3);       // promote three filled slots to "in-use"
+    print(g_sl.length());    // 3
+    print(g_sl.size());      // 5
+
+    // Critical contract: writes to slots do NOT change length.
+    // arr[i] = v leaves length alone; only setLength/append/etc change it.
+    g_w[0] = 42;
+    g_w[1] = 43;
+    g_w[2] = 44;
+    print(g_w.length());     // 0 (writes did not extend length)
+    print(g_w.size());       // 5
+    print(g_w.indexOf(43));  // 1 (indexOf scans size, finds it anyway)
+
+    // ── Slice 3 — length-changing mutators ──────────────────────────────────
+
+    // append — grow at the end
+    print(g_ap.append(10) ? 1 : 0);   // 1 (success)
+    print(g_ap.append(20) ? 1 : 0);   // 1
+    print(g_ap.append(30) ? 1 : 0);   // 1
+    print(g_ap.length());             // 3
+    print(g_ap[0]);                   // 10
+    print(g_ap[2]);                   // 30
+
+    // prepend — grow at the front, shifting right
+    g_pp.append(10);
+    g_pp.append(20);
+    g_pp.prepend(5);
+    print(g_pp.length());             // 3
+    print(g_pp[0]);                   // 5
+    print(g_pp[1]);                   // 10
+    print(g_pp[2]);                   // 20
+
+    // insert — at arbitrary position
+    g_ins.append(10);
+    g_ins.append(20);
+    g_ins.append(40);
+    g_ins.insert(2, 30);              // {10, 20, 30, 40}
+    print(g_ins.length());            // 4
+    print(g_ins[2]);                  // 30
+    print(g_ins[3]);                  // 40
+
+    // append on full returns false
+    g_full.append(1);
+    g_full.append(2);
+    print(g_full.append(3) ? 1 : 0);  // 0 (full)
+    print(g_full.length());           // 2 (no change)
+
+    // remove — shrink, shifting later elements left
+    g_rm.remove(2);                   // remove 30
+    print(g_rm.length());             // 4
+    print(g_rm[2]);                   // 40 (was 30)
+    print(g_rm[3]);                   // 50
+
+    // remove out-of-range is silent no-op
+    g_rm.remove(99);
+    print(g_rm.length());             // 4 (unchanged)
+
+    // removeValue — remove every occurrence within the used range
+    g_rv.removeValue(7);
+    print(g_rv.length());             // 3
+    print(g_rv[0]);                   // 1
+    print(g_rv[1]);                   // 2
+    print(g_rv[2]);                   // 3
+
+    // ── Slice 4 — deque view ────────────────────────────────────────────────
+    // orLibrary orientation: push/peek/pop at the front; enqueue/peekEnd/popEnd at the back.
+
+    // Stack semantics — push/pop work at the front
+    g_stack.push(10);                 // [10]
+    g_stack.push(20);                 // [20, 10]
+    g_stack.push(30);                 // [30, 20, 10]
+    print(g_stack.length());          // 3
+    print(g_stack.peek());            // 30 (front of stack)
+    print(g_stack.pop());             // 30
+    print(g_stack.pop());             // 20
+    print(g_stack.pop());             // 10
+    print(g_stack.length());          // 0
+    print(g_stack.pop());             // 0 (empty)
+
+    // Queue semantics — enqueue at back, dequeue from front
+    g_queue.enqueue(1);               // [1]
+    g_queue.enqueue(2);               // [1, 2]
+    g_queue.enqueue(3);               // [1, 2, 3]
+    print(g_queue.dequeue());         // 1
+    print(g_queue.dequeue());         // 2
+    print(g_queue.length());          // 1
+    print(g_queue.peek());            // 3 (still at front)
+
+    // Back-access — peekEnd, popEnd
+    print(g_back.peekEnd());          // 30
+    print(g_back.popEnd());           // 30
+    print(g_back.length());           // 2
+    print(g_back.peekEnd());          // 20
+
+    // ── Slice 5 — sort ───────────────────────────────────────────────────────
+
+    // Default ascending sort
+    g_unsorted.sort();
+    print(g_unsorted[0]);             // 10
+    print(g_unsorted[1]);             // 20
+    print(g_unsorted[2]);             // 30
+    print(g_unsorted[3]);             // 40
+    print(g_unsorted[4]);             // 50
+
+    // Custom descending comparator via lambda
+    g_descending.sort((int a, int b) => {
+        if(a > b) return -1;
+        if(a < b) return 1;
+        return 0;
+    });
+    print(g_descending[0]);           // 5
+    print(g_descending[4]);           // 1
+}

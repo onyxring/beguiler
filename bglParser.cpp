@@ -2302,10 +2302,10 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(funcDef.name == "auto"){
                 if(!funcDef.params.empty())
                     parsingError("operator auto() cannot have parameters");
-                // Check for duplicate
+                // Check for duplicate (ignore pre-pass stubs, which the full pass replaces)
                 for(typeMember* m : newClass.members)
                     if(auto* fd = dynamic_cast<functionDef*>(m))
-                        if(fd->name == "auto")
+                        if(fd->name == "auto" && !fd->isPrePassStub)
                             parsingError(format("class '{0}' already has an operator auto()", newClass.dName()));
                 // Must be followed by ; (no body)
                 token afterAuto = file.getToken();
@@ -2929,7 +2929,9 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
     // Build type-parameter bindings if the receiver class is generic and the caller supplied
     // an element-type binding. Single-parameter case only — sufficient for array<T>; multi-
     // param classes (map<K,V> etc.) will need the parameter list extended.
-    classDef* cls = dynamic_cast<classDef*>(&languageService.getType(typeName));
+    // Use getDispatchClass so templated receiver types (`array<int>` from a parametric param)
+    // strip down to the generic class.
+    classDef* cls = getDispatchClass(typeName);
     unordered_map<string,string> bindings;
     if(cls && !cls->typeParameters.empty() && !elementType.empty())
         bindings[cls->typeParameters[0]] = elementType;
@@ -4073,6 +4075,19 @@ classDef* bglParser::getDispatchClass(const string& typeName){
     typeDef& td = languageService.getType(typeName);
     if(auto* cls = dynamic_cast<classDef*>(&td)) return cls;
     if(auto* obj = dynamic_cast<objectDef*>(&td)) return obj->objectClass;
+
+    // Generic specialization fallback: templated names like "array<int>" aren't
+    // registered as their own typeDef — only the generic base ("array") is.
+    // Strip the <...> suffix and look up the base so dispatch on parametric-typed
+    // receivers (`array<int> arr; arr.method()` or `arr[i]`) reaches the generic
+    // class. Element-type binding still happens via the elementType parameter
+    // threaded through resolveMethod / findArraySubscriptOp.
+    auto lt = typeName.find('<');
+    if(lt != string::npos && lt > 0){
+        typeDef& baseTd = languageService.getType(typeName.substr(0, lt));
+        if(auto* cls = dynamic_cast<classDef*>(&baseTd)) return cls;
+        if(auto* obj = dynamic_cast<objectDef*>(&baseTd)) return obj->objectClass;
+    }
     return nullptr;
 }
 
@@ -5909,6 +5924,17 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // either via its Step-2 objectDef-member fallback.
                         typeDef& objTd = languageService.getType(objType);
                         bool opaqueRecv = (dynamic_cast<classDef*>(&objTd) == nullptr && dynamic_cast<objectDef*>(&objTd) == nullptr);
+                        // Generic specialization fallback: a templated receiver name like
+                        // "array<int>" (from a parametric param) isn't a registered type, but
+                        // its base ("array") is. Treat as non-opaque if the base resolves to
+                        // a class — bindMethodCall threads the element type for substitution.
+                        if(opaqueRecv){
+                            auto lt = objType.find('<');
+                            if(lt != string::npos && lt > 0){
+                                typeDef& baseTd = languageService.getType(objType.substr(0, lt));
+                                if(dynamic_cast<classDef*>(&baseTd) != nullptr) opaqueRecv = false;
+                            }
+                        }
                         if(opaqueRecv && !looseIdentifierMode)
                             parsingError(format("Type '{0}' has no methods", objType));
 
@@ -6793,7 +6819,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
 
         // Resolve array type and compute $self/$prop
         string arrType = resolvePathType(arrPath, func, body);
-        classDef* arrCls = dynamic_cast<classDef*>(&languageService.getType(arrType));
+        // Use getDispatchClass so templated receiver types (e.g. `array<var>` on a
+        // parametric param) strip down to the generic class for operator[]= lookup.
+        classDef* arrCls = getDispatchClass(arrType);
         if(arrCls == nullptr) parsingError(format("Type '{0}' does not support subscript access", arrType));
 
         // Element-type-aware lookup: find operator[]= whose second parameter type matches the
@@ -7275,6 +7303,20 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             typeDef& objTd2 = languageService.getType(objectType);
             classDef* cls = dynamic_cast<classDef*>(&objTd2);
             bool opaqueReceiver = (cls == nullptr && dynamic_cast<objectDef*>(&objTd2) == nullptr);
+            // Generic specialization fallback: templated receiver name (`array<int>` from
+            // a parametric param) isn't a registered type, but its base ("array") is. Treat
+            // as non-opaque if the base resolves to a class — bindMethodCall handles the
+            // element-type binding for substitution.
+            if(opaqueReceiver){
+                auto lt = objectType.find('<');
+                if(lt != string::npos && lt > 0){
+                    typeDef& baseTd = languageService.getType(objectType.substr(0, lt));
+                    if(dynamic_cast<classDef*>(&baseTd) != nullptr){
+                        opaqueReceiver = false;
+                        cls = dynamic_cast<classDef*>(&baseTd);
+                    }
+                }
+            }
             if(opaqueReceiver && !looseIdentifierMode)
                 parsingError(format("Type '{0}' is not a class or object", objectType));
             if(opaqueReceiver){

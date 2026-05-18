@@ -1359,8 +1359,14 @@ Array elements are accessed using subscript syntax:
 ```bgl
 int x = scores[2];       // read element 2 — type is int
 scores[0] = 99;          // write element 0 — value type must match int
-int n = scores.length(); // number of elements
+int n = scores.size();   // number of elements reserved for the array
 ```
+
+`size()` returns the number of elements *allocated* for the array (the capacity reserved at compile time). It does not depend on whether those slots currently hold meaningful values.
+
+Beguile-declared standalone word arrays carry an explicit, runtime-tracked **length** — the count of "in use" entries — distinct from `size()`. Length is set at allocation time (list-initialized arrays start at length = N, sized arrays at length = 0) and is changed only by *explicit* operations: `setLength()`, `clear()`, and the mutators added by the `<array>` extension. Slot writes (`arr[i] = v`) do **not** change length; the array is treated as a buffer-with-cursor. Length is exposed via the `<array>` opt-in extension (§17.2.6) as `length()` / `setLength()`.
+
+Under the hood, every Beguile-declared standalone array allocates two extra words past the data: one for the length, one for a `$9084` magic marker. Runtime helpers probe the marker to distinguish tracked arrays from I6-native extern arrays, so the same method surface works for both (with `length()` on an untracked array falling back to reporting size). The size-vs-length vocabulary matches the convention used across the Beguile runtime library for `<string>`, `<buf>`, and `<array>` (orLUG p.103).
 
 The element type is enforced at every subscript site. Reading an element produces a value of type `T`, and writing an element requires a value compatible with `T`. Cross-type assignments (e.g. assigning a `string` to an element of `array<int>`) are compile-time errors.
 
@@ -5205,7 +5211,45 @@ The unsigned helpers exist primarily to back the `uint` type's operators (§4.2a
 #include <array>
 ```
 
-> *This extension is planned but not yet implemented.* It will provide higher-level array operations (sort, search, filter, map) beyond the built-in subscript and for-in support.
+Adds higher-level methods to `array<T>` for searching and counting beyond the built-in `[]` subscripts and `size()` capacity getter from the core (§4.7).
+
+| Method | Returns | Description |
+|---|---|---|
+| `length()` | `int` | Current count of "in use" entries. Set at allocation (= N for list-init, 0 for sized uninit), changed only by explicit operations. Falls back to `size()` for untracked extern arrays |
+| `setLength(n)` | `void` | Write the explicit length. Range-checked: must fit in signed range (0..32767 on Z, 0..2^31-1 on Glulx). No-op on untracked extern arrays |
+| `isTracked()` | `bool` | True if the receiver is a Beguile-declared array with length tracking; false for I6-native extern arrays. Useful for defensive code |
+| `indexOf(item)` | `int` | First index where `item` appears in the array, or `-1` if not found. Scans the full `size()` (finds values past current length too) |
+| `find(item)` | `int` | Alias for `indexOf` (matches orLibrary terminology) |
+| `contains(item)` | `bool` | True if `item` appears anywhere in the array |
+| `clear()` | `void` | Zero every slot up to `size()` and reset `length()` to 0 |
+| `swap(pos1, pos2)` | `void` | Exchange the values at the two given indices. Size-bounded; caller is responsible for in-range indices |
+| `reverse()` | `void` | Reverse the used range (positions 0..`length()`-1) in place. Slots past length are untouched |
+| `append(item)` | `bool` | Add `item` at position `length()`, bumping length by 1. Returns false if the array is full (length == size), true on success |
+| `prepend(item)` | `bool` | Insert `item` at position 0, shifting existing items right. Returns false if full |
+| `insert(pos, item)` | `bool` | Insert `item` at position `pos`, shifting positions `pos`..`length-1` right. `pos` may equal `length()` (equivalent to append). Returns false if the array is full or `pos` is out of range |
+| `remove(pos)` | `void` | Remove the element at `pos`, shifting later elements left. Length drops by 1. Out-of-range `pos` is a silent no-op |
+| `removeValue(item)` | `void` | Remove every occurrence of `item` within the used range. Length drops by the number removed |
+| `push(item)` | `void` | Stack push: insert at the front. Equivalent to `insert(0, item)` but discards the bool. orLibrary convention: push grows at the front |
+| `pop()` | `T` | Stack pop: remove and return the front element. Returns 0 on an empty array |
+| `peek()` | `T` | Look at the front element without removing. Returns 0 on an empty array |
+| `enqueue(item)` | `void` | Queue entry: add at the back. Equivalent to `append(item)` but discards the bool |
+| `dequeue()` | `T` | Queue exit: remove and return the front element. Alias for `pop()` |
+| `peekEnd()` | `T` | Look at the back element without removing. Returns 0 on an empty array |
+| `popEnd()` | `T` | Remove and return the back element. Returns 0 on an empty array |
+| `sort()` | `void` | Sort the used range ascending in place, using the default comparator (signed word compare). Sound for ints, addresses, object IDs |
+| `sort(compare)` | `void` | Sort with a user-supplied comparator `func<int, T, T>` returning -1 / 0 / +1. Lambdas work: `arr.sort((int a, int b) => { ... });` |
+
+**Sort algorithm**: insertion sort. O(N) best case for already-sorted or nearly-sorted input, O(N²) worst case for fully-reversed. Stable. Adaptive — well-suited to IF data where arrays often grow incrementally and sit mostly-sorted.
+
+The element-search methods (`indexOf`/`find`/`contains`) and `swap` are type-checked at the call site against the array's element type `T` — passing a value of an incompatible type produces a compile-time error.
+
+**Length is explicit.** `arr[i] = v` writes the slot but does NOT change `length()`. Only `setLength`, `clear`, and the future `append`/`insert`/`remove`/`push`/`pop` family change length. This matches the "buffer with a cursor" mental model: subscript writes are size-bounded raw writes; the cursor moves only via explicit operations.
+
+**Runtime detection.** Every Beguile-declared standalone array carries a `$9084` magic marker plus a signed-non-negative length word; methods probe these to handle tracked vs untracked (I6-native extern) arrays transparently. The false-positive rate on untracked arrays is ~1-in-131k on Z-machine (negligible on Glulx). Defensive code can call `arr.isTracked()` to check explicitly.
+
+**Deque orientation note.** The deque methods follow the orLibrary convention: `push`/`peek`/`pop` operate at the **front** of the array; `enqueue`/`peekEnd`/`popEnd` operate at the **back**. This is internally consistent (push grows where pop reads — the "stack lives at the front" model) but inverts the JavaScript convention where `push` appends. Beguile favors orLibrary parity since the deque vocabulary originates there.
+
+The orArray-derived surface is now complete. Further work targets LINQ-style fluent operations (`filter`/`map`/`first`/`count`/...) building on this base.
 
 ### 17.2.7 `bglInit()` — Runtime Initialization
 
