@@ -148,6 +148,19 @@ bool i6Emitter::funcNeedsSpill(functionDef* fd){
     return (effectiveParams + (int)locals.size()) > 14;
 }
 
+bool i6Emitter::funcHasLocalArrays(functionDef* fd){
+    statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
+    if(body == nullptr) return false;
+    vector<variableDeclaration*> locals;
+    set<string> seen;
+    collectBodyLocals(body, locals, seen);
+    for(variableDeclaration* vd : locals){
+        auto* arr = dynamic_cast<arrayDeclaration*>(vd);
+        if(arr && !arr->isByteArray && arr->arraySize > 0) return true;
+    }
+    return false;
+}
+
 // Build spill map for fd:
 //   - excess params  (params[5+])  → _bglXPn globals
 //   - overflow body locals          → _bglFrm-->N frame slots
@@ -655,13 +668,18 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
         }
     }
 
-    // Pass 2b: if Z-machine target, scan all functions/methods for spill and XP needs.
-    if(isZTarget(currentTarget)){
+    // Pass 2b: scan all functions/methods for runtime needs.
+    //
+    // Two outputs:
+    //   • framePool emission (both targets) — needed if ANY function spills Z-machine
+    //     locals OR has local arrays (which use the pool for per-call allocation).
+    //   • Z-machine excess-param (XP) globals (Z-only) — for params beyond the 5-arg call limit.
+    {
         bool needsPool = false;
         int maxXP = 0;
         auto scanFd = [&](functionDef* fd){
             if(fd->isEmitter || fd->isExternal) return;
-            if(funcNeedsSpill(fd)) needsPool = true;
+            if(funcNeedsSpill(fd) || funcHasLocalArrays(fd)) needsPool = true;
             maxXP = max(maxXP, max(0, (int)fd->params.size() - 5));
         };
         for(typeDef* node : nodeList){
@@ -680,14 +698,32 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             applyTemplate("framePool", {{"size", to_string(framePoolSize)}}, "");
             frameAllocEmitted = true;
         }
-        for(int i = 0; i < maxXP; i++)
-            out << format("global _bglXP{0};\n", i);
-        xpGlobalsNeeded = maxXP;
+        if(isZTarget(currentTarget)){
+            for(int i = 0; i < maxXP; i++)
+                out << format("global _bglXP{0};\n", i);
+            xpGlobalsNeeded = maxXP;
+        }
     }
 
     // Emit #emitfirst blocks — raw I6 after ICL headers, before bglInit
     for(const string& block : languageService.emitFirstBlocks)
         out << block << "\n";
+
+    // Pre-pass: scan all globals to identify sized-uninitialized tracked word arrays.
+    // These get the compact `Array foo table N+2;` emission (later, in Pass 3) plus
+    // a magic-stamp statement in bglInit. We must do this BEFORE bglInit is synthesised
+    // so the stamp statements appear in the routine body. Walks variableDeclaration
+    // arrayDeclaration instances directly to avoid re-running the global-emission path.
+    for(typeDef* g : languageService.globals){
+        auto* arr = dynamic_cast<arrayDeclaration*>(g);
+        if(arr == nullptr) continue;
+        if(arr->isExternal || arr->isByteArray) continue;
+        // Sized-uninit only — list-init arrays bake the magic inline.
+        if(arr->arraySize > 0 && arr->stringInitializer.empty()
+           && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
+            trackedArraysNeedingMagicInit.push_back(arr->dName());
+        }
+    }
 
     // Synthesise bglInit — always emitted, even if empty; guarded against double-call.
     // Anchor a source map entry at the routine header so I6 diagnostics about `bglInit`
@@ -707,6 +743,11 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     out << "[bglInit;\n";
     out << "    if(_bglInitDone) return;\n";
     out << "    _bglInitDone = 1;\n";
+    // Stamp the $9084 magic onto every sized-uninitialized tracked array.
+    // (List-initialized arrays bake the magic in at compile time and don't need this.)
+    // Form: `arr-->(arr-->0) = $9084;` — write the last slot of the allocation.
+    for(const string& arrName : trackedArraysNeedingMagicInit)
+        out << "    " << arrName << "-->(" << arrName << "-->0) = $9084;\n";
     for(const string& block : languageService.startupBlocks)
         out << block << "\n";
     for(auto& [varName, body] : languageService.globalInits)
@@ -1092,8 +1133,8 @@ void i6Emitter::emitFunction(functionDef* funcNode){
             out << format(" {0}", spillName(param->name));
 
     statementBlock* body = dynamic_cast<statementBlock*>(funcNode->body);
+    vector<variableDeclaration*> locals;
     if(body != nullptr){
-        vector<variableDeclaration*> locals;
         set<string> seen;
         collectBodyLocals(body, locals, seen);
         for(variableDeclaration* vd : locals)
@@ -1104,6 +1145,24 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     out << ";\n";
     if(currentSpillCount > 0)
         out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+
+    // Local arrays: framePool-backed allocation per function call (recursion-safe).
+    // For each sized word array declared inside the body, allocate a slice from
+    // _bglFramePool, lay down the tracked layout (header + zeros + length + magic),
+    // and register the matching free in the function's cleanups so it runs on
+    // every return path. List-init local arrays aren't supported yet — only
+    // `array<T> name[N]` form.
+    if(body != nullptr){
+        for(variableDeclaration* vd : locals){
+            auto* arr = dynamic_cast<arrayDeclaration*>(vd);
+            if(arr == nullptr) continue;
+            if(arr->isByteArray) continue;
+            if(arr->arraySize <= 0) continue;
+            string name = spillName(arr->name);
+            out << format("    {0} = _bglArrayLocalAlloc({1});\n", name, arr->arraySize);
+            funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->arraySize + 3)});
+        }
+    }
 
     currentCleanups = funcNode->cleanups.empty() ? nullptr : &funcNode->cleanups;
     if(body != nullptr)
@@ -1634,31 +1693,70 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
 void i6Emitter::emitGlobal(variableDeclaration* varNode){
     if(varNode->isExternal) return;  // extern declarations are type-system only
 
-    //--Array declarations. We use I6 tables and buffers exclusively for Beguile constructs
+    //--Array declarations. We use I6 tables and buffers exclusively for Beguile constructs.
+    //
+    // Beguile-declared standalone WORD arrays use the length-tracking layout:
+    //
+    //     allocation:  [I6-header=N+2, d0, d1, ..., d(N-1), length, $9084]
+    //                                                              ↑
+    //                                                        magic at last slot
+    //
+    //     arr-->0           = header = N+2
+    //     arr-->(i+1)       = data[i]      (operator[] unchanged from today)
+    //     arr-->(arr-->0-1) = length
+    //     arr-->(arr-->0)   = $9084        (magic for runtime detection)
+    //
+    // Helpers in __beguileCore.bgl (#emitfirst) do the detection probe and
+    // pick the right offsets at runtime; this works for both Beguile-decl
+    // arrays (tracked) and I6-native extern arrays (untracked fallback).
+    //
+    // BYTE arrays (array<char>) keep their I6-native buffer layout — length
+    // tracking on char buffers is owned by <string> and the byte-prefix has
+    // its own conventions (byte 0 = max, byte 1 = current).
     if(auto* arr = dynamic_cast<arrayDeclaration*>(varNode)){
-        string arraySubtype;
-        if(arr->isByteArray) arraySubtype="buffer"; else arraySubtype="table";
-
-        // initialize with string...
-        if(!arr->stringInitializer.empty()) {
-            out << format("array {0} {1} {2};\n", arr->dName(), arraySubtype, arr->stringInitializer);
-            return;
+        // ── Byte-array paths — unchanged.
+        if(arr->isByteArray) {
+            if(!arr->stringInitializer.empty()) {
+                out << format("array {0} buffer {1};\n", arr->dName(), arr->stringInitializer);
+                return;
+            }
+            if(arr->arraySize > 0) {
+                out << format("array {0} buffer {1};\n", arr->dName(), arr->arraySize);
+                return;
+            }
+            if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+                out << format("array {0} buffer", arr->dName());
+                for(expression* elem : list->elements) out << " " << elem->text();
+                out << ";\n";
+                return;
+            }
+            throw ("i6Emitter: unable to emit byte array.");
         }
 
-        //no initialization, just allocating size
+        // ── Word-array paths — emit with length-tracking layout.
+        // Total slots past the I6 header: N data + 1 length + 1 magic = N+2.
         if(arr->arraySize > 0) {
-            out << format("array {0} {1} {2};\n", arr->dName(), arraySubtype, arr->arraySize);
+            // Sized, uninitialized. Emit the compact `table N+2` form (all zeros) —
+            // far smaller in .inf source than explicit zeros for large arrays. The
+            // magic gets stamped at startup by bglInit (pre-pass collected the name
+            // into trackedArraysNeedingMagicInit before this emission). Length stays
+            // 0 from the table's default-zero init.
+            out << format("array {0} table {1};\n", arr->dName(), arr->arraySize + 2);
             return;
         }
 
-        //initialize with a list of elements
         if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-            out << format("array {0} {1}", arr->dName(), arraySubtype);
+            // List-initialized: length = N (all-filled). Bake the magic into the
+            // initializer list — no runtime init needed.
+            int len = list->elements.size();
+            out << format("array {0} table", arr->dName());
             for(expression* elem : list->elements) out << " " << elem->text();
+            out << " " << len;     // length = N
+            out << " $9084";       // magic
             out << ";\n";
             return;
         }
-        //NOTE: if we got here, something's wrong.  The parser hasn't filled in what we need.
+
         throw ("i6Emitter: unable to emit array.");
         return;
     }

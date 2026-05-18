@@ -40,6 +40,13 @@ class i6Emitter{
         int xpGlobalsNeeded = 0;                           // how many _bglXPn globals were emitted
         int framePoolSize = 64;                            // configurable via beguilerSettings framePoolSize
 
+        // Names of sized-uninitialized Beguile-declared word arrays. The compiler emits these
+        // with the compact `Array foo table N+2;` form (all zeros — far smaller in .inf source
+        // than an explicit zero list for large arrays) and registers the name here so bglInit
+        // can write the $9084 magic at startup. List-initialized arrays bake the magic into
+        // the initializer values and don't need to be registered.
+        vector<string> trackedArraysNeedingMagicInit;
+
         static string replaceWord(string str, const string& from, const string& to);
         void buildSpillMap(functionDef* fd);
         void clearSpillMap();
@@ -53,6 +60,11 @@ class i6Emitter{
         string spillName(const string& name);
         string spillWord(const string& text);
         bool funcNeedsSpill(functionDef* fd);
+        // True if any local in the function body is a Beguile-declared word array
+        // (sized, not byte). Such locals get framePool-backed allocation at function
+        // entry and free at every return path (managed via cleanups). Used to drive
+        // the framePool emission on both Z and Glulx targets.
+        bool funcHasLocalArrays(functionDef* fd);
         // Recursively collect variableDeclarations from a function body, walking into the
         // sub-blocks of control-flow statements (if/for/while/do/switch/try-catch). Deduped by name
         // so the first occurrence wins — matches I6's single-declaration-per-header requirement.

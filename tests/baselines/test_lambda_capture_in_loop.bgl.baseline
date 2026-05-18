@@ -1,5 +1,23 @@
 !% -v5
 !% -E1
+
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -10,6 +28,32 @@ global _bglCap3;
 global _bglCap2;
 global _bglCap1;
 global _bglCap0;
+object _bglArray
+  with isTracked [arr;
+    return  arr-->( arr-->(-1+1) -1+1) ==36996&& arr-->( arr-->(-1+1) -2+1) >=0;
+  ],
+       size [arr;
+    if (self.istracked(arr)) {
+        return  arr-->(-1+1) -2;
+    }
+    return  arr-->(-1+1) ;
+  ],
+       length [arr;
+    if (self.istracked(arr)) {
+        return  arr-->( arr-->(-1+1) -2+1) ;
+    }
+    return  arr-->(-1+1) ;
+  ],
+       setLength [arr n;
+    if (self.istracked(arr)) {
+        if (n<0) {
+            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+             quit; 
+        }
+        arr-->(_bglArray.size(arr)+1) = n;
+    }
+  ]
+;
 object _bglUtil
 ;
 object bgl

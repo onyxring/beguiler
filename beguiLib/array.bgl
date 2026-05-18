@@ -1,0 +1,264 @@
+//-----------------------------------------------------------------------------
+// array.bgl — A standard Beguile extension adding higher-level methods to
+// array<T> beyond the core subscripts and size() getter.
+//
+// Usage:
+//   #include <array> in your .bgl file to activate these methods.
+//
+// Slice 1 surface: length, indexOf (alias find), contains.
+// Slice 2 surface: clear, swap, reverse.
+// Length tracking (exposed from core): length, setLength, isTracked.
+//
+// Vocabulary follows the orLibrary "Size vs Length" definition (orLUG p.103):
+//   size()    — capacity reserved at compile time (from core <_array>)
+//   length()  — current count of "in use" entries
+//
+// Beguile-declared standalone arrays carry an explicit length word plus a
+// magic detection marker. The _bglArray object (declared in core) holds the
+// detection + metadata methods; this extension adds the algorithm methods
+// via `extend _bglArray { ... }`.
+//
+// **Length is explicit.** Writing `arr[i] = v` does NOT change length. Slot
+// writes are size-bounded; length is changed only by explicit operations:
+// setLength(), clear(), and the mutators added in later slices.
+//-----------------------------------------------------------------------------
+#once
+
+//-----------------------------------------------------------------------------
+// Default ascending comparator — passed to sort() when the caller doesn't
+// supply one. Signed word-comparison; sound for ints, addresses, object IDs.
+// For custom orderings (descending, by field, etc.) pass a user comparator
+// to the two-arg form of sort().
+//-----------------------------------------------------------------------------
+int _bglArrayCompareAsc(var lhs, var rhs){
+    #i6 {
+        if(lhs < rhs) return -1;
+        if(lhs > rhs) return 1;
+        return 0;
+    }
+    return 0;   // unreachable; satisfies return-check
+}
+
+//-----------------------------------------------------------------------------
+// User-facing methods on array<T>. T binds to the array's element type at
+// each call site; signatures reject type mismatches before substitution.
+//
+// All emitter bodies dispatch through _bglArray (declared in core).
+//-----------------------------------------------------------------------------
+extend extern class array {
+    // Length accessors — forward to the detection-aware helpers on _bglArray.
+    emitter int  length()                 { _bglArray.length($val) }
+    emitter void setLength(int n)         { _bglArray.setLength($val, $n) }
+    emitter bool isTracked()              { _bglArray.isTracked($val) }
+
+    // Search
+    emitter int  indexOf(T item)          { _bglArray.indexOf($val, $item) }
+    emitter int  find(T item)             { _bglArray.indexOf($val, $item) }       // alias — matches orLibrary terminology
+    emitter bool contains(T item)         { (_bglArray.indexOf($val, $item) >= 0) }
+
+    // In-place transforms (no resize)
+    emitter void clear()                  { _bglArray.clear($val) }
+    emitter void swap(int pos1, int pos2) { _bglArray.swap($val, $pos1, $pos2) }
+    emitter void reverse()                { _bglArray.reverse($val) }
+
+    // Length-changing mutators — each grows or shrinks the explicit length.
+    // append / prepend / insert return false on a full array (no growth happened).
+    emitter bool append(T item)             { _bglArray.append($val, $item) }
+    emitter bool prepend(T item)            { _bglArray.prepend($val, $item) }
+    emitter bool insert(int pos, T item)    { _bglArray.insert($val, $pos, $item) }
+    emitter void remove(int pos)            { _bglArray.remove($val, $pos) }
+    emitter void removeValue(T item)        { _bglArray.removeValue($val, $item) }
+
+    // Deque view (orLibrary convention — push/peek/pop at the front;
+    // enqueue/peekEnd/popEnd at the back).
+    emitter void push(T item)               { _bglArray.push($val, $item) }
+    emitter T    pop()                      { _bglArray.pop($val) }
+    emitter T    dequeue()                  { _bglArray.dequeue($val) }
+    emitter void enqueue(T item)            { _bglArray.enqueue($val, $item) }
+    emitter T    peek()                     { _bglArray.peek($val) }
+    emitter T    peekEnd()                  { _bglArray.peekEnd($val) }
+    emitter T    popEnd()                   { _bglArray.popEnd($val) }
+
+    // Sort — two overloads. The no-arg form uses the default ascending
+    // comparator; the func-arg form lets the caller customize ordering
+    // (e.g. descending, by field, locale-aware string compare).
+    emitter void sort()                            { _bglArray.sort($val, _bglArrayCompareAsc) }
+    emitter void sort(func<int, T, T> compare)     { _bglArray.sort($val, $compare) }
+}
+
+//-----------------------------------------------------------------------------
+// _bglArray — algorithm methods. The detection methods (isTracked, size,
+// length, setLength) live in core (__beguileCore.bgl); we extend the object
+// here with the higher-level operations.
+//
+// Helper signatures use `array<var>` because element types are unknown at
+// this layer — type safety happens at the emitter forwarder, not here.
+//-----------------------------------------------------------------------------
+extend _bglArray {
+    // First index where val appears, or -1. Scans the full size — matches
+    // orArray.find semantics, which look past any unused trailing region.
+    // So a value written via raw `arr[i] = v` (without extending length) is
+    // still findable.
+    int indexOf(array<var> arr, var val){
+        int sz = arr.size();
+        for(int t = 0; t < sz; t++)
+            if(arr[t] == val) return t;
+        return -1;
+    }
+
+    // Zero every slot up to size; length drops to 0.
+    void clear(array<var> arr){
+        int sz = arr.size();
+        for(int t = 0; t < sz; t++) arr[t] = 0;
+        arr.setLength(0);
+    }
+
+    // Exchange the values at the two given indices. Size-bounded; caller is
+    // responsible for passing in-range indices.
+    void swap(array<var> arr, int pos1, int pos2){
+        var tmp = arr[pos1];
+        arr[pos1] = arr[pos2];
+        arr[pos2] = tmp;
+    }
+
+    // Reverse the used range (positions 0..length-1) in place. Trailing
+    // slots past length are untouched.
+    void reverse(array<var> arr){
+        int len = arr.length();
+        int half = len / 2;
+        for(int i = 0; i < half; i++)
+            swap(arr, i, len - 1 - i);
+    }
+
+    // Append val at position length(), bumping length by 1.
+    // Returns false if the array is full (length == size), true on success.
+    bool append(array<var> arr, var val){
+        int len = arr.length();
+        if(len >= arr.size()) return false;
+        arr[len] = val;
+        arr.setLength(len + 1);
+        return true;
+    }
+
+    // Insert val at the given position, shifting positions pos..length-1 to
+    // pos+1..length. Returns false if the array is full or pos is out of
+    // range (pos may equal length() to append, but not exceed it).
+    bool insert(array<var> arr, int pos, var val){
+        int len = arr.length();
+        if(len >= arr.size()) return false;
+        if(pos < 0 || pos > len) return false;
+        // shift right from end down to pos
+        for(int i = len; i > pos; i--) arr[i] = arr[i-1];
+        arr[pos] = val;
+        arr.setLength(len + 1);
+        return true;
+    }
+
+    // Insert val at position 0, shifting existing items right.
+    // Returns false if the array is full, true on success.
+    bool prepend(array<var> arr, var val){
+        return insert(arr, 0, val);
+    }
+
+    // Remove the element at pos, shifting later elements left.
+    // Out-of-range pos is a silent no-op.
+    // `replace` acknowledges the shadow of object's `remove` (which has a
+    // different signature — `obj.remove()` removes obj from the I6 tree).
+    replace void remove(array<var> arr, int pos){
+        int len = arr.length();
+        if(pos < 0 || pos >= len) return;
+        // shift left from pos+1 to end
+        for(int i = pos; i < len - 1; i++) arr[i] = arr[i+1];
+        // clear the now-unused tail slot so leftover data doesn't surface
+        // through indexOf (which scans full size).
+        arr[len - 1] = 0;
+        arr.setLength(len - 1);
+    }
+
+    // Remove every occurrence of val within the used range (positions 0..length-1).
+    // Each match shifts subsequent elements left; the scan continues from the
+    // same position since the next element is now at that index.
+    void removeValue(array<var> arr, var val){
+        int pos = 0;
+        int len = arr.length();
+        while(pos < len){
+            if(arr[pos] == val){
+                remove(arr, pos);
+                len = arr.length();   // length dropped by 1; reload
+                // pos stays — next element shifted into this position
+            } else {
+                pos++;
+            }
+        }
+    }
+
+    // ── Deque view ────────────────────────────────────────────────────────────
+    // Following orLibrary's orDeque convention:
+    //   push    — insert at the front  (matches a stack growing toward index 0)
+    //   pop     — remove from the front
+    //   peek    — look at the front, no removal
+    //   enqueue — add at the back      (FIFO entry point)
+    //   dequeue — remove from the front (FIFO exit; alias for pop)
+    //   peekEnd — look at the back
+    //   popEnd  — remove from the back
+    // The orientation differs from JavaScript (where push appends); see the
+    // project_array_deque_naming memory for the rationale.
+
+    void push(array<var> arr, var val){
+        insert(arr, 0, val);   // bool result intentionally discarded; full-array detection is via .length()/.size()
+    }
+
+    var pop(array<var> arr){
+        if(arr.length() == 0) return 0;
+        var v = arr[0];
+        remove(arr, 0);
+        return v;
+    }
+
+    var dequeue(array<var> arr){
+        return pop(arr);
+    }
+
+    void enqueue(array<var> arr, var val){
+        append(arr, val);
+    }
+
+    var peek(array<var> arr){
+        if(arr.length() == 0) return 0;
+        return arr[0];
+    }
+
+    var peekEnd(array<var> arr){
+        int len = arr.length();
+        if(len == 0) return 0;
+        return arr[len - 1];
+    }
+
+    var popEnd(array<var> arr){
+        int len = arr.length();
+        if(len == 0) return 0;
+        var v = arr[len - 1];
+        remove(arr, len - 1);
+        return v;
+    }
+
+    // ── Sort ──────────────────────────────────────────────────────────────────
+    // Insertion sort: O(N²) worst case, O(N) best case (already-sorted exits
+    // via the inner-loop guard naturally — no explicit early-exit needed).
+    // Adaptive — fast for partially-sorted inputs, which IF data commonly is
+    // (e.g. inserting one new element into an already-sorted list).
+    // Stable; well-suited to IF-scale arrays where simplicity beats the
+    // constant-factor wins of more elaborate algorithms.
+    void sort(array<var> arr, func<int, var, var> compare){
+        int len = arr.length();
+        for(int i = 1; i < len; i++){
+            var key = arr[i];
+            int j = i - 1;
+            while(j >= 0 && compare(arr[j], key) > 0){
+                arr[j + 1] = arr[j];
+                j--;
+            }
+            arr[j + 1] = key;
+        }
+    }
+}

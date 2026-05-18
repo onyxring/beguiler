@@ -26,10 +26,22 @@ Global _bglFrameTop = 0;
     }
     r = _bglFrameTop;
     _bglFrameTop = _bglFrameTop + size;
-    return _bglFramePool + (r * 2);
+    return _bglFramePool + (r * WORDSIZE);
  ];
  [ _bglFrameFree size;
     _bglFrameTop = _bglFrameTop - size;
+ ];
+ ! Allocate + initialize a local Beguile-declared word array of user-size `size`.
+ ! Layout matches static tracked arrays: [header, data×size, length, magic].
+ ! Returns a pointer at the header slot. Caller must free with _bglFrameFree(size+3)
+ ! on every return path (driven by the function's cleanups list).
+ [ _bglArrayLocalAlloc size r i;
+    r = _bglFrameAlloc(size + 3);
+    r-->0 = size + 2;
+    for (i = 1: i <= size: i++) r-->i = 0;
+    r-->(size + 1) = 0;
+    r-->(size + 2) = $9084;
+    return r;
  ];
 
 // ---------------------------------------------------------------------------
@@ -41,12 +53,20 @@ Global _bglFrameTop = 0;
 //
 // forIn.open  is emitted before the body statements.
 // forIn.close is emitted after  the body statements.
+//
+// Iteration is length-bounded via _bglArrayLength, which probes the magic
+// marker and:
+//   - tracked Beguile-decl arrays → returns the explicit length
+//   - untracked extern arrays    → falls back to size (walks every slot)
+//
+// 0 is no longer a sentinel — it's just data, and the loop visits every slot
+// up to the appropriate length.
 // ---------------------------------------------------------------------------
 
 [forIn.open $counter $array $element]
 $counter = 0;
-for (: $counter < _orArray.getLength($array, 0) : $counter++) {
-    $element = _orArray.get($array, 0, $counter);
+for (: $counter < _bglArray.length($array) : $counter++) {
+    $element = $array-->($counter+1);
 
 [forIn.close]
 }
@@ -76,12 +96,14 @@ for (: $counter < $array->0 : $counter++) {
 //   $target   — variable to receive the array reference
 //   $count    — number of elements pushed
 //
-// The backing implementation (_orArray.pushStack / makeFromStack) is defined
-// in the orArray I6 library, not here.
+// Backing array + push/make routines are declared as raw I6 in
+// `__beguileCore.bgl`'s #emitfirst block (always present, ~64-byte overhead).
+// The scratch is a single shared buffer; nested literal-list for-in loops
+// clobber each other and are not supported.
 // ---------------------------------------------------------------------------
 
 [forInList.push $element]
-_orArray.pushStack($element);
+_bglScratchPush($element);
 
 [forInList.make $target $count]
-$target = _orArray.makeFromStack($count);
+$target = _bglScratchMake($count);

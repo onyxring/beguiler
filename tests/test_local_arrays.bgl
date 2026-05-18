@@ -1,0 +1,58 @@
+/*
+    test_local_arrays.bgl
+
+    Local Beguile-declared word arrays via framePool. Each function call gets
+    its own slice (alloc on entry, free on every return path). Recursion is
+    supported because the framePool is stack-disciplined.
+
+    Coverage:
+      • Basic local sized-uninit array: alloc/use/free cycle.
+      • Multiple local arrays in one function — all alloc'd and all freed.
+      • Recursive call with a local array — each frame gets its own backing.
+      • Function returning early from a deep position — cleanup still fires.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <array>
+
+// Recursive sum-up-to-N using a local accumulator array. Each call gets its
+// own array (proves the framePool stack discipline).
+int sumDown(int n){
+    array<int> acc[4];
+    if(n <= 0) return 0;
+    acc.append(n);
+    // Recurse — inner call gets its own `acc`.
+    int rest = sumDown(n - 1);
+    return acc[0] + rest;
+}
+
+// Multiple locals in one function — all should alloc/free correctly.
+int useTwoLocals(int a, int b){
+    array<int> first[3];
+    array<int> second[3];
+    first.append(a);
+    first.append(b);
+    second.append(a + b);
+    return first[0] + first[1] + second[0];
+}
+
+// Early return — cleanup must still fire on the return path.
+int earlyReturn(bool flag){
+    array<int> buf[5];
+    buf.append(100);
+    if(flag) return buf[0];   // cleanup runs here
+    buf.append(200);
+    return buf[1];             // cleanup runs here too
+}
+
+void main(){
+    print(sumDown(5));         // 5+4+3+2+1 = 15
+
+    print(useTwoLocals(3, 4)); // first[0]+first[1]+second[0] = 3+4+7 = 14
+
+    print(earlyReturn(true));  // 100
+    print(earlyReturn(false)); // 200
+}

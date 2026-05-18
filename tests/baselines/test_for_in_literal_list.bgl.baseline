@@ -54,26 +54,47 @@ object _bglUtil
 object bgl
   with utilities _bglutil
 ;
-array g_src table 1 2 3 3 $9084;
-[getList;
-    return g_src;
-];
-[sumList xs total x _bglfi0;
+class room
+  class object
+  with
+    visits 0
+;
+room r1;
+room r2;
+room r3;
+[main total x _bglfia0 _bglfi1 m n y _bglfia2 _bglfi3 seen r _bglfia4 _bglfi5;
     total = 0;
-    _bglfi0 = 0;
-    for (: _bglfi0 < _bglArray.length(xs) : _bglfi0++) {
-        x = xs-->(_bglfi0+1);
+    _bglScratchPush(1);
+    _bglScratchPush(2);
+    _bglScratchPush(3);
+    _bglfia0 = _bglScratchMake(3);
+    _bglfi1 = 0;
+    for (: _bglfi1 < _bglArray.length(_bglfia0) : _bglfi1++) {
+        x = _bglfia0-->(_bglfi1+1);
         total = total + x;
     }
-    return total;
-];
-[main x _bglfia1 _bglfi2 total;
-    _bglfia1 = getlist();
-    _bglfi2 = 0;
-    for (: _bglfi2 < _bglArray.length(_bglfia1) : _bglfi2++) {
-        x = _bglfia1-->(_bglfi2+1);
-        print x;
-    }
-    total=sumlist(g_src);
     print total;
+    m = 4;
+    n = 5;
+    _bglScratchPush(m);
+    _bglScratchPush(n);
+    _bglScratchPush(m * n);
+    _bglfia2 = _bglScratchMake(3);
+    _bglfi3 = 0;
+    for (: _bglfi3 < _bglArray.length(_bglfia2) : _bglfi3++) {
+        y = _bglfia2-->(_bglfi3+1);
+        total = total + y;
+    }
+    print total;
+    seen = 0;
+    _bglScratchPush(r1);
+    _bglScratchPush(r2);
+    _bglScratchPush(r3);
+    _bglfia4 = _bglScratchMake(3);
+    _bglfi5 = 0;
+    for (: _bglfi5 < _bglArray.length(_bglfia4) : _bglfi5++) {
+        r = _bglfia4-->(_bglfi5+1);
+        seen = seen + 1;
+    }
+    print seen;
 ];

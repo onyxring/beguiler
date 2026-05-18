@@ -36,7 +36,7 @@ void main(){
     names[0] = "gamma";
     rooms[0] = hall;
 
-    // Length is invariant — int regardless of element type.
-    int n1 = nums.length();
-    int n2 = rooms.length();
+    // Size is invariant — int regardless of element type.
+    int n1 = nums.size();
+    int n2 = rooms.size();
 }

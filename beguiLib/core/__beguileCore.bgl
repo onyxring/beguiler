@@ -3,16 +3,22 @@
         language, included automatically by the compiler.
  -----------------------------------------------------------------------------*/
 #once
-//-- Pull in all the core features
-#include <core/_array>
-#include <core/_attribute>
-#include <core/_property>
-#include <core/_class>
+//-- Pull in all the core features.
+//
+// Order matters: primitive types (_int, _bool, _char) need to be loaded
+// before higher-level types (_array, _string, _grammar) that use them in
+// helper-method bodies. The previous order placed _array first which broke
+// once _bglArray gained a setLength helper using `int < int` (the operator
+// was declared later in _int.bgl).
 #include <core/_beguilerSettings>
+#include <core/_int>
 #include <core/_bool>
 #include <core/_char>
 #include <core/_dictionaryWord>
-#include <core/_int>
+#include <core/_attribute>
+#include <core/_property>
+#include <core/_class>
+#include <core/_array>
 #include <core/_string>
 #include <core/_grammar>
 #include <core/_verb>
@@ -28,6 +34,41 @@ object bgl{
     emitter int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
     emitter auto asm = bglOpCodes;     // compile-time alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>()
     auto utilities = _bglUtil;
+}
+
+//-----------------------------------------------------------------------------
+// _bglScratch — shared scratch buffer for for-in over inline lists.
+//
+// for(int x in {a, b, c}) { ... } emits push-push-push then make(3) before
+// the loop runs. The scratch follows the tracked-array layout above so the
+// iteration target is indistinguishable from any other Beguile array.
+//
+// Layout (`Array _bglScratchStack --> 33` = 34 words):
+//   slot 0       = I6 auto-header (33) — drives detection
+//   slots 1..31  = data            — written by push
+//   slot 32      = length          — set by make
+//   slot 33      = magic ($9084)   — set at startup
+//
+// Single shared buffer; nested literal-list for-in loops would clobber
+// each other and are not supported. 31-element cap.
+//-----------------------------------------------------------------------------
+#emitfirst{
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
 }
 
 //=============================================================================
@@ -115,10 +156,10 @@ object bgl{
 // array<object>.  The buffer is reused on every call; do not store the result
 // across turns or nest two bglWorld calls.
 //
-// Format: TABLE array conforming to orUtilArray standalone convention —
-//   _bglWorldBuf-->0   = capacity (256)
-//   _bglWorldBuf-->(i+1) = element at 0-based index i
-//   first 0 entry is the end sentinel (read by _orArray.getLength)
+// Format: TABLE array following the size/length convention —
+//   _bglWorldBuf-->0       = allocated size (256)
+//   _bglWorldBuf-->(i+1)   = element at 0-based index i
+//   first 0 entry is the end sentinel (length stops here)
 //
 // Usage:
 //   for(object o in bglWorld.getAll()) { ... }

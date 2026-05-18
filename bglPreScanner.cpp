@@ -383,10 +383,73 @@ void bglParser::preScanGlobalLoop(){
         // extend class/object — register new members on the existing type during pre-scan
         // Note: 'extend' was consumed by parseQualifiers; tok is now 'class', 'verb', identifier, or 'extern'
         if(q.isExtend){
-            // extend object by name — just skip the body (already registered by its own decl)
+            // extend object by name — register added members on the existing objectDef.
+            // Without this pre-pass, sibling-method calls inside the extended body fail
+            // to resolve in the full pass when the caller is declared above the callee.
             if((tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration)){
-                // extend ObjectName { } — object extension; skip body during pre-scan
-                preScanSkipBody();
+                objectDef* obj = nullptr;
+                for(typeDef* g : languageService.globals)
+                    if(auto* od = dynamic_cast<objectDef*>(g))
+                        if(od->name == tok.value){ obj = od; break; }
+                if(obj == nullptr){
+                    // Unknown object — full-pass will report it; skip body here.
+                    preScanSkipBody();
+                    continue;
+                }
+                // Open the body
+                token t = file.getToken();
+                while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken();
+                t = file.getToken();
+                while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+                    bool memberIsEmitter = false;
+                    bool memberIsReplace = false;
+                    if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
+                    if(t.is("explicit")) t = file.getToken();
+                    if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
+                    if(t.isDataType() || t.is(eTokenType::identifier)){
+                        preScanConsumeGenericSuffix(t);
+                        token memberName = file.getToken();
+                        if(memberName.is("operator")){
+                            token opTok = file.getToken();
+                            if(opTok.is(token::parenOpen)){ memberName.value = "operator()"; }
+                            else if(opTok.is(token::bracketOpen)){ file.getToken(); memberName.value = "[]"; token ma = file.getToken(); if(ma.is("=")) memberName.value = "[]="; }
+                            else if(opTok.is("?")) memberName.value = "?";
+                            else if(opTok.is("switch")) memberName.value = "switch";
+                            else memberName.value = opTok.value;
+                        }
+                        token afterName = file.getToken();
+                        if(afterName.is(token::parenOpen)){
+                            functionDef& fd = *(new functionDef());
+                            fd.name = memberName.value;
+                            fd.returnType = languageService.getType(t.value);
+                            fd.isEmitter = memberIsEmitter;
+                            fd.isPrePassStub = true;
+                            preScanCaptureParams(fd.params);
+                            token bodyStart = file.getToken();
+                            if(bodyStart.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                            bool exists = false;
+                            for(auto it = obj->members.begin(); it != obj->members.end(); ++it){
+                                if((*it)->name == fd.name){
+                                    exists = true;
+                                    if(memberIsReplace) *it = &fd;
+                                    break;
+                                }
+                            }
+                            if(!exists) obj->members.push_back(&fd);
+                        } else {
+                            // Property — skip to ;
+                            while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
+                                if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
+                                afterName = file.getToken();
+                            }
+                            if(afterName.is(token::braceClose)) break;
+                        }
+                    } else {
+                        while(!t.is(token::endStatement) && !t.is(token::braceClose) && !t.is(eTokenType::eof)) t = file.getToken();
+                        if(t.is(token::braceClose)) break;
+                    }
+                    t = file.getToken();
+                }
                 continue;
             }
             if(tok.is("extern")) tok = file.getToken(); // consume "extern", now tok = "class"
@@ -405,7 +468,13 @@ void bglParser::preScanGlobalLoop(){
                     if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
                     if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
                     if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
-                    if(t.isDataType()){
+                    // Accept either a built-in dataType OR an identifier as the return type.
+                    // The identifier path covers type parameters (e.g. `T` from `class array<T>`)
+                    // and user-defined class names, which the lexer doesn't classify as dataTypes
+                    // at pre-scan time. Without this, hitting `T pop()` triggered the "unrecognized"
+                    // fallback below, which skipped to the emitter body's `}` and then `break`ed
+                    // out of the entire extend body — leaving subsequent methods unscanned.
+                    if(t.isDataType() || t.is(eTokenType::identifier)){
                         preScanConsumeGenericSuffix(t);
                         token memberName = file.getToken();
                         if(memberName.is("operator")){
@@ -570,18 +639,52 @@ void bglParser::preScanGlobalLoop(){
                           if(bt.isDataType() || bt.is(eTokenType::identifier)){
                               token typeTok = bt;
                               token afterType = file.getToken();
-                              // Skip `operator` declarations — operator method names are composed
-                              // from the keyword + symbol (e.g. `operator()`, `operator+`) and need
-                              // the special handling already present in the extend pre-scan path.
-                              // Letting main parse register them avoids spurious "operator" stubs.
+                              // Operator declarations — register a stub so forward references resolve.
+                              // The full-pass name conventions are mirrored here (see bglParser.cpp:2244+):
+                              //   operator(<>)        → "operator()"
+                              //   operator[]          → "[]"      (read)
+                              //   operator[]=         → "[]="     (write)
+                              //   operator switch     → "switch"
+                              //   operator auto       → "auto"
+                              //   operator <symbol>   → "<symbol>" (e.g. "<", "==", "+")
+                              //   operator id<sym>    → "id<sym>" (e.g. "prefix++")
+                              //   operator ?          → "?"
                               if(afterType.value == "operator"){
-                                  // Drain through method body / declaration end and resume.
-                                  token op = file.getToken();
-                                  if(op.is(token::parenOpen)){
+                                  token opTok = file.getToken();
+                                  string opName;
+                                  if(opTok.is(token::parenOpen)){
+                                      opName = "operator()";
+                                      // ( already consumed — drain params
                                       int depth = 1;
                                       while(depth > 0){ token p = file.getToken(); if(p.is(eTokenType::eof)) break; if(p.is(token::parenOpen)) depth++; else if(p.is(token::parenClose)) depth--; }
+                                  } else if(opTok.is(token::bracketOpen)){
+                                      file.getToken();                 // ]
+                                      token maybeAssign = file.getToken();
+                                      if(maybeAssign.is(token::assignment)) opName = "[]=";
+                                      else                                  opName = "[]";
+                                  } else if(opTok.is("switch") || opTok.is("auto")){
+                                      opName = opTok.value;
+                                  } else if(opTok.is(eTokenType::identifier)){
+                                      token opSym = file.getToken();
+                                      opName = opTok.value + opSym.value;
+                                  } else if(opTok.is("?")){
+                                      opName = "?";
+                                  } else {
+                                      opName = opTok.value;
                                   }
-                                  // Skip remaining tokens until we land at body open / end-statement / close
+                                  // Register the stub
+                                  bool exists = false;
+                                  for(typeMember* m : cls->members)
+                                      if(m->name == opName){ exists = true; break; }
+                                  if(!exists){
+                                      functionDef& fd = *(new functionDef());
+                                      fd.name = opName;
+                                      fd.returnType.name = typeTok.value;
+                                      fd.isEmitter = sawEmitter;
+                                      fd.isPrePassStub = true;
+                                      cls->members.push_back(&fd);
+                                  }
+                                  // Drain to end of declaration (body or ;)
                                   token s = file.getToken();
                                   while(!s.is(token::braceOpen) && !s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
                                       s = file.getToken();
@@ -890,23 +993,36 @@ void bglParser::preScanGlobalLoop(){
             }
 
             if(sym.is(token::parenOpen)){
-                // Function declaration — register stub with return type
+                // Function declaration — register stub with return type.
+                // We dedup by full signature (name + param types) rather than name
+                // alone, so each overload of an overloaded function (e.g. print(int)
+                // vs print(string) vs print(stringLiteral)) gets its own stub. Without
+                // this, only the first overload was registered and resolveGlobalCall
+                // would reject calls whose arg types matched a later overload.
+                functionDef& stub = *(new functionDef());
+                stub.name = nameStr;
+                stub.returnType.name = typeName;
+                stub.isEmitter = isEmitter;
+                stub.isPrePassStub = true;
+                preScanCaptureParams(stub.params);
                 bool alreadyReg = false;
-                for(typeDef* g : languageService.globals)
-                    if(auto* fd = dynamic_cast<functionDef*>(g))
-                        if(fd->name == nameStr){ alreadyReg = true; break; }
+                for(typeDef* g : languageService.globals){
+                    auto* fd = dynamic_cast<functionDef*>(g);
+                    if(fd == nullptr || fd->name != nameStr) continue;
+                    if(fd->params.size() != stub.params.size()) continue;
+                    bool sameSig = true;
+                    for(size_t i = 0; i < fd->params.size(); i++){
+                        if(fd->params[i]->type.name != stub.params[i]->type.name){
+                            sameSig = false; break;
+                        }
+                    }
+                    if(sameSig){ alreadyReg = true; break; }
+                }
                 functionDef* stubPtr = nullptr;
                 if(!alreadyReg){
-                    functionDef& stub = *(new functionDef());
-                    stub.name = nameStr;
-                    stub.returnType.name = typeName;
-                    stub.isEmitter = isEmitter;
-                    stub.isPrePassStub = true;
                     languageService.globals.push_back(&stub);
                     stubPtr = &stub;
                 }
-                if(stubPtr != nullptr) preScanCaptureParams(stubPtr->params);
-                else preScanSkipParens();
                 token peek = file.peekToken();
                 if(peek.is(token::braceOpen)){
                     // For emitter functions, capture the body during prescan so forward

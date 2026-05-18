@@ -1,0 +1,44 @@
+/*
+    test_for_in_literal_list.bgl
+    Exercises `for(T x in {a, b, c})` — the inline-literal-list form of for-in.
+    This path was dormant-broken before Slice 0.5: it emitted calls to
+    `_orArray.pushStack` / `makeFromStack` which were not defined anywhere.
+    Slice 0.5 introduced a real scratch-stack backing in __beguileCore.bgl,
+    so this form now compiles and produces a working iteration.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Room : object { int visits = 0; }
+Room r1;
+Room r2;
+Room r3;
+
+void main(){
+    int total = 0;
+
+    // Literal-list of int values
+    for(int x in {1, 2, 3}) {
+        total = total + x;
+    }
+    print(total);
+
+    // Literal-list of mixed expressions — `m`, `n`, and `m*n` are runtime values
+    int m = 4;
+    int n = 5;
+    for(int y in {m, n, m*n}) {
+        total = total + y;
+    }
+    print(total);
+
+    // Literal-list of objects — the for-in stops at the first 0 (sentinel),
+    // so we don't include nothing-valued entries
+    int seen = 0;
+    for(Room r in {r1, r2, r3}) {
+        seen = seen + 1;
+    }
+    print(seen);
+}
