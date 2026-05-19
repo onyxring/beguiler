@@ -1,0 +1,52 @@
+/*
+    test_linq_terminals.bgl
+    LINQ Step 2: terminals (first, last, count, any, all).
+    - first/last on populated arrays — first and last elements
+    - first/last on empty — 0 (same convention as pop/peek)
+    - count is an alias of length()
+    - any/all short-circuit; defaults on empty match standard LINQ
+        any (empty) → false, all (empty) → true
+    - Terminals after a chain (filter/map) read the scratch buffer correctly.
+*/
+#beguilerSettings {
+    target = z5;
+    informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
+    outputPath = "tests/output";
+}
+#include <array>
+
+array<int> g_nums  = {10, 20, 30, 40, 50};
+array<int> g_empty[8];
+
+void main(){
+    // first/last on populated.
+    print(g_nums.first());          // 10
+    print(g_nums.last());           // 50
+
+    // first/last on empty — return 0.
+    print(g_empty.first());         // 0
+    print(g_empty.last());          // 0
+
+    // count is an alias of length.
+    print(g_nums.count());          // 5
+    print(g_empty.count());         // 0
+
+    // any/all on populated.
+    print(g_nums.any((int x) => x > 30));     // 1 (40 and 50 match)
+    print(g_nums.any((int x) => x > 100));    // 0 (no match)
+    print(g_nums.all((int x) => x > 0));      // 1 (all positive)
+    print(g_nums.all((int x) => x > 20));     // 0 (10, 20 fail)
+
+    // any/all on empty.
+    print(g_empty.any((int x) => x > 0));     // 0 — no elements to match
+    print(g_empty.all((int x) => x > 0));     // 1 — vacuously true
+
+    // Terminals after a chain.
+    print(g_nums.filter((int x) => x >= 30).first());          // 30
+    print(g_nums.filter((int x) => x >= 30).last());           // 50
+    print(g_nums.filter((int x) => x >= 30).count());          // 3
+    print(g_nums.map((int x) => x * 2).first());               // 20
+    print(g_nums.map((int x) => x * 2).any((var y) => y > 80));    // 1 (100 matches)
+    print(g_nums.filter((int x) => x > 100).any((int y) => y > 0)); // 0 — empty result
+    print(g_nums.filter((int x) => x > 100).all((int y) => y > 0)); // 1 — vacuously true
+}

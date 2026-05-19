@@ -92,6 +92,15 @@ extend extern class array {
     // type can't be statically tracked.
     emitter array<T>   filter(func<bool, T> pred)   { _bglArray.filter($val, $pred) }
     emitter array<var> map(func<var, T> f)          { _bglArray.map($val, $f) }
+
+    // Terminals — collapse a chain to a scalar. No scratch writes; receiver
+    // type drives element type for first/last (returns T) and any/all (pred
+    // signature). count is a plain alias of length() for naming familiarity.
+    emitter T    first()                            { _bglArray.first($val) }
+    emitter T    last()                             { _bglArray.last($val) }
+    emitter int  count()                            { _bglArray.length($val) }
+    emitter bool any(func<bool, T> pred)            { _bglArray.any($val, $pred) }
+    emitter bool all(func<bool, T> pred)            { _bglArray.all($val, $pred) }
 }
 
 //-----------------------------------------------------------------------------
@@ -357,6 +366,37 @@ extend _bglArray {
         dst.setLength(writeCount);
         #i6 { _bglLinqParity = 1 - _bglLinqParity; }
         return dst;
+    }
+
+    // ── LINQ terminals ────────────────────────────────────────────────────────
+    // No parity flip; these read from the receiver and return a scalar. count()
+    // dispatches directly through the surface (no helper) since it's just length().
+    // first/last return 0 on empty — same convention as pop/peek.
+    // any/all short-circuit (first match wins for any; first non-match wins for all).
+
+    var first(array<var> src){
+        if(src.length() == 0) return 0;
+        return src[0];
+    }
+
+    var last(array<var> src){
+        int len = src.length();
+        if(len == 0) return 0;
+        return src[len - 1];
+    }
+
+    bool any(array<var> src, func<bool, var> pred){
+        int len = src.length();
+        for(int i = 0; i < len; i++)
+            if(pred(src[i])) return true;
+        return false;
+    }
+
+    bool all(array<var> src, func<bool, var> pred){
+        int len = src.length();
+        for(int i = 0; i < len; i++)
+            if(!pred(src[i])) return false;
+        return true;
     }
 
     array<var> map(array<var> src, func<var, var> f){
