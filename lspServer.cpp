@@ -56,7 +56,11 @@ json LspServer::readMessage() {
 }
 
 void LspServer::sendMessage(const json& msg) {
-    string body = msg.dump();
+    // dump() defaults to strict UTF-8 validation and throws on invalid bytes — that kills
+    // the LSP process when source-derived content (e.g. parser diagnostic messages that
+    // echo identifier or string content from a file with bad encoding) reaches the wire.
+    // Use replace mode so bad bytes become U+FFFD; the client still gets a coherent reply.
+    string body = msg.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
     cout << "Content-Length: " << body.size() << "\r\n\r\n" << body;
     cout.flush();
 }
