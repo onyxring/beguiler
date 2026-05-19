@@ -136,10 +136,6 @@ extend extern class array {
     Array _bglLinqScratchA --> _BGL_LINQ_SCRATCH_SIZE + 2;
     Array _bglLinqScratchB --> _BGL_LINQ_SCRATCH_SIZE + 2;
     Global _bglLinqParity = 0;
-    [ _bglLinqRead;
-        if(_bglLinqParity == 0) return _bglLinqScratchA;
-        return _bglLinqScratchB;
-    ];
     [ _bglLinqWrite;
         if(_bglLinqParity == 0) return _bglLinqScratchB;
         return _bglLinqScratchA;
@@ -157,6 +153,13 @@ extend extern class array {
     _bglLinqScratchB-->(_bglLinqScratchB-->0)     = $9084;
     _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
 }
+
+// Beguile-side bridges to the I6 routines emitted in the #emitfirst block above.
+// Implementations live in raw I6; these declarations just make the routines
+// callable from Beguile-side helpers. extern function bodies aren't emitted —
+// the dummy return only satisfies the parser's non-void-must-return check.
+extern array<var> _bglLinqWrite(){ return 0; }
+extern void       _bglLinqFlip(){}
 
 
 //-----------------------------------------------------------------------------
@@ -349,17 +352,8 @@ extend _bglArray {
     // works, can feed the next chain step.
 
     array<var> filter(array<var> src, func<bool, var> pred){
-        array<var> dst;
-        int cap;
-        // Pick write buffer opposite current parity, and read the capacity from the I6
-        // constant emitted by i6Emitter (matches #beguilerSettings.linqScratchSize at
-        // emit time — using the directive directly in Beguile substitutes 0 since the
-        // setting isn't resolved until after parsing completes).
-        #i6 {
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        }
+        array<var> dst = _bglLinqWrite();
+        int cap = #beguilerSettings.linqScratchSize;
         int writeCount = 0;
         int srcLen = src.length();
         for(int i = 0; i < srcLen; i++){
@@ -376,7 +370,7 @@ extend _bglArray {
             }
         }
         dst.setLength(writeCount);
-        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        _bglLinqFlip();
         return dst;
     }
 
@@ -412,13 +406,8 @@ extend _bglArray {
     }
 
     array<var> map(array<var> src, func<var, var> f){
-        array<var> dst;
-        int cap;
-        #i6 {
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        }
+        array<var> dst = _bglLinqWrite();
+        int cap = #beguilerSettings.linqScratchSize;
         int srcLen = src.length();
         if(srcLen > cap){
             #i6 {
@@ -430,7 +419,7 @@ extend _bglArray {
             dst[i] = f(src[i]);
         }
         dst.setLength(srcLen);
-        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        _bglLinqFlip();
         return dst;
     }
 
@@ -443,13 +432,8 @@ extend _bglArray {
     // predicate matches, then keeps everything from the first failure on.
 
     array<var> take(array<var> src, int n){
-        array<var> dst;
-        int cap;
-        #i6 {
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        }
+        array<var> dst = _bglLinqWrite();
+        int cap = #beguilerSettings.linqScratchSize;
         int srcLen = src.length();
         int outLen = n;
         if(outLen < 0)      outLen = 0;
@@ -462,18 +446,13 @@ extend _bglArray {
         }
         for(int i = 0; i < outLen; i++) dst[i] = src[i];
         dst.setLength(outLen);
-        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        _bglLinqFlip();
         return dst;
     }
 
     array<var> skip(array<var> src, int n){
-        array<var> dst;
-        int cap;
-        #i6 {
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        }
+        array<var> dst = _bglLinqWrite();
+        int cap = #beguilerSettings.linqScratchSize;
         int srcLen = src.length();
         int start = n;
         if(start < 0)      start = 0;
@@ -487,18 +466,13 @@ extend _bglArray {
         }
         for(int i = 0; i < outLen; i++) dst[i] = src[start + i];
         dst.setLength(outLen);
-        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        _bglLinqFlip();
         return dst;
     }
 
     array<var> takeWhile(array<var> src, func<bool, var> pred){
-        array<var> dst;
-        int cap;
-        #i6 {
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        }
+        array<var> dst = _bglLinqWrite();
+        int cap = #beguilerSettings.linqScratchSize;
         int srcLen = src.length();
         int outLen = 0;
         for(int i = 0; i < srcLen; i++){
@@ -513,18 +487,13 @@ extend _bglArray {
             outLen++;
         }
         dst.setLength(outLen);
-        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        _bglLinqFlip();
         return dst;
     }
 
     array<var> skipWhile(array<var> src, func<bool, var> pred){
-        array<var> dst;
-        int cap;
-        #i6 {
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        }
+        array<var> dst = _bglLinqWrite();
+        int cap = #beguilerSettings.linqScratchSize;
         int srcLen = src.length();
         int start = 0;
         while(start < srcLen && pred(src[start])) start++;
@@ -537,7 +506,7 @@ extend _bglArray {
         }
         for(int i = 0; i < outLen; i++) dst[i] = src[start + i];
         dst.setLength(outLen);
-        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        _bglLinqFlip();
         return dst;
     }
 
@@ -548,13 +517,8 @@ extend _bglArray {
     // the source array is left untouched.
 
     array<var> distinct(array<var> src){
-        array<var> dst;
-        int cap;
-        #i6 {
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        }
+        array<var> dst = _bglLinqWrite();
+        int cap = #beguilerSettings.linqScratchSize;
         int srcLen = src.length();
         int outLen = 0;
         for(int i = 0; i < srcLen; i++){
@@ -575,18 +539,13 @@ extend _bglArray {
             }
         }
         dst.setLength(outLen);
-        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        _bglLinqFlip();
         return dst;
     }
 
     array<var> orderBy(array<var> src, func<int, var, var> compare){
-        array<var> dst;
-        int cap;
-        #i6 {
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        }
+        array<var> dst = _bglLinqWrite();
+        int cap = #beguilerSettings.linqScratchSize;
         int srcLen = src.length();
         if(srcLen > cap){
             #i6 {
@@ -597,7 +556,7 @@ extend _bglArray {
         for(int i = 0; i < srcLen; i++) dst[i] = src[i];
         dst.setLength(srcLen);
         sort(dst, compare);
-        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        _bglLinqFlip();
         return dst;
     }
 }

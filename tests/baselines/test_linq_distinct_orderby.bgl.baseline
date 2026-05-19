@@ -23,10 +23,6 @@ Constant _BGL_LINQ_SCRATCH_SIZE = 32;
     Array _bglLinqScratchA --> _BGL_LINQ_SCRATCH_SIZE + 2;
     Array _bglLinqScratchB --> _BGL_LINQ_SCRATCH_SIZE + 2;
     Global _bglLinqParity = 0;
-    [ _bglLinqRead;
-        if(_bglLinqParity == 0) return _bglLinqScratchA;
-        return _bglLinqScratchB;
-    ];
     [ _bglLinqWrite;
         if(_bglLinqParity == 0) return _bglLinqScratchB;
         return _bglLinqScratchA;
@@ -203,11 +199,8 @@ object _bglArray
     }
   ],
        filter [src pred dst cap writeCount srcLen i elem;
-    
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        
+    dst = _bgllinqwrite();
+    cap = 32;
     writeCount = 0;
     srcLen=_bglArray.length(src);
     for (i = 0 : i < srclen : i++) {
@@ -224,7 +217,7 @@ object _bglArray
         }
     }
     _bglArray.setLength(dst, writeCount);
-     _bglLinqParity = 1 - _bglLinqParity; 
+    _bgllinqflip();
     return dst;
   ],
        first [src;
@@ -259,11 +252,8 @@ object _bglArray
     return true;
   ],
        map [src f dst cap srcLen i;
-    
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        
+    dst = _bgllinqwrite();
+    cap = 32;
     srcLen=_bglArray.length(src);
     if (srclen > cap) {
         
@@ -275,15 +265,12 @@ object _bglArray
         dst-->(i+1) = f( src-->(i+1) );
     }
     _bglArray.setLength(dst, srcLen);
-     _bglLinqParity = 1 - _bglLinqParity; 
+    _bgllinqflip();
     return dst;
   ],
        take [src n dst cap srcLen outLen i;
-    
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        
+    dst = _bgllinqwrite();
+    cap = 32;
     srcLen=_bglArray.length(src);
     outLen=n;
     if (outlen<0) {
@@ -302,15 +289,12 @@ object _bglArray
         dst-->(i+1) =  src-->(i+1);
     }
     _bglArray.setLength(dst, outLen);
-     _bglLinqParity = 1 - _bglLinqParity; 
+    _bgllinqflip();
     return dst;
   ],
        skip [src n dst cap srcLen start outLen i;
-    
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        
+    dst = _bgllinqwrite();
+    cap = 32;
     srcLen=_bglArray.length(src);
     start=n;
     if (start<0) {
@@ -330,15 +314,12 @@ object _bglArray
         dst-->(i+1) =  src-->(start + i+1);
     }
     _bglArray.setLength(dst, outLen);
-     _bglLinqParity = 1 - _bglLinqParity; 
+    _bgllinqflip();
     return dst;
   ],
        takeWhile [src pred dst cap srcLen outLen i;
-    
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        
+    dst = _bgllinqwrite();
+    cap = 32;
     srcLen=_bglArray.length(src);
     outLen = 0;
     for (i = 0 : i < srclen : i++) {
@@ -355,15 +336,12 @@ object _bglArray
          outlen++ ;
     }
     _bglArray.setLength(dst, outLen);
-     _bglLinqParity = 1 - _bglLinqParity; 
+    _bgllinqflip();
     return dst;
   ],
        skipWhile [src pred dst cap srcLen start outLen i;
-    
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        
+    dst = _bgllinqwrite();
+    cap = 32;
     srcLen=_bglArray.length(src);
     start = 0;
     while (start < srclen && pred( src-->(start+1) )) {
@@ -380,15 +358,12 @@ object _bglArray
         dst-->(i+1) =  src-->(start + i+1);
     }
     _bglArray.setLength(dst, outLen);
-     _bglLinqParity = 1 - _bglLinqParity; 
+    _bgllinqflip();
     return dst;
   ],
        distinct [src dst cap srcLen outLen i elem seen j;
-    
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        
+    dst = _bgllinqwrite();
+    cap = 32;
     srcLen=_bglArray.length(src);
     outLen = 0;
     for (i = 0 : i < srclen : i++) {
@@ -412,15 +387,12 @@ object _bglArray
         }
     }
     _bglArray.setLength(dst, outLen);
-     _bglLinqParity = 1 - _bglLinqParity; 
+    _bgllinqflip();
     return dst;
   ],
        orderBy [src compare dst cap srcLen i;
-    
-            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
-            else                    dst = _bglLinqScratchA;
-            cap = _BGL_LINQ_SCRATCH_SIZE;
-        
+    dst = _bgllinqwrite();
+    cap = 32;
     srcLen=_bglArray.length(src);
     if (srclen > cap) {
         
@@ -433,7 +405,7 @@ object _bglArray
     }
     _bglArray.setLength(dst, srcLen);
     self.sort(dst, compare);
-     _bglLinqParity = 1 - _bglLinqParity; 
+    _bgllinqflip();
     return dst;
   ]
 ;
@@ -450,7 +422,6 @@ object bgl
     
     return 0;
 ];
-global dst;
 array g_dupes table 3 1 4 1 5 9 2 6 5 3 10 $9084;
 array g_unsorted table 30 10 50 20 40 5 $9084;
 array g_alldup table 7 7 7 7 4 $9084;
