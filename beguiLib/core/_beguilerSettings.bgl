@@ -11,6 +11,7 @@
         int             release        = 0;             // story release number
         string          serial         = "";            // serial number: exactly 6 digits (e.g. "250328")
         int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
+        int             linqScratchSize = 32;           // LINQ-style chain scratch buffer capacity (per buffer; two buffers allocated)
         string          includePaths;                   // include search path entries for both Beguile and I6 (additive); comma-separated allowed: "../a,../b,../c"
         bool            rewritePaths   = true;          // substitute path separators to match OS
         bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)

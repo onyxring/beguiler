@@ -1,0 +1,43 @@
+/*
+    test_linq_basics.bgl
+    LINQ Step 1: filter + map.
+    - filter preserves T (selection-style op)
+    - map returns array<var> (mapper's output type can't be statically tracked)
+    - chains use the even/odd LINQ scratch buffers (A → B → A …)
+    - empty input is well-defined
+*/
+#beguilerSettings {
+    target = z5;
+    informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
+    outputPath = "tests/output";
+}
+#include <array>
+
+array<int> g_nums   = {1, 2, 3, 4, 5, 6};
+array<int> g_empty[8];
+
+void main(){
+    // filter-only — keep evens. Result is array<int>, lives in scratch.
+    print(g_nums.filter((int x) => (x & 1) == 0).length());   // 3 (2, 4, 6)
+    print(g_nums.filter((int x) => (x & 1) == 0)[0]);         // 2
+    print(g_nums.filter((int x) => (x & 1) == 0)[1]);         // 4
+    print(g_nums.filter((int x) => (x & 1) == 0)[2]);         // 6
+
+    // map-only — double each element. Result is array<var>.
+    print(g_nums.map((int x) => x * 2).length());             // 6
+    print(g_nums.map((int x) => x * 2)[0]);                   // 2
+    print(g_nums.map((int x) => x * 2)[5]);                   // 12
+
+    // Chained filter then map — keep evens, then triple them.
+    print(g_nums.filter((int x) => (x & 1) == 0).map((var y) => y * 3).length());  // 3
+    print(g_nums.filter((int x) => (x & 1) == 0).map((var y) => y * 3)[0]);        // 6
+    print(g_nums.filter((int x) => (x & 1) == 0).map((var y) => y * 3)[2]);        // 18
+
+    // Chained map then filter — triple, then keep >10.
+    print(g_nums.map((int x) => x * 3).filter((var y) => y > 10).length());        // 3 (12, 15, 18)
+    print(g_nums.map((int x) => x * 3).filter((var y) => y > 10)[0]);              // 12
+
+    // Empty input — length() is 0, no elements processed.
+    print(g_empty.filter((int x) => x > 0).length());                              // 0
+    print(g_empty.map((int x) => x + 1).length());                                 // 0
+}

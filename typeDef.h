@@ -427,6 +427,7 @@ class beguilerSettingsDef : public typeDef {
 
         // runtime options (affect generated I6, not ICL)
         int framePoolSize = -1;        // Z-machine frame pool slot count (-1 = unset; default 64 from schema)
+        int linqScratchSize = -1;      // LINQ chain scratch buffer capacity per buffer (-1 = unset; default 32 from schema)
         optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)
 
         // blorb packaging
