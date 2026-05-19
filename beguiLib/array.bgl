@@ -101,6 +101,18 @@ extend extern class array {
     emitter int  count()                            { _bglArray.length($val) }
     emitter bool any(func<bool, T> pred)            { _bglArray.any($val, $pred) }
     emitter bool all(func<bool, T> pred)            { _bglArray.all($val, $pred) }
+
+    // Slicing — all type-preserving, flip parity, return array<T>.
+    emitter array<T> take(int n)                    { _bglArray.take($val, $n) }
+    emitter array<T> skip(int n)                    { _bglArray.skip($val, $n) }
+    emitter array<T> takeWhile(func<bool, T> pred)  { _bglArray.takeWhile($val, $pred) }
+    emitter array<T> skipWhile(func<bool, T> pred)  { _bglArray.skipWhile($val, $pred) }
+
+    // distinct / orderBy. distinct keeps first occurrence (O(N²) scan, fine at IF scale).
+    // orderBy reuses sort() on the scratch copy — two overloads matching sort's surface.
+    emitter array<T> distinct()                          { _bglArray.distinct($val) }
+    emitter array<T> orderBy()                           { _bglArray.orderBy($val, _bglArrayCompareAsc) }
+    emitter array<T> orderBy(func<int, T, T> compare)    { _bglArray.orderBy($val, $compare) }
 }
 
 //-----------------------------------------------------------------------------
@@ -418,6 +430,173 @@ extend _bglArray {
             dst[i] = f(src[i]);
         }
         dst.setLength(srcLen);
+        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        return dst;
+    }
+
+    // ── LINQ slicing ──────────────────────────────────────────────────────────
+    // take/skip clamp negative and over-length arguments to the natural bounds
+    // (a Beguile-idiomatic "be forgiving" choice — IF code often passes counts
+    // derived from earlier ops where empty/full edges are common).
+    // takeWhile/skipWhile follow the standard LINQ semantics: takeWhile stops at
+    // the first element that fails the predicate; skipWhile drops while the
+    // predicate matches, then keeps everything from the first failure on.
+
+    array<var> take(array<var> src, int n){
+        array<var> dst;
+        int cap;
+        #i6 {
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        }
+        int srcLen = src.length();
+        int outLen = n;
+        if(outLen < 0)      outLen = 0;
+        if(outLen > srcLen) outLen = srcLen;
+        if(outLen > cap){
+            #i6 {
+                print "^[Beguile runtime error: take() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            }
+        }
+        for(int i = 0; i < outLen; i++) dst[i] = src[i];
+        dst.setLength(outLen);
+        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        return dst;
+    }
+
+    array<var> skip(array<var> src, int n){
+        array<var> dst;
+        int cap;
+        #i6 {
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        }
+        int srcLen = src.length();
+        int start = n;
+        if(start < 0)      start = 0;
+        if(start > srcLen) start = srcLen;
+        int outLen = srcLen - start;
+        if(outLen > cap){
+            #i6 {
+                print "^[Beguile runtime error: skip() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            }
+        }
+        for(int i = 0; i < outLen; i++) dst[i] = src[start + i];
+        dst.setLength(outLen);
+        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        return dst;
+    }
+
+    array<var> takeWhile(array<var> src, func<bool, var> pred){
+        array<var> dst;
+        int cap;
+        #i6 {
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        }
+        int srcLen = src.length();
+        int outLen = 0;
+        for(int i = 0; i < srcLen; i++){
+            if(!pred(src[i])) break;
+            if(outLen >= cap){
+                #i6 {
+                    print "^[Beguile runtime error: takeWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                    quit;
+                }
+            }
+            dst[outLen] = src[i];
+            outLen++;
+        }
+        dst.setLength(outLen);
+        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        return dst;
+    }
+
+    array<var> skipWhile(array<var> src, func<bool, var> pred){
+        array<var> dst;
+        int cap;
+        #i6 {
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        }
+        int srcLen = src.length();
+        int start = 0;
+        while(start < srcLen && pred(src[start])) start++;
+        int outLen = srcLen - start;
+        if(outLen > cap){
+            #i6 {
+                print "^[Beguile runtime error: skipWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            }
+        }
+        for(int i = 0; i < outLen; i++) dst[i] = src[start + i];
+        dst.setLength(outLen);
+        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        return dst;
+    }
+
+    // ── LINQ distinct / orderBy ──────────────────────────────────────────────
+    // distinct keeps the first occurrence of each value — O(N²) scan since the
+    // scratch only grows linearly and IF arrays are small. orderBy copies into
+    // scratch first, then reuses the existing in-place sort() on that copy so
+    // the source array is left untouched.
+
+    array<var> distinct(array<var> src){
+        array<var> dst;
+        int cap;
+        #i6 {
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        }
+        int srcLen = src.length();
+        int outLen = 0;
+        for(int i = 0; i < srcLen; i++){
+            var elem = src[i];
+            bool seen = false;
+            for(int j = 0; j < outLen; j++){
+                if(dst[j] == elem){ seen = true; break; }
+            }
+            if(!seen){
+                if(outLen >= cap){
+                    #i6 {
+                        print "^[Beguile runtime error: distinct() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                        quit;
+                    }
+                }
+                dst[outLen] = elem;
+                outLen++;
+            }
+        }
+        dst.setLength(outLen);
+        #i6 { _bglLinqParity = 1 - _bglLinqParity; }
+        return dst;
+    }
+
+    array<var> orderBy(array<var> src, func<int, var, var> compare){
+        array<var> dst;
+        int cap;
+        #i6 {
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        }
+        int srcLen = src.length();
+        if(srcLen > cap){
+            #i6 {
+                print "^[Beguile runtime error: orderBy() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            }
+        }
+        for(int i = 0; i < srcLen; i++) dst[i] = src[i];
+        dst.setLength(srcLen);
+        sort(dst, compare);
         #i6 { _bglLinqParity = 1 - _bglLinqParity; }
         return dst;
     }
