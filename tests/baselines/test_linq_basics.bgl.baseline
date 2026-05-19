@@ -277,6 +277,164 @@ object _bglArray
     _bglArray.setLength(dst, srcLen);
      _bglLinqParity = 1 - _bglLinqParity; 
     return dst;
+  ],
+       take [src n dst cap srcLen outLen i;
+    
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        
+    srcLen=_bglArray.length(src);
+    outLen=n;
+    if (outlen<0) {
+        outLen = 0;
+    }
+    if (outlen > srclen) {
+        outLen = srcLen;
+    }
+    if (outlen > cap) {
+        
+                print "^[Beguile runtime error: take() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < outlen : i++) {
+        dst-->(i+1) =  src-->(i+1);
+    }
+    _bglArray.setLength(dst, outLen);
+     _bglLinqParity = 1 - _bglLinqParity; 
+    return dst;
+  ],
+       skip [src n dst cap srcLen start outLen i;
+    
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        
+    srcLen=_bglArray.length(src);
+    start=n;
+    if (start<0) {
+        start = 0;
+    }
+    if (start > srclen) {
+        start = srcLen;
+    }
+    outLen=srclen - start;
+    if (outlen > cap) {
+        
+                print "^[Beguile runtime error: skip() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < outlen : i++) {
+        dst-->(i+1) =  src-->(start + i+1);
+    }
+    _bglArray.setLength(dst, outLen);
+     _bglLinqParity = 1 - _bglLinqParity; 
+    return dst;
+  ],
+       takeWhile [src pred dst cap srcLen outLen i;
+    
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        
+    srcLen=_bglArray.length(src);
+    outLen = 0;
+    for (i = 0 : i < srclen : i++) {
+        if (~~pred( src-->(i+1) )) {
+            break;
+        }
+        if (outlen >= cap) {
+            
+                    print "^[Beguile runtime error: takeWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                    quit;
+                
+        }
+        dst-->(outlen+1) =  src-->(i+1);
+         outlen++ ;
+    }
+    _bglArray.setLength(dst, outLen);
+     _bglLinqParity = 1 - _bglLinqParity; 
+    return dst;
+  ],
+       skipWhile [src pred dst cap srcLen start outLen i;
+    
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        
+    srcLen=_bglArray.length(src);
+    start = 0;
+    while (start < srclen && pred( src-->(start+1) )) {
+         start++ ;
+    }
+    outLen=srclen - start;
+    if (outlen > cap) {
+        
+                print "^[Beguile runtime error: skipWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < outlen : i++) {
+        dst-->(i+1) =  src-->(start + i+1);
+    }
+    _bglArray.setLength(dst, outLen);
+     _bglLinqParity = 1 - _bglLinqParity; 
+    return dst;
+  ],
+       distinct [src dst cap srcLen outLen i elem seen j;
+    
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        
+    srcLen=_bglArray.length(src);
+    outLen = 0;
+    for (i = 0 : i < srclen : i++) {
+        elem =  src-->(i+1) ;
+        seen=false;
+        for (j = 0 : j < outlen : j++) {
+            if ( dst-->(j+1) ==elem) {
+                seen = true;
+                break;
+            }
+        }
+        if (~~seen) {
+            if (outlen >= cap) {
+                
+                        print "^[Beguile runtime error: distinct() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                        quit;
+                    
+            }
+            dst-->(outlen+1) = elem;
+             outlen++ ;
+        }
+    }
+    _bglArray.setLength(dst, outLen);
+     _bglLinqParity = 1 - _bglLinqParity; 
+    return dst;
+  ],
+       orderBy [src compare dst cap srcLen i;
+    
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        
+    srcLen=_bglArray.length(src);
+    if (srclen > cap) {
+        
+                print "^[Beguile runtime error: orderBy() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < srclen : i++) {
+        dst-->(i+1) =  src-->(i+1);
+    }
+    _bglArray.setLength(dst, srcLen);
+    self.sort(dst, compare);
+     _bglLinqParity = 1 - _bglLinqParity; 
+    return dst;
   ]
 ;
 object _bglUtil
@@ -292,6 +450,7 @@ object bgl
     
     return 0;
 ];
+global dst;
 array g_nums table 1 2 3 4 5 6 6 $9084;
 array g_empty table 10;
 [main;
