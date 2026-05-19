@@ -1,0 +1,57 @@
+/*
+    test_linq_slicing.bgl
+    LINQ Step 4: slicing (take, skip, takeWhile, skipWhile).
+    - take/skip clamp negative and over-length counts to the natural bounds.
+    - takeWhile/skipWhile use standard LINQ semantics:
+        takeWhile stops at the first element that fails the predicate
+        skipWhile drops while the predicate matches, keeps the rest from the first failure
+    - All four flip parity and chain correctly with the rest of LINQ.
+*/
+#beguilerSettings {
+    target = z5;
+    informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
+    outputPath = "tests/output";
+}
+#include <array>
+
+array<int> g_nums  = {10, 20, 30, 40, 50};
+array<int> g_empty[8];
+
+void main(){
+    // take — basic, edge cases.
+    print(g_nums.take(3).length());            // 3
+    print(g_nums.take(3)[0]);                  // 10
+    print(g_nums.take(3)[2]);                  // 30
+    print(g_nums.take(0).length());            // 0 (zero clamps to empty)
+    print(g_nums.take(99).length());           // 5 (over-length clamps to all)
+    print(g_nums.take(-5).length());           // 0 (negative clamps to zero)
+    print(g_empty.take(3).length());           // 0
+
+    // skip — basic, edge cases.
+    print(g_nums.skip(2).length());            // 3
+    print(g_nums.skip(2)[0]);                  // 30
+    print(g_nums.skip(2)[2]);                  // 50
+    print(g_nums.skip(0).length());            // 5
+    print(g_nums.skip(99).length());           // 0
+    print(g_nums.skip(-3).length());           // 5 (negative clamps to zero)
+    print(g_empty.skip(2).length());           // 0
+
+    // takeWhile — stops at first failure.
+    print(g_nums.takeWhile((int x) => x < 35).length());     // 3 (10, 20, 30)
+    print(g_nums.takeWhile((int x) => x < 35)[2]);           // 30
+    print(g_nums.takeWhile((int x) => x > 100).length());    // 0 (first elem fails)
+    print(g_nums.takeWhile((int x) => x > 0).length());      // 5 (all pass)
+
+    // skipWhile — drops while pred true; keeps from first failure on.
+    print(g_nums.skipWhile((int x) => x < 35).length());     // 2 (40, 50)
+    print(g_nums.skipWhile((int x) => x < 35)[0]);           // 40
+    print(g_nums.skipWhile((int x) => x > 100).length());    // 5 (first elem fails, keep all)
+    print(g_nums.skipWhile((int x) => x > 0).length());      // 0 (all drop)
+
+    // Chained slicing — take after filter, skip after map, etc.
+    print(g_nums.filter((int x) => x >= 20).take(2).length());                  // 2
+    print(g_nums.filter((int x) => x >= 20).take(2)[1]);                        // 30
+    print(g_nums.map((int x) => x + 1).skip(3).length());                       // 2
+    print(g_nums.map((int x) => x + 1).skip(3)[0]);                             // 41
+    print(g_nums.takeWhile((int x) => x < 40).filter((var y) => y > 15).length()); // 2 (20, 30)
+}

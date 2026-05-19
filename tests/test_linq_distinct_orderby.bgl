@@ -1,0 +1,69 @@
+/*
+    test_linq_distinct_orderby.bgl
+    LINQ Step 5: distinct + orderBy.
+    - distinct keeps first occurrence; O(N²) scan, fine at IF scale.
+    - orderBy has two overloads: no-arg ascending, and func<int, T, T> for
+      custom orderings. Both leave the source array untouched (copy-then-sort
+      on scratch).
+    - Both type-preserving and chainable.
+*/
+#beguilerSettings {
+    target = z5;
+    informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
+    outputPath = "tests/output";
+}
+#include <array>
+
+array<int> g_dupes    = {3, 1, 4, 1, 5, 9, 2, 6, 5, 3};
+array<int> g_unsorted = {30, 10, 50, 20, 40};
+array<int> g_alldup   = {7, 7, 7, 7};
+array<int> g_empty[8];
+
+void main(){
+    // distinct — first-occurrence preservation.
+    print(g_dupes.distinct().length());          // 7
+    print(g_dupes.distinct()[0]);                // 3
+    print(g_dupes.distinct()[1]);                // 1
+    print(g_dupes.distinct()[2]);                // 4
+    print(g_dupes.distinct()[3]);                // 5
+    print(g_dupes.distinct()[4]);                // 9
+    print(g_dupes.distinct()[5]);                // 2
+    print(g_dupes.distinct()[6]);                // 6
+
+    // All-duplicate input collapses to a single element.
+    print(g_alldup.distinct().length());         // 1
+    print(g_alldup.distinct()[0]);               // 7
+
+    // Empty input is well-defined.
+    print(g_empty.distinct().length());          // 0
+
+    // orderBy — default ascending.
+    print(g_unsorted.orderBy().length());        // 5
+    print(g_unsorted.orderBy()[0]);              // 10
+    print(g_unsorted.orderBy()[4]);              // 50
+
+    // orderBy doesn't mutate the source (sort() does, but orderBy copies first).
+    print(g_unsorted[0]);                        // 30 — untouched
+    print(g_unsorted[1]);                        // 10
+    print(g_unsorted[2]);                        // 50
+
+    // orderBy with custom comparator (descending).
+    print(g_unsorted.orderBy((int a, int b) => {
+        if(a > b) return -1;
+        if(a < b) return 1;
+        return 0;
+    })[0]);                                      // 50
+
+    // Source still untouched after second orderBy.
+    print(g_unsorted[0]);                        // 30
+
+    // Empty input.
+    print(g_empty.orderBy().length());           // 0
+
+    // Chained: filter → distinct → orderBy.
+    // g_dupes {3,1,4,1,5,9,2,6,5,3} → filter(>2) {3,4,5,9,6,5,3}
+    // → distinct {3,4,5,9,6} → orderBy {3,4,5,6,9}.
+    print(g_dupes.filter((int x) => x > 2).distinct().orderBy().length());   // 5
+    print(g_dupes.filter((int x) => x > 2).distinct().orderBy()[0]);         // 3
+    print(g_dupes.filter((int x) => x > 2).distinct().orderBy()[4]);         // 9
+}
