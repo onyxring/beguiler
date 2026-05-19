@@ -23,6 +23,7 @@ class bglLanguageService{
     int tryCatchCounter = 0;         // unique ID for try/catch label generation
     int captureCounter = 0;          // unique ID for closure capture globals
     bool switchTempNeeded = false;  // set true when any switch uses guards; drives conditional _bgl_sw emission
+    bool linqInUse = false;         // set true when `#include <array>` resolved; drives LINQ scratch buffer + constant emission
 
     // .inf-mode anchor regions extracted from the source .inf file. When non-empty,
     // signal the emitter to skip its own ICL generation (the user's `!%` block goes at
