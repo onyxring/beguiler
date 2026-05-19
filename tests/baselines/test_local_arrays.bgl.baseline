@@ -252,6 +252,37 @@ object _bglArray
      _bglLinqParity = 1 - _bglLinqParity; 
     return dst;
   ],
+       first [src;
+    if (_bglArray.length(src)==0) {
+        return 0;
+    }
+    return  src-->(0+1) ;
+  ],
+       last [src len;
+    len=_bglArray.length(src);
+    if (len==0) {
+        return 0;
+    }
+    return  src-->(len - 1+1) ;
+  ],
+       any [src pred len i;
+    len=_bglArray.length(src);
+    for (i = 0 : i < len : i++) {
+        if (pred( src-->(i+1) )) {
+            return true;
+        }
+    }
+    return false;
+  ],
+       all [src pred len i;
+    len=_bglArray.length(src);
+    for (i = 0 : i < len : i++) {
+        if (~~pred( src-->(i+1) )) {
+            return false;
+        }
+    }
+    return true;
+  ],
        map [src f dst cap srcLen i;
     
             if(_bglLinqParity == 0) dst = _bglLinqScratchB;
