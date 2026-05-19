@@ -5249,7 +5249,47 @@ The element-search methods (`indexOf`/`find`/`contains`) and `swap` are type-che
 
 **Deque orientation note.** The deque methods follow the orLibrary convention: `push`/`peek`/`pop` operate at the **front** of the array; `enqueue`/`peekEnd`/`popEnd` operate at the **back**. This is internally consistent (push grows where pop reads — the "stack lives at the front" model) but inverts the JavaScript convention where `push` appends. Beguile favors orLibrary parity since the deque vocabulary originates there.
 
-The orArray-derived surface is now complete. Further work targets LINQ-style fluent operations (`filter`/`map`/`first`/`count`/...) building on this base.
+#### LINQ-style fluent operations
+
+Chainable transformations on arrays, modeled on C# LINQ syntax. Operations split into **non-terminals** (return a typed array, can chain further) and **terminals** (collapse a chain to a single value).
+
+| Method | Returns | Description |
+|---|---|---|
+| `filter(pred)` | `array<T>` | Keep elements where `pred(elem)` is true. `pred` is `func<bool, T>` — preserves T |
+| `map(f)` | `array<var>` | Apply `f(elem)` to each element. `f` is `func<var, T>` — returns `var` since the mapper's output type can't be tracked statically |
+| `take(n)` | `array<T>` | Keep first `n` elements. Negative `n` clamps to 0; over-length clamps to `length()` |
+| `skip(n)` | `array<T>` | Drop first `n` elements. Negative `n` clamps to 0; over-length clamps to `length()` |
+| `takeWhile(pred)` | `array<T>` | Keep elements while `pred(elem)` is true; stops at the first failure |
+| `skipWhile(pred)` | `array<T>` | Drop elements while `pred(elem)` is true; keeps everything from the first failure on |
+| `distinct()` | `array<T>` | Keep the first occurrence of each value. O(N²) scan, fine at IF scale |
+| `orderBy()` | `array<T>` | Return source sorted ascending using the default comparator. Source array is untouched (copies first, then sorts the copy) |
+| `orderBy(compare)` | `array<T>` | Same with a user-supplied `func<int, T, T>` comparator |
+| `first()` | `T` | Return the first element, or 0 on an empty array (same convention as `pop`/`peek`) |
+| `last()` | `T` | Return the last element, or 0 on an empty array |
+| `count()` | `int` | Alias of `length()` for LINQ naming familiarity |
+| `any(pred)` | `bool` | True if any element matches the predicate; short-circuits. `false` on an empty array |
+| `all(pred)` | `bool` | True if every element matches the predicate; short-circuits. `true` on an empty array (vacuous truth) |
+
+**Chain model.** Each non-terminal step writes its result into one of two preallocated scratch buffers and flips a parity selector. The next step reads from the buffer just written, writes to the other, and flips again. Terminals just read; they don't write to scratch.
+
+```bgl
+// Result lives in scratch until the next chain starts (or the next non-terminal step).
+print(g_nums.filter((int x) => x > 0).map((var y) => y * 2)[0]);
+```
+
+**Configurable scratch size.** `#beguilerSettings { linqScratchSize = N; }` controls the per-buffer capacity (default 32 elements). Chain steps that would exceed it print a runtime diagnostic and call `quit;`:
+
+```bgl
+#beguilerSettings {
+    linqScratchSize = 128;
+}
+```
+
+**Caveats.**
+
+- **Non-nestable.** The two scratch buffers are shared global state. A chain inside a predicate lambda passed to another chain would corrupt the outer chain's buffers — don't do `arr.filter(x => x.subArr.any(p))`. Compile-time enforcement is deferred.
+- **Lifetime ends at the next chain start.** A chain's non-terminal returns a typed handle into scratch. The next chain that runs overwrites that scratch. Consume the result inline (or via terminal) — don't store a non-terminal result for later reads.
+- **Local-array source caveat.** Local arrays passed as a chain source are safe within the same statement, but the return-expression evaluates after local-array cleanup runs; don't `return arr.filter(p);` from a function with local arrays.
 
 ### 17.2.7 `bglInit()` — Runtime Initialization
 
