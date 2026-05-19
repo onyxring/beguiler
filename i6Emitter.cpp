@@ -1130,6 +1130,11 @@ void i6Emitter::emitMember(typeMember* member){
 }
 void i6Emitter::emitFunction(functionDef* funcNode){
     if(funcNode->isEmitter || funcNode->isExternal || funcNode->isReplacedDead) return;
+    // Pre-pass stubs left in globals weren't replaced by a real definition (typical when
+    // pre-scan speculatively registered a name that turned out to live as a class/object
+    // member instead). Don't emit them — an empty `[name params;]` would collide with the
+    // member's emitted property of the same name.
+    if(funcNode->isPrePassStub) return;
     buildSpillMap(funcNode);
     if(!funcNode->src.file.empty())
         sourceMap.push_back({currentLine(), funcNode->src.file, funcNode->src.line});
@@ -1187,6 +1192,24 @@ void i6Emitter::emitFunction(functionDef* funcNode){
 void i6Emitter::emitStatement(statement* stmt, string indent){
     if(!stmt->src.file.empty())
         sourceMap.push_back({currentLine(), stmt->src.file, stmt->src.line});
+    // Local arrayDeclaration with a non-list initializer: pointer-aliasing decl
+    // like `array<var> dst = _bglLinqWrite();`. The local slot already exists in
+    // the routine header (collected via collectBodyLocals); we just emit the
+    // assignment of the RHS expression. No allocation — caller owns the storage.
+    if(auto* arrLoc = dynamic_cast<arrayDeclaration*>(stmt)){
+        if(arrLoc->arraySize == 0
+           && arrLoc->declaredExpressionValue != nullptr
+           && dynamic_cast<initializerList*>(arrLoc->declaredExpressionValue) == nullptr
+           && arrLoc->stringInitializer.empty()){
+            out << format("{0}{1} = {2};\n", indent, spillName(arrLoc->name),
+                          exprText(arrLoc->declaredExpressionValue));
+            return;
+        }
+        // Other arrayDeclaration shapes (sized, list-init) are handled via the
+        // framePool path in emitFunction / the global-emission path in emitGlobal;
+        // no per-statement work needed here.
+        return;
+    }
     if(typeid(*stmt) == typeid(variableDeclaration)){
         variableDeclaration* var = (variableDeclaration*)stmt;
         // emit initializer assignment if present

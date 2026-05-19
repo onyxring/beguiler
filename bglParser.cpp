@@ -6629,8 +6629,28 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 else if(key == "informname")    strVal = beguilerSettings.informName;
                 else if(key == "release")     { isInt = true; intVal = beguilerSettings.release; }
                 else if(key == "serial")       strVal = beguilerSettings.serial;
-                else if(key == "framepoolsize"){ isInt = true; intVal = beguilerSettings.framePoolSize < 0 ? 0 : beguilerSettings.framePoolSize; }
-                else if(key == "linqscratchsize"){ isInt = true; intVal = beguilerSettings.linqScratchSize < 0 ? 0 : beguilerSettings.linqScratchSize; }
+                else if(key == "framepoolsize" || key == "linqscratchsize"){
+                    isInt = true;
+                    int v = (key == "framepoolsize") ? beguilerSettings.framePoolSize : beguilerSettings.linqScratchSize;
+                    if(v < 0){
+                        // applySchemaDefaults() runs after parsing, so during source parse the
+                        // runtime value may still be -1 (unset). Fall back to the schema-declared
+                        // default so #beguilerSettings.X at parse time resolves consistently with
+                        // what the final ICL emission will use.
+                        classDef* schema = dynamic_cast<classDef*>(&languageService.getType("beguilerSettingstype"));
+                        if(schema){
+                            for(typeMember* m : schema->members){
+                                auto* vd = dynamic_cast<variableDeclaration*>(m);
+                                if(vd && vd->name == key && vd->declaredExpressionValue){
+                                    v = stoi(vd->declaredExpressionValue->text());
+                                    break;
+                                }
+                            }
+                        }
+                        if(v < 0) v = 0;
+                    }
+                    intVal = v;
+                }
                 else parsingError(format("#beguilerSettings.{0}: unknown or unsupported property", prop.value));
 
                 if(isInt){
@@ -7706,28 +7726,36 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             token strTok = file.getToken();
             arrDecl.stringInitializer = strTok.value;
             file.getToken(token::endStatement);
-        } else {
-        // array<T> name = { v1, v2, ... };
-        file.getToken(token::braceOpen);
-        initializerList* list = new initializerList();
-        token t = file.getToken();
-        while(!t.is(token::braceClose) && !t.is(eTokenType::eof)) {
-            expression* elem = parseExpression(t, {",", token::braceClose}, func, body);
-            list->elements.push_back(elem);
-            if(elem->terminator == token::braceClose) break;
-            t = file.getToken();
-        }
-        file.getToken(token::endStatement);
-        // type-check each element against the declared element type
-        if(!elementType.empty() && elementType != "var"){
-            for(size_t i = 0; i < list->elements.size(); i++){
-                expression* elem = list->elements[i];
-                if(!elem->resolvedType.empty() && !isTypeCompatible(elem->resolvedType, elementType))
-                    parsingError(format("Array element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, elementType));
+        } else if(firstVal.is(token::braceOpen)){
+            // array<T> name = { v1, v2, ... };
+            file.getToken(token::braceOpen);
+            initializerList* list = new initializerList();
+            token t = file.getToken();
+            while(!t.is(token::braceClose) && !t.is(eTokenType::eof)) {
+                expression* elem = parseExpression(t, {",", token::braceClose}, func, body);
+                list->elements.push_back(elem);
+                if(elem->terminator == token::braceClose) break;
+                t = file.getToken();
             }
+            file.getToken(token::endStatement);
+            // type-check each element against the declared element type
+            if(!elementType.empty() && elementType != "var"){
+                for(size_t i = 0; i < list->elements.size(); i++){
+                    expression* elem = list->elements[i];
+                    if(!elem->resolvedType.empty() && !isTypeCompatible(elem->resolvedType, elementType))
+                        parsingError(format("Array element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, elementType));
+                }
+            }
+            arrDecl.declaredExpressionValue = list;
+        } else {
+            // array<T> name = expression; — pointer-aliasing init. The RHS is an arbitrary
+            // expression evaluating to an array pointer (typically a function return or another
+            // array global). No storage is allocated for this local; the slot just holds the
+            // pointer. arraySize stays 0 so the emitter's local-array allocation path skips it.
+            token first = file.getToken();
+            expression* expr = parseExpression(first, {token::endStatement}, func, body);
+            arrDecl.declaredExpressionValue = expr;
         }
-        arrDecl.declaredExpressionValue = list;
-        } // end brace initializer else
     }
     // else symbol is endStatement: extern/forward declaration — no size or initializer
 
