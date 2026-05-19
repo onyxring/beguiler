@@ -2194,7 +2194,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         // array<T> member: same handler as object bodies (refactored to take members vector).
         // Class is never verb-derived, so no grammarRule downcast applies.
         if(tok.is("array") && file.peekToken().is("<")){
-            processArrayMember(newClass.members, newClass.dName(), nullptr);
+            processArrayMember(newClass.members, newClass.dName(), nullptr, &newClass, &q);
             tok = file.getToken();
             continue;
         }
@@ -2717,10 +2717,19 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
         currentFunc = savedFunc;
         fd.returnType.name = hasReturn(lambdaBody) ? "var" : "void";
     } else {
-        // Single-expression body (terminates at ';').
-        // Only works cleanly when ';' is the terminator (e.g. assignment RHS).
-        // For use as a function argument, use block syntax: () => { return expr; }
-        expression* retExpr = parseExpression(bodyStart, {token::endStatement}, &fd, lambdaBody);
+        // Single-expression body. Terminates at ';' (assignment RHS), ',' (next function
+        // argument), or ')' (end of enclosing argument list). parseExpression's paren
+        // tracking ensures inner `,`/`)` inside the body don't terminate prematurely.
+        // For arg-position lambdas, the `,` or `)` terminator must be visible to the
+        // enclosing arg parser — we stash it on the parser-level token slot, which the
+        // caller's next getNext() will pick up before reading more from the lexer.
+        expression* retExpr = parseExpression(bodyStart, {token::endStatement, token::comma, token::parenClose}, &fd, lambdaBody);
+        if(retExpr->terminator == "," || retExpr->terminator == ")"){
+            token t;
+            t.value = retExpr->terminator;
+            t.tokenType = eTokenType::symbol;
+            stashedToken = t;
+        }
         returnStatement& ret = *(new returnStatement());
         ret.src = fd.src;
         ret.returnExpression = retExpr->text();
@@ -2883,8 +2892,35 @@ typeMember* bglParser::findMemberInHierarchy(classDef* cls, std::function<bool(t
 static functionDef* substituteMethodForBindings(functionDef* fd, const unordered_map<string,string>& bindings){
     if(!fd || bindings.empty()) return fd;
     auto sub = [&](const string& t) -> string {
+        // Direct match: the entire type name IS a type parameter (e.g., return type T).
         auto it = bindings.find(t);
-        return (it == bindings.end()) ? t : it->second;
+        if(it != bindings.end()) return it->second;
+        // Wrapped form: substitute each comma-separated piece inside the angle brackets
+        // so `array<T>`, `func<bool, T>`, `func<var, T>`, etc. all rewrite when T is bound.
+        size_t lt = t.find('<');
+        if(lt != string::npos && !t.empty() && t.back() == '>'){
+            string base = t.substr(0, lt);
+            string body = t.substr(lt + 1, t.size() - lt - 2);
+            string out;
+            size_t i = 0;
+            bool anyChange = false;
+            while(i < body.size()){
+                size_t comma = body.find(',', i);
+                size_t end = (comma == string::npos) ? body.size() : comma;
+                // Trim leading whitespace; keep trailing-whitespace preservation simple.
+                size_t s = i;
+                while(s < end && (body[s] == ' ' || body[s] == '\t')) s++;
+                string piece = body.substr(s, end - s);
+                auto pit = bindings.find(piece);
+                if(pit != bindings.end()){ piece = pit->second; anyChange = true; }
+                if(!out.empty()) out += ",";
+                out += piece;
+                if(comma == string::npos) break;
+                i = comma + 1;
+            }
+            if(anyChange) return base + "<" + out + ">";
+        }
+        return t;
     };
     string newRet = sub(fd->returnType.name);
     bool anyChange = (newRet != fd->returnType.name);
@@ -5415,6 +5451,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     };
     auto getNext = [&]() -> token {
         if(prefetched.has_value()){ token t = *prefetched; prefetched = nullopt; return t; }
+        if(stashedToken.has_value()){ token t = *stashedToken; stashedToken = nullopt; return t; }
         return file.getToken();
     };
 
@@ -5984,6 +6021,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // Compute $prop for array method calls in expression context
                         string exprPropValue = (objType == "array") ? "0" : "<$prop undefined>";
 
+                        string callText;
                         if(method->isEmitter){
                             if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                                 string b = processBglConditionals(blk->i6Body);
@@ -6009,6 +6047,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 // receiver-path value. Done after param sub so emitters with a
                                 // `prop` parameter (e.g. `provides(property prop)`) win.
                                 b = replaceWord(b, "$prop", exprPropValue);
+                                callText = b;
                                 expr->tokens.push_back(b);
                             }
                         } else {
@@ -6019,7 +6058,42 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 call += callArgs[i]->text();
                             }
                             call += ")";
+                            callText = call;
                             expr->tokens.push_back(call);
+                        }
+
+                        // First-call + subscript: `arr.method(args)[i]` dispatches operator[] on
+                        // the method's return type. Same shape as the chained-call subscript path
+                        // below; without this, the raw `[i]` falls through and I6 chokes on
+                        // method-call-result indexing.
+                        if(!callText.empty() && file.peekToken().is(token::bracketOpen)){
+                            string chainResultType = expr->resolvedType;
+                            classDef* chainCls = getDispatchClass(chainResultType);
+                            string chainElem;
+                            size_t lt = chainResultType.find('<');
+                            if(lt != string::npos && !chainResultType.empty() && chainResultType.back() == '>')
+                                chainElem = chainResultType.substr(lt + 1, chainResultType.size() - lt - 2);
+                            if(chainElem.empty() && chainResultType == "bytearray") chainElem = "char";
+                            functionDef* getMethod = nullptr;
+                            if(chainCls != nullptr && !chainElem.empty())
+                                getMethod = findArraySubscriptOp(chainCls, chainElem, /*isWrite=*/false);
+                            if(getMethod != nullptr && getMethod->isEmitter){
+                                if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)){
+                                    file.getToken(token::bracketOpen);
+                                    expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+                                    string b = processBglConditionals(blk->i6Body);
+                                    string receiver = "(" + callText + ")";
+                                    b = replaceWord(b, "$self", receiver);
+                                    b = replaceWord(b, "$val",  receiver);
+                                    if(!getMethod->params.empty())
+                                        b = replaceWord(b, "$" + getMethod->params[0]->name, indexExpr->text());
+                                    expr->tokens.pop_back();  // drop bare call text
+                                    expr->tokens.push_back(b);
+                                    string retTypeName = getMethod->returnType.name;
+                                    if(retTypeName == "t" || retTypeName == "T") retTypeName = chainElem;
+                                    expr->resolvedType = retTypeName;
+                                }
+                            }
                         }
                         } // end of typed-receiver else
                     } else if(afterMember.is(token::bracketOpen)) {
@@ -6387,9 +6461,13 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
 
             string chainTypeName = expr->resolvedType;
             // Method receiver may be either a classDef or an objectDef (unclassed objectDefs
-            // each have their own type identity).
+            // each have their own type identity). Templated names like `array<int>` aren't
+            // registered as their own typeDef — use getDispatchClass to strip the <...> suffix
+            // and reach the generic base when the raw lookup misses, mirroring the receiver
+            // resolution used elsewhere (resolveMethod, operator dispatch).
             typeDef& chainTd = languageService.getType(chainTypeName);
-            if(dynamic_cast<classDef*>(&chainTd) == nullptr && dynamic_cast<objectDef*>(&chainTd) == nullptr)
+            if(dynamic_cast<classDef*>(&chainTd) == nullptr && dynamic_cast<objectDef*>(&chainTd) == nullptr
+               && getDispatchClass(chainTypeName) == nullptr)
                 parsingError(format("Type '{0}' has no methods", chainTypeName));
 
             string methName = member.value;
@@ -6410,6 +6488,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             expr->tokens.clear();
             expr->resolvedType = method->returnType.name;
 
+            string callText;
             if(method->isEmitter){
                 if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                     string b = processBglConditionals(blk->i6Body);
@@ -6422,6 +6501,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     // Any leftover $prop is unresolved (no matching parameter — see array
                     // emitters that consume property names from outside the call).
                     b = replaceWord(b, "$prop", "<$prop undefined>");
+                    callText = b;
                     expr->tokens.push_back(b);
                 }
             } else {
@@ -6431,7 +6511,46 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     call += callArgs[i]->text();
                 }
                 call += ")";
+                callText = call;
                 expr->tokens.push_back(call);
+            }
+
+            // Chain + subscript: `arr.method(args)[i]` dispatches operator[] on the
+            // method's return type, with the emitted call text as the subscript receiver.
+            // Without this, the raw `[i]` would emit verbatim and I6 chokes on
+            // method-call-result indexing (it only allows `name-->i` form).
+            if(!callText.empty() && file.peekToken().is(token::bracketOpen)){
+                string chainResultType = expr->resolvedType;
+                classDef* chainCls = getDispatchClass(chainResultType);
+                string chainElem;
+                size_t lt = chainResultType.find('<');
+                if(lt != string::npos && !chainResultType.empty() && chainResultType.back() == '>')
+                    chainElem = chainResultType.substr(lt + 1, chainResultType.size() - lt - 2);
+                if(chainElem.empty() && chainResultType == "bytearray") chainElem = "char";
+                functionDef* getMethod = nullptr;
+                if(chainCls != nullptr && !chainElem.empty())
+                    getMethod = findArraySubscriptOp(chainCls, chainElem, /*isWrite=*/false);
+                if(getMethod != nullptr && getMethod->isEmitter){
+                    if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)){
+                        file.getToken(token::bracketOpen);
+                        expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+                        string b = processBglConditionals(blk->i6Body);
+                        string receiver = "(" + callText + ")";
+                        b = replaceWord(b, "$self", receiver);
+                        b = replaceWord(b, "$val",  receiver);
+                        if(!getMethod->params.empty())
+                            b = replaceWord(b, "$" + getMethod->params[0]->name, indexExpr->text());
+                        expr->tokens.pop_back();  // drop bare call text
+                        expr->tokens.push_back(b);
+                        // Substitute T → chainElem in the subscript return type, so chained
+                        // expressions downstream see a concrete element type. operator[] on
+                        // a generic class returns T; without this, downstream dispatch
+                        // (e.g. print(arr.filter(p)[0])) would see the literal 'T'.
+                        string retTypeName = getMethod->returnType.name;
+                        if(retTypeName == "t" || retTypeName == "T") retTypeName = chainElem;
+                        expr->resolvedType = retTypeName;
+                    }
+                }
             }
         }
         // ─── TERNARY OPERATOR: condition ? trueExpr : falseExpr ──────────
@@ -6511,6 +6630,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 else if(key == "release")     { isInt = true; intVal = beguilerSettings.release; }
                 else if(key == "serial")       strVal = beguilerSettings.serial;
                 else if(key == "framepoolsize"){ isInt = true; intVal = beguilerSettings.framePoolSize < 0 ? 0 : beguilerSettings.framePoolSize; }
+                else if(key == "linqscratchsize"){ isInt = true; intVal = beguilerSettings.linqScratchSize < 0 ? 0 : beguilerSettings.linqScratchSize; }
                 else parsingError(format("#beguilerSettings.{0}: unknown or unsupported property", prop.value));
 
                 if(isInt){
@@ -8192,8 +8312,10 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                     t = file.getToken();
                 }
                 filesystem::path libPath = findCaseInsensitive(settings.libPath, includeName + ".bgl");
-                if(filesystem::exists(libPath))
+                if(filesystem::exists(libPath)){
                     parseFile(libPath.string());
+                    if(includeName == "array") languageService.linqInUse = true;
+                }
                 else if(!isOptional)
                     parsingError(format("#include: file '<{0}>' not found", includeName));
             }
@@ -8933,11 +9055,54 @@ void bglParser::processI6InlineMember(objectDef& obj){
     obj.members.push_back((typeMember*)&node);
 }
 
-void bglParser::processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules){
+bool bglParser::processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
+                                   abstractObject* ctx, Qualifiers* q){
     file.getToken("<");
     string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
     file.getToken(">");
     token propName = file.getToken(eTokenType::identifier);
+
+    // Routine form: `array<T> name(...)` — class/object member function returning a
+    // generic array type (e.g. LINQ chain primitives like
+    //   `array<var> filter(array<var> src, func<bool, var> pred) { ... }`).
+    // We inline the routine-creation flow here instead of calling processRoutineDeclaration,
+    // because that path registers into languageService.globals and we need member-vector
+    // registration. This mirrors the relevant slice of processMemberMethod / class-body
+    // routine creation, scoped to the array<T> return-type case.
+    if(ctx && q && file.peekToken().is(token::parenOpen)){
+        file.getToken(token::parenOpen);
+        functionDef& funcDef = *(new functionDef());
+        funcDef.name = (string)propName;
+        funcDef.displayName = propName.originalValue;
+        funcDef.src = propName.src.line > 0 ? propName.src : file.currentLocation();
+        funcDef.returnType.name = "array<" + elemType + ">";
+        funcDef.isEmitter  = q->isEmitter;
+        funcDef.isExternal = q->isExtern;
+
+        processParameterList(funcDef);
+
+        if(funcDef.isEmitter){
+            file.getToken(token::braceOpen);
+            i6Block& rawblock = *(new i6Block());
+            rawblock.i6Body = file.getRawTextThroughClosingBrace();
+            funcDef.body = &rawblock;
+        } else {
+            file.getToken(token::braceOpen);
+            funcDef.body = new statementBlock();
+            functionDef* savedFunc = currentFunc;
+            currentFunc = &funcDef;
+            openCompileContext(eCompileContext::codeBlock, dynamic_cast<statementBlock*>(funcDef.body));
+            while(processNextStatement(funcDef) == false){}
+            closeCompileContext(eCompileContext::codeBlock);
+            currentFunc = savedFunc;
+            if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
+                parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
+        }
+
+        if(!replaceStubMember(members, funcDef))
+            members.push_back(&funcDef);
+        return true;
+    }
 
     // array<grammarRule>: parse {{Verb, {pattern}}, ...} initializer
     if(elemType == "grammarrule"){
@@ -8979,7 +9144,7 @@ void bglParser::processArrayMember(vector<typeMember*>& members, const string& o
             inner = file.getToken();
         }
         if(file.peekToken().is(token::endStatement)) file.getToken();
-        return;
+        return false;
     }
 
     token sym = file.getToken({token::bracketOpen, token::assignment, token::endStatement});
@@ -9026,6 +9191,7 @@ void bglParser::processArrayMember(vector<typeMember*>& members, const string& o
         if(m->name == arrDecl.name)
             parsingError(format("'{0}': member '{1}' is already defined", ownerDName, arrDecl.dName()));
     members.push_back((typeMember*)&arrDecl);
+    return false;
 }
 
 void bglParser::processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace){
@@ -9671,7 +9837,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
             if(!replaceStubMember(newObj.members, funcDef))
                 newObj.members.push_back((typeMember*)&funcDef);
         } else if(tok.value == "array")
-            processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj));
+            processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q);
         else if(tok.isDataType())
             processTypedMember(newObj, tok, memberIsReplace);
         else if(tok.is(eTokenType::identifier))
@@ -9810,6 +9976,11 @@ bool bglParser::processBeguilerSettings(){
             if(sz < 1) parsingError("beguilerSettings property 'framePoolSize' must be at least 1");
             if(cfg.framePoolSize == -1) cfg.framePoolSize = sz;  // -1 = unset sentinel
         }
+        else if(key == "linqscratchsize"){
+            int sz = stoi(strVal);
+            if(sz < 1) parsingError("beguilerSettings property 'linqScratchSize' must be at least 1");
+            if(cfg.linqScratchSize == -1) cfg.linqScratchSize = sz;  // -1 = unset sentinel
+        }
         else if(key == "target"){
             if(languageService.getEnumType(strVal) != "etarget")
                 parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z3, Z5, or Z8).", strVal));
@@ -9870,6 +10041,7 @@ void bglParser::applySchemaDefaults(){
 
         if(key == "target"        && cfg.target.empty())       cfg.target = defVal;
         else if(key == "framepoolsize" && cfg.framePoolSize == -1) cfg.framePoolSize = stoi(defVal);
+        else if(key == "linqscratchsize" && cfg.linqScratchSize == -1) cfg.linqScratchSize = stoi(defVal);
         else if(key == "errorformat"  && cfg.errorFormat.empty()){
             string upper = defVal;
             transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
@@ -10151,7 +10323,7 @@ bool bglParser::processObjectExtension(token nameTok){
                 if(!replaced) obj->members.push_back((typeMember*)&funcDef);
             }
         } else if(tok.value == "array")
-            processArrayMember(obj->members, obj->dName(), dynamic_cast<verbObjectDef*>(obj));
+            processArrayMember(obj->members, obj->dName(), dynamic_cast<verbObjectDef*>(obj), obj, &q);
         else if(tok.isDataType()){
             // Check for += / -= compound assignment on a typed member
             token peekName = file.peekToken();

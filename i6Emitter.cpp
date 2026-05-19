@@ -875,6 +875,12 @@ void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     if(cfg->release > 0)
         out << "Release " << cfg->release << ";\n";
 
+    // LINQ scratch buffer capacity — referenced from array.bgl's #emitfirst{} block.
+    // Only emitted when `#include <array>` was resolved; the #emitfirst directives
+    // that consume this constant are also gated on that include.
+    if(languageService.linqInUse)
+        out << "Constant _BGL_LINQ_SCRATCH_SIZE = " << (cfg->linqScratchSize > 0 ? cfg->linqScratchSize : 32) << ";\n";
+
     // Treaty of Babel IFID: embed as a string so babel tools can find it in the story file
     if(!cfg->ifid.empty()){
         out << "Array UUID_ARRAY string \"UUID://" << cfg->ifid << "//\";\n";

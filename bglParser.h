@@ -5,6 +5,7 @@
 #include <set>
 #include <map>
 #include <functional>
+#include <optional>
 
 #include "helpers.h"
 #include "token.h"
@@ -239,7 +240,12 @@ class bglParser {
         int parseOptionalGrammarRulePriority(int defaultPriority);
         void parsePropertyValue(variableDeclaration& prop, string typeName);
         void processI6InlineMember(objectDef& obj);
-        void processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules);
+        // Routine dispatch: if `ctx` and `q` are supplied AND the parsed member shape is
+        // `array<T> name(...)`, this dispatches to processRoutineDeclaration and returns true
+        // (the caller should NOT continue member processing). Otherwise parses a variable
+        // declaration into `members` and returns false.
+        bool processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
+                                abstractObject* ctx = nullptr, Qualifiers* q = nullptr);
         void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false);
         void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false);
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false);
@@ -389,6 +395,10 @@ class bglParser {
         classDef* currentClass = nullptr;    // set when parsing inside a class declaration
         functionDef* currentFunc = nullptr;  // outermost function being parsed (not changed for nested if/while blocks)
         functionDef* lambdaOuterFunc = nullptr;    // set during lambda parsing to enable capture detection
+        // One-token stash consulted by parseExpression's getNext() before reading from the lexer.
+        // Used to put back a terminator token that an inner construct (e.g. an arrow-body lambda
+        // in function-argument position) consumed but the enclosing parser still needs to see.
+        std::optional<token> stashedToken;
         // Expected-type hint for the expression currently being parsed. Set by call sites that know
         // the type they need (e.g. variable initializer RHS, operator RHS). Used by name resolution
         // as a final tie-breaker when multiple candidates remain after memberHint filtering.

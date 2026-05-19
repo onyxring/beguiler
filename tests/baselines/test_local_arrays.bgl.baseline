@@ -1,5 +1,6 @@
 !% -v5
 !% -E1
+Constant _BGL_LINQ_SCRATCH_SIZE = 32;
 Array _bglFramePool --> 64;
 Global _bglFrameTop = 0;
  [ _bglFrameAlloc size r;
@@ -44,10 +45,32 @@ Global _bglFrameTop = 0;
         return _bglScratchStack;
     ];
 
+
+    Array _bglLinqScratchA --> _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglLinqScratchB --> _BGL_LINQ_SCRATCH_SIZE + 2;
+    Global _bglLinqParity = 0;
+    [ _bglLinqRead;
+        if(_bglLinqParity == 0) return _bglLinqScratchA;
+        return _bglLinqScratchB;
+    ];
+    [ _bglLinqWrite;
+        if(_bglLinqParity == 0) return _bglLinqScratchB;
+        return _bglLinqScratchA;
+    ];
+    [ _bglLinqFlip;
+        _bglLinqParity = 1 - _bglLinqParity;
+    ];
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+
+    _bglLinqScratchA-->(_bglLinqScratchA-->0)     = $9084;
+    _bglLinqScratchA-->(_bglLinqScratchA-->0 - 1) = 0;
+    _bglLinqScratchB-->(_bglLinqScratchB-->0)     = $9084;
+    _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
+
 ];
 object _bglArray
   with isTracked [arr;
@@ -203,6 +226,51 @@ object _bglArray
         }
         arr-->(j + 1+1) = key;
     }
+  ],
+       filter [src pred dst cap writeCount srcLen i elem;
+    
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        
+    writeCount = 0;
+    srcLen=_bglArray.length(src);
+    for (i = 0 : i < srclen : i++) {
+        elem =  src-->(i+1) ;
+        if (pred(elem)) {
+            if (writecount >= cap) {
+                
+                        print "^[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                        quit;
+                    
+            }
+            dst-->(writecount+1) = elem;
+             writecount++ ;
+        }
+    }
+    _bglArray.setLength(dst, writeCount);
+     _bglLinqParity = 1 - _bglLinqParity; 
+    return dst;
+  ],
+       map [src f dst cap srcLen i;
+    
+            if(_bglLinqParity == 0) dst = _bglLinqScratchB;
+            else                    dst = _bglLinqScratchA;
+            cap = _BGL_LINQ_SCRATCH_SIZE;
+        
+    srcLen=_bglArray.length(src);
+    if (srclen > cap) {
+        
+                print "^[Beguile runtime error: map() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < srclen : i++) {
+        dst-->(i+1) = f( src-->(i+1) );
+    }
+    _bglArray.setLength(dst, srcLen);
+     _bglLinqParity = 1 - _bglLinqParity; 
+    return dst;
   ]
 ;
 object _bglUtil
