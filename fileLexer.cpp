@@ -414,7 +414,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
 
     return retval;//return our completed basic token
 }
-string fileLexer::getRawTextThroughClosingBrace(){
+string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
     string retval;
     int count=1; //we have already encountered the first open brace, which is why we are calling this function, so we start our count at 1
     char c=readChar();
@@ -451,10 +451,15 @@ string fileLexer::getRawTextThroughClosingBrace(){
              }
              continue;
          }
-         // Skip I6 ! line comments — same reasoning. Critical: English contractions
-         // like "don't" inside ! comments would otherwise open a runaway char-literal
-         // skip that swallows braces in unrelated code far below.
-         if(c == '!'){
+         // Skip I6 ! line comments — must be skipped so contractions like "don't"
+         // inside a comment don't open a stray char-literal scan that would swallow
+         // braces in unrelated code below.
+         //
+         // Only when the body content is raw I6. When the body is Beguile (pre-scan
+         // skipping an object/method body), `!` is an operator (`!=`, `!flag`, etc.)
+         // and must NOT trigger comment-skip. The caller signals the context via
+         // `isI6Content` so the same function works for both.
+         if(c == '!' && isI6Content){
              while(c != '\n' && c != EOF){ retval += c; c = readChar(); }
              if(c == '\n'){ retval += c; c = readChar(); }
              continue;
@@ -541,7 +546,9 @@ string fileLexer::getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& ou
             continue;
         }
         // I6 ! line comments — must be skipped so contractions like "don't" inside
-        // a comment don't open a stray char-literal scan.
+        // a comment don't open a stray char-literal scan. This function is only ever
+        // called for raw-I6 content (the `.inf`-mode top-level + `#bgl{}` islands
+        // boundary), so `!` is unambiguously a comment here.
         if(c == '!'){
             while(c != '\n' && c != EOF){ retval += c; c = readChar(); }
             if(c == '\n'){ retval += c; c = readChar(); }

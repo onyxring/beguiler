@@ -23,19 +23,10 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
-[__glkHook _vararg_count api args retval;
-    @copy sp api;
-    args=_vararg_count - 1;
-    @glk api args retval;
-    return retval;
-];
-object _glulx
-;
 object _bglUtil
 ;
 object bgl
-  with glulx _glulx,
-       utilities _bglutil
+  with utilities _bglutil
 ;
 ! test_inf_mode_bgl_autodetect.inf — plain #bgl auto-detects between declaration
 ! mode and statement mode by inspecting the first token(s).

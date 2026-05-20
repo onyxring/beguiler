@@ -1,4 +1,4 @@
-!% -G
+!% -v5
 !% -E1
 
     Array _bglScratchStack --> 33;
@@ -28,37 +28,26 @@ object _bglUtil
 object bgl
   with utilities _bglutil
 ;
-! test_inf_mode_directives.inf — recognition + dispatch of #bgl, #bglStmt, #bglDecl in .inf-mode.
-!
-! #bglDecl routes to the global declaration parser; #bglStmt routes to the loose-
-! statement parser; plain #bgl auto-detects (covered separately in
-! test_inf_mode_bgl_autodetect.inf).
-!
-! This test exercises:
-!   - #bglDecl declaring a global Beguile function callable from raw I6.
-!   - #bgl and #bglStmt running loose statements that reference it.
-!   - Single-line forms of #bgl and #bglStmt.
-
-
-[doubled n;
-    return n * 2;
+object bar
+  with before [;
+    if (noun~=0) {
+        forwardobj.field = forwardobj.field + 2;
+    }
+  ],
+       afterCheck [flag;
+    flag=false;
+    if (~~flag) {
+        anotherforward.field = anotherforward.field + 3;
+    }
+  ]
+;
+object forwardObj
+  with field 0
+;
+object anotherForward
+  with field 0
+;
+[main;
+    bar.before();
+    bar.aftercheck();
 ];
-
-
-[ Main x;
-    print "before bgl.^";
-
-    x = glulx;
-
-
-    x = doubled(x);
-
-
-    x = x+1;
-
-    x = doubled(x);
-
-
-    print "x = ", x, "^";
-];
-

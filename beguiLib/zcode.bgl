@@ -1,0 +1,23 @@
+//-----------------------------------------------------------------------------
+// zcode.bgl — A standard Beguile extension adding the Z-machine assembly
+// opcode emitter class (bglOpCodes) and the bgl.asm alias.
+//
+// Usage:
+//   #include <zcode> in your .bgl file when targeting Z and you want raw
+//   assembly access (bgl.asm.<opcode>() or bglOpCodes.<opcode>()).
+//
+// Out of core per the zero-byte-core principle: programs that don't need
+// Z-machine raw assembly don't carry the bglOpCodes namespace, even though
+// it's all emitter declarations (so the cost is just .inf source text).
+//
+// The symmetric Glulx extension is beguiLib/glulx.bgl.
+//-----------------------------------------------------------------------------
+#once
+#if TARGET_GLULX
+    #error "ERROR: <zcode> extension is only valid when targeting Z-machine."
+#endif
+
+#include<core/_zcodeOpCodes>
+
+// Z-target alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>().
+extend bgl { emitter auto asm = bglOpCodes; }

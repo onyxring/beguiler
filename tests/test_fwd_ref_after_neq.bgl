@@ -1,0 +1,54 @@
+/*
+    test_fwd_ref_after_neq.bgl
+    Regression: any Beguile `!` operator inside an object method body used to
+    confuse the pre-scanner's raw-text brace counter into treating the rest
+    of the line as an I6 line-comment (because `!` starts I6 comments). The
+    eaten line included a `{` from a following block, throwing off brace
+    depth and causing the enclosing object's body to terminate prematurely
+    during pre-scan. Forward references to objects declared after the
+    affected object then failed at full-pass parse with "Undeclared variable
+    'forwardObj.field'" — pre-scan never registered them.
+
+    Surfaced from cloak-of-darkness's `if (noun != n_obj) { message.number += 2; }`
+    pattern. This test covers two Beguile `!` operators that triggered the
+    bug: `!=` (inequality) and prefix `!` (logical NOT).
+
+    The fix: getRawTextThroughClosingBrace now takes an `isI6Content` flag.
+    Pre-scan callers that skip Beguile bodies (object/class/method bodies)
+    pass false — `!` is the operator. Callers that skip raw-I6 content
+    (#i6, #emitfirst, #emitlast, #startup, emitter bodies) pass true —
+    `!` is a line-comment marker as before. This avoids any character
+    heuristic; the context decides.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+extern var noun;
+
+object bar {
+    void before(){
+        if(noun != 0) {
+            // forward ref to obj declared below — would fail if `!=` ate the `{`
+            forwardObj.field += 2;
+        }
+    }
+    void afterCheck(){
+        bool flag = false;
+        if(!flag) {
+            // prefix `!` — same bug class as `!=`
+            anotherForward.field += 3;
+        }
+    }
+}
+
+object forwardObj {
+    int field = 0;
+}
+
+object anotherForward {
+    int field = 0;
+}
+
+void main(){
+    bar.before();
+    bar.afterCheck();
+}

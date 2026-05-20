@@ -443,8 +443,12 @@ class bglParser {
         // for the duration of the call.
         void preScanBglIslandContent(const std::string& content, const std::string& virtualName, int startLine);
         void preScanSkipConditionalBlock(); // skips tokens in a false #if branch until #elif/#else/#endif
-        void preScanSkipBody();           // consumes opening '{' and everything through matching '}'
-        void preScanSkipBodyContents();   // assumes '{' already consumed; skips to matching '}'
+        // Skip a `{ ... }` body during pre-scan. The `isI6Content` flag controls
+        // `!` handling: false (default) treats `!` as a Beguile operator (correct
+        // for object/class/function bodies); true treats it as I6 line-comment
+        // start (correct for #i6, emitter bodies, #emitfirst/last/startup).
+        void preScanSkipBody(bool isI6Content = false);           // consumes opening '{' and everything through matching '}'
+        void preScanSkipBodyContents(bool isI6Content = false);   // assumes '{' already consumed; skips to matching '}'
         void preScanSkipToSemicolon();    // consumes tokens up to and including ';'
         void preScanSkipParens();         // assumes '(' already consumed; skips to matching ')'
         void preScanCaptureParams(vector<paramDef*>& out); // like preScanSkipParens but captures type/name of each parameter
