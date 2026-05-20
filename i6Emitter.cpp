@@ -1755,7 +1755,11 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
             }
             if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
                 out << format("array {0} buffer", arr->dName());
-                for(expression* elem : list->elements) out << " " << elem->text();
+                for(expression* elem : list->elements){
+                    string t = elem->text();
+                    if(!t.empty() && t.front() == '-') out << " (" << t << ")";
+                    else                                out << " " << t;
+                }
                 out << ";\n";
                 return;
             }
@@ -1779,7 +1783,14 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
             // initializer list — no runtime init needed.
             int len = list->elements.size();
             out << format("array {0} table", arr->dName());
-            for(expression* elem : list->elements) out << " " << elem->text();
+            for(expression* elem : list->elements){
+                string t = elem->text();
+                // Wrap negative-leading elements in parens so I6 can't read them as
+                // a binary minus against the previous element ("...without bracketing,
+                // the minus sign '-' is ambiguous").
+                if(!t.empty() && t.front() == '-') out << " (" << t << ")";
+                else                                out << " " << t;
+            }
             out << " " << len;     // length = N
             out << " $9084";       // magic
             out << ";\n";

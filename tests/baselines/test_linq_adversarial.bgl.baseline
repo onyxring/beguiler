@@ -1,0 +1,610 @@
+!% -v5
+!% -E1
+Constant _BGL_LINQ_SCRATCH_SIZE = 32;
+
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
+
+
+    Array _bglLinqScratchA --> _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglLinqScratchB --> _BGL_LINQ_SCRATCH_SIZE + 2;
+    Global _bglLinqParity = 0;
+    [ _bglLinqWrite;
+        if(_bglLinqParity == 0) return _bglLinqScratchB;
+        return _bglLinqScratchA;
+    ];
+    [ _bglLinqFlip;
+        _bglLinqParity = 1 - _bglLinqParity;
+    ];
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+    g_empty-->(g_empty-->0) = $9084;
+
+    _bglLinqScratchA-->(_bglLinqScratchA-->0)     = $9084;
+    _bglLinqScratchA-->(_bglLinqScratchA-->0 - 1) = 0;
+    _bglLinqScratchB-->(_bglLinqScratchB-->0)     = $9084;
+    _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
+
+];
+object _bglArray
+  with isTracked [arr;
+    return  arr-->( arr-->(-1+1) -1+1) ==36996&& arr-->( arr-->(-1+1) -2+1) >=0;
+  ],
+       size [arr;
+    if (self.istracked(arr)) {
+        return  arr-->(-1+1) -2;
+    }
+    return  arr-->(-1+1) ;
+  ],
+       length [arr;
+    if (self.istracked(arr)) {
+        return  arr-->( arr-->(-1+1) -2+1) ;
+    }
+    return  arr-->(-1+1) ;
+  ],
+       setLength [arr n;
+    if (self.istracked(arr)) {
+        if (n<0) {
+            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+             quit; 
+        }
+        arr-->(_bglArray.size(arr)+1) = n;
+    }
+  ],
+       indexOf [arr val sz t;
+    sz=_bglArray.size(arr);
+    for (t = 0 : t < sz : t++) {
+        if ( arr-->(t+1) ==val) {
+            return t;
+        }
+    }
+    return -1;
+  ],
+       clear [arr sz t;
+    sz=_bglArray.size(arr);
+    for (t = 0 : t < sz : t++) {
+        arr-->(t+1) = 0;
+    }
+    _bglArray.setLength(arr, 0);
+  ],
+       swap [arr pos1 pos2 tmp;
+    tmp =  arr-->(pos1+1) ;
+    arr-->(pos1+1) =  arr-->(pos2+1);
+    arr-->(pos2+1) = tmp;
+  ],
+       reverse [arr len half i;
+    len=_bglArray.length(arr);
+    half=len / 2;
+    for (i = 0 : i < half : i++) {
+        self.swap(arr, i, len - 1 - i);
+    }
+  ],
+       append [arr val len;
+    len=_bglArray.length(arr);
+    if (len >= _bglArray.size(arr)) {
+        return false;
+    }
+    arr-->(len+1) = val;
+    _bglArray.setLength(arr, len + 1);
+    return true;
+  ],
+       insert [arr pos val len i;
+    len=_bglArray.length(arr);
+    if (len >= _bglArray.size(arr)) {
+        return false;
+    }
+    if (pos<0 || pos > len) {
+        return false;
+    }
+    for (i = len : i > pos : i--) {
+        arr-->(i+1) =  arr-->(i - 1+1);
+    }
+    arr-->(pos+1) = val;
+    _bglArray.setLength(arr, len + 1);
+    return true;
+  ],
+       prepend [arr val;
+    return self.insert(arr,0,val);
+  ],
+       remove [arr pos len i;
+    len=_bglArray.length(arr);
+    if (pos<0 || pos >= len) {
+        return;
+    }
+    for (i = pos : i < len - 1 : i++) {
+        arr-->(i+1) =  arr-->(i + 1+1);
+    }
+    arr-->(len - 1+1) = 0;
+    _bglArray.setLength(arr, len - 1);
+  ],
+       removeValue [arr val pos len;
+    pos = 0;
+    len=_bglArray.length(arr);
+    while (pos < len) {
+        if ( arr-->(pos+1) ==val) {
+            self.remove(arr, pos);
+            len = _bglArray.length(arr);
+        }
+        else {
+             pos++ ;
+        }
+    }
+  ],
+       push [arr val;
+    self.insert(arr, 0, val);
+  ],
+       pop [arr v;
+    if (_bglArray.length(arr)==0) {
+        return 0;
+    }
+    v =  arr-->(0+1) ;
+    self.remove(arr, 0);
+    return v;
+  ],
+       dequeue [arr;
+    return self.pop(arr);
+  ],
+       enqueue [arr val;
+    self.append(arr, val);
+  ],
+       peek [arr;
+    if (_bglArray.length(arr)==0) {
+        return 0;
+    }
+    return  arr-->(0+1) ;
+  ],
+       peekEnd [arr len;
+    len=_bglArray.length(arr);
+    if (len==0) {
+        return 0;
+    }
+    return  arr-->(len - 1+1) ;
+  ],
+       popEnd [arr len v;
+    len=_bglArray.length(arr);
+    if (len==0) {
+        return 0;
+    }
+    v =  arr-->(len - 1+1) ;
+    self.remove(arr, len - 1);
+    return v;
+  ],
+       sort [arr compare len i key j;
+    len=_bglArray.length(arr);
+    for (i = 1 : i < len : i++) {
+        key =  arr-->(i+1) ;
+        j=i - 1;
+        while (j>=0 && compare( arr-->(j+1) ,key)>0) {
+            arr-->(j + 1+1) =  arr-->(j+1);
+             j-- ;
+        }
+        arr-->(j + 1+1) = key;
+    }
+  ],
+       filter [src pred dst cap writeCount srcLen i elem;
+    dst = _bgllinqwrite();
+    cap = 32;
+    writeCount = 0;
+    srcLen=_bglArray.length(src);
+    for (i = 0 : i < srclen : i++) {
+        elem =  src-->(i+1) ;
+        if (pred(elem)) {
+            if (writecount >= cap) {
+                
+                        print "^[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                        quit;
+                    
+            }
+            dst-->(writecount+1) = elem;
+             writecount++ ;
+        }
+    }
+    _bglArray.setLength(dst, writeCount);
+    _bgllinqflip();
+    return dst;
+  ],
+       first [src;
+    if (_bglArray.length(src)==0) {
+        return 0;
+    }
+    return  src-->(0+1) ;
+  ],
+       last [src len;
+    len=_bglArray.length(src);
+    if (len==0) {
+        return 0;
+    }
+    return  src-->(len - 1+1) ;
+  ],
+       any [src pred len i;
+    len=_bglArray.length(src);
+    for (i = 0 : i < len : i++) {
+        if (pred( src-->(i+1) )) {
+            return true;
+        }
+    }
+    return false;
+  ],
+       all [src pred len i;
+    len=_bglArray.length(src);
+    for (i = 0 : i < len : i++) {
+        if (~~pred( src-->(i+1) )) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       map [src f dst cap srcLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    if (srclen > cap) {
+        
+                print "^[Beguile runtime error: map() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < srclen : i++) {
+        dst-->(i+1) = f( src-->(i+1) );
+    }
+    _bglArray.setLength(dst, srcLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       take [src n dst cap srcLen outLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    outLen=n;
+    if (outlen<0) {
+        outLen = 0;
+    }
+    if (outlen > srclen) {
+        outLen = srcLen;
+    }
+    if (outlen > cap) {
+        
+                print "^[Beguile runtime error: take() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < outlen : i++) {
+        dst-->(i+1) =  src-->(i+1);
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       skip [src n dst cap srcLen start outLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    start=n;
+    if (start<0) {
+        start = 0;
+    }
+    if (start > srclen) {
+        start = srcLen;
+    }
+    outLen=srclen - start;
+    if (outlen > cap) {
+        
+                print "^[Beguile runtime error: skip() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < outlen : i++) {
+        dst-->(i+1) =  src-->(start + i+1);
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       takeWhile [src pred dst cap srcLen outLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    outLen = 0;
+    for (i = 0 : i < srclen : i++) {
+        if (~~pred( src-->(i+1) )) {
+            break;
+        }
+        if (outlen >= cap) {
+            
+                    print "^[Beguile runtime error: takeWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                    quit;
+                
+        }
+        dst-->(outlen+1) =  src-->(i+1);
+         outlen++ ;
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       skipWhile [src pred dst cap srcLen start outLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    start = 0;
+    while (start < srclen && pred( src-->(start+1) )) {
+         start++ ;
+    }
+    outLen=srclen - start;
+    if (outlen > cap) {
+        
+                print "^[Beguile runtime error: skipWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < outlen : i++) {
+        dst-->(i+1) =  src-->(start + i+1);
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       distinct [src dst cap srcLen outLen i elem seen j;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    outLen = 0;
+    for (i = 0 : i < srclen : i++) {
+        elem =  src-->(i+1) ;
+        seen=false;
+        for (j = 0 : j < outlen : j++) {
+            if ( dst-->(j+1) ==elem) {
+                seen = true;
+                break;
+            }
+        }
+        if (~~seen) {
+            if (outlen >= cap) {
+                
+                        print "^[Beguile runtime error: distinct() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                        quit;
+                    
+            }
+            dst-->(outlen+1) = elem;
+             outlen++ ;
+        }
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       orderBy [src compare dst cap srcLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    if (srclen > cap) {
+        
+                print "^[Beguile runtime error: orderBy() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < srclen : i++) {
+        dst-->(i+1) =  src-->(i+1);
+    }
+    _bglArray.setLength(dst, srcLen);
+    self.sort(dst, compare);
+    _bgllinqflip();
+    return dst;
+  ]
+;
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+[_bglArrayCompareAsc lhs rhs;
+    
+        if(lhs < rhs) return -1;
+        if(lhs > rhs) return 1;
+        return 0;
+    
+    return 0;
+];
+array g_nums table 1 2 3 4 5 6 7 8 9 10 10 $9084;
+array g_dupes table 3 1 4 1 5 9 2 6 5 3 10 $9084;
+array g_same table 7 7 7 7 7 7 6 $9084;
+array g_sorted table 1 2 3 4 5 5 $9084;
+array g_neg table (-3) (-1) (-4) (-1) (-5) 5 $9084;
+array g_one table 42 1 $9084;
+array g_empty table 10;
+[main result;
+    print _bglArray.length(_bglArray.take(_bglArray.skip(_bglArray.filter(_bglArray.map(_bglArray.filter(g_nums, _bglLambda_0), _bglLambda_1), _bglLambda_2), 1), 3));
+    if(_bglArray.all(_bglArray.map(_bglArray.filter(g_nums, _bglLambda_3), _bglLambda_4), _bglLambda_5) == true) print "true"; else print "false";
+    result = _bglArray.filter(g_nums, _bglLambda_6);
+    print _bglArray.length(result);
+    print  result-->(0+1) ;
+    print  result-->(4+1) ;
+    print _bglArray.length(_bglArray.filter(g_nums, _bglLambda_7));
+    print _bglArray.length(_bglArray.filter(g_nums, _bglLambda_8));
+    print _bglArray.length(_bglArray.filter(g_nums, _bglLambda_9));
+    if (_bglArray.any(g_nums, _bglLambda_10)) {
+        print _bglArray.first(_bglArray.filter(g_nums, _bglLambda_11));
+    }
+    else {
+        print -1;
+    }
+    print _bglArray.length(_bglArray.takeWhile(g_nums, _bglLambda_12));
+    print  (_bglArray.takeWhile(g_nums, _bglLambda_13))-->(9+1) ;
+    print _bglArray.length(_bglArray.skipWhile(g_nums, _bglLambda_14));
+    print  (_bglArray.skipWhile(g_nums, _bglLambda_15))-->(0+1) ;
+    print _bglArray.length(_bglArray.take(g_nums, 0));
+    print _bglArray.length(_bglArray.take(g_nums, 10));
+    print _bglArray.length(_bglArray.skip(g_nums, 0));
+    print _bglArray.length(_bglArray.skip(g_nums, 10));
+    print _bglArray.first(_bglArray.filter(g_one, _bglLambda_16));
+    print _bglArray.first(_bglArray.map(g_one, _bglLambda_17));
+    print _bglArray.length(_bglArray.distinct(g_one));
+    print  (_bglArray.orderBy(g_one, _bglArrayCompareAsc))-->(0+1) ;
+    print _bglArray.length(_bglArray.distinct(g_same));
+    print  (_bglArray.distinct(g_same))-->(0+1) ;
+    print  (_bglArray.orderBy(g_sorted, _bglArrayCompareAsc))-->(0+1) ;
+    print  (_bglArray.orderBy(g_sorted, _bglArrayCompareAsc))-->(4+1) ;
+    print  g_sorted-->(0+1) ;
+    print  (_bglArray.orderBy(g_dupes, _bglLambda_18))-->(0+1) ;
+    print _bglArray.length(_bglArray.filter(g_neg, _bglLambda_19));
+    print _bglArray.length(_bglArray.distinct(g_neg));
+    print  (_bglArray.orderBy(g_neg, _bglArrayCompareAsc))-->(0+1) ;
+    print _bglArray.length(_bglArray.filter(g_empty, _bglLambda_20));
+    print _bglArray.length(_bglArray.map(g_empty, _bglLambda_21));
+    print _bglArray.length(_bglArray.take(g_empty, 5));
+    print _bglArray.length(_bglArray.skip(g_empty, 5));
+    print _bglArray.length(_bglArray.takeWhile(g_empty, _bglLambda_22));
+    print _bglArray.length(_bglArray.skipWhile(g_empty, _bglLambda_23));
+    print _bglArray.length(_bglArray.distinct(g_empty));
+    print _bglArray.length(_bglArray.orderBy(g_empty, _bglArrayCompareAsc));
+    print _bglArray.first(g_empty);
+    print _bglArray.last(g_empty);
+    print _bglArray.length(g_empty);
+    if(_bglArray.any(g_empty, _bglLambda_24) == true) print "true"; else print "false";
+    if(_bglArray.all(g_empty, _bglLambda_25) == true) print "true"; else print "false";
+    print _bglArray.length(_bglArray.filter(_bglArray.map(g_nums, _bglLambda_26), _bglLambda_27));
+    print  (_bglArray.orderBy(_bglArray.map(g_nums, _bglLambda_28), _bglLambda_29))-->(0+1) ;
+    print _bglArray.length(_bglArray.filter(g_nums, _bglLambda_30));
+    print  (_bglArray.filter(g_nums, _bglLambda_31))-->(0+1) ;
+    print  (_bglArray.map(g_nums, _bglLambda_32))-->(2+1) ;
+    print  (_bglArray.take(g_nums, 3))-->(2+1) ;
+    print  (_bglArray.skip(g_nums, 7))-->(0+1) ;
+    print  (_bglArray.takeWhile(g_nums, _bglLambda_33))-->(2+1) ;
+    print  (_bglArray.skipWhile(g_nums, _bglLambda_34))-->(0+1) ;
+    print  (_bglArray.distinct(g_dupes))-->(0+1) ;
+    print  (_bglArray.orderBy(g_dupes, _bglArrayCompareAsc))-->(0+1) ;
+];
+[_bglLambda_0 x;
+    return x>0;
+];
+[_bglLambda_1 x;
+    return x*2;
+];
+[_bglLambda_2 x;
+    return x<18;
+];
+[_bglLambda_3 x;
+    return x>5;
+];
+[_bglLambda_4 x;
+    return x+1;
+];
+[_bglLambda_5 y;
+    return y>0;
+];
+[_bglLambda_6 x;
+    return x>5;
+];
+[_bglLambda_7 x;
+    return x>7;
+];
+[_bglLambda_8 x;
+    return x>7;
+];
+[_bglLambda_9 x;
+    return x>7;
+];
+[_bglLambda_10 x;
+    return x==5;
+];
+[_bglLambda_11 x;
+    return x>5;
+];
+[_bglLambda_12 x;
+    return x>0;
+];
+[_bglLambda_13 x;
+    return x>0;
+];
+[_bglLambda_14 x;
+    return x>100;
+];
+[_bglLambda_15 x;
+    return x>100;
+];
+[_bglLambda_16 x;
+    return x==42;
+];
+[_bglLambda_17 x;
+    return x + 1;
+];
+[_bglLambda_18 a b;
+    if (a > b) {
+        return -1;
+    }
+    if (a < b) {
+        return 1;
+    }
+    return 0;
+];
+[_bglLambda_19 x;
+    return x<0;
+];
+[_bglLambda_20 x;
+    return x>0;
+];
+[_bglLambda_21 x;
+    return x * 2;
+];
+[_bglLambda_22 x;
+    return x>=-32000;
+];
+[_bglLambda_23 x;
+    return x>=-32000;
+];
+[_bglLambda_24 x;
+    return x>=-32000;
+];
+[_bglLambda_25 x;
+    return x>32000;
+];
+[_bglLambda_26 x;
+    return x * 10;
+];
+[_bglLambda_27 y;
+    return y>50;
+];
+[_bglLambda_28 x;
+    return x * 10;
+];
+[_bglLambda_29 a b;
+    if (a>b) {
+        return -1;
+    }
+    if (a<b) {
+        return 1;
+    }
+    return 0;
+];
+[_bglLambda_30 x;
+    return x>3;
+];
+[_bglLambda_31 x;
+    return x>0;
+];
+[_bglLambda_32 x;
+    return x + 100;
+];
+[_bglLambda_33 x;
+    return x<4;
+];
+[_bglLambda_34 x;
+    return x<6;
+];
