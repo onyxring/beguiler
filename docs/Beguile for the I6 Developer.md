@@ -1,4 +1,4 @@
-> NOTE: This document is only just started.  I'll develop it over time an Beguile develops.
+> NOTE: This document is only just started.  I'll develop it over time as Beguile develops.
 
 # Beguile for the I6 Developer 
 
@@ -14,7 +14,7 @@ First, some clarity of terms:
     > ***YES**: Beguile supports runtime debugging of your resulting story file.*
 
 ### Language Affinity 
-Beguile is closely related to Inform 6, but also uses a syntax inspired by C-like languages.  If you've worked with Typescript, C#, or C++, you'll be comfortable with Beguile; but reading Beguile code will also feel familiar in a different way, as though you are reading I6.  Inform's fingerprints all over the Beguile language.
+Beguile uses a syntax which is closely aligned with other C-like languages.  If you've worked with Typescript, C#, or C++, you'll be comfortable with the language, but reading Beguile code will *also* be familiar in a different way: is closely related to Inform 6 with  Inform's fingerprints all over the Beguile language and you'll feel like you are reading a variant of I6.
 
 ### Design Goals
 A handful of principals guided the design of the language:
