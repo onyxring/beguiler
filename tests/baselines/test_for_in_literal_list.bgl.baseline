@@ -23,32 +23,6 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
-object _bglArray
-  with isTracked [arr;
-    return  arr-->( arr-->(-1+1) -1+1) ==36996&& arr-->( arr-->(-1+1) -2+1) >=0;
-  ],
-       size [arr;
-    if (self.istracked(arr)) {
-        return  arr-->(-1+1) -2;
-    }
-    return  arr-->(-1+1) ;
-  ],
-       length [arr;
-    if (self.istracked(arr)) {
-        return  arr-->( arr-->(-1+1) -2+1) ;
-    }
-    return  arr-->(-1+1) ;
-  ],
-       setLength [arr n;
-    if (self.istracked(arr)) {
-        if (n<0) {
-            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-             quit; 
-        }
-        arr-->(_bglArray.size(arr)+1) = n;
-    }
-  ]
-;
 object _bglUtil
 ;
 object bgl
@@ -69,7 +43,7 @@ room r3;
     _bglScratchPush(3);
     _bglfia0 = _bglScratchMake(3);
     _bglfi1 = 0;
-    for (: _bglfi1 < _bglArray.length(_bglfia0) : _bglfi1++) {
+    for (: _bglfi1 < _bglfia0-->0 : _bglfi1++) {
         x = _bglfia0-->(_bglfi1+1);
         total = total + x;
     }
@@ -81,7 +55,7 @@ room r3;
     _bglScratchPush(m * n);
     _bglfia2 = _bglScratchMake(3);
     _bglfi3 = 0;
-    for (: _bglfi3 < _bglArray.length(_bglfia2) : _bglfi3++) {
+    for (: _bglfi3 < _bglfia2-->0 : _bglfi3++) {
         y = _bglfia2-->(_bglfi3+1);
         total = total + y;
     }
@@ -92,7 +66,7 @@ room r3;
     _bglScratchPush(r3);
     _bglfia4 = _bglScratchMake(3);
     _bglfi5 = 0;
-    for (: _bglfi5 < _bglArray.length(_bglfia4) : _bglfi5++) {
+    for (: _bglfi5 < _bglfia4-->0 : _bglfi5++) {
         r = _bglfia4-->(_bglfi5+1);
         seen = seen + 1;
     }

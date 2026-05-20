@@ -25,32 +25,6 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
-object _bglArray
-  with isTracked [arr;
-    return  arr-->( arr-->(-1+1) -1+1) ==36996&& arr-->( arr-->(-1+1) -2+1) >=0;
-  ],
-       size [arr;
-    if (self.istracked(arr)) {
-        return  arr-->(-1+1) -2;
-    }
-    return  arr-->(-1+1) ;
-  ],
-       length [arr;
-    if (self.istracked(arr)) {
-        return  arr-->( arr-->(-1+1) -2+1) ;
-    }
-    return  arr-->(-1+1) ;
-  ],
-       setLength [arr n;
-    if (self.istracked(arr)) {
-        if (n<0) {
-            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-             quit; 
-        }
-        arr-->(_bglArray.size(arr)+1) = n;
-    }
-  ]
-;
 object _bglUtil
   with math _bglmath
 ;
@@ -135,86 +109,13 @@ object _bglMath
     return retval;
   ]
 ;
-[_bglPrintUint v digits buf0 buf1 buf2 buf3 buf4 buf5 buf6 buf7 buf8 buf9 tmp d;
+[_bglPrintUint v;
     if (v>=0) {
         print v;
         return;
     }
-    digits = 0;
-    buf0 = 0;
-    buf1 = 0;
-    buf2 = 0;
-    buf3 = 0;
-    buf4 = 0;
-    buf5 = 0;
-    buf6 = 0;
-    buf7 = 0;
-    buf8 = 0;
-    buf9 = 0;
-    tmp=v;
-    while (_bglmath.unsignedcompare(tmp, 0)>0) {
-        d=_bglmath.unsignedmod(tmp, 10);
-        if (digits==0) {
-            buf0 = d;
-        }
-        if (digits==1) {
-            buf1 = d;
-        }
-        if (digits==2) {
-            buf2 = d;
-        }
-        if (digits==3) {
-            buf3 = d;
-        }
-        if (digits==4) {
-            buf4 = d;
-        }
-        if (digits==5) {
-            buf5 = d;
-        }
-        if (digits==6) {
-            buf6 = d;
-        }
-        if (digits==7) {
-            buf7 = d;
-        }
-        if (digits==8) {
-            buf8 = d;
-        }
-        if (digits==9) {
-            buf9 = d;
-        }
-        tmp = _bglmath.unsigneddiv(tmp, 10);
-         digits++ ;
-    }
-    if (digits>=10) {
-        print buf9;
-    }
-    if (digits>=9) {
-        print buf8;
-    }
-    if (digits>=8) {
-        print buf7;
-    }
-    if (digits>=7) {
-        print buf6;
-    }
-    if (digits>=6) {
-        print buf5;
-    }
-    if (digits>=5) {
-        print buf4;
-    }
-    if (digits>=4) {
-        print buf3;
-    }
-    if (digits>=3) {
-        print buf2;
-    }
-    if (digits>=2) {
-        print buf1;
-    }
-    print buf0;
+    print _bglmath.unsigneddiv(v, 10);
+    print _bglmath.unsignedmod(v, 10);
 ];
 [testInit a i b j;
     a = 42;
@@ -266,9 +167,13 @@ object _bglMath
      i++ ;
      i-- ;
 ];
-[testPrint a;
+[testPrint a maxU mid;
     a = 42;
     _bglPrintUint(a);
+    maxU=-1;
+    _bglPrintUint(maxU);
+    mid=-32768;
+    _bglPrintUint(mid);
 ];
 [testUint;
     testinit();

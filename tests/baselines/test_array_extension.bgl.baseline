@@ -56,6 +56,19 @@ global _bglInitDone = 0;
     _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
 
 ];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+[_bglArrayCompareAsc lhs rhs;
+    
+        if(lhs < rhs) return -1;
+        if(lhs > rhs) return 1;
+        return 0;
+    
+    return 0;
+];
 object _bglArray
   with isTracked [arr;
     return  arr-->( arr-->(-1+1) -1+1) ==36996&& arr-->( arr-->(-1+1) -2+1) >=0;
@@ -422,19 +435,6 @@ object _bglArray
     return dst;
   ]
 ;
-object _bglUtil
-;
-object bgl
-  with utilities _bglutil
-;
-[_bglArrayCompareAsc lhs rhs;
-    
-        if(lhs < rhs) return -1;
-        if(lhs > rhs) return 1;
-        return 0;
-    
-    return 0;
-];
 class room
   class object
   with

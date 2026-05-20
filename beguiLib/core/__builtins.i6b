@@ -35,12 +35,22 @@ Global _bglFrameTop = 0;
  ! Layout matches static tracked arrays: [header, data×size, length, magic].
  ! Returns a pointer at the header slot. Caller must free with _bglFrameFree(size+3)
  ! on every return path (driven by the function's cleanups list).
+ ! Emitted only when the program includes <array>.
  [ _bglArrayLocalAlloc size r i;
     r = _bglFrameAlloc(size + 3);
     r-->0 = size + 2;
     for (i = 1: i <= size: i++) r-->i = 0;
     r-->(size + 1) = 0;
     r-->(size + 2) = $9084;
+    return r;
+ ];
+ ! Plain variant for programs that don't include <array>: untracked layout
+ ! [header=size, data×size]. Matches the global-array emission gated on the
+ ! same arrayInUse flag. Caller frees with _bglFrameFree(size+1).
+ [ _bglArrayLocalAllocPlain size r i;
+    r = _bglFrameAlloc(size + 1);
+    r-->0 = size;
+    for (i = 1: i <= size: i++) r-->i = 0;
     return r;
  ];
 
@@ -63,9 +73,9 @@ Global _bglFrameTop = 0;
 // up to the appropriate length.
 // ---------------------------------------------------------------------------
 
-[forIn.open $counter $array $element]
+[forIn.open $counter $array $element $lengthExpr]
 $counter = 0;
-for (: $counter < _bglArray.length($array) : $counter++) {
+for (: $counter < $lengthExpr : $counter++) {
     $element = $array-->($counter+1);
 
 [forIn.close]
