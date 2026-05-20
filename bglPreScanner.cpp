@@ -36,15 +36,20 @@ void bglParser::recordInactiveRange(int startLine1, int endLine1Inclusive){
 
 // Body-skipping helpers use getRawTextThroughClosingBrace (char-level) to safely skip
 // content containing I6 raw code like ##VerbName without triggering the token classifier.
-void bglParser::preScanSkipBodyContents(){
+void bglParser::preScanSkipBodyContents(bool isI6Content){
     // Opening '{' already consumed. Skip raw chars until matching '}'.
-    file.getRawTextThroughClosingBrace();
+    // Caller passes isI6Content=true when skipping a raw-I6 body (#i6, emitter
+    // bodies, etc.) so `!` is recognized as a line comment. Default false treats
+    // `!` as a Beguile operator (`!=`, `!flag`, etc.) — correct for skipping
+    // Beguile bodies during pre-scan.
+    file.getRawTextThroughClosingBrace(isI6Content);
 }
-void bglParser::preScanSkipBody(){
-    // Consume opening '{' then skip to matching '}'.
+void bglParser::preScanSkipBody(bool isI6Content){
+    // Consume opening '{' then skip to matching '}'. Same isI6Content semantics
+    // as preScanSkipBodyContents.
     token t = file.getToken();
     if(!t.is(token::braceOpen)) return;
-    file.getRawTextThroughClosingBrace();
+    file.getRawTextThroughClosingBrace(isI6Content);
 }
 // Skip tokens in a false #if branch during pre-scan until #elif/#else/#endif at depth 0.
 // On #elif: evaluate condition and either continue scanning or skip again.
@@ -93,7 +98,7 @@ void bglParser::preScanSkipToSemicolon(){
         if(t.is(token::braceClose) || t.is(eTokenType::eof)) return;
         file.getToken();
         if(t.is(token::endStatement)) return;
-        if(t.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+        if(t.is(token::braceOpen)) file.getRawTextThroughClosingBrace(/*isI6Content=*/false);
         // After consuming a {…} block, continue reading to find the ';'
     }
 }
@@ -244,9 +249,10 @@ void bglParser::preScanDirective(token tok){
         stub.text = "#i6_placeholder";
         stub.isPrePassStub = true;
         languageService.globals.push_back(&stub);
-        // Skip content: multi-line (braced) or single-line (to newline)
+        // Skip content: multi-line (braced) or single-line (to newline).
+        // #i6{} content is raw I6 — `!` is a line-comment marker, not an operator.
         if(file.peekToken().is(token::braceOpen))
-            preScanSkipBody();
+            preScanSkipBody(/*isI6Content=*/true);
         else {
             token t = file.getBasicToken(true);
             while(t.isNot("\n") && t.isNot(eTokenType::eof)) t = file.getBasicToken(true);
@@ -1033,7 +1039,7 @@ void bglParser::preScanGlobalLoop(){
                     if(stubPtr != nullptr && isEmitter){
                         file.getToken(); // consume '{'
                         i6Block* body = new i6Block();
-                        body->i6Body = file.getRawTextThroughClosingBrace();
+                        body->i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
                         stubPtr->body = body;
                     } else preScanSkipBody();
                 } else preScanSkipToSemicolon();

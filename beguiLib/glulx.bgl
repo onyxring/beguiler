@@ -1,0 +1,51 @@
+//-----------------------------------------------------------------------------
+// glulx.bgl — A standard Beguile extension adding the Glulx platform namespace
+// and the full Glulx assembly opcode emitter class (bglOpCodes).
+//
+// Usage:
+//   #include <glulx> in your .bgl file when targeting Glulx and you want
+//   raw assembly access (bgl.asm.<opcode>()) or the bgl.glulx.* namespace
+//   (style/window/etc.).
+//
+// Out of core per the zero-byte-core principle: programs that don't need
+// Glulx-specific runtime hooks shouldn't carry the __glkHook routine or the
+// _glulx namespace object. Most Glulx programs do need this (any Glk I/O,
+// styles, windows), so the include is expected; it's just no longer
+// automatic.
+//-----------------------------------------------------------------------------
+#once
+#if TARGET_ZCODE
+    #error "ERROR: <glulx> extension is only valid when targeting Glulx."
+#endif
+
+//=============================================================================
+// _glulx — backing object for the bgl.glulx namespace.
+extend bgl{ auto glulx=_glulx; } //extend the bgl namespace object to include glulx-specific things
+
+object _glulx{
+   alias eStyleType for eGlulxStyleType; //bgl.glulx.eStyleType
+}
+
+enum eGlulxStyleType{
+        normal
+   ,    emphasized
+   ,    fixed
+   ,    header
+   ,    subheader
+   ,    alert
+   ,    note
+   ,    blockQuote
+   ,    input
+   ,    user1
+   ,    user2
+}
+
+//=============================================================================
+// Pull in the full Glulx opcode class. Extends _glulx (above) with additional
+// aliases, and defines `emitter class bglOpCodes` + the __glkHook dispatch
+// routine that backs glk operations.
+#include<core/_glulxOpCodes>
+
+// Glulx-target alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>().
+// Symmetric with core/_zcode.bgl's Z-target alias.
+extend bgl { emitter auto asm = bglOpCodes; }

@@ -1,4 +1,5 @@
 #once
+#include <glulx>
 /* Extend the bgl.glulx namespace object to include all the stuff we are declaring in this file;
     _glulx is object backing for bgl.glulx, so that what we extend.
 */

@@ -2334,7 +2334,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 file.getToken(token::braceOpen); //consume the open brace;
                 if(funcDef.isEmitter){
                     i6Block& rawblock=*(new i6Block());
-                    rawblock.i6Body=file.getRawTextThroughClosingBrace();
+                    rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
                     funcDef.body=&rawblock;
                 } else {
                     funcDef.body = new statementBlock();
@@ -2457,7 +2457,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             funcDef.isDefault = q.isDefault;
             funcDef.src = file.currentLocation();
             i6Block& rawblock = *(new i6Block());
-            rawblock.i6Body = file.getRawTextThroughClosingBrace();
+            rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
             funcDef.body = &rawblock;
             if(!replaceStubMember(newClass.members, funcDef))
                 newClass.members.push_back(&funcDef);
@@ -8370,7 +8370,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             // Deduplicated per source file so re-including a file doesn't register its blocks twice.
             string curFile = filesystem::absolute(file.currentLocation().file).string();
             file.getToken(token::braceOpen);
-            string body = file.getRawTextThroughClosingBrace();
+            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
             if(!startupFiles.count(curFile)){
                 startupFiles.insert(curFile);
                 languageService.startupBlocks.push_back(body);
@@ -8461,14 +8461,14 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             // we don't dedup at this level. Multiple #emitfirst blocks in the same file —
             // common for .inf-mode with many #bgl islands — all register.
             file.getToken(token::braceOpen);
-            languageService.emitFirstBlocks.push_back(file.getRawTextThroughClosingBrace());
+            languageService.emitFirstBlocks.push_back(file.getRawTextThroughClosingBrace(/*isI6Content=*/true));
             return false;
             break;
         }
         case chk("#emitlast"):{
             // Same additive policy as #emitfirst.
             file.getToken(token::braceOpen);
-            languageService.emitLastBlocks.push_back(file.getRawTextThroughClosingBrace());
+            languageService.emitLastBlocks.push_back(file.getRawTextThroughClosingBrace(/*isI6Content=*/true));
             return false;
             break;
         }
@@ -8948,7 +8948,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     } else if(isEmitter){
         file.getToken(token::braceOpen);
         i6Block& rawblock=*(new i6Block());
-        rawblock.i6Body=file.getRawTextThroughClosingBrace();
+        rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
         funcDef.body=&rawblock;
     } else {
         file.getToken(token::braceOpen);
@@ -9120,7 +9120,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
         if(funcDef.isEmitter){
             file.getToken(token::braceOpen);
             i6Block& rawblock = *(new i6Block());
-            rawblock.i6Body = file.getRawTextThroughClosingBrace();
+            rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
             funcDef.body = &rawblock;
         } else {
             file.getToken(token::braceOpen);
@@ -9541,7 +9541,7 @@ bool bglParser::processEmitterValueDeclaration(token typeTok, token nameTok){
     funcDef.isValueEmitter = true;
     funcDef.src = file.currentLocation();
     i6Block& rawblock = *(new i6Block());
-    rawblock.i6Body = file.getRawTextThroughClosingBrace();
+    rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
     funcDef.body = &rawblock;
     for(typeDef*& g : languageService.globals)
         if(auto* stub = dynamic_cast<functionDef*>(g))
@@ -9699,7 +9699,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
                     if(sym.is(token::parenOpen)){ funcHasParens = true; processParameterList(funcDef); sym = file.getToken(); }
                     i6Block& rawblock = *(new i6Block());
                     if(sym.is(token::endStatement)) rawblock.i6Body = " $self";
-                    else { rawblock.i6Body = file.getRawTextThroughClosingBrace(); if(!funcHasParens) funcDef.isValueEmitter = true; }
+                    else { rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true); if(!funcHasParens) funcDef.isValueEmitter = true; }
                     funcDef.body = &rawblock;
                     newObj.members.push_back((typeMember*)&funcDef);
                 } else if(tok.isDataType()){
@@ -9866,7 +9866,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
                 rawblock.i6Body = " $self";
             } else {
                 // sym should be braceOpen
-                rawblock.i6Body = file.getRawTextThroughClosingBrace();
+                rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
                 if(!hasParens) funcDef.isValueEmitter = true;
             }
             funcDef.body = &rawblock;
@@ -10327,6 +10327,27 @@ bool bglParser::processObjectExtension(token nameTok){
             if(isExternalObj)
                 parsingError(format("Cannot add emitter methods to extern object '{0}'",
                     nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
+            // Alias member: `emitter auto name = ClassRef;` — compile-time indirection to
+            // another class. Mirrors the same case in the primary object-body parser so
+            // `extend bgl { emitter auto asm = bglOpCodes; }` works the same as declaring
+            // it inside the original `object bgl { ... }`.
+            if(tok.value == "auto"){
+                token aliasName = file.getToken({eTokenType::identifier, eTokenType::dataType});
+                file.getToken(token::assignment);
+                token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
+                classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(rhs.value));
+                if(!rhsCls)
+                    parsingError(format("'auto' alias member '{0}': '{1}' is not a declared class",
+                        (string)aliasName, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
+                file.getToken(token::endStatement);
+                variableDeclaration& aliasDef = *(new variableDeclaration());
+                aliasDef.name = (string)aliasName;
+                aliasDef.type = languageService.getType(rhs.value);
+                aliasDef.isExternal = true;  // no I6 emission
+                obj->members.push_back(&aliasDef);
+                tok = file.getToken();
+                continue;
+            }
             token retType = tok;
             token propName = file.getToken(eTokenType::identifier);
             if(propName.is("operator")){
@@ -10347,7 +10368,7 @@ bool bglParser::processObjectExtension(token nameTok){
             if(sym.is(token::parenOpen)){ hasParens = true; processParameterList(funcDef); sym = file.getToken(); }
             i6Block& rawblock = *(new i6Block());
             if(sym.is(token::endStatement)) rawblock.i6Body = " $self";
-            else { rawblock.i6Body = file.getRawTextThroughClosingBrace(); if(!hasParens) funcDef.isValueEmitter = true; }
+            else { rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true); if(!hasParens) funcDef.isValueEmitter = true; }
             funcDef.body = &rawblock;
             if(!replaceStubMember(obj->members, funcDef)){
                 bool replaced = false;

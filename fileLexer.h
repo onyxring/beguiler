@@ -59,7 +59,14 @@ class fileLexer{
         token peekToken();
         token peekToken(int);
 
-        string getRawTextThroughClosingBrace();
+        // Reads raw chars up to the matching `}`. The `isI6Content` flag controls
+        // `!` handling: true means `!` starts an I6 line comment (correct for raw-I6
+        // bodies — #i6, #emitfirst, #emitlast, #startup, raw emitter bodies, where
+        // an `!` comment may legitimately contain `{` chars that shouldn't count).
+        // False (the default) treats `!` as a regular character — correct for
+        // Beguile bodies during pre-scan, where `!` is an operator (`!=`, `!flag`,
+        // `!(expr)`, `!self.x`, etc.) and never starts a comment.
+        string getRawTextThroughClosingBrace(bool isI6Content = false);
         // Same as above but stops also when `#bgl`, `#bglDecl`, or `#bglStmt` is encountered.
         // On return, outDirective indicates which variant was found (or None if the matching
         // closing brace was consumed). When a directive is found, the directive token (e.g.

@@ -23,18 +23,15 @@
 #include <core/_grammar>
 #include <core/_verb>
 
-#if TARGET_ZCODE
-    #include<core/_zcode>
-#else
-    #include<core/_glulx>
-#endif
-
 object _bglUtil{}
 object bgl{
     emitter int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
-    emitter auto asm = bglOpCodes;     // compile-time alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>()
     auto utilities = _bglUtil;
 }
+// Target-specific platform code is opt-in per the zero-byte-core principle:
+//   #include <zcode>  → bgl.asm + bglOpCodes for Z-machine assembly
+//   #include <glulx>  → bgl.asm + bglOpCodes + _glulx namespace + __glkHook
+// Programs that don't need raw assembly or platform hooks pay nothing.
 
 //-----------------------------------------------------------------------------
 // _bglScratch — shared scratch buffer for for-in over inline lists.
