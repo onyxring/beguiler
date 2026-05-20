@@ -1,0 +1,34 @@
+/*
+    test_arrow_lambda_assignment.bgl
+    Regression: arrow-body lambda as the RHS of a var/local declaration.
+    Surfaced during the broader adversarial sweep — parseLambdaExpr's
+    stashedToken mechanism (added for arg-position arrow bodies) needed to
+    cover ';' too, not just ',' and ')'. Without the fix, the consumed ';'
+    leaked back into the enclosing parseExpression and corrupted the parse.
+*/
+#beguilerSettings {
+    target = z5;
+    informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
+    outputPath = "tests/output";
+}
+
+int apply(func<int, int> f, int x){ return f(x); }
+
+void main(){
+    // Local: arrow-body lambda → assigns the lifted lambda name to f.
+    func<int, int> f = (int n) => n + 1;
+    print(f(5));                                  // 6
+
+    // Same shape but used immediately as an argument.
+    print(apply((int n) => n * 2, 7));             // 14
+
+    // Two arrow-body lambdas as adjacent args (stashedToken handles `,`).
+    int g = apply((int n) => n + 10, 3);
+    print(g);                                     // 13
+
+    // Lambda body containing a comparison (the original "intLiteral" surprise
+    // from the LINQ work — verify it still resolves through filter properly).
+    func<bool, int> isEven = (int n) => (n & 1) == 0;
+    print(isEven(4));                             // 1
+    print(isEven(7));                             // 0
+}

@@ -1,0 +1,37 @@
+/*
+    test_empty_constructs.bgl
+    Boundary: empty class, empty function, empty enum, empty object body,
+    empty initializer list. Should all compile cleanly.
+*/
+#beguilerSettings {
+    target = z5;
+    informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
+    outputPath = "tests/output";
+}
+
+class EmptyClass {}
+emitter class EmptyEmitter {}
+
+enum EmptyEnum {}
+
+void emptyFn(){}
+
+bool emptyBoolFn(){
+    return false;
+}
+
+object emptyObj {}
+
+class WithEmptyMethod {
+    void noop(){}
+    int alwaysZero(){ return 0; }
+}
+
+WithEmptyMethod wem;
+
+void main(){
+    emptyFn();
+    print(emptyBoolFn());      // 0
+    wem.noop();
+    print(wem.alwaysZero());   // 0
+}

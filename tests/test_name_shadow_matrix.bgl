@@ -1,0 +1,53 @@
+/*
+    test_name_shadow_matrix.bgl
+    Same identifier at multiple scope levels. Each shadow should either work
+    silently (when scoping is unambiguous) or produce a warning. None should
+    crash or produce wrong dispatch.
+
+    Probed:
+      1. Local shadows global of same name — should warn (parameter or local).
+      2. Local shadows class member — should warn.
+      3. Class field name reused as lambda param — should NOT warn (lambda is
+         a new scope and class members aren't reachable from a free-standing
+         lambda).
+      4. Member function calling base-class method that shares name with a
+         local in the calling function.
+*/
+#beguilerSettings {
+    target = z5;
+    informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
+    outputPath = "tests/output";
+}
+
+int counter = 0;
+
+class Score {
+    int value = 0;
+    void bump(int amount){
+        value = value + amount;
+    }
+    int doubled(){ return value * 2; }
+}
+
+Score s;
+
+int makeCount(int counter){
+    // `counter` here is a parameter shadowing the global counter — expected warning.
+    return counter + 1;
+}
+
+void main(){
+    print(counter);                     // 0 (global)
+    counter = 5;
+    print(makeCount(10));               // 11 — sees the parameter, not the global
+    print(counter);                     // 5 — global untouched
+
+    s.bump(3);
+    s.bump(4);
+    print(s.value);                     // 7
+    print(s.doubled());                 // 14
+
+    // Lambda param named 'value' — separate scope from Score.value
+    func<int, int> twiceVal = (int value) => value + value;
+    print(twiceVal(6));                 // 12
+}

@@ -2724,7 +2724,11 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
         // enclosing arg parser — we stash it on the parser-level token slot, which the
         // caller's next getNext() will pick up before reading more from the lexer.
         expression* retExpr = parseExpression(bodyStart, {token::endStatement, token::comma, token::parenClose}, &fd, lambdaBody);
-        if(retExpr->terminator == "," || retExpr->terminator == ")"){
+        // Stash whatever terminator the inner parseExpression consumed so the enclosing
+        // parser still sees it. Applies to all three: ';' (assignment RHS), ',' (next arg),
+        // ')' (close of enclosing call). Without this, the outer parse loses sync and
+        // misreads subsequent statements as part of the lambda's expression.
+        if(retExpr->terminator == ";" || retExpr->terminator == "," || retExpr->terminator == ")"){
             token t;
             t.value = retExpr->terminator;
             t.tokenType = eTokenType::symbol;
