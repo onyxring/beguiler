@@ -1,0 +1,11 @@
+// EXPECT_ERROR: Function 'addNums' expects 2 argument(s), but 3 were supplied
+// Double comma in function call argument list. The compiler treats `,,` as an
+// empty middle argument, producing a clean arity-mismatch error rather than a
+// parse error. Acceptable behavior — fails closed with informative diagnostics.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+int addNums(int x, int y){ return x + y; }
+
+void main(){
+    print(addNums(1,, 2));
+}

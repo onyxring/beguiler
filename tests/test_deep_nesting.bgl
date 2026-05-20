@@ -1,0 +1,59 @@
+/*
+    test_deep_nesting.bgl
+    Adversarial: deep nesting in every combination Beguile supports.
+    - Lambda inside a lambda's body (5 levels deep)
+    - Lambda as an argument to a function whose arg is another lambda
+    - if inside for inside while inside method inside class
+    - Nested arrow-body lambdas in arg position (probes the stashedToken path)
+*/
+#beguilerSettings {
+    target = z5;
+    informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
+    outputPath = "tests/output";
+}
+
+int apply(func<int, int> f, int x){ return f(x); }
+int apply2(func<int, int> f, func<int, int> g, int x){ return f(g(x)); }
+
+class Deep {
+    int compute(int n){
+        int total = 0;
+        for(int i = 0; i < 3; i++){
+            int j = 0;
+            while(j < 2){
+                if(i == j){
+                    if(n > 0){
+                        total = total + n + i + j;
+                    } else {
+                        total = total - i - j;
+                    }
+                }
+                j = j + 1;
+            }
+        }
+        return total;
+    }
+}
+
+Deep d;
+
+void main(){
+    // Lambda in lambda body
+    int x = apply((int a) => {
+        int inner = apply((int b) => { return b * 2; }, a);
+        return inner + 1;
+    }, 5);
+    print(x);                           // (5*2)+1 = 11
+
+    // Two arrow-body lambdas in adjacent arg positions (stashedToken probe)
+    int y = apply2((int a) => a + 1, (int b) => b * 3, 4);
+    print(y);                           // ((4*3)+1) = 13
+
+    // Three nested arrow-body lambdas in arg position
+    int z = apply((int a) => apply((int b) => apply((int c) => c + 100, b), a), 7);
+    print(z);                           // 107
+
+    // Deep flow nesting inside a method
+    print(d.compute(10));               // i=j=0: 10+0+0=10; i=j=1: 10+1+1=12; i=j=2: 10+2+2=14 → 36
+    print(d.compute(-1));               // i=j=0: -0-0=0; i=j=1: -1-1=-2; i=j=2: -2-2=-4 → -6
+}

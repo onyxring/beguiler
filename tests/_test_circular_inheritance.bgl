@@ -1,0 +1,9 @@
+// EXPECT_ERROR: circular inheritance
+// True circular inheritance: A inherits from B, B inherits from A.
+// The compiler must refuse, not infinite-loop during member resolution.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class A : B { int x = 0; }
+class B : A { int y = 0; }
+
+void main(){}
