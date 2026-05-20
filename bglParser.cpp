@@ -2383,6 +2383,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 if(existing && !alreadyReplaced && !isReplace)
                     parsingError(format("extend class '{0}': member '{1}' is already defined; use 'replace' to override", newClass.dName(), funcDef.dName()));
                 if(!existing && isReplace)
+                    parsingWarning(format("extend class '{0}': 'replace' specified but no existing member '{1}' found; treating as new definition", newClass.dName(), funcDef.dName()));
                 if(existing && !alreadyReplaced){
                     for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
                         if(*it==existing){ *it = &funcDef; break; }
@@ -8346,7 +8347,10 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                 filesystem::path libPath = findCaseInsensitive(settings.libPath, includeName + ".bgl");
                 if(filesystem::exists(libPath)){
                     parseFile(libPath.string());
-                    if(includeName == "array") languageService.linqInUse = true;
+                    if(includeName == "array"){
+                        languageService.arrayInUse = true;
+                        languageService.linqInUse  = true;
+                    }
                 }
                 else if(!isOptional)
                     parsingError(format("#include: file '<{0}>' not found", includeName));

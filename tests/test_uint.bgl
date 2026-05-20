@@ -76,11 +76,21 @@ void testIncDec() {
 }
 
 // --- Print ---
-// Values below the signed-range midpoint print correctly with the raw-passthrough
-// emitter. High-value printing is deferred until unsigned division lands.
+// Low values (no sign bit) print via native I6 print. High values (sign bit set
+// — would render as negative under signed print) route through _bglPrintUint
+// which does one unsigned divmod by 10 so the quotient fits in signed range and
+// native print handles it; the remainder is always 0-9.
 void testPrint() {
     uint a = 42;
-    print(a);
+    print(a);                       // "42"
+
+    // High-end: literal that exceeds signed range. (uint)-1 = 65535 on Z, 2^32-1 on Glulx.
+    uint maxU = (uint)-1;
+    print(maxU);                    // "65535" on Z; "4294967295" on Glulx
+
+    // Just above the signed midpoint.
+    uint mid = (uint)-32768;
+    print(mid);                     // "32768" on Z; very large on Glulx
 }
 
 void testUint() {

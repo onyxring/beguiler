@@ -22,34 +22,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
-    g_sized-->(g_sized-->0) = $9084;
 ];
-object _bglArray
-  with isTracked [arr;
-    return  arr-->( arr-->(-1+1) -1+1) ==36996&& arr-->( arr-->(-1+1) -2+1) >=0;
-  ],
-       size [arr;
-    if (self.istracked(arr)) {
-        return  arr-->(-1+1) -2;
-    }
-    return  arr-->(-1+1) ;
-  ],
-       length [arr;
-    if (self.istracked(arr)) {
-        return  arr-->( arr-->(-1+1) -2+1) ;
-    }
-    return  arr-->(-1+1) ;
-  ],
-       setLength [arr n;
-    if (self.istracked(arr)) {
-        if (n<0) {
-            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-             quit; 
-        }
-        arr-->(_bglArray.size(arr)+1) = n;
-    }
-  ]
-;
 object _bglUtil
 ;
 object bgl
@@ -64,11 +37,11 @@ room r1;
 room r2;
 global plainObj1;
 global plainObj2;
-array g_nums table 1 2 3 4 5 5 $9084;
-array g_sized table 12;
-array g_flags table true false true 3 $9084;
-array g_objs table plainobj1 plainobj2 2 $9084;
-array g_rooms table r1 r2 2 $9084;
+array g_nums table 1 2 3 4 5;
+array g_sized table 10;
+array g_flags table true false true;
+array g_objs table plainobj1 plainobj2;
+array g_rooms table r1 r2;
 array g_buf buffer 32;
 object inventory
   with slots 0 0 0 0 0 0 ,

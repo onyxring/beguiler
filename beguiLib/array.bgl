@@ -46,8 +46,10 @@ int _bglArrayCompareAsc(var lhs, var rhs){
 // All emitter bodies dispatch through _bglArray (declared in core).
 //-----------------------------------------------------------------------------
 extend extern class array {
-    // Length accessors — forward to the detection-aware helpers on _bglArray.
-    emitter int  length()                 { _bglArray.length($val) }
+    // Tracked-aware overrides of the core's raw `$val-->0` size/length.
+    // Probe a magic marker stamped by the compiler when `<array>` is included.
+    replace emitter int  size()           { _bglArray.size($val) }
+    replace emitter int  length()         { _bglArray.length($val) }
     emitter void setLength(int n)         { _bglArray.setLength($val, $n) }
     emitter bool isTracked()              { _bglArray.isTracked($val) }
 
@@ -163,14 +165,66 @@ extern void       _bglLinqFlip(){}
 
 
 //-----------------------------------------------------------------------------
-// _bglArray — algorithm methods. The detection methods (isTracked, size,
-// length, setLength) live in core (__beguileCore.bgl); we extend the object
-// here with the higher-level operations.
+// _bglArray — utility object holding the tracked-array detection + metadata
+// helpers. Lives in the <array> extension (not core) per the zero-byte-core
+// principle: programs that don't #include <array> get plain N-slot I6
+// arrays with no runtime detection overhead.
 //
-// Helper signatures use `array<var>` because element types are unknown at
-// this layer — type safety happens at the emitter forwarder, not here.
+// Detection (`isTracked`) probes two slots, both must pass:
+//   arr-->(arr-->0)     == $9084           (1-in-65k on untracked)
+//   arr-->(arr-->0 - 1) >= 0 (signed)      (1-in-2 on untracked)
+// Combined false-positive rate on Z-machine: 1-in-131k.
+//
+// Untracked extern arrays fall back to I6-native size semantics gracefully:
+// length() reports size, setLength() is silent no-op. isTracked() is the
+// authoritative check for defensive code.
+//
+// Note on slot math:
+//   operator[i] is `arr-->(i+1)`, so subscript indices are biased by 1
+//   relative to raw I6 slot numbers:
+//     arr[-1]  reads slot 0 — the I6 auto-header
+//     arr[N-1] reads slot N (last data slot, where N = size())
+//     arr[N]   reads slot N+1 — the length slot for tracked arrays
+//     arr[N+1] reads slot N+2 — the magic slot for tracked arrays
+//   Using arr[-1] for the header avoids recursion (size() is built on top
+//   of isTracked() which reads the magic; both must reach the raw header
+//   without going back through size()).
 //-----------------------------------------------------------------------------
-extend _bglArray {
+object _bglArray {
+    bool isTracked(array<var> arr){
+        return arr[arr[-1] - 1] == $9084 && arr[arr[-1] - 2] >= 0;
+    }
+
+    int size(array<var> arr){
+        if(isTracked(arr)) return arr[-1] - 2;
+        return arr[-1];
+    }
+
+    int length(array<var> arr){
+        if(isTracked(arr)) return arr[arr[-1] - 2];
+        // Untracked fallback: report size so length() never lies bigger than truth.
+        return arr[-1];
+    }
+
+    void setLength(array<var> arr, int n){
+        if(isTracked(arr)){
+            if(n < 0){
+                print("^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^");
+                #i6 { quit; }   // I6 control; no Beguile equivalent yet
+            }
+            // arr[size()] = slot size+1 of raw allocation = the length slot.
+            arr[arr.size()] = n;
+        }
+        // Untracked: silent no-op (length not maintainable on raw extern arrays).
+    }
+
+    // ── Algorithm methods ─────────────────────────────────────────────────────
+    // Same object — kept in one block so cross-method sibling calls
+    // (e.g. setLength from clear, isTracked from setLength) resolve without
+    // going through the surface dispatch on array<T>.
+    //
+    // Helper signatures use `array<var>` because element types are unknown at
+    // this layer — type safety happens at the emitter forwarder, not here.
     // First index where val appears, or -1. Scans the full size — matches
     // orArray.find semantics, which look past any unused trailing region.
     // So a value written via raw `arr[i] = v` (without extending length) is

@@ -714,14 +714,20 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // a magic-stamp statement in bglInit. We must do this BEFORE bglInit is synthesised
     // so the stamp statements appear in the routine body. Walks variableDeclaration
     // arrayDeclaration instances directly to avoid re-running the global-emission path.
-    for(typeDef* g : languageService.globals){
-        auto* arr = dynamic_cast<arrayDeclaration*>(g);
-        if(arr == nullptr) continue;
-        if(arr->isExternal || arr->isByteArray) continue;
-        // Sized-uninit only — list-init arrays bake the magic inline.
-        if(arr->arraySize > 0 && arr->stringInitializer.empty()
-           && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
-            trackedArraysNeedingMagicInit.push_back(arr->dName());
+    //
+    // Gated on languageService.arrayInUse: programs that don't #include <array> get
+    // plain N-slot I6 arrays with no header/magic overhead. Tracked-length semantics
+    // are an opt-in via the <array> extension (zero-byte core principle).
+    if(languageService.arrayInUse){
+        for(typeDef* g : languageService.globals){
+            auto* arr = dynamic_cast<arrayDeclaration*>(g);
+            if(arr == nullptr) continue;
+            if(arr->isExternal || arr->isByteArray) continue;
+            // Sized-uninit only — list-init arrays bake the magic inline.
+            if(arr->arraySize > 0 && arr->stringInitializer.empty()
+               && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
+                trackedArraysNeedingMagicInit.push_back(arr->dName());
+            }
         }
     }
 
@@ -1170,8 +1176,15 @@ void i6Emitter::emitFunction(functionDef* funcNode){
             if(arr->isByteArray) continue;
             if(arr->arraySize <= 0) continue;
             string name = spillName(arr->name);
-            out << format("    {0} = _bglArrayLocalAlloc({1});\n", name, arr->arraySize);
-            funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->arraySize + 3)});
+            // Mirror the global-array layout gating: tracked (header + N + length + magic)
+            // when `<array>` is included, plain (header + N data slots) otherwise.
+            if(languageService.arrayInUse){
+                out << format("    {0} = _bglArrayLocalAlloc({1});\n", name, arr->arraySize);
+                funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->arraySize + 3)});
+            } else {
+                out << format("    {0} = _bglArrayLocalAllocPlain({1});\n", name, arr->arraySize);
+                funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->arraySize + 1)});
+            }
         }
     }
 
@@ -1385,8 +1398,15 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         }
         string openTemplate  = fi->isByteArray ? "forIn.openByte"  : "forIn.open";
         string closeTemplate = fi->isByteArray ? "forIn.closeByte" : "forIn.close";
+        // Length probe: when <array> is included, use the tracked-aware _bglArray.length
+        // dispatch. Without it, fall back to the raw slot count ($array-->0) — matches the
+        // untracked global-array layout emitted at the same arrayInUse=false gate above.
+        string lengthExpr = languageService.arrayInUse
+            ? "_bglArray.length(" + spillName(fi->arrayVar) + ")"
+            : spillName(fi->arrayVar) + "-->0";
         applyTemplate(openTemplate,
-            {{"counter", spillName(fi->counterVar)}, {"array", spillName(fi->arrayVar)}, {"element", spillName(fi->elementVar)}},
+            {{"counter", spillName(fi->counterVar)}, {"array", spillName(fi->arrayVar)},
+             {"element", spillName(fi->elementVar)}, {"lengthExpr", lengthExpr}},
             indent);
         if(fi->body != nullptr)
             for(statement* s : fi->body->statements)
@@ -1766,21 +1786,23 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
             throw ("i6Emitter: unable to emit byte array.");
         }
 
-        // ── Word-array paths — emit with length-tracking layout.
-        // Total slots past the I6 header: N data + 1 length + 1 magic = N+2.
+        // ── Word-array paths.
+        // With `<array>` included (languageService.arrayInUse): tracked-length layout —
+        // N data slots + 1 length + 1 magic = N+2 total.
+        // Without: plain N-slot I6 table. Zero-byte-core principle: programs that
+        // don't use `<array>` get untracked I6-native arrays with no overhead.
+        bool tracked = languageService.arrayInUse;
         if(arr->arraySize > 0) {
-            // Sized, uninitialized. Emit the compact `table N+2` form (all zeros) —
-            // far smaller in .inf source than explicit zeros for large arrays. The
-            // magic gets stamped at startup by bglInit (pre-pass collected the name
-            // into trackedArraysNeedingMagicInit before this emission). Length stays
-            // 0 from the table's default-zero init.
-            out << format("array {0} table {1};\n", arr->dName(), arr->arraySize + 2);
+            // Sized, uninitialized. Magic+length get stamped at startup by bglInit when
+            // tracked (pre-pass collected the name into trackedArraysNeedingMagicInit).
+            int slots = tracked ? arr->arraySize + 2 : arr->arraySize;
+            out << format("array {0} table {1};\n", arr->dName(), slots);
             return;
         }
 
         if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-            // List-initialized: length = N (all-filled). Bake the magic into the
-            // initializer list — no runtime init needed.
+            // List-initialized. With tracking, bake the magic + length into the
+            // initializer trailing slots. Without, just emit the data.
             int len = list->elements.size();
             out << format("array {0} table", arr->dName());
             for(expression* elem : list->elements){
@@ -1791,8 +1813,10 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
                 if(!t.empty() && t.front() == '-') out << " (" << t << ")";
                 else                                out << " " << t;
             }
-            out << " " << len;     // length = N
-            out << " $9084";       // magic
+            if(tracked){
+                out << " " << len;     // length = N
+                out << " $9084";       // magic
+            }
             out << ";\n";
             return;
         }

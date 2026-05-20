@@ -31,32 +31,6 @@ global _bglInitDone = 0;
     ! startup block test
 
 ];
-object _bglArray
-  with isTracked [arr;
-    return  arr-->( arr-->(-1+1) -1+1) ==36996&& arr-->( arr-->(-1+1) -2+1) >=0;
-  ],
-       size [arr;
-    if (self.istracked(arr)) {
-        return  arr-->(-1+1) -2;
-    }
-    return  arr-->(-1+1) ;
-  ],
-       length [arr;
-    if (self.istracked(arr)) {
-        return  arr-->( arr-->(-1+1) -2+1) ;
-    }
-    return  arr-->(-1+1) ;
-  ],
-       setLength [arr n;
-    if (self.istracked(arr)) {
-        if (n<0) {
-            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-             quit; 
-        }
-        arr-->(_bglArray.size(arr)+1) = n;
-    }
-  ]
-;
 object _bglUtil
 ;
 object bgl
