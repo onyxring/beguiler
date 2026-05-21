@@ -1,0 +1,43 @@
+/*
+    test_verb_global_name_collision.bgl
+    Regression: when a global variable and a global object (or verb, which
+    is `alias class verb for object`) share the same lowercased name —
+    Beguile is case-insensitive — bare references used to error with
+    "X is ambiguous". Both live at global scope so no scope qualifier
+    distinguishes them; the only differentiator is type.
+
+    Surfaced from the I6 standard library binding's `extern int score;` +
+    `extern verb Score { .score }` collision (cloak-of-darkness used
+    `score++` and got the error).
+
+    Resolution: non-object candidate beats object candidate as a last-
+    resort tiebreaker. Runs AFTER memberHint and expected-type filters so
+    objects are still reachable in their natural contexts:
+      - `action == V` (LHS gives expected type → verb wins)
+      - `V.method()` (memberHint picks the object)
+      - `func(V)` where param is verb-typed (expected type → verb wins)
+    Bare references like `score++` with no context default to the variable.
+
+    Trade-off documented: if someone adds operator++ to a verb (rare),
+    bare `name++` won't reach the verb when a same-named variable also
+    exists. Workaround: rename one of them.
+
+    Mirrors the existing "globals beat enum values" precedent.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+extern verb action;
+extern verb doNothing { .donothing }
+extern verb myInt { .myint }
+extern int myInt;
+
+void main(){
+    // Bare reference resolves to the int (non-verb beats verb).
+    myInt = 5;
+    myInt++;
+    print(myInt);
+
+    // Comparison context: expected type is `verb` (from action), so the
+    // verb candidate is the one that survives the type-compatibility filter.
+    if(action == doNothing) print("got doNothing");
+}
