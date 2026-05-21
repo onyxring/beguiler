@@ -3236,7 +3236,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     // at file/module scope. They share one conceptual namespace — collisions there are
     // accidents, not deliberate shadowing. Collect every match and let the ambiguity logic
     // below decide.
-    struct Candidate { string type; string origin; bool isEnum; };
+    struct Candidate { string type; string origin; bool isEnum; bool isObject = false; };
     vector<Candidate> candidates;
 
     // Enum values: walk EVERY enum that contains this value name. Multiple enums may share
@@ -3255,9 +3255,11 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     for(typeDef* g : languageService.globals){
         if(g->name == name){
             string ct, origin;
+            bool isObj = false;
             if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ ct = vd->type.name; origin = format("global variable '{0}'", g->name); }
             else if(auto* fd = dynamic_cast<functionDef*>(g)){ ct = fd->returnType.name; origin = format("global function '{0}'", g->name); }
             else if(auto* od = dynamic_cast<objectDef*>(g)){
+                isObj = true;
                 // Type-identity rule: an objectDef IS its own type unless it explicitly
                 // inherits from a non-`object` class. The implicit `object` parent doesn't
                 // count — it's the universal supertype, not a specific identity.
@@ -3276,7 +3278,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
                 ct = name;
                 origin = format("type '{0}'", g->name);
             }
-            if(!ct.empty()) candidates.push_back({ct, origin, false});
+            if(!ct.empty()) candidates.push_back({ct, origin, false, isObj});
             break;
         }
     }
@@ -3285,7 +3287,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         string lower = vd->name;
         transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
         if(lower == name){
-            candidates.push_back({"verb", format("verb '{0}'", vd->name), false});
+            candidates.push_back({"verb", format("verb '{0}'", vd->name), false, /*isObject=*/true});
             break;
         }
     }
@@ -3354,7 +3356,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     }
     // Resolve the candidate set. Cases:
     //   • 1 candidate         → use it (let dispatch produce type-mismatch errors if any).
-    //   • 2+ candidates       → try memberHint, then currentExpectedType as tie-breakers.
+    //   • 2+ candidates       → try memberHint, expected-type, then non-verb-beats-verb.
     //                           If a single candidate emerges, use it; otherwise error.
     if(candidates.size() == 1) return candidates[0].type;
     if(candidates.size() >= 2){
@@ -3370,6 +3372,21 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
             for(auto& c : candidates)
                 if(isTypeCompatible(c.type, currentExpectedType)) compatible.push_back(&c);
             if(compatible.size() == 1) return compatible[0]->type;
+        }
+        // Non-object beats object as a last-resort tiebreaker. Objects (and verbs,
+        // which are objects via `alias class verb for object`) are reachable in their
+        // natural usage contexts: `action == V` (expected-type filter above), or
+        // `V.method()` (memberHint filter above). A bare reference like `score++`
+        // overwhelmingly means the variable. Mirrors the non-enum-beats-enum precedent.
+        {
+            bool hasNonObject = false;
+            for(auto& c : candidates) if(!c.isObject){ hasNonObject = true; break; }
+            if(hasNonObject){
+                vector<Candidate> filtered;
+                for(auto& c : candidates) if(!c.isObject) filtered.push_back(c);
+                if(filtered.size() == 1) return filtered[0].type;
+                candidates = filtered;  // narrowed but still ambiguous — fall through to error
+            }
         }
         string msg = format("'{0}' is ambiguous: matches ", name);
         for(size_t i = 0; i < candidates.size(); i++){
@@ -3890,7 +3907,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     // Same principle as resolveIdentifierType: enum values, globals, verbs, emitter objects,
     // #defines, and #using imports share one conceptual namespace. Multiple matches across
     // these tiers indicates a real ambiguity, not legitimate scope shadowing.
-    struct Candidate { string qualified; string type; string origin; bool isEnum; };
+    struct Candidate { string qualified; string type; string origin; bool isEnum; bool isObject = false; };
     vector<Candidate> candidates;
 
     // Enum values: walk EVERY enum containing this name so multiple enums sharing a value
@@ -3911,6 +3928,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     for(typeDef* g : languageService.globals){
         if(g->name == name){
             string qual, ct, origin;
+            bool isObj = false;
             if(auto* fd = dynamic_cast<functionDef*>(g)){
                 ct = fd->returnType.name;
                 origin = format("global function '{0}'", g->name);
@@ -3935,6 +3953,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                 ct = explicitNonObjectClass ? od->objectClass->name : od->name;
                 qual = g->i6name.empty() ? name : g->i6name;
                 origin = format("global object '{0}'", g->name);
+                isObj = true;
             }
             else if(dynamic_cast<classDef*>(g) || dynamic_cast<enumDef*>(g)){
                 // Class/enum type-name reference (e.g. for ClassName.staticMember dot-paths).
@@ -3943,7 +3962,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                 ct = name;  // type identifies itself
                 origin = format("type '{0}'", g->name);
             }
-            if(!qual.empty()) candidates.push_back({qual, ct, origin, false});
+            if(!qual.empty()) candidates.push_back({qual, ct, origin, false, isObj});
             break;
         }
     }
@@ -4014,7 +4033,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         string lower = vd->name;
         transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
         if(lower == name){
-            candidates.push_back({vd->name, "verb", format("verb '{0}'", vd->name), false});
+            candidates.push_back({vd->name, "verb", format("verb '{0}'", vd->name), false, /*isObject=*/true});
             break;
         }
     }
@@ -4059,8 +4078,8 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     }
     // Resolve the candidate set. Cases:
     //   • 1 candidate         → use it.
-    //   • 2+ candidates       → try memberHint, then currentExpectedType as tie-breakers.
-    //                           If still ambiguous, error and require explicit qualification.
+    //   • 2+ candidates       → try memberHint, expected-type, then non-verb-beats-verb.
+    //                           If still ambiguous, error.
     if(candidates.size() == 1) return candidates[0].qualified;
     if(candidates.size() >= 2){
         if(!memberHint.empty()){
@@ -4074,6 +4093,21 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             for(auto& c : candidates)
                 if(isTypeCompatible(c.type, currentExpectedType)) compatible.push_back(&c);
             if(compatible.size() == 1) return compatible[0]->qualified;
+        }
+        // Non-object beats object (last-resort tiebreaker). See resolveIdentifierType for
+        // rationale: objects (and verbs, which are objects via `alias class verb for object`)
+        // are reachable in their natural usage contexts — `action == V`, `V.method()`,
+        // `func(V)` — all of which are handled by the memberHint and expected-type
+        // filters above. Bare references like `score++` mean the variable.
+        {
+            bool hasNonObject = false;
+            for(auto& c : candidates) if(!c.isObject){ hasNonObject = true; break; }
+            if(hasNonObject){
+                vector<Candidate> filtered;
+                for(auto& c : candidates) if(!c.isObject) filtered.push_back(c);
+                if(filtered.size() == 1) return filtered[0].qualified;
+                candidates = filtered;  // narrowed but still ambiguous — fall through to error
+            }
         }
         string msg = format("'{0}' is ambiguous: matches ", name);
         for(size_t i = 0; i < candidates.size(); i++){
