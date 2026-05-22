@@ -3,7 +3,15 @@
 // type attribute
     
     ///Basic attributes used by I6 to assign runtime state to objects.
-    extern class attribute : _bglObject{ }
+    extern class attribute : _bglObject{
+        // Prefix `!` inside an attributeList initializer marks an inherited
+        // attribute to be turned off on this instance/class:
+        //   attributes = {light, !scenery};   // has light, but NOT scenery
+        // Maps directly to I6's `has ~attr` negation syntax in the emitted
+        // `has` clause. Outside attributeList literals this operator has no
+        // useful meaning — an `attribute` value isn't a boolean.
+        emitter attribute operator !() { ~$val }
+    }
     
     extern class attributeList : _bglObject{ 
         emitter void give(attribute attr){

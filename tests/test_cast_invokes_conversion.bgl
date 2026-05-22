@@ -1,0 +1,53 @@
+/*
+    test_cast_invokes_conversion.bgl
+    Regression: `(T)x` used to be a type-relabel only — the operator()→T emitter on
+    the source type was never invoked at cast sites. Silently correct for int↔uint
+    (identical bit layout) but silently wrong for any type whose conversion needs
+    runtime work (e.g. float→int via @ftonumz).
+
+    Now: `(T)x` invokes the source type's `operator()→T` emitter. Statement-form
+    bodies (with `$target`) materialize a temp slot via injection; expression-form
+    bodies substitute inline. Also covers Bug B: castType used to leak through `(`
+    and bind to the first inner identifier — `(int)(frac * 2)` would type `frac`
+    as int and error on the multiply.
+
+    Stand-in for the (parked) float type — uses fake assembly opcodes inside an
+    explicit emitter operator() to verify the cast actually emits the body, with
+    or without `$target`, for both single-identifier and parenthesized-expression
+    forms.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+// Source type with a statement-form conversion operator (uses $target).
+class wrappedA : object {
+    int storage = 0;
+    explicit emitter int operator(){ $target = $val.storage + 1; }
+}
+
+// Source type with an expression-form conversion operator (no $target).
+class wrappedB : object {
+    int storage = 0;
+    explicit emitter int operator(){ $val.storage }
+}
+
+wrappedA wa { storage = 10; }
+wrappedB wb { storage = 20; }
+
+void main(){
+    // Cast on bare identifier — both forms exercised.
+    int a = (int)wa;            // statement-form: temp injection + read
+    int b = (int)wb;            // expression-form: inline substitution
+    print(a); print("^");
+    print(b); print("^");
+
+    // Cast on parenthesized expression (Bug B regression).
+    // The cast should apply to the result of the inner expression, not leak
+    // `int` into `wb` inside the parens.
+    int c = (int)(wb);          // simplest paren form
+    print(c); print("^");
+
+    // Statement-form cast on parenthesized expression — exercises the temp-
+    // injection path applied to the result of an inner expression.
+    int d = (int)(wa);
+    print(d); print("^");
+}

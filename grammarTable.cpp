@@ -36,6 +36,8 @@ void bglParser::initGrammarTable() {
         {"continue statement",       {"continue", ";"},                                             &Self::processContinue},
         {"rtrue statement",          {"rtrue", ";"},                                                &Self::processRtrue},
         {"rfalse statement",         {"rfalse", ";"},                                               &Self::processRfalse},
+        {"rtrue with message",       {"rtrue", "("},                                                &Self::processRtrueWithMessage},
+        {"rfalse with message",      {"rfalse", "("},                                               &Self::processRfalseWithMessage},
         {"return statement (void)",  {"return", ";"},                                               &Self::processReturnVoid},
         {"return statement (expr)",  {"return"},                                                    &Self::processReturnExpr},
         {"if statement",             {"if", "("},                                                   &Self::processIf},

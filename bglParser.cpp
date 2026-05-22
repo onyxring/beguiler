@@ -947,6 +947,63 @@ bool bglParser::processRfalse(vector<token>& t, Qualifiers&, abstractObject& ctx
     return false;
 }
 
+// `rtrue(expr);` / `rfalse(expr);` — print the argument (full print() dispatch
+// including overloads + interpolated strings via $"..."), then return true/false.
+// Equivalent to writing `print(expr); rtrue;` but as a single statement.
+// Caller has already consumed the 'rtrue'/'rfalse' keyword and the opening '('.
+void bglParser::emitRtrueRfalseWithMessage(abstractObject& ctx, const string& which){
+    if(getCurrentCompileContext() == eCompileContext::global)
+        parsingError(format("'{0}' is not valid at global scope", which));
+    functionDef* func = dynamic_cast<functionDef*>(&ctx);
+    if(func != nullptr && func->returnType.name == "void")
+        parsingError(format("Cannot use '{0}' in void routine '{1}'", which, func->name));
+    statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+    sourceLocation stmtLoc = file.currentLocation();
+
+    // Parse args inside the already-consumed `(`. parseCallArgList reads through ')'.
+    ParsedArgList pal = parseCallArgList(func, body);
+    if(pal.args.size() != 1)
+        parsingError(format("'{0}(...)' takes exactly one argument; got {1}", which, pal.args.size()));
+
+    // Build the print() call. bindGlobalCall resolves the overload (string/int/object/etc.)
+    // and finalizes the args (named-arg reorder + default fill + conversion), so any type
+    // accepted by print() works — including interpolated string literals.
+    functionCallStatement& printCall = *(new functionCallStatement());
+    printCall.src = stmtLoc;
+    printCall.functionName = "print";
+    printCall.args = pal.args;
+    printCall.namedArgNames = pal.namedArgNames;
+    printCall.interpSegmentsPerArg = pal.interpSegmentsPerArg;
+    GlobalCallBinding gcb = bindGlobalCall(printCall.functionName, printCall.args,
+                                            printCall.namedArgNames, printCall.interpSegmentsPerArg,
+                                            func, body);
+    if(gcb.method && gcb.method->isEmitter)
+        if(auto* blk = dynamic_cast<i6Block*>(gcb.method->body)){
+            printCall.emitterBody = processBglConditionals(blk->i6Body);
+            for(paramDef* p : gcb.method->params) printCall.emitterParams.push_back(p->name);
+        }
+
+    // Emit order: print first, then the return.
+    if(body != nullptr) body->statements.push_back(&printCall);
+    returnStatement& ret = *(new returnStatement());
+    ret.src = stmtLoc;
+    ret.returnExpression = which;
+    if(body != nullptr) body->statements.push_back(&ret);
+
+    // Consume the trailing ';'.
+    file.getToken(token::endStatement);
+}
+
+bool bglParser::processRtrueWithMessage(vector<token>& t, Qualifiers&, abstractObject& ctx) {
+    emitRtrueRfalseWithMessage(ctx, "rtrue");
+    return false;
+}
+
+bool bglParser::processRfalseWithMessage(vector<token>& t, Qualifiers&, abstractObject& ctx) {
+    emitRtrueRfalseWithMessage(ctx, "rfalse");
+    return false;
+}
+
 bool bglParser::processReturnVoid(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     if(getCurrentCompileContext() == eCompileContext::global)
         parsingError("'return' is not valid at global scope");
@@ -2426,15 +2483,25 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                         }
                     }
                     if(replacedExisting) { tok = file.getToken(); continue; }
-                    // Check base class hierarchy for shadowed methods — warn if 'replace' not specified
+                    // Check base class hierarchy for shadowed methods — warn if 'replace' not specified.
+                    // A "shadow" requires matching signature (arity + param types). Same name but
+                    // different arity or param types is an overload, not a shadow — no warning.
                     if(!isReplace && !funcDef.name.empty()){
                         string shadowedFrom;
                         bool shadowedIsDefault = false;
+                        auto sigMatches = [&](functionDef* fd){
+                            if(fd->params.size() != funcDef.params.size()) return false;
+                            for(size_t j = 0; j < funcDef.params.size(); j++)
+                                if(fd->params[j]->type.name != funcDef.params[j]->type.name) return false;
+                            return true;
+                        };
                         function<void(classDef*)> searchBases = [&](classDef* c){
                             if(!shadowedFrom.empty()) return;
                             for(typeMember* m : c->members)
                                 if(auto* fd = dynamic_cast<functionDef*>(m))
-                                    if(fd->name == funcDef.name){ shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault; return; }
+                                    if(fd->name == funcDef.name && sigMatches(fd)){
+                                        shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault; return;
+                                    }
                             for(classDef* base : c->baseClasses) searchBases(base);
                         };
                         for(classDef* base : newClass.baseClasses) searchBases(base);
@@ -5473,6 +5540,13 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     token cur = firstToken;
     optional<token> prefetched = nullopt;
     string castType;  // set when a (TypeName) cast prefix is detected
+    // When a cast prefix is followed by '(', the cast applies to the result of the
+    // parenthesized expression, not to the first identifier inside. Push castType
+    // onto this stack on parenOpen and pop/apply on the matching parenClose. The
+    // stack entry pairs the saved type with the parenDepth at which the cast was
+    // queued, so nested casts like `(int)((float)f + (float)g)` resolve correctly.
+    struct PendingParenCast { string castType; int parenDepthAtPush; };
+    vector<PendingParenCast> parenCastStack;
     // RAII guard for currentExpectedType. parseExpression's body may set the expected type
     // (e.g. when entering an operator RHS). The guard restores it on any return path so
     // changes don't leak to the caller's scope.
@@ -5526,6 +5600,45 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         expr->resolvedType = !pt.trueType.empty() ? pt.trueType : falseType;
     };
 
+    // Cast emission helper. When `(T)x` is parsed, the consumer site calls this with the
+    // source's emitted text and resolved type plus the target type. If the source type has
+    // an `operator() → T` emitter, its body is substituted and returned as the new text;
+    // if the body uses `$target` (statement-form, e.g. `@numtof $val $target`), a temp slot
+    // is allocated and the substituted body is queued as a side-effect injection. When no
+    // matching emitter exists, the source text is returned unchanged — preserving the
+    // historical relabel-only behavior for bit-compatible casts like int↔uint.
+    auto applyCastConversion = [&](const string& srcText, const string& srcType,
+                                    const string& targetType) -> string {
+        if(targetType.empty() || srcType.empty() || srcType == targetType) return srcText;
+        classDef* srcCls = getDispatchClass(srcType);
+        if(srcCls == nullptr) return srcText;
+        typeMember* found = findMemberInHierarchy(srcCls, [&](typeMember* m){
+            auto* fn = dynamic_cast<functionDef*>(m);
+            return fn && fn->name == "operator()" && fn->params.empty()
+                   && fn->isEmitter && fn->returnType.name == targetType
+                   && dynamic_cast<i6Block*>(fn->body) != nullptr;
+        });
+        if(found == nullptr) return srcText;
+        auto* fn = dynamic_cast<functionDef*>(found);
+        auto* blk = dynamic_cast<i6Block*>(fn->body);
+        string b = processBglConditionals(blk->i6Body);
+        { size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+          size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1); }
+        if(b.empty()) return srcText;
+        b = i6Emitter::replaceWord(b, "$self", srcText);
+        b = i6Emitter::replaceWord(b, "$val",  srcText);
+        if(b.find("$target") != string::npos){
+            string tempName = format("_bgl_temp{0}", languageService.ternaryTempCount++);
+            b = i6Emitter::replaceWord(b, "$target", tempName);
+            i6RawNode* inj = new i6RawNode();
+            while(!b.empty() && b.back() == ';') b.pop_back();
+            inj->text = b + ";";
+            pendingInjections.push_back(inj);
+            return tempName;
+        }
+        return b;
+    };
+
     // ═══════════════════════════════════════════════════════════════════════
     // MAIN EXPRESSION LOOP — processes one token per iteration
     // Branches by token type: parens, literals, identifiers, operators, etc.
@@ -5561,6 +5674,14 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 cur = getNext();
                 continue;  // re-process the token after the cast with castType set
             }
+            // Cast followed by parenthesized expression: `(T)(...)`. The cast applies to
+            // the result of the inner expression, not to the first identifier inside, so
+            // park castType on the stack and clear it before descending. The matching
+            // close-paren below pops and applies via applyCastConversion.
+            if(!castType.empty()){
+                parenCastStack.push_back({castType, parenDepth});
+                castType = "";
+            }
             parenDepth++;
             expr->tokens.push_back(cur.value);
         }
@@ -5573,17 +5694,43 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 assembleTernary();
             }
             expr->tokens.push_back(cur.value);
+            // Apply any cast that was queued for this paren depth. The inner expression
+            // resolved against its natural type; we now convert it to the cast's target.
+            if(!parenCastStack.empty() && parenCastStack.back().parenDepthAtPush == parenDepth){
+                PendingParenCast pc = parenCastStack.back();
+                parenCastStack.pop_back();
+                string srcText = expr->text();
+                string newText = applyCastConversion(srcText, expr->resolvedType, pc.castType);
+                if(newText != srcText){
+                    expr->tokens.clear();
+                    expr->tokens.push_back(newText);
+                }
+                expr->resolvedType = pc.castType;
+            }
         }
         // ─── LITERALS: integer, string, char, dictionary word ─────────────
         else if(cur.is(eTokenType::integer)){
             if(!castType.empty()){
-                expr->resolvedType = castType; castType = "";
+                bool isNegated = (expr->tokens.size() == 1 && expr->tokens[0] == "-");
+                string srcType = isNegated ? "negativeintliteral" : "intliteral";
+                // Build the source text including the leading '-' if present, then pop it
+                // from tokens so the post-cast emission doesn't repeat the minus sign.
+                string lit = cur.value;
+                if(isNegated){
+                    lit = "-" + lit;
+                    expr->tokens.pop_back();
+                }
+                string newText = applyCastConversion(lit, srcType, castType);
+                expr->tokens.push_back(newText);
+                expr->resolvedType = castType;
+                castType = "";
             } else if(expr->resolvedType.empty()){
-                // If the expression has a leading unary '-', this is a negative literal
                 bool isNegated = (expr->tokens.size() == 1 && expr->tokens[0] == "-");
                 expr->resolvedType = isNegated ? "negativeintliteral" : "intliteral";
+                expr->tokens.push_back(cur.value);
+            } else {
+                expr->tokens.push_back(cur.value);
             }
-            expr->tokens.push_back(cur.value);
         }
         else if(cur.isString()){
             if(expr->resolvedType.empty()) expr->resolvedType = "stringliteral";
@@ -6297,8 +6444,21 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         } else if(!isStaticAccess && !isValueEmitterAccess) {
                             // Object property access: emit as obj.prop
                             string propType = resolvePathType(cur.value + "." + member.value, func, body);
-                            if(expr->resolvedType.empty() && !propType.empty()) expr->resolvedType = propType;
-                            expr->tokens.push_back(cur.value + "." + member.value);
+                            string accessText = cur.value + "." + member.value;
+                            // Cast precedence: `(T)obj.prop` means cast applies to the property
+                            // access result, not to the bare `obj`. If castType is set here, run
+                            // it through applyCastConversion against the property's resolved type.
+                            // For bit-compatible casts (uint↔int) this is a no-op text change; for
+                            // float casts it materializes a temp via the conversion emitter.
+                            if(!castType.empty()){
+                                string newText = applyCastConversion(accessText, propType, castType);
+                                expr->tokens.push_back(newText);
+                                expr->resolvedType = castType;
+                                castType = "";
+                            } else {
+                                if(expr->resolvedType.empty() && !propType.empty()) expr->resolvedType = propType;
+                                expr->tokens.push_back(accessText);
+                            }
                             // Capture host text for $self substitution in rvalue property-class
                             // operator emitters (parent($self), give $self $attr, etc.).
                             expr->emitterSelf = cur.value;
@@ -6352,6 +6512,39 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 }
             }
             else {
+                // I6-syntax leak: a bare identifier followed by another bare identifier (no '.',
+                // '(', '[', operator, or other separator between them) is never valid in a
+                // Beguile expression. This catches I6 infix-keyword forms like `o provides X`,
+                // `o ofclass C`, `o has light`, `o in container`, etc. that the property/class
+                // name passthroughs would otherwise quietly mash into the emitted text.
+                // Each of these has a canonical Beguile method-call form.
+                if(next.is(eTokenType::name) || next.is(eTokenType::identifier) || next.is(eTokenType::dataType)){
+                    static const std::map<std::string,std::string> i6KeywordMigrations = {
+                        {"provides", "{lhs}.provides({rhs})"},
+                        {"ofclass",  "{lhs}.is({rhs})"},
+                        {"has",      "{lhs}.has({rhs})"},
+                        {"hasnt",    "!{lhs}.has({rhs})"},
+                        {"in",       "{lhs}.parent == {rhs}"},
+                        {"notin",    "{lhs}.parent != {rhs}"},
+                    };
+                    auto it = i6KeywordMigrations.find(next.value);
+                    if(it != i6KeywordMigrations.end()){
+                        // Build the suggested form by substituting {lhs}/{rhs}. Peek one more
+                        // token so we can show the actual `rhs` the user wrote, not a placeholder.
+                        token rhs = file.peekToken(1);
+                        string lhs = cur.value, rhsText = rhs.value;
+                        string suggestion = it->second;
+                        size_t pos;
+                        while((pos = suggestion.find("{lhs}")) != string::npos) suggestion.replace(pos, 5, lhs);
+                        while((pos = suggestion.find("{rhs}")) != string::npos) suggestion.replace(pos, 5, rhsText);
+                        parsingError(format(
+                            "'{0} {1} {2}' is I6 syntax; in Beguile use `{3}`.",
+                            lhs, next.value, rhsText, suggestion));
+                    }
+                    parsingError(format(
+                        "Unexpected identifier '{0}' following '{1}'. Did you mean `{1}.{0}(...)` or are you missing an operator between them?",
+                        next.value, cur.value));
+                }
                 prefetched = next;
                 // Resolve identifier: variables/params/globals take priority over verb action constants.
                 // Only emit ##VerbName if the identifier doesn't resolve as a declared variable.
@@ -6369,9 +6562,20 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 }
                 string qualified = qualifyIdentifier(cur.value, func, body, memberHint);
                 if(!qualified.empty()){
-                    if(!castType.empty()){ expr->resolvedType = castType; castType = ""; }
-                    else if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body, memberHint);
-                    expr->tokens.push_back(qualified);
+                    if(!castType.empty()){
+                        // Try invoking source-type's operator()→castType emitter. For int↔uint
+                        // (passthrough bodies) this returns the source text unchanged, matching
+                        // the historical relabel-only behavior. For float casts it emits the
+                        // @numtof/@ftonumz body, allocating a temp slot if needed.
+                        string srcType = resolveIdentifierType(cur.value, func, body, memberHint);
+                        string newText = applyCastConversion(qualified, srcType, castType);
+                        expr->tokens.push_back(newText);
+                        expr->resolvedType = castType;
+                        castType = "";
+                    } else {
+                        if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body, memberHint);
+                        expr->tokens.push_back(qualified);
+                    }
                 } else if(func != nullptr){
                     parsingError(format("Undeclared identifier '{0}'", cur.value));
                 } else {
@@ -6668,9 +6872,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 else if(key == "informname")    strVal = beguilerSettings.informName;
                 else if(key == "release")     { isInt = true; intVal = beguilerSettings.release; }
                 else if(key == "serial")       strVal = beguilerSettings.serial;
-                else if(key == "framepoolsize" || key == "linqscratchsize"){
+                else if(key == "framepoolsize" || key == "linqscratchsize" || key == "worldbufsize"){
                     isInt = true;
-                    int v = (key == "framepoolsize") ? beguilerSettings.framePoolSize : beguilerSettings.linqScratchSize;
+                    int v = (key == "framepoolsize") ? beguilerSettings.framePoolSize
+                          : (key == "linqscratchsize") ? beguilerSettings.linqScratchSize
+                          : beguilerSettings.worldBufSize;
                     if(v < 0){
                         // applySchemaDefaults() runs after parsing, so during source parse the
                         // runtime value may still be -1 (unset). Fall back to the schema-declared
@@ -8381,9 +8587,17 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                 filesystem::path libPath = findCaseInsensitive(settings.libPath, includeName + ".bgl");
                 if(filesystem::exists(libPath)){
                     parseFile(libPath.string());
-                    if(includeName == "array"){
+                    // Case-fold for these flag triggers — Beguile is case-insensitive but
+                    // includeName accumulates t.originalValue (preserves user casing), so
+                    // `<bglWorld>` and `<bglworld>` should both fire the same setup.
+                    string ciInclude = includeName;
+                    transform(ciInclude.begin(), ciInclude.end(), ciInclude.begin(), ::tolower);
+                    if(ciInclude == "array"){
                         languageService.arrayInUse = true;
                         languageService.linqInUse  = true;
+                    }
+                    else if(ciInclude == "bglworld"){
+                        languageService.worldInUse = true;
                     }
                 }
                 else if(!isOptional)
@@ -9281,15 +9495,25 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
     currentFunc = savedFunc;
     if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
         parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
-    // Check class hierarchy for shadowed methods — warn if 'replace' not specified
+    // Check class hierarchy for shadowed methods — warn if 'replace' not specified.
+    // A "shadow" requires matching signature (arity + param types). Same name but
+    // different arity or param types is an overload, not a shadow — no warning.
     if(!isReplace && !funcDef.name.empty()){
         string shadowedFrom;
         bool shadowedIsDefault = false;
+        auto sigMatches = [&](functionDef* fd){
+            if(fd->params.size() != funcDef.params.size()) return false;
+            for(size_t j = 0; j < funcDef.params.size(); j++)
+                if(fd->params[j]->type.name != funcDef.params[j]->type.name) return false;
+            return true;
+        };
         function<void(classDef*)> searchClass = [&](classDef* c){
             if(!shadowedFrom.empty() || !c) return;
             for(typeMember* m : c->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
-                    if(fd->name == funcDef.name){ shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault; return; }
+                    if(fd->name == funcDef.name && sigMatches(fd)){
+                        shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault; return;
+                    }
             for(classDef* base : c->baseClasses) searchClass(base);
         };
         // Search objectClass hierarchy
@@ -9850,6 +10074,16 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
         if(q.isStatic)  parsingError("'static' is not valid inside an object body");
         if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
         if(q.isEmitter){
+            // `emitter array<T> name(...)` — route to processArrayMember which already
+            // handles emitter routines (via q->isEmitter). Without this dispatch, the
+            // emitter branch below would try to consume `<` as the propName identifier
+            // and fail. Mirrors the same routing done for non-emitter `array<T>` at the
+            // bottom of this loop.
+            if(tok.value == "array" && file.peekToken().is("<")){
+                processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q);
+                tok = file.getToken();
+                continue;
+            }
             // Alias member: `emitter auto name = ClassRef;` — compile-time indirection to another class.
             // Supported on objects so namespace-like objects can expose emitter classes alongside real state.
             if(tok.value == "auto"){
@@ -10051,6 +10285,11 @@ bool bglParser::processBeguilerSettings(){
             if(sz < 1) parsingError("beguilerSettings property 'linqScratchSize' must be at least 1");
             if(cfg.linqScratchSize == -1) cfg.linqScratchSize = sz;  // -1 = unset sentinel
         }
+        else if(key == "worldbufsize"){
+            int sz = stoi(strVal);
+            if(sz < 1) parsingError("beguilerSettings property 'worldBufSize' must be at least 1");
+            if(cfg.worldBufSize == -1) cfg.worldBufSize = sz;  // -1 = unset sentinel
+        }
         else if(key == "target"){
             if(languageService.getEnumType(strVal) != "etarget")
                 parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z3, Z5, or Z8).", strVal));
@@ -10112,6 +10351,7 @@ void bglParser::applySchemaDefaults(){
         if(key == "target"        && cfg.target.empty())       cfg.target = defVal;
         else if(key == "framepoolsize" && cfg.framePoolSize == -1) cfg.framePoolSize = stoi(defVal);
         else if(key == "linqscratchsize" && cfg.linqScratchSize == -1) cfg.linqScratchSize = stoi(defVal);
+        else if(key == "worldbufsize" && cfg.worldBufSize == -1) cfg.worldBufSize = stoi(defVal);
         else if(key == "errorformat"  && cfg.errorFormat.empty()){
             string upper = defVal;
             transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
@@ -10598,50 +10838,16 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
             }
         }
     }
-    // attributeList += / -=
+    // attributeList: only `=` is supported. Use `attributes = {a, b, !c}` to
+    // set/replace and `!attr` to negate an inherited attribute (maps directly to
+    // I6's `has ~attr`). The legacy `+=`/`-=` forms were removed because they
+    // didn't compose with extend/class semantics — see spec §… for the new model.
     else if(memberType == "attributelist"){
-        file.getToken(token::braceOpen);
-        vector<string> attrs;
-        token t = file.getToken();
-        while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
-            attrs.push_back(t.value);
-            t = file.getToken({token::comma, token::braceClose});
-            if(t.is(token::comma)) t = file.getToken();
-        }
-        // Find existing attributeList member
-        variableDeclaration* attrMember = nullptr;
-        for(typeMember* m : obj.members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->name == memberNameStr){ attrMember = vd; break; }
-        if(op == "+="){
-            if(!attrMember){
-                attrMember = new variableDeclaration();
-                attrMember->name = memberNameStr;
-                attrMember->type = languageService.getType("attributelist");
-                attrMember->declaredExpressionValue = new initializerList();
-                obj.members.push_back(attrMember);
-            }
-            auto* list = dynamic_cast<initializerList*>(attrMember->declaredExpressionValue);
-            if(!list){ list = new initializerList(); attrMember->declaredExpressionValue = list; }
-            for(const string& a : attrs){
-                expression* elem = new expression();
-                elem->tokens.push_back(a);
-                elem->resolvedType = "attribute";
-                list->elements.push_back(elem);
-            }
-        } else {
-            // -= : remove attributes
-            if(attrMember){
-                if(auto* list = dynamic_cast<initializerList*>(attrMember->declaredExpressionValue)){
-                    for(const string& a : attrs){
-                        list->elements.erase(
-                            remove_if(list->elements.begin(), list->elements.end(),
-                                [&](expression* e){ return !e->tokens.empty() && e->tokens[0] == a; }),
-                            list->elements.end());
-                    }
-                }
-            }
-        }
+        parsingError(format(
+            "'{0} {1}': '{2}' is an attributeList, which only accepts `= {{a, b, !c}}`. "
+            "To negate an inherited attribute use prefix `!`, e.g. `attributes = {{light, !scenery}}`. "
+            "For runtime changes use give()/ungive().",
+            display, op, display));
     }
     // array<T> += / -=
     else if(memberType == "array"){

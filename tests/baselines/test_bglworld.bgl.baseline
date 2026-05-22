@@ -1,0 +1,556 @@
+!% -v5
+!% -E1
+Constant _BGL_LINQ_SCRATCH_SIZE = 32;
+Constant _BGL_WORLD_BUFSIZE = 128;
+
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
+
+
+    Array _bglLinqScratchA --> _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglLinqScratchB --> _BGL_LINQ_SCRATCH_SIZE + 2;
+    Global _bglLinqParity = 0;
+    [ _bglLinqWrite;
+        if(_bglLinqParity == 0) return _bglLinqScratchB;
+        return _bglLinqScratchA;
+    ];
+    [ _bglLinqFlip;
+        _bglLinqParity = 1 - _bglLinqParity;
+    ];
+
+
+    ! `_BGL_WORLD_BUFSIZE` is declared by the compiler when `<bglWorld>` is
+    ! included — value comes from #beguilerSettings.worldBufSize (default 128).
+    ! Tracked-array layout: capacity word at slot 0 (auto-set by I6 from
+    ! `--> N` size), data at slots 1..N, length at slot N, magic at slot N+1.
+    ! +2 covers the length + magic slots.
+    Array _bglWorldBuf --> _BGL_WORLD_BUFSIZE + 2;
+
+    ! Walk all objects in the I6 object tree. `pred` is a routine address;
+    ! pred==0 means no filter. The check is inside the loop so a selective
+    ! predicate keeps the buffer small.
+    [ _bglWorldGetAll pred o i;
+        i = 0;
+        objectloop(o) {
+            if(i >= _BGL_WORLD_BUFSIZE) break;
+            if(pred == 0 || indirect(pred, o)) {
+                i++;
+                _bglWorldBuf-->i = o;
+            }
+        }
+        _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = i;
+        return _bglWorldBuf;
+    ];
+
+    ! Walk children of `parent`. Same pred semantics as _bglWorldGetAll.
+    [ _bglWorldInParent parent pred o i;
+        i = 0;
+        objectloop(o in parent) {
+            if(i >= _BGL_WORLD_BUFSIZE) break;
+            if(pred == 0 || indirect(pred, o)) {
+                i++;
+                _bglWorldBuf-->i = o;
+            }
+        }
+        _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = i;
+        return _bglWorldBuf;
+    ];
+
+    ! Walk objects of a class. Same pred semantics as _bglWorldGetAll.
+    [ _bglWorldInstances cls pred o i;
+        i = 0;
+        objectloop(o ofclass cls) {
+            if(i >= _BGL_WORLD_BUFSIZE) break;
+            if(pred == 0 || indirect(pred, o)) {
+                i++;
+                _bglWorldBuf-->i = o;
+            }
+        }
+        _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = i;
+        return _bglWorldBuf;
+    ];
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+
+    _bglLinqScratchA-->(_bglLinqScratchA-->0)     = $9084;
+    _bglLinqScratchA-->(_bglLinqScratchA-->0 - 1) = 0;
+    _bglLinqScratchB-->(_bglLinqScratchB-->0)     = $9084;
+    _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
+
+
+    _bglWorldBuf-->(_bglWorldBuf-->0)     = $9084;
+    _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = 0;
+
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil,
+       world _bglworld
+;
+[_bglArrayCompareAsc lhs rhs;
+    
+        if(lhs < rhs) return -1;
+        if(lhs > rhs) return 1;
+        return 0;
+    
+    return 0;
+];
+object _bglArray
+  with isTracked [arr;
+    return  arr-->( arr-->(-1+1) -1+1) ==36996&& arr-->( arr-->(-1+1) -2+1) >=0;
+  ],
+       size [arr;
+    if (self.istracked(arr)) {
+        return  arr-->(-1+1) -2;
+    }
+    return  arr-->(-1+1) ;
+  ],
+       length [arr;
+    if (self.istracked(arr)) {
+        return  arr-->( arr-->(-1+1) -2+1) ;
+    }
+    return  arr-->(-1+1) ;
+  ],
+       setLength [arr n;
+    if (self.istracked(arr)) {
+        if (n<0) {
+            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+             quit; 
+        }
+        arr-->(_bglArray.size(arr)+1) = n;
+    }
+  ],
+       indexOf [arr val sz t;
+    sz=_bglArray.size(arr);
+    for (t = 0 : t < sz : t++) {
+        if ( arr-->(t+1) ==val) {
+            return t;
+        }
+    }
+    return -1;
+  ],
+       clear [arr sz t;
+    sz=_bglArray.size(arr);
+    for (t = 0 : t < sz : t++) {
+        arr-->(t+1) = 0;
+    }
+    _bglArray.setLength(arr, 0);
+  ],
+       swap [arr pos1 pos2 tmp;
+    tmp =  arr-->(pos1+1) ;
+    arr-->(pos1+1) =  arr-->(pos2+1);
+    arr-->(pos2+1) = tmp;
+  ],
+       reverse [arr len half i;
+    len=_bglArray.length(arr);
+    half=len / 2;
+    for (i = 0 : i < half : i++) {
+        self.swap(arr, i, len - 1 - i);
+    }
+  ],
+       append [arr val len;
+    len=_bglArray.length(arr);
+    if (len >= _bglArray.size(arr)) {
+        return false;
+    }
+    arr-->(len+1) = val;
+    _bglArray.setLength(arr, len + 1);
+    return true;
+  ],
+       insert [arr pos val len i;
+    len=_bglArray.length(arr);
+    if (len >= _bglArray.size(arr)) {
+        return false;
+    }
+    if (pos<0 || pos > len) {
+        return false;
+    }
+    for (i = len : i > pos : i--) {
+        arr-->(i+1) =  arr-->(i - 1+1);
+    }
+    arr-->(pos+1) = val;
+    _bglArray.setLength(arr, len + 1);
+    return true;
+  ],
+       prepend [arr val;
+    return self.insert(arr,0,val);
+  ],
+       remove [arr pos len i;
+    len=_bglArray.length(arr);
+    if (pos<0 || pos >= len) {
+        return;
+    }
+    for (i = pos : i < len - 1 : i++) {
+        arr-->(i+1) =  arr-->(i + 1+1);
+    }
+    arr-->(len - 1+1) = 0;
+    _bglArray.setLength(arr, len - 1);
+  ],
+       removeValue [arr val pos len;
+    pos = 0;
+    len=_bglArray.length(arr);
+    while (pos < len) {
+        if ( arr-->(pos+1) ==val) {
+            self.remove(arr, pos);
+            len = _bglArray.length(arr);
+        }
+        else {
+             pos++ ;
+        }
+    }
+  ],
+       push [arr val;
+    self.insert(arr, 0, val);
+  ],
+       pop [arr v;
+    if (_bglArray.length(arr)==0) {
+        return 0;
+    }
+    v =  arr-->(0+1) ;
+    self.remove(arr, 0);
+    return v;
+  ],
+       dequeue [arr;
+    return self.pop(arr);
+  ],
+       enqueue [arr val;
+    self.append(arr, val);
+  ],
+       peek [arr;
+    if (_bglArray.length(arr)==0) {
+        return 0;
+    }
+    return  arr-->(0+1) ;
+  ],
+       peekEnd [arr len;
+    len=_bglArray.length(arr);
+    if (len==0) {
+        return 0;
+    }
+    return  arr-->(len - 1+1) ;
+  ],
+       popEnd [arr len v;
+    len=_bglArray.length(arr);
+    if (len==0) {
+        return 0;
+    }
+    v =  arr-->(len - 1+1) ;
+    self.remove(arr, len - 1);
+    return v;
+  ],
+       sort [arr compare len i key j;
+    len=_bglArray.length(arr);
+    for (i = 1 : i < len : i++) {
+        key =  arr-->(i+1) ;
+        j=i - 1;
+        while (j>=0 && compare( arr-->(j+1) ,key)>0) {
+            arr-->(j + 1+1) =  arr-->(j+1);
+             j-- ;
+        }
+        arr-->(j + 1+1) = key;
+    }
+  ],
+       filter [src pred dst cap writeCount srcLen i elem;
+    dst = _bgllinqwrite();
+    cap = 32;
+    writeCount = 0;
+    srcLen=_bglArray.length(src);
+    for (i = 0 : i < srclen : i++) {
+        elem =  src-->(i+1) ;
+        if (pred(elem)) {
+            if (writecount >= cap) {
+                
+                        print "^[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                        quit;
+                    
+            }
+            dst-->(writecount+1) = elem;
+             writecount++ ;
+        }
+    }
+    _bglArray.setLength(dst, writeCount);
+    _bgllinqflip();
+    return dst;
+  ],
+       first [src;
+    if (_bglArray.length(src)==0) {
+        return 0;
+    }
+    return  src-->(0+1) ;
+  ],
+       last [src len;
+    len=_bglArray.length(src);
+    if (len==0) {
+        return 0;
+    }
+    return  src-->(len - 1+1) ;
+  ],
+       any [src pred len i;
+    len=_bglArray.length(src);
+    for (i = 0 : i < len : i++) {
+        if (pred( src-->(i+1) )) {
+            return true;
+        }
+    }
+    return false;
+  ],
+       all [src pred len i;
+    len=_bglArray.length(src);
+    for (i = 0 : i < len : i++) {
+        if (~~pred( src-->(i+1) )) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       map [src f dst cap srcLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    if (srclen > cap) {
+        
+                print "^[Beguile runtime error: map() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < srclen : i++) {
+        dst-->(i+1) = f( src-->(i+1) );
+    }
+    _bglArray.setLength(dst, srcLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       take [src n dst cap srcLen outLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    outLen=n;
+    if (outlen<0) {
+        outLen = 0;
+    }
+    if (outlen > srclen) {
+        outLen = srcLen;
+    }
+    if (outlen > cap) {
+        
+                print "^[Beguile runtime error: take() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < outlen : i++) {
+        dst-->(i+1) =  src-->(i+1);
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       skip [src n dst cap srcLen start outLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    start=n;
+    if (start<0) {
+        start = 0;
+    }
+    if (start > srclen) {
+        start = srcLen;
+    }
+    outLen=srclen - start;
+    if (outlen > cap) {
+        
+                print "^[Beguile runtime error: skip() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < outlen : i++) {
+        dst-->(i+1) =  src-->(start + i+1);
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       takeWhile [src pred dst cap srcLen outLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    outLen = 0;
+    for (i = 0 : i < srclen : i++) {
+        if (~~pred( src-->(i+1) )) {
+            break;
+        }
+        if (outlen >= cap) {
+            
+                    print "^[Beguile runtime error: takeWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                    quit;
+                
+        }
+        dst-->(outlen+1) =  src-->(i+1);
+         outlen++ ;
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       skipWhile [src pred dst cap srcLen start outLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    start = 0;
+    while (start < srclen && pred( src-->(start+1) )) {
+         start++ ;
+    }
+    outLen=srclen - start;
+    if (outlen > cap) {
+        
+                print "^[Beguile runtime error: skipWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < outlen : i++) {
+        dst-->(i+1) =  src-->(start + i+1);
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       distinct [src dst cap srcLen outLen i elem seen j;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    outLen = 0;
+    for (i = 0 : i < srclen : i++) {
+        elem =  src-->(i+1) ;
+        seen=false;
+        for (j = 0 : j < outlen : j++) {
+            if ( dst-->(j+1) ==elem) {
+                seen = true;
+                break;
+            }
+        }
+        if (~~seen) {
+            if (outlen >= cap) {
+                
+                        print "^[Beguile runtime error: distinct() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                        quit;
+                    
+            }
+            dst-->(outlen+1) = elem;
+             outlen++ ;
+        }
+    }
+    _bglArray.setLength(dst, outLen);
+    _bgllinqflip();
+    return dst;
+  ],
+       orderBy [src compare dst cap srcLen i;
+    dst = _bgllinqwrite();
+    cap = 32;
+    srcLen=_bglArray.length(src);
+    if (srclen > cap) {
+        
+                print "^[Beguile runtime error: orderBy() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
+                quit;
+            
+    }
+    for (i = 0 : i < srclen : i++) {
+        dst-->(i+1) =  src-->(i+1);
+    }
+    _bglArray.setLength(dst, srcLen);
+    self.sort(dst, compare);
+    _bgllinqflip();
+    return dst;
+  ]
+;
+object _bglWorld
+  with getAll [pred;
+    return _bglworldgetall(pred);
+  ],
+       inParent [p pred;
+    return _bglworldinparent(p,pred);
+  ],
+       instances [cls pred;
+    return _bglworldinstances(cls,pred);
+  ]
+;
+class animal
+  class object
+  with
+    legs 4
+;
+object cage
+  with short_name "cage"
+;
+animal dog cage
+  with short_name "dog"
+;
+animal cat cage
+  with short_name "cat"
+;
+animal fish
+  with short_name "fish"
+;
+object stone cage
+  with short_name "stone"
+;
+[main totalCount caged animals o _bglfia0 _bglfi1 cagedAnimals cageWithoutStones notFish;
+    totalCount=_bglArray.length(_bglworld.getall(0));
+    print (string)"total objects: ";
+    print totalCount;
+    print (string)"^";
+    caged=_bglArray.length(_bglworld.inparent(cage, 0));
+    print (string)"in cage: ";
+    print caged;
+    print (string)"^";
+    animals=_bglArray.length(_bglworld.instances(animal, 0));
+    print (string)"animals: ";
+    print animals;
+    print (string)"^";
+    print (string)"named animals:^";
+    _bglfia0 = _bglworld.instances(animal, 0);
+    _bglfi1 = 0;
+    for (: _bglfi1 < _bglArray.length(_bglfia0) : _bglfi1++) {
+        o = _bglfia0-->(_bglfi1+1);
+        print (string)" - ";
+        print o.short_name;
+        print (string)"^";
+    }
+    cagedAnimals=_bglArray.length(_bglworld.instances(animal, _bglLambda_0));
+    print (string)"caged animals (in-walk filter): ";
+    print cagedAnimals;
+    print (string)"^";
+    cageWithoutStones=_bglArray.length(_bglworld.inparent(cage, _bglLambda_1));
+    print (string)"cage without stones: ";
+    print cageWithoutStones;
+    print (string)"^";
+    notFish=_bglArray.length(_bglworld.getall(_bglLambda_2));
+    print (string)"everything except fish: ";
+    print notFish;
+    print (string)"^";
+];
+[_bglLambda_0 o;
+    return o.parent == cage;
+];
+[_bglLambda_1 o;
+    return o ~= stone;
+];
+[_bglLambda_2 o;
+    return o ~= fish;
+];

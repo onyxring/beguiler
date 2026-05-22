@@ -1,0 +1,21 @@
+// EXPECT_ERROR: attributeList, which only accepts `= {a, b, !c}`
+//
+// `attributes += {…}` and `attributes -= {…}` were removed when the model
+// switched to a single `=`-only form. The `!attr` prefix replaces `-=` for
+// the negation case. This file confirms the parser rejects the legacy form
+// with a migration-guiding error.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+extern attribute light;
+
+class room : object {
+    attributeList attributes = {light};
+}
+
+room cellar { }
+
+extend cellar {
+    attributes -= {light};   // legacy syntax — should error
+}
+
+void main(){ }

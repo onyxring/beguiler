@@ -28,45 +28,32 @@ object _bglUtil
 object bgl
   with utilities _bglutil
 ;
-class counter
+class room
   class object
-  with
-    value 0,
-    _opeqeq[other;
-        return self.value == other.value;
-    ],
-    _opadd[n;
-        return self.value + n;
-    ]
+  has light
 ;
-counter ctrA
-  with value 5
+room cellar
+  has
 ;
-counter ctrB
-  with value 5
+room darkVault
+  has ~light
 ;
-class temperature
-  class object
-  with
-    celsius 0
+room lampShelf
+  has light ~scenery container
 ;
-class distance
-  class object
-  with
-    meters 0
+room courtyard
 ;
-temperature t
-  with celsius 20
-;
-distance d
-  with meters 100
-;
-[main sum c doubled m;
-    if (ctra._opeqeq(ctrb)) {
-        print (string)"equal";
+[main;
+    if (~~(cellar has light)) {
+        print (string)"cellar dark^";
     }
-    sum=ctra._opadd(10);
-    c = t;
-    doubled=t + t;
-    m=d.meters;
+    if (~~(darkvault has light)) {
+        print (string)"darkVault dark^";
+    }
+    if ((lampshelf has light) && ~~(lampshelf has scenery)&&(lampshelf has container)) {
+        print (string)"lampShelf composed correctly^";
+    }
+    if ((courtyard has light)) {
+        print (string)"courtyard inherits light^";
+    }
 ];

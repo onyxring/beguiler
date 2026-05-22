@@ -887,6 +887,11 @@ void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     if(languageService.linqInUse)
         out << "Constant _BGL_LINQ_SCRATCH_SIZE = " << (cfg->linqScratchSize > 0 ? cfg->linqScratchSize : 32) << ";\n";
 
+    // bglWorld scratch buffer capacity — referenced from bglWorld.bgl's #emitfirst{}.
+    // Emitted only when `#include <bglWorld>` was resolved.
+    if(languageService.worldInUse)
+        out << "Constant _BGL_WORLD_BUFSIZE = " << (cfg->worldBufSize > 0 ? cfg->worldBufSize : 128) << ";\n";
+
     // Treaty of Babel IFID: embed as a string so babel tools can find it in the story file
     if(!cfg->ifid.empty()){
         out << "Array UUID_ARRAY string \"UUID://" << cfg->ifid << "//\";\n";

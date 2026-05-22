@@ -1,0 +1,220 @@
+!% -G
+!% -E1
+
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+object _bglFloat
+  with fadd [x y r;
+     @fadd x y r; 
+    return r;
+  ],
+       fsub [x y r;
+     @fsub x y r; 
+    return r;
+  ],
+       fmul [x y r;
+     @fmul x y r; 
+    return r;
+  ],
+       fdiv [x y r;
+     @fdiv x y r; 
+    return r;
+  ],
+       fmod [x y r;
+     @fmod x y r sp; 
+    return r;
+  ],
+       numtof [n r;
+     @numtof n r; 
+    return r;
+  ],
+       ftonumz [f r;
+     @ftonumz f r; 
+    return r;
+  ],
+       sqrt [v r;
+     @sqrt v r; 
+    return r;
+  ],
+       exp [v r;
+     @exp v r; 
+    return r;
+  ],
+       log [v r;
+     @log v r; 
+    return r;
+  ],
+       pow [a b r;
+     @pow a b r; 
+    return r;
+  ],
+       sin [v r;
+     @sin v r; 
+    return r;
+  ],
+       cos [v r;
+     @cos v r; 
+    return r;
+  ],
+       tan [v r;
+     @tan v r; 
+    return r;
+  ],
+       asin [v r;
+     @asin v r; 
+    return r;
+  ],
+       acos [v r;
+     @acos v r; 
+    return r;
+  ],
+       atan [v r;
+     @atan v r; 
+    return r;
+  ],
+       atan2 [y x r;
+     @atan2 y x r; 
+    return r;
+  ],
+       ceil [v r;
+     @ceil v r; 
+    return r;
+  ],
+       floor [v r;
+     @floor v r; 
+    return r;
+  ],
+       abs [v;
+    if (_bglfloat.lt(v, _bglFloat.numtof(0))) {
+        return _bglFloat.fsub(_bglFloat.numtof(0), v);
+    }
+    return v;
+  ],
+       lt [x y;
+     @jflt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+  ],
+       le [x y;
+     @jfle x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+  ],
+       gt [x y;
+     @jfgt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+  ],
+       ge [x y;
+     @jfge x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+  ],
+       printDecimal [v isNeg ipart frac fdigits;
+    isNeg=_bglfloat.lt(v, _bglFloat.numtof(0));
+    if (isNeg) {
+        v = _bglFloat.fsub(_bglFloat.numtof(0), v);
+    }
+    ipart=_bglFloat.ftonumz(v);
+    frac = _bglFloat.fsub(v, _bglFloat.numtof(ipart));
+    fdigits=_bglFloat.ftonumz((_bglFloat.fmul(frac, _bglFloat.numtof(10000))));
+    if (fdigits<0) {
+        fdigits = -fdigits;
+    }
+    if (isNeg) {
+        print (string)"-";
+    }
+    print ipart;
+    print (string)".";
+    if (fdigits<1000) {
+        print (string)"0";
+    }
+    if (fdigits<100) {
+        print (string)"0";
+    }
+    if (fdigits<10) {
+        print (string)"0";
+    }
+    print fdigits;
+  ]
+;
+[main a b sum diff prod quot c neg h back pi_ish;
+    a = _bglFloat.numtof(5);
+    b = _bglFloat.numtof(2);
+    sum = _bglFloat.fadd(a, b);
+    diff = _bglFloat.fsub(a, b);
+    prod = _bglFloat.fmul(a, b);
+    quot = _bglFloat.fdiv(a, b);
+    print (string)"a+b = ";
+    _bglFloat.printDecimal(sum);
+    print (string)"^";
+    print (string)"a-b = ";
+    _bglFloat.printDecimal(diff);
+    print (string)"^";
+    print (string)"a*b = ";
+    _bglFloat.printDecimal(prod);
+    print (string)"^";
+    print (string)"a/b = ";
+    _bglFloat.printDecimal(quot);
+    print (string)"^";
+    c = _bglFloat.numtof(10);
+    c = c + _bglFloat.numtof(1);
+    c = c - _bglFloat.numtof(2);
+    c = c * _bglFloat.numtof(3);
+    c = c / _bglFloat.numtof(2);
+    print (string)"c = ";
+    _bglFloat.printDecimal(c);
+    print (string)"^";
+    if (_bglFloat.gt(a, b)) {
+        print (string)"a > b ok^";
+    }
+    if (_bglFloat.lt(b, a)) {
+        print (string)"b < a ok^";
+    }
+    if (_bglFloat.ge(a, a)) {
+        print (string)"a >= a ok^";
+    }
+    if (_bglFloat.le(b, a)) {
+        print (string)"b <= a ok^";
+    }
+    if (a == a) {
+        print (string)"a == a ok^";
+    }
+    if (a ~= b) {
+        print (string)"a != b ok^";
+    }
+    neg = _bglFloat.numtof(-3);
+    print (string)"neg = ";
+    _bglFloat.printDecimal(neg);
+    print (string)"^";
+    h = _bglFloat.numtof(42);
+    back=_bglFloat.ftonumz(h);
+    print (string)"back = ";
+    print back;
+    print (string)"^";
+    pi_ish = _bglFloat.fdiv(_bglFloat.numtof(22), _bglFloat.numtof(7));
+    print (string)"22/7 = ";
+    _bglFloat.printDecimal(pi_ish);
+    print (string)"^";
+];

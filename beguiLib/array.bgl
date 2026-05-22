@@ -292,9 +292,10 @@ object _bglArray {
 
     // Remove the element at pos, shifting later elements left.
     // Out-of-range pos is a silent no-op.
-    // `replace` acknowledges the shadow of object's `remove` (which has a
-    // different signature — `obj.remove()` removes obj from the I6 tree).
-    replace void remove(array<var> arr, int pos){
+    // Note: object has a same-named no-arg `remove()` method (removes obj
+    // from the I6 tree). This two-arg overload doesn't shadow it — the
+    // signatures differ — so no `replace` qualifier is needed.
+    void remove(array<var> arr, int pos){
         int len = arr.length();
         if(pos < 0 || pos >= len) return;
         // shift left from pos+1 to end

@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+global _bgl_temp0;
+global _bgl_temp1;
 
     Array _bglScratchStack --> 33;
     Global _bglScratchTop = 0;
@@ -28,45 +30,35 @@ object _bglUtil
 object bgl
   with utilities _bglutil
 ;
-class counter
+class wrappeda
   class object
   with
-    value 0,
-    _opeqeq[other;
-        return self.value == other.value;
-    ],
-    _opadd[n;
-        return self.value + n;
-    ]
+    storage 0
 ;
-counter ctrA
-  with value 5
-;
-counter ctrB
-  with value 5
-;
-class temperature
+class wrappedb
   class object
   with
-    celsius 0
+    storage 0
 ;
-class distance
-  class object
-  with
-    meters 0
+wrappeda wa
+  with storage 10
 ;
-temperature t
-  with celsius 20
+wrappedb wb
+  with storage 20
 ;
-distance d
-  with meters 100
-;
-[main sum c doubled m;
-    if (ctra._opeqeq(ctrb)) {
-        print (string)"equal";
-    }
-    sum=ctra._opadd(10);
-    c = t;
-    doubled=t + t;
-    m=d.meters;
+[main a b c d;
+    _bgl_temp0 = wa.storage + 1;
+    a=_bgl_temp0;
+    b=wb.storage;
+    print a;
+    print (string)"^";
+    print b;
+    print (string)"^";
+    c=(wb).storage;
+    print c;
+    print (string)"^";
+    _bgl_temp1 = (wa).storage + 1;
+    d=_bgl_temp1;
+    print d;
+    print (string)"^";
 ];

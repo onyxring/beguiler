@@ -1,0 +1,56 @@
+/*
+    test_float_basics.bgl
+    Smoke test for the `<float>` extension. Glulx-only — exercises arithmetic
+    operators, comparison helpers, conversion casts (int↔float), and
+    print(float). Relies on the cast-emission fix (project_cast_operator_fix)
+    so that `(float)5` actually invokes @numtof and `(int)f` invokes @ftonumz
+    rather than silent bit-relabels.
+*/
+#beguilerSettings { target = Glulx; informName = "none"; outputPath = "tests/output"; }
+#include <float>
+
+void main(){
+    // Construction via cast on int literal.
+    float a = (float)5;
+    float b = (float)2;
+
+    // Arithmetic.
+    float sum  = a + b;          // 7.0
+    float diff = a - b;          // 3.0
+    float prod = a * b;          // 10.0
+    float quot = a / b;          // 2.5
+
+    print("a+b = "); print(sum);  print("^");
+    print("a-b = "); print(diff); print("^");
+    print("a*b = "); print(prod); print("^");
+    print("a/b = "); print(quot); print("^");
+
+    // Compound assignment.
+    float c = (float)10;
+    c += (float)1;               // 11.0
+    c -= (float)2;               // 9.0
+    c *= (float)3;               // 27.0
+    c /= (float)2;               // 13.5
+    print("c = "); print(c); print("^");
+
+    // Comparisons.
+    if(a > b)  print("a > b ok^");
+    if(b < a)  print("b < a ok^");
+    if(a >= a) print("a >= a ok^");
+    if(b <= a) print("b <= a ok^");
+    if(a == a) print("a == a ok^");
+    if(a != b) print("a != b ok^");
+
+    // Negative values via cast on negative literal.
+    float neg = (float)-3;
+    print("neg = "); print(neg); print("^");
+
+    // Round-trip cast.
+    float h = (float)42;
+    int back = (int)h;           // truncate toward zero → 42
+    print("back = "); print(back); print("^");
+
+    // Fractional result survives a division and cast back through the printer.
+    float pi_ish = (float)22 / (float)7;   // ≈ 3.1428...
+    print("22/7 = "); print(pi_ish); print("^");
+}

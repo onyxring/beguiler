@@ -175,6 +175,9 @@ class bglParser {
         bool processContinue(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processRtrue(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processRfalse(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processRtrueWithMessage(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processRfalseWithMessage(vector<token>& t, Qualifiers& q, abstractObject& c);
+        void emitRtrueRfalseWithMessage(abstractObject& ctx, const std::string& which);
         bool processReturnVoid(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processReturnExpr(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processIf(vector<token>& t, Qualifiers& q, abstractObject& c);
