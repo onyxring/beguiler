@@ -1,0 +1,17 @@
+// EXPECT_ERROR: 'o provides b' is I6 syntax; in Beguile use `o.provides(b)`.
+//
+// I6's infix-keyword forms (`obj provides prop`, `obj ofclass C`, `obj has attr`,
+// `obj hasnt attr`, `obj in container`, `obj notin container`) are not valid
+// Beguile syntax. The expression parser used to silently let two identifiers
+// concatenate (producing malformed I6 like `oprovidesshort_name`); now it
+// rejects the pattern with a migration message pointing to the canonical
+// method-call form (e.g. `o.provides(short_name)`).
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object a { string b = "x"; }
+
+bool checkIt(object o){ return o provides b; }
+
+void main(){
+    checkIt(a);
+}

@@ -1,0 +1,43 @@
+/*
+    test_rtrue_with_message.bgl
+    rtrue(expr) / rfalse(expr) print the argument then return true/false.
+    Equivalent to `print(expr); rtrue;` (or rfalse;) but a single statement.
+
+    Cloak-of-darkness pattern:
+      print("Blundering around in the dark isn't a good idea!");
+      rtrue;
+    becomes:
+      rtrue("Blundering around in the dark isn't a good idea!");
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object actor { string short_name = "the troll"; }
+
+bool blockMove(){
+    rtrue("Blundering around in the dark isn't a good idea!");
+}
+
+bool seeNothing(){
+    rfalse("nothing happens");
+}
+
+// Interpolation flows through normal print() dispatch.
+bool greet(){
+    rtrue($"hello, {actor.short_name}");
+}
+
+// Bare forms still work — no regression on the no-arg variants.
+bool oldStyle(){
+    print("legacy"); rtrue;
+}
+bool oldStyleFalse(){
+    rfalse;
+}
+
+void main(){
+    if(blockMove())    print(" -> blockMove rtrue^");
+    if(!seeNothing())  print(" -> seeNothing rfalse^");
+    if(greet())        print(" -> greet rtrue^");
+    if(oldStyle())     print(" -> oldStyle rtrue^");
+    if(!oldStyleFalse()) print(" -> oldStyleFalse rfalse^");
+}

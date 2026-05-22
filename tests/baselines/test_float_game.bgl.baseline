@@ -1,0 +1,298 @@
+!% -G
+!% -E1
+
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+object _bglFloat
+  with fadd [x y r;
+     @fadd x y r; 
+    return r;
+  ],
+       fsub [x y r;
+     @fsub x y r; 
+    return r;
+  ],
+       fmul [x y r;
+     @fmul x y r; 
+    return r;
+  ],
+       fdiv [x y r;
+     @fdiv x y r; 
+    return r;
+  ],
+       fmod [x y r;
+     @fmod x y r sp; 
+    return r;
+  ],
+       numtof [n r;
+     @numtof n r; 
+    return r;
+  ],
+       ftonumz [f r;
+     @ftonumz f r; 
+    return r;
+  ],
+       sqrt [v r;
+     @sqrt v r; 
+    return r;
+  ],
+       exp [v r;
+     @exp v r; 
+    return r;
+  ],
+       log [v r;
+     @log v r; 
+    return r;
+  ],
+       pow [a b r;
+     @pow a b r; 
+    return r;
+  ],
+       sin [v r;
+     @sin v r; 
+    return r;
+  ],
+       cos [v r;
+     @cos v r; 
+    return r;
+  ],
+       tan [v r;
+     @tan v r; 
+    return r;
+  ],
+       asin [v r;
+     @asin v r; 
+    return r;
+  ],
+       acos [v r;
+     @acos v r; 
+    return r;
+  ],
+       atan [v r;
+     @atan v r; 
+    return r;
+  ],
+       atan2 [y x r;
+     @atan2 y x r; 
+    return r;
+  ],
+       ceil [v r;
+     @ceil v r; 
+    return r;
+  ],
+       floor [v r;
+     @floor v r; 
+    return r;
+  ],
+       abs [v;
+    if (_bglfloat.lt(v, _bglFloat.numtof(0))) {
+        return _bglFloat.fsub(_bglFloat.numtof(0), v);
+    }
+    return v;
+  ],
+       lt [x y;
+     @jflt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+  ],
+       le [x y;
+     @jfle x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+  ],
+       gt [x y;
+     @jfgt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+  ],
+       ge [x y;
+     @jfge x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+  ],
+       printDecimal [v isNeg ipart frac fdigits;
+    isNeg=_bglfloat.lt(v, _bglFloat.numtof(0));
+    if (isNeg) {
+        v = _bglFloat.fsub(_bglFloat.numtof(0), v);
+    }
+    ipart=_bglFloat.ftonumz(v);
+    frac = _bglFloat.fsub(v, _bglFloat.numtof(ipart));
+    fdigits=_bglFloat.ftonumz((_bglFloat.fmul(frac, _bglFloat.numtof(10000))));
+    if (fdigits<0) {
+        fdigits = -fdigits;
+    }
+    if (isNeg) {
+        print (string)"-";
+    }
+    print ipart;
+    print (string)".";
+    if (fdigits<1000) {
+        print (string)"0";
+    }
+    if (fdigits<100) {
+        print (string)"0";
+    }
+    if (fdigits<10) {
+        print (string)"0";
+    }
+    print fdigits;
+  ]
+;
+class combatant
+  class object
+  with
+    hp,
+    maxHp,
+    short_name
+;
+combatant player
+  with short_name "player"
+;
+combatant goblin
+  with short_name "goblin"
+;
+[setHp c v;
+    c.hp = v;
+    c.maxhp = v;
+];
+[applyDamage target damage;
+    target.hp = target.hp - damage;
+    if (_bglFloat.lt(target.hp, _bglFloat.numtof(0))) {
+        target.hp = _bglFloat.numtof(0);
+    }
+];
+[healthBar c pct;
+    pct = _bglFloat.fmul(_bglFloat.fdiv(c.hp, c.maxhp), _bglFloat.numtof(100));
+    print (string)c.short_name;
+    print (string)": ";
+    _bglFloat.printDecimal(c.hp);
+    print (string)"/";
+    _bglFloat.printDecimal(c.maxhp);
+    print (string)" (";
+    _bglFloat.printDecimal(pct);
+    print (string)"%)^";
+];
+class marker
+  class object
+  with
+    x,
+    y
+;
+marker home;
+marker treasure;
+[distance a b dx dy;
+    dx = _bglFloat.fsub(a.x, b.x);
+    dy = _bglFloat.fsub(a.y, b.y);
+    return _bglfloat.sqrt(_bglFloat.fadd(_bglFloat.fmul(dx, dx), _bglFloat.fmul(dy, dy)));
+];
+[roll threshold sample;
+    return _bglFloat.le(sample, threshold);
+];
+class runningavg
+  class object
+  with
+    total,
+    count 0
+;
+runningavg avg;
+[addSample a v;
+    a.total = _bglFloat.fadd(a.total, v);
+    a.count++;
+];
+[mean a;
+    if (a.count==0) {
+        return _bglFloat.numtof(0);
+    }
+    return _bglFloat.fdiv(a.total, _bglFloat.numtof(a.count));
+];
+[main crit d dSquared roundTrip pi4 sinComp cosComp threshold dx modPart;
+    sethp(player, _bglFloat.numtof(100));
+    sethp(goblin, _bglFloat.numtof(25));
+    treasure.x = _bglFloat.numtof(6);
+    treasure.y = _bglFloat.numtof(8);
+    print (string)"--- combat ---^";
+    healthbar(player);
+    healthbar(goblin);
+    applydamage(goblin, _bglFloat.numtof(8));
+    applydamage(goblin, _bglFloat.numtof(3));
+    crit = _bglFloat.fmul(_bglFloat.numtof(15), _bglFloat.numtof(2));
+    applydamage(goblin, crit);
+    applydamage(player, _bglFloat.fdiv(_bglFloat.numtof(125), _bglFloat.numtof(10)));
+    healthbar(player);
+    healthbar(goblin);
+    print (string)"--- map ---^";
+    d = distance(home,treasure);
+    print (string)"distance home->treasure: ";
+    _bglFloat.printDecimal(d);
+    print (string)"^";
+    dSquared = _bglfloat.pow(d, _bglFloat.numtof(2));
+    print (string)"d^2 = ";
+    _bglFloat.printDecimal(dSquared);
+    print (string)"^";
+    roundTrip = _bglfloat.exp(_bglfloat.log(d));
+    print (string)"exp(log(d)) ~ ";
+    _bglFloat.printDecimal(roundTrip);
+    print (string)"^";
+    pi4 = _bglFloat.fdiv(_bglFloat.numtof(3927), _bglFloat.numtof(5000));
+    sinComp = _bglfloat.sin(pi4);
+    cosComp = _bglfloat.cos(pi4);
+    print (string)"sin(pi/4) ~ ";
+    _bglFloat.printDecimal(sinComp);
+    print (string)"^";
+    print (string)"cos(pi/4) ~ ";
+    _bglFloat.printDecimal(cosComp);
+    print (string)"^";
+    print (string)"--- chance ---^";
+    threshold = _bglFloat.fdiv(_bglFloat.numtof(3), _bglFloat.numtof(10));
+    if (roll(threshold,_bglFloat.fdiv(_bglFloat.numtof(15), _bglFloat.numtof(100)))) {
+        print (string)"0.15 hit^";
+    }
+    if (roll(threshold,_bglFloat.fdiv(_bglFloat.numtof(45), _bglFloat.numtof(100)))) {
+        print (string)"0.45 hit^";
+    }
+    if (roll(threshold,_bglFloat.fdiv(_bglFloat.numtof(30), _bglFloat.numtof(100)))) {
+        print (string)"0.30 hit^";
+    }
+    print (string)"--- stats ---^";
+    addsample(avg, _bglFloat.fdiv(_bglFloat.numtof(15), _bglFloat.numtof(10)));
+    addsample(avg, _bglFloat.fdiv(_bglFloat.numtof(23), _bglFloat.numtof(10)));
+    addsample(avg, _bglFloat.fdiv(_bglFloat.numtof(8), _bglFloat.numtof(10)));
+    print (string)"turn-cost mean: ";
+    _bglFloat.printDecimal(mean(avg));
+    print (string)"^";
+    dx = _bglFloat.fsub(_bglFloat.numtof(0), _bglFloat.numtof(7));
+    print (string)"abs(-7) = ";
+    _bglFloat.printDecimal(_bglfloat.abs(dx));
+    print (string)"^";
+    modPart = _bglFloat.fmod(_bglFloat.fdiv(_bglFloat.numtof(17), _bglFloat.numtof(2)), _bglFloat.numtof(3));
+    print (string)"8.5 mod 3 = ";
+    _bglFloat.printDecimal(modPart);
+    print (string)"^";
+    print (string)"ceil(3.2)  = ";
+    _bglFloat.printDecimal(_bglfloat.ceil(_bglFloat.fdiv(_bglFloat.numtof(32), _bglFloat.numtof(10))));
+    print (string)"^";
+    print (string)"floor(3.8) = ";
+    _bglFloat.printDecimal(_bglfloat.floor(_bglFloat.fdiv(_bglFloat.numtof(38), _bglFloat.numtof(10))));
+    print (string)"^";
+];

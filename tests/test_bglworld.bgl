@@ -1,0 +1,65 @@
+/*
+    test_bglworld.bgl
+    Smoke test for the `<bglWorld>` extension. Verifies that getAll(),
+    inParent(), and instances() walk the I6 object tree and return tracked
+    `array<object>` results that compose with LINQ chains and for-in.
+
+    Each query also accepts an optional `func<bool, object>` predicate that
+    runs INSIDE the objectloop walk, keeping the buffer small when the filter
+    is selective.
+
+    Replaces I6 `objectloop` with Beguile array iteration:
+      objectloop(o)                     → for(object o in bgl.world.getAll())
+      objectloop(o in p)                → for(object o in bgl.world.inParent(p))
+      objectloop(o ofclass C)           → for(object o in bgl.world.instances(C))
+      objectloop(o ofclass C) if(p(o))  → for(object o in bgl.world.instances(C, p))
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <bglWorld>
+
+class Animal : object {
+    int legs = 4;
+}
+
+object cage {
+    string short_name = "cage";
+}
+
+Animal dog { string short_name = "dog"; object parent = cage; }
+Animal cat { string short_name = "cat"; object parent = cage; }
+Animal fish { string short_name = "fish"; }       // not in cage
+
+object stone { string short_name = "stone"; object parent = cage; }
+
+void main(){
+    // Unfiltered forms.
+    int totalCount = bgl.world.getAll().length();
+    print("total objects: "); print(totalCount); print("^");
+
+    int caged = bgl.world.inParent(cage).length();
+    print("in cage: "); print(caged); print("^");
+
+    int animals = bgl.world.instances(Animal).length();
+    print("animals: "); print(animals); print("^");
+
+    // for-in works because the result is a tracked array.
+    print("named animals:^");
+    for(object o in bgl.world.instances(Animal)){
+        print(" - "); print(o.short_name); print("^");
+    }
+
+    // Filter-during-walk forms — predicate runs inside the objectloop, so
+    // non-matching objects never enter the buffer.
+    int cagedAnimals = bgl.world.instances(Animal,
+        (object o) => o.parent == cage).length();
+    print("caged animals (in-walk filter): "); print(cagedAnimals); print("^");
+
+    // inParent + predicate composes too.
+    int cageWithoutStones = bgl.world.inParent(cage,
+        (object o) => o != stone).length();
+    print("cage without stones: "); print(cageWithoutStones); print("^");
+
+    // getAll + predicate — useful for cross-tree queries.
+    int notFish = bgl.world.getAll((object o) => o != fish).length();
+    print("everything except fish: "); print(notFish); print("^");
+}

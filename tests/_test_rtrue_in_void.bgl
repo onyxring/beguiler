@@ -1,0 +1,14 @@
+// EXPECT_ERROR: Cannot use 'rtrue' in void routine
+//
+// rtrue/rfalse with or without a message argument is invalid in void routines —
+// they would return a value (true/false) from a routine declared void. Mirrors
+// the existing rule for bare `rtrue;`.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void cannotReturn(){
+    rtrue("oops");
+}
+
+void main(){
+    cannotReturn();
+}

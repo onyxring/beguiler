@@ -2007,8 +2007,8 @@ Any previously declared object can be extended using `extend ObjectName { }`. Th
 
 - **New members** — declared with `=`, just as in a regular object body
 - **Replacing members** — `replace` replaces an existing method or property on the object. Adding a duplicate without `replace` is a compile error. Using `replace` on a non-existent member produces a warning.
-- **Appending to collections** — `+=` appends elements to an existing collection member (`grammarRuleList`, `attributeList`, or `array<T>`)
-- **Removing from collections** — `-=` removes elements from an existing collection member
+- **Appending to collections** — `+=` appends elements to an existing collection member (`grammarRuleList` or `array<T>`)
+- **Removing from collections** — `-=` removes elements from an existing collection member (`grammarRuleList` or `array<T>`)
 
 ```bgl
 extend myRoom {
@@ -2017,12 +2017,22 @@ extend myRoom {
     replace void describe() {        // replace existing method
         print("A dark room.");
     }
-    attributes += {light};           // append to existing attributeList
-    attributes -= {scenery};         // remove from existing attributeList
+    attributes = {light, !scenery};  // see below — attributeList uses `=` only
 }
 ```
 
 `+=` and `-=` operate on existing members of the object. The member must be a collection type. Using `+=`/`-=` on a non-collection member or a member that doesn't exist is a compile error.
+
+**`attributeList` is `=`-only**: unlike `grammarRuleList` and `array<T>`, an `attributeList` member only accepts `=`. To turn off an inherited attribute, prefix it with `!` inside the literal:
+
+```bgl
+attributes = {light};            // set/replace the attribute list
+attributes = {light, !scenery};  // explicit light, explicit NOT scenery
+attributes = {!light};           // strip an inherited `light` (becomes `has ~light`)
+attributes = {};                 // strip all inherited attributes
+```
+
+Each entry maps directly to the I6 `has` clause: `attributes = {a, !b}` emits `has a ~b`. For runtime attribute changes, use the `give(attr)` / `ungive(attr)` methods on the attributeList.
 
 **Object reference members** — a property can hold a reference to another object. The assigned object must be type-compatible with the declared property type:
 
@@ -2961,7 +2971,18 @@ The return type precedes the function name. Every execution path in a non-`void`
 | Any other type | The function must return a value of that type via `return expr;`. |
 | `array<T>` | The function returns a typed array. Example: `array<int> getList() { return g_src; }` |
 
-The I6 `rtrue` and `rfalse` keywords may also appear in functions with a return type as `bool`, serving as shorthand for `return true` and `return false` respectively. 
+The I6 `rtrue` and `rfalse` keywords may also appear in functions with a return type as `bool`, serving as shorthand for `return true` and `return false` respectively.
+
+Both forms also accept an optional message argument: `rtrue(expr);` / `rfalse(expr);`. The argument is printed (using full `print()` overload dispatch — accepts any printable type, including `$"..."` interpolated strings) and then the routine returns true / false. Equivalent to writing `print(expr); rtrue;` (or `rfalse;`) but as a single statement. Common in IF idioms like the dark-room block:
+
+```bgl
+bool before() {
+    case Go:
+        if (self.hasnt(light) && noun != n_obj)
+            rtrue("Blundering around in the dark isn't a good idea!");
+    rfalse;
+}
+```
 
 ## 9.3 Parameters
 
@@ -4893,20 +4914,24 @@ Auto-loaded class types modeling IF-domain concepts: attributes, dictionary word
 ```bgl
 extern attribute light;
 extern attribute static;
+extern attribute scenery;
 
 class magicButton[5] : object {
     attributeList attributes = {static};
 }
 
+class lampPost : object {
+    attributeList attributes = {light, !scenery};   // explicit light, explicit NOT scenery
+}
+
 extend myRoom {
-    attributes += {light};      // append
-    attributes -= {scenery};    // remove
+    attributes = {light};            // replace any inherited list with just {light}
 }
 ```
 
 Attribute declarations are typically `extern` (declared in I6 libraries), but `attribute` declarations may also appear in user code via `attribute attrName;` (see §8.6).
 
-`attributeList` accepts initializer lists `{a, b, c}`, supports `+=` and `-=` for in-place modification (in `extend` blocks, see §5.9), and is emitted as the I6 `has` line on the containing class or object.
+`attributeList` accepts initializer lists `{a, b, c}` with prefix `!` on any entry to negate an inherited attribute (`!attr` emits as `has ~attr`). Only `=` is supported — `+=` / `-=` are not. To change attributes at runtime use the list's `give(attr)` / `ungive(attr)` methods. The list is emitted as the I6 `has` line on the containing class or object.
 
 ### 16.3.1a `property`
 

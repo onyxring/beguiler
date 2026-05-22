@@ -1,0 +1,115 @@
+//-----------------------------------------------------------------------------
+// bglWorld.bgl — replace `objectloop` with array-returning queries.
+//
+// Usage:
+//   #include <bglWorld>
+//   for(object o in bgl.world.getAll())                          { ... }
+//   for(object o in bgl.world.inParent(location))                { ... }
+//   for(object o in bgl.world.instances(Animal))                 { ... }
+//   for(object o in bgl.world.instances(Animal, (object o) =>
+//                                       o.parent == cage))       { ... }
+//
+// Each method fills a shared scratch buffer and returns it as a tracked
+// `array<object>`, so all `<array>` and LINQ operations (filter, map, take,
+// distinct, ...) work on the result. Combine `instances(Animal).filter(p)`
+// instead of `objectloop(o ofclass Animal) if(p(o)) ...`.
+//
+// Each method also accepts an optional `func<bool, object>` predicate. The
+// predicate runs INSIDE the `objectloop` walk, so non-matching objects never
+// reach the buffer — preferable to `instances(Animal).filter(p)` when the
+// filter is selective, since the unfiltered intermediate would have been
+// capacity-bound and may have overflowed before the .filter() ran.
+//
+// The scratch buffer is SHARED state. Don't store the result across turns
+// and don't nest two bgl.world calls (an inner call from inside a lambda
+// passed to a LINQ chain would corrupt the outer chain's buffers — same
+// caveat as LINQ scratch).
+//
+// Capacity defaults to 128 objects. Configure via
+//   #beguilerSettings { worldBufSize = 256; }
+// at the top of your .bgl file if your world is larger. Cap-exceeding walks
+// silently stop at the configured size.
+//-----------------------------------------------------------------------------
+#once
+#include <array>
+
+#emitfirst{
+    ! `_BGL_WORLD_BUFSIZE` is declared by the compiler when `<bglWorld>` is
+    ! included — value comes from #beguilerSettings.worldBufSize (default 128).
+    ! Tracked-array layout: capacity word at slot 0 (auto-set by I6 from
+    ! `--> N` size), data at slots 1..N, length at slot N, magic at slot N+1.
+    ! +2 covers the length + magic slots.
+    Array _bglWorldBuf --> _BGL_WORLD_BUFSIZE + 2;
+
+    ! Walk all objects in the I6 object tree. `pred` is a routine address;
+    ! pred==0 means no filter. The check is inside the loop so a selective
+    ! predicate keeps the buffer small.
+    [ _bglWorldGetAll pred o i;
+        i = 0;
+        objectloop(o) {
+            if(i >= _BGL_WORLD_BUFSIZE) break;
+            if(pred == 0 || indirect(pred, o)) {
+                i++;
+                _bglWorldBuf-->i = o;
+            }
+        }
+        _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = i;
+        return _bglWorldBuf;
+    ];
+
+    ! Walk children of `parent`. Same pred semantics as _bglWorldGetAll.
+    [ _bglWorldInParent parent pred o i;
+        i = 0;
+        objectloop(o in parent) {
+            if(i >= _BGL_WORLD_BUFSIZE) break;
+            if(pred == 0 || indirect(pred, o)) {
+                i++;
+                _bglWorldBuf-->i = o;
+            }
+        }
+        _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = i;
+        return _bglWorldBuf;
+    ];
+
+    ! Walk objects of a class. Same pred semantics as _bglWorldGetAll.
+    [ _bglWorldInstances cls pred o i;
+        i = 0;
+        objectloop(o ofclass cls) {
+            if(i >= _BGL_WORLD_BUFSIZE) break;
+            if(pred == 0 || indirect(pred, o)) {
+                i++;
+                _bglWorldBuf-->i = o;
+            }
+        }
+        _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = i;
+        return _bglWorldBuf;
+    ];
+}
+
+// Stamp tracked-array magic + initial length=0 at program start, so
+// _bglArray.isTracked / .length work even before any fill method runs.
+#startup{
+    _bglWorldBuf-->(_bglWorldBuf-->0)     = $9084;
+    _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = 0;
+}
+
+// Beguile-side bridges to the I6 routines emitted above. Each takes an
+// optional `pred` (a func<bool, object> reference); 0 means no filter.
+// Using `var` here so callers can pass either 0 or a typed func reference.
+extern array<object> _bglWorldGetAll(var pred)             { return 0; }
+extern array<object> _bglWorldInParent(object p, var pred) { return 0; }
+extern array<object> _bglWorldInstances(var cls, var pred) { return 0; }
+
+// Public surface — `bgl.world.getAll()` etc. The predicate parameter defaults
+// to 0 (no filter), so callers can omit it. Single method per name because I6
+// doesn't allow same-named object properties (method overloading on objects
+// fails at the I6 level with 'Property given twice'). Methods are regular
+// (non-emitter) because `emitter array<T>` is only accepted on
+// `extend extern class array`.
+object _bglWorld {
+    array<object> getAll(func<bool, object> pred = 0)            { return _bglWorldGetAll(pred); }
+    array<object> inParent(object p, func<bool, object> pred = 0){ return _bglWorldInParent(p, pred); }
+    array<object> instances(var cls, func<bool, object> pred = 0){ return _bglWorldInstances(cls, pred); }
+}
+
+extend bgl { auto world = _bglWorld; }

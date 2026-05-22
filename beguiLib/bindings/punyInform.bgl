@@ -71,7 +71,46 @@ extern int    verb_wordnum;         // verb position in input
 extern int    wn;                   // word number currently being parsed
 extern int    num_words;            // number of words typed
 extern int    keep_silent;          // suppress action output
-extern int    selected_direction;   // direction chosen for Go action
+extern int    selected_direction;   // direction chosen for Go action (= n_to, s_to, ...)
+extern int    selected_direction_index; // 1-based: 1=N, 2=S, 3=E, 4=W, 5=NE, 6=NW, 7=SE, 8=SW, 9=U, 10=D, 11=IN, 12=OUT
+
+//-- Direction properties -----------------------------------------------------
+// PunyInform diverges from the I6 standard library: there are no `n_obj`,
+// `s_obj`, etc. objects. Direction commands set `selected_direction` to the
+// matching direction *property* (n_to, s_to, ...), and `noun` to the shared
+// `Directions` placeholder. The idiomatic check is:
+//   if (selected_direction == n_to) { ... }
+// rather than the stdlib `if (noun == n_obj)`.
+extern property n_to;
+extern property s_to;
+extern property e_to;
+extern property w_to;
+extern property ne_to;
+extern property nw_to;
+extern property se_to;
+extern property sw_to;
+extern property u_to;
+extern property d_to;
+extern property in_to;
+extern property out_to;
+
+//-- Fake direction-object constants ------------------------------------------
+// Sentinel values used internally by the puny parser to represent
+// not-yet-a-real-object direction references. Exposed for advanced parser
+// hooks (BeforeParsing etc.); most code uses `selected_direction` instead.
+extern const int FAKE_N_OBJ;
+extern const int FAKE_S_OBJ;
+extern const int FAKE_E_OBJ;
+extern const int FAKE_W_OBJ;
+extern const int FAKE_NE_OBJ;
+extern const int FAKE_NW_OBJ;
+extern const int FAKE_SE_OBJ;
+extern const int FAKE_SW_OBJ;
+extern const int FAKE_U_OBJ;
+extern const int FAKE_D_OBJ;
+extern const int FAKE_IN_OBJ;
+extern const int FAKE_OUT_OBJ;
+extern object    Directions;     // shared placeholder bound to `noun` for direction commands
 
 //-- Pronoun tracking ---------------------------------------------------------
 extern object itobj;                // object currently referred to as "it"

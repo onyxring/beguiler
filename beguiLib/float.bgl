@@ -1,0 +1,171 @@
+//-----------------------------------------------------------------------------
+// float.bgl — A standard Beguile extension adding IEEE 754 single-precision
+//             floating-point. Glulx-only (Glulx has hardware-style float
+//             opcodes; the Z-machine does not).
+//
+// Usage:
+//   #include <float> in your .bgl file to activate the float type.
+//
+// Storage is a single native word, same width as int. The operators reinterpret
+// the bits as IEEE 754 single. Conversion to/from int is explicit only —
+// (float)i and (int)f — using @numtof / @ftonumz. There is no implicit
+// promotion; mixing a bare intLiteral with a float requires the cast (this
+// catches `float x = 5;` errors where the bit pattern of int 5 is a denormal
+// ≈ 7e-45, not 5.0).
+//
+// Arithmetic and conversion route through the _bglFloat helper object. The
+// underlying Glulx opcodes (@fadd, @numtof, @jflt, etc.) are all statement-
+// form — they need a target slot — so wrapping them in functions that return
+// a value lets the operator emitters be expression-form, which composes
+// naturally under nested expressions like `(int)(a + b * c)`.
+//-----------------------------------------------------------------------------
+#once
+#if TARGET_ZCODE
+    #error "ERROR: <float> extension is only valid when targeting Glulx."
+#endif
+
+//=============================================================================
+// type float — IEEE 754 single-precision wrapper over a native 32-bit word.
+//=============================================================================
+extern class float : _bglObject {
+    emitter int operator = (float v){ $target = $v; }
+
+    // Arithmetic — route through helper routines so the operator emitters are
+    // expression-form. Calling convention: helpers take two floats and return
+    // the result as a float.
+    emitter float operator + (float v){ _bglFloat.fadd($val, $v) }
+    emitter float operator - (float v){ _bglFloat.fsub($val, $v) }
+    emitter float operator * (float v){ _bglFloat.fmul($val, $v) }
+    emitter float operator / (float v){ _bglFloat.fdiv($val, $v) }
+    emitter float operator % (float v){ _bglFloat.fmod($val, $v) }
+
+    // Equality — bit-equality (I6 `==`/`~=`). The hardware @jfeq opcode takes
+    // an epsilon parameter which makes it awkward for strict comparison; bit-
+    // compare is correct for the common case of matching a known value.
+    emitter bool operator == (float v){ $val == $v }
+    emitter bool operator != (float v){ $val ~= $v }
+
+    // Ordering — Glulx @jflt/@jfle/@jfgt/@jfge are branch-form, so they live
+    // in helper routines that return rtrue/rfalse.
+    emitter bool operator <  (float v){ _bglFloat.lt($val, $v) }
+    emitter bool operator <= (float v){ _bglFloat.le($val, $v) }
+    emitter bool operator >  (float v){ _bglFloat.gt($val, $v) }
+    emitter bool operator >= (float v){ _bglFloat.ge($val, $v) }
+
+    // Compound assignment — recurses through the scalar operators.
+    emitter float operator += (float v){ $val = $val + $v }
+    emitter float operator -= (float v){ $val = $val - $v }
+    emitter float operator *= (float v){ $val = $val * $v }
+    emitter float operator /= (float v){ $val = $val / $v }
+    emitter float operator %= (float v){ $val = $val % $v }
+
+    // Explicit cast: (int)f — truncate toward zero via @ftonumz. Use the raw
+    // opcode bgl.asm.ftonumn() if nearest-even rounding is wanted instead.
+    explicit emitter int operator(){ _bglFloat.ftonumz($val) }
+}
+
+// Reverse cast: (float)i — @numtof on a regular int variable.
+extend extern class int {
+    explicit emitter float operator(){ _bglFloat.numtof($val) }
+}
+
+// Literal cast: (float)5 — @numtof on an integer literal. Explicit-only so
+// `float x = 5;` errors out (the user must write `float x = (float)5;`).
+extend extern class intLiteral {
+    explicit emitter float operator(){ _bglFloat.numtof($val) }
+}
+
+// Negative literal: (float)-3 — explicit cast required.
+extend extern class negativeIntLiteral {
+    explicit emitter float operator(){ _bglFloat.numtof($val) }
+}
+
+//=============================================================================
+// _bglFloat — backing routines for arithmetic, comparison, conversion, and
+//             printing. All routines return values so the operator emitters
+//             above can be expression-form and compose under nested
+//             expressions.
+//=============================================================================
+object _bglFloat {
+    // Arithmetic — declare a local for the result, fill it via the Glulx
+    // opcode, return it. The double-semicolon inside #i6 is harmless: the
+    // first ends the opcode, the second is the implicit statement terminator.
+    float fadd(float x, float y){ float r; #i6 { @fadd x y r; } return r; }
+    float fsub(float x, float y){ float r; #i6 { @fsub x y r; } return r; }
+    float fmul(float x, float y){ float r; #i6 { @fmul x y r; } return r; }
+    float fdiv(float x, float y){ float r; #i6 { @fdiv x y r; } return r; }
+    // @fmod stores remainder in operand 3 and quotient in operand 4; we want
+    // only the remainder, so the quotient goes onto the stack and is dropped.
+    float fmod(float x, float y){ float r; #i6 { @fmod x y r sp; } return r; }
+
+    // Conversion — @numtof int→float, @ftonumz float→int (truncate-toward-zero).
+    float numtof(int n){ float r; #i6 { @numtof n r; } return r; }
+    int ftonumz(float f){ int r; #i6 { @ftonumz f r; } return r; }
+
+    // Math — direct Glulx opcodes. ceil/floor return integer-valued floats
+    // (caller can cast to int via @ftonumz if a whole number is wanted).
+    float sqrt(float v){ float r; #i6 { @sqrt v r; }  return r; }
+    float exp(float v) { float r; #i6 { @exp v r; }   return r; }
+    float log(float v) { float r; #i6 { @log v r; }   return r; }
+    float pow(float a, float b){ float r; #i6 { @pow a b r; } return r; }
+    float sin(float v) { float r; #i6 { @sin v r; }   return r; }
+    float cos(float v) { float r; #i6 { @cos v r; }   return r; }
+    float tan(float v) { float r; #i6 { @tan v r; }   return r; }
+    float asin(float v){ float r; #i6 { @asin v r; }  return r; }
+    float acos(float v){ float r; #i6 { @acos v r; }  return r; }
+    float atan(float v){ float r; #i6 { @atan v r; }  return r; }
+    float atan2(float y, float x){ float r; #i6 { @atan2 y x r; } return r; }
+    float ceil(float v) { float r; #i6 { @ceil v r; } return r; }
+    float floor(float v){ float r; #i6 { @floor v r; } return r; }
+
+    // abs — negate via 0.0 - v when v is negative. The lt helper handles -0/NaN
+    // edge cases the way IEEE branch opcodes do.
+    float abs(float v){
+        if(_bglFloat.lt(v, (float)0)) return (float)0 - v;
+        return v;
+    }
+
+    // Ordering via the Glulx branch opcodes. NaN propagates as false through
+    // every branch — standard IEEE behavior.
+    bool lt(float x, float y){
+        #i6 { @jflt x y ?yes; rfalse; .yes; rtrue; }
+        return false;   // unreachable; satisfies return-check
+    }
+    bool le(float x, float y){
+        #i6 { @jfle x y ?yes; rfalse; .yes; rtrue; }
+        return false;
+    }
+    bool gt(float x, float y){
+        #i6 { @jfgt x y ?yes; rfalse; .yes; rtrue; }
+        return false;
+    }
+    bool ge(float x, float y){
+        #i6 { @jfge x y ?yes; rfalse; .yes; rtrue; }
+        return false;
+    }
+
+    // printDecimal(float) — decimal print with sign, integer part, ".", and 4
+    // fractional digits. Values beyond ±2.1e9 (Glulx int range) lose
+    // precision in the integer part; this is a simple display printer, not
+    // a full IEEE 754 round-trip.
+    void printDecimal(float v){
+        bool isNeg = _bglFloat.lt(v, (float)0);
+        if(isNeg) v = (float)0 - v;
+
+        int ipart = (int)v;
+        float frac = v - (float)ipart;
+        int fdigits = (int)(frac * (float)10000);
+        if(fdigits < 0) fdigits = -fdigits;
+
+        if(isNeg) print("-");
+        print(ipart);
+        print(".");
+        if(fdigits < 1000) print("0");
+        if(fdigits < 100)  print("0");
+        if(fdigits < 10)   print("0");
+        print(fdigits);
+    }
+}
+
+// Overload print() for the float type so callers can pass a float directly.
+emitter void print(float c){ _bglFloat.printDecimal($c); }

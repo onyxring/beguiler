@@ -1,0 +1,148 @@
+/*
+    test_float_game.bgl — float type exercised through IF-game-shaped scenarios.
+
+    Covers: fractional HP/damage, distance via sqrt, probability/threshold,
+    averaging stats, projectile motion via sin/cos, percentage display.
+    Every operation that's plausible in a Glulx IF game should compile and
+    emit the right opcodes. Output baseline is the only correctness check;
+    structural shape catches regressions in the cast/operator/print pipeline.
+*/
+#beguilerSettings { target = Glulx; informName = "none"; outputPath = "tests/output"; }
+#include <float>
+
+// ─── Combat: fractional HP and weapon damage ─────────────────────────────────
+// Note: float member initializers can't be (float)N — that's a function call,
+// and I6 object slots take constants only. Uninitialized floats start at bit
+// pattern 0 (= 0.0); non-zero defaults are assigned at runtime via setHp().
+class Combatant : object {
+    float hp;
+    float maxHp;
+    string short_name;
+}
+
+Combatant player { short_name = "player"; }
+Combatant goblin { short_name = "goblin"; }
+
+void setHp(Combatant c, float v){
+    c.hp = v;
+    c.maxHp = v;
+}
+
+void applyDamage(Combatant target, float damage){
+    target.hp -= damage;
+    if(target.hp < (float)0) target.hp = (float)0;
+}
+
+void healthBar(Combatant c){
+    float pct = c.hp / c.maxHp * (float)100;
+    print(c.short_name); print(": "); print(c.hp); print("/");
+    print(c.maxHp); print(" ("); print(pct); print("%)^");
+}
+
+// ─── Geometry: 2D coords and Euclidean distance ──────────────────────────────
+class Marker : object {
+    float x;
+    float y;
+}
+
+Marker home;     // (0,0) — uninit = 0.0
+Marker treasure; // set to (6,8) in main(); distance from origin = 10.0
+
+float distance(Marker a, Marker b){
+    float dx = a.x - b.x;
+    float dy = a.y - b.y;
+    return _bglFloat.sqrt(dx * dx + dy * dy);
+}
+
+// ─── Probability gate ────────────────────────────────────────────────────────
+// Deterministic seed-style threshold so the test is reproducible. In a real
+// game this would use random(N) scaled to 0..1.
+bool roll(float threshold, float sample){
+    return sample <= threshold;
+}
+
+// ─── Stats: running average of fractional turn cost ──────────────────────────
+class RunningAvg : object {
+    float total;
+    int   count = 0;
+}
+
+RunningAvg avg;
+
+void addSample(RunningAvg a, float v){
+    a.total = a.total + v;
+    a.count++;
+}
+
+float mean(RunningAvg a){
+    if(a.count == 0) return (float)0;
+    return a.total / (float)a.count;
+}
+
+void main(){
+    setHp(player, (float)100);
+    setHp(goblin, (float)25);
+    treasure.x = (float)6;
+    treasure.y = (float)8;
+
+    // Combat round: goblin takes a few weak attacks, player takes one big hit.
+    print("--- combat ---^");
+    healthBar(player);
+    healthBar(goblin);
+
+    applyDamage(goblin, (float)8);                // dagger jab
+    applyDamage(goblin, (float)3);                // glancing blow
+    float crit = (float)15 * (float)2;            // 2x crit multiplier
+    applyDamage(goblin, crit);                    // -> 30 dmg, overkills
+    applyDamage(player, (float)125 / (float)10);  // 12.5 returned damage
+
+    healthBar(player);
+    healthBar(goblin);
+
+    // Geometry — treasure is at (6,8), so distance from origin is exactly 10.
+    print("--- map ---^");
+    float d = distance(home, treasure);
+    print("distance home->treasure: "); print(d); print("^");
+
+    // Math helpers — squared distance via @pow, log/exp round-trip.
+    float dSquared = _bglFloat.pow(d, (float)2);
+    print("d^2 = "); print(dSquared); print("^");
+    float roundTrip = _bglFloat.exp(_bglFloat.log(d));   // ~ d
+    print("exp(log(d)) ~ "); print(roundTrip); print("^");
+
+    // Projectile motion — at 45° launch angle, range is v^2/g. Just exercise
+    // sin/cos here; their numeric values aren't asserted, only that the
+    // emission goes through without warning.
+    float pi4 = (float)3927 / (float)5000;         // ~ pi/4 (0.7854)
+    float sinComp = _bglFloat.sin(pi4);
+    float cosComp = _bglFloat.cos(pi4);
+    print("sin(pi/4) ~ "); print(sinComp); print("^");
+    print("cos(pi/4) ~ "); print(cosComp); print("^");
+
+    // Probability — deterministic samples around a 30% threshold.
+    print("--- chance ---^");
+    float threshold = (float)3 / (float)10;        // 0.30
+    if(roll(threshold, (float)15 / (float)100)) print("0.15 hit^");  // yes
+    if(roll(threshold, (float)45 / (float)100)) print("0.45 hit^");  // no
+    if(roll(threshold, (float)30 / (float)100)) print("0.30 hit^");  // yes (boundary)
+
+    // Stats — three samples averaged (avg is declared at file scope, since
+    // class-typed locals are bare int slots — see project_class_typed_locals_gap).
+    print("--- stats ---^");
+    addSample(avg, (float)15 / (float)10);     // 1.5
+    addSample(avg, (float)23 / (float)10);     // 2.3
+    addSample(avg, (float)8 / (float)10);      // 0.8
+    print("turn-cost mean: "); print(mean(avg)); print("^");
+
+    // abs + comparison.
+    float dx = (float)0 - (float)7;            // -7.0
+    print("abs(-7) = "); print(_bglFloat.abs(dx)); print("^");
+
+    // Modulo — fractional remainder.
+    float modPart = (float)17 / (float)2 % (float)3;   // 8.5 % 3 = 2.5
+    print("8.5 mod 3 = "); print(modPart); print("^");
+
+    // ceil / floor — exercise the truncation opcodes.
+    print("ceil(3.2)  = "); print(_bglFloat.ceil((float)32 / (float)10)); print("^");
+    print("floor(3.8) = "); print(_bglFloat.floor((float)38 / (float)10)); print("^");
+}

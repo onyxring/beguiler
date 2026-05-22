@@ -227,6 +227,7 @@ bool beguiler::go(int argc, char* argv[]) {
     if(beguilerSettings.target.empty())      beguilerSettings.target = "glulx";
     if(beguilerSettings.framePoolSize == -1) beguilerSettings.framePoolSize = 64;
     if(beguilerSettings.linqScratchSize == -1) beguilerSettings.linqScratchSize = 32;
+    if(beguilerSettings.worldBufSize    == -1) beguilerSettings.worldBufSize    = 128;
 
     // IFID: may already be set from user's #beguilerSettings or from _blorbAssets.bgl.
     // If still empty and blorb is enabled, generate deterministically from source identity
@@ -519,6 +520,15 @@ void beguiler::resolveLibPath(int argc, char* argv[]) {
         string arg = argv[i];
         if(arg.size() > 5 && arg.substr(0, 5) == "-lib=") {
             string val = arg.substr(5);
+            // Strip surrounding " or ' if a caller (notably the VS Code extension
+            // launching via spawn, where shell-style quoting becomes literal) wrapped
+            // the path. Without this, the quotes propagate into every libPath-derived
+            // file lookup and surface as `…/"beguiLib"/core/…` lookup failures.
+            if(val.size() >= 2 &&
+               ((val.front()=='"' && val.back()=='"') ||
+                (val.front()=='\'' && val.back()=='\''))) {
+                val = val.substr(1, val.size()-2);
+            }
             settings.libPath = fs::path(val).is_absolute() ? val : getPath(argv[0]) + val;
             return;
         }

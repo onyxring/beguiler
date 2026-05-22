@@ -1,0 +1,47 @@
+/*
+    test_attr_negation.bgl
+    The attributeList model is `=` only: `attributes = {a, b, !c}` where `!attr`
+    turns off an inherited attribute. Maps directly to I6's `has ~attr` clause.
+
+    Replaces the legacy `attributes += {…}` / `attributes -= {…}` forms in
+    extend blocks; those were removed because their semantics didn't compose
+    cleanly with class-level defaults. Runtime changes still go through
+    give()/ungive() on the attributeList.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+extern attribute light;
+extern attribute scenery;
+extern attribute container;
+
+class room : object {
+    attributeList attributes = {light};   // parent default: every room is lit
+}
+
+// Empty replace — strips inherited light.
+room cellar {
+    attributes = {};
+}
+
+// Negate the inherited light explicitly.
+room darkVault {
+    attributes = {!light};
+}
+
+// Compose explicit additions with negations.
+room lampShelf {
+    attributes = {light, !scenery, container};
+}
+
+// Untouched — inherits the parent's `has light`.
+room courtyard { }
+
+void main(){
+    // Compile-time check: I6 emission shows the right `has` clauses.
+    // The runtime predicate confirms attribute state at the I6 level.
+    if(!cellar.has(light))     print("cellar dark^");
+    if(!darkVault.has(light))  print("darkVault dark^");
+    if(lampShelf.has(light) && !lampShelf.has(scenery) && lampShelf.has(container))
+        print("lampShelf composed correctly^");
+    if(courtyard.has(light))   print("courtyard inherits light^");
+}
