@@ -1,0 +1,65 @@
+// test_verb_priority_buckets.bgl — multi-bucket Extend ordering.
+//
+// When multiple extends sit at distinct priorities on the SAME side of the anchor,
+// each priority must emit as its own Extend directive (not a single bundled one),
+// and the directive emission order must produce the right I6 matching order:
+//
+//   priority < anchor → `Extend 'w' first` directives in DESCENDING priority order.
+//     Each `Extend first` prepends to the head of I6's rule list, so emitting the
+//     highest-number bucket first and lowest-number last leaves the lowest number
+//     at the top — exactly the right order (lower priority number = higher match
+//     priority).
+//
+//   priority > anchor → `Extend 'w'` directives in ASCENDING priority order.
+//     Each `Extend` appends to the tail; lower numbers land closer to the anchor.
+//
+// Three priorities per side exercise the inter-bucket ordering that the previous
+// (single-bucket) implementation would have collapsed into one directive each.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Anchor priority is BLR default 10.
+verb Tinker {
+    grammar = {
+        {.tinker, noun},
+    };
+    void perform(){ print("tinker"); }
+}
+
+// Three extends < anchor 10 at priorities 7, 5, 3 — declared in arbitrary source
+// order to confirm sorting handles it. Expected emit order: descending (7, 5, 3).
+extend Tinker {
+    priority = 5;
+    grammar += { {.tinker, .carefully, noun}, };  // p=5
+}
+extend Tinker {
+    priority = 3;
+    grammar += { {.tinker, .gingerly, noun}, };   // p=3
+}
+extend Tinker {
+    priority = 7;
+    grammar += { {.tinker, .roughly, noun}, };    // p=7
+}
+
+// Three extends > anchor 10 at priorities 16, 12, 14 — declared in arbitrary source
+// order. Expected emit order: ascending (12, 14, 16).
+extend Tinker {
+    priority = 16;
+    grammar += { {.tinker, .lazily, noun}, };     // p=16
+}
+extend Tinker {
+    priority = 12;
+    grammar += { {.tinker, .quickly, noun}, };    // p=12
+}
+extend Tinker {
+    priority = 14;
+    grammar += { {.tinker, .slowly, noun}, };     // p=14
+}
+
+void main(){}

@@ -221,6 +221,11 @@ bool beguiler::go(int argc, char* argv[]) {
     // .inf-mode cross-language collision check (no-op for .bgl-mode; gated on infHeader/Trailer).
     parser.detectInfModeI6Collisions();
 
+    // Safety net for overload sets the call-site mangling missed (no call site references
+    // any overload of the set). Call-site mangling and this pass agree on the mangled name,
+    // so re-applying is idempotent.
+    parser.assignObjectMethodOverloadMangling();
+
     // Apply defaults declared on beguilerSettingsType schema members for any unset fields
     parser.applySchemaDefaults();
     // Safety fallbacks if schema was not loaded

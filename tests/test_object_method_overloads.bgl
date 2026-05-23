@@ -1,0 +1,46 @@
+// test_object_method_overloads.bgl — same-name method overloads on objects.
+//
+// Without overload mangling, two non-emitter methods with the same Beguile name on the
+// same object would emit two I6 properties named identically — I6 errors "Property given
+// twice in the same declaration". Each overload's i6name is mangled by including arity
+// and parameter type names (e.g. countSame_1_int, countSame_2_int_int) so each emits as
+// a distinct property; the call site picks the mangled name matching the resolved
+// overload.
+//
+// Coverage:
+//   - 2-arity overload set (countSame)
+//   - 3-arity overload set (greet) including different parameter types per arity
+//   - Optional chain method-call resolution against an overloaded receiver
+//   - Single (non-overloaded) methods on the same object — must stay unmangled
+
+object _bglWidget {
+    int countSame(int x)            { return x; }
+    int countSame(int x, int y)     { return x + y; }
+    int countSame(int x, int y, int z) { return x + y + z; }
+
+    // Overload set with different param types per arity.
+    int greet(int n)        { return n; }
+    int greet(string s)     { return 7; }
+
+    // Single, non-overloaded — emits with its bare name (no mangling).
+    int doubleIt(int n)     { return n + n; }
+}
+
+object _bglMaybe {
+    int safeCall(int x)           { return x; }
+    int safeCall(int x, int y)    { return x * y; }
+    emitter eBool operator ?()    { $val ~= nothing }
+}
+
+void main(){
+    int n1 = _bglWidget.countSame(5);
+    int n2 = _bglWidget.countSame(3, 4);
+    int n3 = _bglWidget.countSame(1, 2, 3);
+    int n4 = _bglWidget.greet(10);
+    int n5 = _bglWidget.greet("hi");
+    int n6 = _bglWidget.doubleIt(11);
+    // Optional chain over an overloaded receiver — _bglMaybe defines operator?() so
+    // its instance can be the receiver of a `?.` chain step.
+    int n7 = _bglMaybe?.safeCall(2, 3);
+    print(n1); print(n2); print(n3); print(n4); print(n5); print(n6); print(n7);
+}

@@ -1,0 +1,63 @@
+// test_ref_local.bgl — `ref` qualifier opts a local into pointer-alias semantics.
+//
+// Without `ref`: class-typed locals of a plain (non-tree-citizen) class with stored
+// fields require an `operator =` declaration. Otherwise the silent-emission error
+// fires.
+//
+// With `ref`: the user explicitly opts into reference semantics for that one local:
+//   - No backing storage synthesized (the local is a bare I6 pointer slot).
+//   - No operator= dispatch on assignment — every assignment is plain pointer-alias.
+//   - No silent-emission error — `ref` is the explicit opt-in.
+//   - Works equally for classes WITHOUT operator= and classes WITH operator=
+//     (the `ref` override always wins for the marked local).
+//
+// Coverage:
+//   - Plain class without operator= used as a ref local (otherwise would error).
+//   - Class with operator= used as a ref local (operator= dispatch suppressed).
+//   - Mixed: same class used both as value (operator=) and ref (pointer-alias) in
+//     the same routine — value local gets backing, ref local doesn't.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// Plain class — no operator= defined. Would normally error on class-typed assignment.
+class Box {
+    int x;
+    int y;
+}
+Box boxSrc;
+Box mkBox(int x, int y){ boxSrc.x = x; boxSrc.y = y; return boxSrc; }
+
+// Class WITH operator=. Used both as value (backing synthesis) and ref (pointer-alias)
+// in main below.
+class Window {
+    int w;
+    int h;
+    Window operator = (Window v){ self.w = v.w; self.h = v.h; return self; }
+}
+Window winSrc;
+Window mkWin(int w, int h){ winSrc.w = w; winSrc.h = h; return winSrc; }
+
+void main(){
+    // (1) ref local on a plain class with no operator=. Without `ref` this errors;
+    // with `ref` it's plain pointer-alias.
+    ref Box br = mkBox(10, 20);
+    int bx = br.x;            // reads via the pointer (= boxSrc.x = 10)
+    br.x = 99;                 // mutates boxSrc.x via the pointer
+
+    // (2) reassignment of a ref local: still pointer-alias.
+    ref Box br2 = br;
+    br2.y = 7;                 // mutates boxSrc.y (br and br2 both alias it)
+
+    // (3) ref local on a class WITH operator=. The `ref` override suppresses dispatch.
+    ref Window wr = mkWin(300, 400);
+    int wH = wr.h;             // reads via the pointer (= winSrc.h = 400)
+
+    // (4) same Window class used as a value local: backing synthesis happens,
+    // operator= dispatches against backing — independent storage from wr.
+    Window wv = mkWin(100, 200);
+    int wvW = wv.w;            // reads from backing (= 100)
+}

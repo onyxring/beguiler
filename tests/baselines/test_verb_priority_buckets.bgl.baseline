@@ -1,0 +1,56 @@
+!% -v5
+!% -E1
+
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+constant story = "";
+constant headline = "";
+object tinker
+  with perform [;
+    print (string)"tinker";
+  ]
+;
+[tinkersub;
+                tinker.perform();
+            ];
+verb 'tinker'
+    * noun -> tinker;
+extend 'tinker' first
+    * 'roughly' noun -> tinker;
+extend 'tinker' first
+    * 'carefully' noun -> tinker;
+extend 'tinker' first
+    * 'gingerly' noun -> tinker;
+extend 'tinker'
+    * 'quickly' noun -> tinker;
+extend 'tinker'
+    * 'slowly' noun -> tinker;
+extend 'tinker'
+    * 'lazily' noun -> tinker;
+[main;
+];

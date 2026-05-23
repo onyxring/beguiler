@@ -74,6 +74,13 @@ struct Qualifiers {
     bool isExtend   = false;
     bool isAlias    = false;
     bool isDefault  = false;
+    bool isRef      = false;  // `ref` qualifier on a local variable declaration: opt-in
+                              // reference semantics (skip operator= dispatch, skip backing
+                              // synthesis, plain pointer-assign). Valid only on locals.
+    bool isByVal    = false;  // `byVal` qualifier on a class declaration: instances of
+                              // this class get value-semantics when passed as function
+                              // parameters (backing + copy-in via operator= at entry).
+                              // Mutually exclusive with extern/emitter/extend/: object.
 };
 
 // Forward-declare bglParser so handler signature can reference it
@@ -146,6 +153,23 @@ class bglParser {
         // Property/[name]) and warns when a name collides with a Beguile-declared global
         // in the same compilation. Same-file scope only — included files aren't scanned.
         void detectInfModeI6Collisions();
+        // Post-parse safety net: find same-name non-emitter method groups on each
+        // object/class and assign mangled i6names so each overload emits as a distinct I6
+        // property. Without this, two `foo(int)` and `foo(int,int)` on the same object
+        // both emit as `with foo [...]` and I6 errors "Property given twice".
+        void assignObjectMethodOverloadMangling();
+        // Lazy version: when a call site has just resolved a method, mangle the entire
+        // overload set on the receiver's containing type so call text and emission agree
+        // on the property name. Called from resolution paths (bindMethodCall + optional
+        // chain) so the mangled i6name is set by the time the call site bakes its text.
+        void mangleOverloadSetForReceiver(const string& receiverTypeName, const string& methodName);
+        // For each param of `funcDef` whose type is a `byVal class` (not extern, not
+        // emitter, not on operator= itself — recursion guard), synthesize a per-(function,
+        // param) backing global and wire param.i6name to it. The emitter emits copy-in
+        // via operator= at routine entry. `classContext` is the enclosing class name when
+        // funcDef is a class member (used to disambiguate same-method-name across classes
+        // in the backing-global name); empty for top-level functions.
+        void synthesizeParamBackings(functionDef& funcDef, const string& classContext = "");
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
         void parsingWarning(string); //like parsingError but continues parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
@@ -192,12 +216,12 @@ class bglParser {
         bool processFunc(vector<token>& t, Qualifiers& q, abstractObject& c);
 
         // Parser handler methods — called from grammar handlers and processNextStatement.
-        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token());
+        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool isByVal=false);
         bool processEnumDeclaration(token, bool, token nameOverride=token());
         bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false);
         bool processEmitterValueDeclaration(token typeTok, token nameTok);
         bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false);
-        bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "");
+        bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "", bool isRef = false);
         bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false);
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
         bool processGrammarDeclaration(token nameOverride=token());

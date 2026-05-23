@@ -69,6 +69,10 @@ class i6Emitter{
         // sub-blocks of control-flow statements (if/for/while/do/switch/try-catch). Deduped by name
         // so the first occurrence wins — matches I6's single-declaration-per-header requirement.
         void collectBodyLocals(statementBlock* body, vector<variableDeclaration*>& out, set<string>& seen);
+        // Emit copy-in for each byVal-class param of the function — `backing._opeq(paramSlot)`
+        // — at routine entry. Called from both emitFunction (top-level routines) and emitClass
+        // (class member methods) with their respective body-indentation strings.
+        void emitParamCopyIns(functionDef* fd, const string& indent);
 
         void emit(vector<typeDef*>&);
         void generateI6(typeDef*);

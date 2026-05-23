@@ -51,6 +51,13 @@ class classDef:public typeDef{
         bool isEmitterClass = false;        // true for 'emitter class': no I6 backing, emitter members only
         bool isGlobalEmitterObject = false; // true for 'emitter Foo { }': singleton emitter namespace; accessed as Foo.method(), no instances
         bool isAlias = false;               // true for 'alias Foo : Parent { }': Beguile type that dissolves to parent for emission
+        // `byVal class Foo { ... }`: class instances passed as function parameters get
+        // copy-in via operator= at routine entry (value semantics). Default for classes
+        // is reference semantics (bare slot, mutations leak to caller). The marker is
+        // class-identity-only: NOT inherited by subclasses, NOT propagated through
+        // bases. Mutually exclusive with `extern`, `emitter`, `extend`, and inheriting
+        // from `object`. See [[project_class_typed_locals_gap]] (parameter section).
+        bool isByVal = false;
         // Walk the alias chain to find the I6 class name used in emitted output.
         // Alias classes delegate to their first base class; all others use their own name.
         std::string i6Name() const {
@@ -86,6 +93,14 @@ class paramDef:public abstractObject{
     public:
         typeDef type;
         string defaultValue;  // "" if no default; otherwise the default expression text
+        // Set by synthesizeParamBackings when the param's class is `byVal`. The compiler
+        // synthesizes a per-(function, param) global I6 backing object and emits a
+        // copy-in (`backing._opeq(passedArg)`) at routine entry, then routes source
+        // references to the param through `i6name` (the backing's name). Result:
+        // mutations inside the function body affect the local copy, not the caller's
+        // instance. Mirrors `variableDeclaration::isClassLocalWithBacking`.
+        bool isClassParamWithBacking = false;
+        string i6name;  // backing's I6 name when isClassParamWithBacking is true
 };
 
 //the function body
@@ -172,6 +187,23 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         // isConst: for globals, emits as I6 Constant; for class members, prevents reassignment (property still has runtime storage)
         bool isStatic = false;   // static members: class-level state, emitted as mangled I6 global
         bool isAlias = false;    // type alias member: `alias name for Type;` — compile-time type reference, no I6 backing
+        // Class-typed function local with synthesized static backing: at parse time we
+        // registered a global `_bglLocal_<func>_<name>` of the same type so the local is
+        // a real per-instance I6 object and `localname = expr` can dispatch operator=
+        // against actual field storage. Emitter must (a) skip this local from the I6
+        // routine signature (it's not a routine local — it's a reference to the synthesized
+        // global), and (b) emit per-call zero-init of the backing's fields at routine entry
+        // so call-to-call state doesn't leak. Synthesis is gated on the LHS class having
+        // stored fields AND not inheriting from `object` — tree-citizen classes keep
+        // bare-int-slot semantics + reference-semantics via inherited operator=(object).
+        // See [[project_class_typed_locals_gap]].
+        bool isClassLocalWithBacking = false;
+        // `ref` local: the user opted in to reference semantics for this variable. Skip
+        // backing synthesis, skip operator= dispatch on assignment, skip the no-operator=
+        // error — every assignment is plain pointer-alias. Same I6 emission as object-
+        // derived locals, but available for plain (non-tree-citizen) classes without
+        // forcing the user to write `operator =` or inherit from `object`.
+        bool isRefLocal = false;
         expression* declaredExpressionValue = nullptr;
         string initEmitterBody;  // raw i6 body if operator= is an emitter, else ""
         string initEmitterParam; // parameter name to substitute in the body

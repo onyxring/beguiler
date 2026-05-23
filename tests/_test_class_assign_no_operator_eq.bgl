@@ -1,0 +1,34 @@
+// EXPECT_ERROR: Type 'Window' has no operator=
+// EXPECT_ERROR: Declare 'operator ='
+//
+// A class with stored fields that doesn't inherit from `object` requires an explicit
+// `operator =` declaration before it can participate in class-typed assignment. Silent
+// pointer-aliasing here would surprise users expecting value-semantics field copy and
+// (because the I6 object name is a constant) produce broken I6 at the next stage.
+// Classes that DO inherit from object use reference semantics by convention — those
+// don't trip this error.
+//
+// Two trip sites are exercised: the assignment-statement path and the
+// variable-declaration-with-initializer path. Each emits the same error.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Window {
+    int width;
+    int height;
+}
+
+Window globalA;
+Window globalB;
+
+void main(){
+    // Trip 1: assignment statement.
+    globalA = globalB;
+    // Trip 2: variable-declaration-with-initializer (also errors on the same predicate).
+    Window local = globalB;
+    print(local.width);
+}

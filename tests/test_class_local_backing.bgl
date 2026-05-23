@@ -1,0 +1,93 @@
+// test_class_local_backing.bgl — class-typed function locals get synthesized backing.
+//
+// Without backing, two same-typed locals assigned from a factory pointer-alias to the
+// same instance — both would read the latest mutation. With per-(routine, local)
+// backing + per-call zero-init, each local has independent storage and operator=
+// dispatches against a real I6 object.
+//
+// The synthesis is gated on:
+//   - LHS class has stored fields (otherwise no state to back), AND
+//   - LHS class doesn't inherit from `object` (tree citizens keep reference semantics
+//     via inherited operator=(object); zero-initing their `parent`/`child`/etc. slots
+//     would yank them out of the world tree).
+//
+// Coverage:
+//   - Two locals of the same plain class assigned from a factory (assignment statement
+//     form); reads use the backing, so independent storage is observable.
+//   - Field-access reads on the LHS of a property write also resolve through backing.
+//   - Declaration-with-init form (`Window w = factory();`) dispatches non-emitter
+//     operator= against the backing — same as the assignment-statement form.
+//   - Declaration-with-init form with emitter operator= also substitutes the backing
+//     name for $self/$val.
+//   - Tree-citizen class as a local — backing NOT synthesized; reference semantics.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// Plain class with non-emitter user-declared operator= → backing synthesized.
+class Window {
+    int width;
+    int height;
+    Window operator = (Window v){
+        self.width = v.width;
+        self.height = v.height;
+        return self;
+    }
+}
+
+Window source;
+Window mkWin(int w, int h){
+    source.width = w;
+    source.height = h;
+    return source;
+}
+
+// Plain class with EMITTER operator= → backing synthesized; emitter body substitutes
+// $self/$val with the backing name at emit time (i6Emitter.cpp:1271-1278).
+class Tag {
+    int n;
+    emitter Tag operator = (Tag v){ $self.n = $v.n }
+}
+Tag tagSrc;
+Tag mkTag(int n){ tagSrc.n = n; return tagSrc; }
+
+// Tree-citizen class → backing NOT synthesized (object inheritance exempts it).
+class Room : object {
+    int visits = 0;
+}
+Room r1;
+Room r2;
+
+void main(){
+    // Assignment-statement form: dispatch via _opeq against backing.
+    Window boxA;
+    Window boxB;
+    boxA = mkWin(100, 200);
+    boxB = mkWin(300, 400);
+    int aw = boxA.width;
+    int ah = boxA.height;
+    int bw = boxB.width;
+    int bh = boxB.height;
+    boxA.height = boxA.width;
+
+    // Declaration-with-init form, non-emitter operator=: synthesized dispatch body
+    // `$target._opeq($v);` runs with $target substituted to the backing's i6name.
+    Window boxC = mkWin(500, 600);
+    int cw = boxC.width;
+
+    // Declaration-with-init form, emitter operator=: emitter body inlined with
+    // $self/$val substituted to the backing's i6name.
+    Tag t1 = mkTag(42);
+    int tn = t1.n;
+
+    // Tree-citizen path: locals are bare pointer slots; var-decl-init plain-aliases
+    // (matches assignment-statement plain-assign for tree-citizen locals — neither
+    // dispatches operator= since there's no per-local backing to target).
+    Room here;
+    here = r1;
+    here = r2;
+    Room there = r1;
+}
