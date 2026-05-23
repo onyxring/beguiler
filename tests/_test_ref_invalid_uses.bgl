@@ -1,0 +1,25 @@
+// EXPECT_ERROR: 'ref' is only valid on local variable declarations
+//
+// `ref` may only qualify a function-local variable. Other contexts get rejected:
+//   - File-scope: globals don't need ref (they're already real I6 objects with
+//     operator= dispatch).
+//   - With `const`: orthogonal qualifiers; combination is meaningless.
+//   - With `extern`: ref is about a local's semantics; extern declarations don't
+//     have a body to apply to.
+//
+// This test exercises the file-scope rejection; the qualifier-combination errors
+// are covered by code-path inspection.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Box { int x; int y; }
+Box boxSrc;
+
+// File-scope `ref` — should error.
+ref Box bad = boxSrc;
+
+void main(){}

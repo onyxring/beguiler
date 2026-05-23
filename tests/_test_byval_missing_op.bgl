@@ -1,0 +1,19 @@
+// EXPECT_ERROR: byVal class
+// EXPECT_ERROR: has no operator=
+//
+// A `byVal class` used as a function parameter requires `operator =` declared on
+// the class — the per-call copy-in dispatches it to copy field values from the
+// caller's instance into the synthesized backing. Without operator=, there's no
+// routine to dispatch to.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+byVal class Vec {
+    int x; int y;
+    // No operator= declared.
+}
+Vec srcVec;
+void uses(Vec v){       // triggers the param-backing synthesis → error
+    v.x = 0;
+}
+void main(){
+    uses(srcVec);
+}

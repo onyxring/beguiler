@@ -1,0 +1,71 @@
+// `byVal class Foo { ... }` marks a class as a value type for parameter passing.
+//
+// Without byVal (default): class params are bare I6 routine locals holding the caller's
+// object reference. Mutations through the param mutate the caller's instance.
+//
+// With byVal: the compiler synthesizes a per-(function, param) backing global and emits
+// `backing._opeq(param)` at routine entry. Inside the body, source references to the
+// param resolve to the backing's name, so reads/writes go through the local copy.
+// Mutations don't leak back to the caller.
+//
+// Coverage:
+//   - Top-level function with byVal class param → copy-in emitted.
+//   - Top-level function with non-byVal class param → no copy-in (reference semantics, current).
+//   - Class member method with byVal class param → copy-in emitted with class-qualified
+//     backing name (so same-method-name across classes doesn't collide).
+//   - operator= on a byVal class is exempt from param-backing (would infinite-recurse).
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// byVal class with operator= — required for the copy-in to have a routine to dispatch.
+byVal class Vec {
+    int x;
+    int y;
+    Vec operator = (Vec v){ self.x = v.x; self.y = v.y; return self; }
+}
+
+// Non-byVal class — params stay reference-semantics.
+class Window {
+    int w;
+    int h;
+    Window operator = (Window v){ self.w = v.w; self.h = v.h; return self; }
+}
+
+Vec srcVec;
+Window srcWin;
+
+// Top-level function, byVal class param → backing synthesized + copy-in.
+void mutateVec(Vec v){
+    v.x = 999;
+}
+
+// Top-level function, non-byVal class param → no backing, plain reference.
+void mutateWin(Window w){
+    w.w = 999;
+}
+
+// Class member method with byVal class param. Backing name uses the class as a prefix.
+byVal class Mat {
+    int a; int b;
+    Mat operator = (Mat m){ self.a = m.a; self.b = m.b; return self; }
+    int dot(Vec other){            // Vec is byVal — `other` gets copy-in too
+        other.x = 0;                // mutation lost; caller's Vec untouched
+        return self.a * other.y;
+    }
+}
+Mat srcMat;
+
+void main(){
+    srcVec.x = 1; srcVec.y = 2;
+    mutateVec(srcVec);              // copy-in dispatches; caller untouched
+
+    srcWin.w = 100; srcWin.h = 200;
+    mutateWin(srcWin);              // reference; caller mutated
+
+    srcMat.a = 10; srcMat.b = 20;
+    int d = srcMat.dot(srcVec);     // class method with byVal Vec param
+}

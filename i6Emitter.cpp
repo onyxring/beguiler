@@ -135,6 +135,37 @@ void i6Emitter::collectBodyLocals(statementBlock* body, vector<variableDeclarati
     }
 }
 
+// Emit copy-in for each byVal-class param of `fd`. The param's bare I6 routine local
+// (`p->name`) still holds the caller's passed-in object reference; the call dispatches
+// operator= from the synthesized backing global (`p->i6name`) with the bare local as
+// source. After this, source references to the param resolve (via qualifyIdentifier) to
+// p->i6name — so reads/writes inside the body go through the local copy, not the
+// caller's instance. operator= methods are exempt at the synthesizeParamBackings level
+// (self-recursion guard), so this loop is a no-op for them.
+void i6Emitter::emitParamCopyIns(functionDef* fd, const string& indent){
+    if(!fd) return;
+    for(paramDef* p : fd->params){
+        if(!p->isClassParamWithBacking) continue;
+        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(p->type.name));
+        if(!cls) continue;
+        functionDef* assignOp = nullptr;
+        function<void(classDef*)> findOp = [&](classDef* c){
+            if(!c || assignOp) return;
+            for(typeMember* m : c->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->name == "=" && fd->params.size() == 1
+                       && (fd->params[0]->type.name == p->type.name || fd->params[0]->type.name == "var")){
+                        assignOp = fd; return;
+                    }
+            for(classDef* base : c->baseClasses) findOp(base);
+        };
+        findOp(cls);
+        if(!assignOp) continue;  // parser already errored if missing; defensive
+        const string& opName = assignOp->i6name.empty() ? assignOp->dName() : assignOp->i6name;
+        out << format("{0}{1}.{2}({3});\n", indent, p->i6name, opName, p->name);
+    }
+}
+
 // Check if a function would overflow Z-machine's 15-local limit (needs _bglFrm slot too → 14)
 // Returns true if the function needs the frame pool (body locals overflow I6's 14-slot limit).
 // Param overflow (>5 params) is handled separately via _bglXPn globals.
@@ -1108,6 +1139,9 @@ void i6Emitter::emitClass(classDef* classNode){
                 out << ";\n";
                 if(currentSpillCount > 0)
                     out << format("        _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+                // Per-call copy-in for byVal-class params on class member methods (same
+                // shape as top-level functions, just with a deeper indent).
+                emitParamCopyIns(fd, "        ");
                 if(body != nullptr)
                     for(statement* s : body->statements)
                         emitStatement(s, "        ");
@@ -1159,14 +1193,48 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     if(body != nullptr){
         set<string> seen;
         collectBodyLocals(body, locals, seen);
-        for(variableDeclaration* vd : locals)
+        for(variableDeclaration* vd : locals){
+            // Class-typed locals with synthesized backing aren't I6 routine locals — they
+            // emit as references to a global I6 object (the backing was registered at parse
+            // time as `_bglLocal_<func>_<name>`). Skip them from the local-vars list.
+            if(vd->isClassLocalWithBacking) continue;
             if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
                 out << format(" {0}", spillName(vd->name));
+        }
     }
     if(currentSpillCount > 0) out << " _bglFrm";
     out << ";\n";
     if(currentSpillCount > 0)
         out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+
+    // Per-call zero-init of class-typed local backings. Backing instances are file-scope
+    // I6 objects (so their state would persist across calls without this). Zeroing every
+    // stored field at routine entry restores value-semantics: each call sees a fresh
+    // local. Walks class hierarchy so derived classes zero inherited fields too — safe
+    // here because the synthesis is gated on !inheritsFromObject upstream.
+    if(body != nullptr){
+        for(variableDeclaration* vd : locals){
+            if(!vd->isClassLocalWithBacking) continue;
+            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+            if(!cls) continue;
+            function<void(classDef*)> zeroFields = [&](classDef* c){
+                if(!c) return;
+                for(classDef* base : c->baseClasses) zeroFields(base);
+                for(typeMember* m : c->members){
+                    auto* fm = dynamic_cast<variableDeclaration*>(m);
+                    if(!fm || fm->isStatic) continue;
+                    if(fm->type.name == "attributelist") continue;
+                    if(fm->type.name == "grammarrulelist" || fm->type.name == "grammarrule") continue;
+                    out << format("    {0}.{1} = 0;\n", vd->i6name, fm->dName());
+                }
+            };
+            zeroFields(cls);
+        }
+    }
+
+    // Per-call copy-in for byVal-class params (top-level functions). Same shape applies
+    // to class member methods — emitClass calls the same helper with its own indent.
+    emitParamCopyIns(funcNode, "    ");
 
     // Local arrays: framePool-backed allocation per function call (recursion-safe).
     // For each sized word array declared inside the body, allocate a slice from
@@ -1230,30 +1298,38 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     }
     if(typeid(*stmt) == typeid(variableDeclaration)){
         variableDeclaration* var = (variableDeclaration*)stmt;
+        // For class-typed locals with synthesized backing, `$self`/`$val`/`$target`
+        // and the plain-assign LHS must resolve to the backing object name (i6name),
+        // not the bare local int slot (name). Otherwise emitter operator= bodies run
+        // against `nothing.field`, the synthesized `$target._opeq(...)` dispatch
+        // misses the backing entirely, and the bare-assign fallback writes to the
+        // unused local slot while the backing stays at its zero-init state.
+        const string& selfText = var->isClassLocalWithBacking && !var->i6name.empty()
+                                   ? var->i6name : spillName(var->name);
         // emit initializer assignment if present
         if(var->declaredExpressionValue != nullptr && (!var->declaredExpressionValue->text().empty() || !var->interpSegments.empty())){
             if(!var->interpSegments.empty() && !var->initEmitterBody.empty()){
                 // Interpolated string literal: split emitter body at parameter, splice print-block
                 string b = var->initEmitterBody;
-                b = replaceWord(b, "$self", spillName(var->name));
-                b = replaceWord(b, "$val",  spillName(var->name));
+                b = replaceWord(b, "$self", selfText);
+                b = replaceWord(b, "$val",  selfText);
                 emitInterpolatedEmitterBody(b, var->initEmitterParam, var->interpSegments, indent);
             } else if(!var->initEmitterBody.empty()){
                 string b = var->initEmitterBody;
                 b = replaceWord(b, "$" + var->initEmitterParam, exprText(var->declaredExpressionValue));
-                b = replaceWord(b, "$self",              spillName(var->name));
-                b = replaceWord(b, "$val",               spillName(var->name));
-                b = replaceWord(b, "$target",            spillName(var->name));
+                b = replaceWord(b, "$self",              selfText);
+                b = replaceWord(b, "$val",               selfText);
+                b = replaceWord(b, "$target",            selfText);
                 size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
                 size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
                 out << format("{0}{1};\n", indent, b);
             } else {
                 string rhs = exprText(var->declaredExpressionValue);
                 if(rhs.find("$target") != string::npos){
-                    rhs = replaceWord(rhs, "$target", spillName(var->name));
+                    rhs = replaceWord(rhs, "$target", selfText);
                     out << format("{0}{1};\n", indent, rhs);
                 } else {
-                    out << format("{0}{1} = {2};\n", indent, spillName(var->name), rhs);
+                    out << format("{0}{1} = {2};\n", indent, selfText, rhs);
                 }
             }
         }

@@ -1,0 +1,11 @@
+// EXPECT_ERROR: byVal class
+// EXPECT_ERROR: cannot inherit from 'object'
+//
+// `byVal class` is value semantics; inheriting from `object` makes the class a
+// tree citizen (reference semantics via the world tree). The combination is
+// contradictory and rejected at the class declaration.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+byVal class TreeyVec : object {
+    int x; int y;
+}
+void main(){}

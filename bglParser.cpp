@@ -234,6 +234,129 @@ size_t bglParser::findInfEndDirective(const std::string& text){
 //
 // Masking states (mirroring findInfEndDirective): I6 `!` line comments, `"..."` strings,
 // `'...'` char/dict literals. Same-file scope: included files (.h, .bgl) are not scanned.
+
+// Build a mangled I6 property name for an overloaded object/class method, e.g.
+// `getAll(func<bool,object>)` → `getAll_1_func`. Format: <name>_<arity> followed by
+// `_<paramTypeName>` for each parameter. Generic suffixes are stripped so `func<...>`
+// and `array<T>` collapse to `func` / `array` — overload disambiguation runs on the
+// outer type, not template args. Used by mangleOverloadSet below and (via the same
+// helper) by call-site emission paths.
+static string mangleObjectMethodName(functionDef* fd){
+    string safe = fd->name + "_" + to_string(fd->params.size());
+    for(paramDef* p : fd->params){
+        string t = p->type.name;
+        size_t lt = t.find('<');
+        if(lt != string::npos) t = t.substr(0, lt);
+        safe += "_";
+        safe += t.empty() ? "var" : t;
+    }
+    return safe;
+}
+
+// Helper: mangle the i6name of every non-emitter member of an overload set on `members`.
+// Members already carrying an i6name (e.g. operator overloads, which were mangled at parse
+// time) are preserved. Returns whether any member was newly mangled.
+static void mangleOverloadSet(vector<typeMember*>& members, const string& methodName){
+    vector<functionDef*> group;
+    for(typeMember* m : members)
+        if(auto* fd = dynamic_cast<functionDef*>(m))
+            if(fd->name == methodName && !fd->isEmitter && !fd->isPrePassStub)
+                group.push_back(fd);
+    if(group.size() < 2) return;
+    for(functionDef* fd : group)
+        if(fd->i6name.empty())
+            fd->i6name = mangleObjectMethodName(fd);
+}
+
+void bglParser::assignObjectMethodOverloadMangling(){
+    // Walk every object and class; mangle every same-name non-emitter method group.
+    // Emitters are inlined at call sites — they don't emit as I6 properties, so they can't
+    // collide. This pass is the safety net for overload sets that no call site references
+    // (the call-site path mangles eagerly via mangleOverloadSetForReceiver).
+    auto manglePerType = [](vector<typeMember*>& members){
+        set<string> seen;
+        for(typeMember* m : members)
+            if(auto* fd = dynamic_cast<functionDef*>(m))
+                if(!fd->isEmitter && !fd->isPrePassStub && seen.insert(fd->name).second)
+                    mangleOverloadSet(members, fd->name);
+    };
+    for(typeDef* g : languageService.globals){
+        if(auto* od = dynamic_cast<objectDef*>(g))       manglePerType(od->members);
+        else if(auto* cd = dynamic_cast<classDef*>(g))   manglePerType(cd->members);
+    }
+}
+
+// Forward declarations for helpers defined later in the file. synthesizeParamBackings
+// needs them but sits much earlier than the definitions.
+static string mangleOperatorName(const string& opName);
+static string typeDisplayName(const string& typeName);
+
+void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& classContext){
+    // operator= IS the field-copy machinery — its body is what the value-semantic
+    // copy-in dispatches to. If we synthesized param backing for operator=, the
+    // copy-in would dispatch operator= on its own param, recursing infinitely.
+    // Skip operator= methods entirely.
+    if(funcDef.name == "=") return;
+    // Emitter routines are inlined at every call site — they have no I6 routine
+    // and no param-binding step. Param backing only makes sense for real routines.
+    if(funcDef.isEmitter) return;
+    // Extern declarations are bound to existing I6 routines — Beguile doesn't get
+    // to insert copy-in code at their entry.
+    if(funcDef.isExternal) return;
+
+    for(paramDef* p : funcDef.params){
+        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(p->type.name));
+        if(!cls) continue;
+        if(!cls->isByVal) continue;  // class-level opt-in is the gate
+
+        // Look up operator=(SameType) for the entry copy-in, then var-wildcard fallback.
+        // Required for byVal classes when used as a param — error if missing.
+        functionDef* assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [&](typeMember* m){
+            auto* fn = dynamic_cast<functionDef*>(m);
+            return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name==p->type.name;
+        }));
+        if(!assignOp) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [&](typeMember* m){
+            auto* fn = dynamic_cast<functionDef*>(m);
+            return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name=="var";
+        }));
+        if(!assignOp){
+            parsingError(format("byVal class '{0}' used as parameter '{1}' has no operator=. Declare 'operator =' on the class to define copy-in semantics for value-typed parameters.",
+                typeDisplayName(p->type.name), p->name));
+            continue;
+        }
+        if(!assignOp->isEmitter && assignOp->i6name.empty())
+            assignOp->i6name = mangleOperatorName(assignOp->name);
+        // Synthesize a global I6 object backing. Name includes the class context (if any)
+        // so same-method-name across different classes doesn't collide:
+        //   top-level fn `f` with param `p` → `_bglParam_f_p`
+        //   class `Foo` method `f` with param `p` → `_bglParam_Foo_f_p`
+        string backingName = classContext.empty()
+            ? "_bglParam_" + funcDef.name + "_" + p->name
+            : "_bglParam_" + classContext + "_" + funcDef.name + "_" + p->name;
+        variableDeclaration* backing = new variableDeclaration();
+        backing->name = backingName;
+        backing->displayName = backingName;
+        backing->type = p->type;
+        backing->src = funcDef.src;
+        languageService.registerInstance(*backing);
+        p->i6name = backingName;
+        p->isClassParamWithBacking = true;
+    }
+}
+
+void bglParser::mangleOverloadSetForReceiver(const string& receiverTypeName, const string& methodName){
+    if(receiverTypeName.empty() || methodName.empty()) return;
+    // Strip a generic suffix on the receiver type name (`array<int>` → `array`) since
+    // overload disambiguation runs on the outer type. Mirrors what bindMethodCall does
+    // for templated receivers.
+    string base = receiverTypeName;
+    auto lt = base.find('<');
+    if(lt != string::npos) base = base.substr(0, lt);
+    typeDef& td = languageService.getType(base);
+    if(auto* od = dynamic_cast<objectDef*>(&td))      mangleOverloadSet(od->members, methodName);
+    else if(auto* cd = dynamic_cast<classDef*>(&td))  mangleOverloadSet(cd->members, methodName);
+}
+
 void bglParser::detectInfModeI6Collisions(){
     if(languageService.infHeader.empty() && languageService.infTrailer.empty()) return;  // not .inf-mode
 
@@ -878,7 +1001,7 @@ GrammarMatch bglParser::matchGrammar(token& firstToken) {
 bool bglParser::processEnum(vector<token>& t, Qualifiers& q, abstractObject&)
     { return processEnumDeclaration(t[0], q.isExtern, t[1]); }
 bool bglParser::processClass(vector<token>& t, Qualifiers& q, abstractObject&)
-    { return processClassDeclaration(t[0], q.isExtern, q.isExtend, q.isEmitter, q.isAlias, t[1]); }
+    { return processClassDeclaration(t[0], q.isExtern, q.isExtend, q.isEmitter, q.isAlias, t[1], q.isByVal); }
 bool bglParser::processGrammar(vector<token>& t, Qualifiers&, abstractObject&)
     { return processGrammarDeclaration(t[1]); }
 bool bglParser::processArray(vector<token>& t, Qualifiers& q, abstractObject& c)
@@ -888,7 +1011,7 @@ bool bglParser::processRoutine(vector<token>& t, Qualifiers& q, abstractObject& 
 bool bglParser::processObject(vector<token>& t, Qualifiers& q, abstractObject&)
     { t[0] = consumeTypeToken(t[0]); return processObjectDeclaration(t[0], t[1], q.isExtern, "", "", true, q.isEmitter); }
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
-    { t[0] = consumeTypeToken(t[0]); return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst); }
+    { t[0] = consumeTypeToken(t[0]); return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef); }
 bool bglParser::processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c)
     { t[0] = consumeTypeToken(t[0]); return processTypedObjectDeclaration(t[0], t[1], t[3], q, c); }
 bool bglParser::processAliased(vector<token>& t, Qualifiers& q, abstractObject& c)
@@ -1800,7 +1923,7 @@ bool bglParser::processFunc(vector<token>& t, Qualifiers& q, abstractObject& ctx
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, name, q.isExtern, objectClassName, i6alias, true, q.isEmitter);
     else
-        return processVariableDeclaration(typeTok, name, symbol, ctx, q.isExtern, q.isConst, i6alias);
+        return processVariableDeclaration(typeTok, name, symbol, ctx, q.isExtern, q.isConst, i6alias, q.isRef);
 }
 
 bool bglParser::processThrow(vector<token>& t, Qualifiers&, abstractObject& ctx) {
@@ -2098,7 +2221,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
     return false;
 }
 
-bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride){
+bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool isByVal){
     if(getCurrentCompileContext()!=eCompileContext::global) parsingError(format("Class declarations are only allowed in global context:'{0}'", (string) tok));
 
     token nameTok = nameOverride.tokenType != eTokenType::unknown ? nameOverride : file.getToken({eTokenType::identifier, eTokenType::dataType});
@@ -2119,6 +2242,17 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     if(!isExtend){
         if(isEmitterClass) newClass.isEmitterClass = true;
         if(isAlias)        newClass.isAlias = true;
+        if(isByVal)        newClass.isByVal = true;
+    }
+    // `byVal` validation: rejects combinations that can't sensibly support a class-
+    // controlled copy-in path. `extend byVal class` is rejected because byVal is a
+    // class-identity decision that belongs on the original declaration; an extend
+    // should pick up the existing class's identity, not re-declare it.
+    if(isByVal){
+        if(isExtend)       parsingError(format("'extend class {0}': 'byVal' belongs on the original class declaration, not on extend.", (string)nameTok));
+        if(isExternal)     parsingError(format("'extern byVal class {0}': extern classes are I6-defined and Beguile can't insert copy-in code at their use sites.", (string)nameTok));
+        if(isEmitterClass) parsingError(format("'emitter byVal class {0}': emitter classes have no stored fields; value semantics has nothing to copy.", (string)nameTok));
+        if(isAlias)        parsingError(format("'alias byVal class {0}': alias classes dissolve to their parent for emission; the marker has no effect.", (string)nameTok));
     }
 
     classDef* savedClass = currentClass;
@@ -2217,6 +2351,20 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             else { checkInheritanceCycle(parent, parentTok.originalValue); newClass.baseClasses.push_back(parent); }
             tok = file.getToken();
         } while(tok.is(","));
+    }
+    // `byVal class Foo : object` — contradictory: object-derived classes are tree
+    // citizens (reference semantics via the world tree), and byVal is value semantics.
+    // Walk bases transitively for the check.
+    if(newClass.isByVal){
+        function<bool(classDef*)> inheritsObj = [&](classDef* c) -> bool {
+            if(!c) return false;
+            if(c->name == "object") return true;
+            for(classDef* base : c->baseClasses) if(inheritsObj(base)) return true;
+            return false;
+        };
+        for(classDef* base : newClass.baseClasses)
+            if(inheritsObj(base))
+                parsingError(format("'byVal class {0}': value-semantic classes cannot inherit from 'object' (tree-citizen reference semantics conflicts with value semantics).", newClass.dName()));
     }
     // Marker-form extern pool class (`extern class Foo[];`) allows no body — it's purely a
     // declaration that the type exists and is pooled in I6. Skip body parsing and return.
@@ -2355,6 +2503,11 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(isExplicitConversion && funcDef.name != "operator()")
                 parsingError("'explicit' is only valid on conversion operators (operator())");
             processParameterList(funcDef);
+            // Synthesize per-(class, method, param) backing globals for byVal-class params.
+            // Same machinery as the top-level call from processRoutineDeclaration; pass the
+            // enclosing class name as context so backings on same-named methods across
+            // classes don't collide.
+            synthesizeParamBackings(funcDef, newClass.dName());
             // operator auto: no params, no body, max one per class
             if(funcDef.name == "auto"){
                 if(!funcDef.params.empty())
@@ -3841,15 +3994,20 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         }
         return qualifiedHead + "." + tail;
     }
-    // Tier 1a: params of current (possibly nested) context
+    // Tier 1a: params of current (possibly nested) context. byVal-class params have
+    // a synthesized backing (isClassParamWithBacking); substitute the backing's i6name
+    // so source references resolve to the local copy instead of the bare routine local
+    // (which still holds the caller's object reference for the copy-in to read).
     if(func != nullptr)
         for(paramDef* p : func->params)
-            if(p->name == name) return name;
-    // Tier 1b: locals in current block
+            if(p->name == name) return p->isClassParamWithBacking && !p->i6name.empty() ? p->i6name : name;
+    // Tier 1b: locals in current block. For class-typed locals with synthesized static
+    // backing (isClassLocalWithBacking), substitute the i6name so source references like
+    // `w.width` emit against the global backing object instead of the bare-int local slot.
     if(body != nullptr)
         for(statement* s : body->statements)
             if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                if(vd->name == name) return name;
+                if(vd->name == name) return vd->isClassLocalWithBacking && !vd->i6name.empty() ? vd->i6name : name;
     // Tier 1c: locals in ancestor blocks (when inside nested if/for/while/etc.).
     // Walks the activeBlockStack — each block was pushed when its compile context opened.
     // This handles the case where the AST is still being built (parent statements haven't
@@ -3858,7 +4016,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         if(blk != nullptr && blk != body)
             for(statement* s : blk->statements)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                    if(vd->name == name) return name;
+                    if(vd->name == name) return vd->isClassLocalWithBacking && !vd->i6name.empty() ? vd->i6name : name;
     // Tier 2: current object/class members (variables and methods) → qualify with self
     // Walks the full class hierarchy (depth-first through baseClasses) so inherited members
     // from multiple bases are reachable as bare identifiers inside method bodies.
@@ -4518,6 +4676,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
             if(matchCount == 1){
                 mm.method = sole;
                 finalizeCallArgs(args, namedArgNames, interpSegmentsPerArg, mm.method);
+                mangleOverloadSetForReceiver(objType, methodName);
                 return mm.method;
             }
         }
@@ -4561,6 +4720,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
             methodName, typeDisplayName(objType), provided, detail));
     }
     finalizeCallArgs(args, namedArgNames, interpSegmentsPerArg, mm.method);
+    mangleOverloadSetForReceiver(objType, methodName);
     return mm.method;
 }
 
@@ -4725,6 +4885,39 @@ static int operatorPrecedence(const string& op){
 static const vector<string> kPrecedenceOps = {
     "*","/","%","+","-","<<",">>","<","<=",">",">=","==","!=","?=","=~","&","^","|","&&","||"
 };
+
+// True if a class has at least one stored (non-emitter, non-static, non-attribute, non-grammar)
+// data field declared directly on it — i.e. a field whose value would need to be copied for
+// a value-semantics assignment to be meaningful. Used by the operator= dispatch paths to
+// distinguish "this class carries state worth copying" from "this class is interface-like
+// (only emitter methods)". Own-members-only by design.
+static bool classHasStoredFields(classDef* cls){
+    if(!cls) return false;
+    for(typeMember* m : cls->members){
+        auto* vd = dynamic_cast<variableDeclaration*>(m);
+        if(!vd || vd->isStatic) continue;
+        if(vd->type.name == "attributelist") continue;
+        if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue;
+        return true;
+    }
+    return false;
+}
+
+// True if the class participates in the I6 world tree — direct or transitive inheritance
+// from `object`. Tree-citizen classes use reference semantics by convention (`Room a = b;`
+// means "a now refers to the same room as b," not "copy b's fields into a"); their stored
+// fields live as I6 properties on the underlying object and are never field-copied. This
+// gates the value-semantics-operator= error so it fires only for plain (non-tree) classes.
+// The hardcoded "object" name is the same coupling flagged in
+// [[compiler-blr-coupling-audit-2026-05-12]] item #1; revisit when the world-tree/utility
+// split lands.
+static bool inheritsFromObject(classDef* cls){
+    if(!cls) return false;
+    if(cls->name == "object") return true;
+    for(classDef* base : cls->baseClasses)
+        if(inheritsFromObject(base)) return true;
+    return false;
+}
 
 // Build a valid I6 property identifier from an operator symbol, e.g. "=" → "_opeq".
 // Used so non-emitter operator routines can be defined as I6 methods and called as
@@ -5038,6 +5231,8 @@ Qualifiers bglParser::parseQualifiers(token& tok){
         else if(tok.is(token::extend))             { q.isExtend   = true; advance(); }
         else if(tok.is("alias"))                   { q.isAlias    = true; advance(); }
         else if(tok.is("default"))                 { q.isDefault  = true; advance(); }
+        else if(tok.is("ref"))                     { q.isRef      = true; advance(); }
+        else if(tok.is("byval"))                   { q.isByVal    = true; advance(); }
         else break;
     }
     // Validate nonsensical combinations
@@ -5837,7 +6032,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             }
                         } else {
                             // Non-emitter method: emit as subscriptText.method(args)
-                            string call = subscriptText + "." + member.value + "(";
+                            const string& callName = method->i6name.empty() ? member.value : method->i6name;
+                            string call = subscriptText + "." + callName + "(";
                             for(size_t pi = 0; pi < pal.args.size(); pi++){
                                 if(pi > 0) call += ", ";
                                 call += pal.args[pi]->text();
@@ -5971,6 +6167,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         MethodMatch mm = resolveMethod(currentType, optTemp, methName, callArgs);
                         functionDef* method = mm.method;
                         if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, typeDisplayName(currentType)));
+                        mangleOverloadSetForReceiver(currentType, methName);
                         if(method->isEmitter){
                             if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                                 string b = processBglConditionals(blk->i6Body);
@@ -5983,7 +6180,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 injText += " " + optTemp + " = " + b + ";";
                             }
                         } else {
-                            string call = optTemp + "." + methName + "(";
+                            const string& callName = method->i6name.empty() ? methName : method->i6name;
+                            string call = optTemp + "." + callName + "(";
                             for(size_t i = 0; i < callArgs.size(); i++){
                                 if(i > 0) call += ", ";
                                 call += callArgs[i]->text();
@@ -6037,6 +6235,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             MethodMatch mm2 = resolveMethod(currentType, optTemp, methName, callArgs);
                             functionDef* method = mm2.method;
                             if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, typeDisplayName(currentType)));
+                            mangleOverloadSetForReceiver(currentType, methName);
                             if(method->isEmitter){
                                 if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                                     string b = processBglConditionals(blk->i6Body);
@@ -6049,7 +6248,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                     injText += " " + optTemp + " = " + b + ";";
                                 }
                             } else {
-                                string call = optTemp + "." + methName + "(";
+                                const string& callName = method->i6name.empty() ? methName : method->i6name;
+                                string call = optTemp + "." + callName + "(";
                                 for(size_t i = 0; i < callArgs.size(); i++){ if(i > 0) call += ", "; call += callArgs[i]->text(); }
                                 call += ")";
                                 injText += " " + optTemp + " = " + call + ";";
@@ -6237,8 +6437,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 expr->tokens.push_back(b);
                             }
                         } else {
-                            // non-emitter: emit verbatim as obj.method(args)
-                            string call = objName + "." + methName + "(";
+                            // non-emitter: emit verbatim as obj.method(args) (or obj.<mangled>(args)
+                            // if this method is part of an overload set).
+                            const string& callName = method->i6name.empty() ? methName : method->i6name;
+                            string call = objName + "." + callName + "(";
                             for(size_t i = 0; i < callArgs.size(); i++){
                                 if(i > 0) call += ", ";
                                 call += callArgs[i]->text();
@@ -6442,9 +6644,16 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         } else if(isAliasMember) {
                             continue;  // re-enter loop with cur set to alias type
                         } else if(!isStaticAccess && !isValueEmitterAccess) {
-                            // Object property access: emit as obj.prop
+                            // Object property access: emit as obj.prop. Route obj through
+                            // qualifyIdentifier so a class-typed local with synthesized
+                            // backing (isClassLocalWithBacking) emits as the backing's
+                            // i6name instead of the bare local slot — otherwise the read
+                            // would go through the int slot (= `nothing`) and miss the
+                            // backing object's properties entirely.
                             string propType = resolvePathType(cur.value + "." + member.value, func, body);
-                            string accessText = cur.value + "." + member.value;
+                            string objText = func != nullptr ? qualifyIdentifier(cur.value, func, body, member.value) : cur.value;
+                            if(objText.empty()) objText = cur.value;
+                            string accessText = objText + "." + member.value;
                             // Cast precedence: `(T)obj.prop` means cast applies to the property
                             // access result, not to the bare `obj`. If castType is set here, run
                             // it through applyCastConversion against the property's resolved type.
@@ -6748,7 +6957,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     expr->tokens.push_back(b);
                 }
             } else {
-                string call = selfText + "." + methName + "(";
+                const string& callName = method->i6name.empty() ? methName : method->i6name;
+                string call = selfText + "." + callName + "(";
                 for(size_t i = 0; i < callArgs.size(); i++){
                     if(i > 0) call += ", ";
                     call += callArgs[i]->text();
@@ -7167,7 +7377,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     pal.args, namedArgNames, interpSegs);
                 functionCallStatement& callStmt = *(new functionCallStatement());
                 callStmt.src = stmtLoc;
-                callStmt.functionName = subscriptText + "." + memberName;
+                callStmt.functionName = subscriptText + "." + (method->i6name.empty() ? memberName : method->i6name);
                 callStmt.args = pal.args;
                 callStmt.namedArgNames = namedArgNames;
                 callStmt.interpSegmentsPerArg = interpSegs;
@@ -7282,6 +7492,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
 
         // look up the left-hand variable's type using original (unqualified) name
         typeDef* leftType = nullptr;
+        bool lhsIsRefLocal = false;     // set true if the bare LHS resolves to a `ref` local
         string emitterSelfForLhs = lhsOriginal;  // $self value for emitter substitution
 
         size_t lhsDot = lhsOriginal.rfind('.');
@@ -7323,7 +7534,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 if(leftType == nullptr && body != nullptr)
                     for(statement* s : body->statements)
                         if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                            if(vd->name == lhsOriginal){ leftType = &vd->type; break; }
+                            if(vd->name == lhsOriginal){
+                                leftType = &vd->type;
+                                if(vd->isRefLocal) lhsIsRefLocal = true;
+                                break;
+                            }
                 if(leftType == nullptr && currentObject != nullptr)
                     for(typeMember* m : currentObject->members)
                         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -7350,7 +7565,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         // helper: apply operator= emitter lookup to an assignment node for a given rhs expression
         auto resolveEmitter = [&](assignmentStatement& a, expression* val){
             a.emitterSelf = emitterSelfForLhs;  // always record $self for this assignment
-            if(classType != nullptr && val != nullptr){
+            // `ref` locals opt out of operator= dispatch entirely: every assignment is
+            // plain pointer-alias. Skip the dispatch lookups + the silent-emission error,
+            // and skip the type-compatibility fallback so the plain assignment emits as-is.
+            if(classType != nullptr && val != nullptr && !lhsIsRefLocal){
                 string valueTypeName = val->resolvedType;
                 if(!valueTypeName.empty()){
                     // Two-pass emitter lookup first — explicit operator= emitters always beat raw type compatibility
@@ -7403,7 +7621,16 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             found = true;
                         }
                     }
+                    bool foundViaOperatorEq = found;
                     if(!found) found = isTypeCompatible(valueTypeName, leftType->name);
+                    // Silent value-semantics gap: TypeCompatible let it through but no
+                    // operator= matched, AND the LHS class carries its own stored fields,
+                    // AND it isn't a world-tree citizen (object-derived classes use
+                    // reference semantics by convention). Force the user to declare
+                    // operator= so copy semantics aren't a surprise.
+                    if(found && !foundViaOperatorEq && classHasStoredFields(classType) && !inheritsFromObject(classType))
+                        parsingError(format("Type '{0}' has no operator=. Declare 'operator =' on the class to define copy semantics for its fields, mark the local as 'ref' to opt into pointer-reference semantics, or inherit from 'object' for tree-citizen reference semantics.",
+                            typeDisplayName(leftType->name)));
                     if(!found){
                         // Fallback: check if RHS type has emitter LhsType operator(){}
                         classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(valueTypeName));
@@ -7718,6 +7945,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                                                        callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
                                                        recvElemType);
                 cls = dynamic_cast<classDef*>(&languageService.getType(objectType));
+                // Non-emitter overload sets carry a mangled i6name (assigned by
+                // mangleOverloadSetForReceiver inside bindMethodCall). Rewrite the
+                // call statement's functionName so emission targets the mangled property.
+                if(!method->isEmitter && !method->i6name.empty())
+                    callStmt.functionName = objectPath + "." + method->i6name;
                 // if emitter, pre-substitute $self, $prop, and $class
                 if(method->isEmitter)
                     if(auto* blk = dynamic_cast<i6Block*>(method->body)){
@@ -8020,7 +8252,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
 //--      int myParam)
 //--      int myParam=5) 
 //--      int myParam=5, ...
-bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst, string i6alias){
+bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst, string i6alias, bool isRef){
     // Ban bare `array` as a type — every array variable must declare its element type.
     // `array<T>` / `array<char>` are handled earlier via processArrayDeclaration and never
     // reach here as a plain variable declaration.
@@ -8051,6 +8283,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     if(!i6alias.empty()) varDecl.i6name = i6alias;
     varDecl.isExternal=isExternal;
     varDecl.isConst=isConst;
+    varDecl.isRefLocal=isRef;
     // For func<...> types, getType returns the base "func" type. Set the full parameterized name.
     {
         string dtLower = (string)dataType;
@@ -8060,6 +8293,20 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
 
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+
+    // `ref` is only valid on function-local declarations: it overrides the default
+    // value-semantics dispatch for a single variable, opting into reference (pointer-
+    // alias) semantics. Globals don't need it — file-scope class-typed variables are
+    // already real I6 objects with operator= dispatch. Combining with `const`, `extern`,
+    // or other qualifiers doesn't make sense.
+    if(isRef){
+        if(func == nullptr)
+            parsingError("'ref' is only valid on local variable declarations");
+        if(isConst)
+            parsingError("'ref' cannot be combined with 'const'");
+        if(isExternal)
+            parsingError("'ref' cannot be combined with 'extern'");
+    }
 
     // Disallow local variable names that shadow a global, a class member, or an object member;
     // also disallow duplicate declarations within the same scope.
@@ -8216,9 +8463,10 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                 parsingError("Cannot infer type from initializer expression");
             }
 
-            //type check: if the declared type is a class, verify the assigned value is accepted by one of its operator= signatures
+            //type check: if the declared type is a class, verify the assigned value is accepted by one of its operator= signatures.
+            // `ref` locals opt out of all operator= dispatch — they're plain pointer-alias.
             classDef* classType=dynamic_cast<classDef*>(&languageService.getType((string)dataType));
-            if(classType != nullptr && rhs != nullptr){
+            if(classType != nullptr && rhs != nullptr && !isRef){
                 string valueTypeName = rhs->resolvedType;
                 if(!valueTypeName.empty()){
                     // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all.
@@ -8243,6 +8491,32 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                             varDecl.initEmitterBody = i6Emitter::replaceWord(varDecl.initEmitterBody, "$class", classType->i6Name());
                         }
                     }
+                    // Non-emitter operator=: mirror the assignment-statement dispatch
+                    // (bglParser.cpp resolveEmitter, non-emitter branch). Synthesize a
+                    // one-line dispatch body that calls the mangled `_opeq` routine
+                    // exactly once with the RHS as its argument. Without this, declarations
+                    // like `Window w = factory();` fell through to plain pointer-assign
+                    // even when the user had defined a copy operator on the class.
+                    //
+                    // Gated on `classHasStoredFields && !inheritsFromObject` to match the
+                    // backing-synthesis predicate: tree-citizen classes (`: object`) use
+                    // reference semantics for locals — there's no per-local backing object
+                    // to dispatch operator= on, so the call would target `nothing` and
+                    // silently fail at runtime. Plain classes with stored fields DO have
+                    // synthesized backing, so dispatch lands correctly.
+                    else if(assignOp && !assignOp->isEmitter && !assignOp->isPrePassStub
+                              && classHasStoredFields(classType) && !inheritsFromObject(classType)){
+                        if(assignOp->i6name.empty()) assignOp->i6name = mangleOperatorName(assignOp->name);
+                        string paramName = assignOp->params[0]->name;
+                        varDecl.initEmitterBody  = format("$target.{0}(${1});", assignOp->i6name, paramName);
+                        varDecl.initEmitterParam = paramName;
+                    }
+                    // Mirror the assignment-statement check: TypeCompatible fallback with no
+                    // operator= on a stored-field, non-tree-citizen class would emit silent
+                    // pointer-assign and surprise the user expecting value-semantics.
+                    if(found && assignOp == nullptr && classHasStoredFields(classType) && !inheritsFromObject(classType))
+                        parsingError(format("Type '{0}' has no operator=. Declare 'operator =' on the class to define copy semantics for its fields, mark the local as 'ref' to opt into pointer-reference semantics, or inherit from 'object' for tree-citizen reference semantics.",
+                            typeDisplayName((string)dataType)));
                     if(!found){
                         // Fallback: check if RHS type has emitter DeclaredType operator(){}
                         classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(valueTypeName));
@@ -8273,6 +8547,36 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // Flush ternary-lowering injections before the variable declaration that uses _bgl_temp
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
     pendingInjections.clear();
+
+    // Class-typed function locals need backing storage for value-semantics assignment to
+    // dispatch correctly. A bare int local slot can't be the target of `operator=` —
+    // `localA._opeq(rhs)` would dispatch against the slot's int contents (initially 0 =
+    // `nothing` in I6), not a real object. Synthesize a global I6 object instance per
+    // (routine, local) and route source references to it via i6name. Gated on:
+    //   (a) class has own stored fields (otherwise no state to back), AND
+    //   (b) class does NOT inherit from `object` (tree citizens use reference semantics
+    //       via inherited operator=(object); synthesizing backing for them would
+    //       zero-init `parent`/`child`/`sibling`/`attributes` and yank objects out of
+    //       the world tree), AND
+    //   (c) the local isn't `ref`-qualified (the user opted into pointer-alias).
+    // The error path (silent value-semantics-without-operator= gap) already fires upstream
+    // for plain classes without operator= — this synthesis covers the happy path where
+    // operator= exists and the user expects per-local independent state.
+    if(func != nullptr && body != nullptr && !isExternal && !isConst && !isRef){
+        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(varDecl.type.name));
+        if(cls && !cls->isEmitterClass && !cls->isAlias && !cls->isExternal
+                 && classHasStoredFields(cls) && !inheritsFromObject(cls)){
+            string backingName = "_bglLocal_" + func->name + "_" + varDecl.name;
+            variableDeclaration* backing = new variableDeclaration();
+            backing->name = backingName;
+            backing->displayName = backingName;
+            backing->type = varDecl.type;
+            backing->src = varDecl.src;
+            languageService.registerInstance(*backing);
+            varDecl.i6name = backingName;
+            varDecl.isClassLocalWithBacking = true;
+        }
+    }
 
     if(body != nullptr)
         body->statements.push_back(&varDecl);
@@ -9157,6 +9461,11 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
 
     processParameterList(funcDef);
 
+    // Synthesize per-(function, param) backing globals for any byVal-class params,
+    // BEFORE body parsing so identifier resolution inside the body sees param.i6name
+    // (the backing's name) and routes reads/writes through the copy.
+    synthesizeParamBackings(funcDef);
+
     // ── replace chaining (non-emitter): rename existing before body parse ──
     // For non-emitter replace, we rename the existing function to a mangled name
     // BEFORE parsing the body so that replaced() calls can resolve during parsing.
@@ -9526,12 +9835,22 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
                 obj.dName(), funcDef.dName(), shadowedFrom));
     }
     if(!replaceStubMember(obj.members, funcDef)){
-        // No stub — check for duplicates
+        // Signature-aware duplicate check: same name + same arity + same param types.
+        // Same-arity-different-types is an overload, not a duplicate (mirrors the class-
+        // body rule). The emitter mangles overload sets so each emits as a distinct I6
+        // property.
+        auto sigEq = [&](functionDef* fd) -> bool {
+            if(fd->name != funcDef.name) return false;
+            if(fd->params.size() != funcDef.params.size()) return false;
+            for(size_t i = 0; i < funcDef.params.size(); i++)
+                if(fd->params[i]->type.name != funcDef.params[i]->type.name) return false;
+            return true;
+        };
         bool replaced = false;
         if(isReplace){
             for(size_t i = 0; i < obj.members.size(); i++)
                 if(auto* fd = dynamic_cast<functionDef*>(obj.members[i]))
-                    if(fd->name == funcDef.name && fd->params.size() == funcDef.params.size()){
+                    if(sigEq(fd)){
                         obj.members[i] = &funcDef;
                         replaced = true;
                         break;
@@ -9542,7 +9861,7 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
         if(!replaced){
             for(typeMember* m : obj.members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
-                    if(fd->name == funcDef.name && fd->params.size() == funcDef.params.size())
+                    if(sigEq(fd))
                         parsingError(format("object '{0}': method '{1}' with the same signature is already defined (originally at {2}:{3}); use 'replace' to override",
                             obj.dName(), funcDef.dName(), fd->src.file, fd->src.line));
         }
@@ -9838,7 +10157,7 @@ bool bglParser::processTypedObjectDeclaration(token typeTok, token nameTok, toke
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, nameTok, q.isExtern, objectClassName, i6alias, true, q.isEmitter);
     else
-        return processVariableDeclaration(typeTok, nameTok, symbol, ctx, q.isExtern, q.isConst, i6alias);
+        return processVariableDeclaration(typeTok, nameTok, symbol, ctx, q.isExtern, q.isConst, i6alias, q.isRef);
 }
 
 bool bglParser::processAliasedDeclaration(token typeTok, token nameTok, token aliasTok, Qualifiers& q, abstractObject& ctx){
@@ -9850,7 +10169,7 @@ bool bglParser::processAliasedDeclaration(token typeTok, token nameTok, token al
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, nameTok, q.isExtern, "", i6alias, true, q.isEmitter);
     else
-        return processVariableDeclaration(typeTok, nameTok, symbol, ctx, q.isExtern, q.isConst, i6alias);
+        return processVariableDeclaration(typeTok, nameTok, symbol, ctx, q.isExtern, q.isConst, i6alias, q.isRef);
 }
 
 bool bglParser::processObjectDeclaration(token objectType, token name, bool isExternal, string className, string i6alias, bool hasBody, bool isEmitter){

@@ -1,0 +1,71 @@
+!% -v5
+!% -E1
+
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+class box
+  with
+    x,
+    y
+;
+box boxSrc;
+[mkBox x y;
+    boxsrc.x=x;
+    boxsrc.y=y;
+    return boxsrc;
+];
+class window
+  with
+    w,
+    h,
+    _opeq[v;
+        self.w=v.w;
+        self.h=v.h;
+        return self;
+    ]
+;
+window winSrc;
+[mkWin w h;
+    winsrc.w=w;
+    winsrc.h=h;
+    return winsrc;
+];
+[main br bx br2 wr wH wvW;
+    _bglLocal_main_wv.w = 0;
+    _bglLocal_main_wv.h = 0;
+    br = mkbox(10,20);
+    bx=br.x;
+    br.x = 99;
+    br2 = br;
+    br2.y = 7;
+    wr = mkwin(300,400);
+    wH=wr.h;
+    _bglLocal_main_wv._opeq(mkwin(100,200));
+    wvW=_bglLocal_main_wv.w;
+];
+window _bglLocal_main_wv;

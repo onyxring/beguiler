@@ -1,0 +1,89 @@
+!% -v5
+!% -E1
+
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+class window
+  with
+    width,
+    height,
+    _opeq[v;
+        self.width=v.width;
+        self.height=v.height;
+        return self;
+    ]
+;
+window source;
+[mkWin w h;
+    source.width=w;
+    source.height=h;
+    return source;
+];
+class tag
+  with
+    n
+;
+tag tagSrc;
+[mkTag n;
+    tagsrc.n=n;
+    return tagsrc;
+];
+class room
+  class object
+  with
+    visits 0
+;
+room r1;
+room r2;
+[main aw ah bw bh cw tn here there;
+    _bglLocal_main_boxa.width = 0;
+    _bglLocal_main_boxa.height = 0;
+    _bglLocal_main_boxb.width = 0;
+    _bglLocal_main_boxb.height = 0;
+    _bglLocal_main_boxc.width = 0;
+    _bglLocal_main_boxc.height = 0;
+    _bglLocal_main_t1.n = 0;
+    _bglLocal_main_boxa._opeq(mkwin(100,200));
+    _bglLocal_main_boxb._opeq(mkwin(300,400));
+    aw=_bglLocal_main_boxa.width;
+    ah=_bglLocal_main_boxa.height;
+    bw=_bglLocal_main_boxb.width;
+    bh=_bglLocal_main_boxb.height;
+    _bglLocal_main_boxa.height=_bglLocal_main_boxa.width;
+    _bglLocal_main_boxc._opeq(mkwin(500,600));
+    cw=_bglLocal_main_boxc.width;
+    _bglLocal_main_t1.n = mktag(42).n;
+    tn=_bglLocal_main_t1.n;
+    here = r1;
+    here = r2;
+    there = r1;
+];
+window _bglLocal_main_boxa;
+window _bglLocal_main_boxb;
+window _bglLocal_main_boxc;
+tag _bglLocal_main_t1;

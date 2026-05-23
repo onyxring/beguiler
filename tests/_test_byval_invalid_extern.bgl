@@ -1,0 +1,12 @@
+// EXPECT_ERROR: extern byVal class
+// EXPECT_ERROR: Beguile can't insert copy-in code
+//
+// `extern byVal class Foo` is rejected: extern means the class is defined in I6
+// source, and the copy-in machinery (operator= dispatch at every call site of
+// every function taking Foo) can't be inserted into call sites Beguile doesn't
+// generate. The marker only makes sense for classes Beguile fully owns.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+extern byVal class Foo {
+    int x;
+}
+void main(){}
