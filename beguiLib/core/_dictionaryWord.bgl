@@ -1,7 +1,7 @@
 #once
 //=============================================================================
 // type dictionary word
-    extern class dictionaryWordLiteral:_bglObject{
+    extern emitter class dictionaryWordLiteral:_bglObject{
         dictionaryWord operator auto();
         replace emitter void print(){ print (address) $val }
     }

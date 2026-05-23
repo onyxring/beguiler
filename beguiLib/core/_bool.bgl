@@ -5,7 +5,7 @@
         true,
         false
     }
-    extern class bool : _bglObject{ //--base type bool, declared as external because it wraps the type-less I6 type
+    extern emitter class bool : _bglObject{ //--Beguile-side type label over I6's word-sized truthiness; instances emit as `global X;`
         replace emitter void print(){
             if($val == true)
                 print "true";

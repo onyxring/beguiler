@@ -41,12 +41,18 @@ The same Inform 6 compilation pipeline you are familiar with remains with only m
 Beguiler orchestrates all compilation steps, making them transparent to users.  The golden path: A single run of Beguiler produces a playable game, blorbified at your discretion.  Managing I6 becomes Beguile's responsibility, unless you choose to do it yourself.
 
 ## Anatomy of a Game
-Arguably, the fastest way to familiarize yourself with a language is to review a working example.  The following is a straight-forward port of the canonical Cloak of Darkness game, written in Beguile. We'll present the whole file first, for reference, then step over it bit-by-bit in the following sections to compare and contrast with I6.
+Arguably, the fastest way to familiarize yourself with a language is to review a working example.  The canonical Cloak of Darkness game is perfect for this since it is well-known and there are Inform 6 versions readily available for comparison against.  The following is a straight-forward port of that work, ported to Beguile and using Puny Inform.
 
-### A Two Room Example
-The following is a short, two-room example, written in Beguile with Puny Inform.
+   > ***Note**: The version of Cloak Of Darkness which I started with worked for both the I6 Standard Library and Puny Inform.  In the interest of clarity, I've stripped down the cross-library support.  Additionally, the code reflects decisions which favor the explanation, rather than the **best** way of doing things.*    
+
+
+### Cloak of Darkness (Beguile Port)
+
+Here we  present the whole file first, for reference, then step over it bit-by-bit in the following sections to compare and contrast with I6...
+
 ```
-TBD
+
+
 ```
 ### The #beguileSettings Block
 ```

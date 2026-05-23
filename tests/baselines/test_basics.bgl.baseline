@@ -54,10 +54,10 @@ constant RAW_WITH_QUOTE = "has a ""quoted"" word";
     else {
         print (string)"no";
     }
-    for (i = 0 : i<10 : i++) {
+    for (i = 0 : i < 10 : i++) {
         print i;
     }
-    while (a>0) {
+    while (a > 0) {
          a-- ;
     }
     switch (c) {

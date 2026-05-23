@@ -26,6 +26,7 @@ class bglLanguageService{
     bool arrayInUse = false;        // set true when `#include <array>` resolved; gates tracked-length array layout + magic stamping + for-in length-probe
     bool linqInUse = false;         // set true when `#include <array>` resolved; drives LINQ scratch buffer + constant emission
     bool worldInUse = false;        // set true when `#include <bglWorld>` resolved; drives _BGL_WORLD_BUFSIZE constant emission
+    bool bufInUse = false;          // set true when `#include <buf>` resolved; gates tracked-length byteArray layout (length+magic suffix at end)
 
     // .inf-mode anchor regions extracted from the source .inf file. When non-empty,
     // signal the emitter to skip its own ICL generation (the user's `!%` block goes at

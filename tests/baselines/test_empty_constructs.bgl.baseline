@@ -45,7 +45,7 @@ class withemptymethod
         return 0;
     ]
 ;
-global wem;
+withemptymethod wem;
 [main;
     emptyfn();
     if(emptyboolfn() == true) print "true"; else print "false";

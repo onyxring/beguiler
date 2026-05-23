@@ -44,7 +44,7 @@ object bgl
   with utilities _bglutil
 ;
 [risky x;
-    if (x>10) {
+    if (x > 10) {
         if (_bgl_catch_cookie == 0) {
             print "^[Unhandled exception]^";
             quit;
@@ -57,7 +57,7 @@ object bgl
     @catch -> _bgl_cv0;
     if (_bgl_catch_cookie == _bgl_cv0) {
         _bgl_catch_cookie = _bgl_cv0;
-        if (x>20) {
+        if (x > 20) {
             if (_bgl_catch_cookie == 0) {
                 print "^[Unhandled exception]^";
                 quit;
@@ -90,7 +90,7 @@ class risk
   with
     n 0,
     trigger[;
-        if (self.n==0) {
+        if (self.n == 0) {
             if (_bgl_catch_cookie == 0) {
                 print "^[Unhandled exception]^";
                 quit;

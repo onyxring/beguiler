@@ -7,5 +7,15 @@
     /// be passed to `obj.provides(prop)` even when no class declares a member
     /// of that name. Class/object members auto-register as property names with
     /// no decl needed.
-    extern class property : _bglObject{ }
+    ///
+    /// A `property` value is the I6 property identifier (slot ID) — a small
+    /// integer, bit-compatible with `int`. Equality and assignment work like
+    /// any other word-sized value; division/arithmetic operators are
+    /// intentionally not provided because they don't have a meaning on
+    /// property identifiers.
+    extern emitter class property : _bglObject{
+        emitter property operator = (property v) { $target = $v; }
+        emitter bool     operator == (property v){ $val == $v }
+        emitter bool     operator != (property v){ $val ~= $v }
+    }
 

@@ -7,5 +7,5 @@
     /// passed as a value, so it can be the operand of `obj.is(cls)`. Mirrors
     /// the way `property` works for `obj.provides(prop)`. In loose-mode
     /// (#bgl islands) unknown names pass through to I6 unchanged.
-    extern class bglClass : _bglObject{ }
+    extern emitter class bglClass : _bglObject{ }
 

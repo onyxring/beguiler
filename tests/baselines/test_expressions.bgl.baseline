@@ -75,7 +75,7 @@ object bgl
 ];
 [testTernary x tval;
     x = 7;
-    if (x>=0) _bgl_temp0 = x; else _bgl_temp0 = 0;
+    if (x >= 0) _bgl_temp0 = x; else _bgl_temp0 = 0;
     tval=_bgl_temp0;
 ];
 [testCast v n b;

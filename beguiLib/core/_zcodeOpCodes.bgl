@@ -73,8 +73,9 @@ emitter class bglOpCodes {
     emitter void set_window(int win)     { @set_window $win; }
 
     //── Streams (Z3+) ───────────────────────────────────────────────────
-    emitter void output_stream(int n)    { @output_stream $n; }
-    emitter void input_stream(int n)     { @input_stream $n; }
+    emitter void output_stream(int n)              { @output_stream $n; }
+    emitter void output_stream(int n, int table)   { @output_stream $n $table; }
+    emitter void input_stream(int n)               { @input_stream $n; }
 
     //── Random Numbers (all versions) ───────────────────────────────────
     emitter int random(int range)        { @random $range -> $target }

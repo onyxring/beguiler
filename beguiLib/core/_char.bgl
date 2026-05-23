@@ -1,10 +1,10 @@
 #once
-extern class charLiteral:_bglObject{
+extern emitter class charLiteral:_bglObject{
     emitter char operator();                   //implicitly converts to char type
     char operator auto();
     replace emitter void print(){ print (char)$val; }
 }
-extern class char : _bglObject{ 
+extern emitter class char : _bglObject{
     emitter char operator = (char c){ $target=$c; }
     //emitter char operator = (int v){ $val=$v; } //we avoid:  char c = 45;  Enforce: char c ='\45';
 

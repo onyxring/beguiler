@@ -552,7 +552,9 @@ void bglParser::preScanGlobalLoop(){
             }
         }
 
-        bool isAliasClass = false;
+        // `alias` is consumed by parseQualifiers above (sets q.isAlias) — also accept a
+        // bare `alias` here in case some path reaches here without going through it.
+        bool isAliasClass = q.isAlias;
         if(tok.is("alias")) { isAliasClass = true; tok = file.getToken(); } // consume 'class'
 
         // class declaration

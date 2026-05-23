@@ -49,8 +49,8 @@ class littlecircle
         print (string)"a little circle";
     ]
 ;
-global lc;
-global c;
+littlecircle lc;
+circle c;
 [main;
     lc.describe();
     c.describe();

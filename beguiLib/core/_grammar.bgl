@@ -15,7 +15,7 @@
 //                       grammarToken enum in the library binding
 //   • attribute      — an attribute name that filters acceptable nouns
 //   • a global function used as a parser hook
-    extern class patternElement : _bglObject { }
+    extern emitter class patternElement : _bglObject { }
 
 //=============================================================================
 // type grammarRule — pairs a verb with a pattern and priority.
@@ -28,7 +28,7 @@
 //   {.give, creature, held, reverse}
 // `reverse` is a patternElement like any other — the emitter detects it at the
 // tail of the pattern and renders it on the action side rather than the input side.
-    extern class grammarRule : _bglObject {
+    extern emitter class grammarRule : _bglObject {
         verb verb;                       // target action when this rule matches
         array<patternElement> pattern;   // sequence of pattern elements
         int priority;                    // sort priority (default 10 — see class verb)
@@ -37,6 +37,6 @@
 //=============================================================================
 // type grammarRuleList — collection type for a verb's `grammar` property.
 // Conceptually array<grammarRule> with the verb implicit (the enclosing one).
-    extern class grammarRuleList : _bglObject {
+    extern emitter class grammarRuleList : _bglObject {
         grammarRule rule;            // class-level member used for type inference
     }

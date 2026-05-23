@@ -1,7 +1,7 @@
 #once
 //=============================================================================
 // type int 
-    extern class intLiteral:_bglObject{
+    extern emitter class intLiteral:_bglObject{
         emitter int operator();
         int operator auto();
     }
@@ -9,11 +9,11 @@
     // Negative integer literals (e.g. -1, -42). Distinguished from intLiteral so the type
     // system can restrict unsigned assignment: negativeIntLiteral converts to int implicitly
     // but requires an explicit cast for uint.
-    extern class negativeIntLiteral:_bglObject{
+    extern emitter class negativeIntLiteral:_bglObject{
         emitter int operator();
     }
 
-    extern class int : _bglObject { //--base type integer, declared as external because it wraps the type-less I6 type
+    extern emitter class int : _bglObject { //--Beguile-side type label over I6's word-sized integer slot; instances emit as `global X;`
         emitter char operator();
         emitter int operator = (int v){ $target=$v; }
 
