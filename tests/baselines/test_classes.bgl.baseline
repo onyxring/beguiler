@@ -95,7 +95,7 @@ class tally
         _bgl_Tally_total=_bgl_Tally_total + 1;
     ]
 ;
-global g_tally;
+tally g_tally;
 class greeter
   class object
   with
@@ -103,7 +103,7 @@ class greeter
         print (string)"howdy";
     ]
 ;
-global g_greeter;
+greeter g_greeter;
 object myHelper
   with getValue [;
     return self.value;

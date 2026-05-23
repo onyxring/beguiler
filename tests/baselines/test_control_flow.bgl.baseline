@@ -29,11 +29,11 @@ object bgl
   with utilities _bglutil
 ;
 [testIf n;
-    if (n<0) {
+    if (n < 0) {
         print (string)"negative";
     }
     else {
-        if (n==0) {
+        if (n == 0) {
             print (string)"zero";
         }
         else {
@@ -42,8 +42,8 @@ object bgl
     }
 ];
 [testNestedIf a b;
-    if (a>0) {
-        if (b>0) {
+    if (a > 0) {
+        if (b > 0) {
             print (string)"both positive";
         }
         else {
@@ -56,14 +56,14 @@ object bgl
 ];
 [countdown start n;
     n=start;
-    while (n>0) {
+    while (n > 0) {
         n = n - 1;
     }
     return n;
 ];
 [findFirst target i;
     i = 0;
-    while (i<100) {
+    while (i < 100) {
         if (i == target) {
             break;
         }
@@ -84,13 +84,13 @@ object bgl
     return count;
 ];
 [firstPositive a b c;
-    if (a>0) {
+    if (a > 0) {
         return a;
     }
-    if (b>0) {
+    if (b > 0) {
         return b;
     }
-    if (c>0) {
+    if (c > 0) {
         return c;
     }
     return 0;

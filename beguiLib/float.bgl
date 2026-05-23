@@ -27,7 +27,7 @@
 //=============================================================================
 // type float — IEEE 754 single-precision wrapper over a native 32-bit word.
 //=============================================================================
-extern class float : _bglObject {
+extern emitter class float : _bglObject {
     emitter int operator = (float v){ $target = $v; }
 
     // Arithmetic — route through helper routines so the operator emitters are

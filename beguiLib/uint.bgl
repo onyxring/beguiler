@@ -17,7 +17,7 @@
 // Conversion to/from int is an explicit cast: (uint)i / (int)u — no implicit conversion.
 // On Z-machine that's 16 bits (0..65535); on Glulx 32 bits (0..4294967295).
 //=============================================================================
-extern class uint : _bglObject { //--unsigned integer wrapper; same I6 representation as int
+extern emitter class uint : _bglObject { //--unsigned integer wrapper; same I6 representation as int
     emitter int operator = (uint v){ $target=$v; }
 
     // Arithmetic — bit-identical to signed for same width (overflow wraps).

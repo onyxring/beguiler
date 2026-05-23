@@ -1,20 +1,543 @@
+//-----------------------------------------------------------------------------
+// buf.bgl - character buffer operations for the Beguile runtime.
+//
+// Usage:
+//   #include <buf>      in your .bgl file to activate buffer support.
+//
+// A "buf" with `<buf>` included follows the orLibrary SizedBuffer layout.
+// The user-visible pointer is offset WORDSIZE+2 bytes into a raw allocation,
+// so reads/writes through the user pointer behave as a standard I6 hybrid
+// buffer (length WORD at offset 0, data starting at WORDSIZE), while
+// negative offsets expose the size and magic prefix:
+//
+//   layout (from raw allocation start):
+//     bytes 0..1                       = magic ($90, $84)
+//     bytes 2..WORDSIZE+1              = size WORD (capacity in chars)
+//     bytes WORDSIZE+2..2*WORDSIZE+1   = length WORD (current used chars)  ← user pointer
+//     bytes 2*WORDSIZE+2..end          = N data bytes
+//
+//   access from the user pointer (buf):
+//     buf-->0                = length (current chars)        ← I6 hybrid convention
+//     buf->WORDSIZE+i        = data char at position i       ← matches byteArray[i]
+//     buf-->(-1)             = size (data capacity)
+//     buf->(-WORDSIZE-2)     = magic byte $90
+//     buf->(-WORDSIZE-1)     = magic byte $84
+//
+// `buf[i]` indexes data directly using Beguile's native byteArray subscript
+// (`$val->($i + WORDSIZE)`). Length/size are read/written through
+// `buf.length()` / `buf.size()` / `buf.setLength(n)` (or the equivalent
+// `_bglBuf.X(buf, ...)` calls).
+//
+// To declare a tracked buf in your code:
+//
+//     #include <buf>
+//     array<char> myBuf[64];     // 64 chars of data + sized-buffer prefix
+//     myBuf[0] = 'H';            // direct char access
+//     myBuf.setLength(1);        // tell the buf there's 1 char of content
+//
+// Limits: length and size are full WORDs (2 bytes on Z, 4 on Glulx), so the
+// per-buf capacity ceiling is the I6 array limit on the target — no 255-char
+// cap. The user-visible pointer behaves as an I6 hybrid buffer, so it's
+// interoperable with stdlib routines like `print_to_array`, glk_put_buffer,
+// etc., without any wrapping.
+//
+// Pool size of the default capture buffer for string-stream redirection can
+// be overridden by setting `bglStringDefaultSize` before this file is included:
+//
+//     Default bglStringDefaultSize 500;
+//
+// Naming note: all symbols in this file are `_bgl`-prefixed to avoid collision
+// with orLibrary's `_orBuf` / `orStringDefaultSize` / etc. if a user includes
+// both libraries in the same project.
+//-----------------------------------------------------------------------------
 #once
-object _bglBuf{
-    bool isSized(array<char> _buf){         
-        int j=0;
-        
-        try{ 
-            print(10/j);
-            //#i6 return b->1=='\$90' && b->2=='\$84'; //FIXME 2: this works, but it shouldn't. The char literals are being transformed instead of passing through as-is (which should cause an error) 
+#include <char>
 
-        } catch(int errorCode){ 
-             rfalse;
+// Pull in the right assembly-opcode set for the active target. Buf methods
+// dispatch through `bgl.asm.X(...)` instead of raw `@opcode` islands.
+#if TARGET_ZCODE
+    #include <zcode>
+#else
+    #include <glulx>
+#endif
+
+// `bglStringDefaultSize`: default capacity for transient capture buffers
+// (used by `<string>`-managed string pools). 500 chars unless the user sets
+// otherwise before including <buf>.
+#emitfirst{
+    Default bglStringDefaultSize 500;
+}
+extern int bglStringDefaultSize;
+
+// Glulx stream-redirect symbols. The I6 parser library provides these in
+// glk.h / parser.h; if the user includes the stdlib they get the library's
+// versions. If not, the `#Ifndef` guards below provide `<buf>`-owned
+// fallbacks so `<buf>` works standalone.
+//
+// `filemode_Write` (= 1) is the file-mode constant passed to
+// `glk_stream_open_memory`. `gg_arguments` is the parser's shared out-args
+// array used to read back the byte count from `glk_stream_close`.
+#emitfirst{
+    #Ifdef TARGET_GLULX;
+    #Ifndef filemode_Write;
+        Constant filemode_Write 1;
+    #Endif;
+    #Ifndef gg_arguments;
+        Array gg_arguments --> 4;
+    #Endif;
+    #Endif;
+}
+// Beguile-side extern decls so the pre-scan can resolve the names — the I6
+// link step resolves them to whichever definition is actually in scope
+// (stdlib's or the `<buf>`-owned shim above).
+#if TARGET_GLULX
+    extern int filemode_Write;
+    extern array<int> gg_arguments;
+#endif
+
+//-----------------------------------------------------------------------------
+// Low-level pointer-arithmetic primitives. Only place this file mentions raw
+// I6 byte/word operators directly. Parameter type is `var` so the same emitter
+// accepts the public `array<char>` buf surface and bare `int` derived pointers
+// (e.g. after casting to int for stream-API addresses).
+//-----------------------------------------------------------------------------
+emitter int  _bglGetByte(var ptr, int offset)         { $ptr->($offset) }
+emitter void _bglSetByte(var ptr, int offset, int v)  { $ptr->($offset) = $v }
+emitter void _bglSetByte(var ptr, int offset, char v) { $ptr->($offset) = $v }
+emitter int  _bglGetWord(var ptr, int offset)         { $ptr-->($offset) }
+emitter void _bglSetWord(var ptr, int offset, int v)  { $ptr-->($offset) = $v }
+
+// Type-relabel from raw int to typed buf. Beguile's parser doesn't accept
+// `(array<char>)p` cast syntax (the `<` collides with the comparison operator),
+// so this emitter provides the relabel — body is just `$p`, zero runtime cost.
+emitter array<char> _bglAsBuf(int p) { $p }
+
+//-----------------------------------------------------------------------------
+// Capture/release stream stacks — 16-deep, shared across all _bglBuf.capture
+// nestings. _bglBufStreamStack holds the buf pointers under capture;
+// _bglBufGlulxStreams holds the glk stream pointer to restore on release
+// (Glulx-only — unused on Z, but present so the per-target body of capture
+// can write into a uniform slot).
+//-----------------------------------------------------------------------------
+array<var> _bglBufStreamStack[16];
+array<int> _bglBufGlulxStreams[16];
+
+//=============================================================================
+// Extend byteArray to surface buf operations through the natural Beguile
+// type. With <buf> included, `arr.size()` / `arr.length()` / `arr.setLength(n)`
+// on an `array<char>` work as expected for tracked bufs.
+//=============================================================================
+extend extern class byteArray {
+    replace emitter int  size()           { _bglBuf.size($val) }
+    replace emitter int  length()         { _bglBuf.length($val) }
+    emitter void setLength(int n)         { _bglBuf.setLength($val, $n) }
+    emitter bool isTracked()              { _bglBuf.isTracked($val) }
+}
+
+//=============================================================================
+// _bglBuf — utility namespace for buffer operations.
+//
+// SizedBuffer layout (orLibrary model). User-visible pointer `buf` is offset
+// WORDSIZE+2 bytes into the raw allocation:
+//
+//   byte offset (from raw):
+//     0..1:                     magic ($90, $84)
+//     2..WORDSIZE+1:            size WORD = data capacity (chars)
+//     WORDSIZE+2..2*WORDSIZE+1: length WORD = current used chars  ← buf-->0
+//     2*WORDSIZE+2..end:        data                              ← buf->WORDSIZE
+//
+//   Access from user pointer:
+//     buf-->0                = length (current chars)
+//     buf-->(-1)             = size (capacity)
+//     buf->WORDSIZE          = first data char
+//     buf->(-WORDSIZE-2)     = magic byte $90
+//     buf->(-WORDSIZE-1)     = magic byte $84
+//=============================================================================
+object _bglBuf {
+    // Top of the shared capture/release stack. 0 = nothing captured.
+    int _stackTop = 0;
+
+    // ── Tracked-buf detection ────────────────────────────────────────────────
+    // A SizedBuffer has the $90 $84 magic at the two bytes immediately before
+    // its size word, both at negative offsets from the user pointer.
+    bool isTracked(array<char> buf){
+        if((int)buf == 0) return false;
+        if(_bglGetByte(buf, -bgl.wordsize - 2) != $90) return false;
+        if(_bglGetByte(buf, -bgl.wordsize - 1) != $84) return false;
+        return true;
+    }
+
+    // size returns the data capacity in chars from the size WORD at buf-->(-1).
+    // For untracked byteArrays returns -1 — distinguishes from a legitimately
+    // empty buf and parallels orBuf's sized-buf convention.
+    int size(array<char> buf){
+        if(isTracked(buf)) return _bglGetWord(buf, -1);
+        return -1;
+    }
+
+    // length returns the current char count (WORD at buf-->0, the I6 hybrid-
+    // buffer length convention). Works on tracked AND untracked bufs since
+    // both honor this layout (I6's `Array X buffer N` stores length at WORD 0
+    // per the 6.30+ spec).
+    int length(array<char> buf){
+        return _bglGetWord(buf, 0);
+    }
+
+    // setLength writes the current char count, clamped to size() if tracked.
+    void setLength(array<char> buf, int newLength){
+        int sz = size(buf);
+        if(sz > 0 && newLength > sz) newLength = sz;
+        _bglSetWord(buf, 0, newLength);
+    }
+
+    // ── Character access ──────────────────────────────────────────────────────
+    // getChar / setChar are bounds-checked wrappers around byte access. For
+    // unchecked direct access, `buf[i]` is equivalent within bounds.
+    int getChar(array<char> buf, int pos){
+        int sz = size(buf);
+        if(sz < 0 || sz > pos) return _bglGetByte(buf, pos + bgl.wordsize);
+        return -1;
+    }
+
+    void setChar(array<char> buf, int pos, int val){
+        int sz = size(buf);
+        if(sz == -1 || sz > pos) _bglSetByte(buf, pos + bgl.wordsize, val);
+    }
+    void setChar(array<char> buf, int pos, char val){
+        int sz = size(buf);
+        if(sz == -1 || sz > pos) _bglSetByte(buf, pos + bgl.wordsize, val);
+    }
+
+    // ── Copy / write ──────────────────────────────────────────────────────────
+    // set(buf, val) writes the contents of `val` into `buf`. `val` may be
+    // another tracked buf or a packed string literal — dispatch on isTracked.
+    array<char> set(array<char> buf, var stringVal){
+        if(isTracked(stringVal)) setFromBuffer(buf, stringVal);
+        else                     setFromLiteral(buf, stringVal);
+        return buf;
+    }
+
+    // setFromLiteral: render a packed I6 string into buf using print_to_array.
+    // `print_to_array` is an I6-native method on packed strings; not an
+    // assembly opcode, so wrapping it as a one-line I6 island is appropriate.
+    array<char> setFromLiteral(array<char> buf, var stringVal){
+        int sz = size(buf);
+        if(sz < 0) sz = bglStringDefaultSize;
+        #i6 { stringVal.print_to_array(buf, sz); }
+        setLength(buf, length(buf));
+        return buf;
+    }
+
+    // setFromBuffer: bulk-copy from another tracked buf.
+    array<char> setFromBuffer(array<char> buf, array<char> stringVal){
+        int svlen = length(stringVal);
+        copy(buf, stringVal, svlen, 0, 0);
+        setLength(buf, svlen);
+        return buf;
+    }
+
+    // copy: bulk-copy numCharsToCopy chars from fromBuf[fromPos] to
+    // toBuf[toPos]. -1 for numCharsToCopy means "from fromPos to end of source".
+    // Bounds-checked against both source length and target size.
+    // Uses @copy_table on Z and @mcopy on Glulx for one-opcode bulk transfer.
+    array<char> copy(array<char> toBuf, array<char> fromBuf, int numCharsToCopy, int toPos = 0, int fromPos = 0){
+        if(fromPos == -1) fromPos = 0;
+        if(toPos == -1)   toPos = 0;
+        int srcLen = length(fromBuf);
+        if(numCharsToCopy < 0 || numCharsToCopy + fromPos > srcLen)
+            numCharsToCopy = srcLen - fromPos;
+        int tgtSize = size(toBuf);
+        if(tgtSize > 0 && numCharsToCopy + toPos > tgtSize)
+            numCharsToCopy = tgtSize - toPos;
+        // Data starts at byte 2 in the tracked layout.
+        int frmPtr = (int)fromBuf + fromPos + bgl.wordsize;
+        int toPtr  = (int)toBuf  + toPos  + bgl.wordsize;
+        #if TARGET_ZCODE
+            bgl.asm.copy_table(frmPtr, toPtr, numCharsToCopy);
+        #else
+            bgl.asm.mcopy(numCharsToCopy, frmPtr, toPtr);
+        #endif
+        setLength(toBuf, toPos + numCharsToCopy);
+        return toBuf;
+    }
+
+    // ── Stream redirect ───────────────────────────────────────────────────────
+    // capture: redirect `print` output into `buf`. Nested captures push onto
+    // the internal stack so a release() restores the previous target.
+    // Z uses @output_stream 3 with the table address; Glulx opens a memory
+    // glk stream and saves the prior stream on the parallel stack.
+    void capture(array<char> buf, int maxBytes = 0){
+        _bglBufStreamStack[self._stackTop] = buf;
+        #if TARGET_ZCODE
+            bgl.asm.output_stream(3, (int)buf);
+        #else
+            if(maxBytes == 0){
+                int s = size(buf);
+                maxBytes = (s < 0) ? bglStringDefaultSize : s;
+            }
+            _bglBufGlulxStreams[self._stackTop] = bgl.asm.streamGetCurrent();
+            bgl.asm.streamSetCurrent(bgl.asm.streamOpenMemory((int)buf + bgl.wordsize, maxBytes, filemode_Write, 662));
+        #endif
+        self._stackTop++;
+    }
+
+    // release: pop the most-recent capture, restoring the previous output
+    // target. The buf's length byte is refreshed from the actual char count
+    // written.
+    array<char> release(){
+        if(self._stackTop == 0) return _bglAsBuf(0);
+        self._stackTop--;
+        array<char> buf = _bglBufStreamStack[self._stackTop];
+        #if TARGET_ZCODE
+            bgl.asm.output_stream(-1 * 3);
+        #else
+            bgl.asm.streamClose(bgl.asm.streamGetCurrent(), (int)gg_arguments);
+            // gg_arguments[0] is glk_stream_close's byte-count result on Glulx;
+            // copy it into our length byte.
+            _bglSetByte(buf, 0, gg_arguments[0]);
+            bgl.asm.streamSetCurrent(_bglBufGlulxStreams[self._stackTop]);
+        #endif
+        setLength(buf, length(buf));
+        return buf;
+    }
+
+    // stackLen: current capture-stack depth.
+    int stackLen(){
+        return self._stackTop;
+    }
+
+    // ── Print ─────────────────────────────────────────────────────────────────
+    // print: write the buf's current characters to the current output stream.
+    // len=-1 (default) means "all of buf"; explicit len truncates. Glulx uses
+    // glk_put_buffer; Z walks the bytes and prints each as (char).
+    array<char> print(array<char> buf, int len = -1){
+        if(len <= 0) len = length(buf);
+        #if TARGET_GLULX
+            bgl.asm.putBuffer((int)buf + bgl.wordsize, len);
+        #else
+            for(int i = 0; i < len; i++){
+                int c = _bglGetByte(buf, i + bgl.wordsize);
+                if(c == 0) break;
+                bgl.asm.print_char(c);
+            }
+        #endif
+        return buf;
+    }
+
+    // ── Comparison ────────────────────────────────────────────────────────────
+    // equals: byte-equal of two bufs' character data. Optional case-insensitive
+    // compare via _bglChar.toLower.
+    bool equals(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
+        int len1 = length(buf1);
+        if(len1 != length(buf2)) return false;
+        for(int t = 0; t < len1; t++){
+            int c1 = _bglGetByte(buf1, t + bgl.wordsize);
+            int c2 = _bglGetByte(buf2, t + bgl.wordsize);
+            if(caseInsensitive){
+                c1 = _bglChar.toLower(c1);
+                c2 = _bglChar.toLower(c2);
+            }
+            if(c1 != c2) return false;
         }
-        
-        return (_buf[-WORDSIZE-WORDSIZE-2]=='\$90' && _buf[-WORDSIZE-WORDSIZE-1]=='\$84');        
+        return true;
+    }
+
+    // startsWith: does buf1's prefix equal buf2's entire content?
+    bool startsWith(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
+        int len2 = length(buf2);
+        if(length(buf1) < len2) return false;
+        for(int t = 0; t < len2; t++){
+            int c1 = _bglGetByte(buf1, t + bgl.wordsize);
+            int c2 = _bglGetByte(buf2, t + bgl.wordsize);
+            if(caseInsensitive){
+                c1 = _bglChar.toLower(c1);
+                c2 = _bglChar.toLower(c2);
+            }
+            if(c1 != c2) return false;
+        }
+        return true;
+    }
+
+    // endsWith: does buf1's suffix equal buf2's entire content?
+    bool endsWith(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
+        int len2 = length(buf2);
+        int offset = length(buf1) - len2;
+        if(offset < 0) return false;
+        for(int t = 0; t < len2; t++){
+            int c1 = _bglGetByte(buf1, offset + t + bgl.wordsize);
+            int c2 = _bglGetByte(buf2, t + bgl.wordsize);
+            if(caseInsensitive){
+                c1 = _bglChar.toLower(c1);
+                c2 = _bglChar.toLower(c2);
+            }
+            if(c1 != c2) return false;
+        }
+        return true;
+    }
+
+    // ── Substring extraction ──────────────────────────────────────────────────
+    // mid: copy numCharsToCopy chars from fromBuf[fromPos] into toBuf. -1 for
+    // numCharsToCopy means "from fromPos to end of source".
+    array<char> mid(array<char> toBuf, array<char> fromBuf, int fromPos, int numCharsToCopy){
+        int maxLen = length(fromBuf) - fromPos;
+        if(numCharsToCopy == -1 || numCharsToCopy > maxLen) numCharsToCopy = maxLen;
+        copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+        setLength(toBuf, numCharsToCopy);
+        return toBuf;
+    }
+
+    // left: copy the first n chars of fromBuf into toBuf.
+    array<char> left(array<char> toBuf, array<char> fromBuf, int numCharsToCopy){
+        copy(toBuf, fromBuf, numCharsToCopy, 0, 0);
+        setLength(toBuf, numCharsToCopy);
+        return toBuf;
+    }
+
+    // right: copy the last n chars of fromBuf into toBuf.
+    array<char> right(array<char> toBuf, array<char> fromBuf, int numCharsToCopy){
+        int fromPos = length(fromBuf) - numCharsToCopy;
+        copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+        setLength(toBuf, numCharsToCopy);
+        return toBuf;
+    }
+
+    // ── Insertion / deletion ──────────────────────────────────────────────────
+    // insert: shift toBuf chars right starting at toPos, then write fromBuf's
+    // content into the gap. charCount=0 (default) means use fromBuf's full length.
+    array<char> insert(array<char> toBuf, array<char> fromBuf, int toPos, int charCount = 0){
+        if(charCount <= 0) charCount = length(fromBuf);
+        int len = length(toBuf);
+        copy(toBuf, toBuf, len - toPos, toPos + charCount, toPos);
+        copy(toBuf, fromBuf, charCount, toPos, 0);
+        setLength(toBuf, len + charCount);
+        return toBuf;
+    }
+
+    // prepend: insert fromBuf at the start of toBuf.
+    array<char> prepend(array<char> toBuf, array<char> fromBuf){
+        insert(toBuf, fromBuf, 0, length(fromBuf));
+        return toBuf;
+    }
+
+    // append: copy fromBuf onto the end of toBuf.
+    array<char> append(array<char> toBuf, array<char> fromBuf){
+        copy(toBuf, fromBuf, -1, length(toBuf), 0);
+        return toBuf;
+    }
+
+    // delete: remove `count` chars starting at `pos`, shifting trailing chars
+    // left.
+    array<char> delete(array<char> buf, int pos, int count){
+        int len = length(buf);
+        copy(buf, buf, len - count, pos, pos + count);
+        setLength(buf, len - count);
+        return buf;
+    }
+
+    // ── Search / replace ──────────────────────────────────────────────────────
+    // replace: find the first occurrence of searchTextBuf in buf and replace it
+    // with replaceTextBuf. If not found, buf is unchanged.
+    array<char> replace(array<char> buf, array<char> searchTextBuf, array<char> replaceTextBuf){
+        int searchLen = length(searchTextBuf);
+        int pos = indexOf(buf, searchTextBuf, 0);
+        if(pos == -1) return buf;
+        self.delete(buf, pos, searchLen);
+        insert(buf, replaceTextBuf, pos, 0);
+        return buf;
+    }
+
+    // replaceAll: replace every occurrence of searchTextBuf with replaceTextBuf,
+    // starting at `startingIndex`.
+    array<char> replaceAll(array<char> buf, array<char> searchTextBuf, array<char> replaceTextBuf, int startingIndex = 0){
+        int rtlen = length(replaceTextBuf);
+        while(startingIndex != -1){
+            self.replace(buf, searchTextBuf, replaceTextBuf);
+            startingIndex = indexOf(buf, searchTextBuf, startingIndex + rtlen);
+        }
+        return buf;
+    }
+
+    // indexOf: position of first occurrence of searchTextBuf in buf at or
+    // after startingIndex, or -1.
+    int indexOf(array<char> buf, array<char> searchTextBuf, int startingIndex = 0){
+        int stblen = length(searchTextBuf);
+        int blen   = length(buf);
+        for(int o = startingIndex; o < blen; o++){
+            int i;
+            for(i = 0; i < stblen; i++){
+                if(_bglGetByte(buf, o + i + bgl.wordsize) != _bglGetByte(searchTextBuf, i + bgl.wordsize)) break;
+            }
+            if(i == stblen) return o;
+        }
+        return -1;
+    }
+
+    // indexOfFirstTrue: position of the first character at or after
+    // startingIndex for which the predicate returns true, or -1.
+    int indexOfFirstTrue(array<char> buf, func<bool, char> pred, int startingIndex = 0){
+        int buflen = length(buf);
+        if(startingIndex < 0) startingIndex = 0;
+        for(int o = startingIndex; o < buflen; o++){
+            char c = _bglGetByte(buf, o + bgl.wordsize);
+            if(pred(c)) return o;
+        }
+        return -1;
+    }
+
+    // indexOfFirstFalse: position of the first character at or after
+    // startingIndex for which the predicate returns false, or -1.
+    int indexOfFirstFalse(array<char> buf, func<bool, char> pred, int startingIndex = 0){
+        int buflen = length(buf);
+        if(startingIndex < 0) startingIndex = 0;
+        if(startingIndex > buflen) return -1;
+        for(int o = startingIndex; o < buflen; o++){
+            char c = _bglGetByte(buf, o + bgl.wordsize);
+            if(!pred(c)) return o;
+        }
+        return -1;
+    }
+
+    // ── Case transforms ──────────────────────────────────────────────────────
+    array<char> toUpper(array<char> buf){
+        int buflen = length(buf);
+        for(int t = 0; t < buflen; t++)
+            _bglSetByte(buf, t + bgl.wordsize, _bglChar.toUpper(_bglGetByte(buf, t + bgl.wordsize)));
+        return buf;
+    }
+
+    array<char> toLower(array<char> buf){
+        int buflen = length(buf);
+        for(int t = 0; t < buflen; t++)
+            _bglSetByte(buf, t + bgl.wordsize, _bglChar.toLower(_bglGetByte(buf, t + bgl.wordsize)));
+        return buf;
+    }
+
+    array<char> reverse(array<char> buf){
+        int buflen = length(buf);
+        for(int t = 0; t < buflen / 2; t++){
+            int c = _bglGetByte(buf, t + bgl.wordsize);
+            _bglSetByte(buf, t + bgl.wordsize, _bglGetByte(buf, buflen - t - 1 + bgl.wordsize));
+            _bglSetByte(buf, buflen - t - 1 + bgl.wordsize, c);
+        }
+        return buf;
+    }
+
+    array<char> trimLeft(array<char> buf){
+        while(length(buf) > 0 && getChar(buf, 0) == ' ') self.delete(buf, 0, 1);
+        return buf;
+    }
+
+    array<char> trimRight(array<char> buf){
+        while(length(buf) > 0 && getChar(buf, length(buf) - 1) == ' ')
+            self.delete(buf, length(buf) - 1, 1);
+        return buf;
+    }
+
+    array<char> trim(array<char> buf){
+        return trimRight(trimLeft(buf));
     }
 }
 
-extend _bglUtil{
-    auto buf=_bglBuf;
+extend _bglUtil {
+    auto buf = _bglBuf;
 }

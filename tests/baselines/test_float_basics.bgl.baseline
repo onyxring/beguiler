@@ -139,7 +139,7 @@ object _bglFloat
     ipart=_bglFloat.ftonumz(v);
     frac = _bglFloat.fsub(v, _bglFloat.numtof(ipart));
     fdigits=_bglFloat.ftonumz((_bglFloat.fmul(frac, _bglFloat.numtof(10000))));
-    if (fdigits<0) {
+    if (fdigits < 0) {
         fdigits = -fdigits;
     }
     if (isNeg) {
@@ -147,13 +147,13 @@ object _bglFloat
     }
     print ipart;
     print (string)".";
-    if (fdigits<1000) {
+    if (fdigits < 1000) {
         print (string)"0";
     }
-    if (fdigits<100) {
+    if (fdigits < 100) {
         print (string)"0";
     }
-    if (fdigits<10) {
+    if (fdigits < 10) {
         print (string)"0";
     }
     print fdigits;

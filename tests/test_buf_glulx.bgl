@@ -1,0 +1,134 @@
+/* test_buf_glulx.bgl — SizedBuffer surface coverage on Glulx (target = glulx).
+ *
+ * Mirrors test_buf.bgl with target = glulx so the emission picks up the
+ * Glulx-specific paths:
+ *   - WORDSIZE = 4, so the buf prefix is 6 bytes (2 magic + 4 size) and data
+ *     starts at byte 4 of the user-visible pointer. The byteArray `[i]` =
+ *     `$val->($i + WORDSIZE)` substitution must compile and resolve to +4.
+ *   - capture/release goes through the Glulx `bgl.asm.streamGetCurrent` /
+ *     `streamOpenMemory` / `streamSetCurrent` / `streamClose` / `putBuffer`
+ *     opcodes (the Z target uses `@output_stream` instead).
+ *   - print uses `bgl.asm.putBuffer` (Z target loops `bgl.asm.print_char`).
+ *   - The stdlib-independence shim (`#Ifndef filemode_Write` /
+ *     `#Ifndef gg_arguments` in #emitfirst) must trigger on this Glulx
+ *     compile without parser.h pulled in.
+ */
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <buf>
+
+array<char> bufA[64];
+array<char> bufB[64];
+array<char> bufSmall[16];
+
+void exerciseLength(){
+    int szA = bufA.size();
+    bufA.setLength(0);
+    int n = bufA.length();
+    bool tr = bufA.isTracked();
+}
+
+void exerciseChars(){
+    // Glulx-relevant boundary: byteArray `[i]` resolves to `arr->(i + 4)` on
+    // Glulx (vs `arr->(i + 2)` on Z), so writing at position 0 lands at byte 4
+    // of the user pointer — must be the first data byte.
+    bufA[0] = 'A';
+    bufA[1] = 'B';
+    bufA[31] = 'Z';
+    int c0 = _bglBuf.getChar(bufA, 0);
+    int c1 = _bglBuf.getChar(bufA, 1);
+    char c2 = bufA[0];
+}
+
+void exerciseSet(){
+    _bglBuf.set(bufA, "hello world");
+    _bglBuf.set(bufB, bufA);
+    _bglBuf.setFromLiteral(bufSmall, "tight");
+}
+
+void exerciseCopy(){
+    // bgl.asm.mcopy on Glulx (vs @copy_table on Z) — exercise default + explicit positions.
+    _bglBuf.copy(bufB, bufA, -1, 0, 0);
+    _bglBuf.copy(bufB, bufA, 4, 8, 2);
+    _bglBuf.copy(bufB, bufA, 3);
+}
+
+void exerciseStream(){
+    // Glulx-specific path: streamGetCurrent + streamOpenMemory + streamSetCurrent +
+    // streamClose + gg_arguments read-back. Stdlib-shim defines these if parser.h
+    // isn't pulled in — both compile paths must work.
+    _bglBuf.capture(bufA);
+    _bglBuf.capture(bufB, 32);
+    int depth1 = _bglBuf.stackLen();
+    _bglBuf.release();
+    _bglBuf.release();
+    int depth0 = _bglBuf.stackLen();
+}
+
+void exercisePrint(){
+    // bgl.asm.putBuffer on Glulx (Z does per-char print_char).
+    _bglBuf.print(bufA);
+    _bglBuf.print(bufA, 5);
+}
+
+void exerciseCompare(){
+    bool eq = _bglBuf.equals(bufA, bufB);
+    bool eqi = _bglBuf.equals(bufA, bufB, true);
+    bool sw = _bglBuf.startsWith(bufA, bufB);
+    bool ew = _bglBuf.endsWith(bufA, bufB);
+}
+
+void exerciseSubstring(){
+    _bglBuf.mid(bufB, bufA, 0, 4);
+    _bglBuf.mid(bufB, bufA, 2, -1);
+    _bglBuf.left(bufB, bufA, 10);
+    _bglBuf.right(bufB, bufA, 5);
+}
+
+void exerciseInsert(){
+    _bglBuf.insert(bufA, bufB, 0, 3);
+    _bglBuf.prepend(bufA, bufB);
+    _bglBuf.append(bufA, bufB);
+    _bglBuf.delete(bufA, 0, 1);
+}
+
+void exerciseReplace(){
+    _bglBuf.replace(bufA, bufB, bufSmall);
+    _bglBuf.replaceAll(bufA, bufB, bufSmall);
+    _bglBuf.replaceAll(bufA, bufB, bufSmall, 5);
+}
+
+bool isLetter(char c){ return _bglChar.isAlpha(c); }
+
+void exerciseSearch(){
+    int p = _bglBuf.indexOf(bufA, bufB);
+    int p2 = _bglBuf.indexOf(bufA, bufB, 3);
+    int t = _bglBuf.indexOfFirstTrue(bufA, (char c) => isLetter(c));
+    int f = _bglBuf.indexOfFirstFalse(bufA, (char c) => isLetter(c), 2);
+}
+
+void exerciseTransform(){
+    _bglBuf.toUpper(bufA);
+    _bglBuf.toLower(bufA);
+    _bglBuf.reverse(bufA);
+    _bglBuf.trim(bufA);
+}
+
+void main(){
+    exerciseLength();
+    exerciseChars();
+    exerciseSet();
+    exerciseCopy();
+    exerciseStream();
+    exercisePrint();
+    exerciseCompare();
+    exerciseSubstring();
+    exerciseInsert();
+    exerciseReplace();
+    exerciseSearch();
+    exerciseTransform();
+}

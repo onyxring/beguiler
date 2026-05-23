@@ -58,7 +58,7 @@ score g_pts
     print g_pts.get();
     print "^";
     print "Grade: ";
-    if (pts>50) _bgl_temp0 = 1; else _bgl_temp0 = 0;
+    if (pts > 50) _bgl_temp0 = 1; else _bgl_temp0 = 0;
     print _bgl_temp0;
     print "^";
     print pts;

@@ -90,9 +90,29 @@ void i6Emitter::applyTemplate(string name, map<string,string> args, string inden
 }
 
 // Static word-boundary replacement (also used in emitStatement via call instead of lambda)
+// Case-insensitive substring find. Beguile is case-insensitive at the
+// language level — tokens are lowercased in the symbol table — but raw i6Body
+// text captured by getRawTextThroughClosingBrace preserves the user's
+// original case. So a body containing `$stringVal` must still match a
+// substitution target of `$stringval` (the lowercased param name).
+static size_t findWordCI(const string& haystack, const string& needle, size_t pos){
+    if(needle.empty() || haystack.size() < needle.size()) return string::npos;
+    size_t end = haystack.size() - needle.size();
+    for(size_t i = pos; i <= end; i++){
+        bool match = true;
+        for(size_t j = 0; j < needle.size(); j++){
+            if(tolower((unsigned char)haystack[i+j]) != tolower((unsigned char)needle[j])){
+                match = false; break;
+            }
+        }
+        if(match) return i;
+    }
+    return string::npos;
+}
+
 string i6Emitter::replaceWord(string str, const string& from, const string& to){
     size_t pos=0;
-    while((pos=str.find(from,pos))!=string::npos){
+    while((pos=findWordCI(str,from,pos))!=string::npos){
         // Word-boundary check. '.' on the left disqualifies so we don't rewrite property
         // accesses (`obj.width` must stay intact when renaming a local `width`).
         bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$' || str[pos-1]=='.');
@@ -761,6 +781,28 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             }
         }
     }
+    // Byte-array analog: when `<buf>` is included, sized-uninit `array<char>` declarations
+    // get 4 trailing bytes for length(2) + magic(2). Pre-pass collects them so bglInit can
+    // stamp the magic at startup. String-initialized byte arrays opt out — their content
+    // length is fixed by the literal and the natural I6 buffer's length-byte is sufficient.
+    if(languageService.bufInUse){
+        for(typeDef* g : languageService.globals){
+            auto* arr = dynamic_cast<arrayDeclaration*>(g);
+            if(arr == nullptr) continue;
+            if(arr->isExternal || !arr->isByteArray) continue;
+            if(arr->arraySize > 0 && arr->stringInitializer.empty()
+               && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
+                trackedByteArraysNeedingMagicInit.push_back(arr->dName());
+                // Emit the user-visible pointer Global EARLY (before bglInit) so the
+                // runtime assignment `name = name_raw + WORDSIZE + 2;` in bglInit has a
+                // declared lvalue to write to. I6 doesn't accept symbolic arithmetic
+                // (e.g. `name_raw + WORDSIZE + 2`) as a Global initializer or Constant
+                // value, so the assignment lives in bglInit; this just declares the
+                // variable. Pass 3's byte-array emission skips re-emitting the global.
+                out << format("global {0} = 0;\n", arr->dName());
+            }
+        }
+    }
 
     // Synthesise bglInit — always emitted, even if empty; guarded against double-call.
     // Anchor a source map entry at the routine header so I6 diagnostics about `bglInit`
@@ -785,6 +827,45 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Form: `arr-->(arr-->0) = $9084;` — write the last slot of the allocation.
     for(const string& arrName : trackedArraysNeedingMagicInit)
         out << "    " << arrName << "-->(" << arrName << "-->0) = $9084;\n";
+    // Sized-buffer setup for tracked char arrays (`array<char> X[N]` with `<buf>`).
+    // orLibrary SizedBuffer model — the user-visible pointer is offset WORDSIZE+2
+    // bytes into the raw allocation so that `X-->0` reads as the I6 hybrid-buffer
+    // length (matching `print_to_array` / Glk conventions) and the size + magic
+    // prefix lives at negative offsets:
+    //
+    //   raw bytes 0..1:                  magic ($90, $84)
+    //   raw bytes 2..(WORDSIZE+1):       size WORD (= declared char capacity N)
+    //   raw bytes (WORDSIZE+2)..(2*WORDSIZE+1):  length WORD (initial 0, I6 zero-init)
+    //   raw bytes (2*WORDSIZE+2)..end:   N bytes of data
+    //
+    //   user-visible X = X_raw + WORDSIZE + 2
+    //   X-->0  = length     (I6 hybrid buffer convention)
+    //   X->WORDSIZE..  = data
+    //   X-->(-1)  = size word (capacity)
+    //   X->(-WORDSIZE-2..-WORDSIZE-1) = $90 $84 magic
+    //
+    // We can't reassign a global array's address, so the user-named symbol is a
+    // Global pointer variable. Each entry in this vector names the user-visible
+    // (display-cased) array name; we emit stamping against `<name>_raw` and set
+    // the pointer here.
+    for(const string& arrName : trackedByteArraysNeedingMagicInit){
+        int N = 0;
+        for(typeDef* g : languageService.globals){
+            auto* arr = dynamic_cast<arrayDeclaration*>(g);
+            if(arr != nullptr && arr->dName() == arrName){ N = arr->arraySize; break; }
+        }
+        const string raw = arrName + "_raw";
+        out << "    " << raw << "->0 = $90;\n";
+        out << "    " << raw << "->1 = $84;\n";
+        // Size word at byte 2 — `(raw + 2)-->0` does word access at byte address
+        // raw+2. Works on both Z (aligned) and Glulx (unaligned word access in
+        // memory is permitted per the Glulx spec).
+        out << "    (" << raw << " + 2)-->0 = " << N << ";\n";
+        // Set the user-visible pointer past the prefix metadata. I6 doesn't
+        // accept symbolic arithmetic in Global initializers, so we declare the
+        // Global early (= 0) and assign the real value here at startup.
+        out << "    " << arrName << " = " << raw << " + WORDSIZE + 2;\n";
+    }
     for(const string& block : languageService.startupBlocks)
         out << block << "\n";
     for(auto& [varName, body] : languageService.globalInits)
@@ -1844,14 +1925,46 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
     // tracking on char buffers is owned by <string> and the byte-prefix has
     // its own conventions (byte 0 = max, byte 1 = current).
     if(auto* arr = dynamic_cast<arrayDeclaration*>(varNode)){
-        // ── Byte-array paths — unchanged.
+        // ── Byte-array paths.
+        //
+        // Default (no `<buf>`): emit the standard I6 6.30 hybrid buffer —
+        //   `Array X buffer N;` allocates WORDSIZE bytes for the length WORD
+        //   followed by N data bytes. Beguile's byteArray `[i]` reads at
+        //   `$val->($i + WORDSIZE)` to match.
+        //
+        // With `<buf>` (languageService.bufInUse): orLibrary SizedBuffer model.
+        //   - The user-named symbol is a `Global` pointer variable. bglInit
+        //     points it `WORDSIZE + 2` bytes into a separate raw allocation so
+        //     the user-visible pointer behaves as an I6 hybrid buffer (length
+        //     at `X-->0`, data at `X->WORDSIZE`).
+        //   - The raw allocation carries the prefix metadata: magic at bytes 0-1,
+        //     size word at bytes 2..(WORDSIZE+1).
+        //   - bglInit stamps both pieces; see the SizedBuffer setup block above.
+        //
+        // String-initialized byte arrays opt out of SizedBuffer — they're
+        // compile-time literals whose length is fixed and whose I6 hybrid
+        // length-word convention is sufficient.
         if(arr->isByteArray) {
+            bool bufTracked = languageService.bufInUse;
             if(!arr->stringInitializer.empty()) {
                 out << format("array {0} buffer {1};\n", arr->dName(), arr->stringInitializer);
                 return;
             }
             if(arr->arraySize > 0) {
-                out << format("array {0} buffer {1};\n", arr->dName(), arr->arraySize);
+                if(bufTracked){
+                    // SizedBuffer: emit only the raw allocation here. The user-visible
+                    // pointer (`Global arrName = 0;`) was already emitted by the pre-pass
+                    // ahead of bglInit; bglInit sets its runtime value to
+                    // `arrName_raw + WORDSIZE + 2` and stamps the prefix metadata.
+                    //
+                    // Raw size = magic(2) + size word(WORDSIZE) + length word(WORDSIZE) + N data bytes.
+                    // We use `-> NumBytes` (raw byte array, no I6-managed length header) so
+                    // bytes 0-1 belong to us for the magic prefix.
+                    out << format("array {0}_raw -> (2 + 2*WORDSIZE + {1});\n",
+                                  arr->dName(), arr->arraySize);
+                } else {
+                    out << format("array {0} buffer {1};\n", arr->dName(), arr->arraySize);
+                }
                 return;
             }
             if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
@@ -1934,16 +2047,15 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         if(dynamic_cast<objectDef*>(&td)){
             emitAsObjectInstance = true;  // dedicated objectDef type
         } else if(auto* cd = dynamic_cast<classDef*>(&td)){
-            if(!cd->isEmitterClass && !cd->isAlias && !cd->isExternal){
-                for(typeMember* m : cd->members){
-                    auto* vd = dynamic_cast<variableDeclaration*>(m);
-                    if(!vd || vd->isStatic) continue;
-                    if(vd->type.name == "attributelist") continue;
-                    if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue;
-                    emitAsObjectInstance = true;
-                    break;
-                }
-            }
+            // The discriminator is `isEmitterClass`: emitter classes (e.g. the primitive
+            // wrappers `int`, `bool`, `char`, `string`, etc.) are Beguile-side type labels
+            // over an I6 storage form — instances emit as plain `global X;` with the type
+            // info erased at the I6 boundary. Non-emitter classes (e.g. `object`, user
+            // classes, `extern class Container : object`) are real types — instances emit
+            // as I6 `Object X;` directives. `isAlias` types (e.g. `verb`) dissolve to
+            // their parent type at emit time and similarly become object instances.
+            if(!cd->isEmitterClass)
+                emitAsObjectInstance = true;
         }
     }
     if(emitAsObjectInstance){

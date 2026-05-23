@@ -71,7 +71,10 @@ extern int    verb_wordnum;         // verb position in input
 extern int    wn;                   // word number currently being parsed
 extern int    num_words;            // number of words typed
 extern int    keep_silent;          // suppress action output
-extern int    selected_direction;   // direction chosen for Go action (= n_to, s_to, ...)
+extern property selected_direction; // direction chosen for Go action — holds the
+                                    // property slot ID (n_to, s_to, ...). Compare with
+                                    // `(property)n_to` to bypass the bare-name lookup
+                                    // that would otherwise yield `self.n_to`'s value.
 extern int    selected_direction_index; // 1-based: 1=N, 2=S, 3=E, 4=W, 5=NE, 6=NW, 7=SE, 8=SW, 9=U, 10=D, 11=IN, 12=OUT
 
 //-- Direction properties -----------------------------------------------------
@@ -187,12 +190,15 @@ extern enum grammarToken {
 //-- Standard game actions ----------------------------------------------------
 extern verb Answer;
 extern verb Ask;
+extern verb AskFor;             // ask <creature> for <noun>
+extern verb AskTo;              // ask/tell <creature> to <topic>
 extern verb Attack;
 extern verb Blow;
 extern verb Burn;
 extern verb Buy;
 extern verb Climb;
 extern verb Close;
+extern verb Consult;            // consult <noun> about <topic>
 extern verb Cut;
 extern verb Dig;
 extern verb Disrobe;
@@ -200,6 +206,7 @@ extern verb Drink;
 extern verb Drop;
 extern verb Eat;
 extern verb Empty;
+extern verb EmptyT;             // empty <noun> into <noun>
 extern verb Enter;
 extern verb Examine;
 extern verb Exit;
@@ -207,14 +214,23 @@ extern verb Fill;
 extern verb GetOff;
 extern verb Give;
 extern verb Go;
+extern verb GoIn;               // go in / enter
+extern verb GoNear;             // (debug) go to/near <object>
+extern verb Going;              // synthetic action fired during movement;
+                                // before/after on rooms see selected_direction
+extern verb Goto;               // (debug) goto <object>
 extern verb Insert;
 extern verb Inv;
 extern verb Jump;
+extern verb JumpOver;           // jump over <noun>
 extern verb Kiss;
+extern verb LetGo;              // synthetic; fires on the source when an object
+                                // is taken (counterpart of Receive)
 extern verb Listen;
 extern verb Lock;
 extern verb Look;
 extern verb LookUnder;
+extern verb Mild;               // mild expletive
 extern verb No;
 extern verb Open;
 extern verb Pray;
@@ -222,22 +238,32 @@ extern verb Pull;
 extern verb Push;
 extern verb PushDir;
 extern verb PutOn;
+extern verb Receive;            // synthetic; fires on the destination when an
+                                // object is placed inside or onto it
 extern verb Remove;
 extern verb Rub;
 extern verb Search;
 extern verb Set;
 extern verb SetTo;
+extern verb Shout;              // shout
+extern verb ShoutAt;            // shout at <creature>
 extern verb Show;
 extern verb Sing;
 extern verb Sleep;
 extern verb Smell;
+extern verb Sorry;              // sorry
 extern verb Squeeze;
+extern verb Strong;             // strong expletive
+extern verb Swim;               // swim
+extern verb Swing;              // swing <noun>
 extern verb SwitchOff;
 extern verb SwitchOn;
 extern verb Take;
 extern verb Taste;
 extern verb Tell;
 extern verb Think;
+extern verb ThrowAt;            // throw <held> at <noun>
+extern verb ThrownAt;           // synthetic; fires on the target after ThrowAt
 extern verb Tie;
 extern verb Touch;
 extern verb Transfer;
@@ -245,9 +271,18 @@ extern verb Turn;
 extern verb Unlock;
 extern verb Wait;
 extern verb Wake;
+extern verb WakeOther;          // wake <creature>
 extern verb Wave;
+extern verb WaveHands;          // wave (no object)
 extern verb Wear;
 extern verb Yes;
+
+//-- Synthetic / parser actions ------------------------------------------------
+// These actions are set by the parser itself (not bound to a verb word). They
+// surface as `case Again:`/`case Oops:` etc. in user-side action handlers.
+extern verb Again;              // "g" — repeat last command
+extern verb Oops;               // "oops <word>" — correct a misspelled word
+extern verb OopsCorrection;     // synthetic; fired after Oops applies
 
 //-- Meta actions -------------------------------------------------------------
 extern verb Quit;
@@ -266,6 +301,28 @@ extern verb LookModeShort;
 extern verb LookModeLong;
 extern verb NotifyOn;
 extern verb NotifyOff;
+
+//-- Debug actions ------------------------------------------------------------
+// Available only when the puny debug feature constants are defined; declared
+// here so user code can reference them under the same conditional.
+extern verb ActionsOn;
+extern verb ActionsOff;
+extern verb CommandsOn;
+extern verb CommandsOff;
+extern verb CommandsRead;
+extern verb Debug;
+extern verb Forest;
+extern verb Tree;
+extern verb Objects;
+extern verb Places;
+extern verb Purloin;
+extern verb RandomSeed;
+extern verb Rooms;
+extern verb RoutinesOn;
+extern verb RoutinesOff;
+extern verb Scope;
+extern verb TimersOn;
+extern verb TimersOff;
 
 //-- Map beguilerSettings metadata to PunyInform constants ----------------------
 const string story = #beguilerSettings.title;       

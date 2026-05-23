@@ -104,7 +104,7 @@ extern object sw_obj;               // southwest
 extern object u_obj;                // up
 extern object d_obj;                // down
 
-extern class informLibraryType {
+extern emitter class informLibraryType {
     emitter void play() {
         $self.play()
     }
@@ -122,7 +122,7 @@ extern informLibraryType InformLibrary;
 
 extern object InformParser;         // parser object
 
-extern class libraryExtensionsType {
+extern emitter class libraryExtensionsType {
     emitter void RunAll(var prop, var a1, var a2, var a3) {
         $self.RunAll(prop, a1, a2, a3)
     }

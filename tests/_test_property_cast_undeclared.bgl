@@ -1,0 +1,8 @@
+// EXPECT_ERROR: is not a declared property
+// `(property)X` requires X to be a declared property name (free-standing decl
+// or class/object member). An undeclared name is a compile error.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+extern int selected_direction;
+void main(){
+    if(selected_direction != (property)not_declared) print("x");
+}

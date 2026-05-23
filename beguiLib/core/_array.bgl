@@ -19,7 +19,7 @@
 // `array<char>` routes to the byteArray subclass below, which overrides the
 // subscript and size emitters with byte-access (`->` instead of `-->`).
 //=============================================================================
-extern class array<T>  : _bglObject{
+extern emitter class array<T>  : _bglObject{
     replace emitter T    operator[](int i)        { $val-->($i+1) }
     replace emitter T    operator[]=(int i, T v)  { $val-->($i+1) = $v }
     replace emitter int  size()                   { $val-->0 }
@@ -28,9 +28,19 @@ extern class array<T>  : _bglObject{
 
 // byteArray — byte-sized element array, used internally for array<char>.
 // Overrides array's word-access emitters with byte-access (`->`).
-// I6 buffer layout: byte 0 = max length, byte 1 = current length, data starts at byte 2.
-extern class byteArray : array {
-    replace emitter char operator[](int i)          { $val->($i+2) }
-    replace emitter char operator[]=(int i, char v) { $val->($i+2) = $v }
-    replace emitter int  size()                     { $val->0 }
+// I6 hybrid buffer layout (since I6 6.30): the first WORD ($val-->0) holds
+// the current length, and data follows starting at byte WORDSIZE. WORDSIZE
+// is 2 on Z, 4 on Glulx — `bgl.wordsize` resolves to the right offset for
+// both targets. (Previously hardcoded `+2` was a Z-machine assumption that
+// silently read the middle of the length WORD on Glulx.)
+//
+// size() returns the runtime length WORD. This is the count of chars
+// actually present in the buffer (per I6 print_to_array's convention),
+// not the allocated capacity. For tracked sized buffers (`#include <buf>`),
+// `<buf>` adds size()/length() that distinguish capacity from used space
+// via the orLibrary SizedBuffer prefix at negative offsets.
+extern emitter class byteArray : array {
+    replace emitter char operator[](int i)          { $val->($i + WORDSIZE) }
+    replace emitter char operator[]=(int i, char v) { $val->($i + WORDSIZE) = $v }
+    replace emitter int  size()                     { $val-->0 }
 }

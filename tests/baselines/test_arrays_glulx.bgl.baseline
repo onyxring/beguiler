@@ -1,4 +1,4 @@
-!% -v5
+!% -G
 !% -E1
 
     Array _bglScratchStack --> 33;
@@ -37,25 +37,32 @@ room r1;
 room r2;
 object plainObj1;
 object plainObj2;
-array g_nums table 1 2 3 4 5;
-array g_sized table 10;
+array g_nums table 10 20 30 40 50;
+array g_sized table 8;
 array g_flags table true false true;
-array g_objs table plainobj1 plainobj2;
-array g_rooms table r1 r2;
 array g_buf buffer 32;
+array g_short buffer 8;
 object inventory
   with slots 0 0 0 0 0 0 ,
        count 0
 ;
-[main i b r o c ch;
+[main i b last first middle last_c firstSh lastSh c;
     i= g_nums-->(0+1);
     b= g_flags-->(1+1);
-    r =  g_rooms-->(0+1) ;
-    o =  g_objs-->(0+1);
     g_nums-->(0+1) = 42;
     g_flags-->(0+1) = false;
-    g_rooms-->(0+1) = r2;
-    g_objs-->(0+1) = r1;
+    g_sized-->(7+1) = 99;
+    last= g_sized-->(7+1);
+    g_buf->(0 + WORDSIZE) = 'H';
+    g_buf->(1 + WORDSIZE) = 'e';
+    g_buf->(15 + WORDSIZE) = 'X';
+    g_buf->(31 + WORDSIZE) = '!';
+    first= g_buf->(0 + WORDSIZE);
+    middle= g_buf->(15 + WORDSIZE);
+    last_c= g_buf->(31 + WORDSIZE);
+    g_short->(0 + WORDSIZE) = 'a';
+    g_short->(7 + WORDSIZE) = 'z';
+    firstSh= g_short->(0 + WORDSIZE);
+    lastSh= g_short->(7 + WORDSIZE);
     c=inventory.count;
-    ch= g_buf->(0 + WORDSIZE);
 ];

@@ -1,0 +1,238 @@
+/* test_buf.bgl — surface coverage for the <buf> SizedBuffer extension (Z5).
+ *
+ * Bufs are declared as `array<char> X[N]`. With `<buf>` included, the compiler
+ * allocates the orLibrary SizedBuffer layout — the user pointer sits
+ * WORDSIZE+2 bytes into a raw allocation, exposing length at buf-->0, data
+ * at buf->WORDSIZE, size at buf-->(-1), and $90 $84 magic at the two bytes
+ * immediately before the size word.
+ *
+ * Coverage goals (the framework checks .inf emission stability — we can't
+ * runtime-assert, but we drive every API surface and the meaningful
+ * boundary conditions so emission regressions surface in the diff):
+ *
+ *   - Length / size / isTracked via BOTH _bglBuf.X(buf) and buf.X() routing.
+ *   - Character access via byteArray's `buf[i]` AND _bglBuf.getChar(buf, i)
+ *     against the SAME position so both routings emit consistently.
+ *   - Set / set-from-buffer / set-from-literal.
+ *   - Copy with explicit and default toPos/fromPos, plus -1 (= "to end").
+ *   - Substring extraction at boundary positions (0, end, mid).
+ *   - Insert / prepend / append / delete with charCount=0 (= "use whole").
+ *   - Replace / replaceAll with explicit startingIndex.
+ *   - Search via fixed pattern and predicate-driven (lambda) variants.
+ *   - Case transforms + reverse + trim.
+ *   - Capture/release/print stream redirection (compiles; runtime needs
+ *     stdlib but the I6 link step is verified externally).
+ *
+ * Two bufs (bufA, bufB) sized 64 cover both small and at-the-N use, plus
+ * one 16-char buf for tight bounds.
+ */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <buf>
+
+array<char> bufA[64];
+array<char> bufB[64];
+array<char> bufSmall[16];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Metadata accessors — exercise both the namespace API (_bglBuf.X) and the
+// method-on-instance API (buf.X) so the byteArray-extension routing is
+// covered alongside the namespace.
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseLength(){
+    // size — both surfaces, both bufs
+    int szA  = _bglBuf.size(bufA);
+    int szA2 = bufA.size();
+    int szB  = bufB.size();
+    int szS  = bufSmall.size();
+
+    // setLength — both surfaces, with clamp behavior implicit
+    _bglBuf.setLength(bufA, 0);
+    bufA.setLength(5);
+    bufB.setLength(10);
+    bufSmall.setLength(1);
+
+    // length — both surfaces
+    int lenA = _bglBuf.length(bufA);
+    int lenA2 = bufA.length();
+    int lenB = bufB.length();
+
+    // isTracked — both surfaces
+    bool trA = _bglBuf.isTracked(bufA);
+    bool trA2 = bufA.isTracked();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Character access — both buf[i] (byteArray subscript) and _bglBuf.getChar
+// must read/write the same byte. Boundary positions: 0, mid, near-end.
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseChars(){
+    // Writes at boundaries
+    bufA[0] = 'A';
+    bufA[31] = 'Z';
+    _bglBuf.setChar(bufA, 1, 'B');
+    _bglBuf.setChar(bufA, 32, 'M');
+
+    // Reads at the same positions, both surfaces
+    char c0_sub = bufA[0];
+    char c1_sub = bufA[1];
+    int c0_api = _bglBuf.getChar(bufA, 0);
+    int c1_api = _bglBuf.getChar(bufA, 1);
+    int cEnd_api = _bglBuf.getChar(bufA, 31);
+
+    // Out-of-range reads — _bglBuf.getChar returns -1 for tracked bufs past size
+    int cOut = _bglBuf.getChar(bufSmall, 100);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// set() / setFromLiteral() / setFromBuffer() — populate bufA with a literal,
+// then copy into bufB. Verifies the buffer-to-buffer copy path AND the
+// literal-source path through `set()`'s dispatch.
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseSet(){
+    _bglBuf.set(bufA, "hello world");           // dispatches to setFromLiteral
+    _bglBuf.set(bufB, bufA);                     // dispatches to setFromBuffer
+    _bglBuf.setFromLiteral(bufSmall, "tight");
+    _bglBuf.setFromBuffer(bufB, bufSmall);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// copy() — explicit positions, -1 sentinel, no-op cases.
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseCopy(){
+    // Whole source → start of dest
+    _bglBuf.copy(bufB, bufA, -1, 0, 0);
+    // Subset starting mid-source → end of dest
+    _bglBuf.copy(bufB, bufA, 4, 8, 2);
+    // Default toPos / fromPos
+    _bglBuf.copy(bufB, bufA, 3);
+    // Zero-count is a no-op
+    _bglBuf.copy(bufB, bufA, 0, 0, 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Capture / release stream redirection. Glk symbols (filemode_Write,
+// gg_arguments, glk_stream_open_memory, etc.) are provided by the parser
+// stdlib OR by the <buf>-owned `#Ifndef` shim in #emitfirst; either path
+// must compile cleanly.
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseStream(){
+    _bglBuf.capture(bufA);                // default size = bufA.size()
+    _bglBuf.capture(bufB, 32);            // explicit max
+    int depthAfterCapture = _bglBuf.stackLen();
+    _bglBuf.release();
+    _bglBuf.release();
+    int depthAfterRelease = _bglBuf.stackLen();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// print() — full buf and explicit length truncation.
+// ─────────────────────────────────────────────────────────────────────────────
+void exercisePrint(){
+    _bglBuf.print(bufA);                   // print to end-of-content
+    _bglBuf.print(bufA, 5);                // first 5 chars only
+    _bglBuf.print(bufSmall);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comparison: equals / startsWith / endsWith with and without case-insensitive
+// flag. Identical-arg case must be true; size-mismatched case must be false.
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseCompare(){
+    bool eq_self = _bglBuf.equals(bufA, bufA);          // identity
+    bool eq_diff = _bglBuf.equals(bufA, bufSmall);       // diff length
+    bool eq_ci = _bglBuf.equals(bufA, bufB, true);
+    bool sw = _bglBuf.startsWith(bufA, bufB);
+    bool swi = _bglBuf.startsWith(bufA, bufB, true);
+    bool sw_self = _bglBuf.startsWith(bufA, bufA);       // identity
+    bool ew = _bglBuf.endsWith(bufA, bufB);
+    bool ewi = _bglBuf.endsWith(bufA, bufB, true);
+    bool ew_self = _bglBuf.endsWith(bufA, bufA);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Substring extraction: mid / left / right at boundary positions including
+// 0, 1, end, and the -1 (= to-end) sentinel.
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseSubstring(){
+    _bglBuf.mid(bufB, bufA, 0, 4);          // first 4 chars
+    _bglBuf.mid(bufB, bufA, 2, -1);         // from index 2 to end
+    _bglBuf.mid(bufB, bufA, 5, 0);          // empty extraction
+    _bglBuf.left(bufB, bufA, 0);            // empty
+    _bglBuf.left(bufB, bufA, 1);            // first char only
+    _bglBuf.left(bufB, bufA, 10);
+    _bglBuf.right(bufB, bufA, 1);
+    _bglBuf.right(bufB, bufA, 5);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Insert / prepend / append / delete with charCount=0 (= use whole fromBuf).
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseInsert(){
+    _bglBuf.insert(bufA, bufB, 0, 3);        // insert at start
+    _bglBuf.insert(bufA, bufB, 5, 0);        // charCount=0 → use whole
+    _bglBuf.prepend(bufA, bufB);
+    _bglBuf.append(bufA, bufB);
+    _bglBuf.delete(bufA, 0, 1);              // delete first
+    _bglBuf.delete(bufA, 3, 2);              // delete mid
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Replace / replaceAll with default and explicit startingIndex.
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseReplace(){
+    _bglBuf.replace(bufA, bufB, bufSmall);   // not-found = no-op
+    _bglBuf.replaceAll(bufA, bufB, bufSmall);
+    _bglBuf.replaceAll(bufA, bufB, bufSmall, 5);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Search: indexOf with default + explicit start, and predicate-driven
+// indexOfFirstTrue / indexOfFirstFalse using a captured-arg lambda.
+// ─────────────────────────────────────────────────────────────────────────────
+bool isLetter(char c){ return _bglChar.isAlpha(c); }
+bool isDigit(char c) { return _bglChar.isNumeric(c); }
+bool isWhitespace(char c) { return c == ' '; }
+
+void exerciseSearch(){
+    int p0 = _bglBuf.indexOf(bufA, bufB);             // default start
+    int p1 = _bglBuf.indexOf(bufA, bufB, 0);
+    int p2 = _bglBuf.indexOf(bufA, bufB, 5);
+
+    // Predicate-driven — three different predicates, two start positions.
+    int t0 = _bglBuf.indexOfFirstTrue(bufA, (char c) => isLetter(c));
+    int t1 = _bglBuf.indexOfFirstTrue(bufA, (char c) => isDigit(c), 2);
+    int f0 = _bglBuf.indexOfFirstFalse(bufA, (char c) => isLetter(c));
+    int f1 = _bglBuf.indexOfFirstFalse(bufA, (char c) => isWhitespace(c), 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Case transforms + reverse + trim (each combo).
+// ─────────────────────────────────────────────────────────────────────────────
+void exerciseTransform(){
+    _bglBuf.toUpper(bufA);
+    _bglBuf.toLower(bufA);
+    _bglBuf.reverse(bufA);
+    _bglBuf.trimLeft(bufA);
+    _bglBuf.trimRight(bufA);
+    _bglBuf.trim(bufA);
+}
+
+void main(){
+    exerciseLength();
+    exerciseChars();
+    exerciseSet();
+    exerciseCopy();
+    exerciseStream();
+    exercisePrint();
+    exerciseCompare();
+    exerciseSubstring();
+    exerciseInsert();
+    exerciseReplace();
+    exerciseSearch();
+    exerciseTransform();
+}

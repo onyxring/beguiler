@@ -30,7 +30,7 @@ object bgl
 ;
 object widget
   with bump [;
-    self.count = self.count + 1;
+    self.count=self.count + 1;
     return self.count;
   ],
        count 0

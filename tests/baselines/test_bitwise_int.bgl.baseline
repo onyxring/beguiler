@@ -36,10 +36,10 @@ object _bglMath
     if (x == y) {
         return 0;
     }
-    if (x<0 && y>=0) {
+    if (x < 0 && y >= 0) {
         return 1;
     }
-    if (x>=0 && y<0) {
+    if (x >= 0 && y < 0) {
         return -1;
     }
     u=x & 32767;
@@ -56,18 +56,18 @@ object _bglMath
     return i / self.pow(2,numbits);
   ],
        abs [p;
-    if (p<0) _bgl_temp0 = -p; else _bgl_temp0 = p;
+    if (p < 0) _bgl_temp0 = -p; else _bgl_temp0 = p;
     return _bgl_temp0;
   ],
        unsignedDiv [a b lowHalf hq hr combined;
-    if (b==0) {
+    if (b == 0) {
         return 0;
     }
-    if (a>=0 && b>0) {
+    if (a >= 0 && b > 0) {
         return a / b;
     }
-    if (b<0) {
-        if (self.unsignedcompare(a,b)>=0) _bgl_temp1 = 1; else _bgl_temp1 = 0;
+    if (b < 0) {
+        if (self.unsignedcompare(a,b) >= 0) _bgl_temp1 = 1; else _bgl_temp1 = 0;
         return _bgl_temp1;
     }
     lowHalf=a & 32767;
@@ -78,26 +78,26 @@ object _bglMath
         hr = hr - b;
     }
     combined=lowhalf + hr;
-    if (combined>=0) {
+    if (combined >= 0) {
         return hq + combined / b;
     }
     return hq + self.unsigneddiv(combined,b);
   ],
        unsignedMod [a b;
-    if (b==0) {
+    if (b == 0) {
         return 0;
     }
-    if (a>=0 && b>0) {
+    if (a >= 0 && b > 0) {
         return a % b;
     }
     return a - self.unsigneddiv(a,b) * b;
   ],
        pow [i p retval t;
-    if (p==0) {
+    if (p == 0) {
         return 1;
     }
     retval=i;
-    if (p<0) {
+    if (p < 0) {
         for (t = 0 : t < (-p) - 1 : t++) {
             retval = retval / i;
         }

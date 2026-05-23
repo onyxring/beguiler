@@ -1,0 +1,68 @@
+/* test_arrays_glulx.bgl — array<char> subscript correctness on Glulx.
+ *
+ * Sister to test_arrays.bgl (which is Z5-only). The byteArray `[i]` emitter
+ * previously hardcoded `+2` — correct on Z (WORDSIZE=2) but wrong on Glulx
+ * (WORDSIZE=4), where it would read into the middle of the length WORD.
+ *
+ * Fix: emitter now uses `$val->($i + WORDSIZE)`, which evaluates to `+2` on
+ * Z and `+4` on Glulx. This test exercises subscript reads/writes on Glulx
+ * to lock the corrected offset into the baseline.
+ *
+ * Covers untracked byteArrays (no `<buf>`) so the I6 6.30 hybrid-buffer
+ * convention (`Array X buffer N` with length WORD at byte 0, data at byte
+ * WORDSIZE) is what's emitted. With `<buf>` the layout shifts to
+ * SizedBuffer — see test_buf_glulx.bgl for that path.
+ */
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Room : object {
+    int visits = 0;
+}
+Room r1;
+Room r2;
+object plainObj1;
+object plainObj2;
+
+array<int>    g_nums    = {10, 20, 30, 40, 50};
+array<int>    g_sized[8];
+array<bool>   g_flags   = {true, false, true};
+array<char>   g_buf[32];        // untracked byteArray — I6 hybrid layout
+array<char>   g_short[8];       // small allocation — boundary indexing
+
+object inventory {
+    array<int>  slots[6];
+    int count = 0;
+}
+
+void main() {
+    // Word-array reads/writes on Glulx (WORDSIZE=4)
+    int  i = g_nums[0];
+    bool b = g_flags[1];
+    g_nums[0]  = 42;
+    g_flags[0] = false;
+    g_sized[7] = 99;
+    int last = g_sized[7];
+
+    // byteArray subscripts on Glulx — data starts at byte 4 of allocation.
+    // Pre-fix, this was wrongly +2; verifying read/write at boundary positions
+    // (0, mid, near-end) lands the corrected offset in the baseline.
+    g_buf[0]  = 'H';
+    g_buf[1]  = 'e';
+    g_buf[15] = 'X';
+    g_buf[31] = '!';
+    char first  = g_buf[0];
+    char middle = g_buf[15];
+    char last_c = g_buf[31];
+
+    // Small buf — tight boundary check.
+    g_short[0] = 'a';
+    g_short[7] = 'z';
+    char firstSh = g_short[0];
+    char lastSh = g_short[7];
+
+    int c = inventory.count;
+}

@@ -128,7 +128,7 @@ object bgl{
     }
     
     //--setters
-    extern class parentProp{   //obj.parent=loc; -> move obj to loc;
+    extern emitter class parentProp{   //obj.parent=loc; -> move obj to loc;
         emitter parentProp operator = (object v){
             move $self to $v
         }

@@ -46,6 +46,11 @@ class i6Emitter{
         // can write the $9084 magic at startup. List-initialized arrays bake the magic into
         // the initializer values and don't need to be registered.
         vector<string> trackedArraysNeedingMagicInit;
+        // Byte-array analog of trackedArraysNeedingMagicInit. When `<buf>` is included, sized-
+        // uninitialized `array<char>` declarations get 4 trailing bytes (length-hi, length-lo,
+        // magic-hi $90, magic-lo $84) so `_bglBuf` can detect tracked bufs and read length.
+        // Names registered here get their magic+length stamped at startup.
+        vector<string> trackedByteArraysNeedingMagicInit;
 
         static string replaceWord(string str, const string& from, const string& to);
         void buildSpillMap(functionDef* fd);

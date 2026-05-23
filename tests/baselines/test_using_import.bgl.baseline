@@ -30,7 +30,7 @@ object bgl
 ;
 object engine
   with increment [;
-    self.counter = self.counter + 1;
+    self.counter=self.counter + 1;
     return self.counter;
   ],
        counter 0

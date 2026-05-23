@@ -70,6 +70,8 @@
   - 5.2.2 `extern class`
   - 5.2.3 `emitter class`
   - 5.2.4 `alias class`
+  - 5.2.5 Pooled Classes
+  - 5.2.6 `byVal class` — Value-Semantic Class Parameters
 - 5.3 Member Variables
 - 5.4 Member Methods
 - 5.5 Lifecycle Emitters
@@ -95,6 +97,8 @@
   - 6.4.2 Special Properties
 - 6.5 Array Properties
 - 6.6 Method Properties
+  - 6.6.1 Method dispatch on object receivers
+  - 6.6.2 Method overloads on objects and classes
 - 6.7 Complete Example
 
 ### Chapter 7 — Emitters
@@ -131,7 +135,8 @@
 ### Chapter 10 — Statements
 - 10.1 Overview
 - 10.2 Variable Declaration
-  - 10.2.1 Z-Machine Local Variable Limit
+  - 10.2.1 Class-Typed Locals and Reference Semantics
+  - 10.2.2 Z-Machine Local Variable Limit
 - 10.3 Assignment
 - 10.4 Compound Assignment
 - 10.5 Increment and Decrement
@@ -211,6 +216,7 @@
 - 17.2 Core Language Extension Files
   - 17.2.1 `<bglAllocated>` — Allocator-Managed Object Mixin
   - 17.2.2 `<char>` — Character Utilities
+  - 17.2.2a `<buf>` — Tracked Character Buffers
   - 17.2.3 `<string>` — Mutable String Runtime
   - 17.2.4 `<uint>` — Unsigned Integer Type
   - 17.2.5 `<math>` — Mathematical Functions
@@ -860,7 +866,7 @@ These settings affect the generated code.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `framePoolSize` | int | `64` | Number of slots in the Z-machine local-variable overflow pool. Active only on Z3/Z5/Z8 targets. See §10.2.1. |
+| `framePoolSize` | int | `64` | Number of slots in the Z-machine local-variable overflow pool. Active only on Z3/Z5/Z8 targets. See §10.2.2. |
 | `rewritePaths` | bool | `true` | When `true` (the default), path separators (`/` and `\`) in all file path settings and `#include`/`#includeI6` paths are rewritten to the OS path separator at parse time. Set to `false` to disable this normalization. |
 
 ### Game metadata settings
@@ -1436,6 +1442,8 @@ Beguile has four class declaration forms. Each is introduced by a different keyw
 
 Normal, `extern`, and `emitter` classes support optional inheritance via `: Parent` (see §5.6). Alias classes use `for Parent` to specify the underlying type they map to (see §5.2.3) — this is not inheritance but a type-aliasing relationship. All forms support extension via `extend class` (see §5.7). Alias classes require exactly one parent; extern/alias classes do not allow non-emitter methods.
 
+The qualifiers can be combined. The most common combination is `extern emitter class` — used in the core library for primitive-type wrappers like `int`, `bool`, `char`, and `string`. The type already exists in I6 (every primitive is just a word slot, the dictionary maps to a specific I6 type), so `extern` suppresses the I6 class declaration; `emitter` says the wrapper is purely a type label and operator host — instances have no I6 object backing and emit as plain `global X;` rather than as I6 `Object` directives. See §5.2.3 for the emission rule. A `byVal class Foo` qualifier marks a normal class as value-semantic for parameter passing — see §5.2.6.
+
 ## 5.2.1 Normal Classes
 
 A normal class (no qualifier) is the standard Beguile class. It generates an I6 `Class` declaration and supports the full range of members: variables with initializers, non-emitter methods with Beguile statement bodies, and emitter methods with raw I6 bodies.
@@ -1499,10 +1507,16 @@ The empty brackets `[]` mark the class as I6-pooled with the size determined by 
 
 #### Typical use
 
-Extern classes wrap I6 built-in types so that Beguile's type system can reason about them. The core library uses extern classes for all primitive types (`int`, `char`, `bool`, `string`, `object`) and for library-defined types like `attribute` and `attributeList`. Emitter methods on extern classes provide typed, operator-overloaded access to I6 operations that would otherwise require raw I6 code.
+Extern classes wrap I6 built-in types so that Beguile's type system can reason about them. The core library uses extern classes for the I6-real `object` type and for library-defined types like `attribute` and `attributeList`. Primitive-type wrappers (`int`, `bool`, `char`, `string`) use the combined `extern emitter class` form (see §5.2.3) so their instances emit as `global X;` rather than as I6 `Object` directives. Emitter methods on extern classes provide typed, operator-overloaded access to I6 operations that would otherwise require raw I6 code.
 
 ```bgl
-extern class int : _bglObject {
+extern class object {
+    parentProp parent;
+    attributeList attributes;
+    emitter void give(attribute attr){ give $val $attr }
+}
+
+extern emitter class int : _bglObject {
     emitter int operator + (int v){ $val + $v }
     emitter bool operator == (int v){ $val == $v }
 }
@@ -1533,6 +1547,29 @@ emitter class style {
     emitter void roman()   { style roman; }
 }
 ```
+
+#### Combined `extern emitter class` — primitive-type wrappers
+
+The core library declares each primitive Beguile type (`int`, `bool`, `char`, `string`, `intLiteral`, `negativeIntLiteral`, `charLiteral`, `stringLiteral`, etc.) as `extern emitter class`. The combination expresses two facts about these types:
+
+- **`extern`** — no I6 class declaration is generated. The underlying type already exists in I6 (every primitive is a word slot).
+- **`emitter`** — the wrapper is a Beguile-side type label and operator host only. It has no I6 instance backing of its own. Instances at file scope (`int x = 5;`, `bool b = true;`) emit as **`global X;`** — not as `Object X;`.
+
+This is the discriminator the compiler uses at instance-emission time: classes derived from the real I6 `object` (the `extern class object { ... }` in core, plus everything inheriting from it via normal/alias classes) emit as I6 `Object` directives; classes marked `emitter` (including the combined `extern emitter` form) emit as I6 globals.
+
+```bgl
+extern emitter class int : _bglObject {  // type label over I6's word-sized integer slot
+    emitter int operator + (int v){ $val + $v }
+}
+
+int    x = 5;           // emits: global x = 5;
+bool   b = true;        // emits: global b = true;
+object j;               // emits: object j;   (I6 Object directive — `object` is not emitter)
+Room   r;               // emits: object r;   (Room is alias to object → tree citizen)
+Tally  t;               // emits: tally t;    (Tally is a normal class : object)
+```
+
+The combined form is restricted to library-internal use; user code generally declares its own types as normal `class` or `extern class` and uses the existing primitive types from the library.
 
 ## 5.2.4 `alias class`
 
@@ -1640,6 +1677,34 @@ Rules for `destroy()`:
 
 - Z-machine class-message dispatch caps `create` arguments at 3.
 - A static-instance variable of a pooled type (e.g. `marbleClass M;` declared at file scope, not allocated via `new`) cannot be safely passed to `delete` — Beguile does not currently distinguish pool references from static instances at compile time. I6 will catch the misuse at runtime via `RT__Err`. Avoid mixing static and pool-allocated instances of the same type.
+
+## 5.2.6 `byVal class` — Value-Semantic Class Parameters
+
+A class declared with the `byVal` qualifier passes by **value** when used as a function parameter — mutations inside the callee don't leak back to the caller's instance. Default class params (and class-typed locals — see §10.2.2) pass by reference, which mirrors the I6 native model (a class instance is an I6 object reference).
+
+```bgl
+byVal class Temperature {
+    int degrees = 0;
+    emitter Temperature operator = (Temperature v) { ... }  // required — see below
+}
+
+void heatUp(Temperature t) {
+    t.degrees = t.degrees + 10;   // mutates the local copy only
+}
+
+Temperature room;
+heatUp(room);   // room.degrees unchanged
+```
+
+At every call site, the compiler synthesizes a per-(function, param) backing global of the class's type and emits `backing.operator=(passedArg)` at routine entry. References to the parameter name inside the body are routed through the backing, so mutations affect the local copy rather than the caller's instance.
+
+Rules:
+- **`operator=` is required.** The copy-in step calls the class's `operator=` against the parameter type (or `var` as a fallback). Without one, declaring a `byVal class` is a compile error pointing at the missing operator.
+- **Cannot inherit from `object`.** Object-derived classes are tree citizens (reference-semantic by the world-tree model); the marker is rejected with an error citing the conflict.
+- **Mutually exclusive with `extern`, `emitter`, `extend`, and `alias`.** `byVal` only makes sense on a normal class that owns its own copy-in semantics.
+- **Marker is per-class, not inherited.** A subclass of a `byVal class` does NOT inherit the marker. If the subclass wants the same semantics, it must declare `byVal` itself.
+
+Class members called on a parameter (e.g. inside a method body where `self` is the receiver and the receiver is a `byVal` param to another function) participate transparently — the backing is the receiver for I6 emission, and method dispatch resolves against the same class.
 
 ## 5.3 Member Variables
 
@@ -2294,6 +2359,25 @@ When a method is called on an object — including via `self.method()` from insi
 The class hierarchy walk is what makes inherited methods like `give`, `provides`, `has`, and `is` from the `object` base class reachable from any object instance. Inside `object Foo {…}`, both `self.give(attr)` and `obj.give(attr)` resolve through this two-step walk; per-instance methods declared on `Foo` shadow the inherited versions.
 
 This dispatch rule applies uniformly: an `object Foo {…}` declared without an explicit class still inherits from `object` implicitly, and the class-hierarchy walk reaches the methods defined there. There is no special-casing of the `object` base class — it is an ordinary class whose methods are reached through the same hierarchy walk as any user-defined base class.
+
+### 6.6.2 Method overloads on objects and classes
+
+A class or object body may define multiple methods that share a name but differ in their parameter signatures — the same overload rules as global functions (§9.4) apply. The compiler resolves the right overload at each call site using arity, then exact type match, then conversion. To make the overload set survive I6's flat property table (which permits only one property per name on a class), Beguile assigns each overload a distinct mangled I6 property name based on its arity and parameter types. Calls emit using the mangled name; the unmangled name is invisible to I6 but remains the only name visible in Beguile source.
+
+```bgl
+class Logger {
+    void log(int n)      { print(n); }
+    void log(string s)   { print(s); }
+    void log(int n, int m){ print(n); print(":"); print(m); }
+}
+
+Logger lg;
+lg.log(5);          // dispatches to log(int)
+lg.log("hi");       // dispatches to log(string)
+lg.log(3, 7);       // dispatches to log(int, int)
+```
+
+Mangling is automatic and stable. Overloads of `operator()`, `operator[]`, and `operator[]=` follow the same rule; operator emitters mangle through a parallel pathway that distinguishes them by parameter type. Emitter methods are inlined at the call site and do not contribute to the I6 property table, so they cannot collide.
 
 ## 6.7 Complete Example
 
@@ -3040,7 +3124,7 @@ extern class string {
 
 ## 9.4 Overload Resolution
 
-Multiple functions with the same name but different parameter-type signatures may only exist for emitter functions. Resolution proceeds as described in §8.4: exact match, then conversion match, then `var` fallback.
+Multiple functions or methods with the same name but different parameter-type signatures may coexist. Global emitter functions overload naturally (each call site inlines the matching body). Non-emitter methods on classes and objects also overload (see §6.6.2 — the compiler distinguishes them in the I6 property table via signature-based mangling). Resolution proceeds as described in §8.4: exact match, then conversion match, then `var` fallback.
 
 Arity is checked before type compatibility. The required argument count is the number of parameters without default values — parameters with defaults are optional. A call matches if the number of arguments falls between the required count and the total parameter count. A call outside this range will not match any overload regardless of types.
 
@@ -3103,7 +3187,50 @@ The variable is visible from the point of declaration to the end of the enclosin
 
 If the variable's type defines an `init` emitter, it fires immediately after the declaration, before any initializer assignment (§7.7).
 
-### 10.2.1 Bypassing the Z-Machine's Local Variable Limit
+### 10.2.1 Class-Typed Locals and Reference Semantics
+
+A local variable of a normal class type works as a **value-semantic** slot by default: the compiler synthesizes a global I6 object backing for each `(routine, local)` pair, routes reads and writes through it, and zero-initializes its fields at routine entry so call-to-call state doesn't leak. Assignment dispatches `operator=` on the LHS class, so `localA = factory();` copies fields rather than aliasing pointers.
+
+```bgl
+class Vec2 {
+    int x = 0; int y = 0;
+    emitter Vec2 operator = (Vec2 v) { ... }
+}
+
+void doMath() {
+    Vec2 v;             // backing synthesized; x=0, y=0 on entry
+    v = makeVec(3, 4);  // operator=(Vec2) dispatched — fields copied
+}
+```
+
+Backing synthesis is gated:
+- **Object-derived classes** (`: object`) get bare-int local slots with reference semantics. They are tree citizens; an I6 object reference is the right model.
+- **Classes without stored fields** are not backed (nothing to copy).
+- **Locals declared `ref`** opt out of backing — see below.
+
+If a class has stored fields, does NOT inherit from `object`, and does NOT declare an `operator=`, assigning into a local of that type is a compile error pointing at three remedies: declare `operator=`, mark the local `ref`, or inherit from `object`.
+
+#### `ref` locals — pointer-alias semantics for a single declaration
+
+The `ref` qualifier on a local variable opts that local into pointer-alias (reference) semantics. The compiler skips backing synthesis, skips `operator=` dispatch on assignment, and skips the no-`operator=` error. The local is a bare I6 word that holds whatever the RHS produces; subsequent reads and writes go through that pointer.
+
+```bgl
+class Vec2 { int x; int y; }   // no operator=
+
+void aliasExample() {
+    ref Vec2 alias = someInstance;   // alias and someInstance share storage
+    alias.x = 99;                    // someInstance.x is now 99
+}
+```
+
+Rules:
+- `ref` is **valid only on local variable declarations**. Globals, members, parameters, and `extern`/`const` decls all reject the qualifier with a targeted error.
+- `ref` overrides any `operator=` the class might define for that one local.
+- The opt-in is per-declaration — only this local has reference semantics; other locals of the same class follow the default value-semantic rule.
+
+Class parameters use the same model: default reference-semantic, with `byVal class` opting in to value semantics for the whole class (§5.2.6). The `byVal` marker is **class-level**, not parameter-level — there's no per-parameter `byVal` qualifier; mark the class and every parameter of that class type gets the value-semantic copy-in.
+
+### 10.2.2 Bypassing the Z-Machine's Local Variable Limit
 
 The Z-machine architecture limits a routine to **15 local variable slots** total (parameters + declared locals combined). This is a hard constraint of the virtual machine.
 
@@ -5137,6 +5264,51 @@ Extends the built-in `char` type with character inspection, case conversion, and
 | `c =~ d` | Case-insensitive equality. `'A' =~ 'a'` is true. |
 
 Does not require `bglInit()`.
+
+### 17.2.2a `<buf>` — Tracked Character Buffers
+
+```bgl
+#include <buf>
+```
+
+Activates the **SizedBuffer** layout for `array<char>` declarations: a tracked buffer that carries its capacity, current length, and a magic marker alongside the data, but whose user-visible pointer behaves as a standard I6 hybrid buffer (length WORD at offset 0, characters starting at `WORDSIZE`). The wire-compatible front lets tracked bufs be passed directly into I6 stdlib routines like `print_to_array` and `glk_put_buffer`; the metadata at negative offsets lets Beguile-side methods do the right thing without a wrapping class.
+
+```bgl
+#include <buf>
+array<char> myBuf[64];     // 64 chars of data + sized-buffer prefix
+myBuf.setLength(0);
+_bglBuf.set(myBuf, "hello");
+print(_bglBuf.length(myBuf));   // 5
+print(_bglBuf.size(myBuf));     // 64
+```
+
+When `<buf>` is included, `byteArray`'s `size()` and `length()` methods are replaced with tracked-buf-aware versions, and `setLength` / `isTracked` are added. The same operations are available as `_bglBuf.X(buf, ...)` for callers that prefer the namespaced form.
+
+| Method | Returns | Description |
+|---|---|---|
+| `buf.size()` | `int` | Data capacity (chars). Reads `buf-->(-1)` |
+| `buf.length()` | `int` | Current used chars. Reads `buf-->0` (the I6 hybrid length word) |
+| `buf.setLength(n)` | `void` | Set the used-chars count. Range-checked against `size()` |
+| `buf.isTracked()` | `bool` | True if the receiver carries the `$90 $84` magic — distinguishes tracked bufs from raw I6 arrays |
+| `_bglBuf.set(buf, value)` | `array<char>` | Replace buf contents with a string literal, char, or another buf. Updates length |
+| `_bglBuf.append(toBuf, fromBuf)` / `prepend` / `insert(toBuf, fromBuf, pos)` | `array<char>` | Buffer-to-buffer composition with bounds checks |
+| `_bglBuf.copy(toBuf, fromBuf, n, toPos, fromPos)` | `array<char>` | Byte-range copy |
+| `_bglBuf.delete(buf, pos, count)` | `array<char>` | Remove a range, sliding tail left |
+| `_bglBuf.left(toBuf, fromBuf, n)` / `right` / `mid(toBuf, fromBuf, fromPos, n)` | `array<char>` | Substring extraction |
+| `_bglBuf.indexOf(buf, search, start)` | `int` | First match index, or `-1` |
+| `_bglBuf.replace(buf, search, repl)` / `replaceAll` | `array<char>` | In-place substring replacement |
+| `_bglBuf.equals(buf1, buf2, caseInsensitive = false)` | `bool` | Content equality |
+| `_bglBuf.startsWith(buf, prefix, caseInsensitive = false)` / `endsWith` | `bool` | Prefix / suffix test |
+| `_bglBuf.toUpper(buf)` / `toLower(buf)` | `array<char>` | In-place case conversion |
+| `_bglBuf.reverse(buf)` / `trim(buf)` / `trimLeft(buf)` / `trimRight(buf)` | `array<char>` | In-place transforms |
+| `_bglBuf.print(buf, len = -1)` | `array<char>` | Print `len` chars (or up to `length()` if `len < 0`) |
+| `_bglBuf.capture(buf, maxBytes = 0)` / `release()` | — | Redirect print output into the buffer, then restore the prior stream |
+
+**Layout.** A tracked buf's raw allocation starts at `WORDSIZE+2` bytes before the user pointer. Bytes 0..1 of the raw region hold the magic (`$90`, `$84`); bytes `2..WORDSIZE+1` hold the capacity word; the next word is the current length (the I6 hybrid layout's slot 0). Data starts at `buf->WORDSIZE` from the user pointer. Untracked I6-native `array<char>` declarations skip the prefix entirely; `isTracked()` distinguishes the two at runtime.
+
+**Naming.** All symbols are `_bgl`-prefixed (`_bglBuf`, `_bglAsBuf`, etc.) to avoid collision with orLibrary's `_orBuf` family for projects that include both.
+
+Does not require `bglInit()`. Including `<buf>` triggers the compiler to emit the SizedBuffer prefix for every `array<char>` declared with a sized form (e.g. `array<char> b[N];`).
 
 ### 17.2.3 `<string>` — Mutable String Runtime
 

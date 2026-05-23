@@ -1,0 +1,645 @@
+!% -G
+!% -E1
+
+    Array _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v;
+        if(_bglScratchTop >= 31){
+            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
+            quit;
+        }
+        _bglScratchTop++;
+        _bglScratchStack-->_bglScratchTop = v;
+    ];
+    [ _bglScratchMake count;
+        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
+        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
+        _bglScratchTop = 0;
+        return _bglScratchStack;
+    ];
+
+
+    Default bglStringDefaultSize 500;
+
+
+    #Ifdef TARGET_GLULX;
+    #Ifndef filemode_Write;
+        Constant filemode_Write 1;
+    #Endif;
+    #Ifndef gg_arguments;
+        Array gg_arguments --> 4;
+    #Endif;
+    #Endif;
+
+global bufa = 0;
+global bufb = 0;
+global bufsmall = 0;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+    bufa_raw->0 = $90;
+    bufa_raw->1 = $84;
+    (bufa_raw + 2)-->0 = 64;
+    bufa = bufa_raw + WORDSIZE + 2;
+    bufb_raw->0 = $90;
+    bufb_raw->1 = $84;
+    (bufb_raw + 2)-->0 = 64;
+    bufb = bufb_raw + WORDSIZE + 2;
+    bufsmall_raw->0 = $90;
+    bufsmall_raw->1 = $84;
+    (bufsmall_raw + 2)-->0 = 16;
+    bufsmall = bufsmall_raw + WORDSIZE + 2;
+];
+object _bglUtil
+  with buf _bglbuf
+;
+object bgl
+  with utilities _bglutil,
+       glulx _glulx
+;
+Array __bglchar___vowels string "aeiouAEIOU@:a@:e@:i@:o@:u@:y@:A@:E@:I@:O@:U@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~o@~A@~O";
+object _bglChar
+  with isAlpha [c;
+    return self.islower(c) || self.isupper(c);
+  ],
+       isNumeric [c;
+    return c>=0 && c<=9;
+  ],
+       isAlphaNumeric [c;
+    return self.isalpha(c) || self.isnumeric(c);
+  ],
+       isLower [c;
+    if (c>='a' && c<='z') {
+        rtrue;
+    }
+    if ((c>=155 && c<=157)||(c>=164&&c<=166)) {
+        rtrue;
+    }
+    if (c>=169 && c<=174) {
+        rtrue;
+    }
+    if (c>=181 && c<=185) {
+        rtrue;
+    }
+    if (c>=191 && c<=195) {
+        rtrue;
+    }
+    if (c==201) {
+        rtrue;
+    }
+    if (c==203) {
+        rtrue;
+    }
+    if (c>=205 && c<=207) {
+        rtrue;
+    }
+    if (c==211) {
+        rtrue;
+    }
+    if (c==213) {
+        rtrue;
+    }
+    if (c==215) {
+        rtrue;
+    }
+    if (c==216) {
+        rtrue;
+    }
+    if (c==220) {
+        rtrue;
+    }
+    rfalse;
+  ],
+       isUpper [c;
+    if (c>='A' && c<='Z') {
+        rtrue;
+    }
+    if ((c>=158 && c<=159)||(c>=167&&c<=168)) {
+        rtrue;
+    }
+    if (c>=160) {
+        rtrue;
+    }
+    if (c>=175 && c<=180) {
+        rtrue;
+    }
+    if (c>=186 && c<=190) {
+        rtrue;
+    }
+    if (c>=196 && c<=200) {
+        rtrue;
+    }
+    if (c==202) {
+        rtrue;
+    }
+    if (c==204) {
+        rtrue;
+    }
+    if (c>=208 && c<=210) {
+        rtrue;
+    }
+    if (c==212) {
+        rtrue;
+    }
+    if (c==214) {
+        rtrue;
+    }
+    if (c==217) {
+        rtrue;
+    }
+    if (c==218) {
+        rtrue;
+    }
+    if (c==221) {
+        rtrue;
+    }
+    rfalse;
+  ],
+       isVowel [c v _bglfi0;
+    _bglfi0 = 0;
+    for (: _bglfi0 < self.__vowels->0 : _bglfi0++) {
+        v = self.__vowels->(_bglfi0+1);
+        if (v==c) {
+            rtrue;
+        }
+    }
+    rfalse;
+  ],
+       isConsonant [c;
+    return (self.isalpha(c) && ~~self.isvowel(c));
+  ],
+       toLower [c;
+    switch (c) {
+        'A' to 'Z':
+            return c+32;
+        202, 204, 212, 214, 221:
+            return c-1;
+        217, 218:
+            return c-2;
+        158 to 160, 167, 168, 208 to 210:
+            return c-3;
+        186 to 190, 196 to 200:
+            return c-5;
+        175 to 180:
+            return c-6;
+    }
+    return c;
+  ],
+       toUpper [c;
+    switch (c) {
+        'a' to 'z':
+            return c-32;
+        201, 203, 211, 213, 220:
+            return c+1;
+        215, 216:
+            return c+2;
+        155 to 157, 164, 165, 205 to 207:
+            return c+3;
+        181 to 185, 191 to 195:
+            return c+5;
+        169 to 174:
+            return c+6;
+    }
+    return c;
+  ],
+       __vowels __bglchar___vowels
+;
+object _glulx
+;
+[__glkHook _vararg_count api args retval;
+    @copy sp api;
+    args=_vararg_count - 1;
+    @glk api args retval;
+    return retval;
+];
+array _bglbufstreamstack table 16;
+array _bglbufglulxstreams table 16;
+object _bglBuf
+  with isTracked [buf;
+    if (buf == 0) {
+        return false;
+    }
+    if (buf->(-WORDSIZE - 2) ~= 144) {
+        return false;
+    }
+    if (buf->(-WORDSIZE - 1) ~= 132) {
+        return false;
+    }
+    return true;
+  ],
+       size [buf;
+    if (self.istracked(buf)) {
+        return buf-->(-1);
+    }
+    return -1;
+  ],
+       length [buf;
+    return buf-->(0);
+  ],
+       setLength [buf newLength sz;
+    sz=self.size(buf);
+    if (sz > 0 && newlength > sz) {
+        newLength=sz;
+    }
+    buf-->(0) = newLength;
+  ],
+       getChar [buf pos sz;
+    sz=self.size(buf);
+    if (sz < 0 || sz > pos) {
+        return buf->(pos + WORDSIZE);
+    }
+    return -1;
+  ],
+       setchar_3_bytearray_int_int [buf pos val sz;
+    sz=self.size(buf);
+    if (sz == -1 || sz > pos) {
+        buf->(pos + WORDSIZE) = val;
+    }
+  ],
+       set [buf stringVal;
+    if (self.istracked(stringVal)) {
+        self.setfrombuffer(buf, stringVal);
+    }
+    else {
+        self.setfromliteral(buf, stringVal);
+    }
+    return buf;
+  ],
+       setFromLiteral [buf stringVal sz;
+    sz=self.size(buf);
+    if (sz < 0) {
+        sz = bglstringdefaultsize;
+    }
+     stringVal.print_to_array(buf, sz); 
+    self.setLength(buf, self.length(buf));
+    return buf;
+  ],
+       setFromBuffer [buf stringVal svlen;
+    svlen=self.length(stringVal);
+    self.copy(buf, stringVal, svlen, 0, 0);
+    self.setLength(buf, svlen);
+    return buf;
+  ],
+       copy [toBuf fromBuf numCharsToCopy toPos fromPos srcLen tgtSize frmPtr toPtr;
+    if (frompos == -1) {
+        fromPos = 0;
+    }
+    if (topos == -1) {
+        toPos = 0;
+    }
+    srcLen=self.length(fromBuf);
+    if (numcharstocopy < 0 || numcharstocopy + frompos > srclen) {
+        numCharsToCopy=srclen - frompos;
+    }
+    tgtSize=self.size(toBuf);
+    if (tgtsize > 0 && numcharstocopy + topos > tgtsize) {
+        numCharsToCopy=tgtsize - topos;
+    }
+    frmPtr=frombuf + frompos + WORDSIZE;
+    toPtr=tobuf + topos + WORDSIZE;
+    @mcopy numCharsToCopy frmPtr toPtr;
+    self.setLength(toBuf, topos + numcharstocopy);
+    return tobuf;
+  ],
+       capture [buf maxBytes s;
+    _bglbufstreamstack-->(self._stacktop+1) = buf;
+    if (maxbytes == 0) {
+        s=self.size(buf);
+        if ((s < 0)) {
+            maxBytes=bglstringdefaultsize;
+        }
+        else {
+            maxBytes=s;
+        }
+    }
+    _bglbufglulxstreams-->(self._stacktop+1) = __glkHook(72);
+    __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, filemode_write, 662));
+    self._stacktop++;
+  ],
+       release [buf;
+    if (self._stacktop == 0) {
+        return 0;
+    }
+    self._stacktop--;
+    buf =  _bglbufstreamstack-->(self._stacktop+1) ;
+    __glkHook(68, __glkHook(72), gg_arguments);
+    buf->(0) =  gg_arguments-->(0+1) ;
+    __glkHook(71,  _bglbufglulxstreams-->(self._stacktop+1) );
+    self.setLength(buf, self.length(buf));
+    return buf;
+  ],
+       stackLen [;
+    return self._stacktop;
+  ],
+       print [buf len;
+    if (len <= 0) {
+        len=self.length(buf);
+    }
+    __glkHook(132, buf + WORDSIZE, len);
+    return buf;
+  ],
+       equals [buf1 buf2 caseInsensitive len1 t c1 c2;
+    len1=self.length(buf1);
+    if (len1 ~= self.length(buf2)) {
+        return false;
+    }
+    for (t = 0 : t < len1 : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchar.tolower(c1);
+            c2 = _bglchar.tolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
+    len2=self.length(buf2);
+    if (self.length(buf1) < len2) {
+        return false;
+    }
+    for (t = 0 : t < len2 : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchar.tolower(c1);
+            c2 = _bglchar.tolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       endsWith [buf1 buf2 caseInsensitive len2 offset t c1 c2;
+    len2=self.length(buf2);
+    offset=self.length(buf1) - len2;
+    if (offset < 0) {
+        return false;
+    }
+    for (t = 0 : t < len2 : t++) {
+        c1=buf1->(offset + t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchar.tolower(c1);
+            c2 = _bglchar.tolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       mid [toBuf fromBuf fromPos numCharsToCopy maxLen;
+    maxLen=self.length(frombuf) - frompos;
+    if (numcharstocopy == -1 || numcharstocopy > maxlen) {
+        numCharsToCopy=maxLen;
+    }
+    self.copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+    self.setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       left [toBuf fromBuf numCharsToCopy;
+    self.copy(toBuf, fromBuf, numCharsToCopy, 0, 0);
+    self.setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       right [toBuf fromBuf numCharsToCopy fromPos;
+    fromPos=self.length(frombuf) - numcharstocopy;
+    self.copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+    self.setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       insert [toBuf fromBuf toPos charCount len;
+    if (charcount <= 0) {
+        charCount=self.length(fromBuf);
+    }
+    len=self.length(toBuf);
+    self.copy(toBuf, toBuf, len - topos, topos + charcount, toPos);
+    self.copy(toBuf, fromBuf, charCount, toPos, 0);
+    self.setLength(toBuf, len + charcount);
+    return tobuf;
+  ],
+       prepend [toBuf fromBuf;
+    self.insert(toBuf, fromBuf, 0, self.length(fromBuf));
+    return tobuf;
+  ],
+       append [toBuf fromBuf;
+    self.copy(toBuf, fromBuf, -1, self.length(toBuf), 0);
+    return tobuf;
+  ],
+       delete [buf pos count len;
+    len=self.length(buf);
+    self.copy(buf, buf, len - count, pos, pos + count);
+    self.setLength(buf, len - count);
+    return buf;
+  ],
+       replace [buf searchTextBuf replaceTextBuf searchLen pos;
+    searchLen=self.length(searchTextBuf);
+    pos=self.indexof(buf,searchTextBuf,0);
+    if (pos == -1) {
+        return buf;
+    }
+    self.delete(buf, pos, searchLen);
+    self.insert(buf, replaceTextBuf, pos, 0);
+    return buf;
+  ],
+       replaceAll [buf searchTextBuf replaceTextBuf startingIndex rtlen;
+    rtlen=self.length(replaceTextBuf);
+    while (startingindex ~= -1) {
+        self.replace(buf, searchTextBuf, replaceTextBuf);
+        startingIndex=self.indexof(buf,searchTextBuf,startingindex + rtlen);
+    }
+    return buf;
+  ],
+       indexOf [buf searchTextBuf startingIndex stblen blen o i;
+    stblen=self.length(searchTextBuf);
+    blen=self.length(buf);
+    for (o = startingindex : o < blen : o++) {
+        for (i = 0 : i < stblen : i++) {
+            if (buf->(o + i + WORDSIZE) ~= searchtextbuf->(i + WORDSIZE)) {
+                break;
+            }
+        }
+        if (i == stblen) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       indexOfFirstTrue [buf pred startingIndex buflen o c;
+    buflen=self.length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    for (o = startingindex : o < buflen : o++) {
+        c = buf->(o + WORDSIZE);
+        if (pred(c)) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       indexOfFirstFalse [buf pred startingIndex buflen o c;
+    buflen=self.length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    if (startingindex > buflen) {
+        return -1;
+    }
+    for (o = startingindex : o < buflen : o++) {
+        c = buf->(o + WORDSIZE);
+        if (~~pred(c)) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       toUpper [buf buflen t;
+    buflen=self.length(buf);
+    for (t = 0 : t < buflen : t++) {
+        buf->(t + WORDSIZE) = _bglchar.toupper(buf->(t + WORDSIZE));
+    }
+    return buf;
+  ],
+       toLower [buf buflen t;
+    buflen=self.length(buf);
+    for (t = 0 : t < buflen : t++) {
+        buf->(t + WORDSIZE) = _bglchar.tolower(buf->(t + WORDSIZE));
+    }
+    return buf;
+  ],
+       reverse [buf buflen t c;
+    buflen=self.length(buf);
+    for (t = 0 : t < buflen / 2 : t++) {
+        c=buf->(t + WORDSIZE);
+        buf->(t + WORDSIZE) = buf->(buflen - t - 1 + WORDSIZE);
+        buf->(buflen - t - 1 + WORDSIZE) = c;
+    }
+    return buf;
+  ],
+       trimLeft [buf;
+    while (self.length(buf) > 0 && self.getchar(buf,0)==' ') {
+        self.delete(buf, 0, 1);
+    }
+    return buf;
+  ],
+       trimRight [buf;
+    while (self.length(buf) > 0 && self.getchar(buf,self.length(buf) - 1)==' ') {
+        self.delete(buf, self.length(buf) - 1, 1);
+    }
+    return buf;
+  ],
+       trim [buf;
+    return self.trimright(self.trimleft(buf));
+  ],
+       _stacktop 0,
+       setchar_3_bytearray_int_char [buf pos val sz;
+    sz=self.size(buf);
+    if (sz == -1 || sz > pos) {
+        buf->(pos + WORDSIZE) = val;
+    }
+  ]
+;
+array bufa_raw -> (2 + 2*WORDSIZE + 64);
+array bufb_raw -> (2 + 2*WORDSIZE + 64);
+array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
+[exerciseLength szA n tr;
+    szA=_bglBuf.size(bufa);
+    _bglBuf.setLength(bufa, 0);
+    n=_bglBuf.length(bufa);
+    tr=_bglBuf.isTracked(bufa);
+];
+[exerciseChars c0 c1 c2;
+    bufa->(0 + WORDSIZE) = 'A';
+    bufa->(1 + WORDSIZE) = 'B';
+    bufa->(31 + WORDSIZE) = 'Z';
+    c0=_bglbuf.getchar(bufa, 0);
+    c1=_bglbuf.getchar(bufa, 1);
+    c2= bufa->(0 + WORDSIZE);
+];
+[exerciseSet;
+    _bglbuf.set(bufa, "hello world");
+    _bglbuf.set(bufb, bufa);
+    _bglbuf.setfromliteral(bufsmall, "tight");
+];
+[exerciseCopy;
+    _bglbuf.copy(bufb, bufa, -1, 0, 0);
+    _bglbuf.copy(bufb, bufa, 4, 8, 2);
+    _bglbuf.copy(bufb, bufa, 3, 0, 0);
+];
+[exerciseStream depth1 depth0;
+    _bglbuf.capture(bufa, 0);
+    _bglbuf.capture(bufb, 32);
+    depth1=_bglbuf.stacklen();
+    _bglbuf.release();
+    _bglbuf.release();
+    depth0=_bglbuf.stacklen();
+];
+[exercisePrint;
+    _bglbuf.print(bufa, -1);
+    _bglbuf.print(bufa, 5);
+];
+[exerciseCompare eq eqi sw ew;
+    eq=_bglbuf.equals(bufa, bufb, false);
+    eqi=_bglbuf.equals(bufa, bufb, true);
+    sw=_bglbuf.startswith(bufa, bufb, false);
+    ew=_bglbuf.endswith(bufa, bufb, false);
+];
+[exerciseSubstring;
+    _bglbuf.mid(bufb, bufa, 0, 4);
+    _bglbuf.mid(bufb, bufa, 2, -1);
+    _bglbuf.left(bufb, bufa, 10);
+    _bglbuf.right(bufb, bufa, 5);
+];
+[exerciseInsert;
+    _bglbuf.insert(bufa, bufb, 0, 3);
+    _bglbuf.prepend(bufa, bufb);
+    _bglbuf.append(bufa, bufb);
+    _bglbuf.delete(bufa, 0, 1);
+];
+[exerciseReplace;
+    _bglbuf.replace(bufa, bufb, bufsmall);
+    _bglbuf.replaceall(bufa, bufb, bufsmall, 0);
+    _bglbuf.replaceall(bufa, bufb, bufsmall, 5);
+];
+[isLetter c;
+    return _bglchar.isalpha(c);
+];
+[exerciseSearch p p2 t f;
+    p=_bglbuf.indexof(bufa, bufb, 0);
+    p2=_bglbuf.indexof(bufa, bufb, 3);
+    t=_bglbuf.indexoffirsttrue(bufa, _bglLambda_0, 0);
+    f=_bglbuf.indexoffirstfalse(bufa, _bglLambda_1, 2);
+];
+[exerciseTransform;
+    _bglbuf.toupper(bufa);
+    _bglbuf.tolower(bufa);
+    _bglbuf.reverse(bufa);
+    _bglbuf.trim(bufa);
+];
+[main;
+    exerciselength();
+    exercisechars();
+    exerciseset();
+    exercisecopy();
+    exercisestream();
+    exerciseprint();
+    exercisecompare();
+    exercisesubstring();
+    exerciseinsert();
+    exercisereplace();
+    exercisesearch();
+    exercisetransform();
+];
+[_bglLambda_0 c;
+    return isletter(c);
+];
+[_bglLambda_1 c;
+    return isletter(c);
+];

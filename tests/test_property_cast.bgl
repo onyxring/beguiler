@@ -1,0 +1,40 @@
+/* test_property_cast.bgl — `(property)IDENT` cast yields the bare property
+   identifier (I6 slot ID), bypassing the lexical-member walk that would
+   otherwise resolve a bare name like `n_to` to `self.n_to` (the value) when
+   the enclosing class declares a member with the same name.
+
+   Verifies:
+     1. Bare `(property)n_to` inside a method body that also has a `n_to` member
+        emits as the bare name, not as `self.n_to`.
+     2. The result is `property`-typed and is usable in comparisons against an
+        int-typed property-slot register (the standard `selected_direction` idiom).
+     3. Free-standing `property` decls and class-member names both qualify.
+     4. An attempted cast on an undeclared property surfaces as a compile error
+        (covered in _test_property_cast_undeclared.bgl).
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+extern property selected_direction;  // holds a property slot ID at runtime
+extern property n_to;            // free-standing prop decl
+property hidden_flag;            // user-side prop decl
+
+alias class room for object {
+    room n_to;                   // value-typed member — bare `n_to` resolves here
+}
+
+room bar {
+    bool isNorthBound(){
+        // The cast skips the room.n_to member walk; emits `n_to` bare, typed
+        // as `property`, comparable against the int slot register.
+        return selected_direction == (property)n_to;
+    }
+    bool isHiddenCheck(){
+        // Free-standing user-side prop.
+        return selected_direction == (property)hidden_flag;
+    }
+}
+
+void main(){
+    if(bar.isNorthBound()) print("north^");
+    if(bar.isHiddenCheck()) print("hidden^");
+}

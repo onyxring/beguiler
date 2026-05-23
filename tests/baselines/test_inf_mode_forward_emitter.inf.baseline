@@ -41,7 +41,7 @@ object bgl
 
 constant story = "";
 constant headline = "";
-global myObj;
+object myObj;
 [caller;
     print (the)myobj;
 ];

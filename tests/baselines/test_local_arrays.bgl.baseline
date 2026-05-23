@@ -109,7 +109,7 @@ object _bglArray
   ],
        setLength [arr n;
     if (self.istracked(arr)) {
-        if (n<0) {
+        if (n < 0) {
             print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
              quit; 
         }
@@ -158,7 +158,7 @@ object _bglArray
     if (len >= _bglArray.size(arr)) {
         return false;
     }
-    if (pos<0 || pos > len) {
+    if (pos < 0 || pos > len) {
         return false;
     }
     for (i = len : i > pos : i--) {
@@ -173,7 +173,7 @@ object _bglArray
   ],
        remove [arr pos len i;
     len=_bglArray.length(arr);
-    if (pos<0 || pos >= len) {
+    if (pos < 0 || pos >= len) {
         return;
     }
     for (i = pos : i < len - 1 : i++) {
@@ -199,7 +199,7 @@ object _bglArray
     self.insert(arr, 0, val);
   ],
        pop [arr v;
-    if (_bglArray.length(arr)==0) {
+    if (_bglArray.length(arr) == 0) {
         return 0;
     }
     v =  arr-->(0+1) ;
@@ -213,21 +213,21 @@ object _bglArray
     self.append(arr, val);
   ],
        peek [arr;
-    if (_bglArray.length(arr)==0) {
+    if (_bglArray.length(arr) == 0) {
         return 0;
     }
     return  arr-->(0+1) ;
   ],
        peekEnd [arr len;
     len=_bglArray.length(arr);
-    if (len==0) {
+    if (len == 0) {
         return 0;
     }
     return  arr-->(len - 1+1) ;
   ],
        popEnd [arr len v;
     len=_bglArray.length(arr);
-    if (len==0) {
+    if (len == 0) {
         return 0;
     }
     v =  arr-->(len - 1+1) ;
@@ -239,7 +239,7 @@ object _bglArray
     for (i = 1 : i < len : i++) {
         key =  arr-->(i+1) ;
         j=i - 1;
-        while (j>=0 && compare( arr-->(j+1) ,key)>0) {
+        while (j >= 0 && compare( arr-->(j+1) ,key) > 0) {
             arr-->(j + 1+1) =  arr-->(j+1);
              j-- ;
         }
@@ -269,14 +269,14 @@ object _bglArray
     return dst;
   ],
        first [src;
-    if (_bglArray.length(src)==0) {
+    if (_bglArray.length(src) == 0) {
         return 0;
     }
     return  src-->(0+1) ;
   ],
        last [src len;
     len=_bglArray.length(src);
-    if (len==0) {
+    if (len == 0) {
         return 0;
     }
     return  src-->(len - 1+1) ;
@@ -321,7 +321,7 @@ object _bglArray
     cap = 32;
     srcLen=_bglArray.length(src);
     outLen=n;
-    if (outlen<0) {
+    if (outlen < 0) {
         outLen = 0;
     }
     if (outlen > srclen) {
@@ -345,7 +345,7 @@ object _bglArray
     cap = 32;
     srcLen=_bglArray.length(src);
     start=n;
-    if (start<0) {
+    if (start < 0) {
         start = 0;
     }
     if (start > srclen) {
@@ -459,7 +459,7 @@ object _bglArray
 ;
 [sumDown n acc rest;
     acc = _bglArrayLocalAlloc(4);
-    if (n<=0) {
+    if (n <= 0) {
         _bglFrameFree(7);
         return 0;
     }
