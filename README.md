@@ -63,7 +63,11 @@ MIT — see [LICENSE](LICENSE).
 [i6]: https://github.com/DavidKinder/Inform6
 [Beguilex]: https://github.com/OnyxRing/Beguilex
 
-## Use of AI
+## Project Origin...
 
-I've been writing code for decades (on my TRS-80 model I), but this AI-assisted coding thing is new (as I write this) and I wanted to explore it.  Beguile - including the compiler (Beguiler) and the extension (Beguilex) - is my first exploration into what Claude Code is capable of.  I used it to different degrees with each project.
+I've been writing code since the late 70's (starting on my TRS-80 model I), and I have some preconceived opinions on the *right* way to code; however, this AI-assisted coding thing is clearly more than a fleeting trend.  I believe it's a seismic shift, here to stay.  Naturally, I felt the need to understand it and explore what's possible.
+
+Beguile, with a different name, was an existing project I started years ago, but set aside shortly after I achieved a "Hello World" level of functionality.  Both pieces, including the compiler (Beguiler) and the extension (Beguilex), served as my first exploration into what Claude Code is capable of.  I used my early **_orI6Precompiler_** code base as a starting point for exploring AI-assisted coding and leveraged AI to different degrees with each of the two pieces of what would eventually be named Beguile.  To be clear: this wasn't actually a project I expected to release, it was more of test.  But, here I am releasing it...
+
+The point is, some people claim a moral issue with use of code-assisting LLMs, and that's okay.  If you hold that opinion, Beguile may not not be right for you.  Personally, I came out of this experiment with different ideas than I had going in.  And I still have strong boundaries on what I will and won't use AI for (for example, I don't use it for creative works of any kind, nor even the code I use to implement such works like Parser-based if).  But those are my personal opinions.  
 
