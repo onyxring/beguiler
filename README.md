@@ -69,7 +69,7 @@ I've been writing code since the late 70's (starting on my TRS-80 model I), and 
 
 **_orI6Precompiler_** was an existing project I started years ago, but set aside shortly after I achieved a "Hello World" level of functionality.  I used it as the starting point for my exploration into what LLM-assisted coding could do. The output of this exercise is what I eventually named Beguile.  To be clear: this wasn't actually a project I expected to release, it was more of test.  But, here I am releasing it...
 
-The point is, some people have a moral issue with use of code-assisting LLMs.  And that's okay.  If you hold that opinion, Beguile is likely not right for you.  Personally, I came out of this experiment with different ideas than I had going in.  And I still have strong boundaries on what I will and won't use AI for.  For example, I don't use it for creative works of any kind, graphics or narrative, and I won't use it to code the implementation of such works.  So my IF games themselves are off limits.  But those are my personal preferences.  
+The point is, some people have a moral issue with use of code-assisting LLMs.  And that's okay.  If you hold that opinion, Beguile is likely not right for you.  Personally, I came out of this experiment with different ideas than I had going in, but I retain strong boundaries on what I will and won't use AI for.  For example, I don't use it for creative works of any kind, graphics or narrative, and I won't use it to code the implementation of such works.  So my IF games themselves are off limits.  But those are my personal preferences.  
 
 # If you have any questions...
 ...feel free to send me a note.
