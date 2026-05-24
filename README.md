@@ -20,7 +20,7 @@ But most of this is transparent to the user. For all practical purposes, here's 
 
 ```
 {idea}   -> you      -> game.bgl
-game.bgl -> beguiler -> game.gblorb (or .zblorb)
+game.bgl -> beguiler -> game.blirb (or game file)
 ```
 
 ## Status: Preview
