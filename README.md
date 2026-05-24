@@ -63,7 +63,7 @@ MIT — see [LICENSE](LICENSE).
 [i6]: https://github.com/DavidKinder/Inform6
 [Beguilex]: https://github.com/OnyxRing/Beguilex
 
-## Project Origin...
+## Project Origin and the Use of AI
 
 I've been writing code since the late 70's (starting on my TRS-80 model I), and I've had some preconceived opinions on the *right* way to code; however, this AI-assisted coding thing is clearly more than a fleeting trend.  I believe it's a seismic shift, here to stay.  Naturally, I felt the need to understand it and explore what's possible.
 
