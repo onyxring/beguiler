@@ -4,7 +4,7 @@ First some context:
 
 ***Beguile*** is a clean, type-aware language inspired by C++, C#, and TypeScript.  You can use it to create Z-Machine and Glulx story files.
 
-***Beguiler*** is the *Beguile compiler* which transpiles *Beguile* source into I6 and instruments the [Inform 6][i6] compiler. 
+***Beguiler*** is the *Beguile compiler* which transpiles *Beguile* source into I6 and instruments the [Inform 6][i6] compiler.  It can serve as either an I6 precompiler, or as a full language. 
 
 ***Beguilex*** is the *Beguile extension* for VS Code which you can find in the [Beguilex repo](https://github.com/onyxring/beguilex).  It provides syntax highlighting, diagnostics, hover, completion, embedded interpreters, run-time debugging support, and instruments the [Inform 6][i6] compiler. It handles Beguiler configuration and is ***highly recommended***. Install it alongside this compiler for the full authoring experience.
 
