@@ -29,7 +29,7 @@ This is an **experimental preview**. The language and compiler are evolving rapi
 
 ## Companion: VS Code Extension
 
-If you are looking into Beguile, you should also use the associated VS Code extension, [Beguilex](https://github.com/onyxring/beguilex).  Although not strictly necessary, it handles all the commandline switches and let's you get down to building your stories quickly. Even if you decide to not write games in Beguile, the extension is still worth adding to your repertoire, since it let's you debug your I6 code as well.
+If you are looking into Beguile, you should also use the associated VS Code extension, [Beguilex](https://github.com/onyxring/beguilex).  Although not strictly necessary, it handles all the commandline switches and let's you get down to building your stories quickly. Even if you decide to not write games in Beguile, the extension is still worth adding to your repertoire, since it lets you debug your I6 code as well.
 
 ## Quick Start
 
