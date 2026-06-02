@@ -1322,6 +1322,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     if(afterMember.is(token::parenOpen)){
                         // method call in expression context: obj.method(args)
                         string objName = cur.value;
+                        string rawObjName = cur.value;   // pre-qualify form, for inheritance-check ($self rewrite)
                         string methName = member.value;
                         // Pass memberHint=methName so the resolver prefers a candidate whose type
                         // exposes the method, breaking name-collision ties (e.g. enum value vs
@@ -1407,8 +1408,15 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 string b = processBglConditionals(blk->i6Body);
                                 size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                 size_t e = b.find_last_not_of(" \t\n\r"); if(e != string::npos) b = b.substr(0, e+1);
-                                b = replaceWord(b, "$self", objName);
-                                b = replaceWord(b, "$val",  objName);
+                                // When the receiver is a bare identifier that names an inherited
+                                // member of the enclosing object (e.g. bare `attributes` from
+                                // `object`'s `attributeList attributes;`), the implicit owner for
+                                // $self / $val is `self`, not the receiver name. Check the
+                                // pre-qualify form because qualifyIdentifier may have already
+                                // rewritten the bare identifier to "self.<name>" upstream.
+                                string selfHost = isInheritedObjectMember(rawObjName, func, body) ? string("self") : objName;
+                                b = replaceWord(b, "$self", selfHost);
+                                b = replaceWord(b, "$val",  selfHost);
                                 // $class — declared type of the receiver. Ignores multiple inheritance:
                                 // resolves to the variable's static type, not the type that owns the
                                 // inherited emitter. Useful for emitters that emit class-message I6

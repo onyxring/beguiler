@@ -1,24 +1,6 @@
 !% -v5
 !% -E1
 
-    Array _bglScratchStack --> 33;
-    Global _bglScratchTop = 0;
-    [ _bglScratchPush v;
-        if(_bglScratchTop >= 31){
-            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
-            quit;
-        }
-        _bglScratchTop++;
-        _bglScratchStack-->_bglScratchTop = v;
-    ];
-    [ _bglScratchMake count;
-        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
-        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
-        _bglScratchTop = 0;
-        return _bglScratchStack;
-    ];
-
-
     Default bglStringDefaultSize 500;
 
 
@@ -59,7 +41,8 @@ object bgl
 ;
 Array __bglchar___vowels string "aeiouAEIOU@:a@:e@:i@:o@:u@:y@:A@:E@:I@:O@:U@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~o@~A@~O";
 object _bglChar
-  with isAlpha [c;
+  with __vowels __bglchar___vowels,
+       isAlpha [c;
     return self.islower(c) || self.isupper(c);
   ],
        isNumeric [c;
@@ -201,23 +184,33 @@ object _bglChar
             return c+6;
     }
     return c;
-  ],
-       __vowels __bglchar___vowels
+  ]
 ;
 array _bglbufstreamstack table 16;
 array _bglbufglulxstreams table 16;
+array _bgltrackedregistry table 128;
 object _bglBuf
-  with isTracked [buf;
-    if (buf == 0) {
+  with _stacktop 0,
+       _trackedcount 0,
+       isTracked [buf p i;
+    p=buf;
+    if (p == 0) {
         return false;
     }
-    if (buf->(-WORDSIZE - 2) ~= 144) {
-        return false;
+    for (i = 0 : i < self._trackedcount : i++) {
+        if ( _bgltrackedregistry-->(i+1)  == p) {
+            return true;
+        }
     }
-    if (buf->(-WORDSIZE - 1) ~= 132) {
-        return false;
+    return false;
+  ],
+       _registerTracked [buf;
+    if (self._trackedcount >= 128) {
+         print "^[Beguile runtime: tracked buffer registry full]^"; 
+        return;
     }
-    return true;
+    _bgltrackedregistry-->(self._trackedcount+1) = buf;
+    self._trackedcount++;
   ],
        size [buf;
     if (self.istracked(buf)) {
@@ -523,7 +516,6 @@ object _bglBuf
        trim [buf;
     return self.trimright(self.trimleft(buf));
   ],
-       _stacktop 0,
        setchar_3_bytearray_int_char [buf pos val sz;
     sz=self.size(buf);
     if (sz == -1 || sz > pos) {

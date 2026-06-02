@@ -738,7 +738,7 @@ bool bglParser::processGrammarDeclaration(token nameOverride){
 
     file.getToken(token::braceOpen);
     if(file.peekToken().is(token::braceOpen))
-        parsingError(format("Bare grammar lines in 'grammar {0} {{ ... }}' are no longer supported. To add lines to an existing verb use 'extend {0} {{ grammar += {{ ... }}; }}'; to author a cross-cutting grammar object use 'grammar {0} {{ grammarRule r = {{Verb, {{ ... }}}}; }}'.", grammarName));
+        parsingError(format("'grammar {0} {{ ... }}' bodies hold grammarRule members, not bare grammar lines. To add lines to an existing verb use 'extend {0} {{ grammar += {{ ... }}; }}'; to author a cross-cutting grammar object use 'grammar {0} {{ grammarRule r = {{Verb, {{ ... }}}}; }}'.", grammarName));
     return processGrammarObjectDeclaration(grammarName);
 }
 

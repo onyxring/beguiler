@@ -18,7 +18,7 @@
 // Test 1: extend object — appends grammar to an existing extern verb
 //=============================================================================
 extend PutOn {
-    grammar += {
+    grammar = {
         {.hang, HELD, .on, noun},
     }
 }
@@ -53,7 +53,7 @@ grammar arrayRules {
 // (replaces the obsolete `grammar VerbName { {pattern}, }` shorthand)
 //=============================================================================
 extend PutOn {
-    grammar += {
+    grammar = {
         {.place, HELD, .on, noun},
     };
 }

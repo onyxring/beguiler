@@ -1,0 +1,20 @@
+// _test_grammar_plus_eq_rejected.bgl
+// `grammar += { ... }` and `grammar -= { ... }` are not valid in extend bodies.
+// The visual closeness to `=` made silent typo-flips between append and replace
+// too easy; `extend V { grammar = { ... }; }` is the append form (default safe),
+// and `extend V { replace grammar = { ... }; }` is the destructive replace form.
+// EXPECT_ERROR: 'grammar +=' is not supported
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+extend Take {
+    grammar += { {.swipe, noun}, };
+}
+
+void main(){}

@@ -113,7 +113,9 @@ for (: $counter < $array->0 : $counter++) {
 // ---------------------------------------------------------------------------
 
 [forInList.push $element]
+##triggerEmitter scratchSupport
 _bglScratchPush($element);
 
 [forInList.make $target $count]
+##triggerEmitter scratchSupport
 $target = _bglScratchMake($count);

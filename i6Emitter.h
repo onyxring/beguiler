@@ -18,9 +18,17 @@ class i6Emitter{
         set<string> declaredVerbWords;             // tracks which I6 trigger words have been Verb-declared
         // built-in I6 templates loaded from beguilib/_builtins.i6b
         map<string, pair<vector<string>, string>> builtinTemplates;
+        // Per-template ##triggerEmitter <names> annotations, lowercased. When a template
+        // is applied, each listed name is inserted into languageService.firedStoredNames,
+        // gating emission of #storedEmitFirst/#storedEmitLast blocks of the same name.
+        map<string, vector<string>> builtinTemplateTriggers;
         void loadBuiltinTemplates(string path);
         void applyTemplate(string name, map<string,string> args, string indent);
         void to(ostream&);
+        // Resolve the buffered output: substitute the stored-emit-first/last placeholders
+        // with the concatenated bodies of stored blocks whose names appear in firedStoredNames.
+        // Called by beguiler.cpp immediately before writing the .inf file.
+        string resolvedOutput();
 
         // Z-machine local variable spill state — active during a single function's emission
         string currentTarget;                              // lowercase: "glulx","z3","z5","z8"

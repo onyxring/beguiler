@@ -1,62 +1,706 @@
 //-----------------------------------------------------------------------------
-// string.bgl - Beguile string runtime, backed by _orString / bglStringPool.
+// string.bgl - Beguile string runtime.
+//
+// Backed during Phase 0 of the orString→Beguile port by an I6 island
+// (_todostring.bgl) that holds the renamed orLibrary orString + orStringPool
+// + orStr implementation. Later phases will progressively replace those I6
+// routines with Beguile-native equivalents (easiest first, allocation core
+// last) until the I6 island is gone.
 //
 // Usage:
 //   #include <string>      in your .bgl file to activate string support.
-//   bglInit();             call from your starting routine (either main or
-//                          initialise).
 //
-// Pool size can be overridden before including this file:
-//   Default bglStringPoolReserve 20;   ! number of simultaneous strings
+// Pool sizing can be overridden before including this file:
+//   #i6 { Default bglStringPoolReserve 20; }   ! number of simultaneous strings
+//   #i6 { Default bglStringDefaultSize 800; }  ! per-string capacity in chars
 //-----------------------------------------------------------------------------
 #once
 
 #include <buf>
-#include <_string>
+#include <bglAllocated>
+#include <_todostring>
 
 #startup {
-    _initializeStringBuffers();
+    _bglInitializeStringBuffers();
 }
 
 //------------------------------------------------------------------------------
-// Beguile string class extension
+// _bglConvertToSizedBuffer — promote a raw buffer chunk to the SizedBuffer
+// layout that <buf> uses everywhere: advance the user pointer by WORDSIZE+2
+// and write the size word at offset -1. Returns the new user-visible pointer.
+//
+// The user pointer is also registered with _bglBuf for `isTracked()` lookups
+// — the registry is the definitive source of truth for tracked-buffer status.
+//
+// DEPRECATED magic-byte slot: the 2 bytes at offsets -WORDSIZE-2 and
+// -WORDSIZE-1 (immediately before the size word) used to hold a $90 $84
+// magic stamp consumed by the old heuristic isTracked(). Phase B (registry +
+// typed dispatch) removed the dependency, so this routine no longer writes
+// the stamp. The slot is intentionally left reserved (allocation size and
+// user-pointer offset unchanged) for the deprecation window — full prefix
+// compaction is captured as pending follow-up.
+//
+// Called from _bglInitializeStringBuffers (still in the I6 island).
+//------------------------------------------------------------------------------
+array<char> _bglConvertToSizedBuffer(array<char> b, int sz) {
+    if(_bglBuf.isTracked(b)) return b;
+    array<char> result = _bglAsBuf((int)b + bgl.wordsize + 2);
+    _bglSetWord(result, -1, sz - bgl.wordsize - bgl.wordsize - 2);
+    _bglBuf._registerTracked(result);   // definitive tracking via registry
+    return result;
+}
+
+//==============================================================================
+// _bglStr — utility helpers operating on string-shaped values (literals,
+// raw buffers, _bglString instances) regardless of which they actually are.
+// These are INTERNAL plumbing — users of the string class never call into
+// _bglStr directly. The "ambiguous dance" (ambiguousLock/ambiguousFree)
+// negotiates lock state so callers don't have to know whether a value they
+// got from a string helper is locked or ephemeral.
+//
+// Hybrid port stage: Beguile structure + types, with #i6 blocks for the
+// cross-island dispatch into _bglStringPool and _bglString (still I6-side).
+// When _bglStringPool and _bglString port to Beguile, these #i6 blocks
+// can become typed Beguile expressions.
+//==============================================================================
+object _bglStr {
+    // Allocate a new managed string. If unkStr is provided (non-zero), the
+    // new string is initialized to its value (literal, buf, or _bglString —
+    // ambiguousLock/Free handles all three cases).
+    //
+    // The trailing retval.lock() is load-bearing: allocateString() returns
+    // an unlocked string from the pool. Early orLib testing showed removing
+    // this lock() caused premature deallocation. Left in place pending a
+    // full lifecycle test that proves it's redundant.
+    var new(var unkStr = 0) {
+        var retval; var lck;
+        #i6 {
+            lck    = self.ambiguousLock(unkStr);
+            retval = _bglStringPool.allocateString();
+            if(unkStr ~= 0) retval.set(unkStr);
+            self.ambiguousFree(unkStr, lck);
+            retval = retval.lock();
+        }
+        return retval;
+    }
+
+    // Apply a $0/$1/$2/$3 format pattern, returning a freed (ephemeral) result.
+    var format(var pattern, var p1 = 0, var p2 = 0, var p3 = 0) {
+        var retval;
+        #i6 {
+            retval = _bglStringPool.allocateString();
+            retval.set(retval.format(pattern, p1, p2, p3));
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    // Cast any string-shaped value into a buffer suitable for _bglBuf operations.
+    // Return value's lock state is "ambiguous": if the input was a _bglString,
+    // the underlying buffer is locked; if a literal/raw, a freshly allocated
+    // (and freed) buffer is returned. Callers MUST use ambiguousLock/Free to
+    // safely operate on the return value.
+    var toAmbiguousBuffer(var unkStr) {
+        var retval;
+        #i6 {
+            if(unkStr ofclass _bglString) return unkStr.getBuf();
+            ! Phase B safety: at this point we KNOW unkStr is not a _bglString
+            ! (ofclass check failed), so it's a packed string literal in practice.
+            ! Skip _bglBuf.set's isTracked heuristic — go straight to setFromLiteral.
+            ! Eliminates the residual isTracked-collision bug for all callers of
+            ! toAmbiguousBuffer (insert, replace, indexOf, startsWith, etc.).
+            retval = _bglStringPool.allocateBuffer();
+            _bglBuf.setFromLiteral(retval, unkStr);
+            retval = _bglStringPool.freeBuffer(retval);
+        }
+        return retval;
+    }
+
+    // If buf is currently in the pool's free list (ephemeral), temporarily
+    // lock it. Returns true iff this call performed the lock — caller MUST
+    // pass that bool back to ambiguousFree() to restore the prior state.
+    bool ambiguousLock(var buf) {
+        bool retval = false;
+        #i6 {
+            if(_bglStringPool.isFree(buf)) {
+                _bglStringPool.reclaimBuffer(buf);
+                _bglStringPool.reclaimString(buf);
+                retval = true;
+            }
+        }
+        return retval;
+    }
+
+    // Restore prior lock state — only frees if ambiguousLock returned true.
+    void ambiguousFree(var buf, bool val) {
+        if(val) {
+            #i6 {
+                _bglStringPool.freeBuffer(buf);
+                _bglStringPool.freeString(buf);
+            }
+        }
+    }
+
+    // Equality check across any combination of string-shaped values.
+    bool areEqual(var buf1, var buf2, bool caseInsensitive = false) {
+        buf1 = self.toAmbiguousBuffer(buf1);
+        buf2 = self.toAmbiguousBuffer(buf2);
+        return _bglBuf.equals(buf1, buf2, caseInsensitive);
+    }
+
+    // Trim leading/trailing whitespace, returning an ephemeral result.
+    var trim(var buf) {
+        var str = self.new(buf);
+        var tmpStr;
+        #i6 {
+            tmpStr = str.trim();
+            str.free();
+        }
+        return tmpStr;
+    }
+
+    // Print whatever was passed: literal, buffer, _bglString, or a routine
+    // address (which is invoked). If prop is supplied, buf is first resolved
+    // through that property (dynamic property access — hence the #i6 block).
+    void print(var buf, var prop = 0) {
+        #i6 {
+            if(prop ~= 0) buf = buf.prop;
+            if(buf provides print) {
+                buf.print();
+                return;
+            }
+            if(metaclass(buf) == Routine) return buf();
+        }
+        _bglBuf.print(buf);
+    }
+}
+
+//==============================================================================
+// _bglString — pooled-instance class. Wraps a sized buffer (lazily allocated
+// from _bglStringPool) and exposes the orString surface: lifecycle (lock/free),
+// search (equals/indexOf/startsWith/...), mutation (insert/delete/replace),
+// transforms (toUpper/toLower/reverse/trim), substring extraction (mid/left/
+// right), and format.
+//
+// Phase 3a port: class declaration and method shapes are Beguile-native; method
+// bodies remain verbatim I6 inside #i6 blocks. Phase 3b+ will convert bodies
+// one at a time to Beguile-native expressions.
+//
+// I6 idiom note: `rtrue` / `rfalse` inside #i6 short-circuit the routine
+// with `return true` / `return false`. The fall-through Beguile-level return
+// after each #i6 is satisfies Beguile's non-void return analysis (the compiler
+// can't see through #i6 to know the early-return covered all paths).
+//==============================================================================
+class _bglString[bglStringPoolReserve] : bglAllocated {
+    int _underlyingBuffer = 0;
+
+    // ── Introspection ────────────────────────────────────────────────────────
+    int getLength() {
+        int retval;
+        #i6 { retval = _bglBuf.length(self.getBuf()); }
+        return retval;
+    }
+
+    var getBuf(int suppressAllocation = 0) {
+        var retval;
+        #i6 {
+            if(self._underlyingBuffer == 0 && suppressAllocation == 0)
+                self._underlyingBuffer = _bglStringPool.allocateBuffer();
+            retval = self._underlyingBuffer;
+        }
+        return retval;
+    }
+
+    int getChar(int pos) {
+        int retval;
+        #i6 { retval = self.getBuf()->(pos + WORDSIZE); }
+        return retval;
+    }
+
+    int getCharFromRight(int pos) {
+        int retval;
+        #i6 { retval = self.getChar(self.getLength() - (pos + 1)); }
+        return retval;
+    }
+
+    bool isEmpty() {
+        bool retval;
+        #i6 { retval = (_bglBuf.length(self.getBuf()) == 0); }
+        return retval;
+    }
+
+    // ── Lifecycle / pool state ───────────────────────────────────────────────
+    var clone() {
+        var retval;
+        #i6 { retval = _bglStr.new(self); }
+        return retval;
+    }
+
+    bool isLocked() {
+        bool retval;
+        #i6 { retval = _bglStringPool.isLocked(self); }
+        return retval;
+    }
+
+    bool isBufferLocked() {
+        bool retval;
+        #i6 { retval = _bglStringPool.isLocked(self._underlyingBuffer); }
+        return retval;
+    }
+
+    var lock() {
+        #i6 { _bglStringPool.reclaimString(self); }
+        return self;
+    }
+
+    var free() {
+        #i6 { _bglStringPool.freeString(self); }
+        return self;
+    }
+
+    // ── Mutation (set / setChar / setLength) ─────────────────────────────────
+    var set(var unkStr) {
+        var ab;
+        bool lckBuf;
+        bool lckSelf;
+        #i6 {
+            ! Order matches orLib exactly: lckSelf first, then ab, then lckBuf.
+            ! Reordering surfaced pool-state corruption in stringRuntime.bgl
+            ! — the lock order is load-bearing for an edge case Jack hasn't
+            ! fully pinned down yet (likely interacts with reclaimString's
+            ! object-walk when the string and its underlying buffer are
+            ! both ambiguously locked).
+            lckSelf = _bglStr.ambiguousLock(self);
+            ab      = _bglStr.toAmbiguousBuffer(unkStr);
+            lckBuf  = _bglStr.ambiguousLock(ab);
+            _bglBuf.set(self.getBuf(), ab);
+            _bglStr.ambiguousFree(ab, lckBuf);
+            _bglStr.ambiguousFree(self, lckSelf);
+        }
+        return self;
+    }
+
+    // ── Phase B: type-specific setters ───────────────────────────────────────
+    // Phase B eliminates the isTracked() heuristic that can false-positive when
+    // a Z-machine packed-string address numerically equals a tracked buffer's
+    // user-pointer. The caller knows whether they hold a literal or a string
+    // (Beguile's operator overloads discriminate at compile time); this passes
+    // that knowledge through to the right _bglBuf primitive directly.
+    var setFromLit(var lit) {
+        #i6 {
+            ! Direct setFromLiteral — caller knows lit is a packed string.
+            _bglBuf.setFromLiteral(self.getBuf(), lit);
+        }
+        return self;
+    }
+    var setFromStr(var src) {
+        #i6 {
+            ! Direct setFromBuffer using src.getBuf() — caller knows src is
+            ! a _bglString instance.
+            _bglBuf.setFromBuffer(self.getBuf(), src.getBuf());
+        }
+        return self;
+    }
+
+    var setLength(int newLength) {
+        #i6 { _bglBuf.setLength(self.getBuf(), newLength); }
+        return self;
+    }
+
+    var setChar(int pos, int val) {
+        #i6 { self.getBuf()->(pos + WORDSIZE) = val; }
+        return self;
+    }
+
+    // ── Output stream redirection ────────────────────────────────────────────
+    var capture() {
+        #i6 { _bglBuf.capture(self.getBuf()); }
+        return self;
+    }
+
+    var release() {
+        #i6 { _bglBuf.release(); }
+        return self;
+    }
+
+    var captureOutput(var o, var r) {
+        self.capture();
+        #i6 { _bglStr.print(o, r); }
+        self.release();
+        return self;
+    }
+
+    var print() {
+        #i6 { _bglBuf.print(self.getBuf()); }
+        return self;
+    }
+
+    // ── Equality (single + 4-way "oneOf" + CI variants) ──────────────────────
+    bool equals(var altBuf, bool caseInsensitive = false) {
+        bool retval;
+        #i6 { retval = _bglBuf.equals(_bglStr.toAmbiguousBuffer(altBuf), self.getBuf(), caseInsensitive); }
+        return retval;
+    }
+
+    // ── Phase B: type-specific equality ──────────────────────────────────────
+    // Caller knows whether the argument is a literal or a string instance;
+    // we skip the isTracked-based dispatch in toAmbiguousBuffer entirely.
+    bool equalsLit(var lit) {
+        var ephemeral;
+        bool retval;
+        #i6 {
+            ephemeral = _bglStringPool.allocateBuffer();
+            _bglBuf.setFromLiteral(ephemeral, lit);
+            ephemeral = _bglStringPool.freeBuffer(ephemeral);
+            retval = _bglBuf.equals(ephemeral, self.getBuf(), 0);
+        }
+        return retval;
+    }
+    bool equalsStr(var other) {
+        bool retval;
+        #i6 { retval = _bglBuf.equals(other.getBuf(), self.getBuf(), 0); }
+        return retval;
+    }
+
+    bool equalsOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) {
+        #i6 {
+            ! Hidden orLib idiom: if the last positional arg is a boolean,
+            ! treat it as the caseInsensitive flag and the slot is empty.
+            ! (Lets equalsOneOf("a","b",true) read as a 2-string CI compare.)
+            if(buf4 == true or false) caseInsensitive = buf4;
+            if(buf3 == true or false) caseInsensitive = buf3;
+            if(buf2 == true or false) caseInsensitive = buf2;
+            if(self.equals(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self.equals(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self.equals(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self.equals(buf4, caseInsensitive) == true) rtrue;
+            rfalse;
+        }
+        return false;
+    }
+
+    bool equalsOneOfCaseInsensitive(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0) {
+        return self.equalsOneOf(buf1, buf2, buf3, buf4, true);
+    }
+
+    // ── Search ───────────────────────────────────────────────────────────────
+    int indexOf(var searchText, int startingIndex = 0) {
+        int retval;
+        #i6 { retval = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex); }
+        return retval;
+    }
+
+    int numOccurances(var searchText, int startingIndex = 0) {
+        int count = 0;
+        int n;
+        #i6 {
+            n = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex);
+            while(n >= 0) {
+                count++;
+                startingIndex = n;
+                n = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex + 1);
+            }
+        }
+        return count;
+    }
+
+    bool startsWith(var buf2, bool caseInsensitive = false) {
+        bool retval;
+        #i6 { retval = _bglBuf.startsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive); }
+        return retval;
+    }
+
+    bool startsWithOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) {
+        #i6 {
+            if(buf4 == true or false) caseInsensitive = buf4;
+            if(buf3 == true or false) caseInsensitive = buf3;
+            if(buf2 == true or false) caseInsensitive = buf2;
+            if(self.startsWith(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self.startsWith(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self.startsWith(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self.startsWith(buf4, caseInsensitive) == true) rtrue;
+            rfalse;
+        }
+        return false;
+    }
+
+    bool endsWith(var buf2, bool caseInsensitive = false) {
+        bool retval;
+        #i6 { retval = _bglBuf.endsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive); }
+        return retval;
+    }
+
+    bool endsWithOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) {
+        #i6 {
+            if(buf4 == true or false) caseInsensitive = buf4;
+            if(buf3 == true or false) caseInsensitive = buf3;
+            if(buf2 == true or false) caseInsensitive = buf2;
+            if(self.endsWith(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self.endsWith(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self.endsWith(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self.endsWith(buf4, caseInsensitive) == true) rtrue;
+            rfalse;
+        }
+        return false;
+    }
+
+    bool contains(var searchText) {
+        bool retval;
+        #i6 { retval = (self.indexOf(searchText) > -1); }
+        return retval;
+    }
+
+    int indexOfFirstFalse(var routine, int startingIndex = 0) {
+        int retval;
+        #i6 { retval = _bglBuf.indexOfFirstFalse(self.getBuf(), routine, startingIndex); }
+        return retval;
+    }
+
+    int indexOfFirstTrue(var routine, int startingIndex = 0) {
+        int retval;
+        #i6 { retval = _bglBuf.indexOfFirstTrue(self.getBuf(), routine, startingIndex); }
+        return retval;
+    }
+
+    // ── Modifications, returning "free" strings ──────────────────────────────
+    // The clone-mutate-free pattern: clone self into a freshly allocated
+    // string, mutate the clone in place via _bglBuf, free the clone (making
+    // it ephemeral so the caller doesn't need to dispose it explicitly), and
+    // return it. The ephemeral remains valid until the next pool reuse.
+    var insert(int pos, var source, int count = 0) {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.insert(retval.getBuf(), _bglStr.toAmbiguousBuffer(source), pos, count);
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var delete(int pos, int count) {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.delete(retval.getBuf(), pos, count);
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var replace(var searchText, var replaceText) {
+        var retval;
+        bool stl;
+        #i6 {
+            retval = self.clone();
+            searchText = _bglStr.toAmbiguousBuffer(searchText);
+            stl = _bglStr.ambiguousLock(searchText);
+            replaceText = _bglStr.toAmbiguousBuffer(replaceText);
+            _bglBuf.replace(retval.getBuf(), searchText, replaceText);
+            _bglStr.ambiguousFree(searchText, stl);
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var replaceAll(var searchText, var replaceText) {
+        var retval;
+        bool stl;
+        #i6 {
+            retval = self.clone();
+            searchText = _bglStr.toAmbiguousBuffer(searchText);
+            stl = _bglStr.ambiguousLock(searchText);
+            replaceText = _bglStr.toAmbiguousBuffer(replaceText);
+            _bglBuf.replaceAll(retval.getBuf(), searchText, replaceText);
+            _bglStr.ambiguousFree(searchText, stl);
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var toUpper() {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.toUpper(retval.getBuf());
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var append(var text) {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.append(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var appendChar(int c) {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            retval.setChar(retval.getLength(), c);
+            retval.setLength(retval.getLength() + 1);
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var prepend(var text) {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.prepend(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var toLower() {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.toLower(retval.getBuf(), self.getBuf());
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var reverse() {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.reverse(retval.getBuf(), self.getBuf());
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var trimLeft() {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.trimLeft(retval.getBuf());
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var trimRight() {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.trimLeft(retval.getBuf());   ! NB: orLib bug copy — original also called trimLeft here; preserved verbatim.
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var trim() {
+        var retval;
+        #i6 {
+            retval = self.clone();
+            _bglBuf.trim(retval.getBuf());
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var mid(int start, int count) {
+        var retval;
+        #i6 {
+            retval = _bglStr.new();
+            _bglBuf.mid(retval.getBuf(), self.getBuf(), start, count);
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var left(int count) {
+        var retval;
+        #i6 {
+            retval = _bglStr.new();
+            _bglBuf.left(retval.getBuf(), self.getBuf(), count);
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var right(int count) {
+        var retval;
+        #i6 {
+            retval = _bglStr.new();
+            _bglBuf.right(retval.getBuf(), self.getBuf(), count);
+            retval = retval.free();
+        }
+        return retval;
+    }
+
+    var format(var pattern, var p1 = 0, var p2 = 0, var p3 = 0) {
+        var retval;
+        #i6 {
+            retval = _bglStr.new();
+            if(pattern == 0) pattern = "$0";
+            pattern = _bglStr.new(pattern);  ! convert literal-or-otherwise to _bglString
+            pattern.set(pattern.replaceAll("$0", self));
+
+            if(p1 ~= 0) pattern.set(pattern.replaceAll("$1", p1));
+            if(p2 ~= 0) pattern.set(pattern.replaceAll("$2", p2));
+            if(p3 ~= 0) pattern.set(pattern.replaceAll("$3", p3));
+
+            retval.set(pattern);
+            pattern.free();
+            retval = retval.free();
+        }
+        return retval;
+    }
+}
+
+//------------------------------------------------------------------------------
+// Beguile string class extension. The instance methods dispatch via $self into
+// the _bglString class methods defined in the I6 island (one-line .X() calls).
+// Helpers that operate on bare literals/raw buffers route through _bglStr.
 //------------------------------------------------------------------------------
 extend class string {
     // Lifecycle
-    emitter void init()   { $self = _orStr.new(); }
+    emitter void init()   { $self = _bglStr.new(); }
     emitter void deinit() { $self.free(); }
 
-    // Assignment
-    replace emitter string operator = (stringLiteral v) { $self.set($v); }
-    emitter string operator = (string v)                { $self.set($v); }
-    emitter string operator = (interpolatedStringLiteral v) { $self.capture(); $v; $self.release(); }
+    // Assignment — Phase B: type-discriminated dispatch eliminates isTracked()
+    // false-positive risk that could surface when a packed-string address
+    // numerically collided with a tracked-buffer user pointer.
+    replace emitter string operator = (stringLiteral v)         { $self.setFromLit($v); }
+    emitter string operator = (string v)                        { $self.setFromStr($v); }
+    emitter string operator = (interpolatedStringLiteral v)     { $self.capture(); $v; $self.release(); }
 
     // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
     // str3 = str1 + str2  =>  str3.set(str1.append(str2))
     emitter string operator + (stringLiteral v) { $self.append($v) }
     emitter string operator + (string v)        { $self.append($v) }
 
-    // Equality
-    emitter eBool operator == (stringLiteral v) { $self.equals($v) }
-    emitter eBool operator == (string v)        { $self.equals($v) }
+    // Equality — Phase B typed dispatch
+    emitter eBool operator == (stringLiteral v) { $self.equalsLit($v) }
+    emitter eBool operator == (string v)        { $self.equalsStr($v) }
 
-    // Switch comparison: enables switch(myString){ case "hello": ... }
-    emitter eBool operator switch(stringLiteral v) { $self.equals($v) }
-    emitter eBool operator switch(string v)        { $self.equals($v) }
+    // Switch comparison — Phase B typed dispatch
+    emitter eBool operator switch(stringLiteral v) { $self.equalsLit($v) }
+    emitter eBool operator switch(string v)        { $self.equalsStr($v) }
 
-    //
-    emitter char operator[](int pos){ $self.getChar($pos) }
+    // Indexed character access
+    emitter char operator[](int pos)                  { $self.getChar($pos) }
     emitter char operator[]=(int pos, char c)         { $self.setChar($pos,$c) }
     emitter char operator[]=(int pos, charLiteral c)  { $self.setChar($pos,$c) }
 
     // Query — enables ?., ??, and postfix ? for null (unallocated) checks
-    emitter eBool operator ?() { $self ~= 0 }
+    replace emitter eBool operator ?() { $self ~= 0 }
 
     // Methods
     replace emitter void  print()                          { $self.print() }
 
     emitter string  append(string v)                      { $self.append($v) }
-    emitter string  append(char v)                        { $self.append(_orStr.charToString($v)) }
+    emitter string  append(char v)                        { $self.appendChar($v) }
     emitter string  prepend(var v)                        { $self.prepend($v) }
     emitter string  toUpper()                             { $self.toUpper() }
     emitter string  toLower()                             { $self.toLower() }
@@ -74,7 +718,7 @@ extend class string {
     emitter string  format(var pattern)                   { $self.format($pattern) }
     emitter string  format(var pattern, var p1)           { $self.format($pattern, $p1) }
     emitter string  format(var pattern, var p1, var p2)   { $self.format($pattern, $p1, $p2) }
-    emitter int     getLength()                              { $self.getLength() }
+    emitter int     getLength()                           { $self.getLength() }
     emitter int     indexOf(var searchText)               { $self.indexOf($searchText, 0) }
     emitter eBool   startsWith(var prefix)                { $self.startsWith($prefix, false) }
     emitter eBool   endsWith(var suffix)                  { $self.endsWith($suffix, false) }
@@ -86,7 +730,8 @@ extend class string {
 }
 
 extend class stringLiteral {
-    emitter string operator + (string v) { _orStr.new($self).append($v) }
-    emitter string operator + (charLiteral c) { _orStr.new($self).appendChar($c) }
+    emitter string operator + (string v)      { _bglStr.new($self).append($v) }
+    emitter string operator + (charLiteral c) { _bglStr.new($self).appendChar($c) }
 }
-replace emitter void print(string str) { _orStr.print($str) }
+
+replace emitter void print(string str) { _bglStr.print($str) }

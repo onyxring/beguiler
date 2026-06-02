@@ -48,8 +48,14 @@ object bgl{
 //
 // Single shared buffer; nested literal-list for-in loops would clobber
 // each other and are not supported. 31-element cap.
+//
+// Stored (deferred) — only emitted if `for(x in {literal,list})` syntax is used
+// somewhere in the source. The forInList.push / forInList.make built-in templates
+// in __builtins.i6b carry ##triggerEmitter scratchSupport annotations that fire
+// on invocation, gating this block. Programs that never use the literal-list
+// for-in syntax pay zero bytes.
 //-----------------------------------------------------------------------------
-#emitfirst{
+#storedEmitFirst scratchSupport {
     Array _bglScratchStack --> 33;
     Global _bglScratchTop = 0;
     [ _bglScratchPush v;

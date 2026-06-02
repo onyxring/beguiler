@@ -38,24 +38,6 @@ Global _bglFrameTop = 0;
     return r;
  ];
 
-    Array _bglScratchStack --> 33;
-    Global _bglScratchTop = 0;
-    [ _bglScratchPush v;
-        if(_bglScratchTop >= 31){
-            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
-            quit;
-        }
-        _bglScratchTop++;
-        _bglScratchStack-->_bglScratchTop = v;
-    ];
-    [ _bglScratchMake count;
-        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
-        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
-        _bglScratchTop = 0;
-        return _bglScratchStack;
-    ];
-
-
     Array _bglLinqScratchA --> _BGL_LINQ_SCRATCH_SIZE + 2;
     Array _bglLinqScratchB --> _BGL_LINQ_SCRATCH_SIZE + 2;
     Global _bglLinqParity = 0;

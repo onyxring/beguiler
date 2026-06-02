@@ -223,6 +223,11 @@ void bglParser::preScanDirective(token tok){
         definedSymbols.erase(sym.value);
     } else if(tok.value == "#startup" || tok.value == "#emitfirst" || tok.value == "#emitlast"){
         preScanSkipBody();
+    } else if(tok.value == "#storedemitfirst" || tok.value == "#storedemitlast"){
+        // Named-block forms — same body shape as #emitfirst/#emitlast, with a name token
+        // before the `{`. Consume the name, then skip the body the same way.
+        file.getToken(eTokenType::identifier);   // block name
+        preScanSkipBody();
     } else if(tok.value == "#beguilersettings"){
         preScanSkipBody(); // skip { target = Glulx; ... } so the closing } doesn't corrupt the token stream
     } else if(tok.value == "#includei6"){
@@ -232,13 +237,19 @@ void bglParser::preScanDirective(token tok){
         string innerPath = filename.value;
         if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
             innerPath = innerPath.substr(1, innerPath.size()-2);
-        // Resolve path for the stub so it matches the full-pass resolution
-        filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
-        string resolved = resolveIncludePath(innerPath, "", curDir, beguilerSettings.includePaths);
-        if(resolved.empty()) resolved = resolveIncludePath(innerPath, ".h", curDir, beguilerSettings.includePaths);
-        string emitPath = resolved.empty()
-            ? "\"" + rewritePathSeps(innerPath) + "\""
-            : "\"" + rewritePathSeps(resolved) + "\"";
+        string emitPath;
+        if(filename.is(eTokenType::rawQuote)){
+            // Raw form `#includeI6 @"..."` — pass through verbatim, no resolution.
+            emitPath = "\"" + innerPath + "\"";
+        } else {
+            // Resolve path for the stub so it matches the full-pass resolution
+            filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
+            string resolved = resolveIncludePath(innerPath, "", curDir, beguilerSettings.includePaths);
+            if(resolved.empty()) resolved = resolveIncludePath(innerPath, ".h", curDir, beguilerSettings.includePaths);
+            emitPath = resolved.empty()
+                ? "\"" + rewritePathSeps(innerPath) + "\""
+                : "\"" + rewritePathSeps(resolved) + "\"";
+        }
         i6RawNode& stub = *(new i6RawNode());
         stub.text = format("#include {0};", emitPath);
         stub.isPrePassStub = true;
@@ -894,9 +905,42 @@ void bglParser::preScanGlobalLoop(){
                                     if(m->name == fd.name){ exists = true; break; }
                                 if(!exists) objStub->members.push_back(&fd);
                             } else {
-                                // Property — skip to ; or next member
+                                // Property — register a stub so forward references from sibling
+                                // methods resolve correctly. Without this, a method declared above
+                                // a property would not find the property in currentObject->members
+                                // during full-pass body parsing, fall through to file-scope, and
+                                // resolve against an unrelated enum value or global with the same
+                                // name (compiler can't disambiguate; the user's intent of self.X
+                                // is silently swapped for the file-scope hit).
+                                // Skip emitters (e.g. `emitter int wordsize {WORDSIZE}`) — those
+                                // look like a property shape without parens but are value-emitters
+                                // that the full pass installs differently.
+                                if(!memberIsEmitter){
+                                    variableDeclaration& vd = *(new variableDeclaration());
+                                    vd.name = memberName.value;
+                                    vd.displayName = memberName.originalValue;
+                                    vd.type = languageService.getType(t.value);
+                                    vd.isPrePassStub = true;
+                                    bool exists = false;
+                                    for(typeMember* m : objStub->members)
+                                        if(m->name == vd.name){ exists = true; break; }
+                                    if(!exists) objStub->members.push_back(&vd);
+                                }
+                                // Skip the rest of the declaration up to AND INCLUDING the
+                                // terminating ';' (or until the object's closing '}'). If we
+                                // left a stray ';' as the next outer token, the outer loop's
+                                // else-branch would feed it to preScanSkipToSemicolon, which
+                                // then scans into the following statement looking for the
+                                // *next* ';' — silently swallowing the next method body and
+                                // its trailing property.
                                 while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
-                                    if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
+                                    if(afterName.is(token::braceOpen)){
+                                        file.getRawTextThroughClosingBrace();
+                                        // After consuming the {...}, continue reading until ';'
+                                        // (or '}') so the trailing ';' doesn't leak to the outer loop.
+                                        afterName = file.getToken();
+                                        continue;
+                                    }
                                     afterName = file.getToken();
                                 }
                                 if(afterName.is(token::braceClose)) break;

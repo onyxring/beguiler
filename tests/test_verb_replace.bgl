@@ -1,10 +1,10 @@
-// test_verb_replace.bgl — `grammar = { ... }` replace semantics in extend bodies (§4).
+// test_verb_replace.bgl — `replace grammar = { ... }` replace semantics in extend bodies (§4).
 //
-// Inside an `extend V { }` body, `grammar = { ... }` (plain assignment, not `+=`) emits
+// Inside an `extend V { }` body, `replace grammar = { ... }` (qualified assignment) emits
 // I6 `Extend 'w' replace ...` for already-declared trigger words, wiping prior rules
 // for that word. A replace line whose first dict word is NEW emits as `Verb 'newword'`
 // (Beguile groups grammar by line-first-dict-word — a brand-new word can't replace
-// rules that don't exist yet).
+// rules that don't exist yet). Plain `grammar = { ... }` in `extend` is APPEND.
 //
 // Verifies:
 //   - Replace on existing trigger word (own block's word) → `extend 'w' replace`
@@ -32,7 +32,7 @@ verb Quaff {
 // `extend 'quaff' replace * 'deeply' noun -> quaff;` — at runtime, this REPLACES the
 // rules from Quaff's own block ('* noun') with the new pattern.
 extend Quaff {
-    grammar = {
+    replace grammar = {
         {.quaff, .deeply, noun},
     };
 }
@@ -41,7 +41,7 @@ extend Quaff {
 // exists (from the I6 stdlib), so this emits `extend 'take' replace ... -> Take;`,
 // wiping the stdlib's 'take' grammar.
 extend Take {
-    grammar = {
+    replace grammar = {
         {.take, .firmly, noun},
     };
 }
@@ -50,7 +50,7 @@ extend Take {
 // trigger anywhere, this emits `verb 'pilfer' * noun -> Take;` (a fresh Verb directive,
 // not an Extend replace — Beguile groups grammar by the line's first dict word).
 extend Take {
-    grammar = {
+    replace grammar = {
         {.pilfer, noun},
     };
 }

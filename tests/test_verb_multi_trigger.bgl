@@ -13,7 +13,7 @@
 //     with multiple `*` patterns
 //   - Multi-trigger line whose triggers overlap a prior single-trigger declaration → fan-out
 //     emission (one Verb for the new trigger, Extend for the existing one)
-//   - Multi-trigger line inside `extend V { grammar += { ... } }` → fan-out emission (I6 Extend
+//   - Multi-trigger line inside `extend V { grammar = { ... } }` → fan-out emission (I6 Extend
 //     directives accept only one trigger word)
 
 #beguilerSettings {
@@ -67,7 +67,7 @@ verb Squelch {
 }
 
 extend Squelch {
-    grammar += {
+    grammar = {
         {.mash|.squish, noun},
     };
 }
@@ -75,7 +75,7 @@ extend Squelch {
 // Multi-trigger inside an extend, mixed state — one trigger already exists, two are new.
 // Emits fan-out: extend for the existing trigger, fresh Verbs for the new ones.
 extend Squelch {
-    grammar += {
+    grammar = {
         {.squelch|.crush|.grind, noun, .firmly},
     };
 }

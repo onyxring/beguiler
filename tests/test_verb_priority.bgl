@@ -30,7 +30,7 @@ verb Tickle {
 // Extend Tickle with priority < anchor (5 < 10) → `extend 'tickle' first`
 extend Tickle {
     priority = 5;
-    grammar += {
+    grammar = {
         {.tickle, .gently, noun},
     };
 }
@@ -38,7 +38,7 @@ extend Tickle {
 // Extend Tickle with priority > anchor (15 > 10) → `extend 'tickle'` (default last)
 extend Tickle {
     priority = 15;
-    grammar += {
+    grammar = {
         {.tickle, .roughly, noun},
     };
 }
@@ -55,7 +55,7 @@ verb Burnish {
 // priority 8 < anchor 20 → `extend 'burnish' first`
 extend Burnish {
     priority = 8;
-    grammar += {
+    grammar = {
         {.burnish, .carefully},
     };
 }
@@ -63,7 +63,7 @@ extend Burnish {
 // priority 25 > anchor 20 → `extend 'burnish'` (default last)
 extend Burnish {
     priority = 25;
-    grammar += {
+    grammar = {
         {.burnish, .casually},
     };
 }

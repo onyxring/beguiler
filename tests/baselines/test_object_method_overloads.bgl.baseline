@@ -1,24 +1,6 @@
 !% -G
 !% -E1
 global _bgl_temp0;
-
-    Array _bglScratchStack --> 33;
-    Global _bglScratchTop = 0;
-    [ _bglScratchPush v;
-        if(_bglScratchTop >= 31){
-            print "^[Beguile runtime error: for-in literal-list scratch exhausted]^";
-            quit;
-        }
-        _bglScratchTop++;
-        _bglScratchStack-->_bglScratchTop = v;
-    ];
-    [ _bglScratchMake count;
-        _bglScratchStack-->(_bglScratchStack-->0) = $9084;     ! magic marker
-        _bglScratchStack-->(_bglScratchStack-->0 - 1) = count; ! length
-        _bglScratchTop = 0;
-        return _bglScratchStack;
-    ];
-
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
