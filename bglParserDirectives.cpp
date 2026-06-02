@@ -37,6 +37,65 @@ string resolveIncludePath(const string& name, const string& ext, const filesyste
 string rewritePathSeps(const string& path);
 filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& target);
 
+// Substitute `##beguilerSettings.<key>` references inside a raw-I6 block with
+// their compile-time values. Uses the `##` prefix that already marks Beguile-
+// inside-I6 constructs (see processBglConditionals for ##if/##ifdef/##else
+// /##endif in emitter bodies). String properties expand to I6 quoted strings
+// ("…"); int properties expand to a decimal literal. Property names mirror
+// the expression-context handler in bglParserExpr.cpp (~line 2070) so the same
+// keys work in both. Motivating use: bindings that need to hoist
+// `Constant story = "…";` and `Constant headline = "…";` above the
+// `#includeI6` of their I6 library — the library's Banner machinery reads
+// those constants during its own include processing, so they must already
+// be in scope.
+static string substituteBeguilerSettingsRefs(const string& block){
+    static const string marker = "##beguilersettings.";
+    string out;
+    out.reserve(block.size());
+    size_t i = 0;
+    while(i < block.size()){
+        if(block[i] == '#' && i + marker.size() <= block.size() &&
+           strncasecmp(block.c_str() + i, marker.c_str(), marker.size()) == 0){
+            size_t keyStart = i + marker.size();
+            size_t keyEnd = keyStart;
+            while(keyEnd < block.size() && (isalnum((unsigned char)block[keyEnd]) || block[keyEnd] == '_')) keyEnd++;
+            string key(block, keyStart, keyEnd - keyStart);
+            transform(key.begin(), key.end(), key.begin(), ::tolower);
+            bool isInt = false; int iv = 0; string sv;
+            if     (key == "title")          sv = beguilerSettings.title;
+            else if(key == "headline")       sv = beguilerSettings.headline;
+            else if(key == "author")         sv = beguilerSettings.author;
+            else if(key == "genre")          sv = beguilerSettings.genre;
+            else if(key == "description")    sv = beguilerSettings.description;
+            else if(key == "language")       sv = beguilerSettings.language;
+            else if(key == "series")         sv = beguilerSettings.series;
+            else if(key == "seriesnumber") { isInt = true; iv = beguilerSettings.seriesNumber; }
+            else if(key == "firstpublished") sv = beguilerSettings.firstPublished;
+            else if(key == "forgiveness")    sv = beguilerSettings.forgiveness;
+            else if(key == "ifid")           sv = beguilerSettings.ifid;
+            else if(key == "target")         sv = beguilerSettings.target;
+            else if(key == "outputpath")     sv = beguilerSettings.outputPath;
+            else if(key == "blorbassetpath") sv = beguilerSettings.blorbAssetPath;
+            else if(key == "informname")     sv = beguilerSettings.informName;
+            else if(key == "release")      { isInt = true; iv = beguilerSettings.release; }
+            else if(key == "serial")         sv = beguilerSettings.serial;
+            else if(key == "framepoolsize"){ isInt = true; iv = beguilerSettings.framePoolSize > 0 ? beguilerSettings.framePoolSize : 0; }
+            else if(key == "linqscratchsize"){ isInt = true; iv = beguilerSettings.linqScratchSize > 0 ? beguilerSettings.linqScratchSize : 0; }
+            else if(key == "worldbufsize"){ isInt = true; iv = beguilerSettings.worldBufSize > 0 ? beguilerSettings.worldBufSize : 0; }
+            else {
+                out += block[i++];   // unknown key — pass through, let I6 surface the error
+                continue;
+            }
+            if(isInt) out += to_string(iv);
+            else { out += '"'; out += sv; out += '"'; }
+            i = keyEnd;
+            continue;
+        }
+        out += block[i++];
+    }
+    return out;
+}
+
 
 // ===============================================================================
 // processBglConditionals + evaluateCondition + skipBglConditionalBlock + skipConditionalBlock + processDirective
@@ -420,15 +479,45 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             // by `#once` (each BLR file that uses #emitfirst declares #once at the top), so
             // we don't dedup at this level. Multiple #emitfirst blocks in the same file —
             // common for .inf-mode with many #bgl islands — all register.
+            //
+            // `##beguilerSettings.<key>` references inside the raw I6 body are expanded to
+            // compile-time literals at parse time (see substituteBeguilerSettingsRefs).
             file.getToken(token::braceOpen);
-            languageService.emitFirstBlocks.push_back(file.getRawTextThroughClosingBrace(/*isI6Content=*/true));
+            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+            languageService.emitFirstBlocks.push_back(substituteBeguilerSettingsRefs(body));
             return false;
             break;
         }
         case chk("#emitlast"):{
-            // Same additive policy as #emitfirst.
+            // Same additive policy as #emitfirst; same ##beguilerSettings.<key> expansion.
             file.getToken(token::braceOpen);
-            languageService.emitLastBlocks.push_back(file.getRawTextThroughClosingBrace(/*isI6Content=*/true));
+            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+            languageService.emitLastBlocks.push_back(substituteBeguilerSettingsRefs(body));
+            return false;
+            break;
+        }
+        case chk("#storedemitfirst"):{
+            // Named, deferred emit-first block. Not emitted unless a corresponding
+            // ##triggerEmitter <name> annotation (in a __builtins.i6b template header
+            // or a Beguile emitter body) fires during emission. Same ##beguilerSettings.<key>
+            // expansion as #emitfirst. Re-registration with the same name is overwrite
+            // (latest wins) — `#once` on BLR files prevents accidental shadowing within
+            // a single BLR include.
+            token nameTok = file.getToken(eTokenType::identifier);
+            string name = nameTok.value;       // already lowercase (Beguile lexer)
+            file.getToken(token::braceOpen);
+            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+            languageService.storedEmitFirstBlocks[name] = substituteBeguilerSettingsRefs(body);
+            return false;
+            break;
+        }
+        case chk("#storedemitlast"):{
+            // Same semantics as #storedEmitFirst but resolves at the emit-last position.
+            token nameTok = file.getToken(eTokenType::identifier);
+            string name = nameTok.value;
+            file.getToken(token::braceOpen);
+            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+            languageService.storedEmitLastBlocks[name] = substituteBeguilerSettingsRefs(body);
             return false;
             break;
         }
@@ -443,20 +532,28 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             string innerPath = filename.value;
             if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
                 innerPath = innerPath.substr(1, innerPath.size()-2);
-            // Resolve the file: search source dir + bglIncludePaths + i6IncludePaths (fallback)
-            filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
-            string resolved = resolveIncludePath(innerPath, "", curDir, beguilerSettings.includePaths);
-            if(resolved.empty()){
-                // Also try with .h extension
-                resolved = resolveIncludePath(innerPath, ".h", curDir, beguilerSettings.includePaths);
+            string emitPath;
+            if(filename.is(eTokenType::rawQuote)){
+                // Raw form `#includeI6 @"..."` — emit verbatim, no resolution, no
+                // existence check, no separator rewrite. The author is telling us
+                // exactly what string to hand to I6.
+                emitPath = "\"" + innerPath + "\"";
+            } else {
+                // Resolve the file: search source dir + bglIncludePaths + i6IncludePaths (fallback)
+                filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
+                string resolved = resolveIncludePath(innerPath, "", curDir, beguilerSettings.includePaths);
+                if(resolved.empty()){
+                    // Also try with .h extension
+                    resolved = resolveIncludePath(innerPath, ".h", curDir, beguilerSettings.includePaths);
+                }
+                if(resolved.empty()){
+                    if(!i6Optional)
+                        parsingError(format("#includeI6: file '{0}' not found", innerPath));
+                    return false;
+                }
+                // Emit with the resolved absolute path
+                emitPath = "\"" + rewritePathSeps(resolved) + "\"";
             }
-            if(resolved.empty()){
-                if(!i6Optional)
-                    parsingError(format("#includeI6: file '{0}' not found", innerPath));
-                return false;
-            }
-            // Emit with the resolved absolute path
-            string emitPath = "\"" + rewritePathSeps(resolved) + "\"";
             string nodeText = format("#include {0};", emitPath);
             // Claim the pre-scan stub if present (preserves source ordering in output)
             bool claimed = false;
@@ -468,8 +565,11 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                         size_t q1 = stubPath.find('"'), q2 = stubPath.rfind('"');
                         if(q1 != string::npos && q2 > q1){
                             string stubFile = stubPath.substr(q1+1, q2-q1-1);
-                            // Match if the stub filename ends with the original include name
-                            if(stubFile.find(rewritePathSeps(innerPath)) != string::npos){
+                            // Match if the stub filename ends with the original include name.
+                            // Raw `@"..."` stubs were stored verbatim, so skip the sep rewrite
+                            // — applying it would mismatch e.g. `foo\bar` vs `foo/bar`.
+                            string matchKey = filename.is(eTokenType::rawQuote) ? innerPath : rewritePathSeps(innerPath);
+                            if(stubFile.find(matchKey) != string::npos){
                                 raw->text = nodeText;
                                 raw->isPrePassStub = false;
                                 claimed = true;
@@ -849,9 +949,12 @@ bool bglParser::processBeguilerSettings(){
                 memberType = vd->type.name;
         }
 
-        token val = file.getToken({eTokenType::identifier, eTokenType::quote, eTokenType::rawQuote, eTokenType::integer});
+        // Accept dataType in addition to identifier so the qualified form
+        // `eTarget.Z5` works: `eTarget` (an extern enum) is classified as a
+        // dataType by the lexer, not a plain identifier.
+        token val = file.getToken({eTokenType::identifier, eTokenType::dataType, eTokenType::quote, eTokenType::rawQuote, eTokenType::integer});
         // Allow optional qualified enum form: EnumType.Member — consume the dot and member, use member as value
-        if(val.is(eTokenType::identifier) && file.peekToken().is(".")){
+        if((val.is(eTokenType::identifier) || val.is(eTokenType::dataType)) && file.peekToken().is(".")){
             file.getToken(".");
             token member = file.getToken(eTokenType::identifier);
             // Validate that qualifier matches the declared member type
@@ -896,6 +999,20 @@ bool bglParser::processBeguilerSettings(){
             // Comma-separated list, matching I6 ICL `+include_path=a,b,c` convention.
             // Whitespace around each entry is trimmed; empty entries are skipped; existing
             // entries are not duplicated.
+            //
+            // Regular `"..."` form: relative paths are resolved against the directory of
+            // the file containing the #beguilerSettings block, then canonicalised — `..` /
+            // `.` segments are collapsed and OS-appropriate separators are written, so I6
+            // sees a fully-qualified path rather than something like
+            // `…/cloakOfDarkness/../../inform6/puny/lib`.
+            //
+            // Raw `@"..."` form: emitted verbatim. No separator rewrite, no relative-path
+            // resolution, no canonicalisation. Use when you need a literal path string
+            // (e.g. one that already encodes a build-system substitution).
+            filesystem::path settingsFileDir = filesystem::path(file.currentLocation().file).parent_path();
+            if(!settingsFileDir.empty())
+                settingsFileDir = filesystem::absolute(settingsFileDir);
+            bool isRaw = val.is(eTokenType::rawQuote);
             size_t i = 0;
             while(i < strVal.size()){
                 size_t comma = strVal.find(',', i);
@@ -903,7 +1020,22 @@ bool bglParser::processBeguilerSettings(){
                 size_t a = entry.find_first_not_of(" \t");
                 size_t b = entry.find_last_not_of(" \t");
                 if(a != string::npos){
-                    string path = rewritePathSeps(entry.substr(a, b - a + 1));
+                    string path;
+                    if(isRaw){
+                        path = entry.substr(a, b - a + 1);
+                    } else {
+                        path = rewritePathSeps(entry.substr(a, b - a + 1));
+                        filesystem::path pathObj(path);
+                        if(pathObj.is_relative() && !settingsFileDir.empty())
+                            pathObj = settingsFileDir / pathObj;
+                        std::error_code ec;
+                        filesystem::path canon = filesystem::weakly_canonical(pathObj, ec);
+                        if(!ec) pathObj = canon;
+                        if(!filesystem::is_directory(pathObj, ec))
+                            parsingError(format("beguilerSettings includePaths entry '{0}' does not resolve to an existing directory ('{1}'). Use @\"...\" to emit a literal path without filesystem validation.",
+                                entry.substr(a, b - a + 1), pathObj.string()));
+                        path = pathObj.string();
+                    }
                     if(find(cfg.includePaths.begin(), cfg.includePaths.end(), path) == cfg.includePaths.end())
                         cfg.includePaths.push_back(path);
                 }

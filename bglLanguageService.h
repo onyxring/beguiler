@@ -3,13 +3,15 @@
 #include <string_view>
 #include <sstream>
 #include <vector>
+#include <map>
+#include <set>
 #include "typeDef.h"
 
 using namespace std;
 
 class bglLanguageService{
     public:
-        
+
     vector<typeDef*> objectTypes;  //used to store class/type definitions (classDef, enumDef, typeDef)
     vector<typeDef*> objectInstances;  //used to store object instance definitions (objectDef)
     vector<typeDef*> globals;
@@ -17,6 +19,15 @@ class bglLanguageService{
     vector<string> startupBlocks;             // raw I6 bodies from #startup { } directives; emitted inside bglInit()
     vector<string> emitFirstBlocks;           // raw I6 bodies from #emitfirst { } directives; emitted after ICL headers, before bglInit
     vector<string> emitLastBlocks;            // raw I6 bodies from #emitlast { } directives; emitted at end of I6 output
+    // Stored (deferred) emit-first/last blocks. Each is a named raw-I6 body that is emitted ONLY
+    // when its name appears in `firedStoredNames` — i.e., when some `##triggerEmitter <name>`
+    // annotation (in a Beguile emitter body or in a __builtins.i6b template header) fires
+    // during emission. Lets BLR authors declare on-demand helper routines that don't pay an
+    // I6 "declared but not used" warning when the trigger never fires. Resolved at the
+    // emit-first/last placeholder positions during i6Emitter::resolvedOutput().
+    map<string,string> storedEmitFirstBlocks;
+    map<string,string> storedEmitLastBlocks;
+    set<string>        firedStoredNames;       // names that fired via ##triggerEmitter during emission
     vector<verbObjectDef*> verbs;  // all verb declarations (extern and non-extern) for action-constant lookup
     int ternaryTempCount = 0;  // number of _bgl_tempN globals needed; increments per ternary/null-coalesce
     bool tryCatchNeeded = false;     // set true when try/catch is used; drives conditional _bgl_catch_cookie emission

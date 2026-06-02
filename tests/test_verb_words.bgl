@@ -44,7 +44,7 @@ extern verb MyExtVerb2 {
 // (priority 5 < anchor 10).
 extend MyExtVerb {
     priority = 5;
-    grammar += {
+    grammar = {
         {.foo, noun},
     };
 }
@@ -52,14 +52,14 @@ extend MyExtVerb {
 // Extend MyExtVerb using an ALIAS trigger — also Extend (not fresh Verb), because
 // 'bar' is now pre-seeded via MyExtVerb's grammar declaration.
 extend MyExtVerb {
-    grammar += {
+    grammar = {
         {.bar, noun, .down},
     };
 }
 
 // Extend MyExtVerb2 using a middle alias — also routes to Extend.
 extend MyExtVerb2 {
-    grammar += {
+    grammar = {
         {.beta, noun},
     };
 }

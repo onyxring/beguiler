@@ -1,0 +1,134 @@
+/* test_string_glulx.bgl — Glulx mirror of test_string.bgl. See that file for
+ * full coverage notes.
+ *
+ * Original header preserved below for the Phase 0 context.
+ * ----------
+ * test_string.bgl — surface coverage for the <string> runtime.
+ *
+ * <string> is currently in Phase 0 of the orString→Beguile port: the
+ * orLibrary orString + orStringPool + orStr implementation has been lifted
+ * into an I6 island (_todostring.bgl) with symbol renames (or* → _bgl*).
+ * Later phases will progressively beguileify each routine.
+ *
+ * This test exercises the public string surface so future port-phase
+ * regressions surface in the .inf baseline diff. It deliberately does NOT
+ * runtime-assert (test framework only compares I6 emission), but every
+ * reachable dispatch path is touched so emitter changes can't slip
+ * through unseen.
+ *
+ * Coverage:
+ *   - Lifecycle: init/deinit via declaration + scope exit
+ *   - Assignment: literal, string-to-string, interpolated literal
+ *   - Equality: literal + string (both operator == and switch context)
+ *   - Concatenation via operator +
+ *   - Postfix ? null check, ?? coalescing
+ *   - All instance methods on the extend block
+ *   - stringLiteral + string and stringLiteral + charLiteral
+ *
+ * Known gap (pre-existing, not introduced by Phase 0): the language's
+ * subscript dispatcher only routes through array<T>, so `string`'s
+ * operator[] / operator[]= emitters are unreachable from `s[i]` syntax
+ * even though they're declared. Tracked outside Phase 0.
+ */
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <string>
+
+// ─── Lifecycle + assignment ──────────────────────────────────────────────────
+void exerciseAssign(){
+    string s1;                   // init via declaration
+    s1 = "hello";                // operator = (stringLiteral)
+    string s2;
+    s2 = s1;                     // operator = (string)
+    string s3;
+    s3 = @"interp {s1} world";   // operator = (interpolatedStringLiteral)
+}
+
+// ─── Equality + switch ───────────────────────────────────────────────────────
+void exerciseEquality(){
+    string s;
+    s = "test";
+    bool eq_lit = (s == "test");       // operator == (stringLiteral)
+    string o;
+    o = "test";
+    bool eq_str = (s == o);            // operator == (string)
+
+    // switch dispatches through operator switch on stringLiteral/string
+    int code = 0;
+    switch(s){
+        case "hello":  code = 1;
+        case "test":   code = 2;
+        default:       code = 99;
+    }
+}
+
+// ─── Concatenation ───────────────────────────────────────────────────────────
+void exerciseConcat(){
+    string s1;  s1 = "foo";
+    string s2;  s2 = "bar";
+    string c;
+    c = s1 + s2;                        // string + string
+    c = s1 + "literal";                 // string + stringLiteral
+    c = "literal" + s1;                 // stringLiteral + string (extend stringLiteral)
+    c = "literal" + 'X';                // stringLiteral + charLiteral
+}
+
+// ─── Null / coalesce ─────────────────────────────────────────────────────────
+void exerciseNullable(){
+    string s1;
+    s1 = "hi";
+    string s2;
+    string c = s1 ?? s2 ?? "fallback";  // operator ? + ??
+    bool present = s1?;
+}
+
+// ─── Methods — exercise every name on the extend class ───────────────────────
+void exerciseMethods(){
+    string s;
+    s = "Hello, World";
+    s.print();                          // replace emitter print()
+
+    string t;
+    t = s.append(" suffix");
+    t = s.append('!');
+    t = s.prepend("prefix ");
+    t = s.toUpper();
+    t = s.toLower();
+    t = s.trim();
+    t = s.trimLeft();
+    t = s.trimRight();
+    t = s.reverse();
+    t = s.mid(2, 5);
+    t = s.left(3);
+    t = s.right(4);
+    t = s.insert(1, "X");
+    t = s.delete(0, 2);
+    t = s.replace("Hello", "Greetings");
+    t = s.replaceAll("o", "0");
+    t = s.format("[$0]");
+    t = s.format("[$0:$1]", "extra");
+    t = s.format("[$0:$1:$2]", "a", "b");
+
+    int len = s.getLength();
+    int pos = s.indexOf("World");
+    bool sw  = s.startsWith("Hello");
+    bool ew  = s.endsWith("World");
+    bool has = s.contains(",");
+    bool emp = s.isEmpty();
+
+    s.capture();
+    print("captured-content");
+    s.release();
+}
+
+void main(){
+    exerciseAssign();
+    exerciseEquality();
+    exerciseConcat();
+    exerciseNullable();
+    exerciseMethods();
+}

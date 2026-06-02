@@ -49,6 +49,7 @@
   - 3.5.4 `#exit`
   - 3.5.5 `#startup`
   - 3.5.6 `#emitfirst`
+  - 3.5.6a `#storedEmitFirst <name>` and `#storedEmitLast <name>`
   - 3.5.7 `#emitlast`
   - 3.5.8 `#using`
 
@@ -855,7 +856,7 @@ These settings control the compilation target and output characteristics.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `target` | `eTarget` | `Glulx` | Compilation target: `Glulx`, `Z3`, `Z5`, or `Z8`. |
+| `target` | `eTarget` | `Glulx` | Compilation target: `Glulx`, `Z3`, `Z5`, or `Z8`. Either the bare enum value (`target = Z5;`) or the qualified form (`target = eTarget.Z5;`) is accepted. |
 | `outputPath` | string | `"output"` | Directory for the compiled story file. Relative paths are resolved from the source file's directory. CLI `-o` overrides this. |
 | `release` | int | `0` | Sets the story release number. `0` means unset. |
 | `errorFormat` | `eErrorFormat` | `E1` | Error reporting style passed to the I6 compiler. `E1` = Microsoft-style; `E2` = Macintosh-style. |
@@ -968,7 +969,7 @@ Supported properties:
 | **Blorb** | `blorbAssetPath` | string |
 | | `generateBlorb`, `rewritePaths` | bool |
 
-> **Note:** The standard library and PunyInform bindings automatically declare the I6 constants `story` and `headline` from `#beguilerSettings.title` and `#beguilerSettings.headline` respectively. The `release` and `serial` settings are emitted directly by the compiler as I6 `Release` and `Serial` directives. When using either binding, you do not need to declare these constants yourself.
+> **Note:** The standard library and PunyInform bindings automatically declare the I6 constants `story` and `headline` from `#beguilerSettings.title` and `#beguilerSettings.headline` respectively, using a top-of-file `#emitfirst` block with `##beguilerSettings.<key>` substitution (see §3.5.6) so the constants are in scope before the binding's `#includeI6` of the I6 library. The `release` and `serial` settings are emitted directly by the compiler as I6 `Release` and `Serial` directives. When using either binding, you do not need to declare these constants yourself.
 
 ## 3.5 Diagnostic and Control Directives
 
@@ -1036,7 +1037,7 @@ The standard IF library bindings (`i6StandardLibrary` and `punyInform`) call `bg
 
 ### 3.5.6 `#emitfirst`
 
-Emits a block of raw I6 code at the beginning of the generated output, after ICL headers but before the `bglInit` routine and all other declarations. This is useful for I6 directives that must appear early in the file, such as `Replace` directives or conditional compilation setup.
+Emits a block of raw I6 code at the beginning of the generated output, after ICL headers but before the `bglInit` routine and all other declarations. This is useful for I6 directives that must appear early in the file, such as `Replace` directives, banner constants (`Story`, `Headline`), or conditional compilation setup.
 
 ```bgl
 #emitfirst {
@@ -1044,7 +1045,39 @@ Emits a block of raw I6 code at the beginning of the generated output, after ICL
 }
 ```
 
+**Settings substitution.** Inside the raw I6 body, the marker `##beguilerSettings.<key>` expands at parse time to the compile-time value of the named `#beguilerSettings` property. String properties expand to I6 quoted strings (`"…"`); integer properties expand to a decimal literal. The `##` prefix is the same convention used for `##if`/`##ifdef` inside emitter bodies — it marks Beguile-level processing inside an otherwise-raw-I6 context. The property names are the same set documented in §3.4.2.
+
+```bgl
+#emitfirst {
+    Constant story    = ##beguilerSettings.title;
+    Constant headline = ##beguilerSettings.headline;
+}
+```
+
+This is the canonical pattern bindings use to expose library-required constants. I6 libraries that consume named constants (e.g. `Story`, `Headline`) read them *during* their own include processing, so the constants must be in scope at the top of the generated `.inf`. `#emitfirst` provides that placement guarantee, and the `##beguilerSettings.<key>` substitution lets the binding pull the value out of `#beguilerSettings` without the user having to re-declare it.
+
 **Deduplication** and **ordering** follow the same rules as `#startup` — each file's block is emitted at most once, in file-inclusion order.
+
+### 3.5.6a `#storedEmitFirst <name>` and `#storedEmitLast <name>`
+
+Registers a **named, deferred** raw-I6 block. Unlike `#emitfirst` / `#emitlast`, a stored block is NOT emitted by default — it emits only if some `##triggerEmitter <name>` annotation fires during compilation. The block, when emitted, lands at the same position as the corresponding non-stored form (top for `#storedEmitFirst`, bottom for `#storedEmitLast`).
+
+```bgl
+#storedEmitFirst scratchSupport {
+    Array  _bglScratchStack --> 33;
+    Global _bglScratchTop = 0;
+    [ _bglScratchPush v; … ];
+    [ _bglScratchMake count; … ];
+}
+```
+
+The trigger annotation `##triggerEmitter <name1> <name2> …` is placed inside the body of the construct that *uses* the helper (a compiler builtin template or a Beguile emitter body). Each invocation of the host construct adds the listed names to the fired set; matching stored blocks are emitted once at finalize time. Multiple stored blocks can share a single trigger name, and a single host construct can list multiple trigger names.
+
+The same `##beguilerSettings.<key>` substitution that works in `#emitfirst` also applies here.
+
+**Use case.** Helper routines that some BLR feature needs but most programs don't. Programs that never trigger the helper pay zero bytes; programs that do get the routine emitted exactly once.
+
+**Re-include protection.** Stored blocks are keyed by name — re-registering the same name (e.g. via re-included BLR) is harmless overwrite (latest wins). `#once` on the declaring BLR file is the normal way to prevent shadowing within a single include chain.
 
 ### 3.5.7 `#emitlast`
 
@@ -1058,7 +1091,7 @@ Emits a block of raw I6 code at the very end of the generated output, after all 
 }
 ```
 
-**Deduplication** and **ordering** follow the same rules as `#startup`.
+Supports the same `##beguilerSettings.<key>` substitution as `#emitfirst`. **Deduplication** and **ordering** follow the same rules as `#startup`.
 
 ### 3.5.8 `#using`
 
@@ -1639,8 +1672,9 @@ The `[10]` reserves ten instance slots in static memory. There is no dynamic all
 #### Pool size
 
 - `[N]` (N is a positive integer) — sized pool, emits as I6 `Class Foo(N) ...`.
+- `[IDENT]` (an identifier) — sized pool whose count comes from a compile-time integer constant declared via `const int IDENT = …;` (or any other emission-equivalent route). The compiler emits the identifier verbatim into the I6 `Class Foo(IDENT) ...` directive — at I6 compile time, `IDENT` must resolve to a positive integer Constant. Useful when the pool size is shared with other code (e.g. a tuning constant in a BLR file).
 - `[]` (empty brackets) — **only valid on `extern class`**, see §5.2.2 below. Marks the class as I6-pooled with size opaque to Beguile.
-- `[N]` is not valid on `emitter class` or `alias class` — those forms have no I6 instance backing.
+- `[N]` / `[IDENT]` are not valid on `emitter class` or `alias class` — those forms have no I6 instance backing.
 - `extend class Foo[...]` is not valid — pool size is part of the original declaration's contract.
 
 #### Pool inheritance
@@ -2114,7 +2148,7 @@ gameState.sys.activate();       // chained method call through property
 
 When the assigned value is a declared object instance, it is stored as a direct reference — no `init()` emitter is called.
 
-**Extern objects**: Extending an `extern` object is restricted — the object's definition is in I6, not Beguile, so only operations that emit independently of the object are allowed. In practice this means only `grammar +=` works (grammar emits as standalone I6 `Verb`/`Extend` directives). Adding new members, methods, or using `-=` on an extern object is a compile error.
+**Extern objects**: Extending an `extern` object is restricted — the object's definition is in I6, not Beguile, so only operations that emit independently of the object are allowed. In practice this means only `grammar =` works (grammar emits as standalone I6 `Verb`/`Extend` directives). Adding new members, methods, or using `-=` on an extern object is a compile error.
 
 **Extern object bodies**: An `extern` object may include a `{ }` body for type registration purposes. The body may contain:
 - Method declarations without bodies (`int getScore();`) — registered for type checking
@@ -4094,13 +4128,15 @@ Identifiers are resolved through four tiers, searched in order:
 3. Local variables declared in enclosing blocks of the same function
 
 **Tier 2 — Class/object scope**
-4. Members of the current class or object (when inside a method body). Resolved as `self.memberName` in the emitted I6.
+4. Members of the current class or object (when inside a method body), **including inherited members from the class's base chain**. Resolved as `self.memberName` in the emitted I6. Forward references to own members declared later in the object's body resolve correctly — the compiler pre-scans property declarations before parsing method bodies.
 
 **Tier 3 — Global scope**
 5. Enum values (all declared enum members are in a flat global namespace)
 6. Global variables, constants, extern declarations, and verb names
 
 If no tier matches, the identifier is undeclared — a compile-time error.
+
+**Ambiguity warning.** Inside an object method body, when a bare identifier resolves at Tier 3 (a file-scope candidate, typically an enum value, global, or imported member) AND is **also a property of the enclosing object** (own or inherited), the compiler can't tell which one the user meant. The Tier-3 candidate wins by the precedence rules above — but a warning is emitted so the genuine ambiguity is surfaced rather than silently picked. The diagnostic points at both meanings and the two qualifications that disambiguate (`self.X` for the property; `EnumType.X` or other explicit qualification for the file-scope candidate). Method-bearing inherited members (e.g. inherited `print` on `_bglObject`) are intentionally NOT included in this check — methods are always called with parens and don't suffer the same visual collision as bare property reads.
 
 ## 13.3 The `self` Keyword
 
@@ -4271,7 +4307,7 @@ Three rules apply (canonical form examples shown):
 
 - **A bare `extern verb V;` defaults to a single claimed word — the lowercased verb name.** The body form is only needed when the verb claims additional words or when the primary word differs from the lowercased name.
 
-The first dict word in the first grammar line is the verb's **primary trigger** — the one used as the target word when the verb is extended via `extend V { grammar += { … } }`. Order matters only for that primary-trigger selection; all listed words are equally claimed for collision-detection purposes.
+The first dict word in the first grammar line is the verb's **primary trigger** — the one used as the target word when the verb is extended via `extend V { grammar = { … } }`. Order matters only for that primary-trigger selection; all listed words are equally claimed for collision-detection purposes.
 
 ### Meta Verbs
 
@@ -4320,17 +4356,17 @@ verb Take {
 
 The priority on a Beguile-defined verb's own block is the **anchor** — the pivot against which extends sort. For purely extern verbs (no Beguile-defined block), the implicit anchor is the BLR default (`10`).
 
-Inside `extend V { … }`, a bare `priority = N;` is a **block-local directive** — it does not become a persistent property on the verb. It stamps onto every grammar line added by the surrounding `grammar += { … }` and is consumed at emit time. This lets multiple `extend` blocks at different priorities coexist on the same verb without colliding.
+Inside `extend V { … }`, a bare `priority = N;` is a **block-local directive** — it does not become a persistent property on the verb. It stamps onto every grammar line added by the surrounding `grammar = { … }` and is consumed at emit time. This lets multiple `extend` blocks at different priorities coexist on the same verb without colliding.
 
 ```bgl
 extend verb Look {
     priority = 5;          // 5 < anchor 10 → emits I6 `Extend 'look' first`
-    grammar += { {.peek, noun}; }
+    grammar = { {.peek, noun}; }
 }
 
 extend verb Look {
     priority = 12;         // 12 > anchor 10 → emits I6 `Extend 'look'` (default last)
-    grammar += { {.look, .carefully, noun}; }
+    grammar = { {.look, .carefully, noun}; }
 }
 ```
 
@@ -4346,7 +4382,7 @@ A lower priority *number* means a higher matching priority — the I6 parser tri
 
 `priority` is recognized only on `verb` instances. The compiler suppresses it from the I6 `with` clause; it influences emission ordering and is not emitted as a runtime property.
 
-Extern verbs cannot carry a Beguile-side priority. Extends of extern verbs whose only Beguile-side contribution is a `grammar += { … }` with no `priority = N;` use the default anchor (10) against the extern verb's implicit anchor.
+Extern verbs cannot carry a Beguile-side priority. Extends of extern verbs whose only Beguile-side contribution is a `grammar = { … }` with no `priority = N;` use the default anchor (10) against the extern verb's implicit anchor.
 
 ## 14.3 Action Comparisons
 
@@ -4446,11 +4482,11 @@ verb 'type' 'enter' 'put'
     * number 'into'/'in'/'on'/'onto' noun -> typenum;
 ```
 
-If any of the triggers is already declared (by a prior verb in this compilation, or pre-claimed by an extern verb), the emission **fans out** to one directive per trigger: a fresh `Verb` for the new triggers and `Extend` for the existing ones. Each emitted directive carries the same pattern. Multi-trigger lines inside `extend V { grammar += { … } }` always fan out, since I6's `Extend` directive accepts only one trigger word.
+If any of the triggers is already declared (by a prior verb in this compilation, or pre-claimed by an extern verb), the emission **fans out** to one directive per trigger: a fresh `Verb` for the new triggers and `Extend` for the existing ones. Each emitted directive carries the same pattern. Multi-trigger lines inside `extend V { grammar = { … } }` always fan out, since I6's `Extend` directive accepts only one trigger word.
 
 Multi-trigger lines sharing the *same* trigger set across multiple grammar entries are consolidated into a single I6 directive with multiple `*` pattern lines — the trigger words are listed once.
 
-**Stdlib collisions.** When a trigger word in a multi-trigger line is already claimed by an I6 library verb (e.g. `'enter'`, `'put'`), the combined-Verb emission will produce an I6 "verb already defined" warning. Authors who need to add a pattern to existing stdlib verbs without warnings should write the line as separate `extend StdlibVerb { grammar += { … } }` blocks per trigger word.
+**Stdlib collisions.** When a trigger word in a multi-trigger line is already claimed by an I6 library verb (e.g. `'enter'`, `'put'`), the combined-Verb emission will produce an I6 "verb already defined" warning. Authors who need to add a pattern to existing stdlib verbs without warnings should write the line as separate `extend StdlibVerb { grammar = { … } }` blocks per trigger word.
 
 **Parameterized grammar tokens** — `noun(Routine)` and `scope(Routine)` pass a routine to the I6 parser. The routine must be a declared global function returning `bool`:
 
@@ -4566,28 +4602,30 @@ There is no block-level default on grammar objects. Authors wanting a layer-wide
 
 ### Extending Verb Grammar
 
-Grammar can be added to an existing verb (including `extern verb` declarations) using `extend` with `+=` on the `grammar` member (see §5.9 for the general `extend` mechanism):
+Grammar lines are added to an existing verb (including `extern verb` declarations) using `extend` with **plain assignment** on the `grammar` member (see §5.9 for the general `extend` mechanism). Inside an `extend V { … }` body, `grammar = { … }` is **additive by default** — new lines are appended to the verb's existing grammar:
 
 ```bgl
 extern verb PutOn;
 extend PutOn {
-    grammar += {
+    grammar = {
         {.hang, held, .on, noun},
     }
 }
 ```
 
-A bare `priority = N;` inside an `extend` body sets a **block-local priority** that applies to every line in that block's `grammar +=` (see §14.2). The `priority = N;` directive is consumed at emit time; it is not added as a persistent property on the verb, so independent `extend` blocks at different priorities never collide.
+A bare `priority = N;` inside an `extend` body sets a **block-local priority** that applies to every line in that block's append (see §14.2). The `priority = N;` directive is consumed at emit time; it is not added as a persistent property on the verb, so independent `extend` blocks at different priorities never collide.
 
-Since `extern verb` objects are defined in I6, only `grammar +=` and `grammar =` (replace, below) are allowed — new members, methods, and `-=` are not supported on extern objects.
+Since `extern verb` objects are defined in I6, only `grammar` (append and replace forms) is allowed — new members, methods, and other compound assignments are not supported on extern objects.
+
+> **Note:** Inside `extend V { … }`, the `grammar` member supports only two assignment forms: plain `grammar = { … }` (append) and `replace grammar = { … }` (destructive replace). Compound assignment (`grammar += { … }`) is not accepted — the two semantic flavors are distinguished by the presence or absence of the `replace` qualifier rather than by a one-character operator change.
 
 ### Replacing Verb Grammar
 
-Inside `extend V { … }`, **plain assignment** `grammar = { … }` (as opposed to `+=`) emits I6 `Extend 'w' replace` directives — wiping any prior rules whose first trigger word matches:
+To **replace** a verb's grammar (wipe prior rules whose first trigger word matches) rather than append, prefix the assignment with the `replace` qualifier:
 
 ```bgl
 extend Quaff {
-    grammar = {
+    replace grammar = {
         {.quaff, .deeply, noun},
     }
 }
@@ -4604,14 +4642,14 @@ Behavior:
 
 - For trigger words that are **already declared** (in the verb's own block, in a prior `extend`, or by an extern verb declared in an I6 library), the line emits as `Extend 'w' replace …`, removing earlier rules for that word.
 - For trigger words that are **brand new** (not previously declared for this verb), the line emits as a fresh `Verb 'w' …` directive — there are no prior rules to replace, so a `replace` form would be ill-formed.
-- Replace lines emit **after** all `+=` and own-block contributions for the verb, so the replacement reliably overrides everything that came before in source order.
-- Combining `grammar = { … }` with a non-default `priority = N;` in the same `extend` block is a compile error: replace semantics wipe the sort target, making priority meaningless.
+- Replace lines emit **after** all appending contributions for the verb, so the replacement reliably overrides everything that came before in source order.
+- Combining `replace grammar = { … }` with a non-default `priority = N;` in the same `extend` block is a compile error: replace semantics wipe the sort target, making priority meaningless.
 
 Replace is the path to override stdlib grammar — for example, taking over the I6 library's `'take'` grammar entirely:
 
 ```bgl
 extend Take {
-    grammar = {
+    replace grammar = {
         {.take, .firmly, noun},
     }
 }

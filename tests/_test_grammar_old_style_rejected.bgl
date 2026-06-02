@@ -1,8 +1,8 @@
 // _test_grammar_old_style_rejected.bgl
-// The verb-named single-verb shorthand `grammar VerbName { {pattern}, }`
-// was removed; the parser must direct authors to `extend VerbName { grammar += {...}; }`
-// or to a multi-verb grammar object.
-// EXPECT_ERROR: Bare grammar lines in 'grammar PutOn
+// `grammar VerbName { ... }` bodies hold grammarRule members; bare grammar lines
+// belong inside `extend VerbName { grammar += { ... }; }`. The parser must direct
+// authors to the right form.
+// EXPECT_ERROR: bodies hold grammarRule members, not bare grammar lines
 
 #beguilerSettings {
     target = z5;

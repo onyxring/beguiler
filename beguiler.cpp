@@ -563,7 +563,9 @@ bool beguiler::writeFile(string filename) {
     }
 
     emitter.emit(languageService.globals);
-    outFileStream << emitter.out.str();
+    // resolvedOutput() substitutes #storedEmitFirst/#storedEmitLast placeholders with the
+    // bodies of stored blocks whose names fired via ##triggerEmitter during emission.
+    outFileStream << emitter.resolvedOutput();
     outFileStream.close();
     return false;
 

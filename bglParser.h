@@ -323,6 +323,13 @@ class bglParser {
         // normal first-match (so dispatch errors still surface against the natural type).
         string resolveIdentifierType(string name, functionDef* func, statementBlock* body, const string& memberHint = "");
 
+        // True iff `name` resolves as an inherited variableDeclaration member of currentObject's
+        // class hierarchy AND is NOT shadowed by a local, param, or own member of the current
+        // function/object. Used at emitter-substitution sites to rewrite `$self` from the bare
+        // receiver name to `self` — so `attributes.hasnt(light)` inside a room's method body
+        // emits `(self hasnt light)` rather than the broken `(attributes hasnt light)`.
+        bool isInheritedObjectMember(const string& name, functionDef* func, statementBlock* body);
+
         // Return the declared element type of an array variable, or "" if `name` isn't an
         // arrayDeclaration in any reachable scope. Walks locals, class/object members, globals.
         string resolveArrayElementType(const string& name, functionDef* func, statementBlock* body);

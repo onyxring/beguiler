@@ -1,0 +1,1217 @@
+!% -G
+!% -E1
+global _bgl_temp0;
+global _bgl_temp1;
+global _bgl_sw;
+
+    Default bglStringDefaultSize 500;
+
+
+    #Ifdef TARGET_GLULX;
+    #Ifndef filemode_Write;
+        Constant filemode_Write 1;
+    #Endif;
+    #Ifndef gg_arguments;
+        Array gg_arguments --> 4;
+    #Endif;
+    #Endif;
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+
+    _bglInitializeStringBuffers();
+
+];
+object _bglUtil
+  with buf _bglbuf
+;
+object bgl
+  with utilities _bglutil,
+       glulx _glulx
+;
+Array __bglchar___vowels string "aeiouAEIOU@:a@:e@:i@:o@:u@:y@:A@:E@:I@:O@:U@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~o@~A@~O";
+object _bglChar
+  with __vowels __bglchar___vowels,
+       isAlpha [c;
+    return self.islower(c) || self.isupper(c);
+  ],
+       isNumeric [c;
+    return c>=0 && c<=9;
+  ],
+       isAlphaNumeric [c;
+    return self.isalpha(c) || self.isnumeric(c);
+  ],
+       isLower [c;
+    if (c>='a' && c<='z') {
+        rtrue;
+    }
+    if ((c>=155 && c<=157)||(c>=164&&c<=166)) {
+        rtrue;
+    }
+    if (c>=169 && c<=174) {
+        rtrue;
+    }
+    if (c>=181 && c<=185) {
+        rtrue;
+    }
+    if (c>=191 && c<=195) {
+        rtrue;
+    }
+    if (c==201) {
+        rtrue;
+    }
+    if (c==203) {
+        rtrue;
+    }
+    if (c>=205 && c<=207) {
+        rtrue;
+    }
+    if (c==211) {
+        rtrue;
+    }
+    if (c==213) {
+        rtrue;
+    }
+    if (c==215) {
+        rtrue;
+    }
+    if (c==216) {
+        rtrue;
+    }
+    if (c==220) {
+        rtrue;
+    }
+    rfalse;
+  ],
+       isUpper [c;
+    if (c>='A' && c<='Z') {
+        rtrue;
+    }
+    if ((c>=158 && c<=159)||(c>=167&&c<=168)) {
+        rtrue;
+    }
+    if (c>=160) {
+        rtrue;
+    }
+    if (c>=175 && c<=180) {
+        rtrue;
+    }
+    if (c>=186 && c<=190) {
+        rtrue;
+    }
+    if (c>=196 && c<=200) {
+        rtrue;
+    }
+    if (c==202) {
+        rtrue;
+    }
+    if (c==204) {
+        rtrue;
+    }
+    if (c>=208 && c<=210) {
+        rtrue;
+    }
+    if (c==212) {
+        rtrue;
+    }
+    if (c==214) {
+        rtrue;
+    }
+    if (c==217) {
+        rtrue;
+    }
+    if (c==218) {
+        rtrue;
+    }
+    if (c==221) {
+        rtrue;
+    }
+    rfalse;
+  ],
+       isVowel [c v _bglfi0;
+    _bglfi0 = 0;
+    for (: _bglfi0 < self.__vowels->0 : _bglfi0++) {
+        v = self.__vowels->(_bglfi0+1);
+        if (v==c) {
+            rtrue;
+        }
+    }
+    rfalse;
+  ],
+       isConsonant [c;
+    return (self.isalpha(c) && ~~self.isvowel(c));
+  ],
+       toLower [c;
+    switch (c) {
+        'A' to 'Z':
+            return c+32;
+        202, 204, 212, 214, 221:
+            return c-1;
+        217, 218:
+            return c-2;
+        158 to 160, 167, 168, 208 to 210:
+            return c-3;
+        186 to 190, 196 to 200:
+            return c-5;
+        175 to 180:
+            return c-6;
+    }
+    return c;
+  ],
+       toUpper [c;
+    switch (c) {
+        'a' to 'z':
+            return c-32;
+        201, 203, 211, 213, 220:
+            return c+1;
+        215, 216:
+            return c+2;
+        155 to 157, 164, 165, 205 to 207:
+            return c+3;
+        181 to 185, 191 to 195:
+            return c+5;
+        169 to 174:
+            return c+6;
+    }
+    return c;
+  ]
+;
+object _glulx
+;
+[__glkHook _vararg_count api args retval;
+    @copy sp api;
+    args=_vararg_count - 1;
+    @glk api args retval;
+    return retval;
+];
+array _bglbufstreamstack table 16;
+array _bglbufglulxstreams table 16;
+array _bgltrackedregistry table 128;
+object _bglBuf
+  with _stacktop 0,
+       _trackedcount 0,
+       isTracked [buf p i;
+    p=buf;
+    if (p == 0) {
+        return false;
+    }
+    for (i = 0 : i < self._trackedcount : i++) {
+        if ( _bgltrackedregistry-->(i+1)  == p) {
+            return true;
+        }
+    }
+    return false;
+  ],
+       _registerTracked [buf;
+    if (self._trackedcount >= 128) {
+         print "^[Beguile runtime: tracked buffer registry full]^"; 
+        return;
+    }
+    _bgltrackedregistry-->(self._trackedcount+1) = buf;
+    self._trackedcount++;
+  ],
+       size [buf;
+    if (self.istracked(buf)) {
+        return buf-->(-1);
+    }
+    return -1;
+  ],
+       length [buf;
+    return buf-->(0);
+  ],
+       setLength [buf newLength sz;
+    sz=self.size(buf);
+    if (sz > 0 && newlength > sz) {
+        newLength=sz;
+    }
+    buf-->(0) = newLength;
+  ],
+       getChar [buf pos sz;
+    sz=self.size(buf);
+    if (sz < 0 || sz > pos) {
+        return buf->(pos + WORDSIZE);
+    }
+    return -1;
+  ],
+       setchar_3_bytearray_int_int [buf pos val sz;
+    sz=self.size(buf);
+    if (sz == -1 || sz > pos) {
+        buf->(pos + WORDSIZE) = val;
+    }
+  ],
+       set [buf stringVal;
+    if (self.istracked(stringVal)) {
+        self.setfrombuffer(buf, stringVal);
+    }
+    else {
+        self.setfromliteral(buf, stringVal);
+    }
+    return buf;
+  ],
+       setFromLiteral [buf stringVal sz;
+    sz=self.size(buf);
+    if (sz < 0) {
+        sz = bglstringdefaultsize;
+    }
+     stringVal.print_to_array(buf, sz); 
+    self.setLength(buf, self.length(buf));
+    return buf;
+  ],
+       setFromBuffer [buf stringVal svlen;
+    svlen=self.length(stringVal);
+    self.copy(buf, stringVal, svlen, 0, 0);
+    self.setLength(buf, svlen);
+    return buf;
+  ],
+       copy [toBuf fromBuf numCharsToCopy toPos fromPos srcLen tgtSize frmPtr toPtr;
+    if (frompos == -1) {
+        fromPos = 0;
+    }
+    if (topos == -1) {
+        toPos = 0;
+    }
+    srcLen=self.length(fromBuf);
+    if (numcharstocopy < 0 || numcharstocopy + frompos > srclen) {
+        numCharsToCopy=srclen - frompos;
+    }
+    tgtSize=self.size(toBuf);
+    if (tgtsize > 0 && numcharstocopy + topos > tgtsize) {
+        numCharsToCopy=tgtsize - topos;
+    }
+    frmPtr=frombuf + frompos + WORDSIZE;
+    toPtr=tobuf + topos + WORDSIZE;
+    @mcopy numCharsToCopy frmPtr toPtr;
+    self.setLength(toBuf, topos + numcharstocopy);
+    return tobuf;
+  ],
+       capture [buf maxBytes s;
+    _bglbufstreamstack-->(self._stacktop+1) = buf;
+    if (maxbytes == 0) {
+        s=self.size(buf);
+        if ((s < 0)) {
+            maxBytes=bglstringdefaultsize;
+        }
+        else {
+            maxBytes=s;
+        }
+    }
+    _bglbufglulxstreams-->(self._stacktop+1) = __glkHook(72);
+    __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, filemode_write, 662));
+    self._stacktop++;
+  ],
+       release [buf;
+    if (self._stacktop == 0) {
+        return 0;
+    }
+    self._stacktop--;
+    buf =  _bglbufstreamstack-->(self._stacktop+1) ;
+    __glkHook(68, __glkHook(72), gg_arguments);
+    buf->(0) =  gg_arguments-->(0+1) ;
+    __glkHook(71,  _bglbufglulxstreams-->(self._stacktop+1) );
+    self.setLength(buf, self.length(buf));
+    return buf;
+  ],
+       stackLen [;
+    return self._stacktop;
+  ],
+       print [buf len;
+    if (len <= 0) {
+        len=self.length(buf);
+    }
+    __glkHook(132, buf + WORDSIZE, len);
+    return buf;
+  ],
+       equals [buf1 buf2 caseInsensitive len1 t c1 c2;
+    len1=self.length(buf1);
+    if (len1 ~= self.length(buf2)) {
+        return false;
+    }
+    for (t = 0 : t < len1 : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchar.tolower(c1);
+            c2 = _bglchar.tolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
+    len2=self.length(buf2);
+    if (self.length(buf1) < len2) {
+        return false;
+    }
+    for (t = 0 : t < len2 : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchar.tolower(c1);
+            c2 = _bglchar.tolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       endsWith [buf1 buf2 caseInsensitive len2 offset t c1 c2;
+    len2=self.length(buf2);
+    offset=self.length(buf1) - len2;
+    if (offset < 0) {
+        return false;
+    }
+    for (t = 0 : t < len2 : t++) {
+        c1=buf1->(offset + t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchar.tolower(c1);
+            c2 = _bglchar.tolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       mid [toBuf fromBuf fromPos numCharsToCopy maxLen;
+    maxLen=self.length(frombuf) - frompos;
+    if (numcharstocopy == -1 || numcharstocopy > maxlen) {
+        numCharsToCopy=maxLen;
+    }
+    self.copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+    self.setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       left [toBuf fromBuf numCharsToCopy;
+    self.copy(toBuf, fromBuf, numCharsToCopy, 0, 0);
+    self.setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       right [toBuf fromBuf numCharsToCopy fromPos;
+    fromPos=self.length(frombuf) - numcharstocopy;
+    self.copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+    self.setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       insert [toBuf fromBuf toPos charCount len;
+    if (charcount <= 0) {
+        charCount=self.length(fromBuf);
+    }
+    len=self.length(toBuf);
+    self.copy(toBuf, toBuf, len - topos, topos + charcount, toPos);
+    self.copy(toBuf, fromBuf, charCount, toPos, 0);
+    self.setLength(toBuf, len + charcount);
+    return tobuf;
+  ],
+       prepend [toBuf fromBuf;
+    self.insert(toBuf, fromBuf, 0, self.length(fromBuf));
+    return tobuf;
+  ],
+       append [toBuf fromBuf;
+    self.copy(toBuf, fromBuf, -1, self.length(toBuf), 0);
+    return tobuf;
+  ],
+       delete [buf pos count len;
+    len=self.length(buf);
+    self.copy(buf, buf, len - count, pos, pos + count);
+    self.setLength(buf, len - count);
+    return buf;
+  ],
+       replace [buf searchTextBuf replaceTextBuf searchLen pos;
+    searchLen=self.length(searchTextBuf);
+    pos=self.indexof(buf,searchTextBuf,0);
+    if (pos == -1) {
+        return buf;
+    }
+    self.delete(buf, pos, searchLen);
+    self.insert(buf, replaceTextBuf, pos, 0);
+    return buf;
+  ],
+       replaceAll [buf searchTextBuf replaceTextBuf startingIndex rtlen;
+    rtlen=self.length(replaceTextBuf);
+    while (startingindex ~= -1) {
+        self.replace(buf, searchTextBuf, replaceTextBuf);
+        startingIndex=self.indexof(buf,searchTextBuf,startingindex + rtlen);
+    }
+    return buf;
+  ],
+       indexOf [buf searchTextBuf startingIndex stblen blen o i;
+    stblen=self.length(searchTextBuf);
+    blen=self.length(buf);
+    for (o = startingindex : o < blen : o++) {
+        for (i = 0 : i < stblen : i++) {
+            if (buf->(o + i + WORDSIZE) ~= searchtextbuf->(i + WORDSIZE)) {
+                break;
+            }
+        }
+        if (i == stblen) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       indexOfFirstTrue [buf pred startingIndex buflen o c;
+    buflen=self.length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    for (o = startingindex : o < buflen : o++) {
+        c = buf->(o + WORDSIZE);
+        if (pred(c)) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       indexOfFirstFalse [buf pred startingIndex buflen o c;
+    buflen=self.length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    if (startingindex > buflen) {
+        return -1;
+    }
+    for (o = startingindex : o < buflen : o++) {
+        c = buf->(o + WORDSIZE);
+        if (~~pred(c)) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       toUpper [buf buflen t;
+    buflen=self.length(buf);
+    for (t = 0 : t < buflen : t++) {
+        buf->(t + WORDSIZE) = _bglchar.toupper(buf->(t + WORDSIZE));
+    }
+    return buf;
+  ],
+       toLower [buf buflen t;
+    buflen=self.length(buf);
+    for (t = 0 : t < buflen : t++) {
+        buf->(t + WORDSIZE) = _bglchar.tolower(buf->(t + WORDSIZE));
+    }
+    return buf;
+  ],
+       reverse [buf buflen t c;
+    buflen=self.length(buf);
+    for (t = 0 : t < buflen / 2 : t++) {
+        c=buf->(t + WORDSIZE);
+        buf->(t + WORDSIZE) = buf->(buflen - t - 1 + WORDSIZE);
+        buf->(buflen - t - 1 + WORDSIZE) = c;
+    }
+    return buf;
+  ],
+       trimLeft [buf;
+    while (self.length(buf) > 0 && self.getchar(buf,0)==' ') {
+        self.delete(buf, 0, 1);
+    }
+    return buf;
+  ],
+       trimRight [buf;
+    while (self.length(buf) > 0 && self.getchar(buf,self.length(buf) - 1)==' ') {
+        self.delete(buf, self.length(buf) - 1, 1);
+    }
+    return buf;
+  ],
+       trim [buf;
+    return self.trimright(self.trimleft(buf));
+  ],
+       setchar_3_bytearray_int_char [buf pos val sz;
+    sz=self.size(buf);
+    if (sz == -1 || sz > pos) {
+        buf->(pos + WORDSIZE) = val;
+    }
+  ]
+;
+
+    Default bglStringPoolReserve 10;                            ! number of pre-allocated _bglString instances
+    Default bglBufferPoolReserve (bglStringPoolReserve + 2);    ! a few extra wrappers for ephemeral usage
+    ! bglStringDefaultSize is declared in <buf>, already in scope.
+
+    Array _bglDsbuf buffer bglStringDefaultSize * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
+
+    class _bglBufferWrapper(bglBufferPoolReserve) with buf 0;   ! buffer-as-object so it can move between sentinel containers
+
+    object _bglAllocatedObjects;   ! sentinel — live pool (parent of currently-locked instances)
+    object _bglObjectHeap;         ! sentinel — free pool (parent of available instances)
+
+    ! _bglStr was here. Ported to Beguile-native (see string.bgl). I6-side
+    ! callers (e.g. _bglString.set, _bglString.equals) still invoke
+    ! _bglStr.X(...) — same I6 dispatch surface, just the implementation
+    ! moved out.
+
+    ! _bglString class was here. Ported to Beguile-native pooled class (see
+    ! string.bgl). I6-side callers (_bglInitializeStringBuffers,
+    ! _bglStringPool.allocateString, .freeString, etc.) still see _bglString
+    ! as a class with create()/remaining()/.method() dispatch at link time —
+    ! the I6 emission of the Beguile-declared class IS a Class _bglString(N).
+
+    ! _bglStringPool provides a pattern to reuse buffers and _bglString instances, somewhat working around
+    ! the fact memory cannot be dynamically allocated in the Z-machine
+    object _bglStringPool
+        private _allocateObj[type  !pick an arbitrary free object, lock it, and return it for use
+                o retval;
+            objectloop(o in _bglObjectHeap && o ofclass type) {
+                retval=o;
+                break;
+            }
+            if(retval==0) {
+                print "[ERROR: Unable to allocate a new instance.]";
+                return 0;
+            }
+            move retval to _bglAllocatedObjects;
+            return retval;
+        ]
+    ,	_freeObj[obj; !take specific allocated object, and free it for later allocations
+            if(obj==0) return 0;
+            move obj to _bglObjectHeap;
+            return obj;
+        ]
+    ,	_reclaimObj[obj; !take a specific free object, and lock it
+            if(obj==0) return 0;
+            move obj to _bglAllocatedObjects;
+            return obj;
+        ]
+        !find the allocated object wrapper for the given buffer
+    ,	_findAllocatedObjFromBuffer[b o;
+            objectloop(o in _bglAllocatedObjects && o ofclass _bglBufferWrapper ) if(o.buf==b) return o;
+            return 0;
+        ]
+            !find the unallocated object wrapper for the given buffer
+    ,	_findAvailableObjFromBuffer[b o;
+            objectloop(o in _bglObjectHeap && o ofclass _bglBufferWrapper ) if(o.buf==b) return o;
+            return 0;
+        ]
+    ,	isManagedBuffer[b; !-is the buffer one of the ones we manage in our allocation/free pool?
+            if(self._findAllocatedObjFromBuffer(b)==0) rfalse;
+            rtrue;
+        ]
+    ,	_findObjFromBuffer[b retval;
+            retval=self._findAllocatedObjFromBuffer(b);
+            if(retval==0) retval=self._findAvailableObjFromBuffer(b);
+            return retval;
+        ]
+        !find the allocated object wrapper for the given buffer
+    ,	_findAllocatedObj[b o;
+            objectloop(o in _bglAllocatedObjects) if(o==b) return o;
+            return 0;
+        ]
+        !find the unallocated object wrapper for the given buffer
+    ,	_findAvailableObj[b o;
+            objectloop(o in _bglObjectHeap) if(o==b) return o;
+            return 0;
+        ]
+    with allocateString[retval; !pick an arbitrary free string, lockit, then initialize it with an arbitrary free buffer; return the string
+            retval = self._allocateObj(_bglString);
+            retval.getBuf(); !force initilization
+            return retval;
+        ]
+    ,	freeString[str; !take a specific allocated string, and free it for later use
+            self.freeBuffer(self._findAllocatedObj(str));
+            self._freeObj(self._findAllocatedObj(str));
+
+            return str;
+        ]
+    ,	reclaimString[b retval; !take a previously freed string and lock it again
+            retval = self._reclaimObj(self._findAvailableObj(b));
+            if(retval~=0) self.reclaimBuffer(retval.getBuf(true));
+            return retval;
+        ]
+    ,	allocateBuffer[retval; !pick an arbitrary buffer, allocate it, and set its length to 0, returning it
+            retval = self._allocateObj(_bglBufferWrapper).buf;
+            _bglBuf.setLength(retval,0);
+            return retval;
+        ]
+    ,	freeBuffer[b; !take a specific buffer and free it for later allocation
+            self._freeObj(self._findAllocatedObjFromBuffer(b));
+            return b;
+        ]
+    ,	reclaimBuffer[b retval;
+            retval = self._reclaimObj(self._findAvailableObjFromBuffer(b));
+            if(retval~=0) return retval.buf;
+            return 0;
+        ]
+    , 	isLocked[obj;
+            if(self._findAllocatedObj(obj)) return true;
+            if(self._findAllocatedObjFromBuffer(obj)) return true;
+            return false;
+        ]
+    ,	isFree[obj;
+            if(self._findAvailableObj(obj)) return true;
+            if(self._findAvailableObjFromBuffer(obj)) return true;
+            return false;
+        ]
+    ;
+
+    ! _bglConvertToSizedBuffer was here. Ported to Beguile-native in <string>
+    ! (see string.bgl). I6-side callers (currently _bglInitializeStringBuffers)
+    ! invoke it by name as an ordinary I6 routine.
+
+    [_bglInitializeStringBuffers
+            i obj;
+        for(i=0:_bglBufferWrapper.remaining()>0:i++){
+            obj=_bglBufferWrapper.create();
+            obj.buf=_bglDsbuf+(i*bglStringDefaultSize);
+            obj.buf=_bglConvertToSizedBuffer(obj.buf,bglStringDefaultSize);
+            move obj to _bglObjectHeap;
+        }
+
+        for(i=0:_bglString.remaining()>0:i++){
+            obj=_bglString.create();
+            obj.getBuf(); !lets make sure that we've associated a buffer to all strings: getBuf will allocate one if not previously allocated
+            move obj to _bglObjectHeap;
+        }
+    ];
+
+[_bglConvertToSizedBuffer b sz result;
+    if (_bglbuf.istracked(b)) {
+        return b;
+    }
+    result = b + WORDSIZE + 2;
+    result-->(-1) = sz - WORDSIZE - WORDSIZE - 2;
+    _bglbuf._registertracked(result);
+    return result;
+];
+object _bglStr
+  with new [unkStr retval lck;
+    
+            lck    = self.ambiguousLock(unkStr);
+            retval = _bglStringPool.allocateString();
+            if(unkStr ~= 0) retval.set(unkStr);
+            self.ambiguousFree(unkStr, lck);
+            retval = retval.lock();
+        
+    return retval;
+  ],
+       format [pattern p1 p2 p3 retval;
+    
+            retval = _bglStringPool.allocateString();
+            retval.set(retval.format(pattern, p1, p2, p3));
+            retval = retval.free();
+        
+    return retval;
+  ],
+       toAmbiguousBuffer [unkStr retval;
+    
+            if(unkStr ofclass _bglString) return unkStr.getBuf();
+            ! Phase B safety: at this point we KNOW unkStr is not a _bglString
+            ! (ofclass check failed), so it's a packed string literal in practice.
+            ! Skip _bglBuf.set's isTracked heuristic — go straight to setFromLiteral.
+            ! Eliminates the residual isTracked-collision bug for all callers of
+            ! toAmbiguousBuffer (insert, replace, indexOf, startsWith, etc.).
+            retval = _bglStringPool.allocateBuffer();
+            _bglBuf.setFromLiteral(retval, unkStr);
+            retval = _bglStringPool.freeBuffer(retval);
+        
+    return retval;
+  ],
+       ambiguousLock [buf retval;
+    retval=false;
+    
+            if(_bglStringPool.isFree(buf)) {
+                _bglStringPool.reclaimBuffer(buf);
+                _bglStringPool.reclaimString(buf);
+                retval = true;
+            }
+        
+    return retval;
+  ],
+       ambiguousFree [buf val;
+    if (val) {
+        
+                _bglStringPool.freeBuffer(buf);
+                _bglStringPool.freeString(buf);
+            
+    }
+  ],
+       areEqual [buf1 buf2 caseInsensitive;
+    buf1 = self.toambiguousbuffer(buf1);
+    buf2 = self.toambiguousbuffer(buf2);
+    return _bglbuf.equals(buf1, buf2, caseinsensitive);
+  ],
+       trim [buf str tmpStr;
+    str = self.new(buf);
+    
+            tmpStr = str.trim();
+            str.free();
+        
+    return tmpstr;
+  ],
+       print [buf prop;
+    
+            if(prop ~= 0) buf = buf.prop;
+            if(buf provides print) {
+                buf.print();
+                return;
+            }
+            if(metaclass(buf) == Routine) return buf();
+        
+    _bglbuf.print(buf, -1);
+  ]
+;
+class _bglstring(bglstringpoolreserve)
+  with
+    _underlyingBuffer 0,
+    getLength[retval;
+         retval = _bglBuf.length(self.getBuf()); 
+        return retval;
+    ],
+    getBuf[suppressAllocation retval;
+        
+            if(self._underlyingBuffer == 0 && suppressAllocation == 0)
+                self._underlyingBuffer = _bglStringPool.allocateBuffer();
+            retval = self._underlyingBuffer;
+        
+        return retval;
+    ],
+    getChar[pos retval;
+         retval = self.getBuf()->(pos + WORDSIZE); 
+        return retval;
+    ],
+    getCharFromRight[pos retval;
+         retval = self.getChar(self.getLength() - (pos + 1)); 
+        return retval;
+    ],
+    isEmpty[retval;
+         retval = (_bglBuf.length(self.getBuf()) == 0); 
+        return retval;
+    ],
+    clone[retval;
+         retval = _bglStr.new(self); 
+        return retval;
+    ],
+    isLocked[retval;
+         retval = _bglStringPool.isLocked(self); 
+        return retval;
+    ],
+    isBufferLocked[retval;
+         retval = _bglStringPool.isLocked(self._underlyingBuffer); 
+        return retval;
+    ],
+    lock[;
+         _bglStringPool.reclaimString(self); 
+        return self;
+    ],
+    free[;
+         _bglStringPool.freeString(self); 
+        return self;
+    ],
+    set[unkStr ab lckBuf lckSelf;
+        
+            ! Order matches orLib exactly: lckSelf first, then ab, then lckBuf.
+            ! Reordering surfaced pool-state corruption in stringRuntime.bgl
+            ! — the lock order is load-bearing for an edge case Jack hasn't
+            ! fully pinned down yet (likely interacts with reclaimString's
+            ! object-walk when the string and its underlying buffer are
+            ! both ambiguously locked).
+            lckSelf = _bglStr.ambiguousLock(self);
+            ab      = _bglStr.toAmbiguousBuffer(unkStr);
+            lckBuf  = _bglStr.ambiguousLock(ab);
+            _bglBuf.set(self.getBuf(), ab);
+            _bglStr.ambiguousFree(ab, lckBuf);
+            _bglStr.ambiguousFree(self, lckSelf);
+        
+        return self;
+    ],
+    setFromLit[lit;
+        
+            ! Direct setFromLiteral — caller knows lit is a packed string.
+            _bglBuf.setFromLiteral(self.getBuf(), lit);
+        
+        return self;
+    ],
+    setFromStr[src;
+        
+            ! Direct setFromBuffer using src.getBuf() — caller knows src is
+            ! a _bglString instance.
+            _bglBuf.setFromBuffer(self.getBuf(), src.getBuf());
+        
+        return self;
+    ],
+    setLength[newLength;
+         _bglBuf.setLength(self.getBuf(), newLength); 
+        return self;
+    ],
+    setChar[pos val;
+         self.getBuf()->(pos + WORDSIZE) = val; 
+        return self;
+    ],
+    capture[;
+         _bglBuf.capture(self.getBuf()); 
+        return self;
+    ],
+    release[;
+         _bglBuf.release(); 
+        return self;
+    ],
+    captureOutput[o r;
+        self.capture();
+         _bglStr.print(o, r); 
+        self.release();
+        return self;
+    ],
+    print[;
+         _bglBuf.print(self.getBuf()); 
+        return self;
+    ],
+    equals[altBuf caseInsensitive retval;
+         retval = _bglBuf.equals(_bglStr.toAmbiguousBuffer(altBuf), self.getBuf(), caseInsensitive); 
+        return retval;
+    ],
+    equalsLit[lit ephemeral retval;
+        
+            ephemeral = _bglStringPool.allocateBuffer();
+            _bglBuf.setFromLiteral(ephemeral, lit);
+            ephemeral = _bglStringPool.freeBuffer(ephemeral);
+            retval = _bglBuf.equals(ephemeral, self.getBuf(), 0);
+        
+        return retval;
+    ],
+    equalsStr[other retval;
+         retval = _bglBuf.equals(other.getBuf(), self.getBuf(), 0); 
+        return retval;
+    ],
+    equalsOneOf[buf1 buf2 buf3 buf4 caseInsensitive;
+        
+            ! Hidden orLib idiom: if the last positional arg is a boolean,
+            ! treat it as the caseInsensitive flag and the slot is empty.
+            ! (Lets equalsOneOf("a","b",true) read as a 2-string CI compare.)
+            if(buf4 == true or false) caseInsensitive = buf4;
+            if(buf3 == true or false) caseInsensitive = buf3;
+            if(buf2 == true or false) caseInsensitive = buf2;
+            if(self.equals(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self.equals(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self.equals(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self.equals(buf4, caseInsensitive) == true) rtrue;
+            rfalse;
+        
+        return false;
+    ],
+    equalsOneOfCaseInsensitive[buf1 buf2 buf3 buf4;
+        return self.equalsoneof(buf1, buf2, buf3, buf4, true);
+    ],
+    indexOf[searchText startingIndex retval;
+         retval = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex); 
+        return retval;
+    ],
+    numOccurances[searchText startingIndex count n;
+        count = 0;
+        
+            n = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex);
+            while(n >= 0) {
+                count++;
+                startingIndex = n;
+                n = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex + 1);
+            }
+        
+        return count;
+    ],
+    startsWith[buf2 caseInsensitive retval;
+         retval = _bglBuf.startsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive); 
+        return retval;
+    ],
+    startsWithOneOf[buf1 buf2 buf3 buf4 caseInsensitive;
+        
+            if(buf4 == true or false) caseInsensitive = buf4;
+            if(buf3 == true or false) caseInsensitive = buf3;
+            if(buf2 == true or false) caseInsensitive = buf2;
+            if(self.startsWith(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self.startsWith(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self.startsWith(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self.startsWith(buf4, caseInsensitive) == true) rtrue;
+            rfalse;
+        
+        return false;
+    ],
+    endsWith[buf2 caseInsensitive retval;
+         retval = _bglBuf.endsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive); 
+        return retval;
+    ],
+    endsWithOneOf[buf1 buf2 buf3 buf4 caseInsensitive;
+        
+            if(buf4 == true or false) caseInsensitive = buf4;
+            if(buf3 == true or false) caseInsensitive = buf3;
+            if(buf2 == true or false) caseInsensitive = buf2;
+            if(self.endsWith(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self.endsWith(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self.endsWith(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self.endsWith(buf4, caseInsensitive) == true) rtrue;
+            rfalse;
+        
+        return false;
+    ],
+    contains[searchText retval;
+         retval = (self.indexOf(searchText) > -1); 
+        return retval;
+    ],
+    indexOfFirstFalse[routine startingIndex retval;
+         retval = _bglBuf.indexOfFirstFalse(self.getBuf(), routine, startingIndex); 
+        return retval;
+    ],
+    indexOfFirstTrue[routine startingIndex retval;
+         retval = _bglBuf.indexOfFirstTrue(self.getBuf(), routine, startingIndex); 
+        return retval;
+    ],
+    insert[pos source count retval;
+        
+            retval = self.clone();
+            _bglBuf.insert(retval.getBuf(), _bglStr.toAmbiguousBuffer(source), pos, count);
+            retval = retval.free();
+        
+        return retval;
+    ],
+    delete[pos count retval;
+        
+            retval = self.clone();
+            _bglBuf.delete(retval.getBuf(), pos, count);
+            retval = retval.free();
+        
+        return retval;
+    ],
+    replace[searchText replaceText retval stl;
+        
+            retval = self.clone();
+            searchText = _bglStr.toAmbiguousBuffer(searchText);
+            stl = _bglStr.ambiguousLock(searchText);
+            replaceText = _bglStr.toAmbiguousBuffer(replaceText);
+            _bglBuf.replace(retval.getBuf(), searchText, replaceText);
+            _bglStr.ambiguousFree(searchText, stl);
+            retval = retval.free();
+        
+        return retval;
+    ],
+    replaceAll[searchText replaceText retval stl;
+        
+            retval = self.clone();
+            searchText = _bglStr.toAmbiguousBuffer(searchText);
+            stl = _bglStr.ambiguousLock(searchText);
+            replaceText = _bglStr.toAmbiguousBuffer(replaceText);
+            _bglBuf.replaceAll(retval.getBuf(), searchText, replaceText);
+            _bglStr.ambiguousFree(searchText, stl);
+            retval = retval.free();
+        
+        return retval;
+    ],
+    toUpper[retval;
+        
+            retval = self.clone();
+            _bglBuf.toUpper(retval.getBuf());
+            retval = retval.free();
+        
+        return retval;
+    ],
+    append[text retval;
+        
+            retval = self.clone();
+            _bglBuf.append(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            retval = retval.free();
+        
+        return retval;
+    ],
+    appendChar[c retval;
+        
+            retval = self.clone();
+            retval.setChar(retval.getLength(), c);
+            retval.setLength(retval.getLength() + 1);
+            retval = retval.free();
+        
+        return retval;
+    ],
+    prepend[text retval;
+        
+            retval = self.clone();
+            _bglBuf.prepend(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
+            retval = retval.free();
+        
+        return retval;
+    ],
+    toLower[retval;
+        
+            retval = self.clone();
+            _bglBuf.toLower(retval.getBuf(), self.getBuf());
+            retval = retval.free();
+        
+        return retval;
+    ],
+    reverse[retval;
+        
+            retval = self.clone();
+            _bglBuf.reverse(retval.getBuf(), self.getBuf());
+            retval = retval.free();
+        
+        return retval;
+    ],
+    trimLeft[retval;
+        
+            retval = self.clone();
+            _bglBuf.trimLeft(retval.getBuf());
+            retval = retval.free();
+        
+        return retval;
+    ],
+    trimRight[retval;
+        
+            retval = self.clone();
+            _bglBuf.trimLeft(retval.getBuf());   ! NB: orLib bug copy — original also called trimLeft here; preserved verbatim.
+            retval = retval.free();
+        
+        return retval;
+    ],
+    trim[retval;
+        
+            retval = self.clone();
+            _bglBuf.trim(retval.getBuf());
+            retval = retval.free();
+        
+        return retval;
+    ],
+    mid[start count retval;
+        
+            retval = _bglStr.new();
+            _bglBuf.mid(retval.getBuf(), self.getBuf(), start, count);
+            retval = retval.free();
+        
+        return retval;
+    ],
+    left[count retval;
+        
+            retval = _bglStr.new();
+            _bglBuf.left(retval.getBuf(), self.getBuf(), count);
+            retval = retval.free();
+        
+        return retval;
+    ],
+    right[count retval;
+        
+            retval = _bglStr.new();
+            _bglBuf.right(retval.getBuf(), self.getBuf(), count);
+            retval = retval.free();
+        
+        return retval;
+    ],
+    format[pattern p1 p2 p3 retval;
+        
+            retval = _bglStr.new();
+            if(pattern == 0) pattern = "$0";
+            pattern = _bglStr.new(pattern);  ! convert literal-or-otherwise to _bglString
+            pattern.set(pattern.replaceAll("$0", self));
+
+            if(p1 ~= 0) pattern.set(pattern.replaceAll("$1", p1));
+            if(p2 ~= 0) pattern.set(pattern.replaceAll("$2", p2));
+            if(p3 ~= 0) pattern.set(pattern.replaceAll("$3", p3));
+
+            retval.set(pattern);
+            pattern.free();
+            retval = retval.free();
+        
+        return retval;
+    ]
+;
+[exerciseAssign s1 s2 s3;
+    s1 = _bglStr.new();
+    s1.setFromLit("hello");
+    s2 = _bglStr.new();
+    s2.setFromStr(s1);
+    s3 = _bglStr.new();
+    s3.setFromLit("interp {s1} world");
+    s1.free();
+    s2.free();
+    s3.free();
+];
+[exerciseEquality s eq_lit o eq_str code;
+    s = _bglStr.new();
+    s.setFromLit("test");
+    eq_lit=(s.equalsLit("test"));
+    o = _bglStr.new();
+    o.setFromLit("test");
+    eq_str=(s.equalsStr(o));
+    code = 0;
+    _bgl_sw = s;
+    if ((_bgl_sw.equalsLit("hello"))) {
+        code = 1;
+    }
+    else if ((_bgl_sw.equalsLit("test"))) {
+        code = 2;
+    }
+    else {
+        code = 99;
+    }
+    s.free();
+    o.free();
+];
+[exerciseConcat s1 s2 c;
+    s1 = _bglStr.new();
+    s1.setFromLit("foo");
+    s2 = _bglStr.new();
+    s2.setFromLit("bar");
+    c = _bglStr.new();
+    c.setFromStr(s1.append(s2));
+    c.setFromStr(s1.append("literal"));
+    c.setFromStr(_bglStr.new("literal").append(s1));
+    c.setFromStr(_bglStr.new("literal").appendChar('X'));
+    s1.free();
+    s2.free();
+    c.free();
+];
+[exerciseNullable s1 s2 c present;
+    s1 = _bglStr.new();
+    s1.setFromLit("hi");
+    s2 = _bglStr.new();
+    _bgl_temp1 = s2; if (~~(_bgl_temp1 ~= 0)) _bgl_temp1 = "fallback";
+    _bgl_temp0 = s1; if (~~(_bgl_temp0 ~= 0)) _bgl_temp0 = _bgl_temp1;
+    c = _bglStr.new();
+    c.setFromLit(_bgl_temp0);
+    present=s1 ~= 0;
+    s1.free();
+    s2.free();
+    c.free();
+];
+[exerciseMethods s t len pos sw ew has emp;
+    s = _bglStr.new();
+    s.setFromLit("Hello, World");
+    s.print();
+    t = _bglStr.new();
+    t.setFromStr(s.append(" suffix"));
+    t.setFromStr(s.appendChar('!'));
+    t.setFromStr(s.prepend("prefix "));
+    t.setFromStr(s.toUpper());
+    t.setFromStr(s.toLower());
+    t.setFromStr(s.trim());
+    t.setFromStr(s.trimLeft());
+    t.setFromStr(s.trimRight());
+    t.setFromStr(s.reverse());
+    t.setFromStr(s.mid(2, 5));
+    t.setFromStr(s.left(3));
+    t.setFromStr(s.right(4));
+    t.setFromStr(s.insert(1, "X"));
+    t.setFromStr(s.delete(0, 2));
+    t.setFromStr(s.replace("Hello", "Greetings"));
+    t.setFromStr(s.replaceAll("o", "0"));
+    t.setFromStr(s.format("[$0]"));
+    t.setFromStr(s.format("[$0:$1]", "extra"));
+    t.setFromStr(s.format("[$0:$1:$2]", "a", "b"));
+    len=s.getLength();
+    pos=s.indexOf("World", 0);
+    sw=s.startsWith("Hello", false);
+    ew=s.endsWith("World", false);
+    has=s.contains(",");
+    emp=s.isEmpty();
+    s.capture();
+    print (string)"captured-content";
+    s.release();
+    s.free();
+    t.free();
+];
+[main;
+    exerciseassign();
+    exerciseequality();
+    exerciseconcat();
+    exercisenullable();
+    exercisemethods();
+];

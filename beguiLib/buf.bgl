@@ -122,6 +122,17 @@ emitter array<char> _bglAsBuf(int p) { $p }
 array<var> _bglBufStreamStack[16];
 array<int> _bglBufGlulxStreams[16];
 
+// Registry of all currently-live tracked SizedBuffer user-pointers. isTracked()
+// is now a definitive lookup against this registry — eliminating the previous
+// magic-bytes heuristic that could false-positive when a packed string address
+// happened to numerically equal a wrapper's user pointer (see bug investigation
+// 2026-05-25).
+//
+// Capacity sized for: bglStringPoolReserve (10) + bglBufferPoolReserve (12)
+// + headroom for user-declared bufs. If a real use case needs more, this
+// array-size literal can be bumped; Beguile array<T>[N] requires a literal.
+array<int> _bglTrackedRegistry[128];
+
 //=============================================================================
 // Extend byteArray to surface buf operations through the natural Beguile
 // type. With <buf> included, `arr.size()` / `arr.length()` / `arr.setLength(n)`
@@ -141,7 +152,7 @@ extend extern class byteArray {
 // WORDSIZE+2 bytes into the raw allocation:
 //
 //   byte offset (from raw):
-//     0..1:                     magic ($90, $84)
+//     0..1:                     [DEPRECATED] reserved magic-byte slot
 //     2..WORDSIZE+1:            size WORD = data capacity (chars)
 //     WORDSIZE+2..2*WORDSIZE+1: length WORD = current used chars  ← buf-->0
 //     2*WORDSIZE+2..end:        data                              ← buf->WORDSIZE
@@ -150,21 +161,63 @@ extend extern class byteArray {
 //     buf-->0                = length (current chars)
 //     buf-->(-1)             = size (capacity)
 //     buf->WORDSIZE          = first data char
-//     buf->(-WORDSIZE-2)     = magic byte $90
-//     buf->(-WORDSIZE-1)     = magic byte $84
+//     buf->(-WORDSIZE-2)     = [DEPRECATED] reserved magic slot (unwritten)
+//     buf->(-WORDSIZE-1)     = [DEPRECATED] reserved magic slot (unwritten)
+//
+// DEPRECATED: the two-byte prefix at offsets -WORDSIZE-2 / -WORDSIZE-1 used
+// to hold a $90 $84 magic stamp consumed by the old heuristic isTracked().
+// Phase B (registry-based isTracked + typed dispatch via extend class string)
+// made the stamp unnecessary. The bytes are still reserved (allocation size
+// and user-pointer offset unchanged) so the layout stays stable through the
+// deprecation window. Compaction to drop the prefix entirely is captured as
+// pending work — coordinate _bglConvertToSizedBuffer offset, the C++ emitter
+// for user-declared `array<char>[N]`, and _bglDsbuf chunk-stride math.
 //=============================================================================
 object _bglBuf {
     // Top of the shared capture/release stack. 0 = nothing captured.
     int _stackTop = 0;
+    // Count of registered tracked-buf user-pointers in _bglTrackedRegistry.
+    int _trackedCount = 0;
 
     // ── Tracked-buf detection ────────────────────────────────────────────────
-    // A SizedBuffer has the $90 $84 magic at the two bytes immediately before
-    // its size word, both at negative offsets from the user pointer.
+    // Definitive lookup against _bglTrackedRegistry. Every tracked buffer
+    // registers its user-pointer at construction time (see
+    // _bglConvertToSizedBuffer); isTracked checks for membership.
+    //
+    // This replaces the previous magic-bytes heuristic ($90 $84 at
+    // userPtr-4/-3) which could false-positive when a Z-machine packed-string
+    // address numerically equaled a wrapper's user pointer — at which point
+    // the magic check trivially "succeeded" by reading our own stamped magic
+    // for the colliding wrapper. The bug was layout-sensitive (different I6
+    // emissions placed string literals at different packed addresses) and
+    // surfaced as wrong-answer string comparisons. See [project_isTracked_registry_fix].
+    //
+    // DEPRECATED magic stamp: _bglConvertToSizedBuffer no longer writes the
+    // $90 $84 prefix. The two bytes remain reserved in the layout (see
+    // SizedBuffer doc above) so the user-pointer offset is unchanged through
+    // the deprecation window. Full prefix compaction is pending follow-up.
     bool isTracked(array<char> buf){
-        if((int)buf == 0) return false;
-        if(_bglGetByte(buf, -bgl.wordsize - 2) != $90) return false;
-        if(_bglGetByte(buf, -bgl.wordsize - 1) != $84) return false;
-        return true;
+        int p = (int)buf;
+        if(p == 0) return false;
+        for(int i = 0; i < self._trackedCount; i++)
+            if(_bglTrackedRegistry[i] == p) return true;
+        return false;
+    }
+
+    // Register a new tracked buffer's user-pointer. Called by
+    // _bglConvertToSizedBuffer at the moment a buffer transitions from
+    // "raw bytes" to "tracked SizedBuffer". Capacity-checked against
+    // _bglTrackedRegistry's fixed size; on overflow prints a runtime error
+    // and the registration is silently dropped (the buffer will then fail
+    // isTracked even though it was meant to be tracked — surfaces as a
+    // runtime symptom rather than memory corruption).
+    void _registerTracked(array<char> buf){
+        if(self._trackedCount >= 128){
+            #i6 { print "^[Beguile runtime: tracked buffer registry full]^"; }
+            return;
+        }
+        _bglTrackedRegistry[self._trackedCount] = (int)buf;
+        self._trackedCount++;
     }
 
     // size returns the data capacity in chars from the size WORD at buf-->(-1).

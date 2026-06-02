@@ -325,8 +325,15 @@ extern verb TimersOn;
 extern verb TimersOff;
 
 //-- Map beguilerSettings metadata to PunyInform constants ----------------------
-const string story = #beguilerSettings.title;       
-const string headline = #beguilerSettings.headline;
+// Hoisted via #emitfirst so the constants appear ABOVE the user's #includeI6
+// "puny" / "globals" directives — PunyInform's library reads Story/Headline
+// during its own include processing for the compile-time banner. If declared
+// after the include they'd be orphan constants ("declared but not used") and
+// the banner would fall back to defaults.
+#emitfirst {
+    Constant story    = ##beguilerSettings.title;
+    Constant headline = ##beguilerSettings.headline;
+} 
 
 #emitfirst{
     replace main _oldmain;

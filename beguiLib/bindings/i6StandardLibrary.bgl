@@ -374,15 +374,22 @@ extern verb XAbstract { .abstract }             // abstract <noun> to <noun>
 extern verb XPurloin { .purloin }               // purloin <noun>
 extern verb XTree { .tree }                     // tree
 
-const string story = #beguilerSettings.title;       // I6 standard library expects 'story'
-const string headline = #beguilerSettings.headline;
+// Hoisted via #emitfirst so the constants appear ABOVE the user's
+// #includeI6 "parser" directive — the I6 standard library reads Story/Headline
+// during its own include processing for the compile-time banner. If declared
+// after the include they'd be orphan constants ("declared but not used") and
+// the banner would fall back to defaults.
+#emitfirst {
+    Constant story    = ##beguilerSettings.title;
+    Constant headline = ##beguilerSettings.headline;
+}
 
-// #emitfirst{
-//     replace main _oldmain;
-// }
-// #emitlast{
-//     [main; 
-//         bglInit();
-//         _oldmain();
-//     ];
-// }
+#emitfirst{
+    replace main _oldmain;
+}
+#emitlast{
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+}

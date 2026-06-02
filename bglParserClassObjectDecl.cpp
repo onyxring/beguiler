@@ -124,8 +124,13 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(isExtend)
                 parsingError(format("extend class '{0}': pool brackets cannot be added by extend — pool status is part of the original declaration", (string)nameTok));
             newClass.poolSize = -1; // extern marker
-        } else if(inner.is(eTokenType::integer)){
-            // `[N]` sized form
+        } else if(inner.is(eTokenType::integer) || inner.is(eTokenType::identifier)){
+            // `[N]` sized form — N may be an integer literal or an identifier referring to a
+            // `Default`/`Constant`-declared I6 constant. For identifiers, the Beguile parser
+            // can't resolve the numeric value (I6 owns the constant table), so we capture the
+            // identifier verbatim and let the I6 link step substitute. The numeric poolSize
+            // field is set to a positive sentinel so all "is this pooled?" checks downstream
+            // continue to work.
             if(isExternal)
                 parsingError(format("extern class '{0}': pool size cannot be specified — extern declarations describe I6-defined types, and the I6 declaration owns the pool size. Use 'extern class {0}[]' as a marker that the type is pooled, or omit the brackets.", (string)nameTok));
             if(isExtend)
@@ -134,13 +139,18 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 parsingError(format("emitter class '{0}': pool size is not valid (emitter classes have no I6 backing for instances)", (string)nameTok));
             if(isAlias)
                 parsingError(format("alias class '{0}': pool size is not valid (alias classes dissolve to another type)", (string)nameTok));
-            int n = stoi(inner.value);
-            if(n <= 0)
-                parsingError(format("class '{0}': pool size must be a positive integer (got {1})", (string)nameTok, n));
-            newClass.poolSize = n;
+            if(inner.is(eTokenType::integer)){
+                int n = stoi(inner.value);
+                if(n <= 0)
+                    parsingError(format("class '{0}': pool size must be a positive integer (got {1})", (string)nameTok, n));
+                newClass.poolSize = n;
+            } else {
+                newClass.poolSize    = 1;  // positive sentinel — "is pooled" downstream checks
+                newClass.poolSizeExpr = inner.value;
+            }
             file.getToken(token::bracketClose);
         } else {
-            parsingError(format("class '{0}': expected integer or ']' after '[' in pool clause, got '{1}'", (string)nameTok, (string)inner));
+            parsingError(format("class '{0}': expected integer, identifier, or ']' after '[' in pool clause, got '{1}'", (string)nameTok, (string)inner));
         }
         tok = file.getToken();
     }
@@ -917,10 +927,22 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
         arrDecl.isByteArray = true;
         arrDecl.type = languageService.getType("bytearray");
     }
-    for(typeMember* m : members)
-        if(m->name == arrDecl.name)
+    // Replace pre-pass stub if present (pre-scan registers a variableDeclaration stub for
+    // every property/array declaration so forward references resolve in sibling methods).
+    bool replacedStub = false;
+    for(size_t i = 0; i < members.size(); i++){
+        if(members[i]->name == arrDecl.name){
+            if(auto* existingVd = dynamic_cast<variableDeclaration*>(members[i])){
+                if(existingVd->isPrePassStub){
+                    members[i] = (typeMember*)&arrDecl;
+                    replacedStub = true;
+                    break;
+                }
+            }
             parsingError(format("'{0}': member '{1}' is already defined", ownerDName, arrDecl.dName()));
-    members.push_back((typeMember*)&arrDecl);
+        }
+    }
+    if(!replacedStub) members.push_back((typeMember*)&arrDecl);
     return false;
 }
 
@@ -1024,10 +1046,23 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
             parsingWarning(format("object '{0}': 'replace' specified but no existing member '{1}' to replace", obj.dName(), prop.dName()));
     }
     if(!replaced){
-        for(typeMember* m : obj.members)
-            if(m->name == prop.name)
+        // Replace any pre-pass stub registered for this property — pre-scan registers
+        // a variableDeclaration stub for every property declaration so forward references
+        // from sibling methods resolve. The full pass replaces the stub with the real
+        // typed declaration here.
+        for(size_t i = 0; i < obj.members.size(); i++){
+            if(obj.members[i]->name == prop.name){
+                if(auto* existingVd = dynamic_cast<variableDeclaration*>(obj.members[i])){
+                    if(existingVd->isPrePassStub){
+                        obj.members[i] = &prop;
+                        replaced = true;
+                        break;
+                    }
+                }
                 parsingError(format("object '{0}': member '{1}' is already defined", obj.dName(), prop.dName()));
-        obj.members.push_back((typeMember*)&prop);
+            }
+        }
+        if(!replaced) obj.members.push_back((typeMember*)&prop);
     }
 }
 
@@ -1805,6 +1840,13 @@ bool bglParser::processObjectExtension(token nameTok){
             // Check for += / -= compound assignment (inferred type)
             token peekOp = file.peekToken();
             if(peekOp.is("+=") || peekOp.is("-=")){
+                if(vod != nullptr && tok.value == "grammar"){
+                    // `grammar +=` / `grammar -=` are not part of the grammar surface — the
+                    // visual closeness to `=` made silent typo-flips between append and replace
+                    // too easy. In `extend`, plain `grammar = { ... }` appends (default safe);
+                    // destructive replacement requires the explicit `replace` qualifier.
+                    parsingError(format("'grammar {0}' is not supported. In an `extend` body, `grammar = {{ ... }}` appends (default); use `replace grammar = {{ ... }}` for destructive replacement.", peekOp.value));
+                }
                 token op = file.getToken();
                 processExtendCompoundAssignment(*obj, tok, op.value, vod, extendBlockPriority);
             } else if(vod != nullptr && tok.value == "priority" && peekOp.is(token::assignment)){
@@ -1822,21 +1864,25 @@ bool bglParser::processObjectExtension(token nameTok){
                 extendBlockPriority = newPriority;
                 file.getToken(token::endStatement);
             } else if(vod != nullptr && tok.value == "grammar" && peekOp.is(token::assignment)){
-                // Verb extend block: `grammar = { ... }` is REPLACE semantics — emits I6
-                // `Extend 'v' replace …` directives, wiping the verb's previous rules for
-                // each trigger word. Priority is meaningless under replace; if the block also
-                // set a non-default `priority = N;`, that's a contradiction.
-                if(extendBlockPriority != verbPriorityDefault)
-                    parsingError("`grammar = { ... }` (replace) cannot be combined with a non-default `priority = N;` in the same extend block — priority is meaningless under replace");
+                // Verb extend block: `grammar = { ... }` is APPEND by default (additive,
+                // priority-stamped from the surrounding extend block). `replace grammar = { ... }`
+                // is destructive REPLACE — emits I6 `Extend 'v' replace …` directives, wiping
+                // the verb's previous rules for each trigger word. The `replace` qualifier is
+                // captured upstream into `memberIsReplace`.
+                //
+                // Priority is meaningless under replace; if the user also set a non-default
+                // `priority = N;` in the same extend block, that's a contradiction.
+                bool isReplace = memberIsReplace;
+                if(isReplace && extendBlockPriority != verbPriorityDefault)
+                    parsingError("`replace grammar = { ... }` cannot be combined with a non-default `priority = N;` in the same extend block — priority is meaningless under replace");
                 file.getToken(token::assignment);
                 vector<grammarLine> lines = parseGrammarLines();
                 if(file.peekToken().is(token::endStatement)) file.getToken();
                 string inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
 
-                // Find or create the verb's "grammar" rule-list and route lines through it.
-                // This mirrors the `+=` path: extern verbs are emitted via the globals-level
-                // grammarRuleListDecl (since emitVerbObject early-returns for extern), and
-                // non-extern verbs pick the same lines up via vod->grammarLines.
+                // Find or create the verb's "grammar" rule-list. Extern verbs are emitted via
+                // the globals-level grammarRuleListDecl (since emitVerbObject early-returns
+                // for extern); non-extern verbs pick the same lines up via vod->grammarLines.
                 grammarRuleListDecl* gtd = nullptr;
                 for(typeMember* m : obj->members)
                     if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
@@ -1850,13 +1896,24 @@ bool bglParser::processObjectExtension(token nameTok){
                     if(vod->isExternal) languageService.globals.push_back(gtd);
                 }
                 for(grammarLine& gl : lines){
-                    gl.targetVerb     = inferredVerb;
-                    gl.isOwnLine      = false;
-                    gl.isReplaceMode  = true;
+                    gl.targetVerb    = inferredVerb;
+                    gl.isOwnLine     = false;
+                    gl.isReplaceMode = isReplace;
+                    if(!isReplace){
+                        // Append path: stamp the extend block's priority and create per-rule
+                        // grammarRuleDecl tracking (mirrors what `+=` used to do).
+                        gl.priority = extendBlockPriority;
+                        grammarRuleDecl& rd = *(new grammarRuleDecl());
+                        rd.name = "grammar";
+                        rd.type = languageService.getType("grammarrule");
+                        rd.line = gl;
+                        rd.targetVerb = inferredVerb;
+                        gtd->rules.push_back(&rd);
+                    }
                     gtd->grammarLines.push_back(gl);
                     vod->grammarLines.push_back(gl);
                 }
-                extendHadReplaceGrammar = true;
+                if(isReplace) extendHadReplaceGrammar = true;
             } else {
                 processInheritedMember(*obj, tok);
             }

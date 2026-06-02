@@ -16,9 +16,37 @@ void i6Emitter::to(ostream& strm){
     out.std::ios::rdbuf(strm.rdbuf());
 }
 
+// Stored-emit-first/last placeholder markers. Written into the buffer by generateAll
+// at the matching emit-first/last positions, then substituted by resolvedOutput() with
+// the concatenated bodies of stored blocks whose names appear in firedStoredNames.
+// Both start with `!` so they're harmless I6 comments if substitution somehow fails.
+static const char* kStoredFirstMarker = "!__BGL_STORED_EMITFIRST__\n";
+static const char* kStoredLastMarker  = "!__BGL_STORED_EMITLAST__\n";
+
+string i6Emitter::resolvedOutput(){
+    string buf = out.str();
+    auto substitute = [&](const char* marker, const map<string,string>& blocks){
+        size_t pos = buf.find(marker);
+        if(pos == string::npos) return;
+        string content;
+        for(const auto& [name, body] : blocks)
+            if(languageService.firedStoredNames.count(name))
+                content += body + "\n";
+        buf.replace(pos, strlen(marker), content);
+    };
+    substitute(kStoredFirstMarker, languageService.storedEmitFirstBlocks);
+    substitute(kStoredLastMarker,  languageService.storedEmitLastBlocks);
+    return buf;
+}
+
 // Load built-in I6 templates from beguilib/_builtins.i6b.
 // Format: [templateName $param1 $param2 ...] on its own line, then body lines.
 // Lines starting with // are comments; blank template headers are skipped.
+// Body lines starting with `##triggerEmitter <name1> <name2> ...` register a
+// trigger annotation for the current template — when applyTemplate fires on
+// this template, each listed name is added to languageService.firedStoredNames
+// (which gates #storedEmitFirst/#storedEmitLast emission). The annotation line
+// itself is stripped from the body and does not reach I6.
 void i6Emitter::loadBuiltinTemplates(string path){
     ifstream f(path);
     if(!f.is_open()) return;
@@ -26,13 +54,18 @@ void i6Emitter::loadBuiltinTemplates(string path){
     string currentName;
     vector<string> currentParams;
     string currentBody;
+    vector<string> currentTriggers;
 
     auto flush = [&](){
-        if(!currentName.empty())
+        if(!currentName.empty()){
             builtinTemplates[currentName] = {currentParams, currentBody};
+            if(!currentTriggers.empty())
+                builtinTemplateTriggers[currentName] = currentTriggers;
+        }
         currentName = "";
         currentParams.clear();
         currentBody = "";
+        currentTriggers.clear();
     };
 
     string line;
@@ -56,7 +89,21 @@ void i6Emitter::loadBuiltinTemplates(string path){
             }
             continue;
         }
-        if(!currentName.empty()) currentBody += line + "\n";
+        // body-line annotation: `##triggerEmitter <name1> <name2> ...`
+        if(!currentName.empty()){
+            size_t lead = line.find_first_not_of(" \t");
+            if(lead != string::npos && line.compare(lead, 16, "##triggerEmitter") == 0
+               && (lead + 16 == line.size() || line[lead+16]==' ' || line[lead+16]=='\t')){
+                istringstream ts(line.substr(lead + 16));
+                string tname;
+                while(ts >> tname){
+                    for(char& c : tname) c = (char)tolower((unsigned char)c);
+                    currentTriggers.push_back(tname);
+                }
+                continue;       // strip the annotation line from the body
+            }
+            currentBody += line + "\n";
+        }
     }
     flush();
 }
@@ -68,6 +115,12 @@ void i6Emitter::applyTemplate(string name, map<string,string> args, string inden
         out << indent << "! [missing builtin template: " << name << "]\n";
         return;
     }
+    // Fire any ##triggerEmitter annotations recorded for this template — gates the
+    // matching #storedEmitFirst/#storedEmitLast blocks for emission in resolvedOutput().
+    auto trigIt = builtinTemplateTriggers.find(name);
+    if(trigIt != builtinTemplateTriggers.end())
+        for(const string& tname : trigIt->second)
+            languageService.firedStoredNames.insert(tname);
     string body = it->second.second;
     // substitute $param tokens (word-boundary aware)
     for(auto& [param, val] : args){
@@ -759,6 +812,11 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Emit #emitfirst blocks — raw I6 after ICL headers, before bglInit
     for(const string& block : languageService.emitFirstBlocks)
         out << block << "\n";
+    // Placeholder for #storedEmitFirst blocks — resolved in resolvedOutput() after all
+    // emission completes (when firedStoredNames is fully populated by applyTemplate calls
+    // from function-body emission below).
+    if(!languageService.storedEmitFirstBlocks.empty())
+        out << kStoredFirstMarker;
 
     // Pre-pass: scan all globals to identify sized-uninitialized tracked word arrays.
     // These get the compact `Array foo table N+2;` emission (later, in Pass 3) plus
@@ -960,6 +1018,9 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Emit #emitlast blocks at the very end of the I6 output
     for(const string& block : languageService.emitLastBlocks)
         out << block << "\n";
+    // Placeholder for #storedEmitLast blocks — resolved in resolvedOutput().
+    if(!languageService.storedEmitLastBlocks.empty())
+        out << kStoredLastMarker;
 
     // .inf-mode trailer: the user's `end;` directive (and anything after it) was
     // extracted from the .inf body during parsing and is splice in here so it appears as
@@ -1136,9 +1197,13 @@ void i6Emitter::emitClass(classDef* classNode){
 
     // Pooled class: emit `Class Foo(N)` to reserve N statically-allocated instances.
     // poolSize == -1 is the extern marker form, which doesn't reach here (early return above).
-    if(classNode->poolSize > 0)
-        out << format("class {0}({1})\n", classNode->i6Name(), classNode->poolSize);
-    else
+    // poolSizeExpr (non-empty) wins over numeric poolSize when present — see typeDef.h.
+    if(classNode->poolSize > 0){
+        const string& n = classNode->poolSizeExpr.empty()
+                            ? to_string(classNode->poolSize)
+                            : classNode->poolSizeExpr;
+        out << format("class {0}({1})\n", classNode->i6Name(), n);
+    } else
         out << format("class {0}\n", classNode->i6Name());
 
     // Filter out emitter base classes — they have no I6 representation, so referencing

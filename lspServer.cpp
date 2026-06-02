@@ -439,6 +439,17 @@ void LspServer::parseDocument(const string& uri) {
     string path = uriToPath(uri);
     documentDiagnostics.clear();
 
+    // Reset all parser/language-service/settings state before every parse. Without this,
+    // declarations from previously-parsed documents leak in: e.g. opening file A that does
+    // `extend class object { string description; }` then opening file B that also adds
+    // `description` on object would produce a spurious "already defined" error in B (and
+    // includePaths accumulated from A could mask file-not-found diagnostics in B). Each
+    // open document is parsed in isolation; the parser holds the last-parsed file's state
+    // for hover/completion, which always reflects whatever document the user just edited.
+    parser.reset();
+    languageService.reset();
+    beguilerSettings = beguilerSettingsDef();
+
     // Pass the editor buffer to the parser via the in-memory contentOverride parameter, so we
     // never write a temp file alongside the source. This avoids the workspace-file-list churn
     // that the previous .lsp_tmp file caused on every keystroke. The parser still uses `path`
@@ -1605,7 +1616,8 @@ json LspServer::handleCompletion(const json& params) {
     // Detect cursor inside a grammar pattern literal:
     //   verb V { grammar = { {.w, ▮} } }            (canonical)
     //   verb V { grammar = {.w, ▮} }                (single-line shorthand)
-    //   extend V { grammar += { {.w, ▮} } }
+    //   extend V { grammar = { {.w, ▮} } }          (append; default in extend)
+    //   extend V { replace grammar = { {.w, ▮} } }  (destructive replace)
     //   grammarRule r = {Verb, {.w, ▮}}              (rule literal form)
     // Offers grammarToken enum members (noun, held, creature, reverse, etc.).
     //
@@ -2856,6 +2868,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
     string lineText;
     int lineNum = 0;
     bool inBlockComment = false;
+    bool inString       = false;   // a "..." opened on a prior line; consume until closing '"'
 
     while(getline(stream, lineText)) {
         size_t i = 0;
@@ -2868,6 +2881,24 @@ json LspServer::handleSemanticTokensFull(const json& params) {
             if(close == string::npos) { lineNum++; continue; }
             inBlockComment = false;
             i = close + 2;
+        }
+
+        // If a string literal opened on a prior line, consume until closing '"' (or EOL,
+        // which keeps inString set for the next iteration). Without this carryover, the
+        // line-by-line scanner re-enters code-mode on subsequent lines of a multi-line
+        // string and emits semantic tokens (keyword/identifier colors) that overlay on
+        // top of the TextMate string scope.
+        if(inString) {
+            size_t j = 0;
+            while(j < lineText.size() && lineText[j] != '"') {
+                if(lineText[j] == '\\' && j + 1 < lineText.size()) j++;
+                j++;
+            }
+            int len = (j < lineText.size()) ? (int)j + 1 : (int)lineText.size();
+            if(len > 0) emit(lineNum, 0, len, stString);
+            if(j >= lineText.size()) { lineNum++; continue; }
+            inString = false;
+            i = j + 1;
         }
 
         while(i < lineText.size()) {
@@ -2901,15 +2932,133 @@ json LspServer::handleSemanticTokensFull(const json& params) {
                 }
             }
 
-            // String literals
+            // Interpolated string literal: $"text {expr} text". The literal segments
+            // emit as stString, and the expression slots inside {...} are scanned as
+            // code (including nested "..." literals which fall through to the regular
+            // string handler). Without this branch the scanner would treat the '$' as
+            // an unrecognized char, then the following '"' would open a regular string
+            // that closes at the FIRST inner '"' — leaving the scanner walking through
+            // inner-string contents as code and tokenizing English words like "to" as
+            // keywords. Mirrors the TS-side stringRanges in beguilex/semanticTokens.ts.
+            if(c == '$' && i + 1 < lineText.size() && lineText[i+1] == '"') {
+                size_t segStart = i;       // start of current stString segment
+                i += 2;                     // past $"
+                bool closed = false;
+                while(i < lineText.size()) {
+                    char ic = lineText[i];
+                    if(ic == '\\' && i + 1 < lineText.size()) { i += 2; continue; }
+                    if(ic == '{') {
+                        if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
+                        i++;                // past {
+                        int exprDepth = 1;
+                        while(i < lineText.size() && exprDepth > 0) {
+                            char ec = lineText[i];
+                            if(isspace((unsigned char)ec)) { i++; continue; }
+                            if(ec == '{') { exprDepth++; i++; continue; }
+                            if(ec == '}') { exprDepth--; i++; continue; }
+                            if(ec == '"') {
+                                size_t ss = i++;
+                                while(i < lineText.size() && lineText[i] != '"') {
+                                    if(lineText[i] == '\\' && i + 1 < lineText.size()) i++;
+                                    i++;
+                                }
+                                if(i < lineText.size()) i++;
+                                emit(lineNum, (int)ss, (int)(i - ss), stString);
+                                continue;
+                            }
+                            if(ec == '\'') {
+                                size_t ss = i++;
+                                while(i < lineText.size() && lineText[i] != '\'') {
+                                    if(lineText[i] == '\\') i++;
+                                    i++;
+                                }
+                                if(i < lineText.size()) i++;
+                                emit(lineNum, (int)ss, (int)(i - ss), stString);
+                                continue;
+                            }
+                            if(isalpha((unsigned char)ec) || ec == '_') {
+                                size_t ss = i;
+                                while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
+                                string word = lineText.substr(ss, i - ss);
+                                string lowerWord = word;
+                                transform(lowerWord.begin(), lowerWord.end(), lowerWord.begin(), ::tolower);
+                                if(ss > 0 && lineText[ss-1] == '.') {
+                                    int rEnd = (int)ss - 1;
+                                    int rStart = rEnd - 1;
+                                    while(rStart >= 0 && (isalnum((unsigned char)lineText[rStart]) || lineText[rStart] == '_')) rStart--;
+                                    rStart++;
+                                    if(rStart < rEnd) {
+                                        string recvLower = lineText.substr(rStart, rEnd - rStart);
+                                        transform(recvLower.begin(), recvLower.end(), recvLower.begin(), ::tolower);
+                                        int kind = lookupDotted(recvLower, lineNum, lowerWord);
+                                        if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
+                                        if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
+                                    }
+                                }
+                                if(const InstanceBlockRange* blk = blockForLine(lineNum)) {
+                                    int kind = findInBlock(blk, lowerWord);
+                                    if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
+                                    if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
+                                }
+                                int tokenType = classifyWord(word);
+                                if(tokenType >= 0) emit(lineNum, (int)ss, (int)(i - ss), tokenType);
+                                continue;
+                            }
+                            if(isdigit((unsigned char)ec)) {
+                                size_t ss = i;
+                                if(i + 1 < lineText.size() && lineText[i] == '0' && lineText[i+1] == 'x') {
+                                    i += 2;
+                                    while(i < lineText.size() && isxdigit((unsigned char)lineText[i])) i++;
+                                } else {
+                                    while(i < lineText.size() && isdigit((unsigned char)lineText[i])) i++;
+                                }
+                                if(ss == 0 || !(isalnum((unsigned char)lineText[ss-1]) || lineText[ss-1] == '_'))
+                                    emit(lineNum, (int)ss, (int)(i - ss), stNumber);
+                                continue;
+                            }
+                            if(ec == '.' && i + 1 < lineText.size() && isalpha((unsigned char)lineText[i+1])
+                               && (i == 0 || !(isalnum((unsigned char)lineText[i-1]) || lineText[i-1] == '_'))) {
+                                size_t ss = i++;
+                                if(i < lineText.size() && lineText[i] == '.') i++;
+                                while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
+                                emit(lineNum, (int)ss, (int)(i - ss), stString);
+                                continue;
+                            }
+                            i++;            // unrecognized inside expression slot
+                        }
+                        segStart = i;       // resume literal segment after closing }
+                        continue;
+                    }
+                    if(ic == '"') {
+                        emit(lineNum, (int)segStart, (int)(i - segStart + 1), stString);
+                        i++;
+                        closed = true;
+                        break;
+                    }
+                    i++;
+                }
+                if(!closed) {
+                    if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
+                    inString = true;        // remainder carries to next line
+                }
+                continue;
+            }
+
+            // String literals — may span multiple lines. When the closing '"' isn't on
+            // this line, set inString so the next iteration's carryover block (above)
+            // consumes string content from column 0 until the closing quote.
             if(c == '"') {
                 size_t start = i;
                 i++;  // skip opening quote
                 while(i < lineText.size() && lineText[i] != '"') {
-                    if(lineText[i] == '\\') i++;  // skip escape
+                    if(lineText[i] == '\\' && i + 1 < lineText.size()) i++;  // skip escape
                     i++;
                 }
-                if(i < lineText.size()) i++;  // skip closing quote
+                if(i < lineText.size()) {
+                    i++;  // skip closing quote
+                } else {
+                    inString = true;  // unterminated on this line — continue on next
+                }
                 emit(lineNum, (int)start, (int)(i - start), stString);
                 continue;
             }

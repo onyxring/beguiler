@@ -36,30 +36,30 @@ verb Tinker {
 // order to confirm sorting handles it. Expected emit order: descending (7, 5, 3).
 extend Tinker {
     priority = 5;
-    grammar += { {.tinker, .carefully, noun}, };  // p=5
+    grammar = { {.tinker, .carefully, noun}, };  // p=5
 }
 extend Tinker {
     priority = 3;
-    grammar += { {.tinker, .gingerly, noun}, };   // p=3
+    grammar = { {.tinker, .gingerly, noun}, };   // p=3
 }
 extend Tinker {
     priority = 7;
-    grammar += { {.tinker, .roughly, noun}, };    // p=7
+    grammar = { {.tinker, .roughly, noun}, };    // p=7
 }
 
 // Three extends > anchor 10 at priorities 16, 12, 14 — declared in arbitrary source
 // order. Expected emit order: ascending (12, 14, 16).
 extend Tinker {
     priority = 16;
-    grammar += { {.tinker, .lazily, noun}, };     // p=16
+    grammar = { {.tinker, .lazily, noun}, };     // p=16
 }
 extend Tinker {
     priority = 12;
-    grammar += { {.tinker, .quickly, noun}, };    // p=12
+    grammar = { {.tinker, .quickly, noun}, };    // p=12
 }
 extend Tinker {
     priority = 14;
-    grammar += { {.tinker, .slowly, noun}, };     // p=14
+    grammar = { {.tinker, .slowly, noun}, };     // p=14
 }
 
 void main(){}

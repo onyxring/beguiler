@@ -72,6 +72,11 @@ class classDef:public typeDef{
         // >0 = sized pool (emit as `Class Foo(N)`).
         // -1 = extern marker `extern class Foo[]` — I6 owns the size; Beguile treats as pooled for new/delete checks.
         int poolSize = 0;
+        // When N is given as an identifier (e.g. `class Foo[poolReserve]` where poolReserve is a
+        // `Default`-declared I6 constant), poolSize is set to a positive sentinel and the identifier
+        // is captured here. I6 emission uses this verbatim instead of the numeric value so callers
+        // can keep pool sizes configurable through `Default` constants without touching the class decl.
+        std::string poolSizeExpr;
         // Type parameters declared on this class (e.g., `class array<T>` → ["t"]).
         // Empty for non-generic classes. Stored on the classDef but NOT registered as global
         // types (that would collide with same-named instances like `Temperature t;`).

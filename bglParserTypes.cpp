@@ -390,10 +390,30 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
             for(statement* s : blk->statements)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                     if(vd->name == name) return vd->type.name;
-    if(currentObject != nullptr)
+    if(currentObject != nullptr){
         for(typeMember* m : currentObject->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(vd->name == name) return vd->type.name;
+        // Walk the object's class hierarchy so inherited members (e.g. `attributeList
+        // attributes` from the base `object` class) resolve via bare-name reference
+        // inside the object's method bodies — mirrors the currentClass branch below.
+        // Without this, bare `attributes` inside a `room` method body falls past
+        // lexical scope and hits the property-name fallback, typing as `property`
+        // and producing "no method 'X' on type 'property'" downstream.
+        function<string(classDef*)> findVarInBases = [&](classDef* c) -> string {
+            if(!c) return "";
+            for(typeMember* m : c->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                    if(vd->name == name) return vd->type.name;
+            for(classDef* base : c->baseClasses){
+                string t = findVarInBases(base);
+                if(!t.empty()) return t;
+            }
+            return "";
+        };
+        string t = findVarInBases(currentObject->objectClass);
+        if(!t.empty()) return t;
+    }
     if(currentClass != nullptr){
         for(typeMember* m : currentClass->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -650,6 +670,42 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     // own type and reach `bglclass` via the isTypeCompatible rule.
     if(languageService.isKnownClassName(name)) return "bglclass";
     return "";
+}
+
+// True iff `name` resolves as an inherited variableDeclaration member of currentObject's class
+// hierarchy AND is NOT shadowed by a local, param, or own member. Used to decide whether bare
+// identifiers in method-call contexts should map their `$self` substitution to `self` (the
+// implicit owner) rather than to the bare receiver name. Mirrors the lexical-scope walk in
+// resolveIdentifierType but returns just yes/no.
+bool bglParser::isInheritedObjectMember(const string& name, functionDef* func, statementBlock* body){
+    if(currentObject == nullptr || currentObject->objectClass == nullptr) return false;
+    // Shadowing checks first — locals/params/own members take precedence over inheritance.
+    if(func != nullptr)
+        for(paramDef* p : func->params)
+            if(p->name == name) return false;
+    if(body != nullptr)
+        for(statement* s : body->statements)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                if(vd->name == name) return false;
+    for(statementBlock* blk : activeBlockStack)
+        if(blk != nullptr && blk != body)
+            for(statement* s : blk->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                    if(vd->name == name) return false;
+    for(typeMember* m : currentObject->members)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+            if(vd->name == name) return false;
+    // Now walk the class hierarchy.
+    function<bool(classDef*)> walk = [&](classDef* c) -> bool {
+        if(!c) return false;
+        for(typeMember* m : c->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(vd->name == name) return true;
+        for(classDef* base : c->baseClasses)
+            if(walk(base)) return true;
+        return false;
+    };
+    return walk(currentObject->objectClass);
 }
 
 // Return the declared element type of an array variable, or "" if `name` isn't an arrayDeclaration
@@ -1279,7 +1335,51 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     //   • 1 candidate         → use it.
     //   • 2+ candidates       → try memberHint, expected-type, then non-verb-beats-verb.
     //                           If still ambiguous, error.
-    if(candidates.size() == 1) return candidates[0].qualified;
+    if(candidates.size() == 1){
+        // Shadow-warning: a bare identifier inside an object body that resolves to a
+        // file-scope candidate (enum value, global variable/function/object, verb,
+        // #define, #using-imported member) but is ALSO a member of the enclosing object
+        // (own or inherited) is genuinely ambiguous — the compiler can't tell whether
+        // the user meant `self.<name>` (the property of THIS object) or the file-scope
+        // identifier. The resolver silently picks the file-scope candidate, which often
+        // surfaces as a downstream I6 warning ("Bare property name found") or a baffling
+        // runtime mismatch. Surface the ambiguity here so the user can disambiguate.
+        //
+        // Note: forward-declared own members aren't yet on currentObject->members at
+        // method-body parse time, so this catches inherited-from-base and
+        // already-declared-own cases but not forward-declared-same-object cases.
+        if(currentObject != nullptr){
+            // Restrict to VARIABLE (property) collisions only. Method collisions are
+            // visually unambiguous since methods are always called with parens, and
+            // many objects inherit common methods (`print`, `is`, `provides`, etc.)
+            // that the user calls via the global form by name without thinking of
+            // them as members.
+            auto isObjectProperty = [&]() -> bool {
+                for(typeMember* m : currentObject->members)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                        if(vd->name == name) return true;
+                function<bool(classDef*)> walk = [&](classDef* c) -> bool {
+                    if(!c) return false;
+                    for(typeMember* m : c->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                            if(vd->name == name) return true;
+                    for(classDef* base : c->baseClasses)
+                        if(walk(base)) return true;
+                    return false;
+                };
+                return walk(currentObject->objectClass);
+            };
+            if(isObjectProperty()){
+                parsingWarning(format(
+                    "Bare '{0}' resolves as {1}, but '{0}' is also a property of the enclosing "
+                    "object. Beguile cannot tell which you mean. To read the object's property, "
+                    "write 'self.{0}'. To keep the current resolution and silence this warning, "
+                    "qualify it explicitly.",
+                    name, candidates[0].origin));
+            }
+        }
+        return candidates[0].qualified;
+    }
     if(candidates.size() >= 2){
         if(!memberHint.empty()){
             vector<Candidate*> satisfying;
@@ -1322,7 +1422,18 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     if(looseIdentifierMode) return name;
     // Property-name fallback: see resolveIdentifierType for rationale. The bare name is
     // emitted verbatim so `obj.provides(weight)` becomes `obj provides weight` in I6.
-    if(languageService.isKnownPropertyName(name)) return name;
+    //
+    // Inside an objectDef body, `self.` qualify the emission: I6 treats a bare property
+    // name in expression context as the property's runtime numeric ID, not its value on
+    // any particular object — `if(number < 2)` would compare the property ID, not the
+    // owning object's `number` value. Matching the unconditional `self.X` emission used
+    // by the explicit `self.X` path lets a user drop `self.` from a member read without
+    // changing semantics. Note: the (property) cast site handles the `obj.provides(weight)`
+    // case separately, so this rewrite doesn't break property-identifier usage.
+    if(languageService.isKnownPropertyName(name)){
+        if(currentObject != nullptr) return "self." + name;
+        return name;
+    }
     // Class-name fallback: see resolveIdentifierType for rationale. Bare class identifiers
     // emit verbatim so `obj.is(Container)` becomes `obj ofclass Container` in I6.
     if(languageService.isKnownClassName(name)) return name;

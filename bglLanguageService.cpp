@@ -43,6 +43,9 @@ void bglLanguageService::reset(){
     startupBlocks.clear();
     emitFirstBlocks.clear();
     emitLastBlocks.clear();
+    storedEmitFirstBlocks.clear();
+    storedEmitLastBlocks.clear();
+    firedStoredNames.clear();
     verbs.clear();
     ternaryTempCount = 0;
     tryCatchNeeded = false;
