@@ -1,0 +1,140 @@
+/*============================================================================
+  Cloak of Darkness - a simple demonstration of Interactive Fiction
+    This port to Beguile translated by Jim Fisher from the Inform version 
+    which was written by Roger Firth as a template.
+  ============================================================================*/
+//settings for the compiler...
+#beguilerSettings { 
+    includePaths=@"../../inform6/puny/lib, ../../orLibraryId6";
+    target=Z5;      
+    title="Cloak of Darkness"; 
+    headline = "\nA basic IF demonstration.\n";
+}
+
+//const int MAX_SCORE = "2";
+const object INITIAL_LOCATION_VALUE = foyer;
+#i6{
+    constant MAX_SCORE = "2";
+}
+
+void DeathMessage(){ print("You have lost"); }
+
+#includeI6 @"globals";
+#includeI6 "puny"
+#include <bindings/punyInform>
+
+object cloakroom{
+    string short_name="Cloakroom";
+    string description="The walls of this small room were clearly once lined 
+        with hooks, though now only one remains. The exit is a door to 
+        the east.";
+    object e_to=foyer;
+    attributeList attributes = {light, general};
+}
+extend class object { 
+    string short_name; 
+    string description; 
+    object s_to; 
+    object e_to; 
+    object w_to; 
+    object n_to;  
+}
+object foyer{
+    short_name="Foyer of the Opera House";
+    description = "You are standing in a spacious hall, splendidly decorated
+        in red and gold, with glittering chandeliers overhead. The entrance 
+        from the street is to the north, and there are doorways south and west.";
+    s_to = bar;
+    w_to = cloakroom;
+    string n_to = "You've only just arrived, and besides, the weather outside 
+        seems to be getting worse."; 
+    attributes = {light}; 
+}
+object bar{
+    short_name="Foyer bar";
+    description="The bar, much rougher than you'd have guessed after the 
+        opulence of the foyer to the north, is completely empty. There seems 
+        to be some sort of message scrawled in the sawdust on the floor.";
+    n_to=foyer;
+    bool before(){
+        switch(action){
+            case Look, Inv, Going: rfalse;
+            case Go: if (attributes.hasnt(light) && (selected_direction != (property)n_to) ) {     
+                        message.number += 2;     
+                        rtrue("Blundering around in the dark isn't a good idea!"); 
+                    }
+            default: if (bar.hasnt(light)) {
+                        message.number++;                             
+                        rtrue("In the dark? You could easily disturb something!");
+                    }
+        }
+        rfalse;
+    }
+    attributes = {!light};
+}
+object cloak {
+    object parent=selfobj;
+    string short_name = "velvet cloak";
+    string description = "A handsome cloak, of velvet trimmed with satin, and 
+        slightly spattered with raindrops. Its blackness is so deep that it 
+        almost seems to suck light from the room.";
+    array<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
+    bool before() {
+        switch(action){
+            case Drop, PutOn:
+                if (location == cloakroom) {
+                    bar.give(light);
+                    if (action == PutOn) {
+                        if (cloak.has(general)) {
+                            cloak.ungive(general);
+                            score++; 
+                        }
+                    }
+                } else {
+                    rtrue("This isn't the best place to leave a smart cloak lying 
+                        around.^");
+                }
+        }
+        rfalse;
+    }
+    bool after() {          
+        if(action==Take) bar.ungive(light);
+        rfalse;
+    }
+    attributes = {clothing, general, worn}; 
+}
+object hook { 
+    string short_name = "small brass hook";
+    object parent = cloakroom;
+    array<dictionaryWord> name = {.small, .brass, .hook, .peg};
+    bool description() {
+        rtrue($"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}");         
+    }
+    attributes = {scenery, supporter}; 
+}
+object message {
+    string short_name = "scrawled message";
+    object parent = bar;
+    array<dictionaryWord> name = {.message, .sawdust, .floor};
+    bool description() {
+        if (number < 2) {
+            score++; 
+            print("The message, neatly marked in the sawdust, reads...");
+            deadflag = 2; 
+        } else {
+            print("The message has been carelessly trampled, making it difficult 
+                to read. You can just distinguish the words...");
+            deadflag = 3;
+        }
+        rtrue;
+    }
+    int number = 0;
+    attributes = {scenery}; 
+}
+bool Initialise(){
+    rfalse("^^Hurrying through the rainswept November night, you're glad to 
+        see the bright lights of the Opera House. It's surprising that there 
+        aren't more people about but, hey, what do you expect in a cheap 
+        demo game...?^^^");
+}
+extend PutOn { grammar = {.hang, HELD, .on, NOUN}; }

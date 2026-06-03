@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: macos-arm64
+            cxx: c++
+            cflags: '-arch arm64'
+          - os: macos-15
+            target: macos-x86_64
+            cxx: c++
+            cflags: '-arch x86_64'
+          - os: ubuntu-24.04
+            target: linux-x64
+            cxx: clang++
+            install: 'sudo apt-get update && sudo apt-get install -y clang libc++-dev libc++abi-dev'
+            cflags: '-stdlib=libc++ -Disnumber=isdigit'
+          - os: windows-2022
+            target: windows-x64
+            cxx: clang++
+            cflags: '-Disnumber=isdigit -Dstrncasecmp=_strnicmp -Dpopen=_popen -Dpclose=_pclose'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        if: matrix.install != ''
+        run: ${{ matrix.install }}
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ${{ matrix.cxx }} -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional ${{ matrix.cflags }} *.cpp -o beguiler
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ${{ matrix.cxx }} -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional ${{ matrix.cflags }} (Get-ChildItem -Filter *.cpp).Name -o beguiler.exe
+
+      # Smoke test: the library-free hello world must transpile on every
+      # platform. It needs no Inform 6 and no IF library, so a green build
+      # here means the shipped binary runs and the transpiler works.
+      - name: Smoke test (transpile hello world)
+        shell: bash
+        run: |
+          BIN=./beguiler
+          [ -f ./beguiler.exe ] && BIN=./beguiler.exe
+          rm -f examples/hello.bgl.transpiled.inf
+          "$BIN" examples/hello.bgl
+          if [ ! -f examples/hello.bgl.transpiled.inf ]; then
+            echo "::error::beguiler produced no .transpiled.inf for examples/hello.bgl"
+            exit 1
+          fi
+          echo "✓ ${{ matrix.target }}: examples/hello.bgl transpiled"
