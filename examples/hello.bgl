@@ -1,0 +1,14 @@
+/*  hello.bgl — the smallest possible Beguile program.
+
+    Library-free: it needs no IF library and no Inform 6 standard library,
+    so it transpiles and compiles entirely on its own. This is the program
+    the cross-platform CI smoke test builds on every supported platform.  */
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";   // no library — emit a bare Main routine
+}
+
+void main(){
+    print("Hello, World!^");
+}
