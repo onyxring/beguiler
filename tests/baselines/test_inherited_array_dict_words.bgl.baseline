@@ -4,6 +4,9 @@
     Constant story    = "";
     Constant headline = "";
 
+
+    replace main _oldmain;
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -23,3 +26,9 @@ thing widget
 ;
 [main;
 ];
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

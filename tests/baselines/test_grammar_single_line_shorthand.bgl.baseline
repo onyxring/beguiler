@@ -4,6 +4,9 @@
     Constant story    = "";
     Constant headline = "";
 
+
+    replace main _oldmain;
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -48,3 +51,9 @@ verb 'knock'
     * noun -> tap;
 [main;
 ];
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+
