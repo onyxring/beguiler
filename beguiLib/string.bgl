@@ -680,6 +680,12 @@ extend class string {
     emitter string operator + (stringLiteral v) { $self.append($v) }
     emitter string operator + (string v)        { $self.append($v) }
 
+    // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
+    // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
+    // copies it back into self.
+    emitter string operator += (stringLiteral v) { $self.setFromStr($self.append($v)) }
+    emitter string operator += (string v)        { $self.setFromStr($self.append($v)) }
+
     // Equality — Phase B typed dispatch
     emitter eBool operator == (stringLiteral v) { $self.equalsLit($v) }
     emitter eBool operator == (string v)        { $self.equalsStr($v) }

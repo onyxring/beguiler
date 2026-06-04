@@ -958,6 +958,9 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 // user classes.
                 string elemType = resolveArrayElementType(arrName, func, body);
                 if(elemType.empty() && arrType == "bytearray") elemType = "char";
+                // Non-array classes (e.g. string) carry no declared element type; derive it
+                // from a concrete operator[] return so subscript resolves through the facade.
+                if(elemType.empty() && arrCls != nullptr) elemType = inferSubscriptElementType(arrCls);
                 functionDef* getMethod = nullptr;
                 if(arrCls != nullptr && !elemType.empty())
                     getMethod = findArraySubscriptOp(arrCls, elemType, /*isWrite=*/false);
