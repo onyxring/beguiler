@@ -4,6 +4,9 @@
     Constant story    = "";
     Constant headline = "";
 
+
+    replace main _oldmain;
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -36,5 +39,11 @@ object helloverb
 verb 'greet'
     * noun -> helloverb;
 
+
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
 
 end;

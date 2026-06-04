@@ -4,6 +4,9 @@
     Constant story    = "";
     Constant headline = "";
 
+
+    replace main _oldmain;
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -44,3 +47,9 @@ extend 'burnish'
     * 'casually' -> burnish;
 [main;
 ];
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

@@ -4,6 +4,9 @@
     Constant story    = "";
     Constant headline = "";
 
+
+    replace main _oldmain;
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -50,3 +53,9 @@ extend 'smelt' first
     * 'gingerly' noun -> Smelt;
 extend 'trundle'
     * 'briskly' noun -> Trundle;
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

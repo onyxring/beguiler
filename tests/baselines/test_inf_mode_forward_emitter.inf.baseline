@@ -4,6 +4,9 @@
     Constant story    = "";
     Constant headline = "";
 
+
+    replace main _oldmain;
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -30,5 +33,11 @@ object myObj;
     print (the)myobj;
 ];
 
+
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
 
 end;

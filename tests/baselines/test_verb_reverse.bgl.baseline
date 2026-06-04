@@ -4,6 +4,9 @@
     Constant story    = "";
     Constant headline = "";
 
+
+    replace main _oldmain;
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -30,3 +33,9 @@ extend 'give'
 verb 'donate'
     * held 'to' creature -> Give2
     * creature held -> Give2 reverse;
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+
