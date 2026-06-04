@@ -1,0 +1,11 @@
+// test_string_pluseq_subscript.bgl — <string> compound concat (+=) and indexed char access.
+#include <string>
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    string s = "Hello";
+    s += ", World";          // operator += (in-place concat)
+    char c = s[0];           // operator[] read
+    if(c == 'H'){ print("ok^"); }
+    s[0] = 'J';              // operator[]= write
+    print(s);
+}

@@ -1175,6 +1175,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(dotPos == string::npos) elemType = resolveArrayElementType(arrPath, func, body);
             else elemType = resolveArrayElementTypeDotted(arrPath.substr(0, dotPos), arrPath.substr(dotPos + 1), func, body);
             if(elemType.empty() && arrType == "bytearray") elemType = "char";
+            if(elemType.empty() && arrCls != nullptr) elemType = inferSubscriptElementType(arrCls);
             functionDef* getMethod = nullptr;
             if(arrCls != nullptr && !elemType.empty())
                 getMethod = findArraySubscriptOp(arrCls, elemType, /*isWrite=*/false);
@@ -1261,6 +1262,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         else
             elemType = resolveArrayElementTypeDotted(arrPath.substr(0, dotPos), arrPath.substr(dotPos + 1), func, body);
         if(elemType.empty() && arrType == "bytearray") elemType = "char";
+        // Non-array classes (e.g. string) derive their element type from operator[]'s return.
+        if(elemType.empty() && arrCls != nullptr) elemType = inferSubscriptElementType(arrCls);
 
         functionDef* setMethod = nullptr;
         if(!elemType.empty())

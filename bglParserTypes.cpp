@@ -815,6 +815,28 @@ functionDef* bglParser::findArraySubscriptOp(classDef* arrCls, const string& ele
     return found;
 }
 
+// Derive an element type for a class that defines a concrete operator[] (read) but is not a
+// declared array<T> — e.g. string's `char operator[](int)`. Walks the hierarchy and returns the
+// return type of the first 1-arg `[]` operator whose return is NOT one of the class's own type
+// parameters (those are the array<T> case, which requires an explicit element type instead).
+string bglParser::inferSubscriptElementType(classDef* cls){
+    string result;
+    function<void(classDef*)> search = [&](classDef* c){
+        if(!c || !result.empty()) return;
+        for(typeMember* m : c->members)
+            if(auto* fd = dynamic_cast<functionDef*>(m))
+                if(fd->name == "[]" && fd->params.size() == 1){
+                    bool isTypeParam = false;
+                    for(const string& tp : c->typeParameters)
+                        if(tp == fd->returnType.name) isTypeParam = true;
+                    if(!isTypeParam){ result = fd->returnType.name; return; }
+                }
+        for(classDef* base : c->baseClasses){ if(!result.empty()) return; search(base); }
+    };
+    search(cls);
+    return result;
+}
+
 // Returns the I6-qualified form of an identifier based on scope:
 //   - found in local params/vars → name (unqualified)
 //   - found in current object's members → "self.name"

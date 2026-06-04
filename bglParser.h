@@ -342,6 +342,11 @@ class bglParser {
         // class (user-defined), synthesizes one using the `object`-typed overload as a template.
         // Returns nullptr if no match and no synthesis possible.
         functionDef* findArraySubscriptOp(classDef* arrCls, const string& elemType, bool isWrite);
+        // For a class that exposes a concrete operator[] (e.g. string's `char operator[](int)`)
+        // but has no declared array element type, derive the element type from that operator's
+        // return type so subscript resolves. Returns "" if the class has no such operator (or
+        // only a type-parameter return, which the array<T> path handles instead).
+        string inferSubscriptElementType(classDef* cls);
         // memberHint: forwarded to the underlying resolveIdentifierType for the path's head.
         string resolvePathType(string path, functionDef* func, statementBlock* body, const string& memberHint = "");
         // True if `typeName` resolves to a class (incl. base hierarchy) or objectDef that exposes
