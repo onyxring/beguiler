@@ -33,7 +33,7 @@ jobs:
             cflags: '-Disnumber=isdigit -Dstrncasecmp=_strnicmp -Dpopen=_popen -Dpclose=_pclose'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install toolchain
         if: matrix.install != ''
