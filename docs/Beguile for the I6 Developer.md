@@ -382,7 +382,7 @@ In this example, the file being included is the `punyInform` binding file, which
 
 > ***Note**: Searching sub-folders is something Beguile does even for the `#includeI6` directives. Beguile will look for the specified subfolder, relative to every instance of `includePaths` and pass the fully resolved path to Inform.*
 ### Binding Files
-Since Beguile doesn't know how to parse I6, files pulled in using `#includeI6`, mean nothing to it.  Binding files bridge the gap between I6 and Beguile, making the I6 declarations - attributes, routines, objects, and variables - available to be referenced in Beguile. The `punyInform` binding is used when writing games using Puny Inform; there's also a binding file for the I6 Standard Library, `i6StandardLibrary` (pulled in with `#include <bindings/i6StandardLibrary>`). 
+Since Beguile doesn't know how to parse I6, files pulled in using `#includeI6` mean nothing to it.  Binding files bridge the gap between I6 and Beguile, making the I6 declarations - attributes, routines, objects, and variables - available to be referenced in Beguile. The `punyInform` binding is used when writing games using Puny Inform; there's also a binding file for the I6 Standard Library, `i6StandardLibrary` (pulled in with `#include <bindings/i6StandardLibrary>`). 
 
 > ***Note**: Recall from the above that Beguile accepts either path delimiter, `/` or `\` regardless of OS.*
  
