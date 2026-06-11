@@ -120,10 +120,18 @@ void exerciseMethods(){
     s.release();
 }
 
+// ─── for-in over a string — object dispatch via getLength()/getChar() ────────
+void exerciseForIn(){
+    string s;
+    s = "abc";
+    for(char c in s) print(c);          // lowers to a getLength()/getChar() loop
+}
+
 void main(){
     exerciseAssign();
     exerciseEquality();
     exerciseConcat();
     exerciseNullable();
     exerciseMethods();
+    exerciseForIn();
 }

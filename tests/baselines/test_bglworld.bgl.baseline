@@ -3,8 +3,8 @@
 Constant _BGL_LINQ_SCRATCH_SIZE = 32;
 Constant _BGL_WORLD_BUFSIZE = 128;
 
-    Array _bglLinqScratchA --> _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqScratchB --> _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglLinqScratchA table _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglLinqScratchB table _BGL_LINQ_SCRATCH_SIZE + 2;
     Global _bglLinqParity = 0;
     [ _bglLinqWrite;
         if(_bglLinqParity == 0) return _bglLinqScratchB;

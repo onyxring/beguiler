@@ -261,7 +261,12 @@ bool i6Emitter::funcHasLocalArrays(functionDef* fd){
     collectBodyLocals(body, locals, seen);
     for(variableDeclaration* vd : locals){
         auto* arr = dynamic_cast<arrayDeclaration*>(vd);
-        if(arr && !arr->isByteArray && arr->arraySize > 0) return true;
+        if(!arr) continue;
+        // Any local array that draws framePool backing forces pool emission:
+        //   • sized word/byte array (arraySize > 0)
+        //   • list-initialized word array (arraySize == 0 with an initializer list)
+        if(arr->arraySize > 0) return true;
+        if(!arr->isByteArray && dynamic_cast<initializerList*>(arr->declaredExpressionValue)) return true;
     }
     return false;
 }
@@ -1180,16 +1185,22 @@ void i6Emitter::emitClass(classDef* classNode){
         if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
             if(arr->isByteArray){
                 string mangledName = "_" + classNode->name + "_" + arr->name;
+                // Emit as an I6 hybrid buffer (length word at -->0, data bytes at
+                // ->WORDSIZE) so the member backing matches the standalone
+                // array<char> layout and the byteArray []/size()/for-in accessors.
+                // Mirrors the emitGlobal byte-array path.
                 if(!arr->stringInitializer.empty()){
-                    out << format("Array {0} string {1};\n", mangledName, arr->stringInitializer);
+                    out << format("Array {0} buffer {1};\n", mangledName, arr->stringInitializer);
                 } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-                    out << format("Array {0} -> {1}", mangledName, list->elements.size());
-                    for(expression* elem : list->elements) out << " " << elem->text();
+                    out << format("Array {0} buffer", mangledName);
+                    for(expression* elem : list->elements){
+                        string t = elem->text();
+                        if(!t.empty() && t.front() == '-') out << " (" << t << ")";
+                        else                                out << " " << t;
+                    }
                     out << ";\n";
                 } else {
-                    out << format("Array {0} -> {1}", mangledName, arr->arraySize);
-                    for(int k = 0; k < arr->arraySize; k++) out << " 0";
-                    out << ";\n";
+                    out << format("Array {0} buffer {1};\n", mangledName, arr->arraySize);
                 }
                 externalArrayNames[arr->name] = mangledName;
             }
@@ -1384,26 +1395,43 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     emitParamCopyIns(funcNode, "    ");
 
     // Local arrays: framePool-backed allocation per function call (recursion-safe).
-    // For each sized word array declared inside the body, allocate a slice from
+    // For each word array declared inside the body, allocate a slice from
     // _bglFramePool, lay down the tracked layout (header + zeros + length + magic),
     // and register the matching free in the function's cleanups so it runs on
-    // every return path. List-init local arrays aren't supported yet — only
-    // `array<T> name[N]` form.
+    // every return path. Both forms are allocated here:
+    //   • sized  `array<T> name[N]`     — N comes from arraySize
+    //   • list   `array<T> name = {…}`  — N comes from the initializer length
+    // For the list form, only the allocation is hoisted here; the element values
+    // are written at the declaration statement (emitStatement) so they evaluate
+    // in declaration order rather than at function entry.
     if(body != nullptr){
         for(variableDeclaration* vd : locals){
             auto* arr = dynamic_cast<arrayDeclaration*>(vd);
             if(arr == nullptr) continue;
-            if(arr->isByteArray) continue;
-            if(arr->arraySize <= 0) continue;
+            // Local byte arrays (array<char>) use the hybrid-buffer layout (capacity
+            // WORD at -->0, data bytes at ->WORDSIZE) carved from the same framePool.
+            // Sized form only; string/list-initialized local byte arrays are rejected
+            // at parse time (declare those at file scope for now).
+            if(arr->isByteArray){
+                if(arr->arraySize <= 0) continue;
+                string name = spillName(arr->name);
+                out << format("    {0} = _bglByteArrayLocalAlloc({1});\n", name, arr->arraySize);
+                funcNode->cleanups.push_back({arr->name, format("_bglByteArrayLocalFree({0});", arr->arraySize)});
+                continue;
+            }
+            auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
+            int count = arr->arraySize > 0 ? arr->arraySize
+                      : (list ? (int)list->elements.size() : 0);
+            if(count <= 0) continue;   // pointer-alias decl (e.g. `= _bglLinqWrite()`) — emitStatement owns it
             string name = spillName(arr->name);
             // Mirror the global-array layout gating: tracked (header + N + length + magic)
             // when `<array>` is included, plain (header + N data slots) otherwise.
             if(languageService.arrayInUse){
-                out << format("    {0} = _bglArrayLocalAlloc({1});\n", name, arr->arraySize);
-                funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->arraySize + 3)});
+                out << format("    {0} = _bglArrayLocalAlloc({1});\n", name, count);
+                funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count + 3)});
             } else {
-                out << format("    {0} = _bglArrayLocalAllocPlain({1});\n", name, arr->arraySize);
-                funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->arraySize + 1)});
+                out << format("    {0} = _bglArrayLocalAllocPlain({1});\n", name, count);
+                funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count + 1)});
             }
         }
     }
@@ -1438,9 +1466,27 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                           exprText(arrLoc->declaredExpressionValue));
             return;
         }
-        // Other arrayDeclaration shapes (sized, list-init) are handled via the
-        // framePool path in emitFunction / the global-emission path in emitGlobal;
-        // no per-statement work needed here.
+        // List-initialized local word array (`array<T> name = {a, b, c}`). The
+        // framePool slot was allocated in emitFunction (header/zeros/length=0/magic
+        // already laid down). Here we fill the data slots and set the tracked
+        // length. operator[] maps element i to raw slot i+1; the length slot lives
+        // at raw slot N+1 (just past the data). Byte arrays use the global-emission
+        // path instead, so they're excluded.
+        if(!arrLoc->isByteArray){
+            if(auto* list = dynamic_cast<initializerList*>(arrLoc->declaredExpressionValue)){
+                string name = spillName(arrLoc->name);
+                int count = (int)list->elements.size();
+                int i = 0;
+                for(expression* elem : list->elements)
+                    out << format("{0}{1}-->{2} = {3};\n", indent, name, i++ + 1, exprText(elem));
+                if(languageService.arrayInUse)   // tracked layout has a length slot at N+1
+                    out << format("{0}{1}-->{2} = {3};\n", indent, name, count + 1, count);
+                return;
+            }
+        }
+        // Other arrayDeclaration shapes (sized) are handled via the framePool path
+        // in emitFunction / the global-emission path in emitGlobal; no per-statement
+        // work needed here.
         return;
     }
     if(typeid(*stmt) == typeid(variableDeclaration)){
@@ -1617,6 +1663,23 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     }
     else if(typeid(*stmt) == typeid(forInStatement)){
         forInStatement* fi = (forInStatement*)stmt;
+        // String container: a <string> is a managed object, not a raw buffer, so
+        // iterate via its object dispatch — bound by getLength(), each char via
+        // getChar(i). (getChar is what `str[i]`'s operator[] lowers to.) This is a
+        // deliberate compiler↔<string>-BLR coupling on those two method names.
+        if(fi->isStringForIn){
+            string c   = spillName(fi->counterVar);
+            string el  = spillName(fi->elementVar);
+            string str = spillName(fi->arrayVar);
+            out << indent << c << " = 0;\n";
+            out << indent << "for (: " << c << " < " << str << ".getLength() : " << c << "++) {\n";
+            out << indent << "    " << el << " = " << str << ".getChar(" << c << ");\n";
+            if(fi->body != nullptr)
+                for(statement* s : fi->body->statements)
+                    emitStatement(s, indent + "    ");
+            out << indent << "}\n";
+            return;
+        }
         // Inline initializer list: emit push/make templates before the loop
         if(!fi->inlineElements.empty()){
             for(auto* elem : fi->inlineElements)
@@ -2164,19 +2227,22 @@ void i6Emitter::emitObject(objectDef* obj){
         if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
             if(arr->isByteArray){
                 string mangledName = "_" + obj->name + "_" + arr->name;
+                // Emit as an I6 hybrid buffer (length word at -->0, data bytes at
+                // ->WORDSIZE) so the member backing matches the standalone
+                // array<char> layout and the byteArray []/size()/for-in accessors.
+                // Mirrors the emitGlobal byte-array path.
                 if(!arr->stringInitializer.empty()){
-                    // String initializer: Array name string "text";
-                    out << format("Array {0} string {1};\n", mangledName, arr->stringInitializer);
+                    out << format("Array {0} buffer {1};\n", mangledName, arr->stringInitializer);
                 } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-                    // Brace initializer: Array name -> count v1 v2 ...;
-                    out << format("Array {0} -> {1}", mangledName, list->elements.size());
-                    for(expression* elem : list->elements) out << " " << elem->text();
+                    out << format("Array {0} buffer", mangledName);
+                    for(expression* elem : list->elements){
+                        string t = elem->text();
+                        if(!t.empty() && t.front() == '-') out << " (" << t << ")";
+                        else                                out << " " << t;
+                    }
                     out << ";\n";
                 } else {
-                    // Sized, zero-initialized: Array name -> count 0 0 ...;
-                    out << format("Array {0} -> {1}", mangledName, arr->arraySize);
-                    for(int k = 0; k < arr->arraySize; k++) out << " 0";
-                    out << ";\n";
+                    out << format("Array {0} buffer {1};\n", mangledName, arr->arraySize);
                 }
                 externalArrayNames[arr->name] = mangledName;
             }

@@ -1509,9 +1509,17 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(expr->resolvedType.empty()) expr->resolvedType = getMethod->returnType.name;
                         if(getMethod->isEmitter)
                             if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)) {
+                                // Byte-array members are stored as a separate backing array
+                                // with the property holding the pointer, so the subscript
+                                // receiver must be the property read `obj.prop` (binding to
+                                // bare `obj` would index the object). Word-array members are
+                                // INLINE property data, a separate access pattern that needs
+                                // `obj.&prop` with no header offset — a distinct latent issue
+                                // not handled here, so leave those on the prior `obj` binding.
+                                string recv = (propType == "bytearray") ? (objName + "." + propName) : objName;
                                 string b = processBglConditionals(blk->i6Body);
-                                b = replaceWord(b, "$self", objName);
-                                b = replaceWord(b, "$val",  objName);
+                                b = replaceWord(b, "$self", recv);
+                                b = replaceWord(b, "$val",  recv);
                                 b = replaceWord(b, "$prop", propName);
                                 if(!getMethod->params.empty())
                                     b = replaceWord(b, "$" + getMethod->params[0]->name, indexExpr->text());

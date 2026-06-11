@@ -56,7 +56,7 @@ object bgl{
 // for-in syntax pay zero bytes.
 //-----------------------------------------------------------------------------
 #storedEmitFirst scratchSupport {
-    Array _bglScratchStack --> 33;
+    Array _bglScratchStack table 33;
     Global _bglScratchTop = 0;
     [ _bglScratchPush v;
         if(_bglScratchTop >= 31){

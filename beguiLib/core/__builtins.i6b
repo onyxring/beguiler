@@ -53,6 +53,21 @@ Global _bglFrameTop = 0;
     for (i = 1: i <= size: i++) r-->i = 0;
     return r;
  ];
+ ! Allocate a local Beguile-declared BYTE array (array<char>) of `nbytes` data
+ ! bytes. Layout matches the standalone hybrid buffer (`Array X buffer N`): the
+ ! capacity/length WORD lives at -->0, the data bytes start at ->WORDSIZE. The
+ ! frame slice is sized in words: one length word plus ceil(nbytes/WORDSIZE)
+ ! data words. Caller frees the same word count via _bglByteArrayLocalFree(nbytes).
+ [ _bglByteArrayLocalAlloc nbytes words r i;
+    words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+    r = _bglFrameAlloc(words);
+    for (i = 0: i < words: i++) r-->i = 0;
+    r-->0 = nbytes;   ! capacity, mirroring `buffer N`'s length word
+    return r;
+ ];
+ [ _bglByteArrayLocalFree nbytes;
+    _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+ ];
 
 // ---------------------------------------------------------------------------
 // for-in loop:  for(TYPE item in array) { }
@@ -84,14 +99,16 @@ for (: $counter < $lengthExpr : $counter++) {
 // ---------------------------------------------------------------------------
 // for-in loop (byte array):  for(char c in byteArray) { }
 //
-// Byte arrays store length at ->0 and elements at ->(i+1).
-// Used automatically when iterating over array<char>.
+// Byte buffers use the hybrid layout shared by array<char>, <buf>, and
+// <string>: the length is a WORD at -->0 and the data bytes start at
+// ->WORDSIZE (matching the byteArray/string [] operators). Used automatically
+// when iterating array<char> or a string.
 // ---------------------------------------------------------------------------
 
 [forIn.openByte $counter $array $element]
 $counter = 0;
-for (: $counter < $array->0 : $counter++) {
-    $element = $array->($counter+1);
+for (: $counter < $array-->0 : $counter++) {
+    $element = $array->($counter + WORDSIZE);
 
 [forIn.closeByte]
 }

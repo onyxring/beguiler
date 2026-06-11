@@ -39,7 +39,7 @@ object _bglUtil
 object bgl
   with utilities _bglutil
 ;
-Array __bglchar___vowels string "aeiouAEIOU@:a@:e@:i@:o@:u@:y@:A@:E@:I@:O@:U@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~o@~A@~O";
+Array __bglchar___vowels buffer "aeiouAEIOU@:a@:e@:i@:o@:u@:y@:A@:E@:I@:O@:U@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~o@~A@~O";
 object _bglChar
   with __vowels __bglchar___vowels,
        isAlpha [c;
@@ -140,8 +140,8 @@ object _bglChar
   ],
        isVowel [c v _bglfi0;
     _bglfi0 = 0;
-    for (: _bglfi0 < self.__vowels->0 : _bglfi0++) {
-        v = self.__vowels->(_bglfi0+1);
+    for (: _bglfi0 < self.__vowels-->0 : _bglfi0++) {
+        v = self.__vowels->(_bglfi0 + WORDSIZE);
         if (v==c) {
             rtrue;
         }

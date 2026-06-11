@@ -584,7 +584,11 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         fi.elementVar = elemVarName;
         fi.arrayVar   = arrName;
         fi.counterVar = counterName;
-        fi.isByteArray = (elemVarType == "char");
+        // Inline-list for-in always iterates the word-based scratch buffer
+        // (_bglScratchStack), regardless of element type — char values are stored
+        // and read as words there. So the word template is correct even for
+        // `for(char c in {'a','b'})`; the byte template would misread the scratch.
+        fi.isByteArray = false;
         fi.inlineElements = elements;
         fi.body = new statementBlock();
         functionDef forCtx;
@@ -709,10 +713,39 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
 
     forInStatement& fi = *(new forInStatement());
     fi.src = stmtLoc;
+    // A `<string>` is a managed object (chars via getChar()/operator[]), NOT a raw
+    // byte buffer, so for-in over it can't use the raw byte template — that would
+    // read the object handle as bytes and yield garbage. Reject it with guidance
+    // until proper object-dispatch iteration lands. Detect by resolving the
+    // container name to a string-typed local/global/param.
+    auto resolvesToString = [&](const string& nm) -> bool {
+        if(body != nullptr)
+            for(statement* s : body->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                    if(!dynamic_cast<arrayDeclaration*>(vd) && vd->name == nm && vd->type.name == "string") return true;
+        for(typeDef* g : languageService.globals)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                if(!dynamic_cast<arrayDeclaration*>(vd) && vd->name == nm && vd->type.name == "string") return true;
+        if(func != nullptr)
+            for(paramDef* p : func->params)
+                if(p->name == nm && p->type.name == "string") return true;
+        return false;
+    };
+    bool isStringContainer = resolvesToString(arrExprText);
+
     fi.elementVar = elemVarName;
     fi.arrayVar   = arrName;
     fi.counterVar = counterName;
-    fi.isByteArray = (arrElemType == "char");
+    // A <string> is a managed object: iterate via getLength()/getChar() dispatch
+    // (handled in the emitter), not the raw byte template.
+    fi.isStringForIn = isStringContainer;
+    // Byte iteration for array<char> (hybrid layout: length word -->0, data bytes
+    // ->WORDSIZE). The elemVarType clause catches array<char> reached as an
+    // external object member, where the element-type lookups above fall back to
+    // `var` (the member-type probe only fires inside the owning object). A char
+    // loop var over a word array is rejected as a type mismatch upstream. A string
+    // container dispatches via getChar() above, so it must NOT take the byte path.
+    fi.isByteArray = !isStringContainer && ((arrElemType == "char") || (elemVarType == "char"));
     fi.body = new statementBlock();
     functionDef forCtx;
     if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
