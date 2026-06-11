@@ -336,6 +336,8 @@ class forInStatement : public statement {
         string arrayVar;     // array name, e.g. "scores"
         string counterVar;   // unique index variable, e.g. "_bglfi0"
         bool isByteArray = false; // true when iterating array<char> — use byte for-in template
+        bool isStringForIn = false; // true when the container is a <string> object — iterate via
+                                    // getLength()/getChar() dispatch rather than raw buffer reads
         statementBlock* body = nullptr;
         vector<expression*> inlineElements; // non-empty when source is {a, b, c} initializer list
 };

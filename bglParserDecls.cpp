@@ -164,6 +164,15 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     }
     // else symbol is endStatement: extern/forward declaration — no size or initializer
 
+    // Local byte arrays draw hybrid-buffer backing from the framePool, but only the
+    // sized form (array<char> buf[N]) is wired up. String/list initializers would
+    // need their literal bytes copied in per call, which isn't implemented — reject
+    // them with guidance rather than emitting an unallocated pointer.
+    if(body != nullptr && arrDecl.isByteArray
+       && (!arrDecl.stringInitializer.empty() || dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue)))
+        parsingError("Initialized local byte arrays (array<char> = \"...\" or {...}) are not yet supported. "
+                     "Declare it at file scope, or use a sized local (array<char> buf[N]) and assign elements.");
+
     if(body != nullptr)
         body->statements.push_back(&arrDecl);
     else

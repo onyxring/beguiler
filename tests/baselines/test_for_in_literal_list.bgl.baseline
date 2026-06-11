@@ -1,7 +1,7 @@
 !% -v5
 !% -E1
 
-    Array _bglScratchStack --> 33;
+    Array _bglScratchStack table 33;
     Global _bglScratchTop = 0;
     [ _bglScratchPush v;
         if(_bglScratchTop >= 31){

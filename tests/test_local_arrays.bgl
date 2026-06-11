@@ -48,6 +48,35 @@ int earlyReturn(bool flag){
     return buf[1];             // cleanup runs here too
 }
 
+// Sum a local array's length-tracked elements. Receives a tracked array by
+// reference; length() must survive the call (regression: list-init locals used
+// to emit no allocation, so the pointer was garbage on entry).
+int sumAll(array<int> data){
+    int total = 0;
+    for(int i = 0; i < data.length(); i++) total = total + data[i];
+    return total;
+}
+
+// List-initialized local array: `array<int> name = {…}` inside a function body.
+// Allocation is hoisted to function entry; element values + tracked length are
+// written at the declaration point. Used directly and passed to a helper.
+int listInitLocal(){
+    array<int> primes = {2, 3, 5, 7, 11};   // length starts at 5
+    return primes.length() * 100 + sumAll(primes);  // 5*100 + 28 = 528
+}
+
+// Sized local BYTE array (array<char>) via framePool hybrid-buffer backing:
+// capacity word at -->0, data bytes at ->WORDSIZE. Filled by subscript, read back.
+int localByteArray(){
+    array<char> buf[8];
+    buf[0] = 'X';
+    buf[1] = 'Y';
+    char c0 = buf[0];
+    char c1 = buf[1];
+    if(c0 == 'X' && c1 == 'Y') return 777;   // write/read round-trips
+    return 0;
+}
+
 void main(){
     print(sumDown(5));         // 5+4+3+2+1 = 15
 
@@ -55,4 +84,8 @@ void main(){
 
     print(earlyReturn(true));  // 100
     print(earlyReturn(false)); // 200
+
+    print(listInitLocal());    // 528
+
+    print(localByteArray());   // 'X' + 'Y' = 177
 }
