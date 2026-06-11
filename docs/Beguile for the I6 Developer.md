@@ -44,7 +44,7 @@ Beguiler orchestrates all compilation steps, making them transparent to users â€
     <idea>      ->  Author    ->  game.bgl
     game.bgl    ->  Beguiler  ->  game.gblorb (or .zblorb)
 ```
-> ***Note**: actually, the full name of the intermediate Inform file, listed above as `game.inf` for brevity, is actually `game.bgl.transpiled.inf`. Curious minds can look at it to see what `Beguiler` has produced. The compilation process leaves it in place for this reason, as well as to enable source-code debugging.*
+> ***Note**: Actually, the full name of the intermediate Inform file, listed above as `game.inf` for brevity, is `game.bgl.transpiled.inf`. Curious minds can look at it to see what `Beguiler` has produced. The compilation process leaves it in place for this reason, as well as to enable source-code debugging.*
 
 ## An Overview: Cloak of Darkness 
 Arguably, the fastest way to familiarize yourself with a language is to review a working example.  The canonical Cloak of Darkness game is perfect for this since it is well-known and there are Inform 6 versions readily available for comparison against.  The following is a straight-forward port of that work, ported to Beguile and using Puny Inform.
