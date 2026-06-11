@@ -39,7 +39,7 @@ The same Inform 6 compilation pipeline you are familiar with remains with only m
     game.inf    ->  Inform 6  ->  game.ulx (or .z3/.z5/.z8)
     game.ulx    ->  Beguiler  ->  game.gblorb (or .zblorb)
 ```
-Beguiler orchestrates all compilation steps, making them transparent to users — including the final blorb-packaging step, which Beguiler performs via its built-in blorb tool (no separate utility required).  The golden path: A single run of Beguiler produces a playable game, blorbified at your discretion.  Managing I6 becomes Beguile's responsibility, unless you choose to do it yourself, making the effective pipeline:
+Beguiler orchestrates all compilation steps, making them transparent to users - including the final blorb-packaging step, which Beguiler performs via its built-in blorb tool (no separate utility required).  The golden path: A single run of Beguiler produces a playable game, blorbified at your discretion.  Managing I6 becomes Beguile's responsibility, unless you choose to do it yourself, making the effective pipeline:
 ```
     <idea>      ->  Author    ->  game.bgl
     game.bgl    ->  Beguiler  ->  game.gblorb (or .zblorb)
@@ -230,7 +230,7 @@ The `#beguilerSettings` directive is a block of compile-time settings.  It is si
 
 Unlike Inform's ICL comments, which must begin on line 1 (if defined at all) and always end at the first line which does not start with `!%`, the `#beguilerSettings` block may appear anywhere in your Beguile source, in any file which is compiled, *any number of times*.  
 
-Generally, settings retain the first value assigned.  Attempts to reassign values to settings are silently ignored — this is intentional, so that a command-line switch (which always wins, even over the first block) can override a value without producing spurious errors. There is one exception to this rule...  `includePaths`.
+Generally, settings retain the first value assigned.  Attempts to reassign values to settings are silently ignored - this is intentional, so that a command-line switch (which always wins, even over the first block) can override a value without producing spurious errors. There is one exception to this rule...  `includePaths`.
 
 #### 1. `includePaths`
 ```
@@ -467,7 +467,7 @@ extend class object {
 }
 ```
 
-> ***Note**: `extend` is a powerful feature that deserves its own discussion; here, we'll explain just enough to follow the example. In short: `extend` adds members to an already-declared object or class — including the built-in `object` itself. By extending `object` with directional properties like `s_to` and `e_to`, we declare once that any `object` in our game which has these members, will assume this declared type, unless otherwise specified.*
+> ***Note**: `extend` is a powerful feature that deserves its own discussion; here, we'll explain just enough to follow the example. In short: `extend` adds members to an already-declared object or class - including the built-in `object` itself. By extending `object` with directional properties like `s_to` and `e_to`, we declare once that any `object` in our game which has these members, will assume this declared type, unless otherwise specified.*
 
 Here we extend `object` by defining several properties and their types.  On the surface, what this does isn't obvious, but it demonstrates the Beguile rule of "Type Inference".  Put another way, when a member is declared on a class, its type will be inferred, even if not specified, on instances of that class.  This enables the following to compile:
 ```
@@ -573,7 +573,7 @@ There are a few things in the above example to take note of...
         (property)n_to
         ```
 
-        Beguile type casting can be thought of as "compiler hints".  Usually they mimic the C++/C# behavior of type conversion; here, the cast changes *what gets emitted*, not the value's type.  Without the cast, `n_to` would emit as `self.n_to` — the *value stored at* that property.  With the cast, it emits as `n_to` — the property *identifier itself* (an integer).  The property id is what Puny stores in the `selected_direction` variable, so that's what we need to compare against.
+        Beguile type casting can be thought of as "compiler hints".  Usually they mimic the C++/C# behavior of type conversion; here, the cast changes *what gets emitted*, not the value's type.  Without the cast, `n_to` would emit as `self.n_to` - the *value stored at* that property.  With the cast, it emits as `n_to` - the property *identifier itself* (an integer).  The property id is what Puny stores in the `selected_direction` variable, so that's what we need to compare against.
 
 
 -  Beguile also supports a host of additional operators, unavailable in I6:
@@ -589,7 +589,7 @@ There are a few things in the above example to take note of...
     ```
     rtrue("Blundering around in the dark isn't a good idea!"); 
     ```
-    This form is equivalent to `print("Blundering around in the dark isn't a good idea!"); rtrue;`.  Conceptually, it is like I6's `print_ret`; however — and this is the gotcha — **it does not add a trailing newline**.  If you want one, include it explicitly with `^` or `\n` in the string.
+    This form is equivalent to `print("Blundering around in the dark isn't a good idea!"); rtrue;`.  Conceptually, it is like I6's `print_ret`; however - and this is the gotcha - **it does not add a trailing newline**.  If you want one, include it explicitly with `^` or `\n` in the string.
 
 - This next line looks like the previous example of assigning attributes:
     ```
@@ -787,15 +787,15 @@ While Cloak of Darkness serves as a gentle introduction to Beguile, it does litt
 
 ### The Beguile Language Runtime
 
-We've referenced the **Beguile Language Runtime** — the BLR — several times in passing already.  Before going further, it's worth pausing to look at what it actually is.
+We've referenced the **Beguile Language Runtime** - the BLR - several times in passing already.  Before going further, it's worth pausing to look at what it actually is.
 
 The BLR is Beguile's standard library, written almost entirely in Beguile itself (with a sprinkling of I6 where we have to touch the metal).  It lives in the `beguiLib` folder, alongside the `beguiler` binary, and ships as part of the standard install.
 
 Conceptually, the BLR is divided into three kinds of content:
 
-- **Core types** — the language's runtime fabric.  The `object` class, `attribute` and `attributeList`, `array<T>`, and so on.  These are pulled in implicitly; you never `#include` them by name.
+- **Core types** - the language's runtime fabric.  The `object` class, `attribute` and `attributeList`, `array<T>`, and so on.  These are pulled in implicitly; you never `#include` them by name.
 
-- **Extensions** — opt-in features that bolt onto the language.  You ask for them by name:
+- **Extensions** - opt-in features that bolt onto the language.  You ask for them by name:
     ```
     #include <string>      // mutation, content equality, concatenation
     #include <array>       // LINQ-style operations on arrays
@@ -804,15 +804,15 @@ Conceptually, the BLR is divided into three kinds of content:
     ```
     Each extension adds members to existing types or introduces new types entirely.  We'll meet several of these as we go.
 
-- **Bindings** — wrappers around I6 libraries you bring in via `#includeI6`.  Two ship by default: `i6StandardLibrary` and `punyInform`.  We met one of these in the Cloak example.
+- **Bindings** - wrappers around I6 libraries you bring in via `#includeI6`.  Two ship by default: `i6StandardLibrary` and `punyInform`.  We met one of these in the Cloak example.
 
-> ***Note**: I designed the BLR to be opt-in by default.  A program that includes nothing pays nothing — no scratch buffers, no helper routines, no platform shims emit unless the feature that needs them is actually used.*
+> ***Note**: I designed the BLR to be opt-in by default.  A program that includes nothing pays nothing - no scratch buffers, no helper routines, no platform shims emit unless the feature that needs them is actually used.*
 
 #### Namespaces
 
 The BLR organizes its surface area under a small set of namespace objects rooted at `bgl`.  You'll see this in `bgl.world.getAll()`, `bgl.glulx.createMainWindow()`, and friends.  Under the hood, it's a regular Beguile feature: the `auto` qualifier.
 
-The pattern looks like this — taken straight from the `<bglWorld>` extension:
+The pattern looks like this - taken straight from the `<bglWorld>` extension:
 
 ```
 object _bglWorld {
@@ -830,7 +830,7 @@ Other namespaces follow the same pattern: `bgl.glulx` for Glulx-specific helpers
 
 ### Strings
 
-I6's mental model for strings is austere but elegant: a literal like `"hello"` evaluates to a memory address; you can `print` it, you can compare addresses for object-identity-style equality, and that's the surface.  Real string work — comparing contents, building strings at runtime, accumulating text — requires either careful use of the print stream or library code that hides the byte-twiddling.
+I6's mental model for strings is austere but elegant: a literal like `"hello"` evaluates to a memory address; you can `print` it, you can compare addresses for object-identity-style equality, and that's the surface.  Real string work - comparing contents, building strings at runtime, accumulating text - requires either careful use of the print stream or library code that hides the byte-twiddling.
 
 Beguile keeps the I6-style address-of-literal as the default, then layers on a richer feature set you opt into.
 
@@ -845,7 +845,7 @@ string greeting = "Hello, world.";
 ...gives `greeting` the address of a packed string literal in memory.  You can:
 - `print(greeting)` and it prints
 - pass it around, store it in object members, copy it (you're copying the address)
-- compare two `string` values with `==` — but you're comparing addresses, not content
+- compare two `string` values with `==` - but you're comparing addresses, not content
 
 The bare type carries no runtime overhead beyond what I6 would emit.  If your game just declares object descriptions and prints them, this is all you need.
 
@@ -857,7 +857,7 @@ The moment you write...
 #include <string>
 ```
 
-...the `string` type grows up.  It's still the same type — you don't change any declarations — but a wealth of new methods and operators become available.  The most important shift, for the I6 dev's mental model: `==` now compares content.
+...the `string` type grows up.  It's still the same type - you don't change any declarations - but a wealth of new methods and operators become available.  The most important shift, for the I6 dev's mental model: `==` now compares content.
 
 ```
 string a = "hello";
@@ -876,7 +876,7 @@ Other things the extension gives you, in no particular order:
 - Indexed character access (`s[3]`)
 - Format strings via `string.format(pattern, args...)`
 
-> ***Note**: Including `<string>` does add runtime cost — a small string pool and the dispatch routines that make typed comparisons work.  If your game is content-string heavy, the cost is well-paid.  If you're only printing literals and never comparing them, you don't need the extension and shouldn't include it.*
+> ***Note**: Including `<string>` does add runtime cost - a small string pool and the dispatch routines that make typed comparisons work.  If your game is content-string heavy, the cost is well-paid.  If you're only printing literals and never comparing them, you don't need the extension and shouldn't include it.*
 
 #### `print` is a routine, not a statement
 
@@ -884,13 +884,13 @@ We touched on this in the CoD walkthrough, but it's worth saying again here whil
 
 ```
 print("plain text");      // string overload
-print(score);             // int overload — prints decimal
-print(noun);              // object overload — prints short_name
+print(score);             // int overload - prints decimal
+print(noun);              // object overload - prints short_name
 ```
 
-Each call takes a single argument of a known type.  If you want to print three things, that's three calls — or, much more commonly, one interpolated string.
+Each call takes a single argument of a known type.  If you want to print three things, that's three calls - or, much more commonly, one interpolated string.
 
-> ***Note**: This differs sharply from I6's `print` statement, which takes comma-separated arguments and uses keyword tokens like `(string)`, `(name)`, `(the)` to coerce them.  Beguile relies on the type system instead — the right overload runs because the argument carries its type.*
+> ***Note**: This differs sharply from I6's `print` statement, which takes comma-separated arguments and uses keyword tokens like `(string)`, `(name)`, `(the)` to coerce them.  Beguile relies on the type system instead - the right overload runs because the argument carries its type.*
 
 #### Interpolation revisited
 
@@ -907,7 +907,7 @@ The CoD walkthrough introduced interpolated strings; here's the I6-dev mental mo
 
 #### What about buffers?
 
-For genuinely mutable, byte-level work — accumulating output into a buffer, parsing, building text procedurally — Beguile has a separate `<buf>` extension that gives you sized buffer objects with `[]` access, length, capacity, and the rest.  We'll cover buffers when we get to the section on BLR utilities.
+For genuinely mutable, byte-level work - accumulating output into a buffer, parsing, building text procedurally - Beguile has a separate `<buf>` extension that gives you sized buffer objects with `[]` access, length, capacity, and the rest.  We'll cover buffers when we get to the section on BLR utilities.
 
 ### Using Arrays
 - for in syntax
@@ -916,7 +916,7 @@ For genuinely mutable, byte-level work — accumulating output into a buffer, pa
 
 ### Declaring a Verb from Scratch
 
-The `extend` form lets us add patterns to a verb already declared in the binding.  If your game needs a brand-new verb, the syntax mirrors object declaration — a `verb` block with its own `grammar` and a `perform` routine that fires when the verb matches:
+The `extend` form lets us add patterns to a verb already declared in the binding.  If your game needs a brand-new verb, the syntax mirrors object declaration - a `verb` block with its own `grammar` and a `perform` routine that fires when the verb matches:
 
 ```
 verb Flip {
