@@ -467,7 +467,7 @@ extend class object {
 }
 ```
 
-> ***Note**: `extend` is a powerful feature that deserves its own discussion; here, we'll explain just enough to follow the example. In short: `extend` adds members to an already-declared object or class - including the built-in `object` itself. By extending `object` with directional properties like `s_to` and `e_to`, we declare once that any `object` in our game which has these members, will assume this declared type, unless otherwise specified.*
+> ***Note**: `extend` is a powerful feature that deserves its own discussion; here, we'll explain just enough to follow the example. In short: `extend` adds members to an already-declared object or class - including the built-in `object` itself.*
 
 Here we extend `object` by defining several properties and their types.  On the surface, what this does isn't obvious, but it demonstrates the Beguile rule of "Type Inference".  Put another way, when a member is declared on a class, its type will be inferred, even if not specified, on instances of that class.  This enables the following to compile:
 ```
