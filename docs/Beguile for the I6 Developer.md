@@ -23,11 +23,11 @@ A handful of principles guided the design of the language:
 
     > ***YES**: You can use Beguile with Puny Inform or the Inform Standard Library, without modifying those libraries.*
 
-* **Syntactic Consistency** - The language adheres to an object-oriented paradigm, and eschews the addition of new idioms to cover language edge cases. Sometimes the cost of this semantic clarity is slightly longer code.  In others, the Beguile code is shorter. 
+* **Syntactic Consistency** - The language adheres to an object-oriented paradigm, and eschews the addition of new idioms to cover language edge cases. Sometimes the cost of this semantic clarity is slightly longer code.  In others, the Beguile code is shorter. In most cases, the Beguile code will read as well, or better, than I6.
 
 * **Ease of Use** - Abiding by the "Syntactic Consistency" principle above can sometimes translate into boilerplate code.  Although the language tries to avoid the special-case syntaxes and keywords used in some languages to abbreviate things, it still seeks to balance expressiveness with conciseness.  You'll see this principle manifest in several ways. 
 
-* **Type safety** - Beguile is a type-safe language. I6 leaves typing to the author's discipline; Beguile encodes that discipline in the compiler. This is one of the most material differences between the two. 
+* **Type safety** - Beguile is a type-safe language. I6 leaves data typing to the discipline of the author; Beguile pulls that discipline into the compiler. This is one of the most material differences between the two. 
     
 * **Expandable type system** - Because you can't have type safety without types, Beguile provides a set of these, and lets you create your own. 
 
