@@ -1,0 +1,21 @@
+// Regression: a class declared in a .bgl resolved via `includePaths` (the search path, not the
+// source dir) must still parse. The grammar matches `class <type-name>`, where <type-name> is a
+// dataType token only if the pre-scanner pre-registered the name. The pre-scanner runs as pass 1,
+// BEFORE the parser processes #beguilerSettings — so extractBlorbSettings must populate
+// includePaths up front, else search-path includes are never pre-scanned and their class
+// declarations fail with "expected type name (in class declaration)".
+//
+// If this regresses the compile fails (no .inf produced) → harness reports ERROR.
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+    includePaths = "incsub";
+}
+
+#include "_includepathClass.bgl"   // resolved via includePaths → tests/incsub/_includepathClass.bgl
+
+// Reference both pre-registered types — proves the search-path class declarations parsed.
+void useTypes(searchPathWidget wgt, searchPathExternThing thing) {
+    wgt.count = 5;
+}

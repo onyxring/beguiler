@@ -1,0 +1,42 @@
+/* test_member_arrays_ext.bgl — with <array>, member arrays get the SAME algorithm surface
+ * as globals/locals via the dual-form _bglArray utility. The compiler passes the owning
+ * object + property for a member ($self=owner, $prop=property name) and the array + a 0
+ * sentinel for a global/local; _bglArray branches on metaclass($self)==object.
+ *
+ * Verifies the Stage-2 dual-form routing emits, for a member:
+ *     _bglArray.indexOf(self, nums, ...) / _bglArray.sort(self, nums, ...) / etc.
+ * and for a global:
+ *     _bglArray.indexOf(g, 0, ...) / _bglArray.sort(g, 0, ...).
+ * Runtime behavior (members ↔ globals identical for sort/indexOf/contains/push/pop/filter/
+ * map/distinct/length) is exercised by the dfrotz probes during development.
+ */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <array>
+
+object widget {
+    array<int> nums = {30, 10, 20};
+    int    findIt()        { return nums.indexOf(20); }       // _bglArray.indexOf(self, nums, 20)
+    bool   hasIt()         { return nums.contains(10); }      // _bglArray.indexOf(self, nums, 10) >= 0
+    int    lenOf()         { return nums.length(); }          // (self.#nums)/WORDSIZE  (inline, Stage 1)
+    void   sortIt()        { nums.sort(); }                   // _bglArray.sort(self, nums, _bglArrayCompareAsc)
+    void   pushIt(int v)   { nums.push(v); }                  // _bglArray.push(self, nums, v)
+    int    sumGt(int n)    { return nums.filter((int x) => x > n).length(); }  // filter(self, nums, ...) chain
+}
+
+// Global path — same surface, must pass the array + 0 sentinel.
+array<int> g = {30, 10, 20};
+int  gFind()  { return g.indexOf(20); }      // _bglArray.indexOf(g, 0, 20)
+void gSort()  { g.sort(); }                  // _bglArray.sort(g, 0, _bglArrayCompareAsc)
+int  gChain() { return g.filter((int x) => x > 15).length(); }
+
+// #2 regression — external dotted member algorithm call resolves element type + routes
+// through the dual-form utility (owner, property).
+int extFind() { return widget.nums.indexOf(20); }   // _bglArray.indexOf(widget, nums, 20)
+
+// #3 regression — a named function passed where a func<…> is expected binds like a lambda.
+bool isOdd(int x) { return (x % 2) != 0; }
+int  namedPred() { return g.filter(isOdd).length(); }

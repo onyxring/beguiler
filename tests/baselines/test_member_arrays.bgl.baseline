@@ -1,0 +1,118 @@
+!% -v5
+!% -E1
+Array _bglFramePool --> 64;
+Global _bglFrameTop = 0;
+ [ _bglFrameAlloc size r;
+    if (_bglFrameTop + size > 64) {
+        print "^[Beguile runtime error: frame pool exhausted]^";
+        quit;
+    }
+    r = _bglFrameTop;
+    _bglFrameTop = _bglFrameTop + size;
+    return _bglFramePool + (r * WORDSIZE);
+ ];
+ [ _bglFrameFree size;
+    _bglFrameTop = _bglFrameTop - size;
+ ];
+ ! Allocate + initialize a local Beguile-declared word array of user-size `size`.
+ ! Layout matches static tracked arrays: [header, data×size, length, magic].
+ ! Returns a pointer at the header slot. Caller must free with _bglFrameFree(size+3)
+ ! on every return path (driven by the function's cleanups list).
+ ! Emitted only when the program includes <array>.
+ [ _bglArrayLocalAlloc size r i;
+    r = _bglFrameAlloc(size + 3);
+    r-->0 = size + 2;
+    for (i = 1: i <= size: i++) r-->i = 0;
+    r-->(size + 1) = 0;
+    r-->(size + 2) = $9084;
+    return r;
+ ];
+ ! Plain variant for programs that don't include <array>: untracked layout
+ ! [header=size, data×size]. Matches the global-array emission gated on the
+ ! same arrayInUse flag. Caller frees with _bglFrameFree(size+1).
+ [ _bglArrayLocalAllocPlain size r i;
+    r = _bglFrameAlloc(size + 1);
+    r-->0 = size;
+    for (i = 1: i <= size: i++) r-->i = 0;
+    return r;
+ ];
+ ! Allocate a local Beguile-declared BYTE array (array<char>) of `nbytes` data
+ ! bytes. Layout matches the standalone hybrid buffer (`Array X buffer N`): the
+ ! capacity/length WORD lives at -->0, the data bytes start at ->WORDSIZE. The
+ ! frame slice is sized in words: one length word plus ceil(nbytes/WORDSIZE)
+ ! data words. Caller frees the same word count via _bglByteArrayLocalFree(nbytes).
+ [ _bglByteArrayLocalAlloc nbytes words r i;
+    words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+    r = _bglFrameAlloc(words);
+    for (i = 0: i < words: i++) r-->i = 0;
+    r-->0 = nbytes;   ! capacity, mirroring `buffer N`'s length word
+    return r;
+ ];
+ [ _bglByteArrayLocalFree nbytes;
+    _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+ ];
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+object widget
+  with nums 10 20 30 ,
+       readElem [;
+    return self.&nums-->(1);
+  ],
+       writeElem [;
+    self.&nums-->(0) = 99;
+  ],
+       sumElems [t x _bglfi0;
+    t = 0;
+    _bglfi0 = 0;
+    for (: _bglfi0 < (self.#nums)/WORDSIZE : _bglfi0++) {
+        x = self.&nums-->(_bglfi0);
+        t = t + x;
+    }
+    return t;
+  ],
+       sizeOf [;
+    return ((self.#nums)/WORDSIZE);
+  ],
+       lengthOf [;
+    return ((self.#nums)/WORDSIZE);
+  ]
+;
+class gadget
+  class object
+  with
+    peek[i;
+        return self.&readings-->(i);
+    ],
+    poke[i v;
+        self.&readings-->(i) = v;
+    ],
+    total[t x _bglfia1 _bglfi2;
+        t = 0;
+        _bglfia1 = self.readings;
+        _bglfi2 = 0;
+        for (: _bglfi2 < _bglfia1-->0 : _bglfi2++) {
+            x = _bglfia1-->(_bglfi2+1);
+            t = t + x;
+        }
+        return t;
+    ],
+    readings 1 2 3 4 
+;
+gadget g1;
+array g_nums table 7 8 9;
+[main ra loc rb;
+    loc = _bglArrayLocalAllocPlain(2);
+    ra= g_nums-->(1+1);
+    loc-->1 = 5;
+    loc-->2 = 6;
+    rb= loc-->(0+1);
+    _bglFrameFree(3);
+];

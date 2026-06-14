@@ -97,6 +97,21 @@ for (: $counter < $lengthExpr : $counter++) {
 }
 
 // ---------------------------------------------------------------------------
+// for-in loop (member / property WORD array):  for(T x in obj.prop) { }
+//
+// Property arrays follow the orLibrary convention: a plain `with prop a b c`
+// property whose element n lives at obj.&prop-->n (0-indexed, NO count slot),
+// length via (obj.#prop)/WORDSIZE. The emitter passes $array as the property
+// address expression ("obj.&prop") and precomputes $lengthExpr. forIn.close
+// (above) closes the loop for this variant too.
+// ---------------------------------------------------------------------------
+[forIn.openMember $counter $array $element $lengthExpr]
+$counter = 0;
+for (: $counter < $lengthExpr : $counter++) {
+    $element = $array-->($counter);
+
+
+// ---------------------------------------------------------------------------
 // for-in loop (byte array):  for(char c in byteArray) { }
 //
 // Byte buffers use the hybrid layout shared by array<char>, <buf>, and

@@ -1,0 +1,21 @@
+!% -v5
+!% -E1
+!% ++include_path=/Users/jim/projects/IF-Projects/beguiler/tests/incsub
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+class searchpathwidget
+  class object
+  with
+    count
+;
+[useTypes wgt thing;
+    wgt.count = 5;
+];

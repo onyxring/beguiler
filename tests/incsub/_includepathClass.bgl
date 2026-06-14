@@ -1,0 +1,14 @@
+// Helper for test_includepath_searchpath.bgl — lives in a subdir reachable ONLY via the
+// parent's `#beguilerSettings includePaths = "incsub"`. Declares both a plain `class` and an
+// `extern class`; both forms require the pre-scanner to have pre-registered the name as a type
+// (the grammar matches `class <type-name>`). The pre-scanner only resolves this file if
+// includePaths is populated before pass 1 — which is exactly the regression under test.
+#once
+
+class searchPathWidget : object {
+    int count;
+}
+
+extern class searchPathExternThing : object {
+    string short_name;
+}

@@ -17,7 +17,6 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
-    g_empty-->(g_empty-->0) = $9084;
 
     _bglLinqScratchA-->(_bglLinqScratchA-->0)     = $9084;
     _bglLinqScratchA-->(_bglLinqScratchA-->0 - 1) = 0;
@@ -429,189 +428,49 @@ object _bglArray
     return dst;
   ]
 ;
-array g_nums table 1 2 3 4 5 6 7 8 9 10 10 $9084;
-array g_dupes table 3 1 4 1 5 9 2 6 5 3 10 $9084;
-array g_same table 7 7 7 7 7 7 6 $9084;
-array g_sorted table 1 2 3 4 5 5 $9084;
-array g_neg table (-3) (-1) (-4) (-1) (-5) 5 $9084;
-array g_one table 42 1 $9084;
-array g_empty table 10;
-[main result;
-    print _bglArray.length(_bglArray.take(_bglArray.skip(_bglArray.filter(_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_0), 0, _bglLambda_1), 0, _bglLambda_2), 0, 1), 0, 3), 0);
-    if(_bglArray.all(_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_3), 0, _bglLambda_4), 0, _bglLambda_5) == true) print "true"; else print "false";
-    result = _bglArray.filter(g_nums, 0, _bglLambda_6);
-    print _bglArray.length(result, 0);
-    print  result-->(0+1) ;
-    print  result-->(4+1) ;
-    print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_7), 0);
-    print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_8), 0);
-    print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_9), 0);
-    if (_bglArray.any(g_nums, 0, _bglLambda_10)) {
-        print _bglArray.first(_bglArray.filter(g_nums, 0, _bglLambda_11), 0);
-    }
-    else {
-        print -1;
-    }
-    print _bglArray.length(_bglArray.takeWhile(g_nums, 0, _bglLambda_12), 0);
-    print  (_bglArray.takeWhile(g_nums, 0, _bglLambda_13))-->(9+1) ;
-    print _bglArray.length(_bglArray.skipWhile(g_nums, 0, _bglLambda_14), 0);
-    print  (_bglArray.skipWhile(g_nums, 0, _bglLambda_15))-->(0+1) ;
-    print _bglArray.length(_bglArray.take(g_nums, 0, 0), 0);
-    print _bglArray.length(_bglArray.take(g_nums, 0, 10), 0);
-    print _bglArray.length(_bglArray.skip(g_nums, 0, 0), 0);
-    print _bglArray.length(_bglArray.skip(g_nums, 0, 10), 0);
-    print _bglArray.first(_bglArray.filter(g_one, 0, _bglLambda_16), 0);
-    print _bglArray.first(_bglArray.map(g_one, 0, _bglLambda_17), 0);
-    print _bglArray.length(_bglArray.distinct(g_one, 0), 0);
-    print  (_bglArray.orderBy(g_one, 0, _bglArrayCompareAsc))-->(0+1) ;
-    print _bglArray.length(_bglArray.distinct(g_same, 0), 0);
-    print  (_bglArray.distinct(g_same, 0))-->(0+1) ;
-    print  (_bglArray.orderBy(g_sorted, 0, _bglArrayCompareAsc))-->(0+1) ;
-    print  (_bglArray.orderBy(g_sorted, 0, _bglArrayCompareAsc))-->(4+1) ;
-    print  g_sorted-->(0+1) ;
-    print  (_bglArray.orderBy(g_dupes, 0, _bglLambda_18))-->(0+1) ;
-    print _bglArray.length(_bglArray.filter(g_neg, 0, _bglLambda_19), 0);
-    print _bglArray.length(_bglArray.distinct(g_neg, 0), 0);
-    print  (_bglArray.orderBy(g_neg, 0, _bglArrayCompareAsc))-->(0+1) ;
-    print _bglArray.length(_bglArray.filter(g_empty, 0, _bglLambda_20), 0);
-    print _bglArray.length(_bglArray.map(g_empty, 0, _bglLambda_21), 0);
-    print _bglArray.length(_bglArray.take(g_empty, 0, 5), 0);
-    print _bglArray.length(_bglArray.skip(g_empty, 0, 5), 0);
-    print _bglArray.length(_bglArray.takeWhile(g_empty, 0, _bglLambda_22), 0);
-    print _bglArray.length(_bglArray.skipWhile(g_empty, 0, _bglLambda_23), 0);
-    print _bglArray.length(_bglArray.distinct(g_empty, 0), 0);
-    print _bglArray.length(_bglArray.orderBy(g_empty, 0, _bglArrayCompareAsc), 0);
-    print _bglArray.first(g_empty, 0);
-    print _bglArray.last(g_empty, 0);
-    print _bglArray.length(g_empty, 0);
-    if(_bglArray.any(g_empty, 0, _bglLambda_24) == true) print "true"; else print "false";
-    if(_bglArray.all(g_empty, 0, _bglLambda_25) == true) print "true"; else print "false";
-    print _bglArray.length(_bglArray.filter(_bglArray.map(g_nums, 0, _bglLambda_26), 0, _bglLambda_27), 0);
-    print  (_bglArray.orderBy(_bglArray.map(g_nums, 0, _bglLambda_28), 0, _bglLambda_29))-->(0+1) ;
-    print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_30), 0);
-    print  (_bglArray.filter(g_nums, 0, _bglLambda_31))-->(0+1) ;
-    print  (_bglArray.map(g_nums, 0, _bglLambda_32))-->(2+1) ;
-    print  (_bglArray.take(g_nums, 0, 3))-->(2+1) ;
-    print  (_bglArray.skip(g_nums, 0, 7))-->(0+1) ;
-    print  (_bglArray.takeWhile(g_nums, 0, _bglLambda_33))-->(2+1) ;
-    print  (_bglArray.skipWhile(g_nums, 0, _bglLambda_34))-->(0+1) ;
-    print  (_bglArray.distinct(g_dupes, 0))-->(0+1) ;
-    print  (_bglArray.orderBy(g_dupes, 0, _bglArrayCompareAsc))-->(0+1) ;
+object widget
+  with nums 30 10 20 ,
+       findIt [;
+    return _bglArray.indexOf(self, nums, 20);
+  ],
+       hasIt [;
+    return (_bglArray.indexOf(self, nums, 10) >= 0);
+  ],
+       lenOf [;
+    return ((self.#nums)/WORDSIZE);
+  ],
+       sortIt [;
+    _bglArray.sort(self, nums, _bglArrayCompareAsc);
+  ],
+       pushIt [v;
+    _bglArray.push(self, nums, v);
+  ],
+       sumGt [n;
+    return _bglArray.length(_bglArray.filter(self, nums, _bglLambda_0), 0);
+  ]
+;
+array g table 30 10 20 3 $9084;
+[gFind;
+    return _bglArray.indexOf(g, 0, 20);
+];
+[gSort;
+    _bglArray.sort(g, 0, _bglArrayCompareAsc);
+];
+[gChain;
+    return _bglArray.length(_bglArray.filter(g, 0, _bglLambda_1), 0);
+];
+[extFind;
+    return _bglArray.indexOf(widget, nums, 20);
+];
+[isOdd x;
+    return (x % 2) ~= 0;
+];
+[namedPred;
+    return _bglArray.length(_bglArray.filter(g, 0, isodd), 0);
 ];
 [_bglLambda_0 x;
-    return x > 0;
+    return x > _bglCap0;
 ];
 [_bglLambda_1 x;
-    return x*2;
-];
-[_bglLambda_2 x;
-    return x<18;
-];
-[_bglLambda_3 x;
-    return x > 5;
-];
-[_bglLambda_4 x;
-    return x+1;
-];
-[_bglLambda_5 y;
-    return y>0;
-];
-[_bglLambda_6 x;
-    return x > 5;
-];
-[_bglLambda_7 x;
-    return x > 7;
-];
-[_bglLambda_8 x;
-    return x > 7;
-];
-[_bglLambda_9 x;
-    return x > 7;
-];
-[_bglLambda_10 x;
-    return x == 5;
-];
-[_bglLambda_11 x;
-    return x > 5;
-];
-[_bglLambda_12 x;
-    return x > 0;
-];
-[_bglLambda_13 x;
-    return x > 0;
-];
-[_bglLambda_14 x;
-    return x > 100;
-];
-[_bglLambda_15 x;
-    return x > 100;
-];
-[_bglLambda_16 x;
-    return x == 42;
-];
-[_bglLambda_17 x;
-    return x + 1;
-];
-[_bglLambda_18 a b;
-    if (a > b) {
-        return -1;
-    }
-    if (a < b) {
-        return 1;
-    }
-    return 0;
-];
-[_bglLambda_19 x;
-    return x < 0;
-];
-[_bglLambda_20 x;
-    return x > 0;
-];
-[_bglLambda_21 x;
-    return x * 2;
-];
-[_bglLambda_22 x;
-    return x >= -32000;
-];
-[_bglLambda_23 x;
-    return x >= -32000;
-];
-[_bglLambda_24 x;
-    return x >= -32000;
-];
-[_bglLambda_25 x;
-    return x > 32000;
-];
-[_bglLambda_26 x;
-    return x * 10;
-];
-[_bglLambda_27 y;
-    return y>50;
-];
-[_bglLambda_28 x;
-    return x * 10;
-];
-[_bglLambda_29 a b;
-    if (a>b) {
-        return -1;
-    }
-    if (a<b) {
-        return 1;
-    }
-    return 0;
-];
-[_bglLambda_30 x;
-    return x > 3;
-];
-[_bglLambda_31 x;
-    return x > 0;
-];
-[_bglLambda_32 x;
-    return x + 100;
-];
-[_bglLambda_33 x;
-    return x < 4;
-];
-[_bglLambda_34 x;
-    return x < 6;
+    return x > 15;
 ];

@@ -138,10 +138,10 @@ object bgl{
         emitter parentProp operator = (object v){
             move $self to $v
         }
-        emitter parentProp operator == (object v){
+        emitter eBool operator == (object v){
             parent($self) == $v
         }
-        emitter parentProp operator != (object v){
+        emitter eBool operator != (object v){
             parent($self) ~= $v
         }
         emitter object operator(){

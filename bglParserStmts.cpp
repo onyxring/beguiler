@@ -1218,7 +1218,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(getMethod->isEmitter)
                 if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)){
                     string b = processBglConditionals(blk->i6Body);
-                    string pv = (arrType == "array" || arrType == "bytearray") ? "0" : "<$prop undefined>";
+                    string pv = (isWordArrayType(arrType) || arrType == "bytearray") ? "0" : "<$prop undefined>";
                     string selfValue = arrPath;
                     size_t innerDot = arrPath.rfind('.');
                     if(innerDot != string::npos){ selfValue = arrPath.substr(0, innerDot); pv = arrPath.substr(innerDot + 1); }
@@ -1317,8 +1317,18 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         size_t innerDot = arrPath.rfind('.');
         string selfValue = (innerDot == string::npos) ? arrPath : arrPath.substr(0, innerDot);
         string propValue = (innerDot == string::npos)
-            ? (arrType == "array" ? "0" : "<$prop undefined>")
+            ? (isWordArrayType(arrType) ? "0" : "<$prop undefined>")
             : arrPath.substr(innerDot + 1);
+
+        // Member (property) WORD array write uses the orLibrary property convention
+        // obj.&prop-->n = v (0-indexed, no count slot), not the global/table form. A dotted
+        // path is already a property access; a bare name resolving to a member qualifies to one.
+        string memOwner, memProp;
+        bool isMemberWordArray = false;
+        if(isWordArrayType(arrType)){
+            if(innerDot != string::npos){ memOwner = selfValue; memProp = propValue; isMemberWordArray = true; }
+            else isMemberWordArray = splitQualifiedMember(arrPath, func, body, memOwner, memProp);
+        }
 
         functionCallStatement& callStmt = *(new functionCallStatement());
         callStmt.src = stmtLoc;
@@ -1326,7 +1336,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         callStmt.args.push_back(indexExpr);
         callStmt.args.push_back(valExpr);
 
-        if(setMethod->isEmitter)
+        if(isMemberWordArray)
+            callStmt.emitterBody = memOwner + ".&" + memProp + "-->(" + indexExpr->text() + ") = " + valExpr->text();
+        else if(setMethod->isEmitter)
             if(auto* blk = dynamic_cast<i6Block*>(setMethod->body)) {
                 string b = processBglConditionals(blk->i6Body);
                 size_t pos = 0;
@@ -1799,8 +1811,17 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                               ? literalSelfText
                               : (innerDot == string::npos) ? objectPath : objectPath.substr(0, innerDot);
             string propValue = (innerDot == string::npos)
-                ? (objectType == "array" ? "0" : "<$prop undefined>")
+                ? (isWordArrayType(objectType) ? "0" : "<$prop undefined>")
                 : objectPath.substr(innerDot + 1);
+            // Member (property) WORD array: route through the dual-form _bglArray utility with
+            // the owning object + property (matches the expression-context path). Override of
+            // selfValue/propValue is applied just before emitter substitution (after recvElemType).
+            string memOwner, memProp;
+            bool isMemberArr = false;
+            if(isWordArrayType(objectType)){
+                if(innerDot != string::npos){ memOwner = selfValue; memProp = propValue; isMemberArr = true; }
+                else isMemberArr = splitQualifiedMember(objectPath, func, body, memOwner, memProp);
+            }
             // Receiver type can be a classDef OR an objectDef (each unclassed objectDef has its
             // own type identity); both have addressable methods.
             typeDef& objTd2 = languageService.getType(objectType);
@@ -1830,8 +1851,16 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 chainReturnType = "var";
                 callStmt.displayName = tok.originalValue;
             } else {
-                // Element-type binding for generic receivers (array<T>, etc.).
-                string recvElemType = resolveArrayElementType(selfValue, currentFunc, currentFunc ? dynamic_cast<statementBlock*>(currentFunc->body) : nullptr);
+                // Element-type binding for generic receivers (array<T>, etc.). Resolve from the
+                // bare receiver path (handles bare member + global); the member override below
+                // then switches selfValue/propValue to owner/property for the utility dispatch.
+                string recvElemType;
+                {
+                    size_t ed = objectPath.find('.');
+                    if(ed == string::npos) recvElemType = resolveArrayElementType(objectPath, func, body);
+                    else recvElemType = resolveArrayElementTypeDotted(objectPath.substr(0, ed), objectPath.substr(ed + 1), func, body);
+                }
+                if(isMemberArr){ selfValue = memOwner; propValue = memProp; }
                 functionDef* method = bindMethodCall(objectType, objectPath, methodName,
                                                        callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
                                                        recvElemType);

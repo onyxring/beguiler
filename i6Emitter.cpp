@@ -1689,14 +1689,30 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         }
         string openTemplate  = fi->isByteArray ? "forIn.openByte"  : "forIn.open";
         string closeTemplate = fi->isByteArray ? "forIn.closeByte" : "forIn.close";
-        // Length probe: when <array> is included, use the tracked-aware _bglArray.length
-        // dispatch. Without it, fall back to the raw slot count ($array-->0) — matches the
-        // untracked global-array layout emitted at the same arrayInUse=false gate above.
-        string lengthExpr = languageService.arrayInUse
-            ? "_bglArray.length(" + spillName(fi->arrayVar) + ")"
-            : spillName(fi->arrayVar) + "-->0";
+        string arrayVarS = spillName(fi->arrayVar);
+        // Member (property) WORD array: a qualified receiver ("obj.prop") iterates via the
+        // orLibrary property convention — element n at obj.&prop-->n (0-indexed, no count
+        // slot), length (obj.#prop)/WORDSIZE. Members are never tracked, so this is
+        // independent of <array>. Globals/locals keep the count-prefixed/tracked path.
+        bool isMemberArr = !fi->isByteArray && arrayVarS.find('.') != string::npos;
+        string arrayArg = arrayVarS;
+        string lengthExpr;
+        if(isMemberArr){
+            size_t d = arrayVarS.rfind('.');
+            string owner = arrayVarS.substr(0, d), prop = arrayVarS.substr(d + 1);
+            openTemplate = "forIn.openMember";
+            arrayArg = owner + ".&" + prop;
+            lengthExpr = "(" + owner + ".#" + prop + ")/WORDSIZE";
+        } else {
+            // Length probe: when <array> is included, use the tracked-aware _bglArray.length
+            // dispatch. Without it, fall back to the raw slot count ($array-->0) — matches the
+            // untracked global-array layout emitted at the same arrayInUse=false gate above.
+            lengthExpr = languageService.arrayInUse
+                ? "_bglArray.length(" + arrayVarS + ", 0)"   // dual-form: global/local → 0 prop sentinel
+                : arrayVarS + "-->0";
+        }
         applyTemplate(openTemplate,
-            {{"counter", spillName(fi->counterVar)}, {"array", spillName(fi->arrayVar)},
+            {{"counter", spillName(fi->counterVar)}, {"array", arrayArg},
              {"element", spillName(fi->elementVar)}, {"lengthExpr", lengthExpr}},
             indent);
         if(fi->body != nullptr)

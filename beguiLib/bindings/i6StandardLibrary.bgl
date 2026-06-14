@@ -23,6 +23,7 @@ extern attribute animate;       // is an NPC or animate object
 extern attribute talkable;      // can be addressed directly
 extern attribute proper;        // name needs no "the" prefix
 extern attribute plural;        // name is grammatically plural
+extern attribute pluralname;    // object is referred to in the plural ("some keys")
 extern attribute female;        // animate: use she/her pronouns
 extern attribute male;          // animate: use he/him pronouns
 extern attribute neuter;        // animate: use it/its pronouns

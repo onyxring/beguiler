@@ -17,6 +17,11 @@ using namespace std;
 
 struct exitFileSignal {};   // thrown by #exit to unwind to the enclosing parseFile loop
 
+// True for the word-array type whether bare ("array") or templated ("array<int>").
+// Member/global receivers often resolve to the bare base while locals/LINQ results
+// keep the template parameter; array $self/$prop lowering must treat both the same.
+inline bool isWordArrayType(const std::string& t){ return t == "array" || t.rfind("array<", 0) == 0; }
+
 //=============================================================================
 // Grammar-driven pattern matching types (used by processNextStatement)
 //=============================================================================
@@ -356,6 +361,11 @@ class bglParser {
         // memberHint: same semantics as resolveIdentifierType — prefer candidates whose type
         // exposes the named member, falling back to first-match if none satisfy.
         string qualifyIdentifier(string name, functionDef* func, statementBlock* body, const string& memberHint = "");
+        // If `name` resolves to an object-property (member), split its qualified form
+        // ("owner.prop") into owner + prop and return true; globals/locals return false.
+        // Drives member-array access through the orLibrary property-array convention.
+        bool splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
+                                  string& ownerOut, string& propOut);
         bool isTypeCompatible(string argType, string paramType);
         // Returns the classDef whose member/operator hierarchy applies to `typeName`-typed
         // values. For a classDef-typed name, returns that classDef. For an objectDef-typed

@@ -720,6 +720,39 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         return file.getToken();
     };
 
+    // Raw binary operator whose LHS has no emitter (boolean/non-class LHS, e.g. `true && …`,
+    // `suppress == false && …`). The operator itself passes through as raw I6, but the RHS may
+    // still contain emitter-class operations (e.g. `obj.parent == player`). Parse the RHS as its
+    // own sub-expression so those resolve, then emit `op <rhs>`. Without this the RHS shares this
+    // flat expression's stale (non-class) resolvedType and its operators never dispatch — they
+    // leak out as raw I6 property access (`obj.parent` instead of `parent(obj)`). Mirrors the RHS
+    // precedence sub-parse in applyBinaryOperator(). Non-precedence ops (level <0, e.g. compound
+    // assign) keep the old single-token passthrough.
+    auto emitRawBinaryOp = [&](const string& opTok){
+        // Only logical && / || need the RHS sub-parse: their RHS is a full boolean sub-expression
+        // that may contain emitter-class comparisons (`obj.parent == player`). Other raw operators
+        // (arithmetic, bitwise, comparison) keep the historical token-by-token passthrough, so their
+        // emission/spacing is unchanged — those RHSs don't open a fresh emitter dispatch context.
+        if(opTok != "&&" && opTok != "||"){ expr->tokens.push_back(opTok); return; }
+        int rawPrec = operatorPrecedence(opTok);
+        if(rawPrec < 0){ expr->tokens.push_back(opTok); return; }
+        vector<string> rhsTerminators = terminators;
+        for(const string& op : kPrecedenceOps)
+            if(operatorPrecedence(op) <= rawPrec)
+                rhsTerminators.push_back(op);
+        if(parenDepth > 0) rhsTerminators.push_back(token::parenClose);
+        rhsTerminators.push_back("?");
+        expression* rhsExpr = parseExpression(getNext(), rhsTerminators, func, body);
+        expr->tokens.push_back(opTok);
+        expr->tokens.push_back(rhsExpr->text());
+        token terminatorTok;
+        terminatorTok.value = rhsExpr->terminator;
+        terminatorTok.tokenType = eTokenType::oper;
+        if(rhsExpr->terminator == ";" || rhsExpr->terminator == ")" || rhsExpr->terminator == "?")
+            terminatorTok.tokenType = eTokenType::symbol;
+        prefetched = terminatorTok;
+    };
+
     // Pending ternary state: when '?' is encountered, the condition and true branch are
     // captured, then the false branch is collected by continuing the main loop. This avoids
     // sub-parsing the false branch, which would lose the caller's paren tracking state.
@@ -972,10 +1005,22 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 }
                 if(expr->resolvedType.empty()) expr->resolvedType = getMethod->returnType.name;
                 string subscriptText;
-                if(getMethod->isEmitter)
+                // Member (property) WORD arrays use the orLibrary property-array convention:
+                // a plain `with prop a b c` property accessed via `obj.&prop-->n` (0-indexed,
+                // no count slot), NOT the count-prefixed global/table form. Qualifying the bare
+                // name yields "owner.prop" for a member (the global/table emitter body's
+                // `$val-->($i+1)` would otherwise index off the bare property id → garbage).
+                string memberOwner, memberProp;
+                bool isMemberWordArray = isWordArrayType(arrType) &&
+                    splitQualifiedMember(arrName, func, body, memberOwner, memberProp);
+                if(isMemberWordArray){
+                    subscriptText = memberOwner + ".&" + memberProp + "-->(" + indexExpr->text() + ")";
+                    expr->tokens.push_back(subscriptText);
+                }
+                else if(getMethod->isEmitter)
                     if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)) {
                         string b = processBglConditionals(blk->i6Body);
-                        string pv = (arrType == "array" || arrType == "bytearray") ? "0" : "<$prop undefined>";
+                        string pv = (isWordArrayType(arrType) || arrType == "bytearray") ? "0" : "<$prop undefined>";
                         b = replaceWord(b, "$self", arrName);
                         b = replaceWord(b, "$val",  arrName);
                         b = replaceWord(b, "$prop", pv);
@@ -1377,8 +1422,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         } else {
                         // Element-type binding for generic receivers (array<T>, etc.):
                         // look up the receiver path's element type so the method-resolver
-                        // can substitute T → concrete type.
-                        string recvElemType = resolveArrayElementType(objName, func, body);
+                        // can substitute T → concrete type. Use the bare (pre-qualify) name
+                        // first so a member array resolves (qualifyIdentifier rewrote objName
+                        // to "self.<prop>", which the element-type lookup doesn't strip).
+                        string recvElemType = resolveArrayElementType(rawObjName, func, body);
+                        if(recvElemType.empty()) recvElemType = resolveArrayElementType(objName, func, body);
                         method = bindMethodCall(objType, objName, methName,
                                                                callArgs, pal.namedArgNames, pal.interpSegmentsPerArg,
                                                                recvElemType);
@@ -1403,10 +1451,28 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         }
 
                         // Compute $prop for array method calls in expression context
-                        string exprPropValue = (objType == "array") ? "0" : "<$prop undefined>";
+                        string exprPropValue = isWordArrayType(objType) ? "0" : "<$prop undefined>";
+
+                        // Member (property) WORD array? Detect once for member-aware lowering.
+                        // A qualified receiver ("obj.prop") or a bare name resolving to a member
+                        // uses the orLibrary property convention, not the global/tracked form.
+                        string mOwner, mProp;
+                        bool isMemberArr = false;
+                        if(isWordArrayType(objType)){
+                            size_t d = objName.rfind('.');
+                            if(d != string::npos){ mOwner = objName.substr(0, d); mProp = objName.substr(d + 1); isMemberArr = true; }
+                            else isMemberArr = splitQualifiedMember(rawObjName, func, body, mOwner, mProp);
+                        }
 
                         string callText;
-                        if(method->isEmitter){
+                        // size()/length() on a member array: (obj.#prop)/WORDSIZE — bypass the
+                        // (possibly <array>-replaced) emitter body. Members are never tracked, so
+                        // length()==size(). Stage 2 routes the algorithm methods through the utility.
+                        if(isMemberArr && (methName == "size" || methName == "length")){
+                            callText = "((" + mOwner + ".#" + mProp + ")/WORDSIZE)";
+                            expr->tokens.push_back(callText);
+                        }
+                        else if(method->isEmitter){
                             if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                                 string b = processBglConditionals(blk->i6Body);
                                 size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
@@ -1417,7 +1483,13 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 // $self / $val is `self`, not the receiver name. Check the
                                 // pre-qualify form because qualifyIdentifier may have already
                                 // rewritten the bare identifier to "self.<name>" upstream.
-                                string selfHost = isInheritedObjectMember(rawObjName, func, body) ? string("self") : objName;
+                                // Member array: $self is the owning object, $prop the property
+                                // name — the dual-form _bglArray utility branches on metaclass($self)
+                                // to use the property convention. Globals/locals pass the array +
+                                // a 0 sentinel (set via exprPropValue below).
+                                string selfHost = isMemberArr ? mOwner
+                                                 : (isInheritedObjectMember(rawObjName, func, body) ? string("self") : objName);
+                                if(isMemberArr) exprPropValue = mProp;
                                 b = replaceWord(b, "$self", selfHost);
                                 b = replaceWord(b, "$val",  selfHost);
                                 // $class — declared type of the receiver. Ignores multiple inheritance:
@@ -1878,12 +1950,12 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     expr->tokens.push_back(rhsText);
                     expr->resolvedType = resultType;
                 } else {
-                    expr->tokens.push_back(cur.value);
+                    emitRawBinaryOp(cur.value);
                 }
             } else if(cur.value == "!"){
                 parseExprPrefixNot(expr, getNext(), prefetched, func, body);
             } else {
-                expr->tokens.push_back(cur.value);
+                emitRawBinaryOp(cur.value);
             }
         }
         // ─── DICTIONARY WORD LITERAL ─────────────────────────────────────
@@ -1962,8 +2034,32 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
 
             vector<string> emptyNamed;
             vector<vector<interpolatedSegment>> emptyInterp;
+            // Element type for generic receivers (array<int> → int), so T binds in the
+            // method signature (indexOf(T item), filter(func<bool,T>), …).
+            string chainElem;
+            { size_t lt = chainTypeName.find('<');
+              if(lt != string::npos && !chainTypeName.empty() && chainTypeName.back() == '>')
+                  chainElem = chainTypeName.substr(lt + 1, chainTypeName.size() - lt - 2);
+              if(chainElem.empty() && chainTypeName == "bytearray") chainElem = "char"; }
+            // Member (property) array receiver: a dotted path with no call (e.g. "widget.m")
+            // routes through the dual-form utility with $self=owner, $prop=property. A chained
+            // call result ("_bglArray.filter(…)" — has '(') is a scratch global → 0 sentinel.
+            bool chainIsMember = isWordArrayType(chainTypeName)
+                                 && selfText.find('.') != string::npos
+                                 && selfText.find('(') == string::npos;
+            string chainSelf = selfText;
+            string chainProp = isWordArrayType(chainTypeName) ? "0" : "<$prop undefined>";
+            if(chainIsMember){
+                size_t d = selfText.rfind('.');
+                chainSelf = selfText.substr(0, d);
+                chainProp = selfText.substr(d + 1);
+                // The receiver path often resolves to the bare base ("array") with no template,
+                // so recover the element type from the owning object's property declaration.
+                if(chainElem.empty())
+                    chainElem = resolveArrayElementTypeDotted(chainSelf, chainProp, func, body);
+            }
             functionDef* method = bindMethodCall(chainTypeName, selfText, methName,
-                                                   callArgs, emptyNamed, emptyInterp);
+                                                   callArgs, emptyNamed, emptyInterp, chainElem);
 
             expr->tokens.clear();
             expr->resolvedType = method->returnType.name;
@@ -1974,13 +2070,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     string b = processBglConditionals(blk->i6Body);
                     size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                     size_t e = b.find_last_not_of(" \t\n\r"); if(e != string::npos) b = b.substr(0, e+1);
-                    b = replaceWord(b, "$self", selfText);
-                    b = replaceWord(b, "$val",  selfText);
+                    b = replaceWord(b, "$self", chainSelf);
+                    b = replaceWord(b, "$val",  chainSelf);
                     for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
                         b = replaceWord(b, "$" + method->params[i]->name, callArgs[i]->text());
-                    // Any leftover $prop is unresolved (no matching parameter — see array
-                    // emitters that consume property names from outside the call).
-                    b = replaceWord(b, "$prop", "<$prop undefined>");
+                    b = replaceWord(b, "$prop", chainProp);
                     callText = b;
                     expr->tokens.push_back(b);
                 }

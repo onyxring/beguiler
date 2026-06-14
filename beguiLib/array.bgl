@@ -45,76 +45,82 @@ int _bglArrayCompareAsc(var lhs, var rhs){
 //
 // All emitter bodies dispatch through _bglArray (declared in core).
 //-----------------------------------------------------------------------------
+// Every method dispatches through _bglArray as ($self, $prop, …) — the dual-form
+// utility (mirroring orLibrary's util.orArray) that branches on metaclass($self):
+//   • member/property array → $self is the owning object, $prop the property
+//     ($self.&$prop-->n, size $self.#$prop/WORDSIZE).
+//   • global/local array     → $self is the array address, $prop a 0 sentinel
+//     (tracked layout). The compiler fills $self/$prop per call site.
 extend extern class array {
     // Tracked-aware overrides of the core's raw `$val-->0` size/length.
     // Probe a magic marker stamped by the compiler when `<array>` is included.
-    replace emitter int  size()           { _bglArray.size($val) }
-    replace emitter int  length()         { _bglArray.length($val) }
-    emitter void setLength(int n)         { _bglArray.setLength($val, $n) }
-    emitter bool isTracked()              { _bglArray.isTracked($val) }
+    replace emitter int  size()           { _bglArray.size($self, $prop) }
+    replace emitter int  length()         { _bglArray.length($self, $prop) }
+    emitter void setLength(int n)         { _bglArray.setLength($self, $prop, $n) }
+    emitter bool isTracked()              { _bglArray.isTracked($self, $prop) }
 
     // Search
-    emitter int  indexOf(T item)          { _bglArray.indexOf($val, $item) }
-    emitter int  find(T item)             { _bglArray.indexOf($val, $item) }       // alias — matches orLibrary terminology
-    emitter bool contains(T item)         { (_bglArray.indexOf($val, $item) >= 0) }
+    emitter int  indexOf(T item)          { _bglArray.indexOf($self, $prop, $item) }
+    emitter int  find(T item)             { _bglArray.indexOf($self, $prop, $item) }       // alias — matches orLibrary terminology
+    emitter bool contains(T item)         { (_bglArray.indexOf($self, $prop, $item) >= 0) }
 
     // In-place transforms (no resize)
-    emitter void clear()                  { _bglArray.clear($val) }
-    emitter void swap(int pos1, int pos2) { _bglArray.swap($val, $pos1, $pos2) }
-    emitter void reverse()                { _bglArray.reverse($val) }
+    emitter void clear()                  { _bglArray.clear($self, $prop) }
+    emitter void swap(int pos1, int pos2) { _bglArray.swap($self, $prop, $pos1, $pos2) }
+    emitter void reverse()                { _bglArray.reverse($self, $prop) }
 
     // Length-changing mutators — each grows or shrinks the explicit length.
     // append / prepend / insert return false on a full array (no growth happened).
-    emitter bool append(T item)             { _bglArray.append($val, $item) }
-    emitter bool prepend(T item)            { _bglArray.prepend($val, $item) }
-    emitter bool insert(int pos, T item)    { _bglArray.insert($val, $pos, $item) }
-    emitter void remove(int pos)            { _bglArray.remove($val, $pos) }
-    emitter void removeValue(T item)        { _bglArray.removeValue($val, $item) }
+    emitter bool append(T item)             { _bglArray.append($self, $prop, $item) }
+    emitter bool prepend(T item)            { _bglArray.prepend($self, $prop, $item) }
+    emitter bool insert(int pos, T item)    { _bglArray.insert($self, $prop, $pos, $item) }
+    emitter void remove(int pos)            { _bglArray.remove($self, $prop, $pos) }
+    emitter void removeValue(T item)        { _bglArray.removeValue($self, $prop, $item) }
 
     // Deque view (orLibrary convention — push/peek/pop at the front;
     // enqueue/peekEnd/popEnd at the back).
-    emitter void push(T item)               { _bglArray.push($val, $item) }
-    emitter T    pop()                      { _bglArray.pop($val) }
-    emitter T    dequeue()                  { _bglArray.dequeue($val) }
-    emitter void enqueue(T item)            { _bglArray.enqueue($val, $item) }
-    emitter T    peek()                     { _bglArray.peek($val) }
-    emitter T    peekEnd()                  { _bglArray.peekEnd($val) }
-    emitter T    popEnd()                   { _bglArray.popEnd($val) }
+    emitter void push(T item)               { _bglArray.push($self, $prop, $item) }
+    emitter T    pop()                      { _bglArray.pop($self, $prop) }
+    emitter T    dequeue()                  { _bglArray.dequeue($self, $prop) }
+    emitter void enqueue(T item)            { _bglArray.enqueue($self, $prop, $item) }
+    emitter T    peek()                     { _bglArray.peek($self, $prop) }
+    emitter T    peekEnd()                  { _bglArray.peekEnd($self, $prop) }
+    emitter T    popEnd()                   { _bglArray.popEnd($self, $prop) }
 
     // Sort — two overloads. The no-arg form uses the default ascending
     // comparator; the func-arg form lets the caller customize ordering
     // (e.g. descending, by field, locale-aware string compare).
-    emitter void sort()                            { _bglArray.sort($val, _bglArrayCompareAsc) }
-    emitter void sort(func<int, T, T> compare)     { _bglArray.sort($val, $compare) }
+    emitter void sort()                            { _bglArray.sort($self, $prop, _bglArrayCompareAsc) }
+    emitter void sort(func<int, T, T> compare)     { _bglArray.sort($self, $prop, $compare) }
 
     // LINQ-style fluent operations. Each non-terminal returns a typed array
     // backed by the LINQ scratch buffer (alternates between two preallocated
     // buffers, see #emitfirst block below). filter/distinct/orderBy etc. are
     // type-preserving; map returns array<var> because the mapper's output
     // type can't be statically tracked.
-    emitter array<T>   filter(func<bool, T> pred)   { _bglArray.filter($val, $pred) }
-    emitter array<var> map(func<var, T> f)          { _bglArray.map($val, $f) }
+    emitter array<T>   filter(func<bool, T> pred)   { _bglArray.filter($self, $prop, $pred) }
+    emitter array<var> map(func<var, T> f)          { _bglArray.map($self, $prop, $f) }
 
     // Terminals — collapse a chain to a scalar. No scratch writes; receiver
     // type drives element type for first/last (returns T) and any/all (pred
     // signature). count is a plain alias of length() for naming familiarity.
-    emitter T    first()                            { _bglArray.first($val) }
-    emitter T    last()                             { _bglArray.last($val) }
-    emitter int  count()                            { _bglArray.length($val) }
-    emitter bool any(func<bool, T> pred)            { _bglArray.any($val, $pred) }
-    emitter bool all(func<bool, T> pred)            { _bglArray.all($val, $pred) }
+    emitter T    first()                            { _bglArray.first($self, $prop) }
+    emitter T    last()                             { _bglArray.last($self, $prop) }
+    emitter int  count()                            { _bglArray.length($self, $prop) }
+    emitter bool any(func<bool, T> pred)            { _bglArray.any($self, $prop, $pred) }
+    emitter bool all(func<bool, T> pred)            { _bglArray.all($self, $prop, $pred) }
 
     // Slicing — all type-preserving, flip parity, return array<T>.
-    emitter array<T> take(int n)                    { _bglArray.take($val, $n) }
-    emitter array<T> skip(int n)                    { _bglArray.skip($val, $n) }
-    emitter array<T> takeWhile(func<bool, T> pred)  { _bglArray.takeWhile($val, $pred) }
-    emitter array<T> skipWhile(func<bool, T> pred)  { _bglArray.skipWhile($val, $pred) }
+    emitter array<T> take(int n)                    { _bglArray.take($self, $prop, $n) }
+    emitter array<T> skip(int n)                    { _bglArray.skip($self, $prop, $n) }
+    emitter array<T> takeWhile(func<bool, T> pred)  { _bglArray.takeWhile($self, $prop, $pred) }
+    emitter array<T> skipWhile(func<bool, T> pred)  { _bglArray.skipWhile($self, $prop, $pred) }
 
     // distinct / orderBy. distinct keeps first occurrence (O(N²) scan, fine at IF scale).
     // orderBy reuses sort() on the scratch copy — two overloads matching sort's surface.
-    emitter array<T> distinct()                          { _bglArray.distinct($val) }
-    emitter array<T> orderBy()                           { _bglArray.orderBy($val, _bglArrayCompareAsc) }
-    emitter array<T> orderBy(func<int, T, T> compare)    { _bglArray.orderBy($val, $compare) }
+    emitter array<T> distinct()                          { _bglArray.distinct($self, $prop) }
+    emitter array<T> orderBy()                           { _bglArray.orderBy($self, $prop, _bglArrayCompareAsc) }
+    emitter array<T> orderBy(func<int, T, T> compare)    { _bglArray.orderBy($self, $prop, $compare) }
 }
 
 //-----------------------------------------------------------------------------
@@ -191,31 +197,63 @@ extern void       _bglLinqFlip(){}
 //   without going back through size()).
 //-----------------------------------------------------------------------------
 object _bglArray {
-    bool isTracked(array<var> arr){
-        return arr[arr[-1] - 1] == $9084 && arr[arr[-1] - 2] >= 0;
+    // ── Raw word access on a global/local array ADDRESS ───────────────────────
+    // Bypasses operator[] so this object never recurses through its own dispatch.
+    // `addr-->slot` is the raw I6 slot (slot 0 = header/count, data at 1..N).
+    var  rawGet(var addr, var slot)        { #i6 { return addr-->slot; } return 0; }
+    void rawSet(var addr, var slot, var v) { #i6 { addr-->slot = v; } }
+
+    // ── Dual-form element access (orLibrary util.orArray convention) ───────────
+    // metaclass(obj)==object → member/property array: element n at obj.&prop-->n
+    //   (0-indexed, no count slot). otherwise → global/local array address:
+    //   count-prefixed, element n at obj-->(n+1). All higher methods build on these,
+    //   so member ↔ global parity is decided once, here, at runtime.
+    var get(var obj, var prop, int n){
+        #i6 {
+            if(metaclass(obj)==object) return obj.&prop-->n;
+            return obj-->(n+1);
+        }
+        return 0;   // unreachable; satisfies return-check
+    }
+    void set(var obj, var prop, int n, var v){
+        #i6 {
+            if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
+            obj-->(n+1) = v;
+        }
     }
 
-    int size(array<var> arr){
-        if(isTracked(arr)) return arr[-1] - 2;
-        return arr[-1];
+    // Property arrays are never tracked (no magic/length slot); size = #prop/WORDSIZE,
+    // length == size. Global/local arrays use the tracked layout when <array> stamped a marker.
+    bool isTracked(var obj, var prop){
+        #i6 { if(metaclass(obj)==object) rfalse; }
+        var hdr = rawGet(obj, 0);
+        return rawGet(obj, hdr) == $9084 && rawGet(obj, hdr - 1) >= 0;
     }
 
-    int length(array<var> arr){
-        if(isTracked(arr)) return arr[arr[-1] - 2];
+    int size(var obj, var prop){
+        #i6 { if(metaclass(obj)==object) return obj.#prop/WORDSIZE; }
+        if(isTracked(obj, prop)) return rawGet(obj, 0) - 2;
+        return rawGet(obj, 0);
+    }
+
+    int length(var obj, var prop){
+        #i6 { if(metaclass(obj)==object) return obj.#prop/WORDSIZE; }   // members: length == size
+        if(isTracked(obj, prop)) return rawGet(obj, rawGet(obj, 0) - 1);
         // Untracked fallback: report size so length() never lies bigger than truth.
-        return arr[-1];
+        return rawGet(obj, 0);
     }
 
-    void setLength(array<var> arr, int n){
-        if(isTracked(arr)){
+    void setLength(var obj, var prop, int n){
+        #i6 { if(metaclass(obj)==object) return; }   // members: fixed-size property array, no-op
+        if(isTracked(obj, prop)){
             if(n < 0){
                 print("^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^");
                 #i6 { quit; }   // I6 control; no Beguile equivalent yet
             }
-            // arr[size()] = slot size+1 of raw allocation = the length slot.
-            arr[arr.size()] = n;
+            // length slot = element index size() of the raw allocation.
+            set(obj, prop, size(obj, prop), n);
         }
-        // Untracked: silent no-op (length not maintainable on raw extern arrays).
+        // Untracked / members: silent no-op (no length word to maintain).
     }
 
     // ── Algorithm methods ─────────────────────────────────────────────────────
@@ -229,93 +267,93 @@ object _bglArray {
     // orArray.find semantics, which look past any unused trailing region.
     // So a value written via raw `arr[i] = v` (without extending length) is
     // still findable.
-    int indexOf(array<var> arr, var val){
-        int sz = arr.size();
+    int indexOf(var obj, var prop, var val){
+        int sz = size(obj, prop);
         for(int t = 0; t < sz; t++)
-            if(arr[t] == val) return t;
+            if(get(obj, prop, t) == val) return t;
         return -1;
     }
 
     // Zero every slot up to size; length drops to 0.
-    void clear(array<var> arr){
-        int sz = arr.size();
-        for(int t = 0; t < sz; t++) arr[t] = 0;
-        arr.setLength(0);
+    void clear(var obj, var prop){
+        int sz = size(obj, prop);
+        for(int t = 0; t < sz; t++) set(obj, prop, t, 0);
+        setLength(obj, prop, 0);
     }
 
     // Exchange the values at the two given indices. Size-bounded; caller is
     // responsible for passing in-range indices.
-    void swap(array<var> arr, int pos1, int pos2){
-        var tmp = arr[pos1];
-        arr[pos1] = arr[pos2];
-        arr[pos2] = tmp;
+    void swap(var obj, var prop, int pos1, int pos2){
+        var tmp = get(obj, prop, pos1);
+        set(obj, prop, pos1, get(obj, prop, pos2));
+        set(obj, prop, pos2, tmp);
     }
 
     // Reverse the used range (positions 0..length-1) in place. Trailing
     // slots past length are untouched.
-    void reverse(array<var> arr){
-        int len = arr.length();
+    void reverse(var obj, var prop){
+        int len = length(obj, prop);
         int half = len / 2;
         for(int i = 0; i < half; i++)
-            swap(arr, i, len - 1 - i);
+            swap(obj, prop, i, len - 1 - i);
     }
 
     // Append val at position length(), bumping length by 1.
     // Returns false if the array is full (length == size), true on success.
-    bool append(array<var> arr, var val){
-        int len = arr.length();
-        if(len >= arr.size()) return false;
-        arr[len] = val;
-        arr.setLength(len + 1);
+    bool append(var obj, var prop, var val){
+        int len = length(obj, prop);
+        if(len >= size(obj, prop)) return false;
+        set(obj, prop, len, val);
+        setLength(obj, prop, len + 1);
         return true;
     }
 
     // Insert val at the given position, shifting positions pos..length-1 to
     // pos+1..length. Returns false if the array is full or pos is out of
     // range (pos may equal length() to append, but not exceed it).
-    bool insert(array<var> arr, int pos, var val){
-        int len = arr.length();
-        if(len >= arr.size()) return false;
+    bool insert(var obj, var prop, int pos, var val){
+        int len = length(obj, prop);
+        if(len >= size(obj, prop)) return false;
         if(pos < 0 || pos > len) return false;
         // shift right from end down to pos
-        for(int i = len; i > pos; i--) arr[i] = arr[i-1];
-        arr[pos] = val;
-        arr.setLength(len + 1);
+        for(int i = len; i > pos; i--) set(obj, prop, i, get(obj, prop, i-1));
+        set(obj, prop, pos, val);
+        setLength(obj, prop, len + 1);
         return true;
     }
 
     // Insert val at position 0, shifting existing items right.
     // Returns false if the array is full, true on success.
-    bool prepend(array<var> arr, var val){
-        return insert(arr, 0, val);
+    bool prepend(var obj, var prop, var val){
+        return insert(obj, prop, 0, val);
     }
 
     // Remove the element at pos, shifting later elements left.
     // Out-of-range pos is a silent no-op.
     // Note: object has a same-named no-arg `remove()` method (removes obj
-    // from the I6 tree). This two-arg overload doesn't shadow it — the
-    // signatures differ — so no `replace` qualifier is needed.
-    void remove(array<var> arr, int pos){
-        int len = arr.length();
+    // from the I6 tree). This overload doesn't shadow it — the signatures
+    // differ — so no `replace` qualifier is needed.
+    void remove(var obj, var prop, int pos){
+        int len = length(obj, prop);
         if(pos < 0 || pos >= len) return;
         // shift left from pos+1 to end
-        for(int i = pos; i < len - 1; i++) arr[i] = arr[i+1];
+        for(int i = pos; i < len - 1; i++) set(obj, prop, i, get(obj, prop, i+1));
         // clear the now-unused tail slot so leftover data doesn't surface
         // through indexOf (which scans full size).
-        arr[len - 1] = 0;
-        arr.setLength(len - 1);
+        set(obj, prop, len - 1, 0);
+        setLength(obj, prop, len - 1);
     }
 
     // Remove every occurrence of val within the used range (positions 0..length-1).
     // Each match shifts subsequent elements left; the scan continues from the
     // same position since the next element is now at that index.
-    void removeValue(array<var> arr, var val){
+    void removeValue(var obj, var prop, var val){
         int pos = 0;
-        int len = arr.length();
+        int len = length(obj, prop);
         while(pos < len){
-            if(arr[pos] == val){
-                remove(arr, pos);
-                len = arr.length();   // length dropped by 1; reload
+            if(get(obj, prop, pos) == val){
+                remove(obj, prop, pos);
+                len = length(obj, prop);   // length dropped by 1; reload
                 // pos stays — next element shifted into this position
             } else {
                 pos++;
@@ -335,41 +373,41 @@ object _bglArray {
     // The orientation differs from JavaScript (where push appends); see the
     // project_array_deque_naming memory for the rationale.
 
-    void push(array<var> arr, var val){
-        insert(arr, 0, val);   // bool result intentionally discarded; full-array detection is via .length()/.size()
+    void push(var obj, var prop, var val){
+        insert(obj, prop, 0, val);   // bool result intentionally discarded; full-array detection is via .length()/.size()
     }
 
-    var pop(array<var> arr){
-        if(arr.length() == 0) return 0;
-        var v = arr[0];
-        remove(arr, 0);
+    var pop(var obj, var prop){
+        if(length(obj, prop) == 0) return 0;
+        var v = get(obj, prop, 0);
+        remove(obj, prop, 0);
         return v;
     }
 
-    var dequeue(array<var> arr){
-        return pop(arr);
+    var dequeue(var obj, var prop){
+        return pop(obj, prop);
     }
 
-    void enqueue(array<var> arr, var val){
-        append(arr, val);
+    void enqueue(var obj, var prop, var val){
+        append(obj, prop, val);
     }
 
-    var peek(array<var> arr){
-        if(arr.length() == 0) return 0;
-        return arr[0];
+    var peek(var obj, var prop){
+        if(length(obj, prop) == 0) return 0;
+        return get(obj, prop, 0);
     }
 
-    var peekEnd(array<var> arr){
-        int len = arr.length();
+    var peekEnd(var obj, var prop){
+        int len = length(obj, prop);
         if(len == 0) return 0;
-        return arr[len - 1];
+        return get(obj, prop, len - 1);
     }
 
-    var popEnd(array<var> arr){
-        int len = arr.length();
+    var popEnd(var obj, var prop){
+        int len = length(obj, prop);
         if(len == 0) return 0;
-        var v = arr[len - 1];
-        remove(arr, len - 1);
+        var v = get(obj, prop, len - 1);
+        remove(obj, prop, len - 1);
         return v;
     }
 
@@ -380,16 +418,16 @@ object _bglArray {
     // (e.g. inserting one new element into an already-sorted list).
     // Stable; well-suited to IF-scale arrays where simplicity beats the
     // constant-factor wins of more elaborate algorithms.
-    void sort(array<var> arr, func<int, var, var> compare){
-        int len = arr.length();
+    void sort(var obj, var prop, func<int, var, var> compare){
+        int len = length(obj, prop);
         for(int i = 1; i < len; i++){
-            var key = arr[i];
+            var key = get(obj, prop, i);
             int j = i - 1;
-            while(j >= 0 && compare(arr[j], key) > 0){
-                arr[j + 1] = arr[j];
+            while(j >= 0 && compare(get(obj, prop, j), key) > 0){
+                set(obj, prop, j + 1, get(obj, prop, j));
                 j--;
             }
-            arr[j + 1] = key;
+            set(obj, prop, j + 1, key);
         }
     }
 
@@ -406,13 +444,13 @@ object _bglArray {
     // returned value behaves like any user-declared array: indexable, length()
     // works, can feed the next chain step.
 
-    array<var> filter(array<var> src, func<bool, var> pred){
+    array<var> filter(var obj, var prop, func<bool, var> pred){
         array<var> dst = _bglLinqWrite();
         int cap = #beguilerSettings.linqScratchSize;
         int writeCount = 0;
-        int srcLen = src.length();
+        int srcLen = length(obj, prop);
         for(int i = 0; i < srcLen; i++){
-            var elem = src[i];
+            var elem = get(obj, prop, i);
             if(pred(elem)){
                 if(writeCount >= cap){
                     #i6 {
@@ -435,35 +473,35 @@ object _bglArray {
     // first/last return 0 on empty — same convention as pop/peek.
     // any/all short-circuit (first match wins for any; first non-match wins for all).
 
-    var first(array<var> src){
-        if(src.length() == 0) return 0;
-        return src[0];
+    var first(var obj, var prop){
+        if(length(obj, prop) == 0) return 0;
+        return get(obj, prop, 0);
     }
 
-    var last(array<var> src){
-        int len = src.length();
+    var last(var obj, var prop){
+        int len = length(obj, prop);
         if(len == 0) return 0;
-        return src[len - 1];
+        return get(obj, prop, len - 1);
     }
 
-    bool any(array<var> src, func<bool, var> pred){
-        int len = src.length();
+    bool any(var obj, var prop, func<bool, var> pred){
+        int len = length(obj, prop);
         for(int i = 0; i < len; i++)
-            if(pred(src[i])) return true;
+            if(pred(get(obj, prop, i))) return true;
         return false;
     }
 
-    bool all(array<var> src, func<bool, var> pred){
-        int len = src.length();
+    bool all(var obj, var prop, func<bool, var> pred){
+        int len = length(obj, prop);
         for(int i = 0; i < len; i++)
-            if(!pred(src[i])) return false;
+            if(!pred(get(obj, prop, i))) return false;
         return true;
     }
 
-    array<var> map(array<var> src, func<var, var> f){
+    array<var> map(var obj, var prop, func<var, var> f){
         array<var> dst = _bglLinqWrite();
         int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = src.length();
+        int srcLen = length(obj, prop);
         if(srcLen > cap){
             #i6 {
                 print "^[Beguile runtime error: map() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
@@ -471,7 +509,7 @@ object _bglArray {
             }
         }
         for(int i = 0; i < srcLen; i++){
-            dst[i] = f(src[i]);
+            dst[i] = f(get(obj, prop, i));
         }
         dst.setLength(srcLen);
         _bglLinqFlip();
@@ -486,10 +524,10 @@ object _bglArray {
     // the first element that fails the predicate; skipWhile drops while the
     // predicate matches, then keeps everything from the first failure on.
 
-    array<var> take(array<var> src, int n){
+    array<var> take(var obj, var prop, int n){
         array<var> dst = _bglLinqWrite();
         int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = src.length();
+        int srcLen = length(obj, prop);
         int outLen = n;
         if(outLen < 0)      outLen = 0;
         if(outLen > srcLen) outLen = srcLen;
@@ -499,16 +537,16 @@ object _bglArray {
                 quit;
             }
         }
-        for(int i = 0; i < outLen; i++) dst[i] = src[i];
+        for(int i = 0; i < outLen; i++) dst[i] = get(obj, prop, i);
         dst.setLength(outLen);
         _bglLinqFlip();
         return dst;
     }
 
-    array<var> skip(array<var> src, int n){
+    array<var> skip(var obj, var prop, int n){
         array<var> dst = _bglLinqWrite();
         int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = src.length();
+        int srcLen = length(obj, prop);
         int start = n;
         if(start < 0)      start = 0;
         if(start > srcLen) start = srcLen;
@@ -519,26 +557,26 @@ object _bglArray {
                 quit;
             }
         }
-        for(int i = 0; i < outLen; i++) dst[i] = src[start + i];
+        for(int i = 0; i < outLen; i++) dst[i] = get(obj, prop, start + i);
         dst.setLength(outLen);
         _bglLinqFlip();
         return dst;
     }
 
-    array<var> takeWhile(array<var> src, func<bool, var> pred){
+    array<var> takeWhile(var obj, var prop, func<bool, var> pred){
         array<var> dst = _bglLinqWrite();
         int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = src.length();
+        int srcLen = length(obj, prop);
         int outLen = 0;
         for(int i = 0; i < srcLen; i++){
-            if(!pred(src[i])) break;
+            if(!pred(get(obj, prop, i))) break;
             if(outLen >= cap){
                 #i6 {
                     print "^[Beguile runtime error: takeWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
                     quit;
                 }
             }
-            dst[outLen] = src[i];
+            dst[outLen] = get(obj, prop, i);
             outLen++;
         }
         dst.setLength(outLen);
@@ -546,12 +584,12 @@ object _bglArray {
         return dst;
     }
 
-    array<var> skipWhile(array<var> src, func<bool, var> pred){
+    array<var> skipWhile(var obj, var prop, func<bool, var> pred){
         array<var> dst = _bglLinqWrite();
         int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = src.length();
+        int srcLen = length(obj, prop);
         int start = 0;
-        while(start < srcLen && pred(src[start])) start++;
+        while(start < srcLen && pred(get(obj, prop, start))) start++;
         int outLen = srcLen - start;
         if(outLen > cap){
             #i6 {
@@ -559,7 +597,7 @@ object _bglArray {
                 quit;
             }
         }
-        for(int i = 0; i < outLen; i++) dst[i] = src[start + i];
+        for(int i = 0; i < outLen; i++) dst[i] = get(obj, prop, start + i);
         dst.setLength(outLen);
         _bglLinqFlip();
         return dst;
@@ -571,13 +609,13 @@ object _bglArray {
     // scratch first, then reuses the existing in-place sort() on that copy so
     // the source array is left untouched.
 
-    array<var> distinct(array<var> src){
+    array<var> distinct(var obj, var prop){
         array<var> dst = _bglLinqWrite();
         int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = src.length();
+        int srcLen = length(obj, prop);
         int outLen = 0;
         for(int i = 0; i < srcLen; i++){
-            var elem = src[i];
+            var elem = get(obj, prop, i);
             bool seen = false;
             for(int j = 0; j < outLen; j++){
                 if(dst[j] == elem){ seen = true; break; }
@@ -598,19 +636,19 @@ object _bglArray {
         return dst;
     }
 
-    array<var> orderBy(array<var> src, func<int, var, var> compare){
+    array<var> orderBy(var obj, var prop, func<int, var, var> compare){
         array<var> dst = _bglLinqWrite();
         int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = src.length();
+        int srcLen = length(obj, prop);
         if(srcLen > cap){
             #i6 {
                 print "^[Beguile runtime error: orderBy() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
                 quit;
             }
         }
-        for(int i = 0; i < srcLen; i++) dst[i] = src[i];
+        for(int i = 0; i < srcLen; i++) dst[i] = get(obj, prop, i);
         dst.setLength(srcLen);
-        sort(dst, compare);
+        sort(dst, 0, compare);
         _bglLinqFlip();
         return dst;
     }

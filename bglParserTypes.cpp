@@ -517,7 +517,14 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
             string ct, origin;
             bool isObj = false;
             if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ ct = vd->type.name; origin = format("global variable '{0}'", g->name); }
-            else if(auto* fd = dynamic_cast<functionDef*>(g)){ ct = fd->returnType.name; origin = format("global function '{0}'", g->name); }
+            else if(auto* fd = dynamic_cast<functionDef*>(g)){
+                // A bare function NAME used as a value is a function reference (the I6 routine
+                // name is its address), typed `func` — same as a lambda (which also resolves to
+                // "func" and matches func<…> params). A *call* `name(args)` never reaches here;
+                // it's handled by bindGlobalCall. So this lets `arr.filter(isEven)` bind like
+                // `arr.filter((int x) => …)`. (void fd is unused here.)
+                ct = "func"; origin = format("global function '{0}'", g->name);
+            }
             else if(auto* od = dynamic_cast<objectDef*>(g)){
                 isObj = true;
                 // Type-identity rule: an objectDef IS its own type unless it explicitly
@@ -1002,6 +1009,17 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
 // ===============================================================================
 // Identifier qualification + small lookup utilities
 // ===============================================================================
+bool bglParser::splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
+                                     string& ownerOut, string& propOut){
+    if(func == nullptr) return false;
+    string qualified = qualifyIdentifier(name, func, body);
+    size_t dot = qualified.rfind('.');
+    if(dot == string::npos) return false;   // global/local — not a property access
+    ownerOut = qualified.substr(0, dot);
+    propOut  = qualified.substr(dot + 1);
+    return true;
+}
+
 std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, statementBlock* body, const string& memberHint){
     if(name == "null") return "nothing";
     if(name == "self" && lambdaOuterFunc == nullptr) return "self";

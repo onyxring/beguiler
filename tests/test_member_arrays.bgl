@@ -1,0 +1,41 @@
+/* test_member_arrays.bgl — array<T> as an object/class MEMBER uses the orLibrary
+ * property-array convention: element n at obj.&prop-->n (0-indexed, no count slot),
+ * length (obj.#prop)/WORDSIZE. Globals/locals keep the count-prefixed table form.
+ *
+ * Regression for the member-array access bug: subscript/for-in/size on a member
+ * formerly emitted the global/table form ($val-->(i+1), $val-->0) against the bare
+ * property id → garbage. See PORTING-LEARNINGS / the array-fix work.
+ */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+object widget {
+    array<int> nums = {10, 20, 30};
+
+    int readElem()  { return nums[1]; }            // self.&nums-->(1)
+    void writeElem(){ nums[0] = 99; }              // self.&nums-->(0) = 99
+    int sumElems()  { int t = 0; int x; for(x in nums) { t = t + x; } return t; }  // (self.#nums)/WORDSIZE bound, self.&nums-->i
+    int sizeOf()    { return nums.size(); }        // (self.#nums)/WORDSIZE
+    int lengthOf()  { return nums.length(); }      // (self.#nums)/WORDSIZE
+}
+
+class gadget : object {
+    array<int> readings = {1, 2, 3, 4};
+    int peek(int i) { return readings[i]; }        // self.&readings-->(i)
+    void poke(int i, int v) { readings[i] = v; }   // self.&readings-->(i) = v
+    int total() { int t = 0; int x; for(x in readings) { t = t + x; } return t; }
+}
+gadget g1;
+
+// Globals/locals MUST keep the count-prefixed table form (table => slot 0 = count,
+// data at -->(i+1)). Locked in here so the member fix can't regress them.
+array<int> g_nums = {7, 8, 9};
+
+void main() {
+    int ra = g_nums[1];                             // g_nums-->(1+1)   (unchanged)
+    array<int> loc = {5, 6};
+    int rb = loc[0];                                // loc-->(0+1)      (unchanged)
+}

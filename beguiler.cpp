@@ -92,6 +92,8 @@ void beguiler::extractInfTargetFromIcl(const string& filename){
 // Simple pre-scan to extract blorb settings before the full parse.
 // Looks for #beguilerSettings { ... generateBlorb = true/false ... blorbAssetPath = "..." ... }
 // using basic string search — no lexer needed.
+string rewritePathSeps(const string& path);   // defined in bglParser.cpp
+
 void beguiler::extractBlorbSettings(const string& filename) {
     ifstream f(filename);
     if(!f.is_open()) return;
@@ -169,6 +171,59 @@ void beguiler::extractBlorbSettings(const string& filename) {
                             parser.defineSymbol("target_glulx");
                         else if(val == "z3" || val == "z5" || val == "z8")
                             parser.defineSymbol("target_zcode", val.substr(1)); // "3", "5", or "8"
+                    }
+                }
+            }
+        }
+
+        // Extract: includePaths = "a,b,c"  (or raw @"a,b,c").  Mirrors the parser's directive
+        // handler (bglParserDirectives.cpp), but runs HERE — before preScanFile — so that
+        // search-path includes resolve identically during PRE-SCAN.  The parser populates
+        // includePaths too late for pass 1; without this, a class declared in a .bgl resolved
+        // via the search path is never pre-registered as a type, so its `class <name>` fails to
+        // parse ("expected type name") while source-relative/direct includes work.
+        {
+            size_t k = blockLower.find("includepaths");
+            if(k != string::npos){
+                size_t eq = block.find('=', k + 12);
+                if(eq != string::npos){
+                    size_t vs = block.find_first_not_of(" \t\r\n", eq + 1);
+                    if(vs != string::npos){
+                        bool isRaw = (block[vs] == '@');
+                        size_t q1 = block.find('"', vs);
+                        size_t q2 = (q1 == string::npos) ? string::npos : block.find('"', q1 + 1);
+                        if(q1 != string::npos && q2 != string::npos){
+                            string strVal = block.substr(q1 + 1, q2 - q1 - 1);
+                            filesystem::path settingsFileDir = filesystem::path(filename).parent_path();
+                            if(!settingsFileDir.empty())
+                                settingsFileDir = filesystem::absolute(settingsFileDir);
+                            size_t i = 0;
+                            while(i < strVal.size()){
+                                size_t comma = strVal.find(',', i);
+                                string entry = strVal.substr(i, comma == string::npos ? string::npos : comma - i);
+                                size_t a = entry.find_first_not_of(" \t");
+                                size_t b = entry.find_last_not_of(" \t");
+                                if(a != string::npos){
+                                    string path;
+                                    if(isRaw){
+                                        path = entry.substr(a, b - a + 1);
+                                    } else {
+                                        path = rewritePathSeps(entry.substr(a, b - a + 1));
+                                        filesystem::path pathObj(path);
+                                        if(pathObj.is_relative() && !settingsFileDir.empty())
+                                            pathObj = settingsFileDir / pathObj;
+                                        std::error_code ec;
+                                        filesystem::path canon = filesystem::weakly_canonical(pathObj, ec);
+                                        if(!ec) pathObj = canon;
+                                        path = pathObj.string();
+                                    }
+                                    if(find(beguilerSettings.includePaths.begin(), beguilerSettings.includePaths.end(), path) == beguilerSettings.includePaths.end())
+                                        beguilerSettings.includePaths.push_back(path);
+                                }
+                                if(comma == string::npos) break;
+                                i = comma + 1;
+                            }
+                        }
                     }
                 }
             }
@@ -290,6 +345,16 @@ bool beguiler::go(int argc, char* argv[]) {
     } else {
         settings.informName = beguilerSettings.informName.empty() ? "inform" : beguilerSettings.informName;
         settings.informPath = getPath(argv[0]) + settings.informName;
+        // If nothing was configured and there's no sibling "inform" binary next to the beguiler,
+        // fall back to a single shared compiler in a parallel inform6/ tree. The IF-Projects dev
+        // layout keeps one inform6/inform6 (alongside its libraries) instead of a copy per tool.
+        if(beguilerSettings.informName.empty() && !fs::exists(settings.informPath)) {
+            string devInform = getPath(argv[0]) + "../inform6/inform6";
+            if(fs::exists(devInform)) {
+                settings.informPath = devInform;
+                settings.informName = "inform6";
+            }
+        }
     }
 
     // Merge beguilerSettings outputPath into settings (CLI -o wins)

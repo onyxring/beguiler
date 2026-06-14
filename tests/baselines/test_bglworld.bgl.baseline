@@ -96,167 +96,192 @@ object bgl
     return 0;
 ];
 object _bglArray
-  with isTracked [arr;
-    return  arr-->( arr-->(-1+1) -1+1) ==36996&& arr-->( arr-->(-1+1) -2+1) >=0;
+  with rawGet [addr slot;
+     return addr-->slot; 
+    return 0;
   ],
-       size [arr;
-    if (self.istracked(arr)) {
-        return  arr-->(-1+1) -2;
+       rawSet [addr slot v;
+     addr-->slot = v; 
+  ],
+       get [obj prop n;
+    
+            if(metaclass(obj)==object) return obj.&prop-->n;
+            return obj-->(n+1);
+        
+    return 0;
+  ],
+       set [obj prop n v;
+    
+            if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
+            obj-->(n+1) = v;
+        
+  ],
+       isTracked [obj prop hdr;
+     if(metaclass(obj)==object) rfalse; 
+    hdr = self.rawget(obj,0);
+    return self.rawget(obj,hdr)==36996&&self.rawget(obj,hdr-1)>=0;
+  ],
+       size [obj prop;
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+    if (self.istracked(obj,prop)) {
+        return self.rawget(obj,0)-2;
     }
-    return  arr-->(-1+1) ;
+    return self.rawget(obj,0);
   ],
-       length [arr;
-    if (self.istracked(arr)) {
-        return  arr-->( arr-->(-1+1) -2+1) ;
+       length [obj prop;
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+    if (self.istracked(obj,prop)) {
+        return self.rawget(obj,self.rawget(obj,0)-1);
     }
-    return  arr-->(-1+1) ;
+    return self.rawget(obj,0);
   ],
-       setLength [arr n;
-    if (self.istracked(arr)) {
+       setLength [obj prop n;
+     if(metaclass(obj)==object) return; 
+    if (self.istracked(obj,prop)) {
         if (n < 0) {
             print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
              quit; 
         }
-        arr-->(_bglArray.size(arr)+1) = n;
+        self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [arr val sz t;
-    sz=_bglArray.size(arr);
+       indexOf [obj prop val sz t;
+    sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
-        if ( arr-->(t+1) ==val) {
+        if (self.get(obj,prop,t)==val) {
             return t;
         }
     }
     return -1;
   ],
-       clear [arr sz t;
-    sz=_bglArray.size(arr);
+       clear [obj prop sz t;
+    sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
-        arr-->(t+1) = 0;
+        self.set(obj, prop, t, 0);
     }
-    _bglArray.setLength(arr, 0);
+    self.setLength(obj, prop, 0);
   ],
-       swap [arr pos1 pos2 tmp;
-    tmp =  arr-->(pos1+1) ;
-    arr-->(pos1+1) =  arr-->(pos2+1);
-    arr-->(pos2+1) = tmp;
+       swap [obj prop pos1 pos2 tmp;
+    tmp = self.get(obj,prop,pos1);
+    self.set(obj, prop, pos1, self.get(obj,prop,pos2));
+    self.set(obj, prop, pos2, tmp);
   ],
-       reverse [arr len half i;
-    len=_bglArray.length(arr);
+       reverse [obj prop len half i;
+    len=self.length(obj,prop);
     half=len / 2;
     for (i = 0 : i < half : i++) {
-        self.swap(arr, i, len - 1 - i);
+        self.swap(obj, prop, i, len - 1 - i);
     }
   ],
-       append [arr val len;
-    len=_bglArray.length(arr);
-    if (len >= _bglArray.size(arr)) {
+       append [obj prop val len;
+    len=self.length(obj,prop);
+    if (len >= self.size(obj,prop)) {
         return false;
     }
-    arr-->(len+1) = val;
-    _bglArray.setLength(arr, len + 1);
+    self.set(obj, prop, len, val);
+    self.setLength(obj, prop, len + 1);
     return true;
   ],
-       insert [arr pos val len i;
-    len=_bglArray.length(arr);
-    if (len >= _bglArray.size(arr)) {
+       insert [obj prop pos val len i;
+    len=self.length(obj,prop);
+    if (len >= self.size(obj,prop)) {
         return false;
     }
     if (pos < 0 || pos > len) {
         return false;
     }
     for (i = len : i > pos : i--) {
-        arr-->(i+1) =  arr-->(i - 1+1);
+        self.set(obj, prop, i, self.get(obj,prop,i - 1));
     }
-    arr-->(pos+1) = val;
-    _bglArray.setLength(arr, len + 1);
+    self.set(obj, prop, pos, val);
+    self.setLength(obj, prop, len + 1);
     return true;
   ],
-       prepend [arr val;
-    return self.insert(arr,0,val);
+       prepend [obj prop val;
+    return self.insert(obj,prop,0,val);
   ],
-       remove [arr pos len i;
-    len=_bglArray.length(arr);
+       remove [obj prop pos len i;
+    len=self.length(obj,prop);
     if (pos < 0 || pos >= len) {
         return;
     }
     for (i = pos : i < len - 1 : i++) {
-        arr-->(i+1) =  arr-->(i + 1+1);
+        self.set(obj, prop, i, self.get(obj,prop,i + 1));
     }
-    arr-->(len - 1+1) = 0;
-    _bglArray.setLength(arr, len - 1);
+    self.set(obj, prop, len - 1, 0);
+    self.setLength(obj, prop, len - 1);
   ],
-       removeValue [arr val pos len;
+       removeValue [obj prop val pos len;
     pos = 0;
-    len=_bglArray.length(arr);
+    len=self.length(obj,prop);
     while (pos < len) {
-        if ( arr-->(pos+1) ==val) {
-            self.remove(arr, pos);
-            len = _bglArray.length(arr);
+        if (self.get(obj,prop,pos)==val) {
+            self.remove(obj, prop, pos);
+            len = self.length(obj,prop);
         }
         else {
              pos++ ;
         }
     }
   ],
-       push [arr val;
-    self.insert(arr, 0, val);
+       push [obj prop val;
+    self.insert(obj, prop, 0, val);
   ],
-       pop [arr v;
-    if (_bglArray.length(arr) == 0) {
+       pop [obj prop v;
+    if (self.length(obj,prop) == 0) {
         return 0;
     }
-    v =  arr-->(0+1) ;
-    self.remove(arr, 0);
+    v = self.get(obj,prop,0);
+    self.remove(obj, prop, 0);
     return v;
   ],
-       dequeue [arr;
-    return self.pop(arr);
+       dequeue [obj prop;
+    return self.pop(obj,prop);
   ],
-       enqueue [arr val;
-    self.append(arr, val);
+       enqueue [obj prop val;
+    self.append(obj, prop, val);
   ],
-       peek [arr;
-    if (_bglArray.length(arr) == 0) {
+       peek [obj prop;
+    if (self.length(obj,prop) == 0) {
         return 0;
     }
-    return  arr-->(0+1) ;
+    return self.get(obj,prop,0);
   ],
-       peekEnd [arr len;
-    len=_bglArray.length(arr);
+       peekEnd [obj prop len;
+    len=self.length(obj,prop);
     if (len == 0) {
         return 0;
     }
-    return  arr-->(len - 1+1) ;
+    return self.get(obj,prop,len - 1);
   ],
-       popEnd [arr len v;
-    len=_bglArray.length(arr);
+       popEnd [obj prop len v;
+    len=self.length(obj,prop);
     if (len == 0) {
         return 0;
     }
-    v =  arr-->(len - 1+1) ;
-    self.remove(arr, len - 1);
+    v = self.get(obj,prop,len - 1);
+    self.remove(obj, prop, len - 1);
     return v;
   ],
-       sort [arr compare len i key j;
-    len=_bglArray.length(arr);
+       sort [obj prop compare len i key j;
+    len=self.length(obj,prop);
     for (i = 1 : i < len : i++) {
-        key =  arr-->(i+1) ;
+        key = self.get(obj,prop,i);
         j=i - 1;
-        while (j >= 0 && compare( arr-->(j+1) ,key) > 0) {
-            arr-->(j + 1+1) =  arr-->(j+1);
+        while (j >= 0 && compare(self.get(obj,prop,j),key) > 0) {
+            self.set(obj, prop, j + 1, self.get(obj,prop,j));
              j-- ;
         }
-        arr-->(j + 1+1) = key;
+        self.set(obj, prop, j + 1, key);
     }
   ],
-       filter [src pred dst cap writeCount srcLen i elem;
+       filter [obj prop pred dst cap writeCount srcLen i elem;
     dst = _bgllinqwrite();
     cap = 32;
     writeCount = 0;
-    srcLen=_bglArray.length(src);
+    srcLen=self.length(obj,prop);
     for (i = 0 : i < srclen : i++) {
-        elem =  src-->(i+1) ;
+        elem = self.get(obj,prop,i);
         if (pred(elem)) {
             if (writecount >= cap) {
                 
@@ -268,45 +293,45 @@ object _bglArray
              writecount++ ;
         }
     }
-    _bglArray.setLength(dst, writeCount);
+    _bglArray.setLength(dst, 0, writeCount);
     _bgllinqflip();
     return dst;
   ],
-       first [src;
-    if (_bglArray.length(src) == 0) {
+       first [obj prop;
+    if (self.length(obj,prop) == 0) {
         return 0;
     }
-    return  src-->(0+1) ;
+    return self.get(obj,prop,0);
   ],
-       last [src len;
-    len=_bglArray.length(src);
+       last [obj prop len;
+    len=self.length(obj,prop);
     if (len == 0) {
         return 0;
     }
-    return  src-->(len - 1+1) ;
+    return self.get(obj,prop,len - 1);
   ],
-       any [src pred len i;
-    len=_bglArray.length(src);
+       any [obj prop pred len i;
+    len=self.length(obj,prop);
     for (i = 0 : i < len : i++) {
-        if (pred( src-->(i+1) )) {
+        if (pred(self.get(obj,prop,i))) {
             return true;
         }
     }
     return false;
   ],
-       all [src pred len i;
-    len=_bglArray.length(src);
+       all [obj prop pred len i;
+    len=self.length(obj,prop);
     for (i = 0 : i < len : i++) {
-        if (~~pred( src-->(i+1) )) {
+        if (~~pred(self.get(obj,prop,i))) {
             return false;
         }
     }
     return true;
   ],
-       map [src f dst cap srcLen i;
+       map [obj prop f dst cap srcLen i;
     dst = _bgllinqwrite();
     cap = 32;
-    srcLen=_bglArray.length(src);
+    srcLen=self.length(obj,prop);
     if (srclen > cap) {
         
                 print "^[Beguile runtime error: map() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
@@ -314,16 +339,16 @@ object _bglArray
             
     }
     for (i = 0 : i < srclen : i++) {
-        dst-->(i+1) = f( src-->(i+1) );
+        dst-->(i+1) = f(self.get(obj,prop,i));
     }
-    _bglArray.setLength(dst, srcLen);
+    _bglArray.setLength(dst, 0, srcLen);
     _bgllinqflip();
     return dst;
   ],
-       take [src n dst cap srcLen outLen i;
+       take [obj prop n dst cap srcLen outLen i;
     dst = _bgllinqwrite();
     cap = 32;
-    srcLen=_bglArray.length(src);
+    srcLen=self.length(obj,prop);
     outLen=n;
     if (outlen < 0) {
         outLen = 0;
@@ -338,16 +363,16 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) =  src-->(i+1);
+        dst-->(i+1) = self.get(obj,prop,i);
     }
-    _bglArray.setLength(dst, outLen);
+    _bglArray.setLength(dst, 0, outLen);
     _bgllinqflip();
     return dst;
   ],
-       skip [src n dst cap srcLen start outLen i;
+       skip [obj prop n dst cap srcLen start outLen i;
     dst = _bgllinqwrite();
     cap = 32;
-    srcLen=_bglArray.length(src);
+    srcLen=self.length(obj,prop);
     start=n;
     if (start < 0) {
         start = 0;
@@ -363,19 +388,19 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) =  src-->(start + i+1);
+        dst-->(i+1) = self.get(obj,prop,start + i);
     }
-    _bglArray.setLength(dst, outLen);
+    _bglArray.setLength(dst, 0, outLen);
     _bgllinqflip();
     return dst;
   ],
-       takeWhile [src pred dst cap srcLen outLen i;
+       takeWhile [obj prop pred dst cap srcLen outLen i;
     dst = _bgllinqwrite();
     cap = 32;
-    srcLen=_bglArray.length(src);
+    srcLen=self.length(obj,prop);
     outLen = 0;
     for (i = 0 : i < srclen : i++) {
-        if (~~pred( src-->(i+1) )) {
+        if (~~pred(self.get(obj,prop,i))) {
             break;
         }
         if (outlen >= cap) {
@@ -384,19 +409,19 @@ object _bglArray
                     quit;
                 
         }
-        dst-->(outlen+1) =  src-->(i+1);
+        dst-->(outlen+1) = self.get(obj,prop,i);
          outlen++ ;
     }
-    _bglArray.setLength(dst, outLen);
+    _bglArray.setLength(dst, 0, outLen);
     _bgllinqflip();
     return dst;
   ],
-       skipWhile [src pred dst cap srcLen start outLen i;
+       skipWhile [obj prop pred dst cap srcLen start outLen i;
     dst = _bgllinqwrite();
     cap = 32;
-    srcLen=_bglArray.length(src);
+    srcLen=self.length(obj,prop);
     start = 0;
-    while (start < srclen && pred( src-->(start+1) )) {
+    while (start < srclen && pred(self.get(obj,prop,start))) {
          start++ ;
     }
     outLen=srclen - start;
@@ -407,19 +432,19 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) =  src-->(start + i+1);
+        dst-->(i+1) = self.get(obj,prop,start + i);
     }
-    _bglArray.setLength(dst, outLen);
+    _bglArray.setLength(dst, 0, outLen);
     _bgllinqflip();
     return dst;
   ],
-       distinct [src dst cap srcLen outLen i elem seen j;
+       distinct [obj prop dst cap srcLen outLen i elem seen j;
     dst = _bgllinqwrite();
     cap = 32;
-    srcLen=_bglArray.length(src);
+    srcLen=self.length(obj,prop);
     outLen = 0;
     for (i = 0 : i < srclen : i++) {
-        elem =  src-->(i+1) ;
+        elem = self.get(obj,prop,i);
         seen=false;
         for (j = 0 : j < outlen : j++) {
             if ( dst-->(j+1) ==elem) {
@@ -438,14 +463,14 @@ object _bglArray
              outlen++ ;
         }
     }
-    _bglArray.setLength(dst, outLen);
+    _bglArray.setLength(dst, 0, outLen);
     _bgllinqflip();
     return dst;
   ],
-       orderBy [src compare dst cap srcLen i;
+       orderBy [obj prop compare dst cap srcLen i;
     dst = _bgllinqwrite();
     cap = 32;
-    srcLen=_bglArray.length(src);
+    srcLen=self.length(obj,prop);
     if (srclen > cap) {
         
                 print "^[Beguile runtime error: orderBy() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
@@ -453,10 +478,10 @@ object _bglArray
             
     }
     for (i = 0 : i < srclen : i++) {
-        dst-->(i+1) =  src-->(i+1);
+        dst-->(i+1) = self.get(obj,prop,i);
     }
-    _bglArray.setLength(dst, srcLen);
-    self.sort(dst, compare);
+    _bglArray.setLength(dst, 0, srcLen);
+    self.sort(dst, 0, compare);
     _bgllinqflip();
     return dst;
   ]
@@ -493,36 +518,36 @@ object stone cage
   with short_name "stone"
 ;
 [main totalCount caged animals o _bglfia0 _bglfi1 cagedAnimals cageWithoutStones notFish;
-    totalCount=_bglArray.length(_bglworld.getall(0));
+    totalCount=_bglArray.length(_bglworld.getall(0), 0);
     print (string)"total objects: ";
     print totalCount;
     print (string)"^";
-    caged=_bglArray.length(_bglworld.inparent(cage, 0));
+    caged=_bglArray.length(_bglworld.inparent(cage, 0), 0);
     print (string)"in cage: ";
     print caged;
     print (string)"^";
-    animals=_bglArray.length(_bglworld.instances(animal, 0));
+    animals=_bglArray.length(_bglworld.instances(animal, 0), 0);
     print (string)"animals: ";
     print animals;
     print (string)"^";
     print (string)"named animals:^";
     _bglfia0 = _bglworld.instances(animal, 0);
     _bglfi1 = 0;
-    for (: _bglfi1 < _bglArray.length(_bglfia0) : _bglfi1++) {
+    for (: _bglfi1 < _bglArray.length(_bglfia0, 0) : _bglfi1++) {
         o = _bglfia0-->(_bglfi1+1);
         print (string)" - ";
         print o.short_name;
         print (string)"^";
     }
-    cagedAnimals=_bglArray.length(_bglworld.instances(animal, _bglLambda_0));
+    cagedAnimals=_bglArray.length(_bglworld.instances(animal, _bglLambda_0), 0);
     print (string)"caged animals (in-walk filter): ";
     print cagedAnimals;
     print (string)"^";
-    cageWithoutStones=_bglArray.length(_bglworld.inparent(cage, _bglLambda_1));
+    cageWithoutStones=_bglArray.length(_bglworld.inparent(cage, _bglLambda_1), 0);
     print (string)"cage without stones: ";
     print cageWithoutStones;
     print (string)"^";
-    notFish=_bglArray.length(_bglworld.getall(_bglLambda_2));
+    notFish=_bglArray.length(_bglworld.getall(_bglLambda_2), 0);
     print (string)"everything except fish: ";
     print notFish;
     print (string)"^";
