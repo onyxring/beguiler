@@ -25,7 +25,7 @@ verb Quaff {
     grammar = {
         {.quaff, noun},
     };
-    void perform(){ print("quaff"); }
+    void handler(){ print("quaff"); }
 }
 
 // Replace extend on Quaff: line uses the existing 'quaff' trigger word, so it emits as

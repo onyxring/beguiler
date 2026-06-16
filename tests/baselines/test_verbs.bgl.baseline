@@ -1,5 +1,7 @@
 !% -G
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 
     Constant story    = "";
     Constant headline = "";
@@ -18,24 +20,24 @@ object bgl
   with utilities _bglutil
 ;
 object whiff
-  with perform [;
+  with handler [;
     print (string)"You take a whiff of the air.";
   ]
 ;
 [whiffsub;
-                whiff.perform();
+                whiff.handler();
             ];
 verb 'whiff'
     * -> whiff;
 verb 'waft'
     * noun -> whiff;
 object nudge
-  with perform [;
+  with handler [;
     print (string)"You nudge it.";
   ]
 ;
 [nudgesub;
-                nudge.perform();
+                nudge.handler();
             ];
 verb 'nudge'
     * noun -> nudge;
@@ -64,33 +66,33 @@ verb 'jostle'
     handleaction(##examine);
 ];
 object possess
-  with perform [;
+  with handler [;
     print (string)"Possessed.";
   ]
 ;
 [possesssub;
-                possess.perform();
+                possess.handler();
             ];
 verb 'carol^s'
     * noun -> possess
     * noun -> possess;
 object greet
-  with perform [;
+  with handler [;
     print (string)"Greeted.";
   ]
 ;
 [greetsub;
-                greet.perform();
+                greet.handler();
             ];
 verb 'mr'
     * noun -> greet;
 object stow
-  with perform [;
+  with handler [;
     print (string)"Stowed.";
   ]
 ;
 [stowsub;
-                stow.perform();
+                stow.handler();
             ];
 verb 'stow'
     * held 'on'/'onto'/'upon' noun -> stow

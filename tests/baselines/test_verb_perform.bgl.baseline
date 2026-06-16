@@ -1,4 +1,4 @@
-!% -v5
+!% -G
 !% -E1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
@@ -19,29 +19,25 @@ object _bglUtil
 object bgl
   with utilities _bglutil
 ;
-object census
+object wibble
   with handler [;
-    print (string)"census";
+    print (string)"wibble";
   ]
 ;
-[censussub;
-                census.handler();
+[wibblesub;
+                wibble.handler();
             ];
-verb meta 'census'
-    * -> census;
-verb meta 'tally'
-    * -> census;
-object ponder
-  with handler [;
-    print (string)"ponder";
-  ]
-;
-[pondersub;
-                ponder.handler();
-            ];
-verb 'ponder'
-    * noun -> ponder;
-[main;
+verb 'wibble'
+    * noun -> wibble;
+[f;
+    takesub();
+    <take>;
+    <take ball>;
+    <take ball key>;
+    <glonk ball>;
+    <wibble ball>;
+    <take ball>;
+    rtrue;
 ];
 
     [main; 

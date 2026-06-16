@@ -74,7 +74,7 @@ verb MyOwn {
     grammar = {
         {.gamma, .check},
     };
-    void perform(){ print("own"); }
+    void handler(){ print("own"); }
 }
 
 void main(){}

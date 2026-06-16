@@ -1474,8 +1474,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         }
                         else if(method->isEmitter){
                             if(auto* blk = dynamic_cast<i6Block*>(method->body)){
-                                string b = processBglConditionals(blk->i6Body);
-                                size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+                                string b = processBglConditionals(blk->i6Body);                                size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                 size_t e = b.find_last_not_of(" \t\n\r"); if(e != string::npos) b = b.substr(0, e+1);
                                 // When the receiver is a bare identifier that names an inherited
                                 // member of the enclosing object (e.g. bare `attributes` from

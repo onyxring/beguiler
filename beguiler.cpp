@@ -157,6 +157,10 @@ void beguiler::extractBlorbSettings(const string& filename) {
         extractBool("generateblorb",   beguilerSettings.blorbEnabled);
         extractStr( "blorbassetpath", beguilerSettings.blorbAssetPath);
 
+        // autoInitialize (default true): record on the settings struct here. The gating symbol is
+        // defined AFTER the loop (below) so it's set even for files with no #beguilerSettings block.
+        extractBool("autoinitialize", beguilerSettings.autoInitialize);
+
         // Extract target for compile-time #if symbols (target = Glulx / Z3 / Z5 / Z8)
         {
             size_t k = blockLower.find("target");
@@ -231,6 +235,13 @@ void beguiler::extractBlorbSettings(const string& filename) {
 
         pos = cur;
     }
+
+    // Gate the BLR main wrapper (#if bglautoinitialize in the i6StandardLibrary binding). Define
+    // unconditionally by default — autoInitialize defaults to true even with NO #beguilerSettings
+    // block — so the wrapper emits; `autoInitialize = false` leaves it undefined so the binding
+    // steps aside. (processBeguilerSettings re-affirms it for the with-settings path; the reset()
+    // that would wipe it runs only in LSP mode.)
+    if(beguilerSettings.autoInitialize) parser.defineSymbol("bglautoinitialize", "1");
 }
 
 bool beguiler::go(int argc, char* argv[]) {

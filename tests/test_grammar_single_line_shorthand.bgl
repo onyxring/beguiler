@@ -26,13 +26,13 @@
 // Single-line shorthand
 verb Whistle {
     grammar = {.whistle, noun};
-    void perform(){ print("whistle"); }
+    void handler(){ print("whistle"); }
 }
 
 // Single-line shorthand with multi-trigger via |-alternation
 verb Hum {
     grammar = {.hum|.murmur, noun};
-    void perform(){ print("hum"); }
+    void handler(){ print("hum"); }
 }
 
 // Canonical multi-line form (unchanged)
@@ -41,7 +41,7 @@ verb Tap {
         {.tap, noun},
         {.knock, noun},
     };
-    void perform(){ print("tap"); }
+    void handler(){ print("tap"); }
 }
 
 void main(){}

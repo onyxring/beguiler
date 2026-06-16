@@ -1095,6 +1095,7 @@ bool bglParser::processBeguilerSettings(){
         else if(key == "firstpublished"){ if(cfg.firstPublished.empty()) cfg.firstPublished = strVal; }
         else if(key == "forgiveness"){    if(cfg.forgiveness.empty())    cfg.forgiveness    = strVal; }
         else if(key == "ifid"){           if(cfg.ifid.empty())           cfg.ifid           = strVal; }
+        else if(key == "autoinitialize"){ cfg.autoInitialize = (strVal == "true"); }
 
         tok = file.getToken();
     }
@@ -1103,6 +1104,12 @@ bool bglParser::processBeguilerSettings(){
     // (informBinaryPath is intentionally excluded here — resolved after all parsing in beguiler.cpp)
     if(!cfg.beguiLibPath.empty()) settings.libPath = cfg.beguiLibPath;
     if(!cfg.outputPath.empty() && settings.outputPath.empty()) settings.outputPath = cfg.outputPath;
+
+    // Define the gating symbol for the BLR main wrapper NOW (during parse, before the
+    // i6StandardLibrary binding's `#if bglautoinitialize` is reached). Must be here, not in
+    // applySchemaDefaults (which runs after parsing). Pass 1 (pre-scan) gets it from extractBlorbSettings.
+    if(cfg.autoInitialize) definedSymbols["bglautoinitialize"] = "1";
+    else                   definedSymbols.erase("bglautoinitialize");
 
     return false;
 }

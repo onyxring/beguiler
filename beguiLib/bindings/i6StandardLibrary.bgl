@@ -375,6 +375,15 @@ extern verb XAbstract { .abstract }             // abstract <noun> to <noun>
 extern verb XPurloin { .purloin }               // purloin <noun>
 extern verb XTree { .tree }                     // tree
 
+//-- Fake actions (no grammar) ------------------------------------------------
+// Library-generated actions with no verb grammar of their own — raised internally and matched in
+// object `before`/`after` routines. Grammarless `extern verb` registers the name for `switch(action)`
+// / `action == X` comparisons (emits `##Name`). Filled in as needed; not yet exhaustive.
+extern verb Receive;                            // ##PutOn/##Insert delivery — `before` of the container/supporter
+
+//-- Standard library routines ------------------------------------------------
+extern void ClearScreen() {}                    // clear the screen (parser.h)
+
 // Hoisted via #emitfirst so the constants appear ABOVE the user's
 // #includeI6 "parser" directive — the I6 standard library reads Story/Headline
 // during its own include processing for the compile-time banner. If declared
@@ -385,6 +394,11 @@ extern verb XTree { .tree }                     // tree
     Constant headline = ##beguilerSettings.headline;
 }
 
+// The BLR wraps main to run bglInit() before the game's own main. Gated on `bglAutoInitialize`
+// (set from `#beguilerSettings autoInitialize`, default true). Set `autoInitialize = false` when
+// another extension already replaces main (e.g. orLibrary — I6 forbids nested `replace main`); the
+// caller is then responsible for running bglInit (or doesn't need it).
+#if bglAutoInitialize
 #emitfirst{
     replace main _oldmain;
 }
@@ -394,3 +408,4 @@ extern verb XTree { .tree }                     // tree
         _oldmain();
     ];
 }
+#endif

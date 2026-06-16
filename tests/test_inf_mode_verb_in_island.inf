@@ -17,7 +17,7 @@
         grammar = {
             {.greet, noun}
         }
-        void perform() {
+        void handler() {
             print("hello");
         }
     }

@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 
     Constant story    = "";
     Constant headline = "";
@@ -18,22 +20,22 @@ object bgl
   with utilities _bglutil
 ;
 object trundle
-  with perform [;
+  with handler [;
     print (string)"trundle";
   ]
 ;
 [trundlesub;
-                trundle.perform();
+                trundle.handler();
             ];
 verb 'trundle'
     * noun -> trundle;
 object smelt
-  with perform [;
+  with handler [;
     print (string)"smelt";
   ]
 ;
 [smeltsub;
-                smelt.perform();
+                smelt.handler();
             ];
 verb 'smelt'
     * noun -> smelt;

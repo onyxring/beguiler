@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 Constant _BGL_LINQ_SCRATCH_SIZE = 32;
 Constant _BGL_WORLD_BUFSIZE = 128;
 

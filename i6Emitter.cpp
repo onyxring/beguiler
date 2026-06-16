@@ -798,9 +798,11 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
                 for(typeMember* m : cd->members)
                     if(auto* fd = dynamic_cast<functionDef*>(m)) scanFd(fd);
             }
-            else if(auto* vobj = dynamic_cast<verbObjectDef*>(node)){
-                if(vobj->doFunc) scanFd(vobj->doFunc);
-            } else if(auto* obj = dynamic_cast<objectDef*>(node))
+            else if(auto* obj = dynamic_cast<objectDef*>(node))
+                // verbObjectDef is-a objectDef, so verbs land here too: scan ALL their member
+                // functions (the handler + any helpers). scanFd skips emitters, so the verb's
+                // perform()/operator== emitters are ignored automatically — no need to single out
+                // the handler by name (the old verb special-case scanned only doFunc).
                 for(typeMember* m : obj->members)
                     if(auto* fd = dynamic_cast<functionDef*>(m)) scanFd(fd);
         }
@@ -1052,8 +1054,14 @@ void i6Emitter::emitICL(beguilerSettingsDef* cfg){
         out << "!% ++include_path=" << *it << "\n";
 }
 void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
-    // beguiler/beguilerMajor/beguilerMinor/beguilerPatch are resolved as compile-time
-    // literals via #define symbols — no I6 constants emitted (avoids unused warnings).
+    // Beguiler-presence marker for raw-I6 libraries (e.g. orLibrary) to detect a Beguile
+    // compile and version-check, via `#ifdef beguiler` / `#iftrue (beguiler >= NNNN)`. Mirrors
+    // the Beguile-side `#if beguiler` symbol (= BEGUILER_VERSION, major*1000+minor*10+patch).
+    // The empty self-reference `#Ifdef beguiler;#Endif;` marks the constant "used" so I6 won't
+    // warn when a game consumes none of it (the reason this was previously left I6-side-unemitted).
+    // beguilerMajor/Minor/Patch stay #define-only — derivable from this one when needed.
+    out << "Constant beguiler = " << BEGUILER_VERSION << ";\n";
+    out << "#Ifdef beguiler;#Endif;\n";
 
     if(!cfg->serial.empty())
         out << "Serial \"" << cfg->serial << "\";\n";

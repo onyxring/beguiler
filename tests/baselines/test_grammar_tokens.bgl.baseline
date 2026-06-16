@@ -1,5 +1,7 @@
 !% -G
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 
     Constant story    = "";
     Constant headline = "";
@@ -27,64 +29,64 @@ object bgl
     return true;
 ];
 object measure
-  with perform [;
+  with handler [;
     print (string)"Measured.";
   ]
 ;
 [measuresub;
-                measure.perform();
+                measure.handler();
             ];
 verb 'measure'
     * anynumber -> measure;
 object replenish
-  with perform [;
+  with handler [;
     print (string)"Replenished.";
   ]
 ;
 [replenishsub;
-                replenish.perform();
+                replenish.handler();
             ];
 verb 'replenish'
     * container -> replenish;
 verb 'chat'
     * animate 'about' topic -> replenish;
 object fiddle
-  with perform [;
+  with handler [;
     print (string)"Fiddled.";
   ]
 ;
 [fiddlesub;
-                fiddle.perform();
+                fiddle.handler();
             ];
 verb 'fiddle'
     * myfilter -> fiddle;
 object grab
-  with perform [;
+  with handler [;
     print (string)"Grabbed.";
   ]
 ;
 [grabsub;
-                grab.perform();
+                grab.handler();
             ];
 verb 'grab'
     * noun=inscope -> grab;
 object seek
-  with perform [;
+  with handler [;
     print (string)"Sought.";
   ]
 ;
 [seeksub;
-                seek.perform();
+                seek.handler();
             ];
 verb 'seek'
     * scope=setscope -> seek;
 object pour
-  with perform [;
+  with handler [;
     print (string)"Poured.";
   ]
 ;
 [poursub;
-                pour.perform();
+                pour.handler();
             ];
 verb 'pour'
     * container noun=inscope -> pour;

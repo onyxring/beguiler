@@ -26,14 +26,14 @@ verb Trundle {
     grammar = {
         {.trundle, noun},
     };
-    void perform(){ print("trundle"); }
+    void handler(){ print("trundle"); }
 }
 
 verb Smelt {
     grammar = {
         {.smelt, noun},
     };
-    void perform(){ print("smelt"); }
+    void handler(){ print("smelt"); }
 }
 
 // Grammar object: per-rule priority via optional 3rd positional element.

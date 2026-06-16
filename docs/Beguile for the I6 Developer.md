@@ -1051,11 +1051,11 @@ For genuinely mutable, byte-level work — accumulating output into a buffer, pa
 
 ### Declaring a Verb from Scratch
 
-The `extend` form lets us add patterns to a verb already declared in the binding.  If your game needs a brand-new verb, the syntax mirrors object declaration: a `verb` block with its own `grammar` and a `perform` routine that fires when the verb matches:
+The `extend` form lets us add patterns to a verb already declared in the binding.  If your game needs a brand-new verb, the syntax mirrors object declaration: a `verb` block with its own `grammar` and a `handler` routine that fires when the verb matches:
 
 ```
 verb Flip {
-    void perform(){
+    void handler(){
         print($"You flip {noun}.^");
     }
     grammar = {
@@ -1065,4 +1065,18 @@ verb Flip {
 }
 ```
 
-This declares a `Flip` action and binds both `flip` and `toggle` as trigger words; either matches a `HELD` noun and runs `perform`.
+This declares a `Flip` action and binds both `flip` and `toggle` as trigger words; either matches a `HELD` noun and runs `handler`.
+
+`handler()` is the action body — its contents become the I6 `<verbName>Sub` routine (here, `FlipSub`).  A from-scratch (non-`extern`) verb **must** define `handler()`; omitting it is a compile error.  An `extern verb` is exempt — its `Sub` already lives in the library — which is exactly why the binding's `extern verb PutOn { ... }` carries grammar but no `handler`.
+
+#### Launching an Action
+
+In I6 you fire an action from your own code with the angle-bracket forms — `<Take noun>` to run it, `<<Take noun>>` to run it and return true.  Beguile has no such punctuation; you call **`perform()`** on the verb instead:
+
+```
+Take.perform(noun);             // I6:  <Take noun>
+Take.perform(noun, second);     // I6:  <Take noun second>
+Take.perform(noun); rtrue;      // I6:  <<Take noun>>   (run, then return true — explicit)
+```
+
+`perform()` emits the `<...>` form under the hood, so whichever library you compiled against (Standard Library or Puny Inform) supplies its own action runner and handles the usual save/restore of `actor`/`action`/`noun`/`second` plus the before/after rules.  You never name that runner, and you never write `<...>`.  It works on any verb — your own or an `extern` library verb — and the `<<...>>` "and return" behaviour stays an explicit `rtrue;` so the control flow is visible rather than buried in the call.

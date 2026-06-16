@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 global _bgl_temp0;
 global _bgl_temp1;
 global _bgl_temp2;

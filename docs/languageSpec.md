@@ -2078,16 +2078,16 @@ object rex : Animal {
 
 If a derived class overrides a `default` method *without* marking its own version `default`, the method is no longer freely overridable — further descendants will require `replace` to suppress the shadowing warning. To keep the method overridable through the hierarchy, mark each override `default` as well.
 
-The built-in `verb` class uses this for `perform()`:
+The built-in `verb` class uses this for `handler()` (the verb's action body):
 
 ```bgl
 alias class verb for object {
-    default emitter void perform(){ $selfsub; }
+    default emitter void handler(){ $selfsub(); }
     ...
 }
 ```
 
-This provides a default bridge to the I6 action routine (`<verbName>Sub`) while allowing each verb to override `perform()` without boilerplate.
+This provides a default bridge to the I6 action routine (`<verbName>Sub`) while allowing each verb to override `handler()` without boilerplate. (Verbs are additionally required by the compiler to define `handler()` unless declared `extern` — see §14.2.)
 
 ### Matching rules for `replace` in class/object bodies
 - **In `extend class`**: `replace` replaces an existing member on the same class. Adding a duplicate without `replace` is a compile-time error.
@@ -2173,11 +2173,12 @@ The built-in `verb` class uses this to generate a wrapper routine for each verb:
 ```bgl
 alias class verb for object {
     grammarRuleList grammar;
-    default emitter void perform(){ $selfsub; }
+    default emitter void handler(){ $selfsub(); }
+    emitter void perform(object n){ <$self $n> }   // launch the action (the <...> replacement)
     emitter eBool operator == (verb v){ $self == ##$v }
     emitter void _bglGlobalDeclaration() {
         [$selfsub;
-            $self.perform();
+            $self.handler();
         ];
     }
 }
@@ -4219,7 +4220,7 @@ verb Examine {
         {.examine, NOUN},
         {.x, NOUN},
     }
-    void perform() {
+    void handler() {
         print("You examine it closely.");
     }
 }
@@ -4232,18 +4233,32 @@ The type `grammarRuleList` can be inferred from the class declaration, so `gramm
 ```bgl
 verb Whistle {
     grammar = {.whistle, noun};                 // shorthand
-    void perform() { print("You whistle."); }
+    void handler() { print("You whistle."); }
 }
 
 verb Whistle {
     grammar = { {.whistle, noun} };             // canonical, equivalent
-    void perform() { print("You whistle."); }
+    void handler() { print("You whistle."); }
 }
 ```
 
 Multi-trigger via `|`-alternation still works in the shorthand: `grammar = {.hum|.murmur, noun};`. The shorthand only applies when a single grammar line is being declared; multi-line grammars use the canonical form with one set of braces per line. The shorthand is recognized wherever `grammar = { ... }` is accepted — verb bodies, `extend` blocks, standalone grammar objects, and extern verb bodies — because both forms go through the same parser path.
 
-`perform()` is the verb's action handler — it is called automatically when the player enters a command matching the verb's grammar. The base `verb` class declares `perform()` as a `default` method (see §5.8) that bridges to the I6 action routine. Since it is declared as `default`, overriding it requires no `replace` qualifier. A non-extern verb that does not define `perform()` produces a compiler warning.
+### Defining behavior: `handler()`
+
+`handler()` is the verb's action body — it is called automatically when the player enters a command matching the verb's grammar, and its body becomes the I6 `<verbName>Sub` action routine. The base `verb` class declares `handler()` as a `default` method (see §5.8), so overriding it requires no `replace` qualifier. **A non-extern verb must define `handler()`** — omitting it is a compiler error (the verb would otherwise inherit the default Sub bridge and recurse at runtime). Extern verbs are exempt (their `Sub` is library-defined — see *External Verbs* below).
+
+### Launching an action: `perform()`
+
+To *run* an action from your own code — the Beguile replacement for I6's `<...>` and `<<...>>` syntax — call `perform()` on a verb:
+
+```bgl
+Enter.perform(door);            // run the Enter action on `door`      (I6: <Enter door>)
+Take.perform(coin, pouch);      // ...with a second noun                (I6: <Take coin pouch>)
+Take.perform(coin); rtrue;      // the <<Take coin>> form: run, then return true (explicit)
+```
+
+`perform()` emits the I6 `<...>` form under the hood, so the active I6 library (standard library, PunyInform, …) binds its own action runner: it saves and restores the current `actor`/`action`/`noun`/`second` and runs the surrounding before/after rules. You never write `<...>` yourself, and Beguile never hardcodes the library's runner routine. `perform()` works on **any** verb — native or `extern` — whether or not it defines a `handler()`. The `<<...>>` "run and return true" form is just `perform(...)` followed by an explicit `rtrue;`, keeping control flow visible rather than hidden in the call.
 
 ### External Verbs
 
@@ -4255,7 +4270,7 @@ extern verb Drop;
 extern verb Go;
 ```
 
-`extern verb` declarations register the name in Beguile's type system for use in `switch(action)` comparisons, grammar lines, and method calls. Because the `verb` class defines `default emitter void perform()`, calling `Take.perform()` on an extern verb emits a call to the I6 action routine (`TakeSub`), bridging Beguile code to I6-defined verb handlers.
+`extern verb` declarations register the name in Beguile's type system for use in `switch(action)` comparisons, grammar lines, `perform()` launches, and method calls. An extern verb needs no `handler()` — its `<verbName>Sub` routine is defined by the I6 library — so it is exempt from the must-define-`handler()` rule. `Take.perform(noun)` launches the library's Take action exactly as it would a native verb (emitting `<Take noun>`).
 
 #### Declaring Claimed Dictionary Words
 
@@ -4320,7 +4335,7 @@ verb Inventory {
         {.inventory},
         {.i},
     };
-    void perform() { /* ... */ }
+    void handler() { /* ... */ }
 }
 ```
 
@@ -4350,7 +4365,7 @@ verb Take {
         {.take, noun},
         {.grab, noun},
     };
-    void perform() { /* ... */ }
+    void handler() { /* ... */ }
 }
 ```
 
@@ -4471,7 +4486,7 @@ verb TypeNum {
     grammar = {
         {.type | .enter | .put, number, .into | .in | .on | .onto, noun},
     }
-    void perform() { print("You can't type anything there."); }
+    void handler() { print("You can't type anything there."); }
 }
 ```
 
@@ -4541,7 +4556,7 @@ verb Examine {
         {.x, NOUN},
         {.look, .at, NOUN},
     }
-    void perform() {
+    void handler() {
         print("You examine it closely.");
     }
 }

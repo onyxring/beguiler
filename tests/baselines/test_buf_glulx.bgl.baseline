@@ -1,5 +1,7 @@
 !% -G
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 
     Default bglStringDefaultSize 500;
 

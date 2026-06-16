@@ -65,7 +65,7 @@ verb Whiff {
     grammar = {
         {.whiff},
     };
-    void perform() {
+    void handler() {
         print("You take a whiff.");
     }
 }
@@ -77,7 +77,7 @@ verb Nudge {
     grammarRuleList grammar = {
         {.nudge, noun},
     };
-    void perform() {
+    void handler() {
         print("You nudge it.");
     }
 }

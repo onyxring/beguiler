@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 
     Array _bglScratchStack table 33;
     Global _bglScratchTop = 0;

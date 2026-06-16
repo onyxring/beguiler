@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 
     Constant story    = "";
     Constant headline = "";
@@ -18,12 +20,12 @@ object bgl
   with utilities _bglutil
 ;
 object tickle
-  with perform [;
+  with handler [;
     print (string)"tickle";
   ]
 ;
 [ticklesub;
-                tickle.perform();
+                tickle.handler();
             ];
 verb 'tickle'
     * noun -> tickle;
@@ -32,12 +34,12 @@ extend 'tickle' first
 extend 'tickle'
     * 'roughly' noun -> tickle;
 object burnish
-  with perform [;
+  with handler [;
     print (string)"burnish";
   ]
 ;
 [burnishsub;
-                burnish.perform();
+                burnish.handler();
             ];
 verb 'burnish'
     * -> burnish;

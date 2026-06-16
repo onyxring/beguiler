@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 global _bgl_catch_cookie;
 global _bgl_cv0;
 global _bgl_cvs0;

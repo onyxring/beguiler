@@ -1,0 +1,13 @@
+// A NATIVE (non-extern) verb must define handler() — its body becomes the I6 <verbName>Sub action
+// routine. Omitting it would fall back to the default Sub bridge and recurse at runtime, so it's a
+// hard error. (extern verbs are exempt — see test_verb_perform.bgl, which uses extern verbs with no
+// handler and compiles cleanly.)
+// EXPECT_ERROR: must define handler()
+
+#beguilerSettings { informName = "none"; }
+#include <bindings/i6StandardLibrary>
+
+verb Frob {
+    grammar = {.frob, noun};
+    // no handler() — should be rejected
+}

@@ -30,7 +30,7 @@ verb Give2 {
         {.give, held, .to, creature},                // give X to Y → noun=X, second_noun=Y
         {.give, creature, held, reverse},            // give Y X    → I6 swaps so still noun=X, second_noun=Y
     };
-    void perform(){ print("give"); }
+    void handler(){ print("give"); }
 }
 
 // grammarRule form: reverse on a standalone literal (and one without, for comparison)

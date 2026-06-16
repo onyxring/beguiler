@@ -12,7 +12,7 @@ verb Bad {
     grammar = {
         {.foo, reverse, noun},
     };
-    void perform(){}
+    void handler(){}
 }
 
 void main(){}

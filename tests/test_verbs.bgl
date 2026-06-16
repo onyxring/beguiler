@@ -13,7 +13,7 @@ verb Whiff {
         {.whiff},
         {.waft, noun},
     };
-    void perform() {
+    void handler() {
         print("You take a whiff of the air.");
     }
 }
@@ -23,7 +23,7 @@ verb Nudge {
         {.nudge, noun},
         {.jostle, noun},
     };
-    void perform() {
+    void handler() {
         print("You nudge it.");
     }
 }
@@ -55,7 +55,7 @@ verb Possess {
         {.carol's, noun},
         {..carol's, noun},   // plural form: should emit 'carol^s/p'
     };
-    void perform() {
+    void handler() {
         print("Possessed.");
     }
 }
@@ -66,7 +66,7 @@ verb Greet {
     grammar = {
         {.mr., noun},
     };
-    void perform() {
+    void handler() {
         print("Greeted.");
     }
 }
@@ -79,7 +79,7 @@ verb Stow {
         {.stow, HELD, .on | .onto | .upon, noun},
         {.stow, HELD, (.in | .into | .inside), noun},   // with optional parens
     };
-    void perform() {
+    void handler() {
         print("Stowed.");
     }
 }

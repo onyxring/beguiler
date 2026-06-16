@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 
     Constant story    = "";
     Constant headline = "";
@@ -18,12 +20,12 @@ object bgl
   with utilities _bglutil
 ;
 object tinker
-  with perform [;
+  with handler [;
     print (string)"tinker";
   ]
 ;
 [tinkersub;
-                tinker.perform();
+                tinker.handler();
             ];
 verb 'tinker'
     * noun -> tinker;

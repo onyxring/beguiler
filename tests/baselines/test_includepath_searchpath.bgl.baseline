@@ -1,6 +1,8 @@
 !% -v5
 !% -E1
 !% ++include_path=/Users/jim/projects/IF-Projects/beguiler/tests/incsub
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;

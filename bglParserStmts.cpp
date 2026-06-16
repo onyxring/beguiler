@@ -1874,6 +1874,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 if(method->isEmitter)
                     if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                         string b = processBglConditionals(blk->i6Body);
+                        // $selfsub → `<self>sub` (the I6 action routine) for the verb class's
+                        // perform() bridge — e.g. `Take.perform()` → `TakeSub()`. Must run before
+                        // $self: $self is a prefix of $selfsub, and replaceWord's word boundary
+                        // leaves $selfsub untouched if $self runs first (it was emitted literally).
+                        b = replaceWord(b, "$selfsub", selfValue + "sub");
                         b = replaceWord(b, "$self", selfValue);
                         b = replaceWord(b, "$val",  objectPath);
                         // $class — declared receiver type (ignores multiple inheritance).

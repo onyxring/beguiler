@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;

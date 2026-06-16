@@ -29,7 +29,7 @@ verb TypeNum {
     grammar = {
         {.typo|.entrz|.putz, number, .into|.in|.on|.onto, noun},
     };
-    void perform(){ print("type num"); }
+    void handler(){ print("type num"); }
 }
 
 // Two multi-trigger lines sharing the SAME trigger set — consolidated under one directive
@@ -38,7 +38,7 @@ verb Toggle {
         {.flip|.flop, noun},
         {.flip|.flop, noun, .twice},
     };
-    void perform(){ print("toggle"); }
+    void handler(){ print("toggle"); }
 }
 
 // A single-trigger verb whose word later appears in a multi-trigger line for another verb —
@@ -47,14 +47,14 @@ verb Beep {
     grammar = {
         {.beep, noun},
     };
-    void perform(){ print("beep"); }
+    void handler(){ print("beep"); }
 }
 
 verb Chirp {
     grammar = {
         {.chirp|.beep|.tweet, noun},   // 'beep' is already declared → fan out
     };
-    void perform(){ print("chirp"); }
+    void handler(){ print("chirp"); }
 }
 
 // Multi-trigger inside an extend block, all triggers brand new — still emits as one combined
@@ -63,7 +63,7 @@ verb Squelch {
     grammar = {
         {.squelch, noun},
     };
-    void perform(){ print("squelch"); }
+    void handler(){ print("squelch"); }
 }
 
 extend Squelch {

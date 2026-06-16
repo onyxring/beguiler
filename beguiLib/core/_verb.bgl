@@ -7,11 +7,26 @@
         bool meta;               // when true, emits as I6 `Verb meta '...'` — verb does not increment the turn counter
         int priority = 10;       // grammar sort priority. Anchor for this verb's own block; extends compare against it.
                                  // < anchor → I6 `Extend 'v' first` (matches first); > anchor → `Extend 'v'` (matches last).
-        default emitter void perform(){ $selfsub; }    // bridges to I6 <verbName>Sub; override without 'replace'
+        // handler() — what the verb DOES; its body becomes the I6 <verbName>Sub routine. User verbs
+        // override it to define behavior ('default' = override without 'replace'). The default body
+        // bridges to the library Sub (for extern/library verbs that already define <verbName>Sub).
+        default emitter void handler(){ $selfsub(); }
+
+        // perform() — LAUNCH this action: the Beguile replacement for I6's <...> / <<...>> syntax.
+        // Emits I6 <...> under the hood, so the active library (stdlib/puny) binds its own action
+        // runner and saves/sets/restores actor·action·noun·second + runs the before/after rules.
+        // Library-agnostic; no compiler involvement.
+        //   <verb noun>         ->  Verb.perform(noun)
+        //   <verb noun second>  ->  Verb.perform(noun, second)
+        //   <<verb noun>>       ->  Verb.perform(noun); rtrue;   (explicit return — no hidden control flow)
+        emitter void perform()                   { <$self> }
+        emitter void perform(object n)           { <$self $n> }
+        emitter void perform(object n, object s) { <$self $n $s> }
+
         emitter eBool operator == (verb v){ $self == ##$v }
         emitter void _bglGlobalDeclaration() {
             [$selfsub;
-                $self.perform();
+                $self.handler();
             ];
         }
 }

@@ -1657,13 +1657,17 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     closeCompileContext(eCompileContext::objectDef);
     currentObject = savedObject;
 
-    // Verb-specific post-processing: link perform() and warn if missing
+    // Verb-specific post-processing: link handler() (the action body) and require it on native verbs.
+    // A native verb with no handler() would fall back to the default Sub bridge and recurse at
+    // runtime, so this is a hard error. `extern verb` is exempt — its action routine is defined
+    // elsewhere (the library's <verbName>Sub). (The generic `abstract` member feature, when added,
+    // will subsume this check.)
     if(vod && !isExternal){
         for(typeMember* m : vod->members)
             if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(fd->name == "perform"){ vod->doFunc = fd; break; }
+                if(fd->name == "handler"){ vod->doFunc = fd; break; }
         if(!vod->doFunc)
-            parsingWarning(format("verb '{0}' does not define perform()", origName));
+            parsingError(format("verb '{0}' must define handler() (its body becomes the I6 <verbName>Sub action routine). Declare it 'extern verb' if the action routine is defined elsewhere.", origName));
     }
 
     return false;
@@ -1926,11 +1930,11 @@ bool bglParser::processObjectExtension(token nameTok){
     closeCompileContext(eCompileContext::objectDef);
     currentObject = savedObject;
 
-    // For verb objects: link perform() and add grammar to globals if external
+    // For verb objects: link handler() (the action body) and add grammar to globals if external
     if(vod){
         for(typeMember* m : vod->members)
             if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(fd->name == "perform"){ vod->doFunc = fd; break; }
+                if(fd->name == "handler"){ vod->doFunc = fd; break; }
     }
 
     return false;

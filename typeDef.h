@@ -469,6 +469,9 @@ class beguilerSettingsDef : public typeDef {
         int linqScratchSize = -1;      // LINQ chain scratch buffer capacity per buffer (-1 = unset; default 32 from schema)
         int worldBufSize    = -1;      // bglWorld scratch buffer capacity (-1 = unset; default 128 from schema)
         optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)
+        bool   autoInitialize = true;  // false → BLR does NOT wrap main (replace main / [main; bglInit; _oldmain]).
+                                       // Set false when another extension (e.g. orLibrary) already replaces main;
+                                       // the caller then runs bglInit itself (or doesn't need it).
 
         // blorb packaging
         bool   blorbEnabled  = false;  // true = run asset scan + blorb build

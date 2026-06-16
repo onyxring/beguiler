@@ -21,7 +21,7 @@ verb Census {
         {.census},
         {.tally},
     };
-    void perform(){ print("census"); }
+    void handler(){ print("census"); }
 }
 
 // Non-meta verb — emits as plain `Verb`
@@ -29,7 +29,7 @@ verb Ponder {
     grammar = {
         {.ponder, noun},
     };
-    void perform(){ print("ponder"); }
+    void handler(){ print("ponder"); }
 }
 
 void main(){}

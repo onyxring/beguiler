@@ -29,7 +29,7 @@ verb Tinker {
     grammar = {
         {.tinker, noun},
     };
-    void perform(){ print("tinker"); }
+    void handler(){ print("tinker"); }
 }
 
 // Three extends < anchor 10 at priorities 7, 5, 3 — declared in arbitrary source

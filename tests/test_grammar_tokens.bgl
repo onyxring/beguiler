@@ -38,7 +38,7 @@ verb Measure {
     grammar = {
         {.measure, ANYNUMBER},
     };
-    void perform() {
+    void handler() {
         print("Measured.");
     }
 }
@@ -54,7 +54,7 @@ verb Replenish {
         {.replenish, container},
         {.chat, animate, .about, TOPIC},
     };
-    void perform() {
+    void handler() {
         print("Replenished.");
     }
 }
@@ -67,7 +67,7 @@ verb Fiddle {
     grammar = {
         {.fiddle, myFilter},
     };
-    void perform() {
+    void handler() {
         print("Fiddled.");
     }
 }
@@ -80,7 +80,7 @@ verb Grab {
     grammar = {
         {.grab, noun(inScope)},
     };
-    void perform() {
+    void handler() {
         print("Grabbed.");
     }
 }
@@ -93,7 +93,7 @@ verb Seek {
     grammar = {
         {.seek, SCOPE(setScope)},
     };
-    void perform() {
+    void handler() {
         print("Sought.");
     }
 }
@@ -106,7 +106,7 @@ verb Pour {
     grammar = {
         {.pour, container, noun(inScope)},
     };
-    void perform() {
+    void handler() {
         print("Poured.");
     }
 }

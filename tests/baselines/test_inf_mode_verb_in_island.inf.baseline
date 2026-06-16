@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 
     Constant story    = "";
     Constant headline = "";
@@ -29,12 +31,12 @@ object bgl
 
 
 object helloverb
-  with perform [;
+  with handler [;
     print (string)"hello";
   ]
 ;
 [helloverbsub;
-                helloverb.perform();
+                helloverb.handler();
             ];
 verb 'greet'
     * noun -> helloverb;

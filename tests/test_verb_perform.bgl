@@ -1,0 +1,48 @@
+/*
+    test_verb_perform.bgl
+    The verb class's two roles, exercised for BOTH extern and native verbs:
+      - handler() : the action body — its default bridges to the I6 <verbName>Sub routine via
+                    $selfsub (which must resolve at call sites — regression for the $selfsub leak).
+      - perform() : LAUNCH the action — the Beguile replacement for I6's <...>/<<...>>. Emits I6
+                    <...> so the active library binds its own action runner.
+
+    A native verb MUST define handler() (see _test_verb_no_handler.bgl for the failure case); an
+    extern verb is exempt — `Take` below has no handler and compiles cleanly — yet perform() works
+    on either kind.
+*/
+
+// Emission-only test: the bindings declare these verbs but the real I6 library (with the actual
+// XxxSub routines + the <...> runner) isn't compiled here, so skip the I6 handoff.
+#beguilerSettings { informName = "none"; }
+
+#include <bindings/i6StandardLibrary>
+
+extern object ball;
+extern object key;
+
+// An EXTERN verb with NO handler() — exempt from the must-define rule (its <verbName>Sub is defined
+// by the library). Compiles cleanly; perform() launches it like any other. (Native counterpart that
+// must fail: _test_verb_no_handler.bgl.)
+extern verb Glonk { .glonk }
+
+// A NATIVE verb — defines handler(); perform() still launches it via <...>.
+verb Wibble {
+    grammar = {.wibble, noun};
+    void handler() { print("wibble"); }
+}
+
+bool f() {
+    // handler() default bridges to the Sub on an extern verb: Take.handler() -> takesub();
+    Take.handler();
+
+    // perform() launches via I6 <...> — works for extern (Take, no handler) AND native (Wibble):
+    Take.perform();             // -> <take>
+    Take.perform(ball);         // -> <take ball>
+    Take.perform(ball, key);    // -> <take ball key>
+    Glonk.perform(ball);        // -> <glonk ball>    (extern verb, no handler)
+    Wibble.perform(ball);       // -> <wibble ball>   (native verb)
+
+    // the <<take ball>> form is perform() + an explicit return:
+    Take.perform(ball);         // -> <take ball>
+    rtrue;
+}

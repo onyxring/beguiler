@@ -1,5 +1,7 @@
 !% -v5
 !% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
 Array _bglFramePool --> 64;
 Global _bglFrameTop = 0;
  [ _bglFrameAlloc size r;

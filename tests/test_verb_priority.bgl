@@ -24,7 +24,7 @@ verb Tickle {
     grammar = {
         {.tickle, noun},
     };
-    void perform(){ print("tickle"); }
+    void handler(){ print("tickle"); }
 }
 
 // Extend Tickle with priority < anchor (5 < 10) → `extend 'tickle' first`
@@ -49,7 +49,7 @@ verb Burnish {
     grammar = {
         {.burnish},
     };
-    void perform(){ print("burnish"); }
+    void handler(){ print("burnish"); }
 }
 
 // priority 8 < anchor 20 → `extend 'burnish' first`

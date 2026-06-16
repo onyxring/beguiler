@@ -15,6 +15,7 @@
         int             worldBufSize   = 128;            // bgl.world.* scratch buffer capacity (max objects per query); raise for very large worlds
         string          includePaths;                   // include search path entries for both Beguile and I6 (additive); comma-separated allowed: "../a,../b,../c"
         bool            rewritePaths   = true;          // substitute path separators to match OS
+        bool            autoInitialize = true;          // false → BLR does not wrap main (replace main / [main; bglInit; oldmain]); set when another extension already replaces main (e.g. orLibrary)
         bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)
         string          blorbAssetPath = "assets";      // asset directory relative to source .bgl file
         string          author         = "";            // iFiction: game author (required)
