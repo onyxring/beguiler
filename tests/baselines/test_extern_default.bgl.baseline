@@ -1,0 +1,22 @@
+!% -v5
+!% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+[use s;
+    clearscreen();
+    s=chooseobjects(0,0);
+    epilogue();
+];
+[Epilogue;
+    print (string)"The End.^";
+];

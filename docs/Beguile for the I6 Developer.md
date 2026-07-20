@@ -1049,6 +1049,22 @@ For genuinely mutable, byte-level work — accumulating output into a buffer, pa
 - accessor syntax
 - some DM4 examples contrasted in Beguile
 
+#### Raw I6 word arrays
+
+A Beguile `array<T>` is not laid out like a bare I6 `-->` array: it reserves word 0 for a live element count (plus a tracking marker past the data), so `arr[i]` compiles to `arr-->(i+1)`.  That is what you want for arrays Beguile owns, but it is *wrong* for a raw I6 buffer handed to you from the outside — the `results` array inside a `parse_error` entry point, a library table, a `-->` array you declared in an `#i6` island.  Those start their data at word 0 with no header.
+
+Receive such a buffer as a **`rawArray<T>`** and subscripting emits the raw form `arr-->i`, indexing straight from word 0:
+
+```
+bool ext_parsererror(int etype, rawArray<var> results){
+    if (etype == NOTHING_PE && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
+        rtrue("You are not holding one.");
+    rfalse;
+}
+```
+
+`results[0]` compiles to `results-->0`, and `(verb)results[0]` re-labels that word as an action so it compares against `##PutOn` — the same idiom you would write by hand in I6, minus the offset bookkeeping.  Since a raw array carries no length, `size()` is derived as `(arr.#)/WORDSIZE` and **`for…in` over a `rawArray` parameter is refused at compile time** (there is no count to stop at); loop it explicitly with a bound you know: `for(int i in 0 to n-1) results[i]`.
+
 ### Declaring a Verb from Scratch
 
 The `extend` form lets us add patterns to a verb already declared in the binding.  If your game needs a brand-new verb, the syntax mirrors object declaration: a `verb` block with its own `grammar` and a `handler` routine that fires when the verb matches:

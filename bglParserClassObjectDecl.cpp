@@ -1312,13 +1312,14 @@ bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q
     // Entered after "array" "<" have been consumed. Reads: elementType > name symbol
     string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
     file.getToken(">");
-    // Build the full generic type token (e.g. "array<int>") so processRoutineDeclaration sees it
+    // Build the full generic type token (e.g. "array<int>" or "rawarray<int>") so downstream sees it.
+    // arrayTok is the base-name token ("array" or "rawarray"), routed here by the grammar table.
     token typeTok = arrayTok;
-    typeTok.value = "array<" + elemType + ">";
+    typeTok.value = arrayTok.value + "<" + elemType + ">";
     token name = file.getToken({eTokenType::identifier, eTokenType::dataType});
     token symbol = file.getToken({token::bracketOpen, token::assignment, token::endStatement, token::parenOpen});
     if(symbol.is(token::parenOpen))
-        return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace);
+        return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault);
     processArrayDeclaration(arrayTok, name, elemType, symbol, ctx, q.isExtern);
     return false;
 }
@@ -1335,7 +1336,7 @@ bool bglParser::processTypedObjectDeclaration(token typeTok, token nameTok, toke
     }
     token symbol = file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
     if(symbol.is(token::parenOpen))
-        return processRoutineDeclaration(typeTok, nameTok, ctx, q.isExtern, q.isEmitter, q.isReplace);
+        return processRoutineDeclaration(typeTok, nameTok, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault);
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, nameTok, q.isExtern, objectClassName, i6alias, true, q.isEmitter);
     else
@@ -1348,7 +1349,7 @@ bool bglParser::processAliasedDeclaration(token typeTok, token nameTok, token al
     string i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
     token symbol = file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
     if(symbol.is(token::parenOpen))
-        return processRoutineDeclaration(typeTok, nameTok, ctx, q.isExtern, q.isEmitter, q.isReplace);
+        return processRoutineDeclaration(typeTok, nameTok, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault);
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, nameTok, q.isExtern, "", i6alias, true, q.isEmitter);
     else

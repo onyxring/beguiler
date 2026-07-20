@@ -36,6 +36,7 @@ using namespace std;
 string resolveIncludePath(const string& name, const string& ext, const filesystem::path& baseDir, const vector<string>& includePaths);
 string rewritePathSeps(const string& path);
 filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& target);
+filesystem::path findLibIncludeRecursive(const filesystem::path& root, const string& includeName);
 
 // Substitute `##beguilerSettings.<key>` references inside a raw-I6 block with
 // their compile-time values. Uses the `##` prefix that already marks Beguile-
@@ -352,13 +353,15 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                     includeName += t.originalValue.empty() ? t.value : t.originalValue;
                     t = file.getToken();
                 }
-                filesystem::path libPath = findCaseInsensitive(settings.libPath, includeName + ".bgl");
-                if(filesystem::exists(libPath)){
+                // Recursive lib search: `<name>` finds name.bgl anywhere under beguiLib (files first,
+                // subfolders alphabetically, depth-first); a `sub/name` prefix constrains the match to
+                // a trailing parent-folder chain. So the `bindings/…` prefix is optional.
+                filesystem::path libPath = findLibIncludeRecursive(settings.libPath, includeName);
+                if(!libPath.empty()){
                     parseFile(libPath.string());
-                    // Case-fold for these flag triggers — Beguile is case-insensitive but
-                    // includeName accumulates t.originalValue (preserves user casing), so
-                    // `<bglWorld>` and `<bglworld>` should both fire the same setup.
-                    string ciInclude = includeName;
+                    // Flag triggers keyed on the RESOLVED file's base name (so `<array>` and, say,
+                    // `<extensions/array>` both fire the same setup). Beguile is case-insensitive.
+                    string ciInclude = libPath.stem().string();
                     transform(ciInclude.begin(), ciInclude.end(), ciInclude.begin(), ::tolower);
                     if(ciInclude == "array"){
                         languageService.arrayInUse = true;

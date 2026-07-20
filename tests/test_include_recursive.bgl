@@ -1,0 +1,15 @@
+/*
+    test_include_recursive.bgl
+    The <...> library search is recursive: it searches beguiLib root first, then every subfolder
+    (alphabetical, depth-first), matching the include name as a path suffix. So the `bindings/`
+    prefix is optional — <i6StandardLibrary> finds bindings/i6StandardLibrary.bgl just like the
+    full <bindings/i6StandardLibrary> does.
+*/
+#beguilerSettings { informName = "none"; }
+
+#include <i6StandardLibrary>   // resolved recursively, without the bindings/ prefix
+
+verb Frob {
+    grammar = {.frob, noun};
+    void handler() { print("frob"); }
+}

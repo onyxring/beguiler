@@ -1,0 +1,23 @@
+/*
+    test_extern_default.bgl
+    Bodyless extern declarations (no body, no return-statement requirement, even non-void),
+    and `extern default` — a library-stub marker that lets a plain definition override it.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+// bodyless externs — the implementation lives in I6. Non-void needs no return placeholder.
+extern void ClearScreen();
+extern int  ChooseObjects(var obj, var code);
+
+// a `default` extern: an overridable library stub.
+extern default void Epilogue();
+
+// a game overrides the stub by simply defining it — no `replace` needed. This emits [Epilogue;…]
+// and the extern is dropped.
+void Epilogue() { print("The End.^"); }
+
+void use() {
+    ClearScreen();
+    int s = ChooseObjects(0, 0);
+    Epilogue();
+}

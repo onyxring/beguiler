@@ -575,9 +575,10 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     return false;
 }
 
-bool bglParser::processRoutineDeclaration(token returnType, token name, abstractObject& contextObject, bool isExternal, bool isEmitter, bool isReplace){
+bool bglParser::processRoutineDeclaration(token returnType, token name, abstractObject& contextObject, bool isExternal, bool isEmitter, bool isReplace, bool isDefault){
     functionDef& funcDef=*(new functionDef());
     funcDef.name=(string) name; funcDef.displayName=name.originalValue;
+    funcDef.isDefault=isDefault;
     // Use the name token's source location (preserved from when it was read) — currentLocation()
     // would return where we are NOW (after consuming the name), which may be on a later line.
     funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
@@ -606,6 +607,25 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // landing it at the current Pass-2 position. Other stubs remain visible for
     // forward-reference resolution during this function's body parse.
     //
+    // Redefinition guard: a plain (non-extern) definition whose name is already declared `extern`
+    // is only allowed when that extern was marked `default` — a library stub explicitly meant to be
+    // overridden. `extern` otherwise asserts "this exists in I6", so silently redefining it is a
+    // mistake (a name collision, or a missing `default`). A `default` extern is dropped here so the
+    // real definition takes over cleanly. `replace` has its own path (below) and is exempt.
+    if(!isExternal && !isReplace){
+        for(auto it = languageService.globals.begin(); it != languageService.globals.end(); ++it){
+            auto* ex = dynamic_cast<functionDef*>(*it);
+            if(ex && ex->isExternal && !ex->isPrePassStub && ex->name == funcDef.name){
+                if(!ex->isDefault)
+                    parsingError(format("'{0}' is already declared extern (it exists externally); a plain "
+                        "definition would silently redefine it. If it's an overridable library stub, mark the "
+                        "declaration `extern default`; otherwise rename to avoid the collision.", funcDef.name));
+                languageService.globals.erase(it);
+                break;
+            }
+        }
+    }
+
     // In .bgl-mode, Pass 1 walks the source in order, so prescan stubs are already at
     // their source-order positions — claim in place preserves source order naturally.
     bool registeredEarly = false;
@@ -684,6 +704,15 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         i6Block& rawblock=*(new i6Block());
         rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
         funcDef.body=&rawblock;
+    } else if(isExternal){
+        // extern non-emitter routine: declared bodyless with ';'. The implementation lives in I6
+        // (a library routine) or is supplied by a Beguile `default` override — so the extern itself
+        // emits nothing. A body would misleadingly look like an (empty) definition; reject it.
+        if(file.peekToken().is(token::braceOpen))
+            parsingError(format("extern function '{0}' cannot have a body — declare it with ';'. "
+                                "Its implementation comes from I6, or from a `default` override.", funcDef.name));
+        file.getToken(token::endStatement);
+        funcDef.body = new statementBlock();
     } else {
         file.getToken(token::braceOpen);
         funcDef.body=new statementBlock();

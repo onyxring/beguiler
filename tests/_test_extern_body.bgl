@@ -1,0 +1,4 @@
+/* _test_extern_body.bgl (negative): an extern function has no body — declare it with ';'. */
+#beguilerSettings { informName = "none"; }
+extern void ClearScreen() {}
+// EXPECT_ERROR: cannot have a body

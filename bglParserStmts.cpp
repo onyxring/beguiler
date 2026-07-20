@@ -666,6 +666,14 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         for(paramDef* p : func->params)
             if(p->name == arrExprText){
                 string tn = p->type.name;
+                // A rawArray<T> parameter is a bare I6 word pointer with no length header,
+                // so its element count isn't known at compile time and can't be derived at
+                // runtime (there's no count slot to read). Iterating it would silently walk
+                // off the end. Require an explicit indexed loop bounded by a known length.
+                if(tn.size() >= 8 && tn.substr(0,8) == "rawarray")
+                    parsingError(format("'for in': cannot iterate rawArray parameter '{0}' — a rawArray has no "
+                                        "length header, so its size isn't known. Loop explicitly with a known "
+                                        "bound, e.g. `for(int i in 0 to n-1) {0}[i]`.", arrExprText));
                 arrElemType = (tn.size() > 6 && tn.substr(0,6) == "array<") ? tn.substr(6, tn.size()-7) : "var";
                 arrName = arrExprText;
                 break;

@@ -34,6 +34,14 @@ extern attribute edible;        // can be eaten
 extern attribute door;          // is a door between locations
 extern attribute absent;        // object is currently out of scope
 
+// NOTE: the Inform library's object properties (description, capacity, door_to, when_open,
+// before/after, …; see inform6/lib/linklpa.h) are intentionally NOT declared here as members
+// of the base `object`. Doing so would let *any* object read *any* of them regardless of
+// whether it actually defines them — the opposite of the property-membership discipline.
+// Declare each property on the specific class/object that provides it. `short_name` is the
+// one exception and lives on core `object` (it backs the compiler's `(name)` rule) — see
+// __beguileCore.bgl.
+
 //-- Game state ---------------------------------------------------------------
 extern object location;             // current room (must be first global)
 extern object real_location;        // actual location when in darkness
@@ -62,6 +70,9 @@ extern int    multiflag;            // multiple-object flag
 extern int    keep_silent;          // suppress action output
 extern int    reason_code;          // reason for "life" rule
 extern int    receive_action;       // ##PutOn or ##Insert
+extern int    lm_n;                 // LibraryMessages: message number
+extern int    lm_o;                 // LibraryMessages: message object
+extern int    lm_s;                 // LibraryMessages: message second parameter
 extern int    parsed_number;        // user-supplied parsing result
 extern int    consult_from;         // start word of consult topic
 extern int    consult_words;        // number of words in topic
@@ -382,7 +393,46 @@ extern verb XTree { .tree }                     // tree
 extern verb Receive;                            // ##PutOn/##Insert delivery — `before` of the container/supporter
 
 //-- Standard library routines ------------------------------------------------
-extern void ClearScreen() {}                    // clear the screen (parser.h)
+extern void ClearScreen();                    // clear the screen (parser.h)
+extern void NotifyTheScore();                 // print "[Your score has gone up…]" (parser.h)
+extern void ScoreSub();                       // the SCORE action handler (verblib.h)
+extern void DisplayStatus();                  // refresh the status line (parser.h)
+extern void AfterGameOver();                  // post-game-over menu loop: AMUSING/UNDO/etc. (parser.h)
+
+//-- Standard library entry points (`Stub` defaults) --------------------------
+// The optional hooks the library calls at defined moments (grammar.h's `Stub` list). Each is
+// `extern default`: a game may override any of them by simply *defining* a routine of the same name —
+// no `replace` needed (the library provides a weak `Stub` default that the definition supplants).
+// Arg counts match the `Stub` declarations; args are untyped I6 slots, so `var`.
+extern default void AfterLife();                              // player just died, before the death message
+extern default void AfterPrompt();                            // after the ">" prompt is printed
+extern default void Amusing();                                // the "AMUSING" option after winning
+extern default void BeforeParsing();                          // before the parser reads the command
+extern default int  ChooseObjects(var obj, var code);         // disambiguation scoring
+extern default void DarkToDark();                             // moved from one dark room to another
+extern default void DeathMessage();                           // custom "You have died" text (deadflag ≥ 3)
+extern default void Epilogue();                               // end-of-game hook (after the final banner)
+extern default bool GamePostRoutine();                        // after every action (true = already handled)
+extern default bool GamePreRoutine();                         // before every action (true = already handled)
+extern default bool InScope(var actor);                       // add objects to scope (true = handled)
+extern default void LookRoutine();                            // extra text after a room description
+extern default void NewRoom();                                // player entered a new room
+extern default bool ObjectDoesNotFit(var obj, var container); // custom "won't fit" message (true = handled)
+extern default int  ParseNumber(var text, var length);        // parse a game-specific number token
+extern default bool ParserError(var errType);                 // custom parser-error message (true = handled)
+extern default void PrintTaskName(var task);                  // name a FULL-SCORE task
+extern default bool PrintVerb(var verb);                      // custom verb printing (true = handled)
+extern default void TimePasses();                             // each turn, after the action
+extern default int  UnknownVerb(var word);                    // remap an unknown verb word
+extern default int  AfterSave(var arg);                       // after a SAVE
+extern default int  AfterRestore(var arg);                    // after a RESTORE
+extern default int  HandleGlkEvent(var event, var context);   // Glulx: custom Glk event handling
+extern default int  IdentifyGlkObject(var phase, var typ, var ref, var value); // Glulx: Glk object tracking
+extern default int  InitGlkWindow(var rock);                  // Glulx: window setup
+// Message verb-conjugation helper (English.h). Prints the subject + a verb conjugated for the
+// object's person/tense. The verb-form params (v1/v2/v3/past) are string-or-0 (0 = "reuse v1"), so
+// they're `var`.
+extern void CSubjectVerb(object obj, bool reportage, bool nocaps, var v1, var v2, var v3, var past);
 
 // Hoisted via #emitfirst so the constants appear ABOVE the user's
 // #includeI6 "parser" directive — the I6 standard library reads Story/Headline

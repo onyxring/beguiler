@@ -22,6 +22,17 @@ struct exitFileSignal {};   // thrown by #exit to unwind to the enclosing parseF
 // keep the template parameter; array $self/$prop lowering must treat both the same.
 inline bool isWordArrayType(const std::string& t){ return t == "array" || t.rfind("array<", 0) == 0; }
 
+// Extract the element type T from a parametric array type name — "array<T>" or "rawarray<T>".
+// Returns "" if `t` is neither form. Used everywhere the compiler needs an array's element type
+// (subscript dispatch, for-in, type compatibility), so `rawArray<T>` shares array<T>'s machinery.
+inline std::string arrayElemType(const std::string& t){
+    if(!t.empty() && t.back() == '>'){
+        if(t.rfind("array<", 0) == 0)    return t.substr(6, t.size() - 7);
+        if(t.rfind("rawarray<", 0) == 0) return t.substr(9, t.size() - 10);
+    }
+    return "";
+}
+
 //=============================================================================
 // Grammar-driven pattern matching types (used by processNextStatement)
 //=============================================================================
@@ -225,7 +236,7 @@ class bglParser {
         bool processEnumDeclaration(token, bool, token nameOverride=token());
         bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false);
         bool processEmitterValueDeclaration(token typeTok, token nameTok);
-        bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false);
+        bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false, bool = false);
         bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "", bool isRef = false);
         bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false);
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'

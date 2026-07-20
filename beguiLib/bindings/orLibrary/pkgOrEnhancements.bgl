@@ -1,0 +1,42 @@
+//===================================================================================================
+// bindings/pkgOrEnhancements.bgl — Beguile binding for orLibrary's pkgOrEnhancements extension.
+//---------------------------------------------------------------------------------------------------
+// SCAFFOLD ONLY. Including this binding pulls in the I6 extension (#includeI6 below), so a game can
+// depend on the Beguile binding alone. Type bindings (extern classes / functions / properties) are
+// to be authored incrementally as the orLibrary port moves forward — none yet.
+//===================================================================================================
+#once
+// dependency bindings — mirror pkgOrEnhancements.h's orLibrary #includes so nested extern
+// declarations (types, members, properties, globals) are available transitively.
+#include "orAdjective"
+#include "orBackdrop"
+#include "orBetterChoice"
+#include "orCantGoOdd"
+#include "orCenter"
+#include "orDistinctRead"
+#include "orDistinctMeSelf"
+#include "orDoor"
+#include "orExits"
+#include "orFirstImpressions"
+#include "orParentChildRelationship"
+#include "orPlayerCommandQueue"
+#include "orPrefixSuffix"
+#include "orPrint"
+#include "orReview"
+#include "orStateDescriptors"
+#include "orStatusLine"
+#include "orStylePrintRules"
+#include "orTransition"
+#include "orUniqueMultiMessage"
+#include "orVagueQuantity"
+#include "orImplicitCommands"
+#include "orRecogName"
+#include "orReferByContents"
+#include "orMenu"
+// Beguile main-handoff: this binding reaches _orHookInformLibrary (orLibrary then drops its own `replace main`/[Main] under a Beguile compile), so pull pkgOrHooks for the #startup that wires __orBeguileMainInit into bglInit. #once-guarded; harmless if pulled more than once.
+#include "pkgOrHooks"
+
+// Pull in the actual orLibrary I6 extension. The beguiler resolves it (via includePaths) to an
+// absolute path and expands that into the transpiled .inf; the shared artifact is this .bgl
+// binding, not the intermediate I6. (Raw @"..." stays as an escape hatch for verbatim emission.)
+#includeI6 "pkgOrEnhancements";

@@ -1,0 +1,15 @@
+/*
+    _test_undeclared_property_receiver.bgl  (negative)
+    Outside loose mode, a dotted access (`obj.prop`) on a receiver Beguile can't
+    resolve must error like a bare undeclared identifier — Beguile does not pass
+    properties through on objects it doesn't know. `extern object X;` registers it.
+*/
+#beguilerSettings { informName = "none"; }
+
+extern object player;
+
+bool f() {
+    if(unknownThing.parent == player) return true;   // unknownThing is not declared
+    return false;
+}
+// EXPECT_ERROR: Undeclared identifier 'unknownthing'

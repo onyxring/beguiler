@@ -1,0 +1,37 @@
+!% -G
+!% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+
+    Constant story    = "";
+    Constant headline = "";
+
+
+    replace main _oldmain;
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+object frob
+  with handler [;
+    print (string)"frob";
+  ]
+;
+[frobsub;
+                frob.handler();
+            ];
+verb 'frob'
+    * noun -> frob;
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

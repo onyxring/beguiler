@@ -1089,6 +1089,16 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         expr->tokens.push_back(subscriptText + "." + member.value);
                     }
                 }
+                // Apply a pending cast to the subscript (or subscript.member) result —
+                // e.g. `(verb)results[0]`. The bare-identifier path applies casts too;
+                // without this the cast leaks past the next operator, mistyping
+                // `(verb)r[0] == V` as `verb` instead of `ebool` (breaks a following `||`).
+                if(!castType.empty() && !expr->tokens.empty()){
+                    string operand = expr->tokens.back();
+                    expr->tokens.back() = applyCastConversion(operand, expr->resolvedType, castType);
+                    expr->resolvedType = castType;
+                    castType = "";
+                }
             }
             // ── name(args): function call in expression ──
             else if(next.is(token::parenOpen)){
@@ -1740,7 +1750,31 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             // backing object's properties entirely.
                             string propType = resolvePathType(cur.value + "." + member.value, func, body);
                             string objText = func != nullptr ? qualifyIdentifier(cur.value, func, body, member.value) : cur.value;
-                            if(objText.empty()) objText = cur.value;
+                            if(objText.empty()){
+                                // Receiver didn't resolve. Outside loose mode, a dotted access on an
+                                // unknown object is an error, just like a bare undeclared identifier —
+                                // Beguile does not pass properties through on objects it can't see.
+                                // Register the object (`extern object X;`) or declare it so the access
+                                // can dispatch/type-check. Loose mode (#bgl islands) and global scope
+                                // (func == nullptr) keep the verbatim-passthrough for I6 interop.
+                                if(func != nullptr && !looseIdentifierMode
+                                   && resolveIdentifierType(cur.value, func, body).empty())
+                                    parsingError(format("Undeclared identifier '{0}'", cur.value));
+                                objText = cur.value;
+                            }
+                            else if(propType.empty() && func != nullptr && !looseIdentifierMode){
+                                // Receiver is known but the property isn't a declared member of its
+                                // type. Beguile does not pass properties through on a name it hasn't
+                                // seen — a free-standing `property foo;` only registers the identifier
+                                // for passing as a value, it does NOT grant `obj.foo` access. Declare
+                                // the property as a member of the object (or its extern class):
+                                // `extern class Thing { int foo; }`, or extend a base such as
+                                // `object` in a binding. Loose mode (#bgl islands) still passes through.
+                                string recvType = resolveIdentifierType(cur.value, func, body);
+                                parsingError(format("'{0}' is not a declared property of '{1}' (type '{2}'). "
+                                    "Declare it as a member so the access type-checks.",
+                                    member.value, cur.value, recvType));
+                            }
                             string accessText = objText + "." + member.value;
                             // Cast precedence: `(T)obj.prop` means cast applies to the property
                             // access result, not to the bare `obj`. If castType is set here, run

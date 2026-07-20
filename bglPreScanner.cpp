@@ -12,6 +12,7 @@ using namespace std;
 
 // Defined in bglParser.cpp
 filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& target);
+filesystem::path findLibIncludeRecursive(const filesystem::path& root, const string& includeName);
 string resolveIncludePath(const string& name, const string& ext, const filesystem::path& baseDir, const vector<string>& includePaths);
 string rewritePathSeps(const string& path);
 
@@ -203,8 +204,8 @@ void bglParser::preScanDirective(token tok){
                 includeName2 += t2.originalValue.empty() ? t2.value : t2.originalValue;
                 t2 = file.getToken();
             }
-            filesystem::path libPath = findCaseInsensitive(settings.libPath, includeName2 + ".bgl");
-            if(filesystem::exists(libPath)) preScanFile(libPath.string());
+            filesystem::path libPath = findLibIncludeRecursive(settings.libPath, includeName2);
+            if(!libPath.empty()) preScanFile(libPath.string());
         }
     } else if(tok.is("#define")){
         // Store symbol in definedSymbols so #if works during pre-scan

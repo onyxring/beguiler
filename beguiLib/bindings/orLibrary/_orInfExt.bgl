@@ -1,0 +1,21 @@
+//===================================================================================================
+// bindings/_orInfExt.bgl — Beguile binding for orLibrary's _orInfExt framework helper.
+//---------------------------------------------------------------------------------------------------
+// _orInfExt.h exports one public type: `class orInfExt`. Subclassing it (or declaring an object of
+// it) registers a LibraryExtension hook without hand-placing it under LibraryExtensions and sorts it
+// by `priority`. Games use it to define library overrides, e.g.:
+//     orInfExt _gameOverrides { bool ext_messages(...) { ... } bool ext_parsererror(...) { ... } }
+//
+// TYPE-INFO ONLY — no `#includeI6`. _orInfExt.h is a multi-stage framework file (orInfExt_STAGE /
+// LIBRARY_STAGE guards) that must be pulled by the extension-framework staging loop, not standalone;
+// any orLibrary extension that depends on it (orDialogue, orDoor, …) already brings the I6. This
+// binding only supplies the Beguile type so `orInfExt`-based declarations type-check.
+//===================================================================================================
+#once
+// dependency bindings — mirror _orInfExt.h's orLibrary #includes so nested extern
+// declarations (types, members, properties, globals) are available transitively.
+#include "orUtilArray"
+
+extern class orInfExt : object {
+    int priority;   // extension sort priority (I6: `with priority N`; default 10)
+}

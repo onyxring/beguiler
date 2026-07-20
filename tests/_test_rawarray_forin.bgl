@@ -1,0 +1,11 @@
+/*
+    _test_rawarray_forin.bgl  (negative)
+    A rawArray has no length header, so for-in over a rawArray parameter can't know
+    where to stop. The compiler must reject it and point at an explicit indexed loop.
+*/
+#beguilerSettings { informName = "none"; }
+
+void walk(rawArray<int> xs) {
+    for(int x in xs) { print(x); }
+}
+// EXPECT_ERROR: cannot iterate rawArray parameter

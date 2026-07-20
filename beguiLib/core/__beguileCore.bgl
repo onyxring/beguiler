@@ -87,6 +87,10 @@ object bgl{
     extern class object:_bglObject{ //--the base I6 object, declared as external because it is defined in the I6 compiler
         parentProp parent;           //--initial parent object; emitted as I6 third positional argument
         attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
+        var short_name;              //--object's short name (string or routine). Backs the `(name)` print rule
+                                     //  used by print() below; the compiler auto-declares it, so it's core, not
+                                     //  library. Library-defined variants (short_name_indef, parse_name) and the
+                                     //  rest of the property surface live in the i6StandardLibrary binding.
 
         emitter eBool operator ?() { $val ~= nothing }
         emitter object operator = (object v){
@@ -263,4 +267,4 @@ emitter void cThe(object o){ print (The)$o; }
 
 //=============================================================================
 // bglInit() is a special, compiler built routine
-extern void bglInit(){}
+extern void bglInit();

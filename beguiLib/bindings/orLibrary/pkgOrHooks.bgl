@@ -1,0 +1,25 @@
+//===================================================================================================
+// bindings/pkgOrHooks.bgl — Beguile binding for orLibrary's pkgOrHooks extension.
+//---------------------------------------------------------------------------------------------------
+// SCAFFOLD ONLY. Including this binding pulls in the I6 extension (#includeI6 below), so a game can
+// depend on the Beguile binding alone. Type bindings (extern classes / functions / properties) are
+// to be authored incrementally as the orLibrary port moves forward — none yet.
+//===================================================================================================
+#once
+
+// Pull in the actual orLibrary I6 extension. The beguiler resolves it (via includePaths) to an
+// absolute path and expands that into the transpiled .inf; the shared artifact is this .bgl
+// binding, not the intermediate I6. (Raw @"..." stays as an escape hatch for verbatim emission.)
+#includeI6 "pkgOrHooks";
+
+// Beguile-managed startup. Under a Beguile compile, _orHookInformLibrary.h detects `beguiler`
+// (the I6 constant the compiler now emits) and does NOT `replace main` or define its own [Main] —
+// the BLR's main wrapper owns that, and the stdlib Main survives as `_oldmain`. orLibrary instead
+// exposes `__orBeguileMainInit` (its play-loop setup, minus the InformLibrary.play() call). We run
+// it from bglInit so the hooks are wired before the BLR's `[main; bglInit(); _oldmain()]` calls
+// _oldmain (= stdlib Main → InformLibrary.play() → __orPlayHooks). Forward routine ref is fine —
+// I6 resolves __orBeguileMainInit even though it's defined later in the file. Requires
+// autoInitialize = true (the default).
+#startup {
+    __orBeguileMainInit();
+}

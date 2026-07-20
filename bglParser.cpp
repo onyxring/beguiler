@@ -112,6 +112,72 @@ filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& 
     return dir / target; // not found; return as-is so the error surfaces normally
 }
 
+// Recursive helper for findLibIncludeRecursive. Scans `dir` in pre-order — this folder's files
+// first, then subfolders in alphabetical (case-insensitive) order, depth-first. `specLower` is the
+// lowercased include spec split on '/', with the last element being the target file name
+// ("name.bgl") and the preceding elements the required trailing parent-folder chain. `relComps` are
+// the lowercased path components of `dir` relative to the lib root, for the parent-folder suffix match.
+static filesystem::path findLibIncludeWalk(const filesystem::path& dir,
+                                           const vector<string>& specLower, vector<string>& relComps){
+    std::error_code ec;
+    if(!filesystem::exists(dir, ec)) return {};
+    vector<filesystem::path> files, subdirs;
+    for(const auto& e : filesystem::directory_iterator(dir, ec)){
+        if(e.is_regular_file(ec))   files.push_back(e.path());
+        else if(e.is_directory(ec)) subdirs.push_back(e.path());
+    }
+    auto ciLess = [](const filesystem::path& a, const filesystem::path& b){
+        string an = a.filename().string(), bn = b.filename().string();
+        transform(an.begin(), an.end(), an.begin(), ::tolower);
+        transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
+        return an < bn;
+    };
+    sort(files.begin(), files.end(), ciLess);
+    sort(subdirs.begin(), subdirs.end(), ciLess);
+    // 1) files in THIS folder — match name + required trailing parent-folder chain
+    const string& wantFile = specLower.back();
+    size_t needParents = specLower.size() - 1;
+    for(const auto& f : files){
+        string fn = f.filename().string();
+        transform(fn.begin(), fn.end(), fn.begin(), ::tolower);
+        if(fn != wantFile) continue;
+        if(needParents > relComps.size()) continue;
+        bool ok = true;
+        for(size_t i = 0; i < needParents; i++)
+            if(relComps[relComps.size() - needParents + i] != specLower[i]){ ok = false; break; }
+        if(ok) return f;
+    }
+    // 2) recurse subfolders alphabetically
+    for(const auto& d : subdirs){
+        string dn = d.filename().string();
+        transform(dn.begin(), dn.end(), dn.begin(), ::tolower);
+        relComps.push_back(dn);
+        filesystem::path r = findLibIncludeWalk(d, specLower, relComps);
+        relComps.pop_back();
+        if(!r.empty()) return r;
+    }
+    return {};
+}
+
+// Resolve an angle-bracket library include `<name>` by recursively searching the lib root (beguiLib):
+// its files first, then subfolders in alphabetical order, depth-first. The include name is treated as
+// a PATH SUFFIX — `<file>` matches a `file.bgl` anywhere in the tree; `<sub/file>` matches a `file.bgl`
+// whose immediate parent folder is `sub` (at any depth); `<a/b/file>` requires the path to end with
+// `a/b/file.bgl`. Returns the first match in traversal order, or an empty path if none is found.
+filesystem::path findLibIncludeRecursive(const filesystem::path& root, const string& includeName){
+    vector<string> specLower;
+    string cur;
+    for(char c : includeName){
+        if(c == '/' || c == '\\'){ specLower.push_back(cur); cur.clear(); }
+        else cur.push_back(c);
+    }
+    specLower.push_back(cur + ".bgl");           // last component carries the .bgl extension
+    for(auto& s : specLower) transform(s.begin(), s.end(), s.begin(), ::tolower);
+    if(specLower.back() == ".bgl") return {};     // empty file name (e.g. trailing '/')
+    vector<string> relComps;
+    return findLibIncludeWalk(root, specLower, relComps);
+}
+
 bglParser::bglParser(){
     openCompileContext(eCompileContext::global);
     // Pre-defined compiler symbols (read-only; calculated from BEGUILER_VERSION in settings.h)
@@ -1004,7 +1070,7 @@ bool bglParser::processGrammar(vector<token>& t, Qualifiers&, abstractObject&)
 bool bglParser::processArray(vector<token>& t, Qualifiers& q, abstractObject& c)
     { return processArrayDeclarationFromGeneric(t[0], q, c); }
 bool bglParser::processRoutine(vector<token>& t, Qualifiers& q, abstractObject& c)
-    { t[0] = consumeTypeToken(t[0]); return processRoutineDeclaration(t[0], t[1], c, q.isExtern, q.isEmitter, q.isReplace); }
+    { t[0] = consumeTypeToken(t[0]); return processRoutineDeclaration(t[0], t[1], c, q.isExtern, q.isEmitter, q.isReplace, q.isDefault); }
 bool bglParser::processObject(vector<token>& t, Qualifiers& q, abstractObject&)
     { t[0] = consumeTypeToken(t[0]); return processObjectDeclaration(t[0], t[1], q.isExtern, "", "", true, q.isEmitter); }
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
@@ -1052,7 +1118,7 @@ bool bglParser::processFunc(vector<token>& t, Qualifiers& q, abstractObject& ctx
     }
     token symbol = file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
     if(symbol.is(token::parenOpen))
-        return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace);
+        return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault);
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, name, q.isExtern, objectClassName, i6alias, true, q.isEmitter);
     else
@@ -1240,16 +1306,19 @@ bool bglParser::processParameterList(functionDef& funcDef){
             tok.assertDataType(); // original error path for non-type tokens
         string paramTypeName = tok.value;
         if(paramTypeName == "func") paramTypeName = parseFuncType();
-        else if(paramTypeName == "array") {
-            // consume <ElementType> and store full "array<ElementType>" for for-in/type-compat resolution
+        else if(paramTypeName == "array" || paramTypeName == "rawarray") {
+            // consume <ElementType> and store the full "array<T>" / "rawarray<T>" name for
+            // for-in / type-compat / subscript-dispatch resolution.
+            string base = paramTypeName;
             file.getToken("<");
             string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
             file.getToken(">");
-            // array<char> maps to bytearray (byte-access operators); others keep array<T> format
-            if(elemType == "char" || elemType == "charliteral")
+            // array<char> maps to bytearray (byte-access operators); others keep the <T> format.
+            // rawarray<char> stays word-indexed (raw I6 arrays are the caller's own layout).
+            if(base == "array" && (elemType == "char" || elemType == "charliteral"))
                 paramTypeName = "bytearray";
             else
-                paramTypeName = format("array<{0}>", elemType);
+                paramTypeName = format("{0}<{1}>", base, elemType);
         }
         param.type=languageService.getType(paramTypeName);
         if(param.type.name.empty()) param.type.name = paramTypeName; // for func<...> types

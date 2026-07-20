@@ -566,7 +566,7 @@ Structural and type keywords unique to Beguile. They have no corresponding I6 ke
 | Keyword | Role |
 |---------|------|
 | `const` | Compile-time constant or immutable member declaration |
-| `default` | Marks a class method as expected to be overridden; overriding does not require `replace` |
+| `default` | Marks a class method — or an `extern` stub function (§15.2.1) — as expected to be overridden; a plain definition overrides it, no `replace` required |
 | `extern` | Declares a type or value backed by I6 with no Beguile body emitted |
 | `extend` | Opens an extension block on an existing class or object |
 | `alias` | Declares a type alias |
@@ -633,10 +633,18 @@ Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `exte
 
 ### 3.2.1 `#include <name>`
 
-Includes a file from the Beguile language extensions (`beguilib`) directory. The `.bgl` extension is optional — the compiler tries with `.bgl` appended first, then without. The compiler performs a case-insensitive search of the library directory, so `#include <String>` and `#include <string>` are equivalent regardless of the file system. If two files in the library directory differ only by case, the compiler will select one arbitrarily.
+Includes a file from the Beguile language extensions (`beguiLib`) directory. The compiler searches the `beguiLib` tree **recursively** and matches the include name as a **path suffix**:
+
+- `#include <name>` finds `name.bgl` **anywhere** in `beguiLib` — root or any subfolder — so a subfolder prefix is optional. `<i6StandardLibrary>` finds `bindings/i6StandardLibrary.bgl` just as `<bindings/i6StandardLibrary>` does.
+- `#include <sub/name>` matches `name.bgl` only when its **immediate parent folder** is `sub` (at any depth): `<orLibrary/orDialogue>` matches `.../orLibrary/orDialogue.bgl`.
+- `#include <a/b/name>` requires the resolved path to end with `a/b/name.bgl`.
+
+The search is deterministic: it checks the current folder's files first, then descends into subfolders in **alphabetical order**, depth-first, and the **first match wins**. Matching is case-insensitive (`<String>` ≡ `<string>`). The `.bgl` extension is supplied by the compiler — write the base name only.
 
 ```bgl
-#include <string>
+#include <string>                  // core extension at beguiLib/string.bgl
+#include <i6StandardLibrary>       // = <bindings/i6StandardLibrary> — prefix optional
+#include <orLibrary/orDialogue>    // matches beguiLib/bindings/orLibrary/orDialogue.bgl
 ```
 
 ### 3.2.2 `#include "path"`
@@ -692,7 +700,7 @@ All file paths in Beguile source — `#include` paths, `#includeI6` paths, and `
 
 **Separator rewriting.** Every `/` and `\` character in a path string is replaced with the OS path separator (`\` on Windows, `/` on all other platforms). This means paths may be written with either separator and will work correctly on any platform. Separator rewriting can be disabled project-wide with `rewritePaths = false` in `#beguilerSettings`.
 
-**Case-insensitive resolution.** When searching for an include file, the compiler performs a case-insensitive match against the entries of the target directory. The first directory entry whose lowercased name equals the lowercased target filename is used. This applies to both `#include <name>` (library search) and `#include "path"` (relative search). If no entry matches, the literal path is used and a normal file-not-found error results.
+**Case-insensitive resolution.** Include matching is case-insensitive throughout (lowercased comparison). For `#include <name>` (library search) the compiler walks the `beguiLib` tree recursively — files in each folder first, then subfolders alphabetically, depth-first — and takes the first file whose path ends with the requested `name` suffix (see §3.2.1). For `#include "path"` (relative search) it matches against the current source directory and each `includePaths` root. If nothing matches, a normal file-not-found error results.
 
 > Note: case-insensitive resolution only applies to the **filename** portion of the path, not to intermediate directory components. On a case-sensitive file system, directories in the path must still be cased correctly.
 
@@ -1410,6 +1418,35 @@ Under the hood, every Beguile-declared standalone array allocates two extra word
 The element type is enforced at every subscript site. Reading an element produces a value of type `T`, and writing an element requires a value compatible with `T`. Cross-type assignments (e.g. assigning a `string` to an element of `array<int>`) are compile-time errors.
 
 The compiler implements this via the type-parameter mechanism (see §5.1.1): `array` is declared as `class array<T>`, and its subscript operators are written using `T` for the element-typed slot. At each subscript site `arr[i]`, the compiler clones the relevant operator with `T` substituted for the use-site element type, producing a typed signature like `Room operator[](int)` for `array<Room>`. No per-element-type overloads in the library; the substitution covers every `T`. `array<char>` routes to the `byteArray` subclass, which overrides the subscript operators with concrete `char` types and byte-access I6 emission.
+
+### 4.7.1 `rawArray<T>` — raw I6 word arrays
+
+`rawArray<T>` is a typed view over a **bare I6 word array** — one with *no* length header and *no* tracking marker. Where `array<T>` reserves a count slot at index 0 (so `arr[i]` emits `arr-->(i+1)`), a `rawArray<T>` subscript emits the raw form `arr-->i`, indexing directly from word 0.
+
+```bgl
+bool ext_parsererror(int etype, rawArray<var> results) {
+    if (etype == NOTHING_PE && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
+        rtrue("You are not holding one.");
+    rfalse;
+}
+```
+
+Its purpose is **interop**: raw I6 buffers handed to Beguile from the outside — the `results` array of a `parse_error` entry point, an I6 library table, a `-->` array declared in an `#i6` island — are word arrays with no count slot. Receiving one as a `rawArray<T>` parameter lets you index it with ordinary subscript syntax and still emit the correct raw I6.
+
+| | `array<T>` | `rawArray<T>` |
+|---|---|---|
+| Layout | count at `-->0`, data at `-->1…` | data at `-->0…`, no header |
+| `arr[i]` emits | `arr-->(i+1)` | `arr-->i` |
+| `size()` / `length()` | reads the count slot | `(arr.#) / WORDSIZE` (byte length ÷ word size) |
+| Length tracking | yes (magic marker) | none — it's a plain pointer |
+
+Because a `rawArray<T>` carries no length, **`for…in` over a `rawArray<T>` parameter is a compile-time error** — there is no count to bound the loop and no marker to probe at runtime. Iterate with an explicit indexed loop bounded by a length you know:
+
+```bgl
+for(int i in 0 to n - 1) { process(buf[i]); }
+```
+
+Elements are still type-checked at every subscript site, and an element may be cast (e.g. `(verb)results[0]`) exactly like any other value; the cast resolves through the following operator so `(verb)results[0] == PutOn` is a `bool` usable in `&&`/`||`.
 
 # Chapter 5 — Classes
 
@@ -4769,8 +4806,36 @@ The remainder of this chapter covers the mechanisms that bridge the two modes: `
 | `extern const Type Name;` | §8.3 |
 | `extern attribute Name;` | §8.6 |
 | `extern verb Name;` | §14.2 |
+| `extern RetType Name(params);` | §15.2.1 |
 
 Extern variable declarations may also carry an `as i6name` alias clause (§8.7).
+
+### 15.2.1 Extern functions and `default` stubs
+
+An extern function is declared **bodyless** — a signature terminated with `;`, no braces:
+
+```bgl
+extern void ClearScreen();
+extern int  ChooseObjects(var obj, var code);   // non-void needs no return — the body is in I6
+```
+
+The implementation lives in I6 (a library routine); the declaration only makes the name callable and type-checked. A body is rejected — `extern void ClearScreen() {}` is an error, because empty braces misleadingly read as an (empty) *definition* rather than a declaration.
+
+Because `extern` asserts *"this already exists in I6"*, providing a plain Beguile definition of the same name is normally an **error** — it would silently redefine an external symbol:
+
+```bgl
+extern void ClearScreen();
+void ClearScreen() { … }        // ERROR: 'ClearScreen' is already declared extern
+```
+
+The exception is a **`default`** extern — the marker for an I6 library *stub* (`Stub` in I6), a weak default the library expects a game to override. Marking the declaration `extern default` permits a plain definition to supplant it, with no `replace` needed:
+
+```bgl
+extern default void Epilogue();          // library provides a weak Stub
+void Epilogue() { print("The End.^"); }  // OK — overrides it; emits [Epilogue;…], no I6 `Replace`
+```
+
+This is distinct from `replace` (§5.8), which emits an I6 `Replace` directive and is for replacing strongly-defined library routines. A `default` override emits **no** `Replace` — the weak stub is supplanted at link time by the definition alone. `default` here is the same "expected to be overridden, no `replace` required" qualifier used for class members, applied to a free extern.
 
 ## 15.3 `#includeI6`
 

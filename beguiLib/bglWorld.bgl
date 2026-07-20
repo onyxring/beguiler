@@ -96,9 +96,9 @@
 // Beguile-side bridges to the I6 routines emitted above. Each takes an
 // optional `pred` (a func<bool, object> reference); 0 means no filter.
 // Using `var` here so callers can pass either 0 or a typed func reference.
-extern array<object> _bglWorldGetAll(var pred)             { return 0; }
-extern array<object> _bglWorldInParent(object p, var pred) { return 0; }
-extern array<object> _bglWorldInstances(var cls, var pred) { return 0; }
+extern array<object> _bglWorldGetAll(var pred);
+extern array<object> _bglWorldInParent(object p, var pred);
+extern array<object> _bglWorldInstances(var cls, var pred);
 
 // Public surface — `bgl.world.getAll()` etc. The predicate parameter defaults
 // to 0 (no filter), so callers can omit it. Single method per name because I6

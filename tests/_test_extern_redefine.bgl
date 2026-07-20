@@ -1,0 +1,5 @@
+/* _test_extern_redefine.bgl (negative): redefining a NON-default extern is an error. */
+#beguilerSettings { informName = "none"; }
+extern void ClearScreen();
+void ClearScreen() { print("nope^"); }
+// EXPECT_ERROR: already declared extern

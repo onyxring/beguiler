@@ -26,6 +26,19 @@ extern emitter class array<T>  : _bglObject{
     replace emitter int  length()                 { $val-->0 }
 }
 
+// rawArray<T> — a raw I6 word array with NO length header, mapping directly onto I6's `Array X -->`.
+// Interop type for raw I6 word arrays (parse results, tables, pointers passed from I6) where YOU own
+// the bounds. operator[i] indexes with no offset ($val-->i, vs array<T>'s $val-->(i+1)). size()/
+// length() recover the extent from I6's `.#` byte-size — valid only for a DECLARED array (`rawArray<T>
+// x[N]`); a bare pointer (a param, an alias) has no recoverable length, so the compiler rejects
+// size()/length()/for-in on those (rather than walk off the end — the classic raw-I6 overrun footgun).
+extern emitter class rawArray<T> : _bglObject {
+    emitter T   operator[](int i)        { $val-->$i }
+    emitter T   operator[]=(int i, T v)  { $val-->$i = $v }
+    emitter int size()                   { ($val.#) / WORDSIZE }
+    emitter int length()                 { ($val.#) / WORDSIZE }
+}
+
 // byteArray — byte-sized element array, used internally for array<char>.
 // Overrides array's word-access emitters with byte-access (`->`).
 // I6 hybrid buffer layout (since I6 6.30): the first WORD ($val-->0) holds

@@ -723,10 +723,10 @@ string bglParser::resolveArrayElementType(const string& name, functionDef* func,
     if(func != nullptr)
         for(paramDef* p : func->params)
             if(p->name == name) {
-                // Parameter type is stored as "array<T>" for typed array params
+                // Parameter type is stored as "array<T>" / "rawarray<T>" for typed array params
                 const string& tn = p->type.name;
-                if(tn.size() > 6 && tn.substr(0,6) == "array<" && tn.back() == '>')
-                    return tn.substr(6, tn.size() - 7);
+                string et = arrayElemType(tn);
+                if(!et.empty()) return et;
                 if(tn == "bytearray") return "char";
                 return "";
             }

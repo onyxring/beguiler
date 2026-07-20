@@ -1,0 +1,20 @@
+//===================================================================================================
+// bindings/orPrint.bgl — Beguile binding for orLibrary's orPrint extension.
+//---------------------------------------------------------------------------------------------------
+// orPrint() prints a string, resolving orLibrary's inline markup ($i;…$n; italics, $the:obj;
+// substitutions, etc.). extern — orPrint (I6) provides the real routine; this is type-info only.
+//===================================================================================================
+#once
+// dependency bindings — mirror orPrint.h's orLibrary #includes so nested extern
+// declarations (types, members, properties, globals) are available transitively.
+#include "orString"
+#include "orUtilNum"
+// Beguile main-handoff: this binding reaches _orHookInformLibrary (orLibrary then drops its own `replace main`/[Main] under a Beguile compile), so pull pkgOrHooks for the #startup that wires __orBeguileMainInit into bglInit. #once-guarded; harmless if pulled more than once.
+#include "pkgOrHooks"
+
+extern void orPrint(string s);
+
+// Pull in the actual orLibrary I6 extension alongside the binding (resolved via includePaths and
+// expanded to an absolute path in the .inf). orPrint.h is #ifndef-guarded, so a redundant include
+// (e.g. myGameBaseline.h also pulls it in) is harmless.
+#includeI6 "orPrint";

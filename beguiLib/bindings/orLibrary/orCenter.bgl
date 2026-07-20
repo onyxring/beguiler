@@ -1,0 +1,26 @@
+//===================================================================================================
+// bindings/orCenter.bgl — Beguile binding for orLibrary's orCenter extension.
+//---------------------------------------------------------------------------------------------------
+// orCenter prints a string centered on the display, honouring the current width. The I6 routine takes
+// several optional trailing args (maxwidth, highlight, leftAlign, prefixPostFixCallback, subIndent);
+// this binds the common single-string form. Missing I6 args default to 0, matching a bare call.
+//
+//     orCenter("*** You have won! ***^(Good job!)");
+//
+// All `extern` — orCenter (I6) provides the real routine; this is type-info only.
+//===================================================================================================
+#once
+// dependency bindings — mirror orCenter.h's orLibrary #includes so nested extern
+// declarations (types, members, properties, globals) are available transitively.
+#include "orUtilUi"
+#include "orUtilBuf"
+// Beguile main-handoff: this binding reaches _orHookInformLibrary (orLibrary then drops its own `replace main`/[Main] under a Beguile compile), so pull pkgOrHooks for the #startup that wires __orBeguileMainInit into bglInit. #once-guarded; harmless if pulled more than once.
+#include "pkgOrHooks"
+
+// Print `text` centered. (I6 accepts more trailing args; the single-string form is the common case.)
+extern void orCenter(string text);
+
+// Pull in the actual orLibrary I6 extension. The beguiler resolves it (via includePaths) to an
+// absolute path and expands that into the transpiled .inf; the shared artifact is this .bgl
+// binding, not the intermediate I6. (Raw @"..." stays as an escape hatch for verbatim emission.)
+#includeI6 "orCenter";

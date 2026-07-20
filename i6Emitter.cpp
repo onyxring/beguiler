@@ -1608,8 +1608,16 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                 out << indent << b << ";\n";
             }
         } else {
-            // On Z-machine, args beyond the 5th are passed via _bglXPn globals
-            size_t maxDirectArgs = (isZTarget(currentTarget) && call->args.size() > 5) ? 5 : call->args.size();
+            // On Z-machine, args beyond the 5th are passed via _bglXPn globals — but ONLY for
+            // Beguile-generated routines, which read those globals as their overflow params. An
+            // extern (I6-defined) routine takes all its args directly (I6 passes up to 7 on Z5+ via
+            // call_vs2), so it must not spill: doing so would drop args 6+ and reference _bglXPn
+            // globals that were never declared (the frame-pool scan skips extern functions).
+            bool calleeIsExtern = false;
+            for(typeDef* g : languageService.globals)
+                if(auto* fd = dynamic_cast<functionDef*>(g))
+                    if(fd->isExternal && fd->name == call->functionName){ calleeIsExtern = true; break; }
+            size_t maxDirectArgs = (!calleeIsExtern && isZTarget(currentTarget) && call->args.size() > 5) ? 5 : call->args.size();
             for(size_t i = maxDirectArgs; i < call->args.size(); i++)
                 out << format("{0}_bglXP{1} = {2};\n", indent, i - 5, exprText(call->args[i]));
             // Prefer displayName (original case) over functionName (lowercased) — same

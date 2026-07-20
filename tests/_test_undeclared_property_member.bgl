@@ -1,0 +1,16 @@
+/*
+    _test_undeclared_property_member.bgl  (negative)
+    A known receiver read with a property that is NOT a declared member of its type
+    must error. A free-standing `property foo;` only registers the identifier for
+    passing as a value — it does NOT grant `obj.foo` access. Access requires the
+    property to be a member of the object's type (or a base it extends).
+*/
+#beguilerSettings { informName = "none"; }
+
+extern object dehydratedBananas;   // receiver IS known
+property weight;                    // registered as a property identifier, NOT a member
+
+bool f() {
+    return dehydratedBananas.weight != 0;   // weight is not a member of object
+}
+// EXPECT_ERROR: 'weight' is not a declared property of 'dehydratedbananas'

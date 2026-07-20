@@ -166,8 +166,8 @@ extend extern class array {
 // Implementations live in raw I6; these declarations just make the routines
 // callable from Beguile-side helpers. extern function bodies aren't emitted —
 // the dummy return only satisfies the parser's non-void-must-return check.
-extern array<var> _bglLinqWrite(){ return 0; }
-extern void       _bglLinqFlip(){}
+extern array<var> _bglLinqWrite();
+extern void       _bglLinqFlip();
 
 
 //-----------------------------------------------------------------------------

@@ -1,0 +1,39 @@
+//===================================================================================================
+// bindings/orDialogue.bgl — Beguile binding for orLibrary's orDialogue extension.
+//---------------------------------------------------------------------------------------------------
+// orDialogue is the ASK/TELL/SAY conversation system. Its core game-facing type is `orTopic`: a
+// topic the player can reference by `name`, with a `quip` response and a `knownBy`/`context` pair
+// that scopes it to an NPC. Topics nest in the object tree; `knownBy`/`context` are inherited up
+// `parent(self)`, so grouping topics under a parent is the idiomatic way to share scope.
+//
+// `quip` is polymorphic in I6 (a string OR a routine); declaring it `string` still lets any topic
+// override it as a routine — `bool quip() { … }` (the engine calls it with actor/talkingTo, but the
+// extra args are ignored and the return is unused).
+//
+// All `extern` — orDialogue (I6) provides the real definitions; this is type-info only.
+//===================================================================================================
+#once
+// dependency bindings — mirror orDialogue.h's orLibrary #includes so nested extern
+// declarations (types, members, properties, globals) are available transitively.
+#include "orStylePrintRules"
+#include "orUtilArray"
+#include "_orInfExt"
+// Beguile main-handoff: this binding reaches _orHookInformLibrary (orLibrary then drops its own `replace main`/[Main] under a Beguile compile), so pull pkgOrHooks for the #startup that wires __orBeguileMainInit into bglInit. #once-guarded; harmless if pulled more than once.
+#include "pkgOrHooks"
+
+extern class orTopic : object {
+    string short_name;              // the topic's printed name
+    object knownBy;                 // NPC(s) who know this topic (for ASK); inherited up parent(self)
+    object context;                 // NPC(s) this topic is in-context for (for SAY/TELL); inherited
+    string quip;                    // the response — a string, or a `bool quip() { … }` routine override
+    array<dictionaryWord> name;     // parser vocabulary (the words the player types)
+    array<dictionaryWord> adjective;
+    bool   requireNoun;             // orLibrary parser flag
+    emitter bool hasBeenTold() { ($self.hasBeenTold()) }
+}
+
+// Pull in the actual orLibrary I6 extension, so including this binding is all a game needs — no
+// separate `#include "orDialogue";` in an #i6 island. The beguiler resolves it (via includePaths)
+// to an absolute path and expands that into the transpiled .inf; the shared artifact is this .bgl
+// binding, not the intermediate I6. (Raw @"..." stays as an escape hatch for verbatim emission.)
+#includeI6 "orDialogue";

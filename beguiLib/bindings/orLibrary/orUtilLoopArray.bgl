@@ -1,0 +1,40 @@
+//===================================================================================================
+// bindings/orUtilLoopArray.bgl — Beguile binding for orLibrary's util.orLoopArray helper.
+//---------------------------------------------------------------------------------------------------
+// `util.orLoopArray` (the I6 _orLoopArray object) cycles through a multi-value property or a global
+// loop-array, returning the next entry as a string. Mirrors orUtilLoopArray.h's
+// getNext(obj, prop, onceOnly):
+//   getNext(loopArray)           — a global loop-array (e.g. `array x table 0 "a" "b"`)
+//   getNext(obj, prop)           — obj's multi-value property `prop`
+//   getNext(obj, prop, onceOnly) — …with the once-only / repeat-last flag
+//
+// TYPE-INFO ONLY (no #includeI6): orUtilLoopArray is staged in by the orLibrary stack (via
+// myGameBaseline / the pkg includes), so this binding just exposes the Beguile types to call it.
+// Only the orLoopArray slice of `util` is bound — the rest of util.* is destined for the BLR and
+// stays in #i6 until then. (Folding this into the BLR later is fine; for now it's a member of the
+// I6-declared `util` object.)
+//===================================================================================================
+#once
+// dependency bindings — mirror orUtilLoopArray.h's orLibrary #includes so nested extern
+// declarations (types, members, properties, globals) are available transitively.
+#include "orUtilArray"
+// Beguile main-handoff: this binding reaches _orHookInformLibrary (orLibrary then drops its own `replace main`/[Main] under a Beguile compile), so pull pkgOrHooks for the #startup that wires __orBeguileMainInit into bglInit. #once-guarded; harmless if pulled more than once.
+#include "pkgOrHooks"
+
+extern class _orLoopArray : object {
+    emitter string getNext(var loopArray)                           { ($self.getNext($loopArray)) }
+    emitter string getNext(object obj, property prop)               { ($self.getNext($obj, $prop)) }
+    emitter string getNext(object obj, property prop, var onceOnly) { ($self.getNext($obj, $prop, $onceOnly)) }
+}
+
+extern class _orUtil : object {
+    _orLoopArray orLoopArray;
+}
+extern _orUtil util;
+
+// onceOnly flag for getNext (orUtilLoopArray.h `constant repeatLast 2`).
+extern const int repeatLast;
+
+// Calling note: pass a MEMBER loop-array as its property name via the (property) cast —
+//   util.orLoopArray.getNext(self, (property)myLoopArray, repeatLast)
+// (a bare member reference resolves to its value, not the property name the I6 API wants).

@@ -1,0 +1,39 @@
+//===================================================================================================
+// bindings/orStateDescriptors.bgl — Beguile binding for orLibrary's orStateDescriptors extension.
+//---------------------------------------------------------------------------------------------------
+// orStateDescriptors appends short state notes to an object's name during room-description and
+// inventory listings — e.g. "(closed)", "(worn)", "(providing light)". A game registers handler
+// routines that print a note for a given object; the engine runs them and formats the "( … )" clause.
+//
+// The engine object is the singleton `orStateDescriptors` (an `orRoutineList` in I6 — the only
+// instance). A handler is a routine `bool handler(object obj, bool suppress)` — it returns true if it
+// printed/would print a note; `suppress` is true on the counting pass (print nothing, just report).
+//
+//     bool waeOnBack(object obj, bool suppress) { … }
+//     orStateDescriptors.addInventoryHandler(waeOnBack);
+//     orStateDescriptors.suppressSingleItemWhich = 1;   // drop the "(which is …)" for a lone item
+//
+// All `extern` — orStateDescriptors (I6) provides the real definitions; this is type-info only.
+//===================================================================================================
+#once
+// dependency bindings — mirror orStateDescriptors.h's orLibrary #includes so nested extern
+// declarations (types, members, properties, globals) are available transitively.
+#include "_orInfExt"
+// Beguile main-handoff: this binding reaches _orHookInformLibrary (orLibrary then drops its own `replace main`/[Main] under a Beguile compile), so pull pkgOrHooks for the #startup that wires __orBeguileMainInit into bglInit. #once-guarded; harmless if pulled more than once.
+#include "pkgOrHooks"
+
+// The engine object's type. orStateDescriptors is the sole `orRoutineList` instance, so its
+// game-facing registration surface lives here. A handler is `bool handler(object obj, bool suppress)`.
+extern class orRoutineList : object {
+    emitter void addRoomDescriptionHandler(func<bool, object, bool> handler)    { $self.addRoomDescriptionHandler($handler) }
+    emitter void addInventoryHandler(func<bool, object, bool> handler)          { $self.addInventoryHandler($handler) }
+    emitter void removeRoomDescriptionHandler(func<bool, object, bool> handler) { $self.removeRoomDescriptionHandler($handler) }
+    emitter void removeInventoryHandler(func<bool, object, bool> handler)       { $self.removeInventoryHandler($handler) }
+    int suppressSingleItemWhich;   // 1 = drop the "(which is …)" clause when only one item matches
+}
+extern orRoutineList orStateDescriptors;
+
+// Pull in the actual orLibrary I6 extension. The beguiler resolves it (via includePaths) to an
+// absolute path and expands that into the transpiled .inf; the shared artifact is this .bgl
+// binding, not the intermediate I6. (Raw @"..." stays as an escape hatch for verbatim emission.)
+#includeI6 "orStateDescriptors";

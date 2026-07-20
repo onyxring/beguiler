@@ -1,0 +1,39 @@
+/*
+    test_rawarray.bgl
+    Tests: rawArray<T> — a raw I6 word-array type with NO length header. This is
+    the shape used to receive raw I6 buffers such as the `results` array handed to
+    a parse_error entry point.
+      • subscript emits `p-->i` (no +1 offset, unlike the count-prefixed array<T>)
+      • read and write through operator[] / operator[]=
+      • size()/length() derive from `.#` (byte size / WORDSIZE)
+      • an element cast to (verb) compares inline as ##Verb, and the comparison
+        resolves as ebool so it can be combined with `||`
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+extern verb PutOn { .put }
+extern verb Insert { .insert }
+
+// subscript through a parameter — must emit `results-->0`, not `results-->(0+1)`
+int firstOf(rawArray<var> results) {
+    return results[0];
+}
+
+void setSecond(rawArray<var> results, var v) {
+    results[1] = v;
+}
+
+// size()/length() come from `.#`
+int howMany(rawArray<int> xs) {
+    return xs.size();
+}
+
+// cast an element to (verb) for an action match — inline, no temporary needed.
+// `(verb)results[0]` must resolve as ebool through the `==` so the `||` is valid.
+bool isPutOrInsert(rawArray<var> results) {
+    return (verb)results[0] == PutOn || (verb)results[0] == Insert;
+}

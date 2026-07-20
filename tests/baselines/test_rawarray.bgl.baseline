@@ -1,0 +1,26 @@
+!% -v5
+!% -E1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _bglUtil
+;
+object bgl
+  with utilities _bglutil
+;
+[firstOf results;
+    return  results-->0 ;
+];
+[setSecond results v;
+    results-->1 = v;
+];
+[howMany xs;
+    return (xs.#) / WORDSIZE;
+];
+[isPutOrInsert results;
+    return  results-->0  == ##puton|| results-->0  == ##insert;
+];
