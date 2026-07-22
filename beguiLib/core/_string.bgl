@@ -6,7 +6,7 @@ extern emitter class stringLiteral:_bglObject{
     replace emitter void print(){ print (string)$val; }
 }       
 
-extern emitter class interpolatedStringLiteral:_bglObject{} //interpolatedStrings are smoke and mirrors.  All functionality is implemented by the compiler. TODO: _bglObject has print which I don't think works here.  Either remove this inheritance, or make @"{actor} was here".print(); a thing, as it is for other literals.
+extern emitter class interpolatedStringLiteral:_bglObject{} //interpolatedStrings are smoke and mirrors.  All functionality is implemented by the compiler. NOTE: _bglObject no longer carries print(), so there's no inherited member to worry about here; add a `replace emitter void print()` only if `@"{actor} was here".print();` should become a thing (as it is for other literals).
 
 extern emitter class string : _bglObject{
     emitter string operator = (stringLiteral v){

@@ -41,6 +41,11 @@ class fileLexer{
         void open(std::string);
         void openText(const std::string& content, const std::string& virtualName, int startLine = 1);
         void close();
+        // Close every still-open file and clear all scanning state. Used before an LSP re-parse:
+        // a prior parse that bailed under error recovery can leave frames on the `files` stack,
+        // which would make getNumberOfOpenFiles() != 1 on the next entry parse and suppress the
+        // BLR auto-load — derailing (and losing all base types for) the next document.
+        void reset();
         int getNumberOfOpenFiles();
         void moveToStart();
         std::istream* currentStream();

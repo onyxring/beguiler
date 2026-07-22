@@ -23,8 +23,23 @@
 #include <core/_grammar>
 #include <core/_verb>
 
-object _bglUtil{}
-object bgl{
+#if TARGET_GLULX
+    #include<core/_glulxOpCodes>
+#else
+    #include<core/_zcodeOpCodes>
+#endif 
+
+
+
+// Z-target alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>().
+extend bgl { emitter auto asm = bglOpCodes; }
+
+
+// Namespace objects derive from _bglObject (the base below `object`, defined further down),
+// not from `object` itself — so completion/type-checking see only their own members and not
+// the world-tree surface (give/has/parent/remove/…). They still emit as plain I6 objects.
+_bglObject _bglUtil{}
+_bglObject bgl{
     emitter int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
     auto utilities = _bglUtil;
 }
@@ -75,11 +90,10 @@ object bgl{
 }
 
 //=============================================================================
-// _bglObject - the base class for all Beguile objects
+// _bglObject - the base class for all Beguile objects. Intentionally empty: it is
+// the shared type-tree root for both objects (via `object`) and the primitive/type
+// wrappers (int/bool/string/…)
     emitter class _bglObject{
-         void print(){
-             print $val;
-         }
     }
 
 //=============================================================================

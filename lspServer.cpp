@@ -526,6 +526,19 @@ void LspServer::parseDocument(const string& uri) {
     cout.rdbuf(oldCout);  // restore cout
 
     documentDiagnostics[uri] = errors;
+    lastParsedUri = uri;  // shared parser/languageService state now reflects this document
+}
+
+// Ensure the shared parse reflects the document a feature request targets. parseDocument holds
+// only the last-parsed file's symbol table (each open doc is parsed in isolation, resetting state),
+// so completing/hovering in file B right after editing included file A would otherwise resolve
+// against A's parse. Reparsing B here restores a self-consistent view. No-op if already current.
+void LspServer::ensureParsedForRequest(const string& uri) {
+    if(uri == lastParsedUri) return;
+    if(openDocuments.find(uri) == openDocuments.end()) return;
+    parser.reset();
+    languageService.reset();
+    parseDocument(uri);
 }
 
 void LspServer::publishDiagnostics(const string& uri) {
@@ -948,6 +961,7 @@ json LspServer::handleHover(const json& params) {
     string uri = params["textDocument"]["uri"];
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
+    ensureParsedForRequest(uri);
 
     // .inf-mode gating: outside #bgl{} regions, no Beguile hover.
     if(!requestAllowedAt(uri, line, col)) return nullptr;
@@ -1243,6 +1257,7 @@ json LspServer::handleCompletion(const json& params) {
     string uri = params["textDocument"]["uri"];
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
+    ensureParsedForRequest(uri);
 
     // .inf-mode gating: outside #bgl{} regions, defer to other providers / word fallback.
     if(!requestAllowedAt(uri, line, col)) return nullptr;
@@ -1872,6 +1887,7 @@ json LspServer::handleDefinition(const json& params) {
     string uri = params["textDocument"]["uri"];
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
+    ensureParsedForRequest(uri);
 
     // .inf-mode gating: outside #bgl{} regions, no Beguile go-to-definition.
     if(!requestAllowedAt(uri, line, col)) return nullptr;
@@ -2215,6 +2231,7 @@ json LspServer::handleSignatureHelp(const json& params) {
     string uri = params["textDocument"]["uri"];
     int line = params["position"]["line"].get<int>();
     int col = params["position"]["character"].get<int>();
+    ensureParsedForRequest(uri);
 
     // .inf-mode gating: outside #bgl{} regions, no Beguile signature help.
     if(!requestAllowedAt(uri, line, col)) return nullptr;
@@ -2630,6 +2647,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
     string uri = params["textDocument"]["uri"];
     auto docIt = openDocuments.find(uri);
     if(docIt == openDocuments.end()) return {{"data", json::array()}};
+    ensureParsedForRequest(uri);
 
     // .inf-mode: don't classify the I6 host code. Beguile-aware highlighting inside #bgl{}
     // regions is Tier-2 work (TextMate injection); for now we hand off to the I6 highlighter.
@@ -3083,8 +3101,18 @@ json LspServer::handleSemanticTokensFull(const json& params) {
             // semantic tokens beat TextMate scopes. Let the grammar handle all directives.
             if(c == '#') {
                 // Still advance past the directive so subsequent scanning continues correctly.
+                size_t dirStart = i + 1;
                 i++;
                 while(i < lineText.size() && (isalnum(lineText[i]) || lineText[i] == '_')) i++;
+                // For #include / #includeI6, the remainder of the line is a library path
+                // (<sub/folder/name>) or quoted string, NOT code. Don't tokenize identifiers
+                // in it — otherwise a path segment that happens to name a known symbol (e.g.
+                // `orPrint` in `#include <orLibrary/orPrint>`) gets an stFunction token that
+                // beats TextMate's uniform string color, splitting the path's coloring.
+                // Mirrors the TS side skipping include lines entirely (semanticTokens.ts INCLUDE_RE).
+                string directive = lineText.substr(dirStart, i - dirStart);
+                transform(directive.begin(), directive.end(), directive.begin(), ::tolower);
+                if(directive == "include" || directive == "includei6") break;
                 continue;
             }
 

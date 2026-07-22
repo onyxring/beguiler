@@ -110,6 +110,14 @@ void fileLexer::close(){
     delete inputFileStream;
     files.pop();
 }
+void fileLexer::reset(){
+    while(!files.empty()) close();      // drain the stack, deleting each stream
+    braceDepth = 0;
+    prevTokenType = eTokenType::unknown;
+    prevTokenValue.clear();
+    pendingDocComment.clear();
+    pendingDocLastLine = -1;
+}
 int fileLexer::getNumberOfOpenFiles(){
     return files.size();
 }

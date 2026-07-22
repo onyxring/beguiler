@@ -22,7 +22,7 @@
 // _glulx — backing object for the bgl.glulx namespace.
 extend bgl{ auto glulx=_glulx; } //extend the bgl namespace object to include glulx-specific things
 
-object _glulx{
+_bglObject _glulx{
    alias eStyleType for eGlulxStyleType; //bgl.glulx.eStyleType
 }
 

@@ -2281,8 +2281,15 @@ void i6Emitter::emitObject(objectDef* obj){
         }
     }
 
-    // Use the declared class name (if any) as the I6 object prefix; fall back to 'Object'
-    string i6ClassName = (obj->objectClass && obj->objectClass->name != "object")
+    // Use the declared class name (if any) as the I6 object prefix; fall back to 'Object'.
+    // `_bglObject` is the backing-less type-tree root (below `object`; also the base of the
+    // primitive wrappers). Namespace objects (bgl/_bglUtil/_bglWorld/_glulx) are declared
+    // directly on it so they shed the `object` veneer + tree-citizen machinery at the Beguile
+    // type level, yet — being object *declarations* — still emit as plain I6 `Object`. Since
+    // `_bglObject` has no I6 `Class` backing, emit the bare `Object` keyword rather than the
+    // class name (which would reference an undefined I6 class).
+    string i6ClassName = (obj->objectClass && obj->objectClass->name != "object"
+                          && obj->objectClass->name != "_bglobject")
                          ? obj->objectClass->i6Name() : "object";
     const string& objI6Name = obj->i6name.empty() ? obj->dName() : obj->i6name;
     if(parentValue.empty())

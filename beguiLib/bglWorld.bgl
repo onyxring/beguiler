@@ -106,7 +106,7 @@ extern array<object> _bglWorldInstances(var cls, var pred);
 // fails at the I6 level with 'Property given twice'). Methods are regular
 // (non-emitter) because `emitter array<T>` is only accepted on
 // `extend extern class array`.
-object _bglWorld {
+_bglObject _bglWorld {
     array<object> getAll(func<bool, object> pred = 0)            { return _bglWorldGetAll(pred); }
     array<object> inParent(object p, func<bool, object> pred = 0){ return _bglWorldInParent(p, pred); }
     array<object> instances(var cls, func<bool, object> pred = 0){ return _bglWorldInstances(cls, pred); }

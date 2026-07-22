@@ -215,6 +215,10 @@ void bglParser::reset(){
     definedSymbols["beguilerminor"]   = to_string((BEGUILER_VERSION % 1000) / 10);
     definedSymbols["beguilerpatch"]   = to_string(BEGUILER_VERSION % 10);
     lspErrors.clear();
+    // Drain any files left open by a prior parse that bailed under LSP error recovery. Otherwise
+    // getNumberOfOpenFiles() stays > 0 and the next entry parse skips the BLR auto-load (see
+    // parseFile), losing every base type and derailing the parse.
+    file.reset();
 }
 
 // Open an input file, process each statement.  This is the entry point to this whole parsing process
@@ -800,8 +804,15 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
 
         // Always load the Beguile Language Runtime first so built-in types (eBool, eTarget, etc.)
         // and emitters are available to user code — including #bgl{} blocks inside .inf files.
+        // Skip when the entry file IS the BLR core (e.g. the LSP parsing __beguileCore.bgl while
+        // the user edits it): re-loading it here would parse the same file twice, double-register
+        // every core type ('object'/'bgl'/… "already defined"), and derail. The entry parse below
+        // registers them once.
         filesystem::path systemPath = filesystem::path(settings.libPath) / "core" / "__beguileCore.bgl";
-        parseFile(systemPath.string());
+        string systemAbs;
+        try { systemAbs = filesystem::canonical(systemPath).string(); } catch(...) { systemAbs = systemPath.string(); }
+        if(systemAbs != absPath)
+            parseFile(systemPath.string());
         // Load built-in I6 templates (for-in loop etc.) from beguilib/core/__builtins.i6b
         filesystem::path builtinsPath = filesystem::path(settings.libPath) / "core" / "__builtins.i6b";
         emitter.loadBuiltinTemplates(builtinsPath.string());

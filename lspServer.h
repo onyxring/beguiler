@@ -91,6 +91,18 @@ private:
     std::map<std::string, std::vector<std::string>> documentDiagnostics;  // uri → error messages
     std::map<std::string, std::string> documentParsePaths;  // uri → canonical path used during last parse
 
+    // URI of the document whose parse currently populates the shared parser/languageService state.
+    // Feature requests (completion/hover/signatureHelp) resolve against that shared state, so a
+    // request for a *different* document must reparse its own URI first — otherwise editing an
+    // included library file (e.g. __beguileCore.bgl, which double-registers symbols when parsed
+    // standalone) corrupts the state that completion in the dependent file reads. See
+    // ensureParsedForRequest().
+    std::string lastParsedUri;
+
+    // If `uri` is open but not the last-parsed document, reparse it so the shared symbol table
+    // reflects the file the request targets. No-op when it already matches.
+    void ensureParsedForRequest(const std::string& uri);
+
     // .inf-mode polyglot support: when an opened file ends in `.inf`, the document is treated as
     // I6 source with `#bgl{...}` islands. The LSP only responds to feature requests inside those
     // islands; outside them, requests return null/empty so other providers (or VS Code's built-in
