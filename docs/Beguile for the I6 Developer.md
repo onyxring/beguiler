@@ -552,7 +552,7 @@ Two points of clarification:
 - `n_to`, which would normally be inferred as type `object` has been overridden to type `string`.  We could just as easily have declared the default types for direction properties as `string`, then overridden `s_to` and `w_to` to be `objects`.  Either way is acceptable.
 - You might note that we never defined the default type for `attributes` as type `attributeList` and Beguiler still accepted the property without error.  This is because the `attributes` property type is already set on the `object` definition, even without `extend`ing it.  We declared the type explicitly on the `cloakroom` object to further the example.  Had we left that particular member untyped, even without the `extend object` code, the example would still have compiled.
 
-> Note*: From the above above examples, you might suspect that objects declared *before* `object` was `extend`ed  would still require member types to be specified.  This is actually untrue.  Beguile supports declarations in any order, so the presence of `extend object` affects all instances of `object` across all files, regardless of the order declarations appear in.  I presented it in this fashion for the purpose of illustration.
+> ***Note**: From the above above examples, you might suspect that objects declared *before* `object` was `extend`ed  would still require member types to be specified.  This is actually untrue.  Beguile supports declarations in any order, so the presence of `extend object` affects all instances of `object` across all files, regardless of the order declarations appear in.  I presented it in this fashion for the purpose of illustration.*
 
 ### Analyzing `Before` as an Example Member Routine
 Among its other members, the `bar` object contains a member routine, specifically the `before` routine which the Puny Inform and the I6 Standard Library both use:
@@ -617,7 +617,7 @@ There are a few things in the above example to take note of...
     attributes
     ```
 
-    In I6, this would need to be written as `self.attributes`, and it still *can* be written like that; however, Beguile follows the same logic as C#, and matches names to sibling members automatically.  The `self.` qualifier is generally optional.
+    In I6, this member access is written as `self.member`, so you might expect that `attributes`, being encapsulated as a member, would need to be referenced as `self.attributes`.  And it still *can* be written like that; however, Beguile follows the same logic as C#, and matches names to sibling members automatically.  The `self.` qualifier is generally optional.
   - Second, recall from earlier that the `attributes` member is an instance of type `attributeList`.  The `attributeList` object hosts several members to manage and test the attributes it has been assigned, including `has` and `hasnt`:
 
     ```
@@ -660,7 +660,7 @@ There are a few things in the above example to take note of...
   attributes = {!light}; 
   ```
 
-  The difference here is the logical NOT operator, which ensures the object does *not* have the attribute specified.  This is done either because an attribute is set by the class's ancestor or, as is the case here: simply to keep the attribute's absence explicit and clear (the `bar` room didn't previously have the attribute set, so turning it off serves no purpose).
+  The difference here is the logical NOT operator, which ensures the object does *not* have the attribute specified.  This is done either because an attribute is set by the class's ancestor or, as is the case here: simply to keep the attribute's absence explicit and clear (the `bar` room didn't previously have the attribute set, so turning it off serves no other purpose).
 
 ### The `cloak` Object
 
