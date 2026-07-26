@@ -97,6 +97,8 @@ struct Qualifiers {
                               // this class get value-semantics when passed as function
                               // parameters (backing + copy-in via operator= at entry).
                               // Mutually exclusive with extern/emitter/extend/: object.
+    bool isSuperposed = false; // `superposed` qualifier on a function: the routine materializes
+                               // into the story file only if something calls it; unused => elided.
 };
 
 // Forward-declare bglParser so handler signature can reference it
@@ -236,7 +238,7 @@ class bglParser {
         bool processEnumDeclaration(token, bool, token nameOverride=token());
         bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false);
         bool processEmitterValueDeclaration(token typeTok, token nameTok);
-        bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false, bool = false);
+        bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false, bool = false, bool = false);
         bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "", bool isRef = false);
         bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false);
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
@@ -290,8 +292,8 @@ class bglParser {
         bool processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
                                 abstractObject* ctx = nullptr, Qualifiers* q = nullptr);
         void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false);
-        void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false);
-        void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false);
+        void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false, string i6alias = "");
+        void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "");
         void processInheritedMember(objectDef& obj, token nameTok);
         bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members
         vector<grammarLine> parseGrammarLines();

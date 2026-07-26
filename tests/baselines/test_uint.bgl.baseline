@@ -1,5 +1,6 @@
 !% -v5
 !% -E1
+!% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 global _bgl_temp0;
@@ -9,11 +10,14 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _zcode
+;
 object _bglUtil
   with math _bglmath
 ;
 object bgl
-  with utilities _bglutil
+  with zcode _zcode,
+       bglUtil _bglutil
 ;
 object _bglMath
   with unsignedCompare [x y u v;

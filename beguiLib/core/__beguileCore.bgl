@@ -24,15 +24,10 @@
 #include <core/_verb>
 
 #if TARGET_GLULX
-    #include<core/_glulxOpCodes>
+    #include<core/_glulxCore> //also includes _glulxOpCodes
 #else
-    #include<core/_zcodeOpCodes>
+    #include<core/_zcodeCore>
 #endif 
-
-
-
-// Z-target alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>().
-extend bgl { emitter auto asm = bglOpCodes; }
 
 
 // Namespace objects derive from _bglObject (the base below `object`, defined further down),
@@ -41,7 +36,9 @@ extend bgl { emitter auto asm = bglOpCodes; }
 _bglObject _bglUtil{}
 _bglObject bgl{
     emitter int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
-    auto utilities = _bglUtil;
+    // Exposed as `bgl.util`, but emitted as the I6 property `bglUtil` so it doesn't collide with
+    // orLibrary's global `object util` (I6 keeps object + property short-names in one namespace).
+    auto util as bglUtil = _bglUtil;
 }
 // Target-specific platform code is opt-in per the zero-byte-core principle:
 //   #include <zcode>  → bgl.asm + bglOpCodes for Z-machine assembly
@@ -93,8 +90,8 @@ _bglObject bgl{
 // _bglObject - the base class for all Beguile objects. Intentionally empty: it is
 // the shared type-tree root for both objects (via `object`) and the primitive/type
 // wrappers (int/bool/string/…)
-    emitter class _bglObject{
-    }
+emitter class _bglObject{
+}
 
 //=============================================================================
 // type object

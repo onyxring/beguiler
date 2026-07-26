@@ -809,8 +809,9 @@ Constant wintype_TextGrid = 4;
 }
 
 extern var sp;
-//a simple helper: rather than specify each glk routine individually, we declare only one. This is referenced by emitters, eliminating the majority of unused routines generated
-int __glkHook(int _vararg_count){
+//a simple helper: rather than specify each glk routine individually, we declare only one. This is referenced by emitters, eliminating the majority of unused routines generated.
+//`superposed`: the routine materializes into the story file only if some glk emitter actually calls it — a program that touches no glk drops it entirely.
+superposed int __glkHook(int _vararg_count){
     int api = bglOpCodes.copy(sp);        //the first parameter is the api code expected by the glk dispatcher. Pull it off because we have to supply it separately from the other parameters.
     int args=_vararg_count -1;         //adjust the count of arguments down by one (we just pulled off the opcode)
     int retval=bglOpCodes.glk(api, args); //call the glk opcode

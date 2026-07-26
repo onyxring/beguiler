@@ -106,7 +106,7 @@ extend class bglOpCodes {
     emitter void buffer_mode(int flag)   { @buffer_mode $flag; }
 
     //── Input (Z4+) ─────────────────────────────────────────────────────
-    emitter int read_char(int dev)       { @read_char $dev -> $target }
+    emitter int read_char(int dev = 1)   { @read_char $dev -> $target }  // dev defaults to 1 (the only legal Z-machine value)
     emitter int scan_table(int x, int table, int len) {
         @scan_table $x $table $len -> $target
     }

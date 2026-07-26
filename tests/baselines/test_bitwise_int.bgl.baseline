@@ -1,5 +1,6 @@
 !% -v5
 !% -E1
+!% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 global _bgl_temp0;
@@ -9,11 +10,14 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _zcode
+;
 object _bglUtil
   with math _bglmath
 ;
 object bgl
-  with utilities _bglutil
+  with zcode _zcode,
+       bglUtil _bglutil
 ;
 object _bglMath
   with unsignedCompare [x y u v;
@@ -97,11 +101,11 @@ object _bglMath
     a = 12;
     b = 10;
     xor_=(a | b) - (a & b);
-    shl=bgl.utilities.math.shiftLeft(a,3);
-    shr=bgl.utilities.math.shiftRight(a,1);
+    shl=bgl.bglUtil.math.shiftLeft(a,3);
+    shr=bgl.bglUtil.math.shiftRight(a,1);
     a = ((a | 3) - (a & 3));
-    a=bgl.utilities.math.shiftLeft(a,1);
-    b=bgl.utilities.math.shiftRight(b,1);
+    a=bgl.bglUtil.math.shiftLeft(a,1);
+    b=bgl.bglUtil.math.shiftRight(b,1);
     print xor_;
     print shl;
     print shr;

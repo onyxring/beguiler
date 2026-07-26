@@ -1,5 +1,6 @@
 !% -G
 !% -E1
+!% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 global _bgl_temp0;
@@ -8,10 +9,13 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _zcode
+;
 object _bglUtil
 ;
 object bgl
-  with utilities _bglutil
+  with zcode _zcode,
+       bglUtil _bglutil
 ;
 [testArithmetic a b sum diff prod quot rem mixed neg;
     a = 10;

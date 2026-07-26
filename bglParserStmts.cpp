@@ -1803,6 +1803,17 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             // method call: validate and resolve emitter
             string objectPath = callStmt.functionName.substr(0, dotPos);  // may be "obj" or "obj.prop"
             string methodName = callStmt.functionName.substr(dotPos + 1);
+            // Resolve a namespace auto-member receiver (bgl.ui → _bglUi, bgl.util.math → _bglMath)
+            // to the backing object so emission is a message-send, not a literal runtime property
+            // chain (which fails to set `self`). Only rewrite when the receiver collapses to a
+            // single global object — leaving locals, class-typed paths, and emitter namespaces
+            // (bgl.asm) untouched. Mirrors the expression-context walk.
+            {
+                string q = qualifyIdentifier(objectPath, func, body);
+                if(q != objectPath && q.find('.') == string::npos && q.find('(') == string::npos
+                   && dynamic_cast<objectDef*>(&languageService.getType(q)))
+                    objectPath = q;
+            }
             string objectName = objectPath;  // kept for backward compat in non-emitter emit path
             // Pass memberHint=methodName so the resolver disambiguates a name collision in favor
             // of whichever candidate's type actually exposes the method.
@@ -1873,11 +1884,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                                                        callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
                                                        recvElemType);
                 cls = dynamic_cast<classDef*>(&languageService.getType(objectType));
-                // Non-emitter overload sets carry a mangled i6name (assigned by
-                // mangleOverloadSetForReceiver inside bindMethodCall). Rewrite the
-                // call statement's functionName so emission targets the mangled property.
-                if(!method->isEmitter && !method->i6name.empty())
-                    callStmt.functionName = objectPath + "." + method->i6name;
+                // Rebuild the call statement's functionName from the (possibly namespace-resolved)
+                // objectPath so emission targets the backing object — e.g. `bgl.ui.pressAnyKey()`
+                // becomes `_bglUi.pressAnyKey()` rather than a literal runtime chain. Overload sets
+                // carry a mangled i6name (assigned by mangleOverloadSetForReceiver in bindMethodCall);
+                // otherwise use the method name. Emitters are handled separately below (inlined body).
+                if(!method->isEmitter)
+                    callStmt.functionName = objectPath + "." + (method->i6name.empty() ? methodName : method->i6name);
                 // if emitter, pre-substitute $self, $prop, and $class
                 if(method->isEmitter)
                     if(auto* blk = dynamic_cast<i6Block*>(method->body)){
@@ -2017,6 +2030,18 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             chainTok = file.getToken();
         }
         chainTok.assert(token::endStatement);
+
+        // $target substitution for a DISCARDED emitter-call statement. A value-returning opcode
+        // emitter (e.g. `bgl.asm.read_char(1)` → `@read_char $dev -> $target`) has no destination
+        // in statement position. Since the result is thrown away, store it to `sp` — the stack
+        // pointer (I6 variable 0), a compiler-built-in destination that needs no declaration, so
+        // no per-call temp is allocated. Directly-assigned opcodes never reach here (parseExpression
+        // binds $target to the LHS); compound expressions allocate their own temps (they hold live
+        // values). Note: the pushed value lingers on the routine's stack until it returns (the
+        // frame discards it) — harmless except for a discarded opcode inside a hot loop, which
+        // would grow the stack per iteration.
+        if(callStmt.emitterBody.find("$target") != string::npos)
+            callStmt.emitterBody = replaceWord(callStmt.emitterBody, "$target", "sp");
 
         for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
         pendingInjections.clear();

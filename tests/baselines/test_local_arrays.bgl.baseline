@@ -1,5 +1,6 @@
 !% -v5
 !% -E1
+!% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 Constant _BGL_LINQ_SCRATCH_SIZE = 32;
@@ -77,10 +78,13 @@ global _bglInitDone = 0;
     _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
 
 ];
+object _zcode
+;
 object _bglUtil
 ;
 object bgl
-  with utilities _bglutil
+  with zcode _zcode,
+       bglUtil _bglutil
 ;
 [_bglArrayCompareAsc lhs rhs;
     

@@ -14,10 +14,8 @@
 // automatic.
 //-----------------------------------------------------------------------------
 #once
-#if TARGET_ZCODE
-    #error "ERROR: <glulx> extension is only valid when targeting Glulx."
-#endif
 
+#include<core/_glulxOpCodes>
 //=============================================================================
 // _glulx — backing object for the bgl.glulx namespace.
 extend bgl{ auto glulx=_glulx; } //extend the bgl namespace object to include glulx-specific things

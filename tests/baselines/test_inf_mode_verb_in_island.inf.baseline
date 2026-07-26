@@ -14,10 +14,13 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _zcode
+;
 object _bglUtil
 ;
 object bgl
-  with utilities _bglutil
+  with zcode _zcode,
+       bglUtil _bglutil
 ;
 
 ! test_inf_mode_verb_in_island.inf — verb declarations inside `#bgl{}` islands

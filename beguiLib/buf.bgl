@@ -53,13 +53,14 @@
 #once
 #include <char>
 
-// Pull in the right assembly-opcode set for the active target. Buf methods
-// dispatch through `bgl.asm.X(...)` instead of raw `@opcode` islands.
-#if TARGET_ZCODE
-    #include <zcode>
-#else
-    #include <glulx>
-#endif
+//now pulled in by default...  TODO delete this code once I'm sure it isn't required
+// // Pull in the right assembly-opcode set for the active target. Buf methods
+// // dispatch through `bgl.asm.X(...)` instead of raw `@opcode` islands.
+// #if TARGET_ZCODE
+//     #include <zcode>
+// #else
+//     #include <glulx>
+// #endif
 
 // `bglStringDefaultSize`: default capacity for transient capture buffers
 // (used by `<string>`-managed string pools). 500 chars unless the user sets

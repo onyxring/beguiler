@@ -1062,6 +1062,26 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                     }
             }
         }
+        // Namespace auto-member redirect on an OBJECT head (e.g. bgl.ui → _bglUi), mirroring the
+        // expression-context walk in parseExpression. Without this, a statement-context method call
+        // like `bgl.ui.pressAnyKey()` qualifies to the literal runtime chain `bgl.ui.pressAnyKey()`
+        // — which reads the property's routine value and calls it WITHOUT setting `self` to the
+        // backing object — instead of a proper message-send `_bglUi.pressAnyKey()`. Only redirects
+        // when the member's initializer names a global object (namespace alias), so plain
+        // value-typed properties are untouched.
+        if(auto* instObj = dynamic_cast<objectDef*>(&languageService.getType(head))){
+            for(typeMember* m : instObj->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                    if(vd->name == firstSeg){
+                        string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+                        if(!initName.empty())
+                            for(typeDef* g : languageService.globals)
+                                if(auto* od = dynamic_cast<objectDef*>(g))
+                                    if(od->name == initName)
+                                        return qualifyIdentifier(rest.empty() ? od->name : od->name + "." + rest, func, body);
+                        break;
+                    }
+        }
         return qualifiedHead + "." + tail;
     }
     // Tier 1a: params of current (possibly nested) context. byVal-class params have
@@ -1285,7 +1305,9 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 if(vd->name != name) continue;
                 ct = vd->type.name;
-                qual = imp->name + "." + name;
+                // Recursively qualify so a namespace auto member resolves through to its backing
+                // object (parallels the object-import case below).
+                qual = qualifyIdentifier(imp->name + "." + name, func, body);
                 origin = format("#using-imported variable '{0}.{1}'", imp->dName(), name);
                 matched = true;
             }
@@ -1316,7 +1338,10 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 if(vd->name != name) continue;
                 ct = vd->type.name;
-                qual = imp->name + "." + name;
+                // Recursively qualify so a namespace auto member resolves through to its backing
+                // object (e.g. `#using bgl` + `ui` → `bgl.ui` → `_bglUi`), matching a fully-qualified
+                // `bgl.ui`. Plain value members are unaffected (they re-qualify to themselves).
+                qual = qualifyIdentifier(imp->name + "." + name, func, body);
                 origin = format("#using-imported member '{0}.{1}'", imp->name, name);
                 matched = true;
             }

@@ -947,10 +947,14 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
 }
 
 
-void bglParser::processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace){
+void bglParser::processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace, string i6alias){
     functionDef& funcDef = *(new functionDef());
     funcDef.name = (string)name;
     funcDef.displayName = name.originalValue;
+    // `Type method(...) as <i6name>` — emit the routine under a chosen I6 name. Skip operators,
+    // whose i6name is assigned by the operator/overload mangler; a manual alias there would fight it.
+    if(!i6alias.empty() && name.value.rfind("operator", 0) != 0)
+        funcDef.i6name = i6alias;
     funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
     funcDef.returnType = languageService.getType((string)returnType);
     processParameterList(funcDef);
@@ -1031,9 +1035,10 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
 }
 
 
-void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace){
+void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace, string i6alias){
     variableDeclaration& prop = *(new variableDeclaration());
     prop.name = name;
+    prop.i6name = i6alias;  // `Type member as <i6name>;` — emitted I6 property short-name (empty = use Beguile name)
     prop.src = file.currentLocation();
     prop.type = languageService.getType(typeName);
     if(hasValue) parsePropertyValue(prop, typeName);
@@ -1167,11 +1172,21 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
         obj.members.push_back(&gtd);
         return;
     }
+    // Optional `as <i6name>` I6-alias, positioned after the member name (mirrors the top-level
+    // `Type name as alias …` order in processTypedObjectDeclaration/processAliasedDeclaration). Lets a
+    // member's emitted I6 identifier differ from its Beguile name so it can dodge an I6 symbol clash
+    // (e.g. `auto util = _bglUtil as bglUtil` avoids orLibrary's `object util`).
+    string i6alias;
+    if(file.peekToken().is("as")){
+        file.getToken();  // consume 'as'
+        token aliasTok = file.getToken(eTokenType::identifier);
+        i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
+    }
     token sym = file.getToken({token::assignment, token::endStatement, token::parenOpen});
     if(sym.is(token::parenOpen))
-        processMemberMethod(obj, typeTok, propName, isReplace);
+        processMemberMethod(obj, typeTok, propName, isReplace, i6alias);
     else
-        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment), isReplace);
+        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment), isReplace, i6alias);
 }
 
 
@@ -1319,7 +1334,7 @@ bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q
     token name = file.getToken({eTokenType::identifier, eTokenType::dataType});
     token symbol = file.getToken({token::bracketOpen, token::assignment, token::endStatement, token::parenOpen});
     if(symbol.is(token::parenOpen))
-        return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault);
+        return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed);
     processArrayDeclaration(arrayTok, name, elemType, symbol, ctx, q.isExtern);
     return false;
 }
@@ -1336,7 +1351,7 @@ bool bglParser::processTypedObjectDeclaration(token typeTok, token nameTok, toke
     }
     token symbol = file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
     if(symbol.is(token::parenOpen))
-        return processRoutineDeclaration(typeTok, nameTok, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault);
+        return processRoutineDeclaration(typeTok, nameTok, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed);
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, nameTok, q.isExtern, objectClassName, i6alias, true, q.isEmitter);
     else
@@ -1349,7 +1364,7 @@ bool bglParser::processAliasedDeclaration(token typeTok, token nameTok, token al
     string i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
     token symbol = file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
     if(symbol.is(token::parenOpen))
-        return processRoutineDeclaration(typeTok, nameTok, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault);
+        return processRoutineDeclaration(typeTok, nameTok, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed);
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, nameTok, q.isExtern, "", i6alias, true, q.isEmitter);
     else

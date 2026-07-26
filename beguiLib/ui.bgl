@@ -1,0 +1,9 @@
+#once
+object _bglUi {
+    void pressAnyKey(){
+        bgl.asm.read_char();
+    }
+}
+extend bgl {
+    auto ui = _bglUi;
+}

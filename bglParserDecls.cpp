@@ -575,10 +575,11 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     return false;
 }
 
-bool bglParser::processRoutineDeclaration(token returnType, token name, abstractObject& contextObject, bool isExternal, bool isEmitter, bool isReplace, bool isDefault){
+bool bglParser::processRoutineDeclaration(token returnType, token name, abstractObject& contextObject, bool isExternal, bool isEmitter, bool isReplace, bool isDefault, bool isSuperposed){
     functionDef& funcDef=*(new functionDef());
     funcDef.name=(string) name; funcDef.displayName=name.originalValue;
     funcDef.isDefault=isDefault;
+    funcDef.isSuperposed=isSuperposed;
     // Use the name token's source location (preserved from when it was read) — currentLocation()
     // would return where we are NOW (after consuming the name), which may be on a later line.
     funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();

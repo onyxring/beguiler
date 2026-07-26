@@ -6,10 +6,13 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _zcode
+;
 object _bglUtil
 ;
 object bgl
-  with utilities _bglutil
+  with zcode _zcode,
+       bglUtil _bglutil
 ;
 ! test_inf_mode_i6_collision.inf — Slice 6: cross-language symbol collision warning.
 !

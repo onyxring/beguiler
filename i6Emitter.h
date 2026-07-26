@@ -15,6 +15,12 @@ class i6Emitter{
         stringstream out;
         vector<pair<string,string>>* currentCleanups = nullptr; // set during emitFunction; used by emitStatement for return
         vector<tuple<int,string,int>> sourceMap;  // (i6Line, bglFile, bglLine)
+        // `superposed` routines: captured out-of-band during emitFunction (name → full routine text),
+        // then appended by resolvedOutput() only if referenced (called) in the final output. The
+        // reentrancy flag lets emitFunction re-emit the body into a side buffer without recursing
+        // into the capture branch (and suppresses sourceMap entries for the withheld text).
+        map<string,string> superposedBlocks;
+        bool emittingSuperposedBody = false;
         set<string> declaredVerbWords;             // tracks which I6 trigger words have been Verb-declared
         // built-in I6 templates loaded from beguilib/_builtins.i6b
         map<string, pair<vector<string>, string>> builtinTemplates;

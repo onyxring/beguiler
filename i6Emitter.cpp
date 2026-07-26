@@ -37,6 +37,35 @@ string i6Emitter::resolvedOutput(){
     };
     substitute(kStoredFirstMarker, languageService.storedEmitFirstBlocks);
     substitute(kStoredLastMarker,  languageService.storedEmitLastBlocks);
+
+    // `superposed` routines: materialize one into the output only if its name is referenced
+    // somewhere in the already-assembled text. Their own definitions were withheld from `buf`
+    // (captured in superposedBlocks), so any word-boundary occurrence of the name IS a genuine
+    // call/reference. Loop to a fixed point: an included routine may itself reference another
+    // still-withheld superposed routine.
+    auto referenced = [&](const string& name) -> bool {
+        size_t p = 0;
+        while((p = buf.find(name, p)) != string::npos){
+            char before = p > 0 ? buf[p-1] : ' ';
+            char after  = p + name.size() < buf.size() ? buf[p + name.size()] : ' ';
+            bool wb = !(isalnum((unsigned char)before) || before=='_')
+                   && !(isalnum((unsigned char)after)  || after=='_');
+            if(wb) return true;
+            p += name.size();
+        }
+        return false;
+    };
+    bool added = true;
+    while(added){
+        added = false;
+        for(auto it = superposedBlocks.begin(); it != superposedBlocks.end(); ){
+            if(referenced(it->first)){
+                buf += it->second;          // observed — collapse it into the story file
+                it = superposedBlocks.erase(it);
+                added = true;
+            } else ++it;
+        }
+    }
     return buf;
 }
 
@@ -1042,6 +1071,10 @@ void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     else if(cfg->target == "z5")   out << "!% -v5\n";
     else if(cfg->target == "z8")   out << "!% -v8\n";
     if(!cfg->errorFormat.empty())  out << format("!% -E{0}\n", cfg->errorFormat);
+    // Omit routines nothing references (user code + BLR helpers). I6's own reachability sees the
+    // whole compilation incl. #i6 islands and keeps address-taken routines, so it's safe; disable
+    // via `#beguilerSettings { omitUnusedRoutines = false; }` for debug builds.
+    if(cfg->omitUnusedRoutines)    out << "!% $OMIT_UNUSED_ROUTINES=1\n";
 
     // Emit all search paths so I6 can resolve its own internal includes.
     // Uses ++include_path (double +) to ADD to the path rather than replace it.
@@ -1346,8 +1379,22 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     // member instead). Don't emit them — an empty `[name params;]` would collide with the
     // member's emitted property of the same name.
     if(funcNode->isPrePassStub) return;
+    // `superposed`: don't emit inline. Re-run this function into a side buffer (the reentrancy
+    // flag bypasses this branch and suppresses sourceMap), stash the routine text keyed by its
+    // I6 name, and let resolvedOutput() append it only if something actually references it.
+    if(funcNode->isSuperposed && !emittingSuperposedBody){
+        stringstream captured;
+        std::swap(out, captured);          // out ↔ captured: out is now empty, captured holds real output
+        emittingSuperposedBody = true;
+        emitFunction(funcNode);            // re-enter; this time the branch is bypassed
+        emittingSuperposedBody = false;
+        std::swap(out, captured);          // restore out; captured now holds the routine's I6 text
+        string rName = funcNode->i6name.empty() ? funcNode->dName() : funcNode->i6name;
+        superposedBlocks[rName] = captured.str();
+        return;
+    }
     buildSpillMap(funcNode);
-    if(!funcNode->src.file.empty())
+    if(!funcNode->src.file.empty() && !emittingSuperposedBody)
         sourceMap.push_back({currentLine(), funcNode->src.file, funcNode->src.line});
     out << format("[{0}", funcNode->i6name.empty() ? funcNode->dName() : funcNode->i6name);
     for(paramDef* param : funcNode->params)
@@ -1459,7 +1506,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     out << "];\n";
 }
 void i6Emitter::emitStatement(statement* stmt, string indent){
-    if(!stmt->src.file.empty())
+    if(!stmt->src.file.empty() && !emittingSuperposedBody)
         sourceMap.push_back({currentLine(), stmt->src.file, stmt->src.line});
     // Local arrayDeclaration with a non-list initializer: pointer-aliasing decl
     // like `array<var> dst = _bglLinqWrite();`. The local slot already exists in
@@ -1594,11 +1641,13 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             for(size_t i=0; i<call->emitterParams.size() && i<call->args.size(); i++)
                 if((int)i != interpArgIdx)
                     b=replaceWord(b, "$" + call->emitterParams[i], exprText(call->args[i]));
-            // $target substitution: for discarded call statements, allocate a temp
-            {
-                string tempName = format("_bgl_temp{0}", languageService.ternaryTempCount++);
-                b = replaceWord(b, "$target", tempName);
-            }
+            // $target substitution for a discarded (statement-position) value-returning opcode:
+            // the result is thrown away, so store it to `sp` (the stack pointer, I6 variable 0) —
+            // a built-in destination that needs no declaration. Normally resolved at parse time
+            // (parseStatement); this is the defensive fallback for any body that still carries
+            // $target here. Guarded on presence so void emitter statements are untouched.
+            if(b.find("$target") != string::npos)
+                b = replaceWord(b, "$target", "sp");
             if(interpArgIdx >= 0){
                 // Splice interpolated print-block at the interpolated parameter's position
                 emitInterpolatedEmitterBody(b, call->emitterParams[interpArgIdx],
@@ -2336,7 +2385,11 @@ void i6Emitter::emitObject(objectDef* obj){
                 if(vd->name == "parent") continue; // emitted as positional argument, not 'with' property
                 if(isVerbInstance && (vd->name == "meta" || vd->name == "priority")) continue; // compile-time-only verb fields
                 out << (first ? "  with " : ",\n       ");
-                out << vd->dName() << " ";
+                // Honor an explicit i6name (`Type member as <i6name>;`) so the emitted I6 property
+                // short-name can differ from the Beguile member name — lets a member sidestep an I6
+                // symbol clash (e.g. `auto util = _bglUtil as bglUtil` avoids orLibrary's `object util`).
+                // Mirrors the function-member path below.
+                out << (vd->i6name.empty() ? vd->dName() : vd->i6name) << " ";
                 // Initializer-list value (typically an inherited array<T> member reassigned
                 // here as `name = {...}`). expression::text() returns empty for these since
                 // their content lives in `elements`, so walk elements explicitly. See the

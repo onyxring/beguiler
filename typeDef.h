@@ -237,6 +237,9 @@ class functionDef:public typeMember, public typeDef{
         bool isEmitter;
         bool isExplicit = false;   // true for 'explicit emitter': conversion operator only fires at explicit cast sites
         bool isDefault = false;    // true for 'default': expected to be overridden without requiring 'replace'
+        bool isSuperposed = false; // true for 'superposed': routine is emitted into the story file ONLY if it is
+                                   // referenced (called) somewhere in the final output; otherwise it evaporates.
+                                   // The routine sits in superposition until a call "observes" it (see i6Emitter).
         bool isValueEmitter = false; // true for emitter values (no parens): expands inline as expression or statement
         typeDef returnType;
         vector<paramDef*> params;
@@ -462,6 +465,7 @@ class beguilerSettingsDef : public typeDef {
         int release = 0;               // !% Release N;  (0 = not set)
         string serial;                 // Serial "YYMMDD"; (empty = not set; must be exactly 6 digits)
         string errorFormat;            // !% -EN  (e.g. "1" → -E1)
+        bool   omitUnusedRoutines = true; // true → !% $OMIT_UNUSED_ROUTINES=1 (I6 strips unreferenced routines; keeps address-taken ones)
         vector<string> includePaths;   // unified search paths for both #include and #includeI6 resolution
 
         // runtime options (affect generated I6, not ICL)

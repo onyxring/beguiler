@@ -1099,6 +1099,7 @@ bool bglParser::processBeguilerSettings(){
         else if(key == "forgiveness"){    if(cfg.forgiveness.empty())    cfg.forgiveness    = strVal; }
         else if(key == "ifid"){           if(cfg.ifid.empty())           cfg.ifid           = strVal; }
         else if(key == "autoinitialize"){ cfg.autoInitialize = (strVal == "true"); }
+        else if(key == "omitunusedroutines"){ cfg.omitUnusedRoutines = (strVal == "true"); }
 
         tok = file.getToken();
     }

@@ -1,5 +1,6 @@
 !% -v5
 !% -E1
+!% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 Serial "260330";
@@ -15,10 +16,13 @@ global _bglInitDone = 0;
     ! startup block test
 
 ];
+object _zcode
+;
 object _bglUtil
 ;
 object bgl
-  with utilities _bglutil
+  with zcode _zcode,
+       bglUtil _bglutil
 ;
 constant story = "Directive Test";
 constant author = "Tester";
@@ -27,7 +31,7 @@ constant gameRelease = 42;
     print (string)"Feature A enabled";
     print (string)"Many items";
     print (string)story;
-    ws=platform.wordsize;
+    ws=2;
     print ws;
 ];
 

@@ -1,5 +1,6 @@
 !% -G
 !% -E1
+!% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 global _bgl_temp0;
@@ -26,12 +27,14 @@ global _bglInitDone = 0;
     _bglInitializeStringBuffers();
 
 ];
+object _glulx
+;
 object _bglUtil
   with buf _bglbuf
 ;
 object bgl
-  with utilities _bglutil,
-       glulx _glulx
+  with glulx _glulx,
+       bglUtil _bglutil
 ;
 Array __bglchar___vowels buffer "aeiouAEIOU@:a@:e@:i@:o@:u@:y@:A@:E@:I@:O@:U@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~o@~A@~O";
 object _bglChar
@@ -180,14 +183,6 @@ object _bglChar
     return c;
   ]
 ;
-object _glulx
-;
-[__glkHook _vararg_count api args retval;
-    @copy sp api;
-    args=_vararg_count - 1;
-    @glk api args retval;
-    return retval;
-];
 array _bglbufstreamstack table 16;
 array _bglbufglulxstreams table 16;
 array _bgltrackedregistry table 128;
@@ -1216,4 +1211,10 @@ class _bglstring(bglstringpoolreserve)
     exerciseconcat();
     exercisenullable();
     exercisemethods();
+];
+[__glkHook _vararg_count api args retval;
+    @copy sp api;
+    args=_vararg_count - 1;
+    @glk api args retval;
+    return retval;
 ];

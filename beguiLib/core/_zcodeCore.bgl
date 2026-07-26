@@ -1,0 +1,27 @@
+//-----------------------------------------------------------------------------
+// glulx.bgl — A standard Beguile extension adding the Glulx platform namespace
+// and the full Glulx assembly opcode emitter class (bglOpCodes).
+//
+// Usage:
+//   #include <glulx> in your .bgl file when targeting Glulx and you want
+//   raw assembly access (bgl.asm.<opcode>()) or the bgl.glulx.* namespace
+//   (style/window/etc.).
+//
+// Out of core per the zero-byte-core principle: programs that don't need
+// Glulx-specific runtime hooks shouldn't carry the __glkHook routine or the
+// _glulx namespace object. Most Glulx programs do need this (any Glk I/O,
+// styles, windows), so the include is expected; it's just no longer
+// automatic.
+//-----------------------------------------------------------------------------
+#once
+
+#include<core/_zcodeOpCodes>
+//=============================================================================
+// 
+extend bgl{ auto zcode=_zcode; } //extend the bgl namespace object to include glulx-specific things
+
+_bglObject _zcode{
+   
+}
+
+extend bgl { emitter auto asm = bglOpCodes; }

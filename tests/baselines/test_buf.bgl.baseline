@@ -1,5 +1,6 @@
 !% -v5
 !% -E1
+!% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 
@@ -35,11 +36,14 @@ global _bglInitDone = 0;
     (bufsmall_raw + 2)-->0 = 16;
     bufsmall = bufsmall_raw + WORDSIZE + 2;
 ];
+object _zcode
+;
 object _bglUtil
   with buf _bglbuf
 ;
 object bgl
-  with utilities _bglutil
+  with zcode _zcode,
+       bglUtil _bglutil
 ;
 Array __bglchar___vowels buffer "aeiouAEIOU@:a@:e@:i@:o@:u@:y@:A@:E@:I@:O@:U@'a@'e@'i@'o@'u@'y@'A@'E@'I@'O@'U@'Y@`a@`e@`i@`o@`u@`A@`E@`I@`O@`U@^a@^e@^i@^o@^u@^A@^E@^I@^O@^U@oa@oA@~a@~o@~A@~O";
 object _bglChar

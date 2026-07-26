@@ -1,5 +1,6 @@
 !% -G
 !% -E1
+!% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 
@@ -16,10 +17,13 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+object _zcode
+;
 object _bglUtil
 ;
 object bgl
-  with utilities _bglutil
+  with zcode _zcode,
+       bglUtil _bglutil
 ;
 ! test_inf_mode_emitfirst_additive.inf — Slice 5c: #emitfirst is additive across all
 ! references in the same source file. Multiple #bglDecl islands each contributing an

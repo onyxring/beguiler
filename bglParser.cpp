@@ -1081,7 +1081,7 @@ bool bglParser::processGrammar(vector<token>& t, Qualifiers&, abstractObject&)
 bool bglParser::processArray(vector<token>& t, Qualifiers& q, abstractObject& c)
     { return processArrayDeclarationFromGeneric(t[0], q, c); }
 bool bglParser::processRoutine(vector<token>& t, Qualifiers& q, abstractObject& c)
-    { t[0] = consumeTypeToken(t[0]); return processRoutineDeclaration(t[0], t[1], c, q.isExtern, q.isEmitter, q.isReplace, q.isDefault); }
+    { t[0] = consumeTypeToken(t[0]); return processRoutineDeclaration(t[0], t[1], c, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed); }
 bool bglParser::processObject(vector<token>& t, Qualifiers& q, abstractObject&)
     { t[0] = consumeTypeToken(t[0]); return processObjectDeclaration(t[0], t[1], q.isExtern, "", "", true, q.isEmitter); }
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
@@ -1129,7 +1129,7 @@ bool bglParser::processFunc(vector<token>& t, Qualifiers& q, abstractObject& ctx
     }
     token symbol = file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
     if(symbol.is(token::parenOpen))
-        return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault);
+        return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed);
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, name, q.isExtern, objectClassName, i6alias, true, q.isEmitter);
     else
@@ -1343,10 +1343,12 @@ bool bglParser::processParameterList(functionDef& funcDef){
             param.displayName=tok.originalValue;
             // Disallow parameter names that shadow a global, a class member, or an object member.
             // Emitters are skipped: their parameter names are template substitution keys, not I6 locals.
+            // Externs are skipped: their parameter names are documentary only (the body lives outside
+            // Beguile), so they never create an I6 local that could shadow anything.
             // Symbolic-constant globals (grammartoken, attribute, property, verb) are skipped:
             // they're I6 constants used in grammar/give/provides contexts, not writable storage,
             // so a parameter of the same name doesn't actually shadow anything reachable in code.
-            if(!funcDef.isEmitter){
+            if(!funcDef.isEmitter && !funcDef.isExternal){
                 for(typeDef* g : languageService.globals)
                     if(g->name == param.name){
                         if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
@@ -1596,6 +1598,7 @@ Qualifiers bglParser::parseQualifiers(token& tok){
         else if(tok.is("default"))                 { q.isDefault  = true; advance(); }
         else if(tok.is("ref"))                     { q.isRef      = true; advance(); }
         else if(tok.is("byval"))                   { q.isByVal    = true; advance(); }
+        else if(tok.is("superposed"))              { q.isSuperposed = true; advance(); }
         else break;
     }
     // Validate nonsensical combinations
