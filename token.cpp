@@ -58,9 +58,13 @@ const token _nullToken;
         return true;
     }
     bool token::isValidIdentifier(){
-        if(!(isalpha(value[0]) || value[0]=='_')) return false;
-        for (int i = 0; value[i] != '\0'; ++i){
-            if(isalnum(value[i]==false&&value[i]!='_')) return false;   
+        // A leading "::" is the global-scope qualifier (`::name`) — the lexer glues it onto the
+        // following identifier as one token so it flows through name resolution as a single string.
+        // Accept it here so the glued token classifies as an identifier (not an unrecognized symbol).
+        int start = (value.size() >= 3 && value[0]==':' && value[1]==':') ? 2 : 0;
+        if(!(isalpha(value[start]) || value[start]=='_')) return false;
+        for (int i = start; value[i] != '\0'; ++i){
+            if(isalnum(value[i]==false&&value[i]!='_')) return false;
         }
         return true;
     }

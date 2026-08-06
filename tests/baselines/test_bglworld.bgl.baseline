@@ -23,50 +23,74 @@ Constant _BGL_WORLD_BUFSIZE = 128;
     ! Tracked-array layout: capacity word at slot 0 (auto-set by I6 from
     ! `--> N` size), data at slots 1..N, length at slot N, magic at slot N+1.
     ! +2 covers the length + magic slots.
-    Array _bglWorldBuf --> _BGL_WORLD_BUFSIZE + 2;
+    !
+    ! ROTATING POOL: _BGL_WORLD_BUFCOUNT buffers, round-robined by _bglWorldNextBuf,
+    ! so a nested bgl.world call gets a different buffer than the live outer loop.
+    ! To resize the pool, edit the constant AND add/remove buffer decls + switch
+    ! arms + #startup stamps to match (I6 cannot declare arrays in a loop).
+    Constant _BGL_WORLD_BUFCOUNT = 4;
+    Array _bglWorldBuf0 --> _BGL_WORLD_BUFSIZE + 2;
+    Array _bglWorldBuf1 --> _BGL_WORLD_BUFSIZE + 2;
+    Array _bglWorldBuf2 --> _BGL_WORLD_BUFSIZE + 2;
+    Array _bglWorldBuf3 --> _BGL_WORLD_BUFSIZE + 2;
+    Global _bglWorldBufIdx = -1;
+
+    ! Advance the rotation and return the next buffer in the pool.
+    [ _bglWorldNextBuf ;
+        _bglWorldBufIdx = (_bglWorldBufIdx + 1) % _BGL_WORLD_BUFCOUNT;
+        switch(_bglWorldBufIdx) {
+            0: return _bglWorldBuf0;
+            1: return _bglWorldBuf1;
+            2: return _bglWorldBuf2;
+            3: return _bglWorldBuf3;
+        }
+    ];
 
     ! Walk all objects in the I6 object tree. `pred` is a routine address;
     ! pred==0 means no filter. The check is inside the loop so a selective
     ! predicate keeps the buffer small.
-    [ _bglWorldGetAll pred o i;
+    [ _bglWorldGetAll pred o i buf;
+        buf = _bglWorldNextBuf();
         i = 0;
         objectloop(o) {
             if(i >= _BGL_WORLD_BUFSIZE) break;
             if(pred == 0 || indirect(pred, o)) {
                 i++;
-                _bglWorldBuf-->i = o;
+                buf-->i = o;
             }
         }
-        _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = i;
-        return _bglWorldBuf;
+        buf-->(buf-->0 - 1) = i;
+        return buf;
     ];
 
     ! Walk children of `parent`. Same pred semantics as _bglWorldGetAll.
-    [ _bglWorldInParent parent pred o i;
+    [ _bglWorldInParent parent pred o i buf;
+        buf = _bglWorldNextBuf();
         i = 0;
         objectloop(o in parent) {
             if(i >= _BGL_WORLD_BUFSIZE) break;
             if(pred == 0 || indirect(pred, o)) {
                 i++;
-                _bglWorldBuf-->i = o;
+                buf-->i = o;
             }
         }
-        _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = i;
-        return _bglWorldBuf;
+        buf-->(buf-->0 - 1) = i;
+        return buf;
     ];
 
     ! Walk objects of a class. Same pred semantics as _bglWorldGetAll.
-    [ _bglWorldInstances cls pred o i;
+    [ _bglWorldInstances cls pred o i buf;
+        buf = _bglWorldNextBuf();
         i = 0;
         objectloop(o ofclass cls) {
             if(i >= _BGL_WORLD_BUFSIZE) break;
             if(pred == 0 || indirect(pred, o)) {
                 i++;
-                _bglWorldBuf-->i = o;
+                buf-->i = o;
             }
         }
-        _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = i;
-        return _bglWorldBuf;
+        buf-->(buf-->0 - 1) = i;
+        return buf;
     ];
 
 global _bglInitDone = 0;
@@ -80,8 +104,14 @@ global _bglInitDone = 0;
     _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
 
 
-    _bglWorldBuf-->(_bglWorldBuf-->0)     = $9084;
-    _bglWorldBuf-->(_bglWorldBuf-->0 - 1) = 0;
+    _bglWorldBuf0-->(_bglWorldBuf0-->0)     = $9084;
+    _bglWorldBuf0-->(_bglWorldBuf0-->0 - 1) = 0;
+    _bglWorldBuf1-->(_bglWorldBuf1-->0)     = $9084;
+    _bglWorldBuf1-->(_bglWorldBuf1-->0 - 1) = 0;
+    _bglWorldBuf2-->(_bglWorldBuf2-->0)     = $9084;
+    _bglWorldBuf2-->(_bglWorldBuf2-->0 - 1) = 0;
+    _bglWorldBuf3-->(_bglWorldBuf3-->0)     = $9084;
+    _bglWorldBuf3-->(_bglWorldBuf3-->0 - 1) = 0;
 
 ];
 object _zcode
@@ -523,7 +553,7 @@ animal fish
 object stone cage
   with short_name "stone"
 ;
-[main totalCount caged animals o _bglfia0 _bglfi1 cagedAnimals cageWithoutStones notFish;
+[main totalCount caged animals o _bglfia0 _bglfi1 cagedAnimals cageWithoutStones notFish _bglfia2 _bglfi3 here;
     totalCount=_bglArray.length(_bglworld.getall(0), 0);
     print (string)"total objects: ";
     print totalCount;
@@ -557,6 +587,18 @@ object stone cage
     print (string)"everything except fish: ";
     print notFish;
     print (string)"^";
+    print (string)"nested walk:^";
+    _bglfia2 = _bglworld.instances(animal, 0);
+    _bglfi3 = 0;
+    for (: _bglfi3 < _bglArray.length(_bglfia2, 0) : _bglfi3++) {
+        o = _bglfia2-->(_bglfi3+1);
+        here=_bglArray.length(_bglworld.inparent(parent(o), 0), 0);
+        print (string)" - ";
+        print o.short_name;
+        print (string)" shares its parent with ";
+        print here;
+        print (string)" objects^";
+    }
 ];
 [_bglLambda_0 o;
     return o.parent == cage;

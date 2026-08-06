@@ -99,6 +99,11 @@ struct Qualifiers {
                               // Mutually exclusive with extern/emitter/extend/: object.
     bool isSuperposed = false; // `superposed` qualifier on a function: the routine materializes
                                // into the story file only if something calls it; unused => elided.
+    bool isTypeSealed = false; // `typesealed` qualifier on a base-class member: the slot type is
+                               // locked. A subclass/instance that re-declares the member with a
+                               // different type keeps the sealed type (and gets a warning). Lets
+                               // `object parent = <room>` initialize the inherited `parentProp parent`
+                               // without shadowing it to type `object`.
 };
 
 // Forward-declare bglParser so handler signature can reference it

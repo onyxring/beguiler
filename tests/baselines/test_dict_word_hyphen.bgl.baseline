@@ -1,0 +1,37 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+
+    Constant story    = "";
+    Constant headline = "";
+
+
+    replace main _oldmain;
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+thing rock
+  with name 'rock' 'medium-sized' 'rocks' ,
+       adjective 'medium' 'sized' 'well-worn' 'medium-sized' 
+;
+[main;
+];
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

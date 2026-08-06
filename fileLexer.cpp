@@ -241,6 +241,23 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 retval.tokenType = eTokenType::integer;
                 break;
             }
+            else if(c == ':' && nc == ':'){
+                // Global-scope qualifier `::name`: glue the two colons onto the following identifier
+                // as ONE token ("::name") so it flows through name resolution/emission as a single
+                // string. resolveIdentifierType/qualifyIdentifier strip the "::" prefix, force
+                // file-scope (global) resolution, and suppress the member-shadow warning. Only Beguile
+                // code reaches here (#i6 islands are raw), and no Beguile construct uses "::", so this
+                // is unambiguous. "::" not followed by an identifier stays a plain symbol token.
+                readChar();  // consume the second ':'
+                if(isValidIdentifierChar(peekChar())){
+                    retval.value = "::";                        // identifier chars are appended below
+                    retval.tokenType = eTokenType::unclassifiedText;
+                } else {
+                    retval.value = "::";
+                    retval.tokenType = eTokenType::symbol;
+                    break;
+                }
+            }
             else if(isValidIdentifierChar(c))
                 retval.tokenType=eTokenType::unclassifiedText;
             else {
@@ -971,6 +988,19 @@ token fileLexer::getToken(){
                     readChar();
                 }
                 ch = peekChar();
+                // Allow an *internal* hyphen (I6 dict words such as 'medium-sized'): only consume the
+                // '-' when it is followed by another word char, so a trailing '-' stays an operator.
+                if(ch == '-'){
+                    auto hpos = currentStream()->tellg();
+                    readChar();                     // tentatively consume '-'
+                    char after = peekChar();
+                    if(isValidIdentifierChar(after)){
+                        w += '-';
+                        ch = after;                 // continue the loop with the post-hyphen char
+                    } else {
+                        currentStream()->seekg(hpos); // not part of the word; restore and stop
+                    }
+                }
             }
             if(ch == '.'){
                 auto loc = currentLocation();

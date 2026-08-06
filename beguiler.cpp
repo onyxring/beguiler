@@ -186,9 +186,15 @@ void beguiler::extractBlorbSettings(const string& filename) {
         // includePaths too late for pass 1; without this, a class declared in a .bgl resolved
         // via the search path is never pre-registered as a type, so its `class <name>` fails to
         // parse ("expected type name") while source-relative/direct includes work.
+        //
+        // Loop over EVERY `includePaths = "..."` line in the block — the main-pass directive
+        // handler accumulates across all of them (bglParserDirectives.cpp), so a single `find`
+        // here (only the first line) silently drops later paths from the PRE-SCAN search set,
+        // reintroducing the "expected type name" failure for any binding reachable only via a
+        // 2nd/3rd includePaths line.
         {
             size_t k = blockLower.find("includepaths");
-            if(k != string::npos){
+            while(k != string::npos){
                 size_t eq = block.find('=', k + 12);
                 if(eq != string::npos){
                     size_t vs = block.find_first_not_of(" \t\r\n", eq + 1);
@@ -230,6 +236,7 @@ void beguiler::extractBlorbSettings(const string& filename) {
                         }
                     }
                 }
+                k = blockLower.find("includepaths", k + 12);  // advance to the next includePaths line
             }
         }
 

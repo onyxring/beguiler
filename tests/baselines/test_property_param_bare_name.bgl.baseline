@@ -1,0 +1,45 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+
+    Constant story    = "";
+    Constant headline = "";
+
+
+    replace main _oldmain;
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+tracker state
+  with taskalpha 1,
+       taskbeta 2
+;
+object gadget
+  with weight 5,
+       run [;
+    achieve(taskalpha);
+    state.mark(taskbeta);
+    if ((state.isSet(taskalpha))) {
+        achieve(taskbeta);
+    }
+  ]
+;
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

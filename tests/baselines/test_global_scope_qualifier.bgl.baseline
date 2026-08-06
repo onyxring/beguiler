@@ -1,0 +1,45 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+
+    Constant story    = "";
+    Constant headline = "";
+
+
+    replace main _oldmain;
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+object frob
+  with handler [m;
+    meta = true;
+    if (meta) {
+        meta = false;
+    }
+    m=meta;
+  ]
+;
+[frobsub;
+                frob.handler();
+            ];
+verb 'frob'
+    * noun -> frob;
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

@@ -844,7 +844,13 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
         } else {
             tt.assert("case", "Expected 'case' or 'default' inside switch.");
             auto parseCaseExpr = [&]() -> expression* {
+                // Bias case-value resolution toward the condition's type so an ambiguous name
+                // resolves the right way — e.g. `switch(action){ case Open: }` picks the `Open`
+                // verb, not the same-named `open` attribute.
+                string savedExpectedCase = currentExpectedType;
+                if(!conditionType.empty()) currentExpectedType = conditionType;
                 expression* val = parseExpression(file.getToken(), {":", ",", "to"}, func, body);
+                currentExpectedType = savedExpectedCase;
                 if(!conditionType.empty() && !val->resolvedType.empty()
                    && !isTypeCompatible(val->resolvedType, conditionType)
                    && val->resolvedType != "verb")
@@ -1529,6 +1535,37 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             string paramName = opFunc->params[0]->name;
                             a.emitterBody  = format("$target.{0}(${1});", opFunc->i6name, paramName);
                             a.emitterParam = paramName;
+                            found = true;
+                        }
+                    }
+                    // Last resort — subclass upcast into an emitter operator=(Base): reached only when no
+                    // exact/var operator= (emitter or non-emitter) matched, so a derived class's own
+                    // operator= always wins first. This is what lets `obj.parent = someRoom` invoke
+                    // `parentProp operator=(object)` (→ `move obj to someRoom`) with a place/thing RHS.
+                    // Without it the assignment falls through to isTypeCompatible with NO emitter body and
+                    // silently emits a raw `lhs = rhs` (which, for a declared-`parent` object, even
+                    // constant-folds the LHS to its initial-parent value). Mirrors isTypeCompatible's upcast.
+                    if(!found){
+                        typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
+                            auto* opFunc = dynamic_cast<functionDef*>(mm);
+                            if(!(opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
+                                 && dynamic_cast<i6Block*>(opFunc->body)!=nullptr)) return false;
+                            classDef* paramCls = getDispatchClass(opFunc->params[0]->type.name);
+                            classDef* valCls   = getDispatchClass(valueTypeName);
+                            if(!paramCls || !valCls || paramCls == valCls) return false;
+                            std::function<bool(classDef*)> inh = [&](classDef* c) -> bool {
+                                for(classDef* b : c->baseClasses) if(b == paramCls || inh(b)) return true;
+                                return false;
+                            };
+                            return inh(valCls);
+                        });
+                        if(m){
+                            auto* opFunc = dynamic_cast<functionDef*>(m);
+                            auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                            a.emitterBody = processBglConditionals(blk->i6Body);
+                            a.emitterParam = opFunc->params[0]->name;
+                            if(classType != nullptr)
+                                a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
                             found = true;
                         }
                     }

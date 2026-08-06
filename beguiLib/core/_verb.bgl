@@ -24,6 +24,7 @@
         emitter void perform(object n, object s) { <$self $n $s> }
 
         emitter eBool operator == (verb v){ $self == ##$v }
+        emitter eBool operator != (verb v){ $self ~= ##$v }
         emitter void _bglGlobalDeclaration() {
             [$selfsub;
                 $self.handler();

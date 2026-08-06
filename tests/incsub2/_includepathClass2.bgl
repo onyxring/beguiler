@@ -1,0 +1,13 @@
+// Helper for test_includepath_multiline.bgl — lives in a subdir reachable ONLY via the parent's
+// SECOND `#beguilerSettings includePaths = "incsub2"` line. Pre-fix, extractBlorbSettings read only
+// the first includePaths occurrence, so this dir was absent from the pre-scan search set and the
+// class below failed with "expected type name (in class declaration)".
+#once
+
+class secondPathWidget : object {
+    int count;
+}
+
+extern class secondPathExternThing : object {
+    string short_name;
+}

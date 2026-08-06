@@ -2293,6 +2293,11 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
     out<<";\n";
 }
 void i6Emitter::emitObject(objectDef* obj){
+    // Extern objects are defined in I6 (this binding only records their type/member signatures);
+    // emit no `Object` directive or a duplicate would collide with the I6-defined one. A bodied
+    // `extern object Name { ... }` now lives in `globals` (so it's referenceable), so the emit loop
+    // reaches it here — this guard keeps it emission-free.
+    if(obj->isExternal) return;
     // find initial parent member, if set
     string parentValue;
     for(typeMember* m : obj->members)

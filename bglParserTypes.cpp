@@ -362,6 +362,10 @@ bool bglParser::typeHasMember(const string& typeName, const string& memberName){
 
 
 std::string bglParser::resolveIdentifierType(std::string name, functionDef* func, statementBlock* body, const string& memberHint){
+    // Global-scope qualifier `::name`: skip lexical scope (params/locals/members) and resolve only
+    // against file scope. Set on the head of a dotted path too (`::obj.member` → force-global `obj`).
+    bool forceGlobalScope = false;
+    if(name.size() > 2 && name[0]==':' && name[1]==':'){ forceGlobalScope = true; name = name.substr(2); }
     if(name == "null") return "object";
     if(name == "self" && lambdaOuterFunc == nullptr){
         // `self` inside an objectDef is the objectDef's own identity, regardless of base class.
@@ -378,19 +382,20 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     // any ambiguity check. memberHint is NOT applied here: if a local exists with this
     // name, it's the receiver — let dispatch produce a "no method on type X" error if the
     // local's type doesn't have the member, rather than silently looking past the shadow.
-    if(func != nullptr)
+    if(!forceGlobalScope && func != nullptr)
         for(paramDef* p : func->params)
             if(p->name == name) return p->type.name;
-    if(body != nullptr)
+    if(!forceGlobalScope && body != nullptr)
         for(statement* s : body->statements)
             if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                 if(vd->name == name) return vd->type.name;
-    for(statementBlock* blk : activeBlockStack)
-        if(blk != nullptr && blk != body)
-            for(statement* s : blk->statements)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                    if(vd->name == name) return vd->type.name;
-    if(currentObject != nullptr){
+    if(!forceGlobalScope)
+        for(statementBlock* blk : activeBlockStack)
+            if(blk != nullptr && blk != body)
+                for(statement* s : blk->statements)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == name) return vd->type.name;
+    if(!forceGlobalScope && currentObject != nullptr){
         for(typeMember* m : currentObject->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(vd->name == name) return vd->type.name;
@@ -414,7 +419,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         string t = findVarInBases(currentObject->objectClass);
         if(!t.empty()) return t;
     }
-    if(currentClass != nullptr){
+    if(!forceGlobalScope && currentClass != nullptr){
         for(typeMember* m : currentClass->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(vd->name == name) return vd->type.name;
@@ -437,7 +442,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     // Closure capture: check outer function's scope for type. This is a lexical-scope walk
     // (the lambda's enclosing function), so it runs BEFORE file-scope candidates — standard
     // scoping rule that captures shadow same-named globals.
-    if(lambdaOuterFunc != nullptr){
+    if(!forceGlobalScope && lambdaOuterFunc != nullptr){
         for(paramDef* p : lambdaOuterFunc->params)
             if(p->name == name) return p->type.name;
         if(lambdaOuterBody != nullptr)
@@ -1021,6 +1026,10 @@ bool bglParser::splitQualifiedMember(const string& name, functionDef* func, stat
 }
 
 std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, statementBlock* body, const string& memberHint){
+    // Global-scope qualifier `::name`: skip lexical scope (params/locals/members) and emit the bare
+    // file-scope name. On a dotted path (`::obj.member`) the prefix forces the HEAD to global.
+    bool forceGlobalScope = false;
+    if(name.size() > 2 && name[0]==':' && name[1]==':'){ forceGlobalScope = true; name = name.substr(2); }
     if(name == "null") return "nothing";
     if(name == "self" && lambdaOuterFunc == nullptr) return "self";
     // Handle dot-path: qualify the head, then check for value emitter on the tail
@@ -1028,7 +1037,8 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     if(dot != string::npos){
         string head = name.substr(0, dot);
         string tail = name.substr(dot + 1);
-        string qualifiedHead = qualifyIdentifier(head, func, body);
+        // Re-attach the global qualifier to the head so the recursion forces file scope for it.
+        string qualifiedHead = qualifyIdentifier((forceGlobalScope ? "::" : "") + head, func, body);
         if(qualifiedHead.empty()) return "";
         // Check if head is a class/emitter-namespace with a value emitter or alias member
         string lowerTail = tail;
@@ -1088,13 +1098,13 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     // a synthesized backing (isClassParamWithBacking); substitute the backing's i6name
     // so source references resolve to the local copy instead of the bare routine local
     // (which still holds the caller's object reference for the copy-in to read).
-    if(func != nullptr)
+    if(!forceGlobalScope && func != nullptr)
         for(paramDef* p : func->params)
             if(p->name == name) return p->isClassParamWithBacking && !p->i6name.empty() ? p->i6name : name;
     // Tier 1b: locals in current block. For class-typed locals with synthesized static
     // backing (isClassLocalWithBacking), substitute the i6name so source references like
     // `w.width` emit against the global backing object instead of the bare-int local slot.
-    if(body != nullptr)
+    if(!forceGlobalScope && body != nullptr)
         for(statement* s : body->statements)
             if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                 if(vd->name == name) return vd->isClassLocalWithBacking && !vd->i6name.empty() ? vd->i6name : name;
@@ -1102,21 +1112,22 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     // Walks the activeBlockStack — each block was pushed when its compile context opened.
     // This handles the case where the AST is still being built (parent statements haven't
     // been pushed to their body yet) by checking each in-progress block directly.
-    for(statementBlock* blk : activeBlockStack)
-        if(blk != nullptr && blk != body)
-            for(statement* s : blk->statements)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                    if(vd->name == name) return vd->isClassLocalWithBacking && !vd->i6name.empty() ? vd->i6name : name;
+    if(!forceGlobalScope)
+        for(statementBlock* blk : activeBlockStack)
+            if(blk != nullptr && blk != body)
+                for(statement* s : blk->statements)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == name) return vd->isClassLocalWithBacking && !vd->i6name.empty() ? vd->i6name : name;
     // Tier 2: current object/class members (variables and methods) → qualify with self
     // Walks the full class hierarchy (depth-first through baseClasses) so inherited members
     // from multiple bases are reachable as bare identifiers inside method bodies.
     // Uses the member's displayName (via dName()) so user case is preserved in I6 emission.
-    if(currentObject != nullptr)
+    if(!forceGlobalScope && currentObject != nullptr)
         for(typeMember* m : currentObject->members)
             if(m->name == name)
                 if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
                     return "self." + m->dName();
-    if(currentClass != nullptr){
+    if(!forceGlobalScope && currentClass != nullptr){
         // Direct members: match both variables and functions (same as before).
         // Static variables resolve to their mangled global name, not `self.name` — they
         // live outside any instance's property table.
@@ -1152,7 +1163,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     // Tier 7 (hoisted): closure capture — inside a lambda, check the outer function's scope
     // BEFORE file-scope candidates. Captures shadow same-named globals, matching standard
     // lexical-scoping semantics in any closure-bearing language.
-    if(lambdaOuterFunc != nullptr && currentFunc != nullptr){
+    if(!forceGlobalScope && lambdaOuterFunc != nullptr && currentFunc != nullptr){
         // Check outer function's params
         for(paramDef* p : lambdaOuterFunc->params)
             if(p->name == name)
@@ -1413,12 +1424,13 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         // Note: forward-declared own members aren't yet on currentObject->members at
         // method-body parse time, so this catches inherited-from-base and
         // already-declared-own cases but not forward-declared-same-object cases.
-        if(currentObject != nullptr){
+        if(!forceGlobalScope && currentObject != nullptr){
             // Restrict to VARIABLE (property) collisions only. Method collisions are
             // visually unambiguous since methods are always called with parens, and
             // many objects inherit common methods (`print`, `is`, `provides`, etc.)
             // that the user calls via the global form by name without thinking of
             // them as members.
+            // `::name` explicitly forces the global, so no ambiguity remains — no warning.
             auto isObjectProperty = [&]() -> bool {
                 for(typeMember* m : currentObject->members)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -1437,9 +1449,8 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             if(isObjectProperty()){
                 parsingWarning(format(
                     "Bare '{0}' resolves as {1}, but '{0}' is also a property of the enclosing "
-                    "object. Beguile cannot tell which you mean. To read the object's property, "
-                    "write 'self.{0}'. To keep the current resolution and silence this warning, "
-                    "qualify it explicitly.",
+                    "object. Beguile cannot tell which you mean. Write 'self.{0}' for the object's "
+                    "property, or '::{0}' to force the global and silence this warning.",
                     name, candidates[0].origin));
             }
         }
@@ -1621,6 +1632,24 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
             auto* fn = dynamic_cast<functionDef*>(m);
             return fn && fn->name == "=" && !fn->params.empty() && fn->params[0]->type.name == argType;
         })) return true;
+        // Subclass upcast into an operator= parameter: an operator=(Base) accepts a Base-subclass
+        // argument. e.g. `parentProp operator=(object)` accepts a `place`/`thing`/… value, so
+        // `obj.parent = someRoom` type-checks. Uses a direct base-chain walk (non-recursive) to
+        // stay clear of re-entering isTypeCompatible.
+        {
+            classDef* argClsOp = getDispatchClass(argType);
+            if(argClsOp && findMemberInHierarchy(cls, [&](typeMember* m){
+                auto* fn = dynamic_cast<functionDef*>(m);
+                if(!(fn && fn->name == "=" && !fn->params.empty())) return false;
+                classDef* parCls = getDispatchClass(fn->params[0]->type.name);
+                if(!parCls || parCls == argClsOp) return false;
+                std::function<bool(classDef*)> inh = [&](classDef* c) -> bool {
+                    for(classDef* b : c->baseClasses) if(b == parCls || inh(b)) return true;
+                    return false;
+                };
+                return inh(argClsOp);
+            })) return true;
+        }
         if(findMemberInHierarchy(cls, [&](typeMember* m){
             auto* fn = dynamic_cast<functionDef*>(m);
             return fn && fn->name == "=" && !fn->params.empty() && fn->params[0]->type.name == "var";
@@ -1656,6 +1685,11 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
         // normally only applied by the verb's operator== emitter, but function args need it too.
         if(argType == "verb" && (paramType == "verb" || paramType == "var")){
             string t = args[i]->text();
+            // The I6 action-holding globals are verb-typed but hold a runtime action VALUE, not an
+            // action-name literal — they must emit bare (`isDialogueAction(action)`), never
+            // `##action`. Only true verb-name literals (Examine, Take, …) get the `##` action prefix.
+            string tl = t; transform(tl.begin(), tl.end(), tl.begin(), ::tolower);
+            if(tl == "action" || tl == "action_to_be" || tl == "second_action"){ continue; }
             if(t.rfind("##", 0) != 0){  // don't double-prefix
                 args[i]->tokens.clear();
                 args[i]->tokens.push_back("##" + t);
@@ -1720,6 +1754,24 @@ void bglParser::finalizeCallArgs(vector<expression*>& args, vector<string>& name
         defExpr->tokens.push_back(fd->params[i]->defaultValue);
         args.push_back(defExpr);
         if(interpSegmentsPerArg.size() < args.size()) interpSegmentsPerArg.push_back({});
+    }
+    // Property-identifier arguments: a parameter typed `property` wants the BARE I6 property
+    // constant (its slot number), not a `self.<name>` value read. Inside an object method body,
+    // qualifyIdentifier emits a bare known-property name as `self.<name>` (the "drop self."
+    // member-read convenience) — correct for reading a value, wrong for a property identifier.
+    // Because arguments are emitted before overload resolution picks this signature (see
+    // parseCallArgList), we normalize here: strip a leading `self.` when the parameter is
+    // `property` and the remainder names a known property. This makes a `property` parameter act
+    // as an implicit `(property)` cast, so engines like orGameState can take `property task` and
+    // callers pass a bare task name without a file-scope `extern property` re-declaration.
+    for(size_t i = 0; i < args.size() && i < fd->params.size(); i++){
+        if(fd->params[i]->type.name != "property") continue;
+        string t = args[i]->text();
+        if(t.rfind("self.", 0) == 0 && languageService.isKnownPropertyName(t.substr(5))){
+            args[i]->tokens.clear();
+            args[i]->tokens.push_back(t.substr(5));
+            args[i]->resolvedType = "property";
+        }
     }
     applyArgConversions(args, fd);
 }

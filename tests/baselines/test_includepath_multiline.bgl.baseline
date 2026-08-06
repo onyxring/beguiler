@@ -1,0 +1,28 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+!% ++include_path=/Users/jim/projects/IF-Projects/beguiler/tests/incsub2
+!% ++include_path=/Users/jim/projects/IF-Projects/beguiler/tests/incsub
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+class secondpathwidget
+  class object
+  with
+    count
+;
+[useSecondPathTypes wgt thing;
+    wgt.count = 7;
+];

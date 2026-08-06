@@ -1,0 +1,22 @@
+// Regression: the pre-scanner must honor EVERY `includePaths = "..."` line, not just the first.
+// The main-pass directive handler accumulates all of them, but extractBlorbSettings (pass 1, runs
+// before #beguilerSettings is parsed) used a single `find("includepaths")` — so a class reachable
+// only via a 2nd/3rd includePaths line was never pre-scanned and its declaration failed with
+// "expected type name (in class declaration)". Surfaced by mack's split-into-three-lines config.
+//
+// Here the needed helper lives ONLY under the SECOND includePaths line ("incsub2"); the first line
+// ("incsub") does not contain it. If this regresses the compile fails (no .inf) → harness ERROR.
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+    includePaths = "incsub";
+    includePaths = "incsub2";
+}
+
+#include "_includepathClass2.bgl"   // resolved via the SECOND includePaths → tests/incsub2/_includepathClass2.bgl
+
+// Reference both pre-registered types — proves the second-path class declarations parsed.
+void useSecondPathTypes(secondPathWidget wgt, secondPathExternThing thing) {
+    wgt.count = 7;
+}

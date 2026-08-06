@@ -132,6 +132,7 @@
 - 9.3 Parameters
 - 9.4 Overload Resolution
 - 9.5 The `self` Keyword
+- 9.6 `superposed` Routines
 
 ### Chapter 10 — Statements
 - 10.1 Overview
@@ -176,6 +177,7 @@
 ### Chapter 13 — Name Resolution
 - 13.1 Overview
 - 13.2 Resolution Tiers
+- 13.2a Global-Scope Qualifier `::`
 - 13.3 The `self` Keyword
 - 13.4 Global Variable Shadowing — Prohibited
 - 13.5 Verb Names vs. Variables
@@ -527,7 +529,15 @@ Dictionary word literals represent I6 dictionary entries — the tokens the pars
 array<dictionaryWord> name = { .small, .brass, ..bells };
 ```
 
-Both forms resolve to type `dictionaryWord`. 
+Both forms resolve to type `dictionaryWord`.
+
+A dictionary word may contain an **internal hyphen** (I6 dictionary words such as `'medium-sized'`): a `-` between two word characters is read as part of the word, not as the subtraction operator.
+
+```bgl
+adjective = { .medium-sized, .well-worn };   // → I6  'medium-sized' 'well-worn'
+```
+
+Only an *internal* hyphen is absorbed. A trailing `-` (one not followed by another word character) remains the operator — `.foo-` lexes as the dictionary word `.foo` followed by `-`. Apostrophes are likewise part of the word (`.monkey's` → `'monkey^s'`); a leading `.` immediately followed by a hyphen or other non-word character is not a dictionary word.
 
 ## 2.6 Operators and Symbols
 
@@ -540,6 +550,8 @@ Single-character operator and punctuation symbols include:
 `=`  `+`  `-`  `*`  `/`  `%`  `<`  `>`  `!`  `&`  `|`  `^`  `(`  `)`  `{`  `}`  `[`  `]`  `;`  `,`  `.`  `#`  `?`  `:`
 
 Two-character tokens take precedence: when the lexer encounters a character that could begin a two-character token, it peeks at the next character before deciding.
+
+A leading `::` immediately followed by an identifier is the **global-scope qualifier** (`::name`): the lexer glues it onto the following identifier as a single token. It forces file-scope resolution and is described in §13.2a. (No other Beguile construct uses `::`.)
 
 The bracket pair `[` `]` has a secondary role as part of the subscript operator names `[]` (read) and `[]=` (write) when used in `operator` declarations inside a class body. In that context `[]` and `[]=` are the operator names, not individual punctuation tokens — see §5.5.4.
 
@@ -575,6 +587,7 @@ Structural and type keywords unique to Beguile. They have no corresponding I6 ke
 | `replace` | Replaces an existing function or class member; suppresses shadowing warnings |
 | `replaced` | Calls the previous version of a replaced function |
 | `static` | Declares a class-level member shared across all instances |
+| `typesealed` | On a base-class member: locks the slot's type. A subclass/instance that re-declares the member with a different type keeps the sealed type (and gets a warning). See §5.2.7 |
 | `enum` | Enumeration type declaration |
 | `int` | Integer primitive type |
 | `bool` | Boolean primitive type |
@@ -619,7 +632,7 @@ Declarations at the outermost level of a file — types, classes, enums, variabl
 
 ### Declaration Qualifiers
 
-Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `extern`, `emitter`, `const`, `static`, `extend`, `alias`, and `default`. Qualifiers may appear in **any order** — `emitter replace void foo()` and `replace emitter void foo()` are equivalent. The compiler validates invalid combinations:
+Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `extern`, `emitter`, `const`, `static`, `extend`, `alias`, `default`, `superposed`, and `typesealed` (§5.2.7). Qualifiers may appear in **any order** — `emitter replace void foo()` and `replace emitter void foo()` are equivalent. The compiler validates invalid combinations:
 
 - `explicit` without `operator()` — error (explicit is only valid on conversion operators)
 - `const` + `static` — error
@@ -868,6 +881,7 @@ These settings control the compilation target and output characteristics.
 | `outputPath` | string | `"output"` | Directory for the compiled story file. Relative paths are resolved from the source file's directory. CLI `-o` overrides this. |
 | `release` | int | `0` | Sets the story release number. `0` means unset. |
 | `errorFormat` | `eErrorFormat` | `E1` | Error reporting style passed to the I6 compiler. `E1` = Microsoft-style; `E2` = Macintosh-style. |
+| `omitUnusedRoutines` | bool | `true` | When `true` (the default), emits the I6 `!% $OMIT_UNUSED_ROUTINES=1` setting, so routines that are never referenced (and whose address is never taken) are dropped from the story file. Set `false` for debug builds to keep all routines. Pairs naturally with `superposed` routines (§9.6). |
 
 ### Runtime settings
 
@@ -1777,6 +1791,31 @@ Rules:
 
 Class members called on a parameter (e.g. inside a method body where `self` is the receiver and the receiver is a `byVal` param to another function) participate transparently — the backing is the receiver for I6 emission, and method dispatch resolves against the same class.
 
+### 5.2.7 `typesealed` — Type-Locked Members
+
+A base-class member declared `typesealed` has its **type locked**. Subclasses and object instances may re-initialize the member, but if they re-declare it with a *different* type keyword, the compiler:
+
+1. **keeps the sealed (base) type** for the slot — the written type is ignored; and
+2. **emits a warning** naming the sealed type and the ignored one.
+
+```bgl
+extern class object : _bglObject {
+    typesealed parentProp parent;   // the world-tree slot — always parentProp
+    …
+}
+```
+
+The canonical use is the world-tree `parent` slot. Writing `object parent = <room>` on an object keeps `parent` a `parentProp` (so `obj.parent = X` / `self.parent = X` dispatch to `parentProp`'s `operator=` and emit `move obj to X`) instead of shadowing it to type `object` — which would silently drop the move. The idiomatic form omits the redundant type keyword:
+
+```bgl
+place cliffEdge {
+    parent = southOfRockWall;       // idiomatic — no warning
+    // object parent = southOfRockWall;   // works, but warns: type keyword is dead
+}
+```
+
+The initializer is still validated against the *written* type (an object value assigns fine), and the slot behaves as the sealed type thereafter. Because `parent` is reserved for the world tree on any `object`-derived class, a class cannot repurpose `parent` as a differently-typed member; give such a link a different name.
+
 ## 5.3 Member Variables
 
 Member variables declare properties on the class.
@@ -2292,6 +2331,8 @@ object foyer {
 ```
 
 The object name becomes a globally visible identifier that can be used wherever an `object`-typed value is expected. An object declaration may optionally carry an `as i6name` clause to specify a different name in the emitted I6 — see §8.7.
+
+An object that is defined in I6 rather than Beguile is declared `extern`: `extern object Name;` records just the name (§15.2), while `extern object Name { ... }` additionally declares the types of its members (bodyless method signatures and typed properties) so calls against it type-check — see §15.2.2.
 
 ## 6.3 Object Types
 
@@ -3053,7 +3094,20 @@ void main(){
 
 Both forms accept doc comments (`///` and `/** */`), which surface in LSP hover.
 
-`property` decls are intentionally untyped: the same property name may appear as a member of two unrelated classes with different Beguile types, and a free-standing decl cannot honestly pick one. A `property` identifier has type `property` and is accepted only where the parameter type is `property` (currently `object.provides`); it does not support direct `obj.someName` field access for free-standing decls. Use `provides()` to test, or declare the name as a class member when you want to read or write it.
+`property` decls are intentionally untyped: the same property name may appear as a member of two unrelated classes with different Beguile types, and a free-standing decl cannot honestly pick one. A `property` identifier has type `property` and is accepted anywhere the parameter type is `property`; it does not support direct `obj.someName` field access for free-standing decls. Use `provides()` to test, or declare the name as a class member when you want to read or write it.
+
+**`property` parameters treat a bare argument as a property identifier.** When a function or emitter parameter is typed `property`, a bare property-name argument emits as the **bare I6 property constant** (its slot number) rather than as a value read — an implicit `(property)` cast (§11.5). This holds even inside an object method body, where a bare known-property name would otherwise emit as `self.<name>`. Any known property name is accepted: a member of any class or object, or a free-standing `property`/`extern property` decl. This lets an engine that indexes objects by property number (e.g. a task/state tracker whose task IDs are members of a single instance) declare `property`-typed parameters and have callers pass the bare name — no file-scope `extern property` re-declaration of each member is required:
+
+```bgl
+extern void achieved(property task);           // engine indexes by property number
+
+orGameState gameState { int taskGetBanana = 1; }  // task IDs are members of the instance
+
+// inside any object method body:
+achieved(taskGetBanana);   // emits `achieved(taskgetbanana)` — the bare property constant
+```
+
+`object.provides(property name)` is the canonical built-in that consumes a `property` parameter; the same rule now applies to any user- or library-declared `property` parameter.
 
 In strict mode, `obj.provides(unknownName)` is a compile error: declare the name as a class member, or with `property unknownName;` / `extern property unknownName;` at file scope. In loose mode (`#bgl` islands and `.inf` precompiler mode — see §15.6), the check is skipped and the name passes through verbatim, matching the loose-identifier policy applied to all other identifiers in those contexts.
 
@@ -3090,8 +3144,18 @@ object myHook as hook { ... }      // Beguile name: myHook  →  I6 name: hook
 The `as` clause is valid on:
 - `T Name as i6name;` — any typed instance declaration
 - `object Name as i6name { ... }` — a named object definition (including instances of subclasses such as `room Name as place { }`)
+- **Class and object members** — both a property and a method may carry `as i6name`, positioned after the member name:
 
-It is **not** valid on type declarations (e.g., `extern class`, `alias class`) or function declarations.
+  ```bgl
+  class Widget : object {
+      int count as internalCount;                 // property → emits I6 short-name `internalCount`
+      void refresh() as _widgetRefresh { ... }    // method   → emits under I6 name `_widgetRefresh`
+  }
+  ```
+
+  This lets a member's emitted I6 identifier dodge a symbol clash while the Beguile name stays descriptive — e.g. `auto util = _bglUtil as bglUtil` avoids colliding with orLibrary's `object util`. The alias is ignored on operator methods (their I6 name is assigned by the operator/overload mangler).
+
+It is **not** valid on type declarations (e.g., `extern class`, `alias class`) or free function declarations.
 
 This is available any time a chosen Beguile name must differ from the underlying I6 name — for example, when the I6 name conflicts with a Beguile keyword, or when a more descriptive Beguile name is preferred in source while the I6 name must remain unchanged for compatibility.
 
@@ -3215,6 +3279,16 @@ class Counter {
 ```
 
 `self` is not valid outside a method body.
+
+## 9.6 `superposed` Routines
+
+A routine marked `superposed` is emitted into the story file **only if something references it**; if no call site ever names it, it evaporates from the output. The routine sits in superposition until a call "observes" it.
+
+```bgl
+superposed void debugDump() { ... }   // emitted only if debugDump() is called somewhere
+```
+
+This is useful for library helpers that should cost nothing when unused — a game that never calls the routine pays no code-size or link cost for it. It pairs with the `omitUnusedRoutines` compilation setting (§3.4): `superposed` withholds the routine at the Beguile emission layer (it is never written unless observed), while `omitUnusedRoutines` asks the I6 compiler to strip routines that were emitted but end up unreferenced. `superposed` applies to global/free routines and may appear in any qualifier order.
 
 ---
 
@@ -4174,7 +4248,22 @@ Identifiers are resolved through four tiers, searched in order:
 
 If no tier matches, the identifier is undeclared — a compile-time error.
 
-**Ambiguity warning.** Inside an object method body, when a bare identifier resolves at Tier 3 (a file-scope candidate, typically an enum value, global, or imported member) AND is **also a property of the enclosing object** (own or inherited), the compiler can't tell which one the user meant. The Tier-3 candidate wins by the precedence rules above — but a warning is emitted so the genuine ambiguity is surfaced rather than silently picked. The diagnostic points at both meanings and the two qualifications that disambiguate (`self.X` for the property; `EnumType.X` or other explicit qualification for the file-scope candidate). Method-bearing inherited members (e.g. inherited `print` on `_bglObject`) are intentionally NOT included in this check — methods are always called with parens and don't suffer the same visual collision as bare property reads.
+**Ambiguity warning.** Inside an object method body, when a bare identifier resolves at Tier 3 (a file-scope candidate, typically an enum value, global, or imported member) AND is **also a property of the enclosing object** (own or inherited), the compiler can't tell which one the user meant. The Tier-3 candidate wins by the precedence rules above — but a warning is emitted so the genuine ambiguity is surfaced rather than silently picked. The diagnostic points at both meanings and the two qualifications that disambiguate: `self.X` for the property, or `::X` (§13.2a) to force the global/file-scope candidate. Method-bearing inherited members (e.g. inherited `print` on `_bglObject`) are intentionally NOT included in this check — methods are always called with parens and don't suffer the same visual collision as bare property reads.
+
+## 13.2a Global-Scope Qualifier `::`
+
+A leading `::` on an identifier forces resolution at **file (global) scope**, skipping Tier 1 (locals/parameters) and Tier 2 (enclosing class/object members). It is the counterpart to `self.X`: where `self.X` names the member, `::X` names the global.
+
+```bgl
+verb Frob {
+    void handler() {
+        ::meta = true;      // the I6 global `meta`, not this verb's `meta` property
+        if (::meta) ...     // also valid as an rvalue
+    }
+}
+```
+
+`::X` emits the bare global name (`meta`) — the `::` is a compile-time resolution directive, not part of the emitted I6. It works as both an lvalue and an rvalue, and applies to the **head** of a dotted path (`::obj.member` forces `obj` to global scope, then reads `member` on it). Because `::X` is unambiguous, it also **suppresses the member-shadow ambiguity warning** described above. Using `::X` when no such global exists is an "undeclared identifier" error — it never falls back to a member.
 
 ## 13.3 The `self` Keyword
 
@@ -4802,6 +4891,7 @@ The remainder of this chapter covers the mechanisms that bridge the two modes: `
 | `extern enum Name { ... }` | §4.3 |
 | `extern class Name { ... }` | §5.2.2 |
 | `extern object Name;` | §6.2 |
+| `extern object Name { ... }` | §15.2.2 |
 | `extern Type Name;` | §8.2 |
 | `extern const Type Name;` | §8.3 |
 | `extern attribute Name;` | §8.6 |
@@ -4836,6 +4926,26 @@ void Epilogue() { print("The End.^"); }  // OK — overrides it; emits [Epilogue
 ```
 
 This is distinct from `replace` (§5.8), which emits an I6 `Replace` directive and is for replacing strongly-defined library routines. A `default` override emits **no** `Replace` — the weak stub is supplanted at link time by the definition alone. `default` here is the same "expected to be overridden, no `replace` required" qualifier used for class members, applied to a free extern.
+
+### 15.2.2 Extern objects with member signatures
+
+Beyond the bare `extern object Name;` form (§6.2), an extern object may carry a **body of member signatures**. This declares a single I6-defined object *and* the type of its members, so calls and property reads against it type-check in Beguile source — without a hand-written `extern class` + instance pair:
+
+```bgl
+extern object playerCommands {
+    void pushCommand(string cmd, bool isMeta = false, bool isSilent = false);   // method signature
+    object interrupt;                                                            // property
+}
+```
+
+Used from Beguile: `playerCommands.pushCommand("say hello");` emits the I6 message-send `playercommands.pushcommand("say hello", false, false)` (omitted trailing arguments are filled from their defaults — §9.3).
+
+Rules for the body:
+- **Methods are bodyless signatures** (`RetType name(params);`) — the implementation lives in I6. A brace body on a non-emitter method is an error (as with extern free functions, §15.2.1). `emitter` members with a `{ ... }` body are permitted (they inline).
+- **Properties are typed, with no initializer** (`Type name;`) — the object is defined in I6, so a Beguile-side initial value is an error.
+- Default parameter values (`= false`) are honored for arity/overload resolution at call sites, exactly as for ordinary methods.
+
+The object becomes a referenceable file-scope name (like any global object), but — being `extern` — the compiler emits **no** `Object` directive for it. This is the recommended way to bind a singleton I6 object (e.g. an orLibrary engine object) directly; the older `extern class T : object { emitter ... } / extern T inst;` shim (§5.2.2) remains available when you need a reusable *type* rather than one named instance.
 
 ## 15.3 `#includeI6`
 
@@ -5187,7 +5297,7 @@ property hidden_flag;            // emits 'Property hidden_flag;' to I6
 extern property libDefinedProp;   // no I6 output; trusts an I6 library to declare it
 ```
 
-`property` decls are intentionally untyped. The single supported parameter site is `object.provides(property prop)`; direct `obj.someName` field access on free-standing property decls is not supported.
+`property` decls are intentionally untyped. A `property`-typed parameter — `object.provides(property prop)` is the canonical built-in, but any user/library declaration may use one — accepts a bare property-name argument and emits it as the bare I6 property constant (see §8.6a). Direct `obj.someName` field access on free-standing property decls is not supported.
 
 ### 16.3.2 `dictionaryWord`
 

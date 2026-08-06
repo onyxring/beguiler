@@ -96,7 +96,10 @@ emitter class _bglObject{
 //=============================================================================
 // type object
     extern class object:_bglObject{ //--the base I6 object, declared as external because it is defined in the I6 compiler
-        parentProp parent;           //--initial parent object; emitted as I6 third positional argument
+        typesealed parentProp parent;//--initial parent object; emitted as I6 third positional argument.
+                                     //  `typesealed`: writing `object parent = <room>` keeps parent as
+                                     //  parentProp (with a warning) so `.parent = X` always emits `move`.
+                                     //  Idiomatic form is the bare `parent = <room>` (no type keyword).
         attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
         var short_name;              //--object's short name (string or routine). Backs the `(name)` print rule
                                      //  used by print() below; the compiler auto-declares it, so it's core, not
@@ -141,7 +144,7 @@ emitter class _bglObject{
             $val provides $prop
         }
         emitter bool is(bglClass cls){
-            $val ofclass $cls
+            ($val ofclass $cls)
         }
         replace emitter void print(){
             print (name)$val;
@@ -187,7 +190,7 @@ emitter class _bglObject{
 /*
     extern class bglWorldType  : _bglObject{
     emitter array getAll() {
-        $self.getAll()
+        go$self.getAll()
     }
     emitter array getFiltered(var pred) {
         $self.getFiltered($pred)
@@ -264,6 +267,7 @@ emitter void a(object o){ print (a)$o; }
 emitter void cA(object o){ print (A)$o; }
 emitter void the(object o){ print (the)$o; }
 emitter void cThe(object o){ print (The)$o; }
+emitter void printName(object o){ print (name)$o; }   // I6 `(name) obj` print rule — bare short name, no article
 
 //=============================================================================
 // style emitter namespace.  TODO: add the rest of these.

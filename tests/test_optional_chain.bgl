@@ -9,7 +9,7 @@ attribute light;
 
 class Room : object {
     string description = "a room";
-    Room parent;
+    Room up;
     Room next;
 }
 
@@ -45,16 +45,16 @@ void main(){
 
     // Multi-step optional chain — each ?. short-circuits independently. If any link is null,
     // the whole chain yields null without throwing.
-    Room gp = foyer?.parent?.parent;
-    string d2 = foyer?.parent?.description;
+    Room gp = foyer?.up?.up;
+    string d2 = foyer?.up?.description;
 
     // ?. mixed with regular . — once a ?. link resolves non-null, subsequent .member can
     // proceed without further null-checks.
-    string d3 = foyer?.parent.description;
+    string d3 = foyer?.up.description;
 
     // Common pattern: optional chain combined with null coalescing. If the chain resolves
     // to null, fall back to a default. Only works today for object-typed chains — a
     // string-returning chain hits a library gap (string has no operator?() emitter).
     Room result = foyer?.next ?? cloakroom;
-    Room nested = foyer?.parent?.next ?? cloakroom;
+    Room nested = foyer?.up?.next ?? cloakroom;
 }

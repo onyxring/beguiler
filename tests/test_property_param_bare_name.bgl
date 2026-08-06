@@ -1,0 +1,28 @@
+// A `property`-typed parameter makes a bare property-name argument emit as the BARE I6 property
+// constant (its slot number), even inside an object method body where a bare known-property name
+// would otherwise emit as `self.<name>` (a value read). This is an implicit `(property)` cast, so
+// an engine that indexes by property number can take `property task` and callers pass the bare
+// name with no file-scope `extern property` re-declaration — the name is known as an object member.
+#beguilerSettings { target = z5; informName = "none"; }
+#include <i6StandardLibrary>
+
+extern class tracker : object {
+    emitter void mark(property task)   { $self.mark($task) }
+    emitter bool isSet(property task)  { ($self.isSet($task)) }
+}
+extern void achieve(property task);
+
+tracker state {
+    int taskAlpha = 1;
+    int taskBeta  = 2;
+}
+
+object gadget {
+    int weight = 5;
+    void run() {
+        achieve(taskAlpha);            // global call → bare `taskalpha`
+        state.mark(taskBeta);          // emitter method (statement) → bare `taskbeta`
+        if (state.isSet(taskAlpha))    // emitter method (expression) → bare `taskalpha`
+            achieve(taskBeta);
+    }
+}

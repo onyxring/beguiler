@@ -26,13 +26,13 @@ class box
 ;
 box g_box;
 [main;
-    if (g_box ofclass container) {
+    if ((g_box ofclass container)) {
         print (string)"box is container";
     }
-    if (g_box ofclass box) {
+    if ((g_box ofclass box)) {
         print (string)"box is box";
     }
-    if (g_box ofclass libdefinedclass) {
+    if ((g_box ofclass libdefinedclass)) {
         print (string)"box is libDefinedClass";
     }
 ];

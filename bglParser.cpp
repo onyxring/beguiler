@@ -1599,6 +1599,7 @@ Qualifiers bglParser::parseQualifiers(token& tok){
         else if(tok.is("ref"))                     { q.isRef      = true; advance(); }
         else if(tok.is("byval"))                   { q.isByVal    = true; advance(); }
         else if(tok.is("superposed"))              { q.isSuperposed = true; advance(); }
+        else if(tok.is("typesealed"))              { q.isTypeSealed = true; advance(); }
         else break;
     }
     // Validate nonsensical combinations

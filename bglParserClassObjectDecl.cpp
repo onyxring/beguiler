@@ -567,6 +567,25 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             varDef.type=languageService.getType((string) returnType);
             if(isMemberConst) varDef.isConst = true;
             varDef.isStatic = isMemberStatic;
+            if(q.isTypeSealed) varDef.isTypeSealed = true;
+            // A subclass re-declaring a base member that was marked `typesealed` keeps the sealed
+            // type (and gets a warning) — mirrors the object-instance rule in processMemberVariable.
+            {
+                typeMember* inh = findMemberInHierarchy(&newClass, [&](typeMember* m){
+                    auto* vd = dynamic_cast<variableDeclaration*>(m);
+                    return vd && vd->name == varDef.name && vd->isTypeSealed;
+                });
+                if(auto* inhVd = inh ? dynamic_cast<variableDeclaration*>(inh) : nullptr){
+                    if(varDef.type.name != inhVd->type.name){
+                        parsingWarning(format("You've redefined '{0}' (which is typesealed as '{1}') to '{2}'. The retype will be ignored and stay '{1}'.",
+                            varDef.name, typeDisplayName(inhVd->type.name), typeDisplayName(varDef.type.name)));
+                        // Lock the slot to the sealed type; the initializer below still validates against
+                        // the written type (`returnType`), which has real value compatibility.
+                        varDef.type = inhVd->type;
+                        varDef.isTypeSealed = true;
+                    }
+                }
+            }
             if(!returnType.docComment.empty())   varDef.docComment = returnType.docComment;
             else if(!name.docComment.empty())    varDef.docComment = name.docComment;
             if(tok.is(token::assignment)){
@@ -1041,6 +1060,27 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     prop.i6name = i6alias;  // `Type member as <i6name>;` — emitted I6 property short-name (empty = use Beguile name)
     prop.src = file.currentLocation();
     prop.type = languageService.getType(typeName);
+    // Type-sealed inherited member: if a base class marked this member `typesealed`, the slot type is
+    // locked — a re-typed declaration keeps the sealed type (and warns). This lets `object parent =
+    // <room>` initialize the inherited `parentProp parent` (so `self.parent = X` later dispatches to
+    // parentProp's `move`) instead of shadowing it to type `object`.
+    if(obj.objectClass){
+        typeMember* inh = findMemberInHierarchy(obj.objectClass, [&](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            return vd && vd->name == name && vd->isTypeSealed;
+        });
+        if(auto* inhVd = inh ? dynamic_cast<variableDeclaration*>(inh) : nullptr){
+            if(prop.type.name != inhVd->type.name){
+                parsingWarning(format("You've redefined '{0}' (which is typesealed as '{1}') to '{2}'. The retype will be ignored and stay '{1}'.",
+                    name, typeDisplayName(inhVd->type.name), typeDisplayName(typeName)));
+                // Lock the SLOT to the sealed type (so `.parent = X` dispatches to its operator=), but
+                // keep validating the initializer against the WRITTEN type below — the sealed pseudo-type
+                // (parentProp) has no direct value compatibility, whereas the written type (object) does.
+                prop.type = inhVd->type;
+                prop.isTypeSealed = true;
+            }
+        }
+    }
     if(hasValue) parsePropertyValue(prop, typeName);
     bool replaced = false;
     if(isReplace){
@@ -1504,17 +1544,27 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
                             parsingError(format("extern object '{0}': non-emitter method '{1}' cannot have a body; use 'emitter' or declare without a body",
                                 newObj.dName(), propName.value));
                         }
-                        // else: after is ; — declaration stub, valid
-                        newObj.members.push_back((typeMember*)&funcDef);
+                        // else: after is ; — declaration stub, valid.
+                        // Replace the pre-scan stub (registered without default-value info) with
+                        // this fully-parsed funcDef so defaults/arity resolve at call sites; append
+                        // if no stub exists (e.g. a second overload after the first claimed it).
+                        if(!replaceStubMember(newObj.members, funcDef))
+                            newObj.members.push_back((typeMember*)&funcDef);
                         tok = file.getToken();
                         continue;
                     }
-                    // Property without initializer — register for type checking
+                    // Property without initializer — register for type checking. Replace the
+                    // pre-scan stub (same name) so we don't leave a duplicate untyped member.
                     variableDeclaration& prop = *(new variableDeclaration());
                     prop.name = propName.value;
                     prop.type = languageService.getType(tok.value);
                     prop.isExternal = true;
-                    newObj.members.push_back((typeMember*)&prop);
+                    bool propReplaced = false;
+                    for(size_t i = 0; i < newObj.members.size(); i++)
+                        if(newObj.members[i]->name == prop.name)
+                            if(auto* vd = dynamic_cast<variableDeclaration*>(newObj.members[i]))
+                                if(vd->isPrePassStub){ newObj.members[i] = &prop; propReplaced = true; break; }
+                    if(!propReplaced) newObj.members.push_back((typeMember*)&prop);
                 } else if(tok.is(eTokenType::identifier) && tok.value == "grammar"){
                     // Extern verb body: `grammar = { {.w1|.w2|.w3, ...}, ... };` declares the dict
                     // words this verb claims at the I6 level. Identical syntax to non-extern verbs;
@@ -1543,8 +1593,22 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
                 }
                 tok = file.getToken();
             }
+            // Make an extern object WITH a body referenceable as a global (e.g.
+            // playerCommands.pushCommand(...)). registerObject/rePushIfMissing deliberately keep
+            // externs out of `globals` (bare `extern object foo;` is a variableDeclaration on a
+            // separate path), so a bodied extern objectDef would otherwise be a type with no
+            // referenceable name → "Unknown variable". Verb-derived externs are excluded: they live
+            // in languageService.verbs and emit as grammar. emitObject() skips externs so no
+            // duplicate `Object` directive is emitted for these.
             closeCompileContext(eCompileContext::objectDef);
             currentObject = savedObject;
+            // Register (after restoring the outer context) so the check sees global scope, not the
+            // objectDef context opened for member parsing above.
+            if(getCurrentCompileContext() == eCompileContext::global && vod == nullptr){
+                if(find(languageService.globals.begin(), languageService.globals.end(),
+                        (typeDef*)&newObj) == languageService.globals.end())
+                    languageService.globals.push_back((typeDef*)&newObj);
+            }
         }
         return false;
     }

@@ -1,0 +1,15 @@
+// The `::name` global-scope qualifier forces file-scope (global) resolution, bypassing lexical
+// scope (params/locals/enclosing-object members) and suppressing the member-shadow warning. Here
+// the verb has an inherited `meta` property (class verb) AND there's a global `meta` (i6 binding);
+// `::meta` unambiguously means the global. Also exercised as an rvalue.
+#beguilerSettings { target = z5; informName = "none"; }
+#include <i6StandardLibrary>
+
+verb Frob {
+    grammar = {.frob, noun};
+    void handler() {
+        ::meta = true;              // lvalue → emits bare `meta` (the I6 parser flag)
+        if (::meta) ::meta = false; // rvalue in condition + lvalue
+        bool m = ::meta;            // rvalue in initializer
+    }
+}

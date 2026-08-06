@@ -1,0 +1,34 @@
+// test_typesealed_member.bgl — `typesealed` base-class member keeps its type across re-declaration.
+//
+// A base class marks a member `typesealed`. A subclass/instance that re-declares it with a DIFFERENT
+// type keeps the sealed type (and gets a compile-time warning, printed to stderr — not part of this
+// baseline). The point: `spot` stays `parentProp`, so `x.spot = room` dispatches to parentProp's
+// operator= and emits `move x to room` — NOT a raw `x.spot = room` (which would not move the object).
+//
+// This is the mechanism behind the world-tree `parent` slot: writing `object parent = <room>` on an
+// object keeps `parent` a parentProp instead of shadowing it to type `object` (which silently broke
+// `self.parent = X` moves before this landed). See also test_operator_equals_dispatch (the upcast
+// operator= dispatch that makes `.parent = <subclass>` reach parentProp's `move`).
+
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+#include <bindings/i6StandardLibrary>
+
+class room : object { }
+
+class marker : object {
+    typesealed parentProp spot;    // slot type is locked to parentProp
+}
+
+room r1 { }
+room r2 { }
+
+// Re-declares `spot` with the `room` keyword — warns, but the slot stays parentProp, and the initial
+// value r1 is emitted as the object's positional parent-style slot.
+marker flag { room spot = r1; }
+
+void moveIt() {
+    flag.spot = r2;                // parentProp operator= → `move flag to r2`, not a raw assignment
+}
+
+void main(){}

@@ -1,0 +1,31 @@
+// test_dict_word_hyphen.bgl — hyphenated dictionary-word literals (`.medium-sized`).
+//
+// Regression for a lexer gap surfaced 2026-07-28 while porting mack's worldArea2 (`class rock`
+// adjective `'medium-sized'`). `readDictWord` only accepted identifier chars + apostrophe, so
+// `.medium-sized` lexed as `.medium` `-` `sized` → "No operator '-' on type 'dictionaryWordLiteral'".
+// The fix consumes an *internal* hyphen (one followed by another word char) as part of the dict
+// word, while a trailing `-` stays an operator.
+//
+// Verifies:
+//   - `.medium-sized` round-trips as the single I6 dict word `'medium-sized'`.
+//   - Multiple hyphens and a mix with plain words in the same list still lex correctly.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+emitter class thing {
+    array<dictionaryWord> name;
+    array<dictionaryWord> adjective;
+}
+
+thing rock {
+    name = {.rock, .medium-sized, .rocks};
+    adjective = {.medium, .sized, .well-worn, .medium-sized};
+}
+
+void main(){}

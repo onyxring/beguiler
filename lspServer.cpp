@@ -2887,6 +2887,8 @@ json LspServer::handleSemanticTokensFull(const json& params) {
     int lineNum = 0;
     bool inBlockComment = false;
     bool inString       = false;   // a "..." opened on a prior line; consume until closing '"'
+    bool inI6Block      = false;   // inside a multi-line #i6 { ... } raw Inform 6 region
+    string i6BlockIndent;          // opener's leading whitespace; region ends at ^<indent>}
 
     while(getline(stream, lineText)) {
         size_t i = 0;
@@ -2917,6 +2919,49 @@ json LspServer::handleSemanticTokensFull(const json& params) {
             if(j >= lineText.size()) { lineNum++; continue; }
             inString = false;
             i = j + 1;
+        }
+
+        // ── Raw Inform 6 regions (#i6) ───────────────────────────────────────
+        // #i6 directives are raw Inform 6: a single-line `#i6 <code>` runs to end of
+        // line, and a block `#i6 { ... }` runs to the closing } at the opener's
+        // indentation. Inform 6 uses `!` for comments, not `//`, so the Beguile
+        // tokenizer must not emit stComment/stString/keyword tokens inside these
+        // regions — that green comment overlay (from a stray `//` in raw I6) was the
+        // reported bug. Mirrors the TextMate i6-line / i6-block rules.
+        if(inI6Block) {
+            size_t nb = lineText.find_first_not_of(" \t");
+            if(nb != string::npos && nb == i6BlockIndent.size() && lineText[nb] == '}')
+                inI6Block = false;     // closing brace at the opener's indent — region ends
+            lineNum++; continue;       // raw I6 line: emit nothing; TextMate/I6 colors it
+        }
+        if(i == 0) {                   // opener must be the first token on the line
+            size_t ws = lineText.find_first_not_of(" \t");
+            if(ws != string::npos && lineText.size() - ws >= 3 &&
+               strncasecmp(lineText.c_str() + ws, "#i6", 3) == 0 &&
+               (ws + 3 == lineText.size() || isspace((unsigned char)lineText[ws + 3]) ||
+                lineText[ws + 3] == '{')) {   // reject #includeI6 / #i6foo
+                size_t p = lineText.find_first_not_of(" \t", ws + 3);
+                if(p != string::npos && lineText[p] == '{') {
+                    // Block form: find the matching close brace on this line.
+                    int depth = 0; size_t closePos = string::npos;
+                    for(size_t q = p; q < lineText.size(); q++) {
+                        if(lineText[q] == '{') depth++;
+                        else if(lineText[q] == '}') { if(--depth == 0) { closePos = q; break; } }
+                    }
+                    if(closePos == string::npos) {
+                        // Multi-line block: raw region until the indent-matched '}'.
+                        inI6Block = true;
+                        i6BlockIndent = lineText.substr(0, ws);
+                        lineNum++; continue;
+                    }
+                    // Single-line block: raw inside braces, resume Beguile after '}'
+                    // (a trailing `// comment` there is a genuine Beguile comment).
+                    i = closePos + 1;
+                } else {
+                    // Single-line directive `#i6 <code>` — raw Inform 6 to end of line.
+                    lineNum++; continue;
+                }
+            }
         }
 
         while(i < lineText.size()) {

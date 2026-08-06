@@ -192,6 +192,7 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         // isConst: for globals, emits as I6 Constant; for class members, prevents reassignment (property still has runtime storage)
         bool isStatic = false;   // static members: class-level state, emitted as mangled I6 global
         bool isAlias = false;    // type alias member: `alias name for Type;` — compile-time type reference, no I6 backing
+        bool isTypeSealed = false; // `typesealed` base-class member: subclass/instance re-declarations keep this type (and warn)
         // Class-typed function local with synthesized static backing: at parse time we
         // registered a global `_bglLocal_<func>_<name>` of the same type so the local is
         // a real per-instance I6 object and `localname = expr` can dispatch operator=

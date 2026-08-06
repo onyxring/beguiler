@@ -1,0 +1,51 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+
+    Constant story    = "";
+    Constant headline = "";
+
+
+    replace main _oldmain;
+
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+class room
+  class object
+;
+class marker
+  class object
+  with
+    spot
+;
+room r1
+;
+room r2
+;
+marker flag
+  with spot r1
+;
+[moveIt;
+    move flag to r2;
+];
+[main;
+];
+
+    [main; 
+        bglInit();
+        _oldmain();
+    ];
+

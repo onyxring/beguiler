@@ -22,7 +22,7 @@ extern attribute transparent;   // see through even when closed
 extern attribute animate;       // is an NPC or animate object
 extern attribute talkable;      // can be addressed directly
 extern attribute proper;        // name needs no "the" prefix
-extern attribute plural;        // name is grammatically plural
+extern property plural;         // the plural print-name of an object (I6 library property, linklpa.h — NOT an attribute; `pluralname` is the attribute)
 extern attribute pluralname;    // object is referred to in the plural ("some keys")
 extern attribute female;        // animate: use she/her pronouns
 extern attribute male;          // animate: use he/him pronouns
@@ -30,6 +30,7 @@ extern attribute neuter;        // animate: use it/its pronouns
 extern attribute concealed;     // hidden from normal room listing
 extern attribute visited;       // room has been entered before
 extern attribute general;       // general-purpose flag
+extern attribute moved;         // set once the player has taken/moved the object (library-managed)
 extern attribute edible;        // can be eaten
 extern attribute door;          // is a door between locations
 extern attribute absent;        // object is currently out of scope
@@ -63,9 +64,10 @@ extern int    time_step;            // time update increment
 extern object       noun;           // first noun 
 extern object       second;         // second noun  
 extern verb         action;         // current action being performed (type verb for action constant comparisons)
+extern verb         action_to_be;   // the action about to be performed (set before the before/react_before stage; type verb for constant comparisons)
 extern int    inp1;                 // first input (0, 1, or object)
 extern int    inp2;                 // second input (0, 1, or object)
-extern int    meta;                 // true if verb is a meta-command
+extern bool   meta;                 // true if verb is a meta-command (I6 int flag; bool so `meta = true` type-checks)
 extern int    multiflag;            // multiple-object flag
 extern int    keep_silent;          // suppress action output
 extern int    reason_code;          // reason for "life" rule
@@ -391,8 +393,19 @@ extern verb XTree { .tree }                     // tree
 // object `before`/`after` routines. Grammarless `extern verb` registers the name for `switch(action)`
 // / `action == X` comparisons (emits `##Name`). Filled in as needed; not yet exhaustive.
 extern verb Receive;                            // ##PutOn/##Insert delivery — `before` of the container/supporter
+extern verb LetGo;                              // fake action fired on a container/supporter when its contents are taken (verblib.h)
 
 //-- Standard library routines ------------------------------------------------
+extern int  RunRoutines(object obj, property prop);   // run obj.prop() and return its value (parser.h) — used to delegate before/react_before/etc.
+extern int  PrintOrRun(object obj, property prop);    // if obj.prop is a routine, run it; if a string, print it (parser.h)
+extern int  PrintOrRunVar(var v);                     // if v is a routine, run it; if a string, print it (parser.h) — value-or-run
+extern int  random(int range);                        // I6 built-in RNG: returns 1..range
+extern void SetPronoun(dictionaryWord dword, object value);  // bind a pronoun word ('it'/'him'/…) to an object (parser.h)
+extern void PronounNotice(object obj);                // update the pronoun table so "it"/"him" refers to obj (parser.h)
+extern void AddToScope(object obj);                   // inside an add_to_scope routine: bring obj into parser scope (parser.h)
+extern void MoveFloatingObjects();                    // relocate `found_in` backdrops/floating objects for the current location (verblib.h)
+extern void StartTimer(object obj, int turns);        // begin a daemon/timer countdown on obj; fires its time_out after N turns (parser.h)
+extern void StopTimer(object obj);                    // cancel a running timer on obj (parser.h)
 extern void ClearScreen();                    // clear the screen (parser.h)
 extern void NotifyTheScore();                 // print "[Your score has gone up…]" (parser.h)
 extern void ScoreSub();                       // the SCORE action handler (verblib.h)
