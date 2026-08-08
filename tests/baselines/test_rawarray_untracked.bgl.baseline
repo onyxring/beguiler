@@ -4,7 +4,6 @@
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 Constant _BGL_LINQ_SCRATCH_SIZE = 32;
-Constant _BGL_WORLD_BUFSIZE = 128;
 
     Array _bglLinqScratchA table _BGL_LINQ_SCRATCH_SIZE + 2;
     Array _bglLinqScratchB table _BGL_LINQ_SCRATCH_SIZE + 2;
@@ -17,84 +16,6 @@ Constant _BGL_WORLD_BUFSIZE = 128;
         _bglLinqParity = 1 - _bglLinqParity;
     ];
 
-
-    ! `_BGL_WORLD_BUFSIZE` is declared by the compiler when `<bglWorld>` is
-    ! included — value comes from #beguilerSettings.worldBufSize (default 128).
-    ! Tracked-array layout: `Array X table N` sets slot 0 = N (the capacity) and
-    ! gives N data slots (1..N). We reserve slots 1..BUFSIZE for data, BUFSIZE+1
-    ! for length, BUFSIZE+2 for the magic marker — hence `table BUFSIZE+2`. (The
-    ! `-->` size form does NOT set slot 0, so the buf-->0 stamp would run off the
-    ! end — this must be `table`, matching how the compiler emits its own sized arrays.)
-    !
-    ! ROTATING POOL: _BGL_WORLD_BUFCOUNT buffers, round-robined by _bglWorldNextBuf,
-    ! so a nested bgl.world call gets a different buffer than the live outer loop.
-    ! To resize the pool, edit the constant AND add/remove buffer decls + switch
-    ! arms + #startup stamps to match (I6 cannot declare arrays in a loop).
-    Constant _BGL_WORLD_BUFCOUNT = 4;
-    Array _bglWorldBuf0 table _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf1 table _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf2 table _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf3 table _BGL_WORLD_BUFSIZE + 2;
-    Global _bglWorldBufIdx = -1;
-
-    ! Advance the rotation and return the next buffer in the pool.
-    [ _bglWorldNextBuf ;
-        _bglWorldBufIdx = (_bglWorldBufIdx + 1) % _BGL_WORLD_BUFCOUNT;
-        switch(_bglWorldBufIdx) {
-            0: return _bglWorldBuf0;
-            1: return _bglWorldBuf1;
-            2: return _bglWorldBuf2;
-            3: return _bglWorldBuf3;
-        }
-    ];
-
-    ! Walk all objects in the I6 object tree. `pred` is a routine address;
-    ! pred==0 means no filter. The check is inside the loop so a selective
-    ! predicate keeps the buffer small.
-    [ _bglWorldGetAll pred o i buf;
-        buf = _bglWorldNextBuf();
-        i = 0;
-        objectloop(o) {
-            if(i >= _BGL_WORLD_BUFSIZE) break;
-            if(pred == 0 || indirect(pred, o)) {
-                i++;
-                buf-->i = o;
-            }
-        }
-        buf-->(buf-->0 - 1) = i;
-        return buf;
-    ];
-
-    ! Walk children of `parent`. Same pred semantics as _bglWorldGetAll.
-    [ _bglWorldInParent parent pred o i buf;
-        buf = _bglWorldNextBuf();
-        i = 0;
-        objectloop(o in parent) {
-            if(i >= _BGL_WORLD_BUFSIZE) break;
-            if(pred == 0 || indirect(pred, o)) {
-                i++;
-                buf-->i = o;
-            }
-        }
-        buf-->(buf-->0 - 1) = i;
-        return buf;
-    ];
-
-    ! Walk objects of a class. Same pred semantics as _bglWorldGetAll.
-    [ _bglWorldInstances cls pred o i buf;
-        buf = _bglWorldNextBuf();
-        i = 0;
-        objectloop(o ofclass cls) {
-            if(i >= _BGL_WORLD_BUFSIZE) break;
-            if(pred == 0 || indirect(pred, o)) {
-                i++;
-                buf-->i = o;
-            }
-        }
-        buf-->(buf-->0 - 1) = i;
-        return buf;
-    ];
-
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -105,16 +26,6 @@ global _bglInitDone = 0;
     _bglLinqScratchB-->(_bglLinqScratchB-->0)     = $9084;
     _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
 
-
-    _bglWorldBuf0-->(_bglWorldBuf0-->0)     = $9084;
-    _bglWorldBuf0-->(_bglWorldBuf0-->0 - 1) = 0;
-    _bglWorldBuf1-->(_bglWorldBuf1-->0)     = $9084;
-    _bglWorldBuf1-->(_bglWorldBuf1-->0 - 1) = 0;
-    _bglWorldBuf2-->(_bglWorldBuf2-->0)     = $9084;
-    _bglWorldBuf2-->(_bglWorldBuf2-->0 - 1) = 0;
-    _bglWorldBuf3-->(_bglWorldBuf3-->0)     = $9084;
-    _bglWorldBuf3-->(_bglWorldBuf3-->0 - 1) = 0;
-
 ];
 object _zcode
 ;
@@ -122,8 +33,7 @@ object _bglUtil
 ;
 object bgl
   with zcode _zcode,
-       bglUtil _bglutil,
-       world _bglworld
+       bglUtil _bglutil
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -524,90 +434,12 @@ object _bglArray
     return dst;
   ]
 ;
-object _bglWorld
-  with getAll [pred;
-    return _bglworldgetall(pred);
-  ],
-       inParent [p pred;
-    return _bglworldinparent(p,pred);
-  ],
-       instances [cls pred;
-    return _bglworldinstances(cls,pred);
-  ]
-;
-class animal
-  class object
-  with
-    legs 4
-;
-object cage
-  with short_name "cage"
-;
-animal dog cage
-  with short_name "dog"
-;
-animal cat cage
-  with short_name "cat"
-;
-animal fish
-  with short_name "fish"
-;
-object stone cage
-  with short_name "stone"
-;
-[main totalCount caged animals o _bglfia0 _bglfi1 cagedAnimals cageWithoutStones notFish _bglfia2 _bglfi3 here;
-    totalCount=_bglArray.length(_bglworld.getall(0), 0);
-    print (string)"total objects: ";
-    print totalCount;
-    print (string)"^";
-    caged=_bglArray.length(_bglworld.inparent(cage, 0), 0);
-    print (string)"in cage: ";
-    print caged;
-    print (string)"^";
-    animals=_bglArray.length(_bglworld.instances(animal, 0), 0);
-    print (string)"animals: ";
-    print animals;
-    print (string)"^";
-    print (string)"named animals:^";
-    _bglfia0 = _bglworld.instances(animal, 0);
-    _bglfi1 = 0;
-    for (: _bglfi1 < _bglArray.length(_bglfia0, 0) : _bglfi1++) {
-        o = _bglfia0-->(_bglfi1+1);
-        print (string)" - ";
-        print o.short_name;
-        print (string)"^";
-    }
-    cagedAnimals=_bglArray.length(_bglworld.instances(animal, _bglLambda_0), 0);
-    print (string)"caged animals (in-walk filter): ";
-    print cagedAnimals;
-    print (string)"^";
-    cageWithoutStones=_bglArray.length(_bglworld.inparent(cage, _bglLambda_1), 0);
-    print (string)"cage without stones: ";
-    print cageWithoutStones;
-    print (string)"^";
-    notFish=_bglArray.length(_bglworld.getall(_bglLambda_2), 0);
-    print (string)"everything except fish: ";
-    print notFish;
-    print (string)"^";
-    print (string)"nested walk:^";
-    _bglfia2 = _bglworld.instances(animal, 0);
-    _bglfi3 = 0;
-    for (: _bglfi3 < _bglArray.length(_bglfia2, 0) : _bglfi3++) {
-        o = _bglfia2-->(_bglfi3+1);
-        here=_bglArray.length(_bglworld.inparent(parent(o), 0), 0);
-        print (string)" - ";
-        print o.short_name;
-        print (string)" shares its parent with ";
-        print here;
-        print (string)" objects^";
-    }
+array trk table "a" "b" "c" 3 $9084;
+[main;
+    print (string) raw-->(0+1) ;
+    print _bglArray.size(raw, 0);
+    print (string) trk-->(0+1) ;
+    rs-->(0+1) = 7;
 ];
-[_bglLambda_0 o;
-    return parent(o) == cage;
-];
-[_bglLambda_1 o;
-    return o ~= stone;
-];
-[_bglLambda_2 o;
-    return o ~= fish;
-];
+array raw table "a" "b" "c";
+array rs table 4;

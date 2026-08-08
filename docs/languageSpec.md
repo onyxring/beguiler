@@ -1462,6 +1462,20 @@ for(int i in 0 to n - 1) { process(buf[i]); }
 
 Elements are still type-checked at every subscript site, and an element may be cast (e.g. `(verb)results[0]`) exactly like any other value; the cast resolves through the following operator so `(verb)results[0] == PutOn` is a `bool` usable in `&&`/`||`.
 
+#### File-scope `rawArray<T>` literals — untracked `array<T>`
+
+The layout above describes a `rawArray<T>` **parameter** — a view over an external buffer with no count word. A **file-scope `rawArray<T>` literal** is a different (and complementary) use: it is an **untracked `array<T>`**. It emits a plain I6 `table` — count at `-->0`, data at `-->1…`, subscript `arr[i]` → `arr-->(i+1)` — exactly like `array<T>`, but with **no** `<len>+<magic>` tracking trailer, *even when `#include <array>` is active*:
+
+```bgl
+#include <array>
+array<string>    trk = { "a", "b", "c" };   // tracked:   Array trk table "a" "b" "c" 3 $9084;   (word0 = count+2)
+rawArray<string> raw = { "a", "b", "c" };    // untracked: Array raw table "a" "b" "c";           (word0 = count)
+```
+
+This is the shape to use when a **bare I6 array API** must read the array by its count word — e.g. orLibrary's `util.orArray` single-array form (`getSize(arr)` → `arr-->0`, `get(arr, n)` → `arr-->(n+1)`), used for a debug walkthrough command list. Because `<array>`'s tracked layout puts `count+2` at word 0, a plain `array<T>` would over-count by two; the `rawArray<T>` literal keeps word 0 as the true count.
+
+Note the two file-scope forms are **not interchangeable across the parameter boundary**: a `rawArray<T>` *literal* is count-prefixed (`-->(i+1)`), while a `rawArray<T>` *parameter* is data-only (`-->i`). Passing a literal to a `rawArray<T>` parameter would read the count word as element 0 — the type system keeps them separate (a literal has the `array` element-covariant type; pass it where an `array<var>` is expected, as the `util.orArray` bare-array overloads do).
+
 # Chapter 5 — Classes
 
 ## 5.1 Defining a Class

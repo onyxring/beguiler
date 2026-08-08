@@ -112,6 +112,13 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     arrDecl.elementType = elementType;
     arrDecl.isExternal = isExternal;
     if(elementType == "char") arrDecl.isByteArray = true;
+    // A file-scope `rawArray<T>` literal is an UNTRACKED `array<T>`: same count-prefixed layout
+    // (word0 = count, data at 1..N, subscript `-->(i+1)`) but with NO <len>+<magic> trailer, even
+    // when `<array>` is included. So it keeps the `array` type (subscript/size stay array<T>'s) and
+    // only sets isRaw, which gates the emitter's trailer off. This is exactly the shape bare I6 array
+    // APIs (orArray's single-array form) expect. (NB: a rawArray *parameter* is a different thing —
+    // a data-only `-->` view of an external buffer, subscript `-->i`; see §4.7.1.)
+    if((string)dataType.value == "rawarray") arrDecl.isRaw = true;
 
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;

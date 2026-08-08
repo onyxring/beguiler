@@ -1,0 +1,32 @@
+/*
+    test_rawarray_untracked.bgl — a `rawArray<T>` file-scope literal is an UNTRACKED `array<T>`:
+    the same count-prefixed layout (word 0 = count, data at 1..N, subscript `-->(i+1)`) but with NO
+    <len>+<magic> trailer, even when `<array>` is included. This is the shape bare I6 array APIs
+    (e.g. orArray's single-array form) expect: word 0 read as the element count.
+
+    With `<array>` active:
+      • `array<T> trk  = {...}`  → tracked:   `Array trk table <e...> <len> $9084;`  (word0 = count+2)
+      • `rawArray<T> raw = {...}` → untracked: `Array raw table <e...>;`               (word0 = count)
+      • sized `rawArray<T> rs[N]` → `Array rs table N;`  (N slots, NOT N+2)
+
+    Subscript stays array<T>'s `-->(i+1)` for BOTH (word 0 is the count) — so `raw[0]` reads the
+    first element, not the count. (A rawArray PARAMETER is a different construct: a data-only `-->`
+    view of an external buffer with subscript `-->i`; see test_rawarray.bgl / §4.7.1.)
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <array>
+
+array<string>    trk = { "a", "b", "c" };
+rawArray<string> raw = { "a", "b", "c" };
+rawArray<var>    rs[4];
+
+void main(){
+    print(raw[0]);              // -> raw-->(0+1) : first element (NOT the count word)
+    print(raw.size());          // -> reads the count word (word 0)
+    print(trk[0]);              // -> trk-->(0+1)
+    rs[0] = 7;                  // sized untracked write
+}

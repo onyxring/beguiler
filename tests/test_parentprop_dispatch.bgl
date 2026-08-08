@@ -1,0 +1,43 @@
+/* test_parentprop_dispatch.bgl — `.parent` (parentProp) reads/compares/writes dispatch
+   through the BLR emitter, driven entirely by the emitter definition in __beguileCore.bgl
+   (no `parent`-specific logic in the compiler).
+
+   parentProp is a PROPERTY-CLASS: its operator() read emitter transforms the owner —
+   `operator(){ parent($self) }`. That non-identity, $self-based body is the discriminator
+   that makes a bare `.parent` read dispatch, while value-type conversions (int/char/string
+   `operator()`, whose bodies are a bare `$self`/`$val` identity passthrough) do NOT fire on
+   a plain member read — so `int` member reads below stay raw.
+
+   Expected emission:
+     • assignment      w.parent = room2       → move w to room2   (operator =)
+     • bare read       p = w.parent           → p = parent(w)     (operator())
+     • compare ==      w.parent == room1      → parent(w) == room1 (operator() + raw ==)
+     • compare !=      w.parent != room1      → parent(w) ~= room1
+     • local-param     o.parent == room1      → parent(o) == room1 (dispatch for locals too)
+     • call argument   sink(o.parent)         → sink(parent(o))
+     • int member read q = w.capacity         → q = w.capacity    (raw — NOT dispatched) */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Room : object { }
+Room room1 { }
+Room room2 { }
+object w { parent = room1; int capacity = 4; }
+
+void sink(object o){ }
+
+bool localCheck(object o){
+    if (o.parent == room1) rtrue;      // local-param compare  → parent(o) == room1
+    sink(o.parent);                    // local-param arg read → sink(parent(o))
+    rfalse;
+}
+
+void main(){
+    object p;
+    int q;
+    w.parent = room2;                  // assignment → move w to room2
+    p = w.parent;                      // bare read  → p = parent(w)
+    if (w.parent == room1) p = room1;  // compare == → parent(w) == room1
+    if (w.parent != room1) p = room2;  // compare != → parent(w) ~= room1
+    q = w.capacity;                    // int member → raw w.capacity (value type, not dispatched)
+    localCheck(w);
+}

@@ -824,6 +824,54 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         return b;
     };
 
+    // Property-class read-emitter discriminator. Returns true when `fn` is a no-arg,
+    // non-explicit `operator()` emitter whose body reads through the OWNER and TRANSFORMS it —
+    // e.g. parentProp's `operator(){ parent($self) }`. This is the load-bearing distinction
+    // between a property accessor and a value conversion:
+    //   • property accessor (parentProp): body wraps $self → `parent($self)`  → fire on read
+    //   • value conversion (int/char/string): body has no explicit content, which the parser
+    //     defaults to a bare `$self` identity passthrough; uint/float use `$val` → NOT fired
+    // Only a non-identity, owner-based accessor is valid on a bare member read; identity/value
+    // conversions must fire only at explicit cast sites. Excluding a bare `$self`/`$val`
+    // identity is always safe: the raw read already yields the same value.
+    auto isPropClassReadEmitter = [](typeMember* m) -> bool {
+        auto* fn = dynamic_cast<functionDef*>(m);
+        if(!(fn && fn->name == "operator()" && fn->params.empty()
+             && fn->isEmitter && !fn->isExplicit)) return false;
+        auto* blk = dynamic_cast<i6Block*>(fn->body);
+        if(blk == nullptr) return false;
+        string t = blk->i6Body;
+        { size_t s = t.find_first_not_of(" \t\n\r"); if(s != string::npos) t = t.substr(s); else t.clear();
+          size_t e = t.find_last_not_of(" \t\n\r;"); if(e != string::npos) t = t.substr(0, e+1); }
+        return t != "$self" && t != "$val" && t.find("$self") != string::npos;
+    };
+
+    // Read-emitter helper. When reading `obj.member` and the member's declared type is a
+    // property-class (per isPropClassReadEmitter), substitute that operator() body with
+    // $self = objText so the read dispatches through the BLR emitter instead of emitting a raw
+    // property read. Keeps property-class reads (parent, etc.) driven by the emitter
+    // definition, not special-cased in the compiler. `outRetType` receives the emitter's
+    // return type. Returns the substituted text, or "" when the member is not a property-class.
+    auto applyReadEmitter = [&](const string& objText, const string& memberType,
+                                string& outRetType) -> string {
+        outRetType = "";
+        if(memberType.empty()) return "";
+        classDef* cls = getDispatchClass(memberType);
+        if(cls == nullptr || !cls->isEmitterClass) return "";
+        typeMember* found = findMemberInHierarchy(cls, isPropClassReadEmitter);
+        if(found == nullptr) return "";
+        auto* fn = dynamic_cast<functionDef*>(found);
+        auto* blk = dynamic_cast<i6Block*>(fn->body);
+        string b = processBglConditionals(blk->i6Body);
+        { size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+          size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1); }
+        if(b.empty()) return "";
+        b = i6Emitter::replaceWord(b, "$self", objText);
+        b = i6Emitter::replaceWord(b, "$val",  objText);
+        outRetType = fn->returnType.name;
+        return b;
+    };
+
     // ═══════════════════════════════════════════════════════════════════════
     // MAIN EXPRESSION LOOP — processes one token per iteration
     // Branches by token type: parens, literals, identifiers, operators, etc.
@@ -1695,6 +1743,16 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 for(typeMember* m : instObj->members)
                                     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                                         if(vd->name == member.value){
+                                            // Members whose emitter-class type exposes an operator() READ
+                                            // emitter (e.g. `parentProp parent = room1`) carry their own read
+                                            // semantics; never treat them as namespace auto-member redirects,
+                                            // which would constant-fold the read to the initializer's object.
+                                            // Fall through to normal property handling so the read emitter
+                                            // (applyReadEmitter) fires instead. Namespace autos (bgl.world,
+                                            // bgl.glulx — emitter classes WITHOUT a read emitter) still redirect.
+                                            { classDef* mcd = getDispatchClass(vd->type.name);
+                                              if(mcd && mcd->isEmitterClass
+                                                 && findMemberInHierarchy(mcd, isPropClassReadEmitter) != nullptr) break; }
                                             string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
                                             objectDef* target = nullptr;
                                             if(!initName.empty())
@@ -1776,6 +1834,17 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                     member.value, cur.value, recvType));
                             }
                             string accessText = objText + "." + member.value;
+                            // Property-class read: if the member's declared type is a property-class
+                            // (owner-based operator() read emitter, e.g. parentProp → parent($self)),
+                            // dispatch the read through it instead of emitting a raw property read.
+                            // Value-conversion operator()s ($val-based) are excluded, so int/string/
+                            // etc. member reads are unaffected. The value re-types to the emitter's
+                            // return type so downstream comparisons/casts operate on the read result.
+                            {
+                                string readRet;
+                                string readText = applyReadEmitter(objText, propType, readRet);
+                                if(!readText.empty()){ accessText = readText; if(!readRet.empty()) propType = readRet; }
+                            }
                             // Cast precedence: `(T)obj.prop` means cast applies to the property
                             // access result, not to the bare `obj`. If castType is set here, run
                             // it through applyCastConversion against the property's resolved type.

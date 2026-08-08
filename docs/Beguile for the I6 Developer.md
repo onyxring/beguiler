@@ -106,7 +106,6 @@ object cloakroom{
     attributeList attributes = {light, general};
 }
 extend class object { 
-    string short_name; 
     string description; 
     object s_to; 
     object e_to; 
@@ -516,7 +515,7 @@ The next section introduces the `extend` keyword:
 
 ```
 extend class object { 
-    string short_name; 
+    string short_name;
     string description; 
     object s_to; 
     object e_to; 
@@ -531,7 +530,6 @@ Here we extend `object` by defining several properties and their types.  On the 
 
 ```
 object foyer{
-    short_name="Foyer of the Opera House";
     description = "You are standing in a spacious hall, splendidly decorated
         in red and gold, with glittering chandeliers overhead. The entrance 
         from the street is to the north, and there are doorways south and west.";
@@ -539,23 +537,24 @@ object foyer{
     w_to = cloakroom;
     string n_to = "You've only just arrived, and besides, the weather outside 
         seems to be getting worse."; 
+    short_name="Foyer of the Opera House";
     attributes = {light}; 
 }
 ```
 
-Notice that most of the members don't have types specified.  Both `short_name` and `description` are understood to be of type `string` because they are members of `foyer`, which is of type `object`, and `object` defines the data type for these as such.  The same is true of `s_to` and `w_to`, both of which are of type `object`.
+Notice that most of the members don't have types specified.  The `description` member is understood to be of type `string` because `foyer` is of type `object` and our `extend`-ed `object` declaration defines the data type that way.  The same is true of `s_to` and `w_to`, both of which are of type `object`.
 
 > ***Note**: The "Type Inference" rule is an example of the **Ease of Use** principle applied.*
 
 Two points of clarification:
 
 - `n_to`, which would normally be inferred as type `object` has been overridden to type `string`.  We could just as easily have declared the default types for direction properties as `string`, then overridden `s_to` and `w_to` to be `objects`.  Either way is acceptable.
-- You might note that we never defined the default type for `attributes` as type `attributeList` and Beguiler still accepted the property without error.  This is because the `attributes` property type is already set on the `object` definition, even without `extend`ing it.  We declared the type explicitly on the `cloakroom` object to further the example.  Had we left that particular member untyped, even without the `extend object` code, the example would still have compiled.
+- You might note that we neither defined the default type for `attributes` as type `attributeList` nor `short_name` as type `string`, and Beguiler still accepted the property without error.  This is because the `attributes` and `short_name` property types are already set on the `object` definition, even without `extend`-ing it.  We declared the type explicitly on the `cloakroom` object to further the example.  Had we left that particular member untyped, even without the `extend object` code, the example would still have compiled.
 
-> ***Note**: From the above above examples, you might suspect that objects declared *before* `object` was `extend`ed  would still require member types to be specified.  This is actually untrue.  Beguile supports declarations in any order, so the presence of `extend object` affects all instances of `object` across all files, regardless of the order declarations appear in.  I presented it in this fashion for the purpose of illustration.*
+> ***Note**: From the sequencing of the above examples, you might suspect that objects declared *before* `object` was `extend`-ed  would still require member types to be specified.  This is actually untrue.  Beguile supports declarations in any order, so the presence of `extend object` affects all instances of `object` across all files, regardless of the order declarations appear in.  I presented it in this fashion for the purpose of illustration.
 
 ### Analyzing `Before` as an Example Member Routine
-Among its other members, the `bar` object contains a member routine, specifically the `before` routine which the Puny Inform and the I6 Standard Library both use:
+Among its other members, the `bar` object contains a member *routine*, specifically the `before` routine, which the Puny Inform and the I6 Standard Library both use:
 
 ```
 object bar{
@@ -868,13 +867,13 @@ Notice that the `grammarRule` itself is just one element in an enclosing, `gramm
 
 ## Select Additional Topics
 
-While Cloak of Darkness serves as a gentle introduction to Beguile, it does little to highlight the enhancements of the language.  In this section, I'll go over select topics which are meaningful to the I6 developer.
+While Cloak of Darkness serves as a gentle introduction to Beguile, it only scratches the surface of the language.  In this section, I'll go over select topics which are meaningful to the I6 developer.
 
 ### The Beguile Language Runtime
 
 I've referenced the **Beguile Language Runtime** (the BLR) multiple times already.  Before going further, it's worth pausing to look at what it actually is:
 
-The BLR is Beguile's library of language extensions, written almost entirely in Beguile itself (with a sprinkling of I6 where we have to).  It lives in the `beguiLib` folder, alongside the `beguiler` binary, and ships as part of the standard install.
+The BLR is Beguile's library of language extensions, written almost entirely in Beguile itself (with a sprinkling of I6 here and there).  It lives in the `beguiLib` folder, alongside the `beguiler` binary, and ships as part of the standard install.
 
 Conceptually, the BLR is divided into three kinds of content:
 
@@ -888,7 +887,7 @@ Conceptually, the BLR is divided into three kinds of content:
   ```
 
   Each extension adds members to existing types or introduces new types entirely.  I'll cover  some of these as we proceed.
-- **Bindings** - wrappers around I6 libraries you bring in via `#includeI6`.  Two are included by default: `i6StandardLibrary` and `punyInform`.  We saw the latter in the Cloak example.
+- **Bindings** - wrappers around common I6 libraries which you bring in via `#includeI6`.  Two are included by default: `i6StandardLibrary` and `punyInform`.  We saw the latter in the Cloak example.
 
 > ***Note**: I designed the BLR to be opt-in by default.  A program that includes nothing, pays nothing - no scratch buffers, no helper routines, no platform backings emit unless the feature that needs them is actually used.*
 
@@ -896,11 +895,11 @@ Conceptually, the BLR is divided into three kinds of content:
 
 The BLR is organized under a small set of namespace objects rooted at `bgl`.  You'll see these expressed in lines such as... `bgl.world.getAll()` and `bgl.glulx.createMainWindow()`.
 
-Other namespaces follow the same pattern: `bgl.zcode` for Z-Machine-specific helpers, `bgl.utilities` for general-purpose routines, and so on.  You'll see some of these in the sections that follow.
+Other namespaces follow the same pattern: `bgl.zcode` for Z-Machine-specific helpers, `bgl.util` for general-purpose routines, and so on.  You'll see some of these in the sections that follow.
 
 ### Strings
 
-I6's support for strings is austere: a literal like `"hello"` evaluates to a memory address; you can `print` it, but you can't modify it. When you compare it, you compare memory addresses for equality, not values.  Real string work (e.g., comparing content, building values at runtime, accumulating text) requires either careful use of memory buffers or library code that hides the byte-twiddling.
+I6's support for strings is austere: a literal like `"hello"` evaluates to a memory address; you can `print` it, but you can't modify it. When you compare it, you compare memory addresses for equality, not values.  Real string work (e.g., comparing content, building values at runtime, accumulating text) requires either careful use of memory buffers.
 
 Beguile keeps the I6-style address-of-literal as the default, then layers on a richer feature set you opt into.
 
@@ -1039,16 +1038,16 @@ The CoD walkthrough introduced interpolated strings; here's the I6-dev mental mo
   ```
 - Escape sequences (`\n`, `\t`, `\"`) work inside interpolated strings.  I6's `^` for newline passes straight through.
 
-#### What about buffers?
-
-For genuinely mutable, byte-level work — accumulating output into a buffer, parsing, building text procedurally — Beguile has a separate `<buf>` extension that gives you sized buffer objects with `[]` access, length, capacity, and the rest.  We'll cover buffers when we get to the section on BLR utilities.
-
 ### Using Arrays
+<Start here>
+Beguile has rich for typed arrays. The approach and syntax differs sharply from that of I6.
+
+array<type> myArray={1,3,5,2,5};
 
 - for in syntax
 - accessor syntax
 - some DM4 examples contrasted in Beguile
-
+<end here>
 #### Raw I6 word arrays
 
 A Beguile `array<T>` is not laid out like a bare I6 `-->` array: it reserves word 0 for a live element count (plus a tracking marker past the data), so `arr[i]` compiles to `arr-->(i+1)`.  That is what you want for arrays Beguile owns, but it is *wrong* for a raw I6 buffer handed to you from the outside — the `results` array inside a `parse_error` entry point, a library table, a `-->` array you declared in an `#i6` island.  Those start their data at word 0 with no header.

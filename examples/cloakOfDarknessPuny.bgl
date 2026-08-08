@@ -5,21 +5,20 @@
   ============================================================================*/
 //settings for the compiler...
 #beguilerSettings { 
-    includePaths=@"../../inform6/puny/lib, ../../orLibraryId6";
-    target=Z5;      
+    includePaths="../../inform6/puny/lib"; 
+    target=Z5;    
     title="Cloak of Darkness"; 
     headline = "\nA basic IF demonstration.\n";
 }
 
-//const int MAX_SCORE = "2";
+const int MAX_SCORE = 2;
 const object INITIAL_LOCATION_VALUE = foyer;
-#i6{
-    constant MAX_SCORE = "2";
+
+void DeathMessage(){ 
+    print("You have lost"); 
 }
 
-void DeathMessage(){ print("You have lost"); }
-
-#includeI6 @"globals";
+#includeI6 "globals"
 #includeI6 "puny"
 #include <bindings/punyInform>
 
@@ -32,7 +31,6 @@ object cloakroom{
     attributeList attributes = {light, general};
 }
 extend class object { 
-    string short_name; 
     string description; 
     object s_to; 
     object e_to; 
@@ -59,12 +57,12 @@ object bar{
     bool before(){
         switch(action){
             case Look, Inv, Going: rfalse;
-            case Go: if (attributes.hasnt(light) && (selected_direction != (property)n_to) ) {     
-                        message.number += 2;     
+            case Go: if (attributes.hasnt(light) && (selected_direction != (property)n_to) ) {   
+                        message.number += 2;   
                         rtrue("Blundering around in the dark isn't a good idea!"); 
                     }
             default: if (bar.hasnt(light)) {
-                        message.number++;                             
+                        message.number++;                           
                         rtrue("In the dark? You could easily disturb something!");
                     }
         }
@@ -97,7 +95,7 @@ object cloak {
         }
         rfalse;
     }
-    bool after() {          
+    bool after() {        
         if(action==Take) bar.ungive(light);
         rfalse;
     }
@@ -108,7 +106,7 @@ object hook {
     object parent = cloakroom;
     array<dictionaryWord> name = {.small, .brass, .hook, .peg};
     bool description() {
-        rtrue($"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}");         
+        rtrue($"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}");       
     }
     attributes = {scenery, supporter}; 
 }
@@ -137,4 +135,4 @@ bool Initialise(){
         aren't more people about but, hey, what do you expect in a cheap 
         demo game...?^^^");
 }
-extend PutOn { grammar = {.hang, HELD, .on, NOUN}; }
+extend PutOn { grammar = {{.hang, HELD, .on, NOUN}}; }

@@ -1,0 +1,49 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+class room
+  class object
+;
+room room1
+;
+room room2
+;
+object w room1
+  with capacity 4
+;
+[sink o;
+];
+[localCheck o;
+    if (parent(o) == room1) {
+        rtrue;
+    }
+    sink(parent(o));
+    rfalse;
+];
+[main p q;
+    move w to room2;
+    p = parent(w);
+    if (parent(w) == room1) {
+        p = room1;
+    }
+    if (parent(w) ~= room1) {
+        p = room2;
+    }
+    q=w.capacity;
+    localcheck(w);
+];

@@ -868,7 +868,7 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
         for(typeDef* g : languageService.globals){
             auto* arr = dynamic_cast<arrayDeclaration*>(g);
             if(arr == nullptr) continue;
-            if(arr->isExternal || arr->isByteArray) continue;
+            if(arr->isExternal || arr->isByteArray || arr->isRaw) continue;  // rawArray: no tracking, no magic stamp
             // Sized-uninit only — list-init arrays bake the magic inline.
             if(arr->arraySize > 0 && arr->stringInitializer.empty()
                && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
@@ -1480,8 +1480,9 @@ void i6Emitter::emitFunction(functionDef* funcNode){
             if(count <= 0) continue;   // pointer-alias decl (e.g. `= _bglLinqWrite()`) — emitStatement owns it
             string name = spillName(arr->name);
             // Mirror the global-array layout gating: tracked (header + N + length + magic)
-            // when `<array>` is included, plain (header + N data slots) otherwise.
-            if(languageService.arrayInUse){
+            // when `<array>` is included, plain (header + N data slots) otherwise. `rawArray<T>`
+            // always takes the plain path (no tracking layer), matching the global gate.
+            if(languageService.arrayInUse && !arr->isRaw){
                 out << format("    {0} = _bglArrayLocalAlloc({1});\n", name, count);
                 funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count + 3)});
             } else {
@@ -1534,7 +1535,7 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
                 int i = 0;
                 for(expression* elem : list->elements)
                     out << format("{0}{1}-->{2} = {3};\n", indent, name, i++ + 1, exprText(elem));
-                if(languageService.arrayInUse)   // tracked layout has a length slot at N+1
+                if(languageService.arrayInUse && !arrLoc->isRaw)   // tracked layout has a length slot at N+1
                     out << format("{0}{1}-->{2} = {3};\n", indent, name, count + 1, count);
                 return;
             }
@@ -2195,7 +2196,9 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         // N data slots + 1 length + 1 magic = N+2 total.
         // Without: plain N-slot I6 table. Zero-byte-core principle: programs that
         // don't use `<array>` get untracked I6-native arrays with no overhead.
-        bool tracked = languageService.arrayInUse;
+        // `rawArray<T>` always opts out of tracking (plain I6 table) — for interop with bare
+        // I6 array APIs (e.g. orArray's single-array form, which reads word0 as the count).
+        bool tracked = languageService.arrayInUse && !arr->isRaw;
         if(arr->arraySize > 0) {
             // Sized, uninitialized. Magic+length get stamped at startup by bglInit when
             // tracked (pre-pass collected the name into trackedArraysNeedingMagicInit).

@@ -44,19 +44,21 @@
 #emitfirst{
     ! `_BGL_WORLD_BUFSIZE` is declared by the compiler when `<bglWorld>` is
     ! included — value comes from #beguilerSettings.worldBufSize (default 128).
-    ! Tracked-array layout: capacity word at slot 0 (auto-set by I6 from
-    ! `--> N` size), data at slots 1..N, length at slot N, magic at slot N+1.
-    ! +2 covers the length + magic slots.
+    ! Tracked-array layout: `Array X table N` sets slot 0 = N (the capacity) and
+    ! gives N data slots (1..N). We reserve slots 1..BUFSIZE for data, BUFSIZE+1
+    ! for length, BUFSIZE+2 for the magic marker — hence `table BUFSIZE+2`. (The
+    ! `-->` size form does NOT set slot 0, so the buf-->0 stamp would run off the
+    ! end — this must be `table`, matching how the compiler emits its own sized arrays.)
     !
     ! ROTATING POOL: _BGL_WORLD_BUFCOUNT buffers, round-robined by _bglWorldNextBuf,
     ! so a nested bgl.world call gets a different buffer than the live outer loop.
     ! To resize the pool, edit the constant AND add/remove buffer decls + switch
     ! arms + #startup stamps to match (I6 cannot declare arrays in a loop).
     Constant _BGL_WORLD_BUFCOUNT = 4;
-    Array _bglWorldBuf0 --> _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf1 --> _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf2 --> _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf3 --> _BGL_WORLD_BUFSIZE + 2;
+    Array _bglWorldBuf0 table _BGL_WORLD_BUFSIZE + 2;
+    Array _bglWorldBuf1 table _BGL_WORLD_BUFSIZE + 2;
+    Array _bglWorldBuf2 table _BGL_WORLD_BUFSIZE + 2;
+    Array _bglWorldBuf3 table _BGL_WORLD_BUFSIZE + 2;
     Global _bglWorldBufIdx = -1;
 
     ! Advance the rotation and return the next buffer in the pool.

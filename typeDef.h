@@ -386,6 +386,10 @@ class arrayDeclaration : public variableDeclaration {
         string elementType;          // the T in array<T>
         int arraySize = 0;           // N in array<T> name[N]; 0 if list-initialized
         bool isByteArray = false;    // true for array<char> — emit with -> instead of -->
+        bool isRaw = false;          // true for `rawArray<T>` — a raw I6 array with NO Beguile
+                                     // tracking layer: always emits a plain `table` (word0=count,
+                                     // data at 1..N), never the <len>+<magic> trailer, even when
+                                     // `<array>` is included. Matches bare I6 array APIs (orArray).
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
 };
 
