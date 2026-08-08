@@ -2069,6 +2069,10 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
     for(typeMember* m : cls->members){
         auto* vd = dynamic_cast<variableDeclaration*>(m);
         if(!vd || vd->isStatic || vd->isConst) continue;
+        // `ref` members are bare pointer slots (pointer-alias semantics) — they never own
+        // backing storage. This also breaks the infinite regress for self-referential ref
+        // members (a Node whose `ref Node next` would otherwise back a Node backing a Node...).
+        if(vd->isRefLocal) continue;
         // Skip non-data fields
         if(vd->type.name == "attributelist") continue;
         if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue;

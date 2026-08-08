@@ -1,0 +1,63 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+class color
+  with
+    r
+;
+class draw
+  with
+    n
+;
+class thing
+  with
+    tint,
+    setColor[c;
+        self.color=c;
+    ],
+    getColor[;
+        return self.color;
+    ],
+    color,
+    object
+;
+class win
+  with
+    draw[;
+        return 3;
+    ]
+;
+thing tg;
+color cx;
+win wn;
+[take n;
+];
+[main a b d e;
+    tg.color = 5;
+    a=tg.color;
+    tg.setcolor(7);
+    b=tg.getcolor();
+    tg.object = 9;
+    d=wn.draw();
+    if (tg.color == 5) {
+        take(tg.color);
+    }
+    tg.tint = cx;
+    tg.tint.r = 2;
+    e=tg.tint.r;
+];

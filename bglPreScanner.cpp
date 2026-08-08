@@ -260,6 +260,7 @@ void bglParser::preScanDirective(token tok){
         i6RawNode& stub = *(new i6RawNode());
         stub.text = "#i6_placeholder";
         stub.isPrePassStub = true;
+        stub.src = file.currentLocation();   // main pass claims this slot by matching source location
         languageService.globals.push_back(&stub);
         // Skip content: multi-line (braced) or single-line (to newline).
         // #i6{} content is raw I6 — `!` is a line-comment marker, not an operator.
@@ -424,6 +425,7 @@ void bglParser::preScanGlobalLoop(){
                     if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
                     if(t.is("explicit")) t = file.getToken();
                     if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
+                    if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
                     if(t.isDataType() || t.is(eTokenType::identifier)){
                         preScanConsumeGenericSuffix(t);
                         token memberName = file.getToken();
@@ -486,6 +488,7 @@ void bglParser::preScanGlobalLoop(){
                     if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
                     if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
                     if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
+                    if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
                     // Accept either a built-in dataType OR an identifier as the return type.
                     // The identifier path covers type parameters (e.g. `T` from `class array<T>`)
                     // and user-defined class names, which the lexer doesn't classify as dataTypes
@@ -652,7 +655,7 @@ void bglParser::preScanGlobalLoop(){
                       if(cls != nullptr && (bt.isDataType() || bt.is(eTokenType::identifier))){
                           // Skip optional method-modifier keywords
                           bool sawEmitter = false;
-                          while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit")){
+                          while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit") || bt.is("ref")){
                               if(bt.is("emitter")) sawEmitter = true;
                               bt = file.getToken();
                           }
@@ -834,8 +837,11 @@ void bglParser::preScanGlobalLoop(){
             continue;
         }
 
-        // object keyword: 'object Name { }' is an objectDef; 'object Name;' / 'extern object Name;' is a variable stub
-        if(!isEmitter && (tok.is("object") || (tok.isDataType() && file.peekToken(1).is(eTokenType::identifier)
+        // object keyword: 'object Name { }' is an objectDef; 'object Name;' / 'extern object Name;' is a variable stub.
+        // A '(' after the name means it's a FUNCTION returning object (`object getW(){…}`), NOT an
+        // object/variable decl — exclude it so it falls through to the routine-stub path below.
+        if(!isEmitter && ((tok.is("object") && !file.peekToken(2).is(token::parenOpen))
+             || (tok.isDataType() && file.peekToken(1).is(eTokenType::identifier)
              && (file.peekToken(2).is(token::braceOpen) || file.peekToken(2).is(":"))))){
             // Could be: object Name { }, ClassName Name { }, or ClassName Name : Parent { }
             string classType = tok.value;
@@ -885,6 +891,7 @@ void bglParser::preScanGlobalLoop(){
                         bool memberIsEmitter = false;
                         if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
                         if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
+                        if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
                         if(t.isDataType()){
                             preScanConsumeGenericSuffix(t);
                             token memberName = file.getToken();

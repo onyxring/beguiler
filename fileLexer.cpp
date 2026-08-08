@@ -443,11 +443,27 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
     string retval;
     int count=1; //we have already encountered the first open brace, which is why we are calling this function, so we start our count at 1
     char c=readChar();
+    // Track embedded `#i6 { … }` regions. When the outer body is Beguile (isI6Content=false), an
+    // inner `#i6` block is raw I6 where `!` is a line comment — so apostrophes in it (e.g. "it's")
+    // must NOT open a char-literal scan that swallows the block's closing brace. i6Depth = the brace
+    // count at which the current #i6 region opened (-1 = not in one); pendingI6 = saw `#i6`, awaiting
+    // its `{`. Everything at count >= i6Depth is treated as I6 content.
+    int i6Depth = -1;
+    bool pendingI6 = false;
 
      while(count>0){
          if(c == EOF){
              parser.parsingError("Unexpected end of file — missing closing '}'");
              break;
+         }
+         // Directive word (e.g. `#i6`): pass through as text, and if it's `#i6`, arm i6-region
+         // tracking so its `{` opens an I6-content region. (`#prop`, `##Take`, etc. are harmless.)
+         if(c=='#'){
+             string dir; dir += c; retval += c; c = readChar();
+             while(c != EOF && isValidIdentifierChar(c)){ dir += c; retval += c; c = readChar(); }
+             string dl = dir; for(char& ch : dl) ch = (char)tolower((unsigned char)ch);
+             if(dl == "#i6") pendingI6 = true;
+             continue;
          }
          // Skip // line comments — braces inside don't count
          if(c=='/' && peekChar()=='/'){
@@ -484,7 +500,7 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
          // skipping an object/method body), `!` is an operator (`!=`, `!flag`, etc.)
          // and must NOT trigger comment-skip. The caller signals the context via
          // `isI6Content` so the same function works for both.
-         if(c == '!' && isI6Content){
+         if(c == '!' && (isI6Content || i6Depth != -1)){
              while(c != '\n' && c != EOF){ retval += c; c = readChar(); }
              if(c == '\n'){ retval += c; c = readChar(); }
              continue;
@@ -511,9 +527,9 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
              continue;
          }
 
-         if(c=='}') count--;
+         if(c=='}'){ count--; if(i6Depth != -1 && count < i6Depth) i6Depth = -1; }  // left the #i6 region
          if(count==0) break; //don't include the closing brace in the text we return
-         if(c=='{') count++;
+         if(c=='{'){ count++; if(pendingI6){ i6Depth = count; pendingI6 = false; } }  // #i6 region opens here
 
          retval=retval+c;
          c=readChar();

@@ -400,7 +400,9 @@ extern int  RunRoutines(object obj, property prop);   // run obj.prop() and retu
 extern int  PrintOrRun(object obj, property prop);    // if obj.prop is a routine, run it; if a string, print it (parser.h)
 extern int  PrintOrRunVar(var v);                     // if v is a routine, run it; if a string, print it (parser.h) — value-or-run
 extern int  random(int range);                        // I6 built-in RNG: returns 1..range
-extern object parent(object o);                       // I6 built-in: the object's tree parent (0 if none). Use for a LOCAL object's parent — `local.parent` (member read) doesn't apply the parentProp operator; `parent(local)` does.
+// NOTE: the I6 built-in `parent()` is intentionally NOT bound for Beguile. The Beguile idiom is
+// `obj.parent` (and `obj.parent.parent`, …), which the parentProp emitter lowers to the I6
+// `parent(...)` construct. Exposing `parent()` as a callable would blur that Beguile↔I6 boundary.
 extern void SetPronoun(dictionaryWord dword, object value);  // bind a pronoun word ('it'/'him'/…) to an object (parser.h)
 extern void PronounNotice(object obj);                // update the pronoun table so "it"/"him" refers to obj (parser.h)
 extern void AddToScope(object obj);                   // inside an add_to_scope routine: bring obj into parser scope (parser.h)

@@ -26,7 +26,12 @@ room room2
 object w room1
   with capacity 4
 ;
+object other room2
+;
 [sink o;
+];
+[getW;
+    return w;
 ];
 [localCheck o;
     if (parent(o) == room1) {
@@ -35,6 +40,25 @@ object w room1
     sink(parent(o));
     rfalse;
 ];
+class widget
+  class object
+  with
+    inRoom[flag;
+        if (parent(self) == room1) {
+            rtrue;
+        }
+        if (flag == 1 && parent(self) == room2) {
+            rtrue;
+        }
+        sink(parent(self));
+        rfalse;
+    ],
+    grandparent[;
+        return parent(parent(self));
+    ]
+;
+widget gadget room1
+;
 [main p q;
     move w to room2;
     p = parent(w);
@@ -45,5 +69,45 @@ object w room1
         p = room2;
     }
     q=w.capacity;
+    if (parent(w) == parent(other)) {
+        p = room1;
+    }
+    if (parent(w) == room1||parent(other) ~= room2) {
+        p = room2;
+    }
+    if ((parent(w) == room1)) {
+        p = room1;
+    }
+    else {
+        p = room2;
+    }
+    switch (parent(w)) {
+        room1:
+            p = room2;
+    }
+    sink(parent(w));
+    if (parent(w) == nothing) {
+        p = room1;
+    }
+    p = parent(parent(w));
+    p = parent(parent(parent(w)));
+    if (parent(parent(w)) == room1) {
+        p = room2;
+    }
+    p = parent(getw());
+    p = parent(parent(getw()));
+    if (parent(getw()) == room1) {
+        p = room2;
+    }
+    if ((parent(w) ofclass room)) {
+        p = room1;
+    }
+    if ((parent(getw()) ofclass room)) {
+        p = room2;
+    }
     localcheck(w);
+    if (gadget.inroom(1)) {
+        p = room1;
+    }
+    sink(gadget.grandparent());
 ];

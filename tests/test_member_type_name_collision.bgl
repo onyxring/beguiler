@@ -1,0 +1,56 @@
+// test_member_type_name_collision.bgl — a member (field or method) whose name collides
+// (case-insensitively — Beguile is case-insensitive) with a declared TYPE name must still
+// be reachable through dot-access.
+//
+// The lexer classifies `color` as a `dataType` token because a class `Color` exists, and
+// `object` because it is a built-in type keyword. Member-read positions after `.` used to
+// demand an `identifier` token, so every access form (`t.color`, `self.color`, `t.color`
+// in a condition/arg, `wn.draw()`) failed with "Unexpected token … Expected identifier".
+// The fix accepts `dataType` tokens as member names in dot-access positions.
+//
+// Coverage: field read/write (statement + self), method call whose name collides, use in a
+// condition and as a call argument, field read through a class-typed member, and a member
+// literally named after a built-in type keyword (`object`).
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Color { int r; }        // makes `color` lex as a dataType
+class Draw  { int n; }        // makes `draw` lex as a dataType
+
+class Thing {
+    int color;                // field name collides with class Color
+    ref Color tint;           // for chain-read through a class-typed member
+    int object;               // field name collides with the built-in `object` keyword
+
+    void setColor(int c){ self.color = c; }        // self-based write, colliding name
+    int  getColor(){ return self.color; }          // self-based read,  colliding name
+}
+
+class Win {
+    int draw(){ return 3; }   // METHOD name collides with class Draw
+}
+
+Thing tg;
+Color cx;
+Win   wn;
+
+void take(int n){ }
+
+void main(){
+    tg.color = 5;              // statement write through colliding field name
+    int a = tg.color;          // statement read
+    tg.setColor(7);            // self-based colliding write
+    int b = tg.getColor();     // self-based colliding read
+    tg.object = 9;             // field named after a built-in type keyword
+    int d = wn.draw();         // method name colliding with a type
+
+    if(tg.color == 5){ take(tg.color); }   // colliding name in a condition and an argument
+
+    tg.tint = cx;
+    tg.tint.r = 2;             // write through a class-typed member (chain)
+    int e = tg.tint.r;         // read through a class-typed member (chain)
+}

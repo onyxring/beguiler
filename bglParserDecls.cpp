@@ -945,7 +945,7 @@ grammarLine bglParser::parseGrammarLineContent(){
     };
     auto makeI6Word = [&escDictWord](const token& t) -> string {
         string e = escDictWord(t.value);
-        if(t.isPlural) return "'" + e + "/p'";
+        if(t.isPlural) return "'" + e + "//p'";   // I6 plural dictionary flag is '//p' (double slash)
         if(e.size() == 1) return "'" + e + "//'";
         return "'" + e + "'";
     };

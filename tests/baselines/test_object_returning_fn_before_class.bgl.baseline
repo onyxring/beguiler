@@ -3,13 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-
-    Constant story    = "";
-    Constant headline = "";
-
-
-    replace main _oldmain;
-
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -23,18 +16,17 @@ object bgl
   with zcode _zcode,
        bglUtil _bglutil
 ;
-class marble
-  with
-    name 'chocolate' 'covered' 'marble' 'marbles//p' 
+object w
 ;
-thing widget
-  with name 'gadget' 'gizmo' 
-;
-[main;
+[getW;
+    return w;
 ];
-
-    [main; 
-        bglInit();
-        _oldmain();
-    ];
-
+class widget
+  class object
+;
+widget g
+;
+[main x;
+    x = getw();
+    print (string)"x";
+];

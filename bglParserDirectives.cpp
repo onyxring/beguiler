@@ -592,6 +592,9 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         case chk("#i6"):{
             functionDef* func = dynamic_cast<functionDef*>(&contextObj);
             statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+            // Location of this #i6 directive (captured right after the `#i6` token, matching where
+            // the pre-scanner stamps the placeholder's src) — used to claim the correct slot.
+            sourceLocation i6DirLoc = file.currentLocation();
             // Helper: install an i6RawNode at the current context — into the function body
             // when one exists, otherwise into globals (claiming the pre-scan placeholder so
             // source order is preserved).
@@ -599,12 +602,18 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                 if(body != nullptr){
                     body->statements.push_back(node);
                 } else {
-                    // Replace the pre-scan placeholder slot with the new node so all fields
-                    // (including composite `parts`) transfer naturally.
+                    // Claim the pre-scan placeholder whose SOURCE LOCATION matches this directive.
+                    // Matching by location (not "first unclaimed") prevents an earlier-parsed #i6 —
+                    // one the pre-scanner skipped because it sat behind a `#if` whose condition was
+                    // `#define`d later in the file — from stealing this block's slot and displacing
+                    // it to the end (which silently mis-ordered raw I6 such as `#i6 replace X;`).
+                    // Fall back to appending (never first-unclaimed): the only unmatched case is a
+                    // block the pre-scanner skipped, which has no reserved slot to claim.
                     bool claimed = false;
                     for(size_t i = 0; i < languageService.globals.size(); i++){
                         if(auto* raw = dynamic_cast<i6RawNode*>(languageService.globals[i])){
-                            if(raw->isPrePassStub && raw->text == "#i6_placeholder"){
+                            if(raw->isPrePassStub && raw->text == "#i6_placeholder"
+                               && raw->src.file == i6DirLoc.file && raw->src.line == i6DirLoc.line){
                                 languageService.globals[i] = node;
                                 claimed = true;
                                 break;

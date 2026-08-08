@@ -1,0 +1,17 @@
+/* test_i6_apostrophe_comment_in_method.bgl — apostrophes in an I6 `!` line comment inside an `#i6`
+   block nested in a Beguile method body must not open a char-literal scan that swallows the block's
+   closing brace. Pre-scan getRawTextThroughClosingBrace now tracks the #i6 region and treats `!` as
+   a comment there (regression: `it's`/`don't` used to cause "Unexpected end of file"). */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Foo : object {
+    int probe() {
+        int r = 0;
+        #i6 {
+            ! lock self if it's currently free; don't touch it otherwise
+            r = 1;
+        }
+        return r;
+    }
+}
+Foo f { }
+void main(){ print(f.probe()); }

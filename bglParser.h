@@ -159,6 +159,10 @@ class bglParser {
         // The main entry point: given a file, read it in, parse it, and store it in the parse tree.
         // contentOverride applies the same in-memory-buffer semantics as preScanFile.
         bool parseFile(string filename, const std::string* contentOverride = nullptr);
+        // Names of all declared member variables whose type is a property-class (derived from the
+        // BLR via isPropertyClassType, not hardcoded). Used by the post-emission invariant guard in
+        // the driver to flag any raw `obj.member` access that skipped the read emitter.
+        std::set<string> collectPropertyClassMemberNames();
         // .inf-as-input mode: the entry file is treated as a single implicit raw-I6 region with
         // `#bgl{...}` re-entry. Authors can add Beguile features to existing I6 source incrementally
         // without converting the whole file. The Beguile Language Runtime is auto-loaded so types
@@ -296,9 +300,9 @@ class bglParser {
         // declaration into `members` and returns false.
         bool processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
                                 abstractObject* ctx = nullptr, Qualifiers* q = nullptr);
-        void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false);
+        void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false, bool isRef = false);
         void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false, string i6alias = "");
-        void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "");
+        void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "", bool isRef = false);
         void processInheritedMember(objectDef& obj, token nameTok);
         bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members
         vector<grammarLine> parseGrammarLines();
@@ -390,6 +394,23 @@ class bglParser {
         // name, returns the objectDef's `objectClass`. nullptr if `typeName` isn't a class
         // or instance type. Use anywhere dispatch needs to walk methods/operators by type.
         classDef* getDispatchClass(const string& typeName);
+        // Property-class discriminator (generic; the specifics live in the BLR). A "property-class"
+        // is an emitter class whose no-arg, non-explicit `operator()` read emitter reads through the
+        // OWNER and transforms it (body references `$self` and isn't a bare `$self`/`$val` identity —
+        // e.g. parentProp's `operator(){ parent($self) }`). Such a member must never be emitted as a
+        // raw `obj.member` property read; it must dispatch through the emitter.
+        bool isPropertyClassReadEmitter(typeMember* m);
+        bool isPropertyClassType(const string& typeName);
+        // Substitute a property-class member's `operator()` read emitter with $self = objText,
+        // returning the emitted text (e.g. `parent(<objText>)`) and, via outRetType, the emitter's
+        // return type. Returns "" when memberType isn't a property-class. Generic — no member name.
+        string applyPropertyClassRead(const string& objText, const string& memberType, string& outRetType);
+        // Fluent property-class read chain: IDENT.m1.m2… (head + >=2 members, ALL property-classes of
+        // the running type) → nested reads, e.g. `obj.parent.parent` → `parent(parent(obj))`. Peek-only
+        // until it commits; returns false (consuming nothing) if the path isn't a pure property-class
+        // read chain, letting other resolution handle it. Emission + result type via out-params.
+        bool tryConsumePropertyClassReadChain(token first, functionDef* func, statementBlock* body,
+                                              string& outEmission, string& outType);
         void applyArgConversions(vector<expression*>& args, functionDef* fd);
         // Canonicalize a parsed argument list against a resolved function signature. Performs:
         //   (1) named-argument reordering, (2) default-value fill for trailing unspecified params,

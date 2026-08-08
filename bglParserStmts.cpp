@@ -1129,7 +1129,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             pendingInjections.push_back(openNode);
             optionalChainDepth++;
         }
-        token nextPart = file.getToken(eTokenType::identifier);
+        // member name after `.` may collide (case-insensitively) with a type name, in which
+        // case the lexer classifies it as `dataType` — accept both so the member is reachable.
+        token nextPart = file.getToken({eTokenType::identifier, eTokenType::dataType});
         tok.value += "." + nextPart.value;
         // Keep originalValue in sync so loose-mode displayFunctionName preserves case
         // across the full dotted path (e.g. "RedSpell.cast", not just "RedSpell").
@@ -1425,7 +1427,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                                 if(vd->name == propName){
                                     if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
-                                    leftType = &vd->type; break;
+                                    leftType = &vd->type;
+                                    if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
+                                    break;
                                 }
                         if(leftType == nullptr) hierarchyRoot = ownerObj->objectClass;
                     }
@@ -1439,6 +1443,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         auto* vd = dynamic_cast<variableDeclaration*>(found);
                         if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
                         leftType = &vd->type;
+                        if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
                     }
                 }
             }
@@ -1461,14 +1466,18 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                             if(vd->name == lhsOriginal){
                                 if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
-                                leftType = &vd->type; break;
+                                leftType = &vd->type;
+                                if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
+                                break;
                             }
                 if(leftType == nullptr && currentClass != nullptr)
                     for(typeMember* m : currentClass->members)
                         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                             if(vd->name == lhsOriginal){
                                 if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
-                                leftType = &vd->type; break;
+                                leftType = &vd->type;
+                                if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
+                                break;
                             }
             }
             if(leftType == nullptr)
@@ -1851,6 +1860,19 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                    && dynamic_cast<objectDef*>(&languageService.getType(q)))
                     objectPath = q;
             }
+            // Emission path: same as objectPath but with the HEAD alias-resolved to its I6 name
+            // (e.g. `orLibUtil` → `util`), for a multi-hop receiver that doesn't collapse to a single
+            // object above. objectPath itself stays the Beguile path so resolvePathType still works;
+            // emitObjectPath drives $self/$val/functionName so emission uses the I6 name. Mirrors the
+            // expression walk, which emits `util.orlooparray.getNext(...)`.
+            string emitObjectPath = objectPath;
+            if(objectPath.find('.') != string::npos){
+                size_t hd = objectPath.find('.');
+                string head = objectPath.substr(0, hd);
+                string qh = qualifyIdentifier(head, func, body);
+                if(!qh.empty() && qh != head && qh.find('(') == string::npos && qh.find('.') == string::npos)
+                    emitObjectPath = qh + objectPath.substr(hd);
+            }
             string objectName = objectPath;  // kept for backward compat in non-emitter emit path
             // Pass memberHint=methodName so the resolver disambiguates a name collision in favor
             // of whichever candidate's type actually exposes the method.
@@ -1863,9 +1885,14 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             // Compute $self and $prop for emitter substitution.
             // For literals, $self is the raw literal text (e.g. "hello", 42, 'x'), not the path.
             size_t innerDot = objectPath.rfind('.');
+            // $self defaults to the FULL receiver path — the object the method is invoked on
+            // (e.g. `orLibUtil.orArray.set(...)` → $self = `orLibUtil.orArray`). Literals use their
+            // raw text. Only the word-array member dual-dispatch (obj.prop) wants the pre-dot owner,
+            // and it overrides selfValue below (isMemberArr). Previously this split off the last hop
+            // unconditionally, which mis-set $self to the owner for namespace-sub-object receivers.
             string selfValue = (!literalSelfText.empty() && innerDot == string::npos)
                               ? literalSelfText
-                              : (innerDot == string::npos) ? objectPath : objectPath.substr(0, innerDot);
+                              : emitObjectPath;
             string propValue = (innerDot == string::npos)
                 ? (isWordArrayType(objectType) ? "0" : "<$prop undefined>")
                 : objectPath.substr(innerDot + 1);
@@ -1875,7 +1902,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             string memOwner, memProp;
             bool isMemberArr = false;
             if(isWordArrayType(objectType)){
-                if(innerDot != string::npos){ memOwner = selfValue; memProp = propValue; isMemberArr = true; }
+                // Member word array `obj.prop`: dual-dispatch wants $self = owner, $prop = prop.
+                // (selfValue now defaults to the full path, so split the owner off explicitly.)
+                if(innerDot != string::npos){ memOwner = objectPath.substr(0, innerDot); memProp = propValue; isMemberArr = true; }
                 else isMemberArr = splitQualifiedMember(objectPath, func, body, memOwner, memProp);
             }
             // Receiver type can be a classDef OR an objectDef (each unclassed objectDef has its
@@ -1927,7 +1956,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 // carry a mangled i6name (assigned by mangleOverloadSetForReceiver in bindMethodCall);
                 // otherwise use the method name. Emitters are handled separately below (inlined body).
                 if(!method->isEmitter)
-                    callStmt.functionName = objectPath + "." + (method->i6name.empty() ? methodName : method->i6name);
+                    callStmt.functionName = emitObjectPath + "." + (method->i6name.empty() ? methodName : method->i6name);
                 // if emitter, pre-substitute $self, $prop, and $class
                 if(method->isEmitter)
                     if(auto* blk = dynamic_cast<i6Block*>(method->body)){
@@ -1938,7 +1967,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         // leaves $selfsub untouched if $self runs first (it was emitted literally).
                         b = replaceWord(b, "$selfsub", selfValue + "sub");
                         b = replaceWord(b, "$self", selfValue);
-                        b = replaceWord(b, "$val",  objectPath);
+                        // $val generic (receiver-value) substitution — skip when a parameter is
+                        // named `val`, so the emission-time param substitution ($val → arg) wins.
+                        // Mirrors the $prop/hasPropParam guard below (e.g. orArray.set(...,var val)).
+                        bool hasValParam = false;
+                        for(paramDef* p : method->params) if(p->name == "val"){ hasValParam = true; break; }
+                        if(!hasValParam)
+                            b = replaceWord(b, "$val",  emitObjectPath);
                         // $class — declared receiver type (ignores multiple inheritance).
                         // Resolves to the variable's static type, not the type that owns the
                         // inherited emitter. Powers class-message I6 emission from mixins.
@@ -1991,7 +2026,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             // After ')' the lexer returns '.method' as a dictionaryWord; after an identifier it returns '.' + identifier separately.
             token chainMember;
             if(chainTok.is(token::period))
-                chainMember = file.getToken(eTokenType::identifier);
+                // method name may collide with a type name → accept dataType too.
+                chainMember = file.getToken({eTokenType::identifier, eTokenType::dataType});
             else
                 chainMember = chainTok;  // dictionaryWord already holds the method name
             file.getToken(token::parenOpen);

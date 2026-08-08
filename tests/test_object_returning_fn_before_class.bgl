@@ -1,0 +1,11 @@
+/* test_object_returning_fn_before_class.bgl — an object-returning global function declared BEFORE a
+   class must not confuse the pre-scanner's object-decl branch. Regression: `object getW(){…}` was
+   mis-registered as an object INSTANCE (the pre-scan `object`-decl branch fired on the `object`
+   keyword regardless of a following `(`), which emitted a spurious `object getw;` and broke the
+   next class declaration ("Near 'class': expected type name"). */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+object w { }
+object getW(){ return w; }        // object-returning function, immediately before a class
+class Widget : object { }
+Widget g { }
+void main(){ object x = getW(); print("x"); }

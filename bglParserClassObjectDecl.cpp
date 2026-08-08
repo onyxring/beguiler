@@ -568,6 +568,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(isMemberConst) varDef.isConst = true;
             varDef.isStatic = isMemberStatic;
             if(q.isTypeSealed) varDef.isTypeSealed = true;
+            varDef.isRefLocal = q.isRef;   // `ref` member: assignments are pointer-copy (opt out of operator=)
             // A subclass re-declaring a base member that was marked `typesealed` keeps the sealed
             // type (and gets a warning) — mirrors the object-instance rule in processMemberVariable.
             {
@@ -1054,12 +1055,13 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
 }
 
 
-void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace, string i6alias){
+void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace, string i6alias, bool isRef){
     variableDeclaration& prop = *(new variableDeclaration());
     prop.name = name;
     prop.i6name = i6alias;  // `Type member as <i6name>;` — emitted I6 property short-name (empty = use Beguile name)
     prop.src = file.currentLocation();
     prop.type = languageService.getType(typeName);
+    prop.isRefLocal = isRef;  // `ref` member: assignments are pointer-copy (opt out of operator= dispatch)
     // Type-sealed inherited member: if a base class marked this member `typesealed`, the slot type is
     // locked — a re-typed declaration keeps the sealed type (and warns). This lets `object parent =
     // <room>` initialize the inherited `parentProp parent` (so `self.parent = X` later dispatches to
@@ -1112,7 +1114,7 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
 }
 
 
-void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace){
+void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace, bool isRef){
     token propName = file.getToken(eTokenType::identifier);
     if(propName.is("operator")){
         token opTok = file.getToken();
@@ -1226,7 +1228,7 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
     if(sym.is(token::parenOpen))
         processMemberMethod(obj, typeTok, propName, isReplace, i6alias);
     else
-        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment), isReplace, i6alias);
+        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment), isReplace, i6alias, isRef);
 }
 
 
@@ -1726,7 +1728,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
         } else if(tok.value == "array")
             processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q);
         else if(tok.isDataType())
-            processTypedMember(newObj, tok, memberIsReplace);
+            processTypedMember(newObj, tok, memberIsReplace, q.isRef);
         else if(tok.is(eTokenType::identifier))
             processInheritedMember(newObj, tok);
         else
@@ -1917,7 +1919,7 @@ bool bglParser::processObjectExtension(token nameTok){
                 token op = file.getToken();
                 processExtendCompoundAssignment(*obj, memberName, op.value, vod, extendBlockPriority);
             } else {
-                processTypedMember(*obj, tok, memberIsReplace);
+                processTypedMember(*obj, tok, memberIsReplace, q.isRef);
             }
         }
         else if(tok.is(eTokenType::identifier)){

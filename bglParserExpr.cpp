@@ -50,6 +50,74 @@ using namespace std;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Substitute a property-class member's operator() read emitter — see bglParser.h. Generic:
+// works for any property-class (parentProp, etc.); the emitter body lives in the BLR.
+string bglParser::applyPropertyClassRead(const string& objText, const string& memberType, string& outRetType){
+    outRetType = "";
+    classDef* cls = getDispatchClass(memberType);
+    if(cls == nullptr || !cls->isEmitterClass) return "";
+    typeMember* found = findMemberInHierarchy(cls, [this](typeMember* m){ return isPropertyClassReadEmitter(m); });
+    if(found == nullptr) return "";
+    auto* fn = dynamic_cast<functionDef*>(found);
+    auto* blk = dynamic_cast<i6Block*>(fn->body);
+    string b = processBglConditionals(blk->i6Body);
+    { size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+      size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1); }
+    if(b.empty()) return "";
+    b = i6Emitter::replaceWord(b, "$self", objText);
+    b = i6Emitter::replaceWord(b, "$val",  objText);
+    outRetType = fn->returnType.name;
+    return b;
+}
+
+// Fluent property-class read chain (IDENT.m1.m2… → nested reads). See bglParser.h. Peek-only until
+// it commits; consumes the chain tokens and returns true only when the whole member path is
+// property-class reads. Generic — the member set comes from the BLR-defined property-classes.
+bool bglParser::tryConsumePropertyClassReadChain(token first, functionDef* func, statementBlock* body,
+                                                 string& outEmission, string& outType){
+    if(!first.is(eTokenType::identifier)) return false;
+    if(!file.peekToken(1).is(token::period)) return false;
+    // Collect the dotted path via peek (no consumption yet), mirroring tryConsumeNamespacedEnumValue.
+    vector<string> segments; segments.push_back(first.value);
+    int peekIdx = 1;
+    while(file.peekToken(peekIdx).is(token::period)){
+        token seg = file.peekToken(peekIdx + 1);
+        if(!seg.is(eTokenType::identifier)) break;
+        // A method call (seg followed by '(') isn't a property-class read member — stop before it.
+        if(file.peekToken(peekIdx + 2).is(token::parenOpen)) break;
+        segments.push_back(seg.value);
+        peekIdx += 2;
+    }
+    // Need head + at least TWO member reads (grandparent or deeper). A single read (obj.parent) is
+    // already handled by the well-tested property-access branch — don't disturb it here.
+    if(segments.size() < 3) return false;
+    string accumType = resolveIdentifierType(first.value, func, body);
+    if(accumType.empty()) return false;
+    string accumText = (func != nullptr) ? qualifyIdentifier(first.value, func, body) : first.value;
+    if(accumText.empty()) accumText = first.value;
+    for(size_t i = 1; i < segments.size(); i++){
+        classDef* cls = getDispatchClass(accumType);
+        if(cls == nullptr) return false;
+        typeMember* mem = findMemberInHierarchy(cls, [&](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            return vd != nullptr && vd->name == segments[i];
+        });
+        if(mem == nullptr) return false;
+        string memberType = dynamic_cast<variableDeclaration*>(mem)->type.name;
+        if(!isPropertyClassType(memberType)) return false;   // every member segment must be a property-class read
+        string ret; string read = applyPropertyClassRead(accumText, memberType, ret);
+        if(read.empty()) return false;
+        accumText = read;
+        accumType = ret;
+    }
+    // Commit: consume the chain tokens (periods + member identifiers) after `first`.
+    int toConsume = 2 * (int)(segments.size() - 1);
+    for(int k = 0; k < toConsume; k++) file.getToken();
+    outEmission = accumText;
+    outType = accumType;
+    return true;
+}
+
 // ===============================================================================
 // parseLambdaExpr - lift lambda expression to a global functionDef
 // ===============================================================================
@@ -834,42 +902,17 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     // Only a non-identity, owner-based accessor is valid on a bare member read; identity/value
     // conversions must fire only at explicit cast sites. Excluding a bare `$self`/`$val`
     // identity is always safe: the raw read already yields the same value.
-    auto isPropClassReadEmitter = [](typeMember* m) -> bool {
-        auto* fn = dynamic_cast<functionDef*>(m);
-        if(!(fn && fn->name == "operator()" && fn->params.empty()
-             && fn->isEmitter && !fn->isExplicit)) return false;
-        auto* blk = dynamic_cast<i6Block*>(fn->body);
-        if(blk == nullptr) return false;
-        string t = blk->i6Body;
-        { size_t s = t.find_first_not_of(" \t\n\r"); if(s != string::npos) t = t.substr(s); else t.clear();
-          size_t e = t.find_last_not_of(" \t\n\r;"); if(e != string::npos) t = t.substr(0, e+1); }
-        return t != "$self" && t != "$val" && t.find("$self") != string::npos;
+    auto isPropClassReadEmitter = [this](typeMember* m) -> bool {
+        return isPropertyClassReadEmitter(m);   // shared discriminator (bglParserTypes.cpp)
     };
 
     // Read-emitter helper. When reading `obj.member` and the member's declared type is a
-    // property-class (per isPropClassReadEmitter), substitute that operator() body with
-    // $self = objText so the read dispatches through the BLR emitter instead of emitting a raw
-    // property read. Keeps property-class reads (parent, etc.) driven by the emitter
-    // definition, not special-cased in the compiler. `outRetType` receives the emitter's
-    // return type. Returns the substituted text, or "" when the member is not a property-class.
-    auto applyReadEmitter = [&](const string& objText, const string& memberType,
-                                string& outRetType) -> string {
-        outRetType = "";
-        if(memberType.empty()) return "";
-        classDef* cls = getDispatchClass(memberType);
-        if(cls == nullptr || !cls->isEmitterClass) return "";
-        typeMember* found = findMemberInHierarchy(cls, isPropClassReadEmitter);
-        if(found == nullptr) return "";
-        auto* fn = dynamic_cast<functionDef*>(found);
-        auto* blk = dynamic_cast<i6Block*>(fn->body);
-        string b = processBglConditionals(blk->i6Body);
-        { size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
-          size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1); }
-        if(b.empty()) return "";
-        b = i6Emitter::replaceWord(b, "$self", objText);
-        b = i6Emitter::replaceWord(b, "$val",  objText);
-        outRetType = fn->returnType.name;
-        return b;
+    // property-class, substitute that operator() body with $self = objText so the read dispatches
+    // through the BLR emitter instead of a raw property read. Delegates to the shared method
+    // (bglParserExpr.cpp:applyPropertyClassRead) so the same logic serves the chain resolver.
+    auto applyReadEmitter = [this](const string& objText, const string& memberType,
+                                   string& outRetType) -> string {
+        return applyPropertyClassRead(objText, memberType, outRetType);
     };
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1015,6 +1058,18 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 castType = "";
                 cur = getNext();
                 continue;
+            }
+            // Fluent property-class read chain: `obj.parent.parent` → `parent(parent(obj))`. Tried
+            // BEFORE the namespace-enum resolver (which would otherwise mis-read the 3+ segment path
+            // and error "'parent' is not a member of 'obj.parent'"). Only fires for pure property-class
+            // read chains of >=2 members; anything else defers (consumes nothing).
+            {   string pcEmission, pcType;
+                if(tryConsumePropertyClassReadChain(cur, func, body, pcEmission, pcType)){
+                    if(expr->resolvedType.empty()) expr->resolvedType = pcType;
+                    expr->tokens.push_back(pcEmission);
+                    cur = getNext();
+                    continue;
+                }
             }
             // Namespaced enum value: bgl.glulx.winPlacement.above — resolve the prefix as a
             // namespace-scoped type, then bind the tail segment as one of the enum's named values.
@@ -1233,7 +1288,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 while(true){
                     string nullTest = getNullTest(nullTestFn, optTemp);
                     injText += " if (" + nullTest + ") {";
-                    token member = file.getToken(eTokenType::identifier);
+                    // member name may be a `dataType` token if it collides with a type name — accept both.
+                    token member = file.getToken({eTokenType::identifier, eTokenType::dataType});
                     token afterMember = getNext();
                     if(afterMember.is(token::parenOpen)){
                         // ?.method(args) — find method, inline emitter or call
@@ -1301,7 +1357,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         continue; // next chain step
                     } else if(afterMember.is(token::period)){
                         // Regular dot after optional chain: ?.parent().name — non-guarded step
-                        token nextMember = file.getToken(eTokenType::identifier);
+                        // (member name may collide with a type name → accept dataType too).
+                        token nextMember = file.getToken({eTokenType::identifier, eTokenType::dataType});
                         token afterNext = getNext();
                         if(afterNext.is(token::parenOpen)){
                             // .method(args) — build as non-guarded call
@@ -1377,7 +1434,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             }
             // ── name.member: dot-access (property, method call, enum, static) ──
             else if(next.is(token::period)){
-                token member = file.getToken(eTokenType::identifier);
+                // A member name after `.` is always an identifier in this position, but the
+                // lexer classifies it as `dataType` when it collides (case-insensitively) with
+                // a declared type name (e.g. member `color` when a class `Color` exists, or a
+                // member literally named `object`). Accept both so such members are reachable.
+                token member = file.getToken({eTokenType::identifier, eTokenType::dataType});
                 // Read afterMember here so both self and non-self paths share it.
                 // For the self property-access case, put it back via prefetched.
                 token afterMember = getNext();
@@ -1410,14 +1471,24 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             if(found) memberType = dynamic_cast<variableDeclaration*>(found)->type.name;
                         }
                     }
-                    if(expr->resolvedType.empty() && !memberType.empty()) expr->resolvedType = memberType;
                     // Inside a lambda: qualify 'self' through capture if needed
                     string selfText = "self";
                     if(lambdaOuterFunc != nullptr){
                         string qualified = qualifyIdentifier("self", func, body);
                         if(!qualified.empty()) selfText = qualified;
                     }
-                    expr->tokens.push_back(selfText + "." + member.value);
+                    // Property-class read: if the member's type exposes an owner-based operator()
+                    // read emitter (parentProp → parent($self)), dispatch through it — mirrors the
+                    // non-self property-access path. Without this, `self.parent` emitted a raw
+                    // property read (reading a non-existent I6 property).
+                    string accessText = selfText + "." + member.value;
+                    {
+                        string readRet;
+                        string readText = applyReadEmitter(selfText, memberType, readRet);
+                        if(!readText.empty()){ accessText = readText; if(!readRet.empty()) memberType = readRet; }
+                    }
+                    if(expr->resolvedType.empty() && !memberType.empty()) expr->resolvedType = memberType;
+                    expr->tokens.push_back(accessText);
                     // Capture host for $self substitution in rvalue property-class operators
                     // (mirrors the non-self property-access path).
                     expr->emitterSelf = selfText;
@@ -2073,7 +2144,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 else
                     w += ch;
             }
-            string i6form = cur.isPlural ? ("'" + w + "/p'")
+            string i6form = cur.isPlural ? ("'" + w + "//p'")   // I6 plural dictionary flag is '//p'
                                          : (w.size() == 1) ? ("'" + w + "//'") : ("'" + w + "'");
             expr->tokens.push_back(i6form);
         }
@@ -2089,9 +2160,50 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         // ─── DOT CHAINING on resolved expression: .method() or .property ─
         else if(cur.value == "." && !expr->tokens.empty() && !expr->resolvedType.empty()){
             // Chained method call on result of prior expression: <expr>.method(args)
-            token member = file.getToken(eTokenType::identifier);
+            // (member name may collide with a type name → accept dataType too).
+            token member = file.getToken({eTokenType::identifier, eTokenType::dataType});
             token afterMember = getNext();
             if(!afterMember.is(token::parenOpen)){
+                // Property-class read off a COMPUTED expression (e.g. `getObj().parent`, or a further
+                // `.parent` off a prior read): dispatch through the read emitter with $self = the
+                // accumulated expression text, instead of emitting a raw `<expr>.member` property read.
+                {
+                    classDef* rcls = getDispatchClass(expr->resolvedType);
+                    typeMember* pm = rcls ? findMemberInHierarchy(rcls, [&](typeMember* m){
+                        auto* vd = dynamic_cast<variableDeclaration*>(m);
+                        return vd != nullptr && vd->name == member.value;
+                    }) : nullptr;
+                    string mtype = pm ? dynamic_cast<variableDeclaration*>(pm)->type.name : "";
+                    if(!mtype.empty() && isPropertyClassType(mtype)){
+                        string selfText; for(const auto& t : expr->tokens) selfText += t;
+                        string ret; string read = applyPropertyClassRead(selfText, mtype, ret);
+                        if(!read.empty()){
+                            expr->tokens.clear();
+                            expr->tokens.push_back(read);
+                            if(!ret.empty()) expr->resolvedType = ret;
+                            prefetched = afterMember;   // keep chaining (.parent.parent, or a following .method())
+                            cur = getNext();
+                            continue;
+                        }
+                    }
+                    // Plain field read through a class-typed member: `<expr>.field` where `field`
+                    // is a declared variableDeclaration member of the receiver's class. Append the
+                    // raw property read and retype to the field's type so further chaining works.
+                    // This MUST NOT fall through to the `cur = member` re-process path below, which
+                    // would run identifier resolution on the bare field name and — if that name is
+                    // also a member of the *enclosing* class — wrongly prepend `self.` (yielding
+                    // `self.next.self.id` instead of `self.next.id`).
+                    if(pm != nullptr){
+                        expr->tokens.push_back("." + member.value);
+                        expr->resolvedType = mtype;
+                        // A property-class member reached later off this field needs the accumulated
+                        // path as its `$self`; refresh emitterSelf to the full receiver text.
+                        { string acc; for(const auto& t : expr->tokens) acc += t; expr->emitterSelf = acc; }
+                        prefetched = afterMember;   // keep chaining (.field.field, or a following .method())
+                        cur = getNext();
+                        continue;
+                    }
+                }
                 // Not a method call (e.g. struct member) — emit '.' and re-process member
                 prefetched = afterMember;
                 expr->tokens.push_back(".");

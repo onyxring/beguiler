@@ -1,3 +1,5 @@
+> **Note:* This is the first project I've run where I've coordinated with AI, so I want to be clear: this document, was created in collaboration with an LLM.  I've reviewed the output, and adjusted the language for clarity, but the starting point was AI-generated.  If you'd prefer a document written solely by a human, consider the "Beguile for the I6 Developer" document, which was entirely human authored (by me).*
+
 # Beguile Language Specification
 
 ## Table of Contents

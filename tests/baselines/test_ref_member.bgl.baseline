@@ -1,0 +1,47 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+class payload
+  with
+    a,
+    b
+;
+class node
+  with
+    id,
+    next,
+    load,
+    link[n p;
+        self.next = n;
+        self.load = p;
+    ],
+    nextId[;
+        return self.next.id;
+    ]
+;
+node n1;
+node n2;
+payload pl;
+[main x y;
+    n1.id = 1;
+    n2.id = 2;
+    pl.a = 10;
+    n1.link(n2, pl);
+    x=n1.nextid();
+    y=n1.load.a;
+];

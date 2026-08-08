@@ -1,5 +1,7 @@
 #once
-#include <glulx>
+// The glulx core (bgl.asm, the bgl.glulx / _glulx namespace, opcodes) auto-loads on TARGET_GLULX via
+// __beguileCore — no import needed for it. This extension is the heavier, opt-in footprint that DOES
+// require an explicit `#include <glulxWindow>`.
 /* Extend the bgl.glulx namespace object to include all the stuff we are declaring in this file;
     _glulx is object backing for bgl.glulx, so that what we extend.
 */
@@ -53,7 +55,8 @@ _glulxWindowSize _getImageInfo(int imgId){
 class _glulxWindow{
     int id;
     eGlulxWindowType winType;
-    _glulxWindow parentWin;
+    ref _glulxWindow parentWin;   // a REFERENCE to the parent window, not an owned copy (a value copy
+                                  // of a self-referential member would recurse infinitely in operator=)
     bGlulxWindowMethodFlags winMethod;
     
     _glulxWindow operator = (_glulxWindow w){ 
@@ -93,7 +96,7 @@ class _glulxWindow{
         // assignments to plain int locals.
         if(width == 0 && height == 0){ width = -1; height = -1; }
         if(width == 0 || height == 0 || width == -1 || height == -1){
-            _glulxWindowSize info = _getImageInfo(imgId);
+            ref _glulxWindowSize info = _getImageInfo(imgId);   // aliases the shared _tmpWindowSize (no copy)
             if(width==0)   width = (info.width * height) / info.height;
             if(height == 0)   height = (info.height * width) / info.width;
             if(width==-1)  width = info.width;

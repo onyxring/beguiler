@@ -399,6 +399,53 @@ bool beguiler::go(int argc, char* argv[]) {
     }
 
     if(writeFile(settings.tmpFile)) return true;
+
+    // ── property-class dispatch invariant (generic; forbidden names derived from the BLR) ────────
+    // A property-class member (e.g. parentProp `parent`) reads through its `operator()` emitter, so
+    // a raw `obj.member` property access for one is NEVER valid emitted I6 — it reads a non-existent
+    // property at runtime. Its presence means the read failed to dispatch (an unsupported context —
+    // chaining off a call result `getObj().parent`, a grandparent chain `x.parent.parent`, or a
+    // method on the read `x.parent.method()`). Fail the compile rather than ship broken code. The
+    // set of member names to guard comes from the parsed types (collectPropertyClassMemberNames),
+    // NOT a hardcoded list — any property-class defined in the BLR is covered automatically. Scans
+    // emitted code only, skipping string literals and `!` comments.
+    {
+        std::set<std::string> propMembers = parser.collectPropertyClassMemberNames();
+        if(!propMembers.empty()){
+            std::ifstream vin(settings.tmpFile);
+            std::string vline; int vno = 0; bool rawFound = false;
+            while(std::getline(vin, vline)){
+                vno++;
+                bool inStr = false, inChar = false;
+                for(size_t i = 0; i < vline.size(); i++){
+                    char c = vline[i];
+                    if(inStr){ if(c=='"') inStr = false; continue; }
+                    if(inChar){ if(c=='\'') inChar = false; continue; }
+                    if(c=='"'){ inStr = true; continue; }
+                    if(c=='\''){ inChar = true; continue; }
+                    if(c=='!') break;   // rest of line is an I6 comment
+                    if(c=='.' && i>0
+                       && (isalnum((unsigned char)vline[i-1]) || vline[i-1]=='_' || vline[i-1]==')')){
+                        size_t j = i + 1;
+                        while(j < vline.size() && (isalnum((unsigned char)vline[j]) || vline[j]=='_')) j++;
+                        std::string name = vline.substr(i + 1, j - (i + 1));
+                        if(propMembers.count(name)){
+                            std::cerr << "ERROR: raw '." << name << "' property access emitted at "
+                                      << settings.tmpFile << ":" << vno << " — the property-class member '"
+                                      << name << "' did not dispatch through its read emitter. This is an "
+                                      << "unsupported context (e.g. `getObj()." << name << "`, `x." << name
+                                      << "." << name << "`, or a method on the read). Read it into an "
+                                      << "intermediate local first, or report the compiler gap." << std::endl;
+                            std::cerr << "  > " << vline << std::endl;
+                            rawFound = true;
+                        }
+                    }
+                }
+            }
+            if(rawFound) return true;
+        }
+    }
+
     if(settings.debugMode){
         emitter.writeDebugBundle(settings.inFile + ".bgldbg");
     }

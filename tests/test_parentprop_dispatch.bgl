@@ -22,8 +22,11 @@ class Room : object { }
 Room room1 { }
 Room room2 { }
 object w { parent = room1; int capacity = 4; }
+object other { parent = room2; }
 
 void sink(object o){ }
+object getW(){ return w; }   // object-returning global function BEFORE a class decl (regression:
+                             // this once tripped a pre-scan bug that mis-registered it as an object)
 
 bool localCheck(object o){
     if (o.parent == room1) rtrue;      // local-param compare  → parent(o) == room1
@@ -31,13 +34,43 @@ bool localCheck(object o){
     rfalse;
 }
 
+// `self.parent` inside an object method must dispatch through the emitter too (parent(self)),
+// including inside &&/|| chains — not a raw `self.parent` property read.
+class Widget : object {
+    bool inRoom(int flag){
+        if (self.parent == room1) rtrue;                 // self compare        → parent(self) == room1
+        if (flag == 1 && self.parent == room2) rtrue;    // self in &&-chain    → parent(self) == room2
+        sink(self.parent);                               // self read as arg    → sink(parent(self))
+        rfalse;
+    }
+    // Grandparent chain off self dispatches at each hop → parent(parent(self)).
+    object grandparent(){ return self.parent.parent; }
+}
+Widget gadget { parent = room1; }
+
 void main(){
     object p;
     int q;
-    w.parent = room2;                  // assignment → move w to room2
-    p = w.parent;                      // bare read  → p = parent(w)
-    if (w.parent == room1) p = room1;  // compare == → parent(w) == room1
-    if (w.parent != room1) p = room2;  // compare != → parent(w) ~= room1
-    q = w.capacity;                    // int member → raw w.capacity (value type, not dispatched)
+    w.parent = room2;                          // assignment → move w to room2
+    p = w.parent;                              // bare read  → p = parent(w)
+    if (w.parent == room1) p = room1;          // compare == → parent(w) == room1
+    if (w.parent != room1) p = room2;          // compare != → parent(w) ~= room1
+    q = w.capacity;                            // int member → raw w.capacity (value type, NOT dispatched)
+    if (w.parent == other.parent) p = room1;   // two parents → parent(w) == parent(other)
+    if (w.parent == room1 || other.parent != room2) p = room2;  // in ||-chain
+    p = (w.parent == room1) ? room1 : room2;   // ternary condition
+    switch (w.parent) { case room1: p = room2; }  // switch on parent
+    sink(w.parent);                            // as argument → sink(parent(w))
+    if (w.parent == null) p = room1;           // null compare → parent(w) == nothing
+    p = w.parent.parent;                        // grandparent chain → parent(parent(w))
+    p = w.parent.parent.parent;                 // great-grandparent → parent(parent(parent(w)))
+    if (w.parent.parent == room1) p = room2;    // grandparent in a compare
+    p = getW().parent;                          // read off a call result → parent(getw())
+    p = getW().parent.parent;                   // call result + grandparent → parent(parent(getw()))
+    if (getW().parent == room1) p = room2;      // call-result read in a compare
+    if (w.parent.is(Room)) p = room1;           // method on parent read → (parent(w) ofclass Room)
+    if (getW().parent.is(Room)) p = room2;      // method on call-result parent read
     localCheck(w);
+    if (gadget.inRoom(1)) p = room1;   // exercises self.parent (read/compare/&&) inside a method
+    sink(gadget.grandparent());        // exercises self.parent.parent inside a method
 }

@@ -1,0 +1,55 @@
+// test_ref_member.bgl — `ref` qualifier on a CLASS/OBJECT MEMBER opts that member into
+// pointer-alias semantics (mirrors `ref` on locals, see test_ref_local.bgl).
+//
+// Motivating case: a self-referential member (a node that points at another node of the
+// same class). A value member would require operator= to copy it, and a value copy of a
+// self-referential field recurses forever. `ref` makes the member a bare pointer slot:
+//   - Assignment to the member is plain pointer-alias (no operator= dispatch).
+//   - The member type may be the enclosing class itself (self-reference) or any class.
+//
+// Coverage:
+//   - Self-referential ref member (Node.next : Node).
+//   - ref member of a different plain class with no operator=.
+//   - Assignment to a ref member from inside a method (self.next = n).
+//   - Field read THROUGH a class-typed member, both self-based (self.next.id) and
+//     off an external instance (n1.load.a) — exercises the member-chain read fix.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// Plain value class with no operator= — used as a ref member below so no copy is needed.
+class Payload {
+    int a;
+    int b;
+}
+
+class Node {
+    int id;
+    ref Node next;        // self-referential: a pointer to another Node (no copy)
+    ref Payload load;     // ref to a plain class with no operator= (no copy)
+
+    // Assign to ref members from a method body — must emit pointer-copy, not operator=.
+    void link(Node n, Payload p){
+        self.next = n;
+        self.load = p;
+    }
+    // Self-based field read through a class-typed member. Must emit `self.next.id`, NOT the
+    // once-broken `self.next.self.id` (the field name was being re-qualified as an owner member).
+    int nextId(){ return self.next.id; }
+}
+
+Node n1;
+Node n2;
+Payload pl;
+
+void main(){
+    n1.id = 1;
+    n2.id = 2;
+    pl.a = 10;
+    n1.link(n2, pl);           // ref members set to alias n2 / pl (pointer-copy, no operator=)
+    int x = n1.nextId();       // self-based chain read through a ref member (= n2.id)
+    int y = n1.load.a;         // external-instance chain read through a ref member (= pl.a)
+}

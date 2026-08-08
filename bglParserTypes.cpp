@@ -1554,6 +1554,42 @@ classDef* bglParser::getDispatchClass(const string& typeName){
     return nullptr;
 }
 
+// Property-class discriminator — see the declaration in bglParser.h. The rule is generic and the
+// specifics (the actual `operator()` body) live in the BLR: a property accessor reads through the
+// OWNER and TRANSFORMS it ($self, non-identity), vs a value conversion ($val / bare $self / empty).
+bool bglParser::isPropertyClassReadEmitter(typeMember* m){
+    auto* fn = dynamic_cast<functionDef*>(m);
+    if(!(fn && fn->name == "operator()" && fn->params.empty()
+         && fn->isEmitter && !fn->isExplicit)) return false;
+    auto* blk = dynamic_cast<i6Block*>(fn->body);
+    if(blk == nullptr) return false;
+    string t = blk->i6Body;
+    { size_t s = t.find_first_not_of(" \t\n\r"); if(s != string::npos) t = t.substr(s); else t.clear();
+      size_t e = t.find_last_not_of(" \t\n\r;"); if(e != string::npos) t = t.substr(0, e+1); }
+    return t != "$self" && t != "$val" && t.find("$self") != string::npos;
+}
+
+bool bglParser::isPropertyClassType(const string& typeName){
+    classDef* cls = getDispatchClass(typeName);
+    if(cls == nullptr || !cls->isEmitterClass) return false;
+    return findMemberInHierarchy(cls, [this](typeMember* m){ return isPropertyClassReadEmitter(m); }) != nullptr;
+}
+
+std::set<string> bglParser::collectPropertyClassMemberNames(){
+    std::set<string> names;
+    auto scanMembers = [&](const vector<typeMember*>& members){
+        for(typeMember* m : members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(isPropertyClassType(vd->type.name))
+                    names.insert(vd->name);
+    };
+    for(typeDef* g : languageService.objectTypes)
+        if(auto* cd = dynamic_cast<classDef*>(g)) scanMembers(cd->members);
+    for(typeDef* g : languageService.objectInstances)
+        if(auto* od = dynamic_cast<objectDef*>(g)) scanMembers(od->members);
+    return names;
+}
+
 
 // ===============================================================================
 // Type compatibility and arg conversion
@@ -1642,7 +1678,12 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
                 auto* fn = dynamic_cast<functionDef*>(m);
                 if(!(fn && fn->name == "=" && !fn->params.empty())) return false;
                 classDef* parCls = getDispatchClass(fn->params[0]->type.name);
-                if(!parCls || parCls == argClsOp) return false;
+                if(!parCls) return false;
+                // arg's dispatch class IS the operator= param class. The exact-match check above
+                // compares type NAMES, so it misses an instance whose type name differs from its
+                // class name — e.g. a bare objectDef `m` (type "m", class `object`) into
+                // `operator=(object)`. Accept it here by class identity.
+                if(parCls == argClsOp) return true;
                 std::function<bool(classDef*)> inh = [&](classDef* c) -> bool {
                     for(classDef* b : c->baseClasses) if(b == parCls || inh(b)) return true;
                     return false;
@@ -2164,6 +2205,10 @@ bool bglParser::tryConsumeNamespacedEnumValue(token first, string& outFlatEmissi
             // segment (followed by a call). Hand off to normal expression handling — that's
             // already wired to dispatch namespace-method calls.
             if(foundMethod) return false;
+            // A property-class member (e.g. parentProp `parent`) means this is a property-read
+            // chain (`obj.parent.parent`, `obj.parent.method()`), not a namespace path — defer to
+            // the read-emitter / dot-chaining handlers rather than mis-reading it as a namespace.
+            if(foundMember && isPropertyClassType(foundMember->type.name)) return false;
             if(!foundMember)
                 parsingError(format("'{0}' is not a member of '{1}'", segments[i], prefixSoFar));
             // If this is an alias member, the next segment should be an enum value — stop walking.
