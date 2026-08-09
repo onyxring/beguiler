@@ -40,12 +40,16 @@ for src in "$SCRIPT_DIR"/test_*.bgl "$SCRIPT_DIR"/test_*.inf; do
     case "$src" in *.transpiled.inf) continue;; esac
 
     name=$(basename "$src")          # full filename; baselines key off this
-    inf="${src}.transpiled.inf"
-    cleanup() { rm -f "$inf" "${src}.bgldbg" "${src}.transpiled.inf.dbg" "${src}.transpiled.inf.map" "${src}.transpiled.inf.bgldbg"; }
+    # The compiler now writes the transpiled .inf and all debug artifacts into the output
+    # directory (outputPath defaults to "output" relative to the source), not beside the source.
+    inf="$OUTPUT_DIR/${name}.transpiled.inf"
+    cleanup() { rm -f "$inf" "$OUTPUT_DIR/${name}.bgldbg" "$OUTPUT_DIR/${name}.transpiled.inf.dbg" "$OUTPUT_DIR/${name}.transpiled.inf.map" "$OUTPUT_DIR/${name}.transpiled.inf.bgldbg"; }
 
-    # Compile
+    # Compile. Force the output directory with -o (overrides each fixture's own
+    # #beguilerSettings outputPath) so the transpiled .inf lands at a path we can find,
+    # now that the compiler writes intermediates into the output directory.
     cd "$SCRIPT_DIR"
-    "$BEGUILER" "$src" 2>/dev/null
+    "$BEGUILER" -o "$OUTPUT_DIR" "$src" 2>/dev/null
 
     if [ ! -f "$inf" ]; then
         echo "  ERROR: $name — compilation failed (no .inf produced)"
@@ -97,12 +101,12 @@ for src in "$SCRIPT_DIR"/_test_*.bgl "$SCRIPT_DIR"/_test_*.inf; do
         continue
     fi
 
-    # Compile, capturing stderr. Expect non-zero exit.
+    # Compile, capturing stderr. Expect non-zero exit. Force the output dir (see positive loop).
     cd "$SCRIPT_DIR"
-    stderr=$("$BEGUILER" "$src" 2>&1 >/dev/null)
+    stderr=$("$BEGUILER" -o "$OUTPUT_DIR" "$src" 2>&1 >/dev/null)
     exit_code=$?
-    inf="${src}.transpiled.inf"
-    rm -f "$inf" "${src}.bgldbg" "${src}.transpiled.inf.dbg" "${src}.transpiled.inf.map" "${src}.transpiled.inf.bgldbg"
+    inf="$OUTPUT_DIR/${name}.transpiled.inf"
+    rm -f "$inf" "$OUTPUT_DIR/${name}.bgldbg" "$OUTPUT_DIR/${name}.transpiled.inf.dbg" "$OUTPUT_DIR/${name}.transpiled.inf.map" "$OUTPUT_DIR/${name}.transpiled.inf.bgldbg"
 
     if [ $exit_code -eq 0 ]; then
         echo "  FAIL: $name — expected compilation to fail, but it succeeded"

@@ -259,6 +259,31 @@ bool beguiler::go(int argc, char* argv[]) {
             // Initialize library path — same as parseArgs() does for normal compilation
             resolveLibPath(argc, argv);
             LspServer lsp;
+            // LSP mode skips parseArgs(), so -includepaths= (passed by the extension from the
+            // beguiler.includePaths setting) would otherwise be ignored. Parse it here — comma-
+            // separated, same convention as parseArgs — and hand it to the server, which re-seeds
+            // it after each per-parse settings reset. Needed for `#include "…"` resolution/
+            // diagnostics and quoted-include completion.
+            for(int j = 1; j < argc; j++){
+                string a = argv[j];
+                if(a.size() > 14 && a.compare(0, 14, "-includepaths=") == 0){
+                    string val = a.substr(14);
+                    size_t p = 0;
+                    while(p < val.size()){
+                        size_t comma = val.find(',', p);
+                        string entry = val.substr(p, comma == string::npos ? string::npos : comma - p);
+                        size_t s = entry.find_first_not_of(" \t");
+                        size_t e = entry.find_last_not_of(" \t");
+                        if(s != string::npos){
+                            string dir = entry.substr(s, e - s + 1);
+                            if(find(lsp.cliIncludePaths.begin(), lsp.cliIncludePaths.end(), dir) == lsp.cliIncludePaths.end())
+                                lsp.cliIncludePaths.push_back(dir);
+                        }
+                        if(comma == string::npos) break;
+                        p = comma + 1;
+                    }
+                }
+            }
             lsp.run();
             return false;
         }
@@ -381,6 +406,23 @@ bool beguiler::go(int argc, char* argv[]) {
     if(settings.outputPath.empty())
         settings.outputPath = "output";
 
+    // Compute the output directory once — it holds the compiled story file AND all the
+    // intermediate/debug artifacts (transpiled .inf, I6 .dbg, .bgldbg bundle). Keeping the
+    // temp files here rather than beside the source is what stops the source folder from
+    // filling with `.transpiled.inf` / `.bgldbg` clutter. (outputPath is defaulted to
+    // "output" just above, so it is never empty here.)
+    fs::path srcPath(settings.inFile);
+    fs::path outDir = fs::path(settings.outputPath).is_absolute() ? fs::path(settings.outputPath)
+                    : srcPath.parent_path() / fs::path(settings.outputPath);
+    if(!fs::exists(outDir))
+        fs::create_directories(outDir);
+
+    // Redirect the transpiled .inf into the output directory. The I6-generated debug files
+    // (`<name>.transpiled.inf.dbg` from the renamed gameinfo.dbg, and any `.map`) are placed
+    // relative to this path's parent, so they follow it here automatically. The filename keeps
+    // the `<sourcename>.transpiled.inf` shape the debug tooling derives its stem from.
+    settings.tmpFile = (outDir / (srcPath.filename().string() + ".transpiled.inf")).string();
+
     // Compute output file path
     if(settings.outFile.empty()) {
         string extension = "ulx";
@@ -389,13 +431,7 @@ bool beguiler::go(int argc, char* argv[]) {
         else if(t == "z5") extension = "z5";
         else if(t == "z6") extension = "z6";
         else if(t == "z8") extension = "z8";
-        fs::path p(settings.inFile);
-        fs::path outDir = settings.outputPath.empty() ? p.parent_path()
-                        : fs::path(settings.outputPath).is_absolute() ? fs::path(settings.outputPath)
-                        : p.parent_path() / fs::path(settings.outputPath);
-        if(!fs::exists(outDir))
-            fs::create_directories(outDir);
-        settings.outFile = (outDir / (p.stem().string() + "." + extension)).string();
+        settings.outFile = (outDir / (srcPath.stem().string() + "." + extension)).string();
     }
 
     if(writeFile(settings.tmpFile)) return true;
@@ -447,7 +483,9 @@ bool beguiler::go(int argc, char* argv[]) {
     }
 
     if(settings.debugMode){
-        emitter.writeDebugBundle(settings.inFile + ".bgldbg");
+        // Alongside the other artifacts in the output directory. Keep the `<sourcename>.bgldbg`
+        // filename so the debug tooling's stem derivation still matches.
+        emitter.writeDebugBundle((outDir / (srcPath.filename().string() + ".bgldbg")).string());
     }
 
     cout<<"Compilation successful. ";
