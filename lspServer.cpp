@@ -182,9 +182,11 @@ json LspServer::handleInitialize(const json& params) {
             //   '.' — member access  (foo.bar)
             //   '=' — RHS of #beguilerSettings property
             //   '<' — `#include <…>` library completion (Phase 0)
+            //   '"' — `#include "…"` project-file completion (Phase 0b)
+            //   '/' — next path segment inside `#include "sub/…"` (Phase 0b)
             //   ':' — class inheritance position after `class Foo :` (Phase 0.5)
             //   ',' — multi-inheritance continuation `class Foo : object,` (Phase 0.5)
-            {"triggerCharacters", {".", "=", "<", ":", ","}}
+            {"triggerCharacters", {".", "=", "<", "\"", "/", ":", ","}}
         }},
         {"definitionProvider", true},
         {"documentSymbolProvider", true},
@@ -449,6 +451,11 @@ void LspServer::parseDocument(const string& uri) {
     parser.reset();
     languageService.reset();
     beguilerSettings = beguilerSettingsDef();
+    // Re-seed CLI include paths (from -includepaths=, i.e. the beguiler.includePaths setting):
+    // the reset above wipes them and LSP mode never runs parseArgs(). The document's own
+    // #beguilerSettings.includePaths is appended later during the parse. Without this, quoted
+    // `#include "…"` can't see configured include dirs (completion + file-not-found diagnostics).
+    beguilerSettings.includePaths = cliIncludePaths;
 
     // Pass the editor buffer to the parser via the in-memory contentOverride parameter, so we
     // never write a temp file alongside the source. This avoids the workspace-file-list churn
@@ -1282,6 +1289,265 @@ json LspServer::handleCompletion(const json& params) {
 
     bool insideBsBlock = isInBeguilerSettingsBlock(uri, line, col);
 
+    // Build an include completion item. The edit range spans the WHOLE partial path (from just
+    // after the opening delimiter to the cursor) so accepting replaces everything typed in the
+    // delimiter — correct across '/', spaces, and '#'. `delimCol` is the 0-based column of the
+    // opening '<' or '"'.
+    //
+    // filterText = `query + relStr`: we already substring-filtered server-side, so we want the
+    // client to SHOW exactly what we return, but VS Code re-applies its own subsequence fuzzy
+    // filter on top — which rejects matches that don't sit well against filterText (notably a
+    // leading '#', e.g. `par` vs `#parser`). Prefixing the typed query makes the query a literal
+    // prefix of filterText, which VS Code's matcher always accepts, so nothing we return is
+    // dropped. `newText`/`label` stay the real path.
+    auto makeIncludeItem = [&](const string& relStr, const char* detail, int delimCol, const string& query) -> json {
+        return {
+            {"label", relStr},
+            {"kind", 17},               // CompletionItemKind.File
+            {"detail", detail},
+            {"filterText", query + relStr},
+            {"textEdit", {
+                {"range", {
+                    {"start", {{"line", line}, {"character", delimCol + 1}}},
+                    {"end",   {{"line", line}, {"character", col}}}
+                }},
+                {"newText", relStr}
+            }}
+        };
+    };
+
+    // Case-insensitive SUBSTRING test. The include phases filter candidates server-side by
+    // substring against the full relative path (and return isIncomplete=true so the client
+    // re-queries each keystroke). This deliberately overrides VS Code's default subsequence
+    // fuzzy match, which is too loose for paths — e.g. `par` fuzzy-matches `pkgOrEnhancements`
+    // (p…a…r) but is NOT a substring, so it's correctly excluded here. A substring is always a
+    // subsequence, so the client's own filter keeps everything we return.
+    auto ciContains = [](const string& hay, const string& needle) -> bool {
+        if(needle.empty()) return true;
+        string h = hay, n = needle;
+        transform(h.begin(), h.end(), h.begin(), ::tolower);
+        transform(n.begin(), n.end(), n.begin(), ::tolower);
+        return h.find(n) != string::npos;
+    };
+    // Extract the partial path already typed between the opening delimiter and the cursor.
+    auto includeQuery = [&](int delimCol) -> string {
+        int qs = delimCol + 1;
+        if(qs < 0) qs = 0;
+        if(qs >= (int)lineText.size() || qs >= col) return "";
+        int end = std::min(col, (int)lineText.size());
+        return lineText.substr(qs, end - qs);
+    };
+
+    // ── Phase 0b: `#include "…"` project-file completion ──────────────────
+    // The quoted include form searches the current file's directory first, then
+    // each configured includePath (mirrors resolveIncludePath in bglParser.cpp).
+    // Offer the .bgl files reachable from those roots, named as their path
+    // relative to the matching root (forward slashes, no .bgl). Unlike the `<…>`
+    // library form (Phase 0), '_'-prefixed files are NOT filtered — project files
+    // legitimately use them. Must run BEFORE the string-literal suppression below,
+    // since an in-progress `#include "…"` looks like an unterminated string.
+    {
+        string pre = lineText.substr(0, std::min((int)lineText.size(), col));
+        size_t lt = pre.find_first_not_of(" \t");
+        string trimmed = (lt == string::npos) ? string() : pre.substr(lt);
+        size_t q = trimmed.find('"');
+        // Inside the quotes iff there's an opening quote and no closing one before the cursor.
+        if(q != string::npos && trimmed.find('"', q + 1) == string::npos) {
+            // Head before the quote must be `#include` (optionally `#include ?`), ignoring
+            // whitespace and case.
+            string headCompact;
+            for(size_t k = 0; k < q; k++) {
+                char c = trimmed[k];
+                if(!isspace((unsigned char)c)) headCompact += (char)tolower((unsigned char)c);
+            }
+            if(headCompact == "#include" || headCompact == "#include?") {
+                json items = json::array();
+                std::set<string> seen;
+                int delimCol = (int)(lt + q);
+                string query = includeQuery(delimCol);
+
+                string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+                filesystem::path srcDir = filesystem::path(curFile).parent_path();
+                string curCanon;
+                try { curCanon = filesystem::canonical(curFile).string(); } catch(...) {}
+
+                // Search roots in resolution order: source dir, then each includePath
+                // (as-is, and — if relative — also resolved against the source dir).
+                vector<filesystem::path> roots;
+                if(!srcDir.empty()) roots.push_back(srcDir);
+                for(const string& sp : beguilerSettings.includePaths) {
+                    if(sp.empty()) continue;
+                    filesystem::path p(sp);
+                    roots.push_back(p);
+                    if(p.is_relative() && !srcDir.empty()) roots.push_back(srcDir / p);
+                }
+
+                for(const filesystem::path& root : roots) {
+                    std::error_code ec;
+                    if(!filesystem::exists(root, ec) || !filesystem::is_directory(root, ec)) continue;
+                    filesystem::recursive_directory_iterator it(root, ec), end;
+                    for(; !ec && it != end; it.increment(ec)) {
+                        if(!it->is_regular_file(ec)) continue;
+                        filesystem::path p = it->path();
+                        string filename = p.filename().string();
+                        if(filename.empty() || filename[0] == '.') continue;   // hidden
+                        if(filename.size() < 4) continue;
+                        string ext = filename.substr(filename.size() - 4);
+                        for(char& c : ext) c = (char)tolower((unsigned char)c);
+                        if(ext != ".bgl") continue;
+                        // A file can't include itself.
+                        try { if(!curCanon.empty() && filesystem::canonical(p).string() == curCanon) continue; } catch(...) {}
+                        // Name = path relative to this root, forward slashes, no ".bgl".
+                        filesystem::path rel = filesystem::relative(p, root, ec);
+                        if(ec || rel.empty()) continue;
+                        string relStr = rel.string();
+                        for(char& c : relStr) if(c == '\\') c = '/';
+                        relStr = relStr.substr(0, relStr.size() - 4);  // strip ".bgl"
+                        if(relStr.empty() || relStr[0] == '/') continue;
+                        if(!ciContains(relStr, query)) continue;     // server-side substring filter
+                        if(!seen.insert(relStr).second) continue;   // dedup; earlier root wins
+                        items.push_back(makeIncludeItem(relStr, "Beguile include (project file)", delimCol, query));
+                    }
+                }
+                // isIncomplete: re-query each keystroke so the substring filter re-runs.
+                return json{{"isIncomplete", true}, {"items", items}};
+            }
+        }
+    }
+
+    // ── Phase 0c: `#includeI6 "…"` Inform 6 library completion ─────────────
+    // `#includeI6 "name"` resolves an I6 file (exact name, then name.h) from the source
+    // dir + includePaths. Offer the .h files reachable from those roots, named without
+    // the .h extension (the idiomatic form, e.g. `#includeI6 "parser"` → parser.h). Same
+    // roots as Phase 0b; tolerates the optional `?` and raw `@` markers; runs before the
+    // string-literal suppression. Distinct from `#include` (Phase 0b, .bgl only) — the I6
+    // library folder holds .h files, which are correctly absent from #include completion.
+    {
+        string pre = lineText.substr(0, std::min((int)lineText.size(), col));
+        size_t lt = pre.find_first_not_of(" \t");
+        string trimmed = (lt == string::npos) ? string() : pre.substr(lt);
+        size_t q = trimmed.find('"');
+        if(q != string::npos && trimmed.find('"', q + 1) == string::npos) {
+            string headCompact;
+            for(size_t k = 0; k < q; k++) {
+                char c = trimmed[k];
+                if(!isspace((unsigned char)c)) headCompact += (char)tolower((unsigned char)c);
+            }
+            // Tolerate `#includeI6 ?"…"` (optional) and `#includeI6 @"…"` (raw) markers.
+            while(!headCompact.empty() && (headCompact.back() == '?' || headCompact.back() == '@'))
+                headCompact.pop_back();
+            if(headCompact == "#includei6") {
+                json items = json::array();
+                std::set<string> seen;
+                int delimCol = (int)(lt + q);
+                string query = includeQuery(delimCol);
+                string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+                filesystem::path srcDir = filesystem::path(curFile).parent_path();
+                vector<filesystem::path> roots;
+                if(!srcDir.empty()) roots.push_back(srcDir);
+                for(const string& sp : beguilerSettings.includePaths) {
+                    if(sp.empty()) continue;
+                    filesystem::path p(sp);
+                    roots.push_back(p);
+                    if(p.is_relative() && !srcDir.empty()) roots.push_back(srcDir / p);
+                }
+                for(const filesystem::path& root : roots) {
+                    std::error_code ec;
+                    if(!filesystem::exists(root, ec) || !filesystem::is_directory(root, ec)) continue;
+                    filesystem::recursive_directory_iterator it(root, ec), end;
+                    for(; !ec && it != end; it.increment(ec)) {
+                        if(!it->is_regular_file(ec)) continue;
+                        filesystem::path p = it->path();
+                        string filename = p.filename().string();
+                        if(filename.empty() || filename[0] == '.') continue;
+                        if(filename.size() < 3) continue;
+                        string ext = filename.substr(filename.size() - 2);
+                        for(char& c : ext) c = (char)tolower((unsigned char)c);
+                        if(ext != ".h") continue;
+                        filesystem::path rel = filesystem::relative(p, root, ec);
+                        if(ec || rel.empty()) continue;
+                        string relStr = rel.string();
+                        for(char& c : relStr) if(c == '\\') c = '/';
+                        relStr = relStr.substr(0, relStr.size() - 2);  // strip ".h"
+                        if(relStr.empty() || relStr[0] == '/') continue;
+                        if(!ciContains(relStr, query)) continue;     // server-side substring filter
+                        if(!seen.insert(relStr).second) continue;
+                        items.push_back(makeIncludeItem(relStr, "Inform 6 library file", delimCol, query));
+                    }
+                }
+                // isIncomplete: re-query each keystroke so the substring filter re-runs.
+                return json{{"isIncomplete", true}, {"items", items}};
+            }
+        }
+    }
+
+    // ── Phase 0d: `includePaths = "…"` directory completion (in #beguilerSettings) ──
+    // Inside a #beguilerSettings block the includePaths value is a filesystem path. Offer only
+    // DIRECTORIES (kind=Folder), resolved relative to the source file's directory (or absolute).
+    // Completion is per path segment: text up to the last '/' selects the base dir to list; text
+    // after it filters the entries (substring). So `../` lists the parent's dirs and `../s` narrows
+    // to `src`, `super`, … Accepting inserts `<dir>/` and re-triggers so the next level lists
+    // immediately. Runs before the string-literal suppression (the value is quoted).
+    if(insideBsBlock) {
+        string pre = lineText.substr(0, std::min((int)lineText.size(), col));
+        size_t lt = pre.find_first_not_of(" \t");
+        string trimmed = (lt == string::npos) ? string() : pre.substr(lt);
+        size_t q = trimmed.find('"');
+        if(q != string::npos && trimmed.find('"', q + 1) == string::npos) {
+            string headCompact;
+            for(size_t k = 0; k < q; k++) {
+                char c = trimmed[k];
+                if(!isspace((unsigned char)c)) headCompact += (char)tolower((unsigned char)c);
+            }
+            if(headCompact == "includepaths=") {
+                int delimCol  = (int)(lt + q);
+                int pathStart = delimCol + 1;
+                string typedPath = includeQuery(delimCol);   // text from delim+1 to cursor
+                size_t slash = typedPath.rfind('/');
+                string dirPrefix = (slash == string::npos) ? string() : typedPath.substr(0, slash + 1);
+                string segment   = (slash == string::npos) ? typedPath : typedPath.substr(slash + 1);
+                int segStartCol  = pathStart + (int)((slash == string::npos) ? 0 : slash + 1);
+
+                // Resolve the base directory to list (relative to the source file's dir).
+                string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+                filesystem::path srcDir = filesystem::path(curFile).parent_path();
+                filesystem::path base;
+                if(dirPrefix.empty())                              base = srcDir;
+                else if(filesystem::path(dirPrefix).is_absolute()) base = filesystem::path(dirPrefix);
+                else                                               base = srcDir / dirPrefix;
+                base = base.lexically_normal();
+
+                json items = json::array();
+                std::error_code ec;
+                if(filesystem::exists(base, ec) && filesystem::is_directory(base, ec)) {
+                    for(filesystem::directory_iterator it(base, ec), end; !ec && it != end; it.increment(ec)) {
+                        if(!it->is_directory(ec)) continue;
+                        string name = it->path().filename().string();
+                        if(name.empty() || name[0] == '.') continue;   // skip hidden dirs
+                        if(!ciContains(name, segment)) continue;       // substring filter on the segment
+                        items.push_back({
+                            {"label", name + "/"},
+                            {"kind", 19},                              // CompletionItemKind.Folder
+                            {"detail", "directory"},
+                            {"filterText", segment + name},            // prefix-guarantee (see makeIncludeItem)
+                            {"textEdit", {
+                                {"range", {
+                                    {"start", {{"line", line}, {"character", segStartCol}}},
+                                    {"end",   {{"line", line}, {"character", col}}}
+                                }},
+                                {"newText", name + "/"}
+                            }},
+                            // Re-trigger so selecting a directory immediately lists its subdirectories.
+                            {"command", {{"title", "Suggest"}, {"command", "editor.action.triggerSuggest"}}}
+                        });
+                    }
+                }
+                // isIncomplete: re-query each keystroke so the substring filter re-runs.
+                return json{{"isIncomplete", true}, {"items", items}};
+            }
+        }
+    }
+
     // Suppress completion inside string literals — the user is typing prose.
     auto isInsideStringLiteral = [&]() -> bool {
         int limit = col;
@@ -1308,6 +1574,7 @@ json LspServer::handleCompletion(const json& params) {
         // Expect '<' next (after optional whitespace)
         while(i >= 0 && isspace((unsigned char)lineText[i])) i--;
         if(i >= 0 && lineText[i] == '<') {
+            int angleCol = i;   // column of the opening '<' (for the edit range)
             i--;
             while(i >= 0 && isspace((unsigned char)lineText[i])) i--;
             // Walk back over the word right before the whitespace — should be "include" (case-insensitive)
@@ -1319,6 +1586,7 @@ json LspServer::handleCompletion(const json& params) {
             // Expect '#' immediately before the word (this is `#include`, not a bare `include`)
             if(word == "include" && i >= 0 && lineText[i] == '#') {
                 json items = json::array();
+                string query = includeQuery(angleCol);
                 try {
                     std::filesystem::path libRoot = settings.libPath;
                     for(const auto& entry : std::filesystem::recursive_directory_iterator(libRoot)) {
@@ -1339,14 +1607,12 @@ json LspServer::handleCompletion(const json& params) {
                         for(char& c : relStr) if(c == '\\') c = '/';
                         if(relStr.size() >= 4)
                             relStr = relStr.substr(0, relStr.size() - 4);  // strip ".bgl"
-                        items.push_back({
-                            {"label", relStr},
-                            {"kind", 17},  // CompletionItemKind.File
-                            {"detail", "Beguile language extension"}
-                        });
+                        if(!ciContains(relStr, query)) continue;     // server-side substring filter
+                        items.push_back(makeIncludeItem(relStr, "Beguile language extension", angleCol, query));
                     }
                 } catch(...) { /* directory unreadable — fall back to empty list */ }
-                return items;  // authoritative for this context; empty is fine
+                // isIncomplete: re-query each keystroke so the substring filter re-runs.
+                return json{{"isIncomplete", true}, {"items", items}};
             }
         }
     }

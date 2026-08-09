@@ -32,6 +32,13 @@ public:
     LspServer();
     void run();  // main loop — reads from stdin, writes to stdout
 
+    // Include search paths from the CLI (-includepaths=, passed by the extension from the
+    // beguiler.includePaths setting). LSP mode skips parseArgs(), and parseDocument() resets
+    // beguilerSettings before every parse, so these are captured once (in the --lsp dispatch)
+    // and re-seeded into beguilerSettings.includePaths on each parse — needed for `#include "…"`
+    // resolution, diagnostics, and quoted-include completion. Set before run().
+    std::vector<std::string> cliIncludePaths;
+
 private:
     bool initialized = false;
     bool shutdownRequested = false;
