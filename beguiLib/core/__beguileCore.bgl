@@ -101,7 +101,7 @@ emitter class _bglObject{
                                      //  parentProp (with a warning) so `.parent = X` always emits `move`.
                                      //  Idiomatic form is the bare `parent = <room>` (no type keyword).
         attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
-        var short_name;              //--object's short name (string or routine). Backs the `(name)` print rule
+        string short_name;           //--object's short name (string or routine). Backs the `(name)` print rule
                                      //  used by print() below; the compiler auto-declares it, so it's core, not
                                      //  library. Library-defined variants (short_name_indef, parse_name) and the
                                      //  rest of the property surface live in the i6StandardLibrary binding.

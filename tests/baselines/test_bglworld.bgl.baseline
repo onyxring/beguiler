@@ -356,7 +356,7 @@ object stone cage
     for (: _bglfi1 < _bglArray.length(_bglfia0, 0) : _bglfi1++) {
         o = _bglfia0-->(_bglfi1+1);
         print (string)" - ";
-        print o.short_name;
+        print (string)o.short_name;
         print (string)"^";
     }
     cagedAnimals=_bglArray.length(_bglworld.instances(animal, _bglLambda_0), 0);
@@ -378,7 +378,7 @@ object stone cage
         o = _bglfia2-->(_bglfi3+1);
         here=_bglArray.length(_bglworld.inparent(parent(o), 0), 0);
         print (string)" - ";
-        print o.short_name;
+        print (string)o.short_name;
         print (string)" shares its parent with ";
         print here;
         print (string)" objects^";
