@@ -337,6 +337,16 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             funcDef.isDefault=q.isDefault;
             if(!returnType.docComment.empty())   funcDef.docComment = returnType.docComment;
             else if(!name.docComment.empty())    funcDef.docComment = name.docComment;
+            // Non-emitter operator methods (name starts with a non-identifier char, e.g. `=`,
+            // `==`) need a mangled i6name so the emitted I6 property has a valid identifier.
+            // The free-function path does this at declaration (bglParserDecls.cpp); mirror it
+            // here so class operators are mangled at parse time too. This upholds the invariant
+            // documented at mangleOverloadSet() (bglParser.cpp) — that operator overloads carry
+            // an i6name by parse time — instead of relying solely on lazy call-site mangling,
+            // which leaves a declared-but-never-called operator emitting a bare `=` as its I6
+            // property name (invalid I6).
+            if(!isEmitter && !funcDef.name.empty() && !isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')
+                funcDef.i6name = mangleOperatorName(funcDef.name);
             if(isExplicitConversion && funcDef.name != "operator()")
                 parsingError("'explicit' is only valid on conversion operators (operator())");
             processParameterList(funcDef);

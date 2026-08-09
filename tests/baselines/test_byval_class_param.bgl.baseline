@@ -30,7 +30,7 @@ class window
   with
     w,
     h,
-    =[v;
+    _opeq[v;
         self.w=v.w;
         self.h=v.h;
         return self;
@@ -49,7 +49,7 @@ class mat
   with
     a,
     b,
-    =[m;
+    _opeq[m;
         self.a=m.a;
         self.b=m.b;
         return self;
