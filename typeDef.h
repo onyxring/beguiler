@@ -453,6 +453,18 @@ class grammarRuleDecl : public variableDeclaration {
         grammarLine line;        // the grammar pattern
 };
 
+// A verb synonym declaration — parsed from `synonyms = {.w1, .w2};` in an `extend` verb body.
+// Emits I6's compact `Verb 'w1' 'w2' = 'anchor';` form, making the listed words TRUE ALIASES of
+// the anchor verb's grammar table (unlike copied grammar lines, a later `Extend` on the anchor
+// automatically flows to them). The anchor's primary trigger word is resolved at emit time from
+// the verbObjectDef named by `anchorVerb`. Emitted as a globals-level node so it lands after the
+// anchor's own `Verb` directive (extern anchors are pre-declared by the library).
+class verbSynonymDecl : public variableDeclaration {
+    public:
+        string anchorVerb;              // verb action name (lowercased); primary word resolved at emit
+        vector<string> synonymWords;    // I6-ready quoted dict words, e.g. "'steal'", "'grab//'"
+};
+
 // compile-time settings declared in source via a beguilerSettings { } block.
 // Fields split into three categories:
 //   - beguiler paths: applied immediately at parse time, not emitted to I6
@@ -481,6 +493,10 @@ class beguilerSettingsDef : public typeDef {
         bool   autoInitialize = true;  // false → BLR does NOT wrap main (replace main / [main; bglInit; _oldmain]).
                                        // Set false when another extension (e.g. orLibrary) already replaces main;
                                        // the caller then runs bglInit itself (or doesn't need it).
+        bool   economy = false;        // true → opt into auto text abbreviations: after transpile, compute
+                                       // optimal I6 abbreviations (inform6 -u), inject them, compile with -e.
+                                       // Skipped if the source already defines its own Abbreviate directives
+                                       // (respect the author's hand-tuned set). Off by default.
 
         // blorb packaging
         bool   blorbEnabled  = false;  // true = run asset scan + blorb build

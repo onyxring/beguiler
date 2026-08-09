@@ -1,0 +1,22 @@
+// _test_instance_cast_bad_member.bgl — an instance cast is type-CHECKED: casting to `library`
+// and accessing a member that library doesn't have (`desks` lives on `study`) is a compile
+// error, not silent garbage. This is the safety upgrade over the untyped `(var)` escape — the
+// cast preserves the instance type (`library`), so the bogus member is rejected.
+//
+// EXPECT_ERROR: of type 'library'
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Room : object { }
+Room library { int shelves; }
+Room study { int desks; }
+class Bk : object { }
+Bk b1 { parent = library; }
+
+void main(){
+    int n = ((library)b1.parent).desks;   // 'desks' is on study, not library
+}

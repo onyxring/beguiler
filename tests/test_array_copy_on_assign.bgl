@@ -1,0 +1,32 @@
+// test_array_copy_on_assign.bgl — `array<T>` has value-semantic copy-on-assign: assigning
+// one array to another (re-assignment OR declaration-with-initializer) copies the source's
+// elements into the destination's own storage rather than aliasing the pointer. This is the
+// capture mechanism for ephemeral arrays — a LINQ chain result or returned local array
+// assigned into a typed local is snapshotted into stable storage.
+//
+// Emits `_bglArray.copy(dest, 0, src, 0)` at each whole-array assignment. Runtime independence
+// (mutating the source doesn't affect the copy) is verified on dfrotz separately.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// Copy-on-assign is BASE array functionality (not LINQ) — this fixture uses <array> only,
+// proving capture works without pulling in <linq>. (Capturing a chain result is the same
+// mechanism, exercised in the <linq> tests.)
+#include <array>
+
+array<int> src = {11, 22, 33, 44};
+array<int> dst[8];
+
+void main(){
+    // re-assignment copy
+    dst = src;
+    // declaration-with-initializer copy (the primary capture form)
+    array<int> keep[8];
+    keep = src;
+    // declaration-with-initializer from another array
+    array<int> picked = dst;
+}

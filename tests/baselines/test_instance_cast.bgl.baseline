@@ -1,0 +1,37 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+class room
+  class object
+  with
+    lit
+;
+room library
+  with shelves 
+;
+class bk
+  class object
+;
+bk b1 library
+;
+[main r a c same;
+    r = parent(b1);
+    a=(parent(b1)).shelves;
+    c=(parent(b1)).lit;
+    same=(library) == parent(b1);
+];

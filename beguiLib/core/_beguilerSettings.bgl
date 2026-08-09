@@ -17,6 +17,7 @@
         bool            rewritePaths   = true;          // substitute path separators to match OS
         bool            autoInitialize = true;          // false → BLR does not wrap main (replace main / [main; bglInit; oldmain]); set when another extension already replaces main (e.g. orLibrary)
         bool            omitUnusedRoutines = true;      // true → emit I6 $OMIT_UNUSED_ROUTINES=1 so Inform strips routines nothing references (safe: address-taken routines are kept); set false for debug builds where you want every routine present
+        bool            economy = false;                // true → auto text abbreviations: after transpile, compute optimal I6 abbreviations (inform6 -u), inject them, and compile with -e. Skipped if the source already defines its own Abbreviate directives (respects a hand-tuned set). Off by default; opt in for smaller Z-machine story files
         bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)
         string          blorbAssetPath = "assets";      // asset directory relative to source .bgl file
         string          author         = "";            // iFiction: game author (required)

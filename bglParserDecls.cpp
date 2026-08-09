@@ -410,7 +410,9 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
 
             //type check: if the declared type is a class, verify the assigned value is accepted by one of its operator= signatures.
             // `ref` locals opt out of all operator= dispatch — they're plain pointer-alias.
-            classDef* classType=dynamic_cast<classDef*>(&languageService.getType((string)dataType));
+            // getDispatchClass (not getType) so a template-typed LHS (`array<int> keep = chain;`)
+            // reaches operator= dispatch — this is the primary array copy-on-assign capture form.
+            classDef* classType=getDispatchClass((string)dataType);
             if(classType != nullptr && rhs != nullptr && !isRef){
                 string valueTypeName = rhs->resolvedType;
                 if(!valueTypeName.empty()){
@@ -424,6 +426,21 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                         auto* fn = dynamic_cast<functionDef*>(m);
                         return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name=="var";
                     }));
+                    // Template-aware match: param and RHS resolving to the same dispatch class
+                    // (e.g. operator=(array<T>) for an array<int> RHS). Mirrors the assignment-
+                    // statement path — backs `array<int> keep = chain;` copy-on-assign.
+                    if(!assignOp){
+                        classDef* valCls = getDispatchClass(valueTypeName);
+                        if(valCls != nullptr) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
+                            auto* fn = dynamic_cast<functionDef*>(m);
+                            return fn && fn->name=="=" && fn->params.size()==1
+                                   && getDispatchClass(fn->params[0]->type.name) == valCls;
+                        }));
+                        // Note: the declaration-init path has no upcast pass, so an array<char>
+                        // (byteArray) RHS never matches array<T>'s copy operator= here (byteArray's
+                        // dispatch class != array). It falls through to pointer-alias — safe (no word
+                        // copy, no corruption), consistent with char arrays being ephemeral for now.
+                    }
                     bool found = assignOp != nullptr || isTypeCompatible(valueTypeName, (string)dataType);
                     // If operator= is an emitter, capture its body so the emitter uses it instead of plain assignment
                     // Skip if RHS contains $target — the opcode handles its own store

@@ -59,6 +59,20 @@ extend extern class array {
     emitter void setLength(int n)         { _bglArray.setLength($self, $prop, $n) }
     emitter bool isTracked()              { _bglArray.isTracked($self, $prop) }
 
+    // Value-semantic copy-on-assign: `dest = src` copies src's elements into dest's
+    // own storage (and sets dest's length), rather than aliasing the pointer. This is
+    // the capture mechanism for ephemeral arrays — a LINQ chain result or a returned
+    // local array assigned into a typed local is snapshotted into stable storage.
+    // Dest/source props are literal 0: the assignment-operator= emit path does not
+    // substitute $prop, and a whole-array LHS/RHS is always addressable. Source is
+    // assumed addressable (member-array sources — `x = obj.arr` — are out of scope).
+    //
+    // Return type is `void` (not `array<T>`) deliberately: a member whose return type
+    // is `array<...>` is routed to the array-member-declaration parser, which can't parse
+    // an `operator` name. The assignment emit path emits the body as a statement and
+    // ignores the operator's return value anyway, so `void` is correct here.
+    emitter void operator = (array<T> v)  { _bglArray.copy($self, 0, $v, 0) }
+
     // Search
     emitter int  indexOf(T item)          { _bglArray.indexOf($self, $prop, $item) }
     emitter int  find(T item)             { _bglArray.indexOf($self, $prop, $item) }       // alias — matches orLibrary terminology
@@ -93,81 +107,9 @@ extend extern class array {
     emitter void sort()                            { _bglArray.sort($self, $prop, _bglArrayCompareAsc) }
     emitter void sort(func<int, T, T> compare)     { _bglArray.sort($self, $prop, $compare) }
 
-    // LINQ-style fluent operations. Each non-terminal returns a typed array
-    // backed by the LINQ scratch buffer (alternates between two preallocated
-    // buffers, see #emitfirst block below). filter/distinct/orderBy etc. are
-    // type-preserving; map returns array<var> because the mapper's output
-    // type can't be statically tracked.
-    emitter array<T>   filter(func<bool, T> pred)   { _bglArray.filter($self, $prop, $pred) }
-    emitter array<var> map(func<var, T> f)          { _bglArray.map($self, $prop, $f) }
-
-    // Terminals — collapse a chain to a scalar. No scratch writes; receiver
-    // type drives element type for first/last (returns T) and any/all (pred
-    // signature). count is a plain alias of length() for naming familiarity.
-    emitter T    first()                            { _bglArray.first($self, $prop) }
-    emitter T    last()                             { _bglArray.last($self, $prop) }
-    emitter int  count()                            { _bglArray.length($self, $prop) }
-    emitter bool any(func<bool, T> pred)            { _bglArray.any($self, $prop, $pred) }
-    emitter bool all(func<bool, T> pred)            { _bglArray.all($self, $prop, $pred) }
-
-    // Slicing — all type-preserving, flip parity, return array<T>.
-    emitter array<T> take(int n)                    { _bglArray.take($self, $prop, $n) }
-    emitter array<T> skip(int n)                    { _bglArray.skip($self, $prop, $n) }
-    emitter array<T> takeWhile(func<bool, T> pred)  { _bglArray.takeWhile($self, $prop, $pred) }
-    emitter array<T> skipWhile(func<bool, T> pred)  { _bglArray.skipWhile($self, $prop, $pred) }
-
-    // distinct / orderBy. distinct keeps first occurrence (O(N²) scan, fine at IF scale).
-    // orderBy reuses sort() on the scratch copy — two overloads matching sort's surface.
-    emitter array<T> distinct()                          { _bglArray.distinct($self, $prop) }
-    emitter array<T> orderBy()                           { _bglArray.orderBy($self, $prop, _bglArrayCompareAsc) }
-    emitter array<T> orderBy(func<int, T, T> compare)    { _bglArray.orderBy($self, $prop, $compare) }
 }
 
-//-----------------------------------------------------------------------------
-// LINQ scratch infrastructure — two preallocated tracked-array buffers used
-// by fluent chain ops (filter, map, take, skip, distinct, orderBy, ...).
-//
-// Chain step N reads from one buffer and writes to the other; the parity
-// global flips between calls. Each user op flips at most once, so a chain
-// like arr.filter(p).map(f).take(n) walks A → B → A → B.
-//
-// Buffer capacity is shared global state: chains cannot be nested (an inner
-// chain inside a lambda would corrupt the outer chain's buffers). Documented
-// caveat for now; enforcement deferred.
-//
-// Size is configurable via #beguilerSettings.linqScratchSize (default 32).
-// Both buffers are declared as ordinary Beguile arrays so they pick up the
-// standard tracked-array layout (header / data / length / magic) and the
-// startup magic-stamp pass automatically — no separate #startup wiring needed.
-//-----------------------------------------------------------------------------
-#emitfirst{
-    Array _bglLinqScratchA table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqScratchB table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Global _bglLinqParity = 0;
-    [ _bglLinqWrite;
-        if(_bglLinqParity == 0) return _bglLinqScratchB;
-        return _bglLinqScratchA;
-    ];
-    [ _bglLinqFlip;
-        _bglLinqParity = 1 - _bglLinqParity;
-    ];
-}
 
-// Stamp magic + zero length on both LINQ scratch buffers at program start so
-// detection (_bglArray.isTracked / length) works before any chain runs.
-#startup{
-    _bglLinqScratchA-->(_bglLinqScratchA-->0)     = $9084;
-    _bglLinqScratchA-->(_bglLinqScratchA-->0 - 1) = 0;
-    _bglLinqScratchB-->(_bglLinqScratchB-->0)     = $9084;
-    _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
-}
-
-// Beguile-side bridges to the I6 routines emitted in the #emitfirst block above.
-// Implementations live in raw I6; these declarations just make the routines
-// callable from Beguile-side helpers. extern function bodies aren't emitted —
-// the dummy return only satisfies the parser's non-void-must-return check.
-extern array<var> _bglLinqWrite();
-extern void       _bglLinqFlip();
 
 
 //-----------------------------------------------------------------------------
@@ -220,6 +162,19 @@ object _bglArray {
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
         }
+    }
+
+    // Value-semantic copy: overwrite dest's elements with source's (word-form), then
+    // set dest's length. Clamps to dest capacity if the source is longer. Backs the
+    // `array<T> operator=` copy-on-assign. Word arrays only — byteArray overrides its
+    // own operator= (byte-form) so char arrays never route through this.
+    void copy(var dobj, var dprop, var sobj, var sprop){
+        int n = length(sobj, sprop);
+        int cap = size(dobj, dprop);
+        if(n > cap) n = cap;
+        for(int i = 0; i < n; i++)
+            set(dobj, dprop, i, get(sobj, sprop, i));
+        setLength(dobj, dprop, n);
     }
 
     // Property arrays are never tracked (no magic/length slot); size = #prop/WORDSIZE,
@@ -431,225 +386,4 @@ object _bglArray {
         }
     }
 
-    // ── LINQ chain primitives ─────────────────────────────────────────────────
-    // Each non-terminal reads elements 0..length-1 from `src`, writes results
-    // into the scratch buffer opposite current parity (via _bglLinqWrite), sets
-    // that buffer's length, flips parity, and returns the new buffer.
-    //
-    // Capacity comes from #beguilerSettings.linqScratchSize (default 32). If a
-    // chain step would exceed it, the program prints a diagnostic and quits —
-    // same pattern as setLength's signed-overflow guard.
-    //
-    // Both buffers are tracked-layout arrays (magic stamped at startup), so the
-    // returned value behaves like any user-declared array: indexable, length()
-    // works, can feed the next chain step.
-
-    array<var> filter(var obj, var prop, func<bool, var> pred){
-        array<var> dst = _bglLinqWrite();
-        int cap = #beguilerSettings.linqScratchSize;
-        int writeCount = 0;
-        int srcLen = length(obj, prop);
-        for(int i = 0; i < srcLen; i++){
-            var elem = get(obj, prop, i);
-            if(pred(elem)){
-                if(writeCount >= cap){
-                    #i6 {
-                        print "^[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                        quit;
-                    }
-                }
-                dst[writeCount] = elem;
-                writeCount++;
-            }
-        }
-        dst.setLength(writeCount);
-        _bglLinqFlip();
-        return dst;
-    }
-
-    // ── LINQ terminals ────────────────────────────────────────────────────────
-    // No parity flip; these read from the receiver and return a scalar. count()
-    // dispatches directly through the surface (no helper) since it's just length().
-    // first/last return 0 on empty — same convention as pop/peek.
-    // any/all short-circuit (first match wins for any; first non-match wins for all).
-
-    var first(var obj, var prop){
-        if(length(obj, prop) == 0) return 0;
-        return get(obj, prop, 0);
-    }
-
-    var last(var obj, var prop){
-        int len = length(obj, prop);
-        if(len == 0) return 0;
-        return get(obj, prop, len - 1);
-    }
-
-    bool any(var obj, var prop, func<bool, var> pred){
-        int len = length(obj, prop);
-        for(int i = 0; i < len; i++)
-            if(pred(get(obj, prop, i))) return true;
-        return false;
-    }
-
-    bool all(var obj, var prop, func<bool, var> pred){
-        int len = length(obj, prop);
-        for(int i = 0; i < len; i++)
-            if(!pred(get(obj, prop, i))) return false;
-        return true;
-    }
-
-    array<var> map(var obj, var prop, func<var, var> f){
-        array<var> dst = _bglLinqWrite();
-        int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = length(obj, prop);
-        if(srcLen > cap){
-            #i6 {
-                print "^[Beguile runtime error: map() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            }
-        }
-        for(int i = 0; i < srcLen; i++){
-            dst[i] = f(get(obj, prop, i));
-        }
-        dst.setLength(srcLen);
-        _bglLinqFlip();
-        return dst;
-    }
-
-    // ── LINQ slicing ──────────────────────────────────────────────────────────
-    // take/skip clamp negative and over-length arguments to the natural bounds
-    // (a Beguile-idiomatic "be forgiving" choice — IF code often passes counts
-    // derived from earlier ops where empty/full edges are common).
-    // takeWhile/skipWhile follow the standard LINQ semantics: takeWhile stops at
-    // the first element that fails the predicate; skipWhile drops while the
-    // predicate matches, then keeps everything from the first failure on.
-
-    array<var> take(var obj, var prop, int n){
-        array<var> dst = _bglLinqWrite();
-        int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = length(obj, prop);
-        int outLen = n;
-        if(outLen < 0)      outLen = 0;
-        if(outLen > srcLen) outLen = srcLen;
-        if(outLen > cap){
-            #i6 {
-                print "^[Beguile runtime error: take() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            }
-        }
-        for(int i = 0; i < outLen; i++) dst[i] = get(obj, prop, i);
-        dst.setLength(outLen);
-        _bglLinqFlip();
-        return dst;
-    }
-
-    array<var> skip(var obj, var prop, int n){
-        array<var> dst = _bglLinqWrite();
-        int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = length(obj, prop);
-        int start = n;
-        if(start < 0)      start = 0;
-        if(start > srcLen) start = srcLen;
-        int outLen = srcLen - start;
-        if(outLen > cap){
-            #i6 {
-                print "^[Beguile runtime error: skip() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            }
-        }
-        for(int i = 0; i < outLen; i++) dst[i] = get(obj, prop, start + i);
-        dst.setLength(outLen);
-        _bglLinqFlip();
-        return dst;
-    }
-
-    array<var> takeWhile(var obj, var prop, func<bool, var> pred){
-        array<var> dst = _bglLinqWrite();
-        int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = length(obj, prop);
-        int outLen = 0;
-        for(int i = 0; i < srcLen; i++){
-            if(!pred(get(obj, prop, i))) break;
-            if(outLen >= cap){
-                #i6 {
-                    print "^[Beguile runtime error: takeWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                    quit;
-                }
-            }
-            dst[outLen] = get(obj, prop, i);
-            outLen++;
-        }
-        dst.setLength(outLen);
-        _bglLinqFlip();
-        return dst;
-    }
-
-    array<var> skipWhile(var obj, var prop, func<bool, var> pred){
-        array<var> dst = _bglLinqWrite();
-        int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = length(obj, prop);
-        int start = 0;
-        while(start < srcLen && pred(get(obj, prop, start))) start++;
-        int outLen = srcLen - start;
-        if(outLen > cap){
-            #i6 {
-                print "^[Beguile runtime error: skipWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            }
-        }
-        for(int i = 0; i < outLen; i++) dst[i] = get(obj, prop, start + i);
-        dst.setLength(outLen);
-        _bglLinqFlip();
-        return dst;
-    }
-
-    // ── LINQ distinct / orderBy ──────────────────────────────────────────────
-    // distinct keeps the first occurrence of each value — O(N²) scan since the
-    // scratch only grows linearly and IF arrays are small. orderBy copies into
-    // scratch first, then reuses the existing in-place sort() on that copy so
-    // the source array is left untouched.
-
-    array<var> distinct(var obj, var prop){
-        array<var> dst = _bglLinqWrite();
-        int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = length(obj, prop);
-        int outLen = 0;
-        for(int i = 0; i < srcLen; i++){
-            var elem = get(obj, prop, i);
-            bool seen = false;
-            for(int j = 0; j < outLen; j++){
-                if(dst[j] == elem){ seen = true; break; }
-            }
-            if(!seen){
-                if(outLen >= cap){
-                    #i6 {
-                        print "^[Beguile runtime error: distinct() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                        quit;
-                    }
-                }
-                dst[outLen] = elem;
-                outLen++;
-            }
-        }
-        dst.setLength(outLen);
-        _bglLinqFlip();
-        return dst;
-    }
-
-    array<var> orderBy(var obj, var prop, func<int, var, var> compare){
-        array<var> dst = _bglLinqWrite();
-        int cap = #beguilerSettings.linqScratchSize;
-        int srcLen = length(obj, prop);
-        if(srcLen > cap){
-            #i6 {
-                print "^[Beguile runtime error: orderBy() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            }
-        }
-        for(int i = 0; i < srcLen; i++) dst[i] = get(obj, prop, i);
-        dst.setLength(srcLen);
-        sort(dst, 0, compare);
-        _bglLinqFlip();
-        return dst;
-    }
 }

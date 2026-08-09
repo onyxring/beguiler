@@ -10,9 +10,10 @@
 //                                       o.parent == cage))       { ... }
 //
 // Each method fills a shared scratch buffer and returns it as a tracked
-// `array<object>`, so all `<array>` and LINQ operations (filter, map, take,
-// distinct, ...) work on the result. Combine `instances(Animal).filter(p)`
-// instead of `objectloop(o ofclass Animal) if(p(o)) ...`.
+// `array<object>`, so all `<array>` operations work on the result. LINQ chain
+// ops (filter, map, take, distinct, ...) also work — but chaining requires
+// `#include <linq>` (bglWorld itself only pulls in `<array>`). Combine
+// `instances(Animal).filter(p)` instead of `objectloop(o ofclass Animal) if(p(o)) ...`.
 //
 // Each method also accepts an optional `func<bool, object>` predicate. The
 // predicate runs INSIDE the `objectloop` walk, so non-matching objects never

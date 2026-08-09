@@ -5,15 +5,44 @@ Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 Constant _BGL_LINQ_SCRATCH_SIZE = 32;
 
-    Array _bglLinqScratchA table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqScratchB table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Global _bglLinqParity = 0;
-    [ _bglLinqWrite;
-        if(_bglLinqParity == 0) return _bglLinqScratchB;
-        return _bglLinqScratchA;
+    ! MAX_DEPTH = number of nesting levels: depth 0 is a top-level chain, depth 1 is a chain
+    ! started inside a depth-0 chain lambda, and so on. 2 covers the common one-level nested
+    ! case (a chain inside a predicate or mapper); deeper nesting trips the _bglLinqEnter guard.
+    ! Each level costs one buffer PAIR (2 x _BGL_LINQ_SCRATCH_SIZE+2 words) of always-reserved
+    ! static memory, so the default is kept small (Z5 story-size budget). To allow deeper nesting,
+    ! raise the constant AND add matching buffer decls + selector arms + startup stamps.
+    Constant _BGL_LINQ_MAXDEPTH = 2;
+    Array _bglLinqS0A table _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglLinqS0B table _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglLinqS1A table _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglLinqS1B table _BGL_LINQ_SCRATCH_SIZE + 2;
+    Global _bglLinqActiveDepth = 0;
+
+    [ _bglLinqBuf d h ;
+        switch(d) {
+            0: if(h==0) return _bglLinqS0A; return _bglLinqS0B;
+            1: if(h==0) return _bglLinqS1A; return _bglLinqS1B;
+        }
     ];
-    [ _bglLinqFlip;
-        _bglLinqParity = 1 - _bglLinqParity;
+
+    ! Begin a chain step: return the write-half of the current depth's pair (the
+    ! half that ISN'T `src`, so a step reading the previous step's output writes
+    ! the other half; a first step whose src is a user array writes half A). Then
+    ! bump the depth so a chain started inside this step's lambda nests deeper.
+    [ _bglLinqEnter src d a ;
+        d = _bglLinqActiveDepth;
+        if(d >= _BGL_LINQ_MAXDEPTH){
+            print "^[Beguile runtime error: LINQ chain nesting exceeds _BGL_LINQ_MAXDEPTH. Increase the constant in array.bgl.]^";
+            quit;
+        }
+        a = _bglLinqBuf(d, 0);
+        _bglLinqActiveDepth = d + 1;
+        if(src == a) return _bglLinqBuf(d, 1);
+        return a;
+    ];
+
+    [ _bglLinqLeave ;
+        _bglLinqActiveDepth = _bglLinqActiveDepth - 1;
     ];
 
 global _bglInitDone = 0;
@@ -21,10 +50,10 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 
-    _bglLinqScratchA-->(_bglLinqScratchA-->0)     = $9084;
-    _bglLinqScratchA-->(_bglLinqScratchA-->0 - 1) = 0;
-    _bglLinqScratchB-->(_bglLinqScratchB-->0)     = $9084;
-    _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
+    _bglLinqS0A-->(_bglLinqS0A-->0) = $9084;  _bglLinqS0A-->(_bglLinqS0A-->0 - 1) = 0;
+    _bglLinqS0B-->(_bglLinqS0B-->0) = $9084;  _bglLinqS0B-->(_bglLinqS0B-->0 - 1) = 0;
+    _bglLinqS1A-->(_bglLinqS1A-->0) = $9084;  _bglLinqS1A-->(_bglLinqS1A-->0 - 1) = 0;
+    _bglLinqS1B-->(_bglLinqS1B-->0) = $9084;  _bglLinqS1B-->(_bglLinqS1B-->0 - 1) = 0;
 
 ];
 object _zcode
@@ -63,6 +92,17 @@ object _bglArray
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
         
+  ],
+       copy [dobj dprop sobj sprop n cap i;
+    n=self.length(sobj,sprop);
+    cap=self.size(dobj,dprop);
+    if (n > cap) {
+        n = cap;
+    }
+    for (i = 0 : i < n : i++) {
+        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
+    }
+    self.setlength(dobj, dprop, n);
   ],
        isTracked [obj prop hdr;
      if(metaclass(obj)==object) rfalse; 
@@ -224,7 +264,7 @@ object _bglArray
     }
   ],
        filter [obj prop pred dst cap writeCount srcLen i elem;
-    dst = _bgllinqwrite();
+    dst = _bgllinqenter(obj);
     cap = 32;
     writeCount = 0;
     srcLen=self.length(obj,prop);
@@ -242,7 +282,7 @@ object _bglArray
         }
     }
     _bglArray.setLength(dst, 0, writeCount);
-    _bgllinqflip();
+    _bgllinqleave();
     return dst;
   ],
        first [obj prop;
@@ -277,7 +317,7 @@ object _bglArray
     return true;
   ],
        map [obj prop f dst cap srcLen i;
-    dst = _bgllinqwrite();
+    dst = _bgllinqenter(obj);
     cap = 32;
     srcLen=self.length(obj,prop);
     if (srclen > cap) {
@@ -290,11 +330,11 @@ object _bglArray
         dst-->(i+1) = f(self.get(obj,prop,i));
     }
     _bglArray.setLength(dst, 0, srcLen);
-    _bgllinqflip();
+    _bgllinqleave();
     return dst;
   ],
        take [obj prop n dst cap srcLen outLen i;
-    dst = _bgllinqwrite();
+    dst = _bgllinqenter(obj);
     cap = 32;
     srcLen=self.length(obj,prop);
     outLen=n;
@@ -314,11 +354,11 @@ object _bglArray
         dst-->(i+1) = self.get(obj,prop,i);
     }
     _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
+    _bgllinqleave();
     return dst;
   ],
        skip [obj prop n dst cap srcLen start outLen i;
-    dst = _bgllinqwrite();
+    dst = _bgllinqenter(obj);
     cap = 32;
     srcLen=self.length(obj,prop);
     start=n;
@@ -339,11 +379,11 @@ object _bglArray
         dst-->(i+1) = self.get(obj,prop,start + i);
     }
     _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
+    _bgllinqleave();
     return dst;
   ],
        takeWhile [obj prop pred dst cap srcLen outLen i;
-    dst = _bgllinqwrite();
+    dst = _bgllinqenter(obj);
     cap = 32;
     srcLen=self.length(obj,prop);
     outLen = 0;
@@ -361,11 +401,11 @@ object _bglArray
          outlen++ ;
     }
     _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
+    _bgllinqleave();
     return dst;
   ],
        skipWhile [obj prop pred dst cap srcLen start outLen i;
-    dst = _bgllinqwrite();
+    dst = _bgllinqenter(obj);
     cap = 32;
     srcLen=self.length(obj,prop);
     start = 0;
@@ -383,11 +423,11 @@ object _bglArray
         dst-->(i+1) = self.get(obj,prop,start + i);
     }
     _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
+    _bgllinqleave();
     return dst;
   ],
        distinct [obj prop dst cap srcLen outLen i elem seen j;
-    dst = _bgllinqwrite();
+    dst = _bgllinqenter(obj);
     cap = 32;
     srcLen=self.length(obj,prop);
     outLen = 0;
@@ -412,11 +452,11 @@ object _bglArray
         }
     }
     _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
+    _bgllinqleave();
     return dst;
   ],
        orderBy [obj prop compare dst cap srcLen i;
-    dst = _bgllinqwrite();
+    dst = _bgllinqenter(obj);
     cap = 32;
     srcLen=self.length(obj,prop);
     if (srclen > cap) {
@@ -430,7 +470,7 @@ object _bglArray
     }
     _bglArray.setLength(dst, 0, srcLen);
     self.sort(dst, 0, compare);
-    _bgllinqflip();
+    _bgllinqleave();
     return dst;
   ]
 ;

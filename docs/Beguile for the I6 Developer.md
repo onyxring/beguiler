@@ -899,13 +899,13 @@ Other namespaces follow the same pattern: `bgl.zcode` for Z-Machine-specific hel
 
 ### Strings
 
-I6's support for strings is austere: a literal like `"hello"` evaluates to a memory address; you can `print` it, but you can't modify it. When you compare it, you compare memory addresses for equality, not values.  Real string work (e.g., comparing content, building values at runtime, accumulating text) requires either careful use of memory buffers.
+I6's support for strings is austere: a literal like `"hello"` evaluates to a memory address; you can `print` it, but you can't modify it. When you compare it, you are comparing memory addresses for equality, not string values themselves.  Real I6 string work (e.g., comparing content, building values at runtime, accumulating text) requires either careful use of memory buffers.
 
 Beguile keeps the I6-style address-of-literal as the default, then layers on a richer feature set you opt into.
 
 #### Without `<string>`
 
-The `string` type out of the box does what an I6 dev expects.  A literal:
+Out of the box, the `string` type does what an I6 developer expects.  A literal:
 
 ```
 string greeting = "Hello, world.";
@@ -1040,12 +1040,22 @@ The CoD walkthrough introduced interpolated strings; here's the I6-dev mental mo
 
 ### Using Arrays
 <Start here>
-Beguile has rich for typed arrays. The approach and syntax differs sharply from that of I6.
+Beguile has rich support for typed arrays. The approach and syntax differs sharply from that of I6.  The following declares an array of integer values containing the first five odd numbers:
 
-array<type> myArray={1,3,5,2,5};
+	array<int> myArray={1,3,5,7,9};
 
-- for in syntax
-- accessor syntax
+Beguile supports different ways to iterate over the array elements.  For example:
+
+for(int i=0; i<myArray.length();i++){
+	print(myArray[i]);
+}
+
+or:
+
+for(int v in myArray){
+	print(v);
+}
+
 - some DM4 examples contrasted in Beguile
 <end here>
 #### Raw I6 word arrays

@@ -58,6 +58,7 @@ global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
+    dst-->(dst-->0) = $9084;
 ];
 object _zcode
 ;
@@ -267,80 +268,12 @@ object _bglArray
     }
   ]
 ;
-[sumDown n acc rest;
-    acc = _bglArrayLocalAlloc(4);
-    if (n <= 0) {
-        _bglFrameFree(7);
-        return 0;
-    }
-    _bglArray.append(acc, 0, n);
-    rest=sumdown(n - 1);
-    _bglFrameFree(7);
-    return  acc-->(0+1)  + rest;
-    _bglFrameFree(7);
-];
-[useTwoLocals a b first second;
-    first = _bglArrayLocalAlloc(3);
-    second = _bglArrayLocalAlloc(3);
-    _bglArray.append(first, 0, a);
-    _bglArray.append(first, 0, b);
-    _bglArray.append(second, 0, a + b);
-    _bglFrameFree(6);
-    _bglFrameFree(6);
-    return  first-->(0+1)  +  first-->(1+1)  +  second-->(0+1) ;
-    _bglFrameFree(6);
-    _bglFrameFree(6);
-];
-[earlyReturn flag buf;
-    buf = _bglArrayLocalAlloc(5);
-    _bglArray.append(buf, 0, 100);
-    if (flag) {
-        _bglFrameFree(8);
-        return  buf-->(0+1) ;
-    }
-    _bglArray.append(buf, 0, 200);
-    _bglFrameFree(8);
-    return  buf-->(1+1) ;
-    _bglFrameFree(8);
-];
-[sumAll data total i;
-    total = 0;
-    for (i = 0 : i < _bglArray.length(data, 0) : i++) {
-        total = total +  data-->(i+1) ;
-    }
-    return total;
-];
-[listInitLocal primes;
-    primes = _bglArrayLocalAlloc(5);
-    primes-->1 = 2;
-    primes-->2 = 3;
-    primes-->3 = 5;
-    primes-->4 = 7;
-    primes-->5 = 11;
-    primes-->6 = 5;
-    _bglFrameFree(8);
-    return _bglArray.length(primes, 0) * 100 + sumall(primes);
-    _bglFrameFree(8);
-];
-[localByteArray buf c0 c1;
-    buf = _bglByteArrayLocalAlloc(8);
-    buf->(0 + WORDSIZE) = 'X';
-    buf->(1 + WORDSIZE) = 'Y';
-    c0= buf->(0 + WORDSIZE);
-    c1= buf->(1 + WORDSIZE);
-    if (c0=='X' && c1=='Y') {
-        _bglByteArrayLocalFree(8);
-        return 777;
-    }
-    _bglByteArrayLocalFree(8);
-    return 0;
-    _bglByteArrayLocalFree(8);
-];
-[main;
-    print sumdown(5);
-    print usetwolocals(3,4);
-    print earlyreturn(true);
-    print earlyreturn(false);
-    print listinitlocal();
-    print localbytearray();
+array src table 11 22 33 44 4 $9084;
+array dst table 10;
+[main keep picked;
+    keep = _bglArrayLocalAlloc(8);
+    _bglArray.copy(dst, 0, src, 0);
+    _bglArray.copy(keep, 0, src, 0);
+    picked = dst;
+    _bglFrameFree(11);
 ];

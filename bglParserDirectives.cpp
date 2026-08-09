@@ -365,7 +365,11 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                     transform(ciInclude.begin(), ciInclude.end(), ciInclude.begin(), ::tolower);
                     if(ciInclude == "array"){
                         languageService.arrayInUse = true;
-                        languageService.linqInUse  = true;
+                    }
+                    else if(ciInclude == "linq"){
+                        // <linq> #include <array> internally (sets arrayInUse); this flag gates
+                        // the LINQ-only bits (e.g. the _BGL_LINQ_SCRATCH_SIZE constant).
+                        languageService.linqInUse = true;
                     }
                     else if(ciInclude == "bglworld"){
                         languageService.worldInUse = true;
@@ -783,6 +787,47 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             return false;
             break;
         }
+        case chk("#i6replace"):{
+            // #i6replace RoutineName [SavedName];
+            //
+            // Emits I6 `Replace RoutineName [SavedName];`. `Replace` must appear before the
+            // library that first defines the routine, so — unlike a bare `#i6 replace X;`
+            // (which lands verbatim at its source position) — this directive routes through the
+            // emit-first stream so it is hoisted above ALL includes and definitions. The author
+            // can therefore write `#i6replace` anywhere and the replacement always takes effect.
+            //
+            // Routine names are emitted in their original case (I6 identifiers are case-sensitive);
+            // the optional second name is I6's rename-the-original form, so the replaced routine's
+            // library definition remains callable under SavedName.
+            //
+            // Operands are scanned on THIS LINE ONLY: the raw rest-of-line is read to the next
+            // newline, then trimmed at a `//` comment and at the terminating `;`. This keeps the
+            // scan line-bounded — a no-semicolon form can't reach across the newline and swallow
+            // the next statement's first identifier as the saved-original name. Reading raw text
+            // also preserves the operands' original case for the case-sensitive I6 identifiers.
+            string line;
+            { char c = file.readChar();
+              while(c != '\n' && c != EOF){ line += c; c = file.readChar(); } }
+            { size_t sl = line.find("//"); if(sl != string::npos) line.erase(sl); }   // strip trailing // comment
+            { size_t sc = line.find(';');  if(sc != string::npos) line.erase(sc); }   // operands end at ';'
+            vector<string> names;
+            for(size_t i = 0; i < line.size(); ){
+                while(i < line.size() && isspace((unsigned char)line[i])) i++;
+                size_t s = i;
+                while(i < line.size() && !isspace((unsigned char)line[i])) i++;
+                if(i > s) names.push_back(line.substr(s, i - s));
+            }
+            if(names.empty())
+                return parsingError("#i6replace expects a routine name (e.g. `#i6replace GameEpilogue;`)");
+            if(names.size() > 2)
+                return parsingError("#i6replace expects a routine name and an optional saved-original name — got extra tokens");
+            string replaceLine = "Replace " + names[0];
+            if(names.size() == 2) replaceLine += " " + names[1];
+            replaceLine += ";";
+            languageService.emitFirstBlocks.push_back(replaceLine);
+            return false;
+            break;
+        }
         case chk("#define"):{
             token sym = file.getToken(eTokenType::identifier);
             // optional value on the same line — skip horizontal whitespace only (not newlines)
@@ -1108,6 +1153,7 @@ bool bglParser::processBeguilerSettings(){
         else if(key == "forgiveness"){    if(cfg.forgiveness.empty())    cfg.forgiveness    = strVal; }
         else if(key == "ifid"){           if(cfg.ifid.empty())           cfg.ifid           = strVal; }
         else if(key == "autoinitialize"){ cfg.autoInitialize = (strVal == "true"); }
+        else if(key == "economy"){ cfg.economy = (strVal == "true"); }
         else if(key == "omitunusedroutines"){ cfg.omitUnusedRoutines = (strVal == "true"); }
 
         tok = file.getToken();

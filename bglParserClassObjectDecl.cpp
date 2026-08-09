@@ -1847,6 +1847,10 @@ bool bglParser::processObjectExtension(token nameTok){
                     isAllowed = true;  // block-local priority directive (see identifier branch below)
                 else if(vod != nullptr && tok.value == "grammar" && peekOp.is(token::assignment))
                     isAllowed = true;  // replace semantics: `grammar = { ... }` (see identifier branch below)
+                else if(tok.value == "synonyms" && peekOp.is(token::assignment))
+                    isAllowed = true;  // `synonyms = { ... }` → I6 `Verb 'w' = 'anchor';` — recognized
+                                       // regardless of verb resolution; the handler below gives a
+                                       // targeted error if the extend target isn't a verb
             }
             if(!isAllowed)
                 parsingError(format("Cannot add members to extern object '{0}'; only compound assignment (+=) on collection members is allowed",
@@ -2000,6 +2004,41 @@ bool bglParser::processObjectExtension(token nameTok){
                     vod->grammarLines.push_back(gl);
                 }
                 if(isReplace) extendHadReplaceGrammar = true;
+            } else if(tok.value == "synonyms" && peekOp.is(token::assignment)){
+                // `synonyms = {.w1, .w2};` → I6 `Verb 'w1' 'w2' = 'anchor';`. The listed words become
+                // TRUE ALIASES of the anchor verb's grammar table (a later `Extend` on the verb flows
+                // to them automatically) — distinct from copying grammar lines. Works for extern
+                // (stdlib) and Beguile-native verbs; emitted as a globals-level node so it lands after
+                // the anchor's own `Verb` directive.
+                //
+                // Recognized in ANY extend body (not gated on verb resolution), so a `synonyms` line
+                // on a non-verb target gets a targeted error below instead of falling through to the
+                // misleading generic "'synonyms' is not a property …" message. The block is parsed
+                // (tokens consumed) regardless, to avoid a cascade of follow-on errors.
+                file.getToken(token::assignment);
+                file.getToken(token::braceOpen);
+                verbSynonymDecl& syn = *(new verbSynonymDecl());
+                syn.anchorVerb = vod ? vod->name : obj->name;   // primary word resolved at emit
+                if(!file.peekToken().is(token::braceClose)){
+                    while(true){
+                        token w = file.getToken(eTokenType::dictionaryWord);
+                        string e; for(char ch : w.value) e += (ch == '\'') ? '^' : ch;
+                        string i6word;
+                        if(w.isPlural)         i6word = "'" + e + "//p'";
+                        else if(e.size() == 1) i6word = "'" + e + "//'";
+                        else                   i6word = "'" + e + "'";
+                        syn.synonymWords.push_back(i6word);
+                        token sep = file.getToken({token::comma, token::braceClose});
+                        if(sep.is(token::braceClose)) break;
+                    }
+                }
+                if(file.peekToken().is(token::endStatement)) file.getToken();
+                if(vod == nullptr)
+                    parsingError(format("`synonyms = {{ ... }}` is only valid when extending a verb — '{0}' is not a verb", obj->dName()));
+                else if(syn.synonymWords.empty())
+                    parsingError("`synonyms = { ... }` requires at least one trigger word");
+                else
+                    languageService.globals.push_back(&syn);
             } else {
                 processInheritedMember(*obj, tok);
             }

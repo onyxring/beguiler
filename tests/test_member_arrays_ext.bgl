@@ -15,7 +15,7 @@
     informName = "none";
     outputPath = "tests/output";
 }
-#include <array>
+#include <linq>
 
 object widget {
     array<int> nums = {30, 10, 20};

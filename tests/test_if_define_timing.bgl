@@ -1,0 +1,41 @@
+// test_if_define_timing.bgl — `#if` is evaluated with position-dependent (linear) semantics,
+// consistently between the pre-scan and main passes. A `#define`/`#undef` affects only the code
+// that follows it, matching a standard C-style preprocessor.
+//
+// Regression: the main pass used to inherit the pre-scan's END-OF-FILE define table, so a
+// `#define` appearing LATER than an `#if` could retroactively enable that earlier `#if`. The
+// fix restores the programmatic seed (version/target defines) at the main-pass entry and
+// re-derives source `#define`s linearly. See preScanFile / parseFile.
+//
+// Emission is the assertion: the baseline must contain the "on" globals and must NOT contain
+// the "skipped" globals.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+// (A) `#if` BEFORE its `#define` — must be SKIPPED (EARLY is not defined at this point).
+#if EARLY
+int shouldBeSkippedA = 111;
+#endif
+#define EARLY 1
+
+// (B) define → use → undef → use. First block ON, second SKIPPED.
+#define MID 1
+#if MID
+int definedWhileOn = 222;
+#endif
+#undef MID
+#if MID
+int shouldBeSkippedB = 333;
+#endif
+
+// (C) ordinary define-then-use — ON.
+#define LATE 1
+#if LATE
+int normalOn = 444;
+#endif
+
+void main(){ }

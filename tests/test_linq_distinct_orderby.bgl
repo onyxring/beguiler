@@ -12,7 +12,7 @@
     informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
     outputPath = "tests/output";
 }
-#include <array>
+#include <linq>
 
 array<int> g_dupes    = {3, 1, 4, 1, 5, 9, 2, 6, 5, 3};
 array<int> g_unsorted = {30, 10, 50, 20, 40};

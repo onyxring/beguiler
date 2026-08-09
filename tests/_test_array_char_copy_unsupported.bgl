@@ -1,0 +1,21 @@
+// _test_array_char_copy_unsupported.bgl — value-copy of an array<char> (byteArray) is not
+// yet supported: the word-form copy inherited from array<T> would corrupt byte data (it
+// copies `length` WORDS, not bytes). Rather than emit corrupting/broken I6, whole-array
+// value-copy on a char array is a clean compile error. Use <string>/<buf> or copy elements.
+//
+// EXPECT_ERROR: array<char> value-copy
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <array>
+
+array<char> srcC = "hi";
+array<char> dstC[16];
+
+void main(){
+    dstC = srcC;
+}

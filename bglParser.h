@@ -516,6 +516,14 @@ class bglParser {
         sourceLocation currentStatementSrc;  // location of the first token of the current statement
 
         map<string,string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value
+        // Snapshot of definedSymbols taken at the top-level pre-scan entry — captures only the
+        // programmatically-seeded symbols (version + target defines set before pre-scan), NOT the
+        // source `#define`s the pre-scan then accumulates. Restored at the top-level main-pass
+        // entry so the main pass re-derives source defines linearly (position-dependent), instead
+        // of inheriting the pre-scan's end-of-file state (which would let a late `#define`
+        // retroactively enable an earlier `#if`). See preScanFile / parseFile.
+        map<string,string> definedSymbolsPreScanSeed;
+        bool hasPreScanSeed = false;
         bool evaluateCondition(const string& expr);   // evaluates a #if boolean expression
         void skipConditionalBlock(abstractObject& ctx);    // skips tokens until #elif/#else/#endif at depth 0
         void skipBglConditionalBlock(abstractObject& ctx); // skips tokens until ##else/##endif at depth 0

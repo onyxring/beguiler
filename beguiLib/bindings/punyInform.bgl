@@ -174,17 +174,28 @@ extern object selfobj;              // the player self object
 // Both bare (held) and qualified (grammarToken.held) access work; lexical scope
 // wins so a local/param of the same name doesn't collide.
 extern enum grammarToken {
-    noun,           // a noun object
-    held,           // object currently held by the actor
-    creature,       // an animate object
-    topic,          // a conversational topic
-    multi,          // one or more nouns
-    multiheld,      // one or more held nouns
-    multiexcept,    // multiple nouns except one
-    multiinside,    // multiple nouns inside a container
-    special,        // a special token
-    anynumber,      // any number typed by the player
-    number          // a number typed by the player
+    /// Any in-scope object.
+    noun,
+    /// An object the actor is currently holding.
+    held,
+    /// An animate object — one with the `animate` attribute.
+    creature,
+    /// A free-form topic phrase (any sequence of words the player types).
+    topic,
+    /// One or more in-scope objects.
+    multi,
+    /// One or more held objects.
+    multiheld,
+    /// Multiple in-scope objects, excluding one already matched (commonly used after a preposition).
+    multiexcept,
+    /// Multiple objects inside a specific container.
+    multiinside,
+    /// A number or a single dictionary word.
+    special,
+    /// Any number typed by the player (no range check).
+    anynumber,
+    /// A number typed by the player (range-checked to fit a word).
+    number
 }
 
 //-- Standard game actions ----------------------------------------------------

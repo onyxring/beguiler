@@ -950,6 +950,29 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 cur = getNext();
                 continue;  // re-process the token after the cast with castType set
             }
+            // Instance cast: `(instanceName)expr`. An objectDef instance is its own type but is
+            // lexed as an *identifier* (not a dataType), so it doesn't match the class-cast branch
+            // above. Detect `(` ident `)` where the identifier names an objectDef, and an OPERAND
+            // follows — distinguishing a real cast from a grouped value `(obj)` followed by an
+            // operator/terminator. This lets `((library)x).instanceMember` resolve the instance's
+            // own members (unchecked downcast — the author asserts the runtime type; same as `(var)`
+            // but type-checked against the named instance). `(...)` operand excluded — write `((x)y)`.
+            {
+                token p1c = file.peekToken(1);
+                if(p1c.is(eTokenType::identifier) && file.peekToken(2).is(token::parenClose)
+                   && dynamic_cast<objectDef*>(&languageService.getType(p1c.value)) != nullptr){
+                    token p3c = file.peekToken(3);
+                    bool operandFollows = p3c.is(eTokenType::identifier) || p3c.is(eTokenType::dataType)
+                        || p3c.is(eTokenType::integer) || p3c.is(eTokenType::quote) || p3c.is(eTokenType::rawQuote)
+                        || p3c.is(eTokenType::charLiteral) || p3c.is(eTokenType::dictionaryWord);
+                    if(operandFollows){
+                        castType = file.getToken(eTokenType::identifier).value;
+                        file.getToken(token::parenClose);
+                        cur = getNext();
+                        continue;
+                    }
+                }
+            }
             // Cast followed by parenthesized expression: `(T)(...)`. The cast applies to
             // the result of the inner expression, not to the first identifier inside, so
             // park castType on the stack and clear it before descending. The matching
@@ -1562,23 +1585,6 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
 
                         expr->resolvedType = method->returnType.name;
 
-                        // ofClass guard: validate first argument is a real I6-backed class or object
-                        if(objType == "bglworldtype" && methName == "ofclass" && !callArgs.empty()){
-                            string clsArgName = callArgs[0]->text();
-                            typeDef* clsType = nullptr;
-                            for(typeDef* g : languageService.globals)
-                                if(g->name == clsArgName){ clsType = g; break; }
-                            bool valid = false;
-                            if(clsType){
-                                if(auto* od = dynamic_cast<objectDef*>(clsType))
-                                    valid = true; // user object declarations always have I6 backing
-                                else if(auto* cd = dynamic_cast<classDef*>(clsType))
-                                    valid = !cd->isEmitterClass && !cd->isAlias;
-                            }
-                            if(!valid)
-                                parsingError(format("'{0}' cannot be used with bglWorld.ofClass() — it is not an I6-backed class or object", callArgs[0]->text()));
-                        }
-
                         // Compute $prop for array method calls in expression context
                         string exprPropValue = isWordArrayType(objType) ? "0" : "<$prop undefined>";
 
@@ -2168,11 +2174,23 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 // `.parent` off a prior read): dispatch through the read emitter with $self = the
                 // accumulated expression text, instead of emitting a raw `<expr>.member` property read.
                 {
-                    classDef* rcls = getDispatchClass(expr->resolvedType);
-                    typeMember* pm = rcls ? findMemberInHierarchy(rcls, [&](typeMember* m){
-                        auto* vd = dynamic_cast<variableDeclaration*>(m);
-                        return vd != nullptr && vd->name == member.value;
-                    }) : nullptr;
+                    // Resolve the field. An objectDef's OWN members (instance-only fields — e.g.
+                    // reached via an instance cast `((library)x).shelves`) are checked first: an
+                    // objectDef is its own type and its members override inherited ones, so a
+                    // cast/chain reaches them just like direct `library.shelves` does. Then fall
+                    // back to the class hierarchy for shared members.
+                    typeMember* pm = nullptr;
+                    if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(expr->resolvedType)))
+                        for(typeMember* m : od->members)
+                            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                                if(vd->name == member.value){ pm = m; break; }
+                    if(pm == nullptr){
+                        classDef* rcls = getDispatchClass(expr->resolvedType);
+                        if(rcls) pm = findMemberInHierarchy(rcls, [&](typeMember* m){
+                            auto* vd = dynamic_cast<variableDeclaration*>(m);
+                            return vd != nullptr && vd->name == member.value;
+                        });
+                    }
                     string mtype = pm ? dynamic_cast<variableDeclaration*>(pm)->type.name : "";
                     if(!mtype.empty() && isPropertyClassType(mtype)){
                         string selfText; for(const auto& t : expr->tokens) selfText += t;
@@ -2202,6 +2220,20 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         prefetched = afterMember;   // keep chaining (.field.field, or a following .method())
                         cur = getNext();
                         continue;
+                    }
+                    // Member not found on an `object`-typed receiver. `object` is the universal
+                    // supertype — a dynamically-typed value (e.g. from `.parent`), so a subtype
+                    // member can't resolve without a cast. Error AT the member with a cast hint,
+                    // instead of silently dropping it (which used to surface as a confusing
+                    // "Cannot assign value of type 'object' ..." on the enclosing statement).
+                    // Strict mode only — loose #bgl islands keep object passthrough.
+                    if(expr->resolvedType == "object" && !looseIdentifierMode && func != nullptr){
+                        string recvText; for(const auto& t : expr->tokens) recvText += t;
+                        parsingError(format("'{0}' is not a member of 'object'. This value is "
+                            "dynamically typed (e.g. from '.parent') — its runtime type isn't known "
+                            "statically. Cast to the concrete type to reach its members: "
+                            "((SomeType){1}).{0}  (or ((var){1}).{0} for an untyped read).",
+                            member.value, recvText));
                     }
                 }
                 // Not a method call (e.g. struct member) — emit '.' and re-process member

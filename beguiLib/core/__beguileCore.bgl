@@ -40,10 +40,10 @@ _bglObject bgl{
     // orLibrary's global `object util` (I6 keeps object + property short-names in one namespace).
     auto util as bglUtil = _bglUtil;
 }
-// Target-specific platform code is opt-in per the zero-byte-core principle:
-//   #include <zcode>  → bgl.asm + bglOpCodes for Z-machine assembly
-//   #include <glulx>  → bgl.asm + bglOpCodes + _glulx namespace + __glkHook
-// Programs that don't need raw assembly or platform hooks pay nothing.
+// Target-specific platform code is selected automatically above (see the
+// TARGET_GLULX branch): _zcodeCore or _glulxCore is pulled in per the active
+// target, each providing bgl.asm (+ bglOpCodes, and on Glulx the _glulx
+// namespace + __glkHook). There is no user-facing `<zcode>`/`<glulx>` include.
 
 //-----------------------------------------------------------------------------
 // _bglScratch — shared scratch buffer for for-in over inline lists.

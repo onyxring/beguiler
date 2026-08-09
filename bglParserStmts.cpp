@@ -1389,6 +1389,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         // look up the left-hand variable's type using original (unqualified) name
         typeDef* leftType = nullptr;
         bool lhsIsRefLocal = false;     // set true if the bare LHS resolves to a `ref` local
+        bool lhsIsByteArray = false;    // set true if the LHS is an array<char> (byteArray) — value-copy unsupported
         string emitterSelfForLhs = lhsOriginal;  // $self value for emitter substitution
 
         size_t lhsDot = lhsOriginal.rfind('.');
@@ -1407,6 +1408,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             assignExpr.variableLeft = mangledName;
                             emitterSelfForLhs = mangledName;  // $self should be the mangled global, not the owner
                             leftType = &vd->type;
+                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
                             break;
                         }
             }
@@ -1428,6 +1430,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                                 if(vd->name == propName){
                                     if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
                                     leftType = &vd->type;
+                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
                                     if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
                                     break;
                                 }
@@ -1443,6 +1446,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         auto* vd = dynamic_cast<variableDeclaration*>(found);
                         if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
                         leftType = &vd->type;
+                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
                         if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
                     }
                 }
@@ -1458,6 +1462,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                             if(vd->name == lhsOriginal){
                                 leftType = &vd->type;
+                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
                                 if(vd->isRefLocal) lhsIsRefLocal = true;
                                 break;
                             }
@@ -1467,6 +1472,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             if(vd->name == lhsOriginal){
                                 if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
                                 leftType = &vd->type;
+                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
                                 if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
                                 break;
                             }
@@ -1476,6 +1482,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             if(vd->name == lhsOriginal){
                                 if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
                                 leftType = &vd->type;
+                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
                                 if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
                                 break;
                             }
@@ -1483,10 +1490,14 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(leftType == nullptr)
                 for(typeDef* g : languageService.globals)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                        if(vd->name == lhsOriginal){ leftType = &vd->type; break; }
+                        if(vd->name == lhsOriginal){ leftType = &vd->type; if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray; break; }
         }
 
-        classDef* classType = leftType != nullptr ? dynamic_cast<classDef*>(&languageService.getType(leftType->name)) : nullptr;
+        // Resolve via getDispatchClass so a template-typed LHS (e.g. `array<int>`) reaches
+        // operator= dispatch — getType("array<int>") returns null (only the base `array` is
+        // registered), which would silently skip copy semantics. getDispatchClass strips the
+        // <...> and resolves the base class. (For non-template names this is equivalent.)
+        classDef* classType = leftType != nullptr ? getDispatchClass(leftType->name) : nullptr;
 
         // helper: apply operator= emitter lookup to an assignment node for a given rhs expression
         auto resolveEmitter = [&](assignmentStatement& a, expression* val){
@@ -1521,6 +1532,32 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             if(classType != nullptr)
                                 a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
                             found = true;
+                        }
+                    }
+                    // Template-aware emitter match: an emitter operator= whose parameter and the RHS
+                    // resolve to the SAME dispatch class (e.g. `operator=(array<T>)` for an `array<int>`
+                    // RHS). The exact/var string match above can't see this because the param type name
+                    // ("array" / "array<T>") won't string-equal the RHS ("array<int>"). Backs array
+                    // copy-on-assign. Only adds matches the string passes missed (for non-generic
+                    // classes it's equivalent to the exact match, which already ran).
+                    if(!found){
+                        classDef* valCls = getDispatchClass(valueTypeName);
+                        if(valCls != nullptr){
+                            typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
+                                auto* opFunc = dynamic_cast<functionDef*>(mm);
+                                return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
+                                       && dynamic_cast<i6Block*>(opFunc->body)!=nullptr
+                                       && getDispatchClass(opFunc->params[0]->type.name) == valCls;
+                            });
+                            if(m){
+                                auto* opFunc = dynamic_cast<functionDef*>(m);
+                                auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                                a.emitterBody = processBglConditionals(blk->i6Body);
+                                a.emitterParam = opFunc->params[0]->name;
+                                if(classType != nullptr)
+                                    a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
+                                found = true;
+                            }
                         }
                     }
                     // Non-emitter operator=: dispatch via a mangled method call so the routine runs
@@ -1579,6 +1616,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         }
                     }
                     bool foundViaOperatorEq = found;
+                    // array<char> (byteArray) matches the inherited array<T> word-copy operator=
+                    // (via the upcast pass — byteArray : array). That word-copy corrupts byte data
+                    // (copies `length` WORDS, not bytes). Char-array value-copy isn't supported yet —
+                    // a clean error beats corruption/broken I6. Fires for any operator= match on a
+                    // byte-array LHS (byteArray has no operator= of its own — only the inherited copy).
+                    if(foundViaOperatorEq && lhsIsByteArray)
+                        parsingError("array<char> value-copy (`dst = src`) is not yet supported — the element copy would corrupt byte data. Copy elements explicitly, or use <string>/<buf> for text buffers.");
                     if(!found) found = isTypeCompatible(valueTypeName, leftType->name);
                     // Silent value-semantics gap: TypeCompatible let it through but no
                     // operator= matched, AND the LHS class carries its own stored fields,

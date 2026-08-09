@@ -1,0 +1,31 @@
+// test_instance_cast.bgl — casting an object-typed value to a specific INSTANCE name reaches
+// that instance's own members (instance-only fields defined on the object, not on its class),
+// as well as inherited class members. An objectDef is its own type, so `(library)x` is a valid
+// cast target even though instance names lex as identifiers (not dataTypes).
+//
+// It's an UNCHECKED downcast — the author asserts the runtime object is `library`; if it isn't,
+// the read goes through library's property layout (like `(var)`), but the member name IS
+// type-checked against library (unlike `(var)`, which is fully untyped). See the negative
+// fixture `_test_instance_cast_bad_member.bgl` for the type-check.
+//
+// Emits a plain I6 property read (`parent(b1).shelves`) — same runtime as the `(var)` escape,
+// but validated at compile time.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Room : object { int lit; }        // inherited class member
+Room library { int shelves; }           // instance-only member
+class Bk : object { }
+Bk b1 { parent = library; }
+
+void main(){
+    Room r = (library)b1.parent;                    // IS-A: library assignable to Room
+    int a = ((library)b1.parent).shelves;           // instance-only member via instance cast
+    int c = ((library)b1.parent).lit;               // inherited class member via instance cast
+    // grouping still works (operator/terminator after `)` → grouped value, not a cast):
+    bool same = (library) == b1.parent;
+}

@@ -1,0 +1,11 @@
+// _test_verb_synonyms_non_verb.bgl — `synonyms = { ... }` is only meaningful when extending a
+// verb (it emits I6's `Verb 'w' = 'anchor';` aliasing form). Using it on a non-verb object gives
+// a TARGETED error naming the object, not the misleading generic "'synonyms' is not a property …"
+// fall-through (which is what happened before the recognition was decoupled from verb resolution).
+//
+// EXPECT_ERROR: is only valid when extending a verb
+
+#include <bindings/i6StandardLibrary>
+
+object rock { }
+extend rock { synonyms = {.stone, .boulder}; }

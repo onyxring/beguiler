@@ -456,6 +456,72 @@ bool beguiler::go(int argc, char* argv[]) {
         return false;
     }else{
         cout<<"Handing off to I6..."<<endl;
+
+        // Opt-in auto text abbreviations (#beguilerSettings.economy). Compute optimal I6
+        // abbreviations with a throwaway `-u` pre-pass, inject them at the top of the .inf
+        // (before any string), and compile the real pass with `-e` (economy). We NEVER override
+        // an author's own Abbreviate directives — if the source already defines any, we skip.
+        // Best-effort: any failure just falls through to a normal compile.
+        if(beguilerSettings.economy){
+            bool userAbbrevs = false;
+            {   ifstream inf(settings.tmpFile); string ln;
+                while(getline(inf, ln)){
+                    size_t s = ln.find_first_not_of(" \t");
+                    if(s == string::npos) continue;
+                    // I6 directives are case-insensitive and Beguile lowercases emitted #i6 text,
+                    // so match "abbreviate " case-insensitively.
+                    string head = ln.substr(s, 11);
+                    transform(head.begin(), head.end(), head.begin(), ::tolower);
+                    if(head == "abbreviate "){ userAbbrevs = true; break; }
+                }
+            }
+            if(userAbbrevs){
+                cout << "[economy] author Abbreviate directives found — leaving text handling to you." << endl;
+            } else {
+                // 1. Compute optimal abbreviations (a -u compile prints them; discard its output file).
+                string uOut = settings.tmpFile + ".econ.tmp";
+                string uCmd = settings.informPath + " -u " + settings.tmpFile + " " + uOut + " 2>&1";
+                vector<string> abbrevs;
+                if(FILE* up = popen(uCmd.c_str(), "r")){
+                    char b[4096];
+                    while(fgets(b, sizeof(b), up)){
+                        string l(b);
+                        if(l.compare(0, 11, "Abbreviate ") == 0){
+                            while(!l.empty() && (l.back()=='\n' || l.back()=='\r')) l.pop_back();
+                            abbrevs.push_back(l);
+                        }
+                    }
+                    pclose(up);
+                }
+                remove(uOut.c_str());
+                // 2. Inject them after the leading `!%` ICL block (earliest point, before any string).
+                if(!abbrevs.empty()){
+                    ifstream inf(settings.tmpFile);
+                    vector<string> lines; string ln;
+                    while(getline(inf, ln)) lines.push_back(ln);
+                    inf.close();
+                    ofstream outf(settings.tmpFile);
+                    bool injected = false;
+                    for(size_t i = 0; i < lines.size(); i++){
+                        if(!injected){
+                            size_t s = lines[i].find_first_not_of(" \t");
+                            bool isIcl = (s != string::npos && lines[i].compare(s, 2, "!%") == 0);
+                            bool blank = (s == string::npos);
+                            if(!isIcl && !blank){
+                                for(auto& a : abbrevs) outf << a << "\n";
+                                injected = true;
+                            }
+                        }
+                        outf << lines[i] << "\n";
+                    }
+                    if(!injected) for(auto& a : abbrevs) outf << a << "\n";
+                    outf.close();
+                    settings.switches += " -e";
+                    cout << "[economy] injected " << abbrevs.size() << " optimal abbreviations; compiling with -e." << endl;
+                }
+            }
+        }
+
         string debugSwitch = settings.debugMode ? " -k" : "";  // -k: write debug info to gameinfo.dbg
         string i6Cmd = settings.informPath + debugSwitch + " " + settings.switches + " " +
                        settings.tmpFile + " " + settings.outFile;

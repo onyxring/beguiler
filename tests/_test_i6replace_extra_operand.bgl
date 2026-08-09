@@ -1,0 +1,16 @@
+// _test_i6replace_extra_operand.bgl — `#i6replace` accepts a routine name and at most one
+// optional saved-original name. More than two operands on the line is a compile error (rather
+// than silently emitting malformed I6). Operand scanning is line-bounded, so all three tokens
+// here are seen as operands of the one directive.
+//
+// EXPECT_ERROR: #i6replace expects a routine name and an optional saved-original name
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#i6replace Alpha Beta Gamma;
+
+void main(){ }

@@ -1,0 +1,35 @@
+/*
+    test_verb_synonyms.bgl — the `synonyms = { ... }` form in an `extend` verb body.
+
+    Emits I6's compact `Verb 'w1' 'w2' … = 'anchor';` synonym directive, making the listed
+    trigger words TRUE ALIASES of the anchor verb's grammar table. Unlike copying grammar lines,
+    a later `Extend` on the anchor flows to the synonyms automatically — this is I6 verb-identity
+    aliasing, not duplication.
+
+    Covered here (native verbs, so the .inf is self-contained and I6-compiles standalone):
+      - synonyms on a Beguile-native verb (anchor directive emits first, then the alias)
+      - multiple synonym words in one directive (`.sip, .swig`)
+      - single-character trigger word (`.g` → I6 `'g//'`) alongside a normal word
+
+    The same form works on an EXTERN (stdlib) verb — `extend Take { synonyms = {.steal, .grab}; }`
+    emits `Verb 'steal' 'grab' = 'take';`. That case isn't in this baseline because a unit test
+    doesn't link the real I6 library, so `take` has no grammar to alias here (it does in a real
+    game). The emission path is identical — only the anchor's own `Verb` directive differs in origin.
+*/
+
+#include <bindings/i6StandardLibrary>
+
+// Beguile-native verb: `verb 'quaff'` emits first, then `verb 'sip' 'swig' = 'quaff';`.
+verb Quaff {
+    grammar = { {.quaff, noun} };
+    void handler() { print("You quaff it."); }
+}
+extend Quaff { synonyms = {.sip, .swig}; }
+
+// Single-character word: `.g` → `'g//'` (I6's one-letter dict-word form). Anchor is the verb's
+// primary trigger word (`gaze`), resolved at emit time.
+verb Gaze {
+    grammar = { {.gaze, noun} };
+    void handler() { print("You gaze."); }
+}
+extend Gaze { synonyms = {.g, .peek}; }

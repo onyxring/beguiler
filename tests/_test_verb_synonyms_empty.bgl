@@ -1,0 +1,8 @@
+// _test_verb_synonyms_empty.bgl — an empty `synonyms = { }` is an error: the synonym form
+// exists to declare alias trigger words, so at least one is required.
+//
+// EXPECT_ERROR: requires at least one trigger word
+
+#include <bindings/i6StandardLibrary>
+
+extend Take { synonyms = { }; }

@@ -1,0 +1,21 @@
+// _test_object_member_no_cast.bgl — accessing a subtype field through an `object`-typed value
+// (here, `.parent`, which is statically `object` because the world tree is mutable) WITHOUT a
+// cast is a clear compile error, not a silently-dropped member. `parent` reads as `object`, so
+// `.cap` can't resolve statically — the fix is a cast: `((Rm)r1.parent).cap`. This replaces the
+// old misleading "Cannot assign value of type 'object' to variable of type 'int'" that resulted
+// from the field being silently dropped off the chain.
+//
+// EXPECT_ERROR: is not a member of 'object'
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class Rm : object { int cap; }
+Rm r1;
+
+void main(){
+    int x = r1.parent.cap;   // 'cap' is on Rm, not object — needs a cast
+}

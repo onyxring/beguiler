@@ -3,29 +3,10 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_LINQ_SCRATCH_SIZE = 32;
-
-    Array _bglLinqScratchA table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqScratchB table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Global _bglLinqParity = 0;
-    [ _bglLinqWrite;
-        if(_bglLinqParity == 0) return _bglLinqScratchB;
-        return _bglLinqScratchA;
-    ];
-    [ _bglLinqFlip;
-        _bglLinqParity = 1 - _bglLinqParity;
-    ];
-
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
-
-    _bglLinqScratchA-->(_bglLinqScratchA-->0)     = $9084;
-    _bglLinqScratchA-->(_bglLinqScratchA-->0 - 1) = 0;
-    _bglLinqScratchB-->(_bglLinqScratchB-->0)     = $9084;
-    _bglLinqScratchB-->(_bglLinqScratchB-->0 - 1) = 0;
-
 ];
 object _zcode
 ;
@@ -63,6 +44,17 @@ object _bglArray
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
         
+  ],
+       copy [dobj dprop sobj sprop n cap i;
+    n=self.length(sobj,sprop);
+    cap=self.size(dobj,dprop);
+    if (n > cap) {
+        n = cap;
+    }
+    for (i = 0 : i < n : i++) {
+        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
+    }
+    self.setlength(dobj, dprop, n);
   ],
        isTracked [obj prop hdr;
      if(metaclass(obj)==object) rfalse; 
@@ -222,216 +214,6 @@ object _bglArray
         }
         self.set(obj, prop, j + 1, key);
     }
-  ],
-       filter [obj prop pred dst cap writeCount srcLen i elem;
-    dst = _bgllinqwrite();
-    cap = 32;
-    writeCount = 0;
-    srcLen=self.length(obj,prop);
-    for (i = 0 : i < srclen : i++) {
-        elem = self.get(obj,prop,i);
-        if (pred(elem)) {
-            if (writecount >= cap) {
-                
-                        print "^[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                        quit;
-                    
-            }
-            dst-->(writecount+1) = elem;
-             writecount++ ;
-        }
-    }
-    _bglArray.setLength(dst, 0, writeCount);
-    _bgllinqflip();
-    return dst;
-  ],
-       first [obj prop;
-    if (self.length(obj,prop) == 0) {
-        return 0;
-    }
-    return self.get(obj,prop,0);
-  ],
-       last [obj prop len;
-    len=self.length(obj,prop);
-    if (len == 0) {
-        return 0;
-    }
-    return self.get(obj,prop,len - 1);
-  ],
-       any [obj prop pred len i;
-    len=self.length(obj,prop);
-    for (i = 0 : i < len : i++) {
-        if (pred(self.get(obj,prop,i))) {
-            return true;
-        }
-    }
-    return false;
-  ],
-       all [obj prop pred len i;
-    len=self.length(obj,prop);
-    for (i = 0 : i < len : i++) {
-        if (~~pred(self.get(obj,prop,i))) {
-            return false;
-        }
-    }
-    return true;
-  ],
-       map [obj prop f dst cap srcLen i;
-    dst = _bgllinqwrite();
-    cap = 32;
-    srcLen=self.length(obj,prop);
-    if (srclen > cap) {
-        
-                print "^[Beguile runtime error: map() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            
-    }
-    for (i = 0 : i < srclen : i++) {
-        dst-->(i+1) = f(self.get(obj,prop,i));
-    }
-    _bglArray.setLength(dst, 0, srcLen);
-    _bgllinqflip();
-    return dst;
-  ],
-       take [obj prop n dst cap srcLen outLen i;
-    dst = _bgllinqwrite();
-    cap = 32;
-    srcLen=self.length(obj,prop);
-    outLen=n;
-    if (outlen < 0) {
-        outLen = 0;
-    }
-    if (outlen > srclen) {
-        outLen = srcLen;
-    }
-    if (outlen > cap) {
-        
-                print "^[Beguile runtime error: take() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            
-    }
-    for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) = self.get(obj,prop,i);
-    }
-    _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
-    return dst;
-  ],
-       skip [obj prop n dst cap srcLen start outLen i;
-    dst = _bgllinqwrite();
-    cap = 32;
-    srcLen=self.length(obj,prop);
-    start=n;
-    if (start < 0) {
-        start = 0;
-    }
-    if (start > srclen) {
-        start = srcLen;
-    }
-    outLen=srclen - start;
-    if (outlen > cap) {
-        
-                print "^[Beguile runtime error: skip() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            
-    }
-    for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) = self.get(obj,prop,start + i);
-    }
-    _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
-    return dst;
-  ],
-       takeWhile [obj prop pred dst cap srcLen outLen i;
-    dst = _bgllinqwrite();
-    cap = 32;
-    srcLen=self.length(obj,prop);
-    outLen = 0;
-    for (i = 0 : i < srclen : i++) {
-        if (~~pred(self.get(obj,prop,i))) {
-            break;
-        }
-        if (outlen >= cap) {
-            
-                    print "^[Beguile runtime error: takeWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                    quit;
-                
-        }
-        dst-->(outlen+1) = self.get(obj,prop,i);
-         outlen++ ;
-    }
-    _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
-    return dst;
-  ],
-       skipWhile [obj prop pred dst cap srcLen start outLen i;
-    dst = _bgllinqwrite();
-    cap = 32;
-    srcLen=self.length(obj,prop);
-    start = 0;
-    while (start < srclen && pred(self.get(obj,prop,start))) {
-         start++ ;
-    }
-    outLen=srclen - start;
-    if (outlen > cap) {
-        
-                print "^[Beguile runtime error: skipWhile() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            
-    }
-    for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) = self.get(obj,prop,start + i);
-    }
-    _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
-    return dst;
-  ],
-       distinct [obj prop dst cap srcLen outLen i elem seen j;
-    dst = _bgllinqwrite();
-    cap = 32;
-    srcLen=self.length(obj,prop);
-    outLen = 0;
-    for (i = 0 : i < srclen : i++) {
-        elem = self.get(obj,prop,i);
-        seen=false;
-        for (j = 0 : j < outlen : j++) {
-            if ( dst-->(j+1) ==elem) {
-                seen = true;
-                break;
-            }
-        }
-        if (~~seen) {
-            if (outlen >= cap) {
-                
-                        print "^[Beguile runtime error: distinct() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                        quit;
-                    
-            }
-            dst-->(outlen+1) = elem;
-             outlen++ ;
-        }
-    }
-    _bglArray.setLength(dst, 0, outLen);
-    _bgllinqflip();
-    return dst;
-  ],
-       orderBy [obj prop compare dst cap srcLen i;
-    dst = _bgllinqwrite();
-    cap = 32;
-    srcLen=self.length(obj,prop);
-    if (srclen > cap) {
-        
-                print "^[Beguile runtime error: orderBy() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]^";
-                quit;
-            
-    }
-    for (i = 0 : i < srclen : i++) {
-        dst-->(i+1) = self.get(obj,prop,i);
-    }
-    _bglArray.setLength(dst, 0, srcLen);
-    self.sort(dst, 0, compare);
-    _bgllinqflip();
-    return dst;
   ]
 ;
 array trk table "a" "b" "c" 3 $9084;

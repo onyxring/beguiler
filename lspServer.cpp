@@ -2853,7 +2853,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
         if(receiverLower == "self") {
             return findInBlock(blockForLine(lineNum), member);
         }
-        // Class or enum lookup by name (e.g. bglWorld.ofClass)
+        // Class or enum lookup by name (e.g. bgl.world.instances)
         typeDef& td = languageService.getType(receiverLower);
         if(auto* cd = dynamic_cast<classDef*>(&td)) {
             InstanceBlockRange tmp{0,0,cd,nullptr};

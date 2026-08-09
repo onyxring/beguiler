@@ -12,7 +12,7 @@
     informPath = "/Users/jim/projects/IF-Projects/inform6/inform6";
     outputPath = "tests/output";
 }
-#include <array>
+#include <linq>
 
 array<int> g_nums  = {10, 20, 30, 40, 50};
 array<int> g_empty[8];

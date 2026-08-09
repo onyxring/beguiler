@@ -270,6 +270,13 @@ void bglParser::preScanDirective(token tok){
             token t = file.getBasicToken(true);
             while(t.isNot("\n") && t.isNot(eTokenType::eof)) t = file.getBasicToken(true);
         }
+    } else if(tok.value == "#i6replace"){
+        // #i6replace RoutineName [SavedName];  — consume the rest of THIS LINE so the operands
+        // (and any trailing ';' / '//' comment) don't leak into the global loop. Reading to the
+        // newline keeps the scan line-bounded (can't swallow the next statement). The emit-first
+        // registration happens in the main pass (processDirective).
+        char c = file.readChar();
+        while(c != '\n' && c != EOF) c = file.readChar();
     } else if(tok.is("#using")){
         // Consume the full dotted path: name(.name)*
         // Resolution is deferred to the main parse (this is pre-scan).
@@ -333,6 +340,12 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
     if(preScanOnceFiles.count(absPath)) return;
 
     bool isFirst = (preScanDepth == 0);
+
+    // Snapshot the programmatically-seeded define table (version + target symbols, set before
+    // pre-scan) BEFORE the pre-scan starts adding source `#define`s. The main pass restores this
+    // snapshot at its own top-level entry so it re-derives source defines linearly rather than
+    // inheriting the pre-scan's end-of-file state. See parseFile.
+    if(isFirst){ definedSymbolsPreScanSeed = definedSymbols; hasPreScanSeed = true; }
 
     // .inf-as-input mode: pre-scan the Beguile Language Runtime (so its declarations are
     // available inside #bgl islands), then walk the .inf body for #bglDecl{} / #bgl{} blocks

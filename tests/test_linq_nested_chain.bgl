@@ -1,0 +1,37 @@
+// test_linq_nested_chain.bgl — LINQ chains may now be NESTED: a chain inside another
+// chain's predicate/mapper lambda runs at a deeper scratch depth and cannot corrupt the
+// outer chain's buffers. (Previously the two shared scratch buffers made this silently
+// wrong — spec §17.2.6 documented it as an unenforced caveat; now fixed via the
+// depth-indexed scratch stack in array.bgl.)
+//
+// Runtime correctness (outer result uncorrupted while an inner chain runs per-element) is
+// verified on dfrotz separately; this fixture locks in that nested chains COMPILE and emit
+// the depth-aware _bglLinqEnter/_bglLinqLeave form.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <linq>
+
+array<int> outer = {1, 2, 3, 4, 5, 6};
+array<int> inner = {10, 20, 30, 3, 40};
+
+bool isBig(int x){ return x > 3; }
+
+// predicate that itself runs a chain (nested): keep x if the inner chain's count exceeds x
+bool innerBeatsX(int x){ return inner.filter(isBig).count() > x; }
+
+// mapper that runs a nested chain
+int innerCountPlus(int x){ return inner.filter(isBig).count() + x; }
+
+void main(){
+    // chain whose predicate runs a nested chain, then a terminal
+    int a = outer.filter(innerBeatsX).count();
+    // chain whose mapper runs a nested chain, then a terminal
+    int b = outer.map(innerCountPlus).first();
+    // deeper: nested chain feeding a continued outer chain
+    int c = outer.filter(innerBeatsX).filter(isBig).count();
+}

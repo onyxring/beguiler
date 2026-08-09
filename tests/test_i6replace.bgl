@@ -1,0 +1,34 @@
+// test_i6replace.bgl — the `#i6replace` directive emits an I6 `Replace` directive, hoisted
+// to the emit-first position (above all includes and definitions) so the replacement always
+// takes effect regardless of where the directive is written in the source.
+//
+// I6's `Replace routine [savedName];` must precede the library that first defines `routine`.
+// A bare `#i6 replace X;` lands verbatim at its source position (fragile ordering); the
+// dedicated `#i6replace` directive routes through the emit-first stream instead.
+//
+// Coverage:
+//   - single-name form   → `Replace GameEpilogue;`
+//   - two-name form      → `Replace DrawStatusLine _oldStatus;` (original kept callable)
+//   - original case of the routine name is preserved (I6 identifiers are case-sensitive)
+//   - the directive may appear well below other declarations yet still hoist to the top.
+//   - a trailing `//` comment is dropped (structured directive, not raw I6).
+//   - operand scan is line-bounded: a NO-semicolon form must NOT swallow the next line's
+//     declaration as the saved-original name (`afterNoSemi` below must survive as its own global).
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+const int SOME_CONST = 3;
+
+#i6replace GameEpilogue;
+#i6replace DrawStatusLine _oldStatus;   // trailing comment must be dropped
+
+// No-semicolon form: the scan stops at the newline, so `afterNoSemi` is a normal global,
+// NOT consumed as `Replace Sing afterNoSemi;`.
+#i6replace Sing   // no semicolon on purpose
+int afterNoSemi = 7;
+
+void main(){ afterNoSemi = 8; }

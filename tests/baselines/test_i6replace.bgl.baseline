@@ -1,0 +1,26 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 1000;
+#Ifdef beguiler;#Endif;
+Replace GameEpilogue;
+Replace DrawStatusLine _oldStatus;
+Replace Sing;
+global _bglInitDone = 0;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+];
+object _zcode
+;
+object _bglUtil
+;
+object bgl
+  with zcode _zcode,
+       bglUtil _bglutil
+;
+constant SOME_CONST = 3;
+global afterNoSemi = 7;
+[main;
+    afternosemi = 8;
+];

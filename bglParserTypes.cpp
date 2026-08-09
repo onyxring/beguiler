@@ -1844,8 +1844,16 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
                 mm = resolveMethodWithConversion(objType, objPath, methodName, args, elementType);
         }
     }
-    if(!mm.nameFound)
+    if(!mm.nameFound){
+        // If the receiver is an array and <linq> isn't included, the missing method is very
+        // likely a LINQ chain op (filter/map/take/…) that now lives in <linq>. Point there.
+        if(!languageService.linqInUse && getDispatchClass(objType) != nullptr
+           && getDispatchClass(objType)->name == "array")
+            parsingError(format("No method '{0}' on type '{1}'. If this is a LINQ chain operation "
+                "(filter/map/take/skip/distinct/orderBy/first/last/any/all/count), add `#include <linq>`.",
+                methodName, typeDisplayName(objType)));
         parsingError(format("No method '{0}' on type '{1}'", methodName, typeDisplayName(objType)));
+    }
     if(mm.nameMatch && !mm.arityMatch){
         size_t req = 0; for(paramDef* p : mm.nameMatch->params) if(p->defaultValue.empty()) req++;
         size_t tot = mm.nameMatch->params.size();

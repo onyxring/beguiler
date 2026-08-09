@@ -1150,6 +1150,7 @@ void i6Emitter::generateI6(typeDef* node){
      else if (typeid(*node) == typeid(objectDef)) emitObject((objectDef*)node);
      else if (typeid(*node) == typeid(verbObjectDef)) emitVerbObject((verbObjectDef*)node);
      else if (auto* gtd = dynamic_cast<grammarRuleListDecl*>(node)) emitGrammarRuleListDecl(gtd);
+     else if (auto* vsd = dynamic_cast<verbSynonymDecl*>(node)) emitVerbSynonym(vsd);
      else if (auto* vd = dynamic_cast<variableDeclaration*>(node)) emitGlobal(vd);
      else if (typeid(*node) == typeid(functionDef)) emitFunction((functionDef*)node);
      else if (typeid(*node) == typeid(i6RawNode)) {
@@ -2637,6 +2638,26 @@ void i6Emitter::emitGrammarRuleListDecl(grammarRuleListDecl* gtd){
             if(v->name == lower){ anchor = v->priority; isMeta = v->isMeta; break; }
         emitVerbGrammar(targetVerb, anchor, isMeta, byVerb[targetVerb]);
     }
+}
+
+// Emit a verb synonym directive: `Verb 'w1' 'w2' … = 'anchor';`. The anchor's primary trigger
+// word is resolved from the verbObjectDef named by anchorVerb (its first claimed dict word);
+// for extern verbs that word is already declared by the library, so the alias is legal here.
+void i6Emitter::emitVerbSynonym(verbSynonymDecl* vsd){
+    if(vsd->synonymWords.empty()) return;
+    auto toI6Word = [](const string& w) -> string {
+        string e; for(char ch : w) e += (ch == '\'') ? '^' : ch;
+        return (e.size() == 1) ? ("'" + e + "//'") : ("'" + e + "'");
+    };
+    // Resolve the anchor's primary trigger word (verbWords[0]); fall back to the verb name.
+    string anchor = vsd->anchorVerb;
+    for(verbObjectDef* v : languageService.verbs)
+        if(v->name == vsd->anchorVerb){ if(!v->verbWords.empty()) anchor = v->verbWords[0]; break; }
+
+    out << "verb";
+    for(const string& w : vsd->synonymWords)
+        out << " " << w;                 // already I6-ready (quoted, with //p / // flags)
+    out << " = " << toI6Word(anchor) << ";\n";
 }
 
 // Group grammar lines by verb trigger word; emit one Verb/Extend block per unique trigger word.

@@ -120,6 +120,7 @@ class i6Emitter{
         void emitInterpolatedEmitterBody(const string& body, const string& paramName, const vector<interpolatedSegment>& segments, string indent);
         void emitVerbObject(verbObjectDef*);
         void emitGrammarRuleListDecl(grammarRuleListDecl*);
+        void emitVerbSynonym(verbSynonymDecl*);
         // Lift compile-time-only fields (`meta`, `priority`) from all verb instances into
         // `verbObjectDef.isMeta` / `verbObjectDef.priority`. Idempotent. Called once at the
         // start of `emit()` so the lifted values are available to ALL emission paths

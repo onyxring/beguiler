@@ -1,4 +1,4 @@
-> **Note:* This is the first project I've run where I've coordinated with AI, so I want to be clear: this document, was created in collaboration with an LLM.  I've reviewed the output, and adjusted the language for clarity, but the starting point was AI-generated.  If you'd prefer a document written solely by a human, consider the "Beguile for the I6 Developer" document, which was entirely human authored (by me).*
+> **Note:* This is the first project I've run where I've coordinated with AI, so I want to be clear: *this* document was created in collaboration with an LLM.  I've reviewed the output and adjusted the language for clarity, but the starting point was AI-generated.  If you'd prefer a document written solely by a human, consider the "Beguile for the I6 Developer" document, which was entirely human authored (by me).*
 
 # Beguile Language Specification
 
@@ -199,6 +199,7 @@
 - 15.3 `#includeI6`
 - 15.4 Emitter Bodies as Raw I6
 - 15.5 `#i6` — I6 Islands (Inline Raw I6)
+  - 15.5.1 `#i6replace` — hoisted I6 `Replace` directive
 - 15.6 `#bgl` — In-Routine Beguile Islands
 - 15.6b Precompiler Mode — File-Scope Beguile Islands
 - 15.7 I6 Emission Ordering
@@ -225,7 +226,8 @@
   - 17.2.3 `<string>` — Mutable String Runtime
   - 17.2.4 `<uint>` — Unsigned Integer Type
   - 17.2.5 `<math>` — Mathematical Functions
-  - 17.2.6 `<array>` — Extended Array Utilities (TBD)
+  - 17.2.6 `<array>` — Extended Array Utilities
+  - 17.2.6b `<linq>` — LINQ-style Fluent Operations
   - 17.2.7 `bglInit()` — Runtime Initialization
 - 17.3 IF Library Bindings
 
@@ -331,6 +333,8 @@ An identifier is a sequence of alphanumeric characters and underscores. The firs
 Examples of valid identifiers: `score`, `myVar`, `_internal`, `room1`, `velvetCloak`.
 
 Identifiers that match a reserved keyword (§2.8) may not be used as variable or function names.
+
+A **member or method name may collide with a type name**. Because Beguile is case-insensitive, a field named `color` and a class named `Color` are the same identifier; likewise a member literally named after a built-in type keyword such as `object`. Such members are still fully reachable through dot-access — `thing.color`, `self.color`, `win.draw()` — since a name after `.` is unambiguously a member. (Type names remain reserved for *top-level* identifiers per §2.8; the relaxation applies only to member positions.)
 
 ### 2.4.1 Special Prefixes `_bgl` and `bgl`
 
@@ -747,6 +751,8 @@ Defines a named compilation symbol. Defining the symbol without a value assigns 
 
 Symbols defined with `#define` can be tested with `#if`. A value-bearing symbol is also resolved as an inline compile-time literal in Beguile expressions — the symbol name is replaced by its value at compile time. Numeric values resolve as `intLiteral`; other values resolve as `stringLiteral`.
 
+`#define` and `#undef` are **position-dependent** (linear), like a standard C-style preprocessor: a directive affects only the source that follows it. An `#if` sees a symbol as defined only if a `#define` for it appears *earlier* in the source (and no intervening `#undef` removed it); a `#define` placed after an `#if` does not retroactively affect that `#if`. Redefining or `#undef`-ing a symbol partway through a file changes its meaning from that point forward. (Beguile compiles in two passes, but both evaluate conditionals with identical linear semantics.)
+
 ```bgl
 #define MAX_SCORE 100
 
@@ -884,6 +890,7 @@ These settings control the compilation target and output characteristics.
 | `release` | int | `0` | Sets the story release number. `0` means unset. |
 | `errorFormat` | `eErrorFormat` | `E1` | Error reporting style passed to the I6 compiler. `E1` = Microsoft-style; `E2` = Macintosh-style. |
 | `omitUnusedRoutines` | bool | `true` | When `true` (the default), emits the I6 `!% $OMIT_UNUSED_ROUTINES=1` setting, so routines that are never referenced (and whose address is never taken) are dropped from the story file. Set `false` for debug builds to keep all routines. Pairs naturally with `superposed` routines (§9.6). |
+| `economy` | bool | `false` | When `true`, auto-compresses story text: after transpiling, the compiler computes the optimal set of I6 text abbreviations (an `inform6 -u` pre-pass), injects them at the top of the generated `.inf`, and compiles the real pass with `-e` (economy mode). Typically reclaims 5–15% of story size on prose-heavy games (≈14 KB on mack) — useful headroom on the Z5 256 KB ceiling. **Opt-in and non-intrusive:** if your source already defines its own `Abbreviate` directives, auto-abbreviation is skipped entirely — your hand-tuned set is respected. **Why opt-in:** the `-u` optimization runs a second full I6 pass over the text and roughly quadruples build time (≈0.7 s → 2.6 s on mack), so it's a *ship-time* optimization — enable it for release builds, leave it off for the fast edit-compile-test loop. Off by default; ignored when there is no I6 handoff (`informName = "none"`). |
 
 ### Runtime settings
 
@@ -1477,6 +1484,31 @@ rawArray<string> raw = { "a", "b", "c" };    // untracked: Array raw table "a" "
 This is the shape to use when a **bare I6 array API** must read the array by its count word — e.g. orLibrary's `util.orArray` single-array form (`getSize(arr)` → `arr-->0`, `get(arr, n)` → `arr-->(n+1)`), used for a debug walkthrough command list. Because `<array>`'s tracked layout puts `count+2` at word 0, a plain `array<T>` would over-count by two; the `rawArray<T>` literal keeps word 0 as the true count.
 
 Note the two file-scope forms are **not interchangeable across the parameter boundary**: a `rawArray<T>` *literal* is count-prefixed (`-->(i+1)`), while a `rawArray<T>` *parameter* is data-only (`-->i`). Passing a literal to a `rawArray<T>` parameter would read the count word as element 0 — the type system keeps them separate (a literal has the `array` element-covariant type; pass it where an `array<var>` is expected, as the `util.orArray` bare-array overloads do).
+
+### 4.7.2 Local array lifetime — returned local arrays are *ephemeral*
+
+A **local** array (one declared inside a routine body, whether sized `array<int> tmp[5];` or list-initialized) is allocated per-call from the frame pool at routine entry and **freed at routine exit** — this is what makes recursion safe (each call gets its own slice; see §10.2.2). File-scope arrays are not affected: they live in permanent storage and may be returned freely.
+
+Because a local array's storage is reclaimed when the routine returns, **a returned local array is a transient (ephemeral) reference, not an owned value** — exactly like an ephemeral string. The value it points at has already been freed by the time the caller sees it:
+
+```bgl
+array<int> build() {
+    array<int> tmp[3];
+    tmp[0] = 1; tmp[1] = 2; tmp[2] = 3;
+    return tmp;            // ← returns a reference to tmp's now-freed slice
+}
+```
+
+**To keep a returned local array, assign it to a typed local — that copies it** into stable storage (value-semantic copy-on-assign, the same capture mechanism used for ephemeral strings):
+
+```bgl
+array<int> keep = build();   // ← snapshots the ephemeral result into `keep`
+int n = keep[0];             // safe: independent local copy
+```
+
+The free is *logical* — the frame slot is not zeroed — so an ephemeral read often *appears* to work because the data still lingers in the reclaimed slot. **Failures are therefore intermittent**: they only surface when an intervening allocation reuses that slot (for example passing the reference straight into another call that itself allocates, or consuming a returned local array in an expression without first assigning it). Don't rely on the lingering data; capture with an assignment before use.
+
+This applies to chained/`<array>` results too — see the local-array source caveat in §17.2.6.
 
 # Chapter 5 — Classes
 
@@ -3386,11 +3418,29 @@ void aliasExample() {
 ```
 
 Rules:
-- `ref` is **valid only on local variable declarations**. Globals, members, parameters, and `extern`/`const` decls all reject the qualifier with a targeted error.
+- `ref` is valid on **local variable declarations** and on **class/object member declarations** (see below). Parameters and `extern`/`const` decls reject the qualifier with a targeted error.
 - `ref` overrides any `operator=` the class might define for that one local.
 - The opt-in is per-declaration — only this local has reference semantics; other locals of the same class follow the default value-semantic rule.
 
 Class parameters use the same model: default reference-semantic, with `byVal class` opting in to value semantics for the whole class (§5.2.6). The `byVal` marker is **class-level**, not parameter-level — there's no per-parameter `byVal` qualifier; mark the class and every parameter of that class type gets the value-semantic copy-in.
+
+#### `ref` members — pointer-alias member fields
+
+A member field may also be declared `ref`, giving it pointer-alias semantics: the field is a bare pointer slot that holds a reference to another instance rather than owning a copy. Assignment to a `ref` member is a plain pointer-copy (no `operator=` dispatch), and the compiler synthesizes **no backing storage** for it.
+
+```bgl
+class Node {
+    int id;
+    ref Node next;      // a REFERENCE to another Node — not an owned sub-object
+    void link(Node n){ self.next = n; }   // pointer-copy, no operator=
+}
+```
+
+`ref` is the correct — and required — model for a **self-referential** member (a class with a field of its own type). A value member would need `operator=` to copy it, and copying a self-referential field recurses infinitely; a `ref` member sidesteps both. Without `ref`, a stored class-typed member that lacks `operator=` and does not inherit from `object` triggers the same no-`operator=` error as a value local.
+
+Notes:
+- No backing object is emitted for a `ref` member, so its default value is `nothing` until assigned.
+- Reading a field *through* a class-typed member chains normally — `self.next.id`, `node.next.next.id` — both self-based and off an external instance.
 
 ### 10.2.2 Bypassing the Z-Machine's Local Variable Limit
 
@@ -4046,6 +4096,32 @@ string s = (string)myValue;            // invokes the explicit conversion
 **Disambiguation in expressions** — forcing operator resolution through a specific type when the inferred type would resolve differently.
 
 The cast applies to the immediately following identifier or method call. It does not propagate through a chain.
+
+### 11.5.1 Casting to a class vs. an instance
+
+A cast target may be a **class type** *or* a specific **object instance**. Casting to a class exposes that class's members; casting to an instance additionally exposes that instance's **own members** — fields/methods declared directly on the object, not on any class:
+
+```bgl
+class Room : object { int lit; }
+Room library { int shelves; }        // `shelves` lives on the instance, not on Room
+
+int a = ((library)obj.parent).shelves;   // instance-only member — reached via the instance cast
+int b = ((Room)obj.parent).lit;          // class member — reached via the class cast
+```
+
+This is the type-safe way to reach members through a **dynamically-typed value** — most commonly `.parent`, which is statically `object` because the world tree is mutable (see §4.7.2's sibling discussion for the analogous array case). It is an **unchecked downcast**: you're asserting the runtime object really is that class/instance; if it isn't, the read goes through the asserted layout and yields garbage — the same risk as any cast. The member name, however, *is* checked at compile time against the cast target (accessing a member the target doesn't have is an error).
+
+For a fully untyped escape, cast to `var` — `((var)obj.parent).field` emits the raw property read with **no** compile-time member check (use when you don't want, or can't name, a concrete target).
+
+**Forgetting the cast is a compile error, not silent garbage.** Reaching a member that isn't on `object` through an `object`-typed value *without* a cast is diagnosed at the member:
+
+```bgl
+int x = obj.parent.cap;   // ERROR: 'cap' is not a member of 'object'. This value is dynamically
+                          // typed (e.g. from '.parent') — cast to the concrete type to reach its
+                          // members: ((SomeType)obj.parent).cap  (or ((var)obj.parent).cap …).
+```
+
+The error points you at the cast idioms above rather than dropping the trailing member and surfacing a confusing downstream type mismatch. It fires only in strict mode — loose `#bgl` islands keep raw I6 passthrough — and only when the member genuinely isn't on `object` (`obj.parent.parent`, reaching `object`'s own `parent`, resolves normally). The method form (`obj.parent.someMethod()`) already reported this accurately ("No method 'someMethod' on type 'object'").
 
 ## 11.5b `new` and `delete` for Pooled Classes
 
@@ -4813,6 +4889,33 @@ extend Take {
 // Emits: extend 'take' replace * 'firmly' noun -> Take;
 ```
 
+### Verb Synonyms
+
+To make new trigger words behave *exactly* like an existing verb, use the `synonyms` form inside an `extend` body:
+
+```bgl
+extend Take {
+    synonyms = {.steal, .grab, .pilfer};
+}
+// Emits: Verb 'steal' 'grab' 'pilfer' = 'take';
+```
+
+This emits I6's compact synonym directive, which makes the listed words **true aliases** of the anchor verb's grammar table — not copies. The distinction matters: a later `extend` on the anchor automatically flows to every synonym, because they share one underlying grammar identity.
+
+```bgl
+extend Take { synonyms = {.steal, .grab}; }   // steal/grab alias take
+extend Take { grammar = { {.take, .quietly, noun} }; }   // also reachable as 'steal quietly', 'grab quietly'
+```
+
+Contrast with listing the words as separate grammar triggers (`grammar = { {.steal, noun}, {.grab, noun} }`), which **copies** the pattern set at that point in time — a subsequent `extend` on `take` would *not* reach `steal`/`grab`. Reach for `synonyms` when you want shared identity; reach for distinct grammar lines when each word carries its own, independent pattern set.
+
+Details:
+
+- The **anchor** is the verb being extended; its primary trigger word is resolved at emit time (a verb's first claimed dict word, or its name if it declares none).
+- Works on both **extern** (stdlib) verbs — the common case, aliasing new words onto a library verb — and Beguile-native verbs. For a native verb, the synonym directive is emitted *after* the verb's own `Verb` directive, so the anchor's grammar already exists.
+- Standard dict-word conventions apply: a one-letter word emits with the `//` form (`.g` → `'g//'`), and the plural flag is preserved (`.mice//p`).
+- At least one word is required — an empty `synonyms = { }` is a compile error.
+
 I6's `Extend 'w' only` directive (which is rare in practice) has no Beguile-side keyword; if needed, reach for it through `#i6 { ... }` raw I6 escape (§15.5).
 
 ---
@@ -4991,6 +5094,26 @@ Two forms:
 The block contents are emitted **verbatim** — Beguile does not parse, type-check, or modify them. The compiler tracks `{}`, string literals (`"..."`), and dictionary-word/character literals (`'...'`) only well enough to find the closing `}` of the multi-line form; everything else is opaque.
 
 `#i6` blocks are emitted in their source-order position relative to other declarations (see §15.7 for ordering guarantees around classes and instances).
+
+### 15.5.1 `#i6replace` — hoisted I6 `Replace` directive
+
+I6's `Replace routine [savedName];` tells the compiler to discard the *first* definition of `routine` it encounters (typically the library's) and use a later one instead. It only works if it appears **before** the library that first defines the routine — placement is order-sensitive and easy to get wrong.
+
+The `#i6replace` directive makes this safe: it emits a `Replace` directive but **hoists it to the top of the generated output** (the emit-first position, above all includes and definitions), so the replacement always takes effect no matter where you write the directive.
+
+```bgl
+#i6replace GameEpilogue;              // emits:  Replace GameEpilogue;
+#i6replace DrawStatusLine _oldStatus; // emits:  Replace DrawStatusLine _oldStatus;
+
+// ...define your own GameEpilogue later, in Beguile or in an #i6 block...
+void GameEpilogue() { /* ... */ }
+```
+
+- The routine name is emitted in its **original case** (I6 identifiers are case-sensitive).
+- The optional second name is I6's rename-the-original form: the replaced library routine remains callable under `savedName`.
+- Prefer `#i6replace X;` over a bare `#i6 replace X;` — the latter lands verbatim at its source position and only works if it happens to precede the relevant `#includeI6`.
+
+> Note: `#i6replace` routes through the same emit-first stream as `#emitfirst` (§3.5.6), which is skipped in precompiler mode when a `.inf` file has no Beguile islands. In that situation the author owns the I6 stream directly and can write `Replace` by hand.
 
 ## 15.6 `#bgl` — In-Routine Beguile Islands
 
@@ -5364,73 +5487,64 @@ extend bag {
 
 `parentProp` is auto-declared on every class via the built-in `extern class object` definition. Users do not normally instantiate it.
 
-## 16.4 `bglWorld` — Object Tree Iteration
+## 16.4 `bgl.world` — Object Tree Iteration
 
-> *This facility is designed but not yet implemented.*
+`bgl.world` replaces I6's `objectloop` with array-returning queries over the Inform 6 object tree. It is an **opt-in extension** — enable it with `#include <bglWorld>`.
 
-`bglWorld` is a built-in object that provides structured iteration over the Inform 6 object tree. It is available without any `#include`.
-
-All methods fill a shared internal scratch buffer and return it as an `array`. The buffer is reused on every call — do not store the result across turns or nest two `bglWorld` calls.
+Each method walks the object tree, fills a scratch buffer, and returns it as a tracked `array<object>` — so every `<array>` operation works on the result. LINQ chain ops (`filter`, `map`, `take`, `distinct`, …) also work, but chaining additionally requires `#include <linq>` (`<bglWorld>` itself only pulls in `<array>`).
 
 ### Methods
 
 | Method | Description |
 |--------|-------------|
-| `bglWorld.getAll()` | Returns all objects in the game world |
-| `bglWorld.getFiltered(pred)` | Returns all objects for which `pred(o)` returns true |
-| `bglWorld.inParent(parent)` | Returns all direct children of `parent` |
-| `bglWorld.inParent(parent, pred)` | Returns direct children of `parent` for which `pred(o)` returns true |
-| `bglWorld.ofClass(cls)` | Returns all objects of class `cls` (I6 `ofclass` loop) |
-| `bglWorld.ofClass(cls, pred)` | Returns objects of class `cls` for which `pred(o)` returns true |
+| `bgl.world.getAll()` | Returns all objects in the game world |
+| `bgl.world.getAll(pred)` | Returns all objects for which `pred(o)` returns true |
+| `bgl.world.inParent(parent)` | Returns all direct children of `parent` |
+| `bgl.world.inParent(parent, pred)` | Returns direct children of `parent` for which `pred(o)` returns true |
+| `bgl.world.instances(cls)` | Returns all objects of class `cls` (replaces the `objectloop(o ofclass C)` idiom) |
+| `bgl.world.instances(cls, pred)` | Returns objects of class `cls` for which `pred(o)` returns true |
 
-The predicate argument is a function that takes one `object` parameter and returns `bool`.
+The optional predicate is a `func<bool, object>` — a function taking one `object` and returning `bool`. It runs **inside** the object-tree walk, so non-matching objects never reach the buffer. Prefer `instances(Animal, p)` over `instances(Animal).filter(p)` when the filter is selective: the unfiltered intermediate is capacity-bound and could overflow before `.filter()` runs.
 
 ### Usage
 
 ```bgl
-// Iterate all objects
-for(object o in bglWorld.getAll()) {
+#include <bglWorld>
+
+// Iterate all objects            (objectloop(o))
+for(object o in bgl.world.getAll()) {
     print(o);
 }
 
-// Filter by predicate (named function)
-bool isLit(object v) {
-    return v.has(light);
-}
-for(object o in bglWorld.getFiltered(isLit)) {
+// Filter by predicate — optional 2nd argument (named or anonymous function)
+bool isLit(object v) { return v.has(light); }
+for(object o in bgl.world.getAll(isLit))                 { print(o); }
+for(object o in bgl.world.getAll((object v) => v.has(light))) { print(o); }
+
+// Children of a room             (objectloop(o in location))
+for(object o in bgl.world.inParent(location)) {
     print(o);
 }
 
-// Filter by predicate (anonymous function)
-for(object o in bglWorld.getFiltered((object v) => v.has(light))) {
-    print(o);
-}
-
-// Children of a room
-for(object o in bglWorld.inParent(location)) {
-    print(o);
-}
-
-// All objects of a given class
-for(object o in bglWorld.ofClass(Treasure)) {
+// All objects of a class         (objectloop(o ofclass Treasure))
+for(object o in bgl.world.instances(Treasure)) {
     print(o);
 }
 ```
 
-### Type guard for `ofClass`
+### Scratch-buffer semantics
 
-The compiler validates the class argument to `ofClass`. The following are compile-time errors:
-
-- Passing an `emitter class` (no I6 backing)
-- Passing an `alias class` such as `verb` (dissolves to a parent type)
-- Passing an `enum` type
-- Passing a primitive type such as `int` or `bool`
-
-Only user-defined `object` declarations and non-emitter, non-alias `extern class` types are accepted.
+Results live in shared scratch buffers — do **not** store a result across turns. Results rotate through a small pool (default 4 buffers), so an outer `for(o in bgl.world…)` loop body may call routines that themselves issue a `bgl.world` query without clobbering the outer loop's snapshot. This tolerates up to *(pool size − 1)* concurrent live iterations; it is not a hard guarantee — an outer loop that issues more world queries than that over its lifetime will eventually rotate back onto its own live buffer. For deep nesting, snapshot into your own `array<object>` first (an assignment copies — see §17.2.6), or raise the pool in `bglWorld.bgl`.
 
 ### Buffer capacity
 
-The scratch buffer holds up to 256 objects. Games with more than 256 objects in a single category will be silently truncated. For typical IF games this limit is not a concern.
+Each buffer holds up to `worldBufSize` objects (default **128**). Configure at the top of your `.bgl`:
+
+```bgl
+#beguilerSettings { worldBufSize = 256; }
+```
+
+Walks that exceed the configured size silently stop at the cap. For typical IF games this is not a concern.
 
 ---
 
@@ -5652,7 +5766,7 @@ The unsigned helpers exist primarily to back the `uint` type's operators (§4.2a
 #include <array>
 ```
 
-Adds higher-level methods to `array<T>` for searching and counting beyond the built-in `[]` subscripts and `size()` capacity getter from the core (§4.7).
+Adds higher-level methods to `array<T>` for searching, mutation, and counting beyond the built-in `[]` subscripts and `size()` capacity getter from the core (§4.7), plus **value-semantic copy-on-assign** (§4.7.2 — `dst = src` copies elements). LINQ-style fluent chains (`filter`/`map`/…) are a *separate* opt-in extension, `<linq>` (§17.2.6b), so array-only programs don't carry the chain scratch.
 
 | Method | Returns | Description |
 |---|---|---|
@@ -5690,9 +5804,15 @@ The element-search methods (`indexOf`/`find`/`contains`) and `swap` are type-che
 
 **Deque orientation note.** The deque methods follow the orLibrary convention: `push`/`peek`/`pop` operate at the **front** of the array; `enqueue`/`peekEnd`/`popEnd` operate at the **back**. This is internally consistent (push grows where pop reads — the "stack lives at the front" model) but inverts the JavaScript convention where `push` appends. Beguile favors orLibrary parity since the deque vocabulary originates there.
 
-#### LINQ-style fluent operations
+### 17.2.6b `<linq>` — LINQ-style Fluent Operations
 
-Chainable transformations on arrays, modeled on C# LINQ syntax. Operations split into **non-terminals** (return a typed array, can chain further) and **terminals** (collapse a chain to a single value).
+```bgl
+#include <linq>   // auto-includes <array>
+```
+
+Chainable transformations on arrays, modeled on C# LINQ syntax. **LINQ is a separate opt-in extension** — it lives in `<linq>`, not `<array>`, so programs that use extended arrays (or `<bglWorld>`) but not chains don't pay for the chain scratch buffers. `#include <linq>` pulls in `<array>` automatically. Calling a chain op without `<linq>` is a compile error that points you here.
+
+Operations split into **non-terminals** (return a typed array, can chain further) and **terminals** (collapse a chain to a single value).
 
 | Method | Returns | Description |
 |---|---|---|
@@ -5726,11 +5846,12 @@ print(g_nums.filter((int x) => x > 0).map((var y) => y * 2)[0]);
 }
 ```
 
+**Nesting.** Chains **may be nested** — a chain inside another chain's predicate or mapper lambda (`arr.filter(x => x.subArr.filter(q).any(r))`) runs correctly. The scratch is a depth-indexed stack of buffer pairs: each non-terminal bumps the nesting depth around its element loop, so an inner chain uses a deeper pair and cannot corrupt the outer chain's buffers. The default supports one level of nesting (a chain inside a chain); nesting deeper than `_BGL_LINQ_MAXDEPTH` (2) raises a runtime error. Raise the constant in `linq.bgl` (and add matching buffer decls/selector arms/stamps) if a program needs deeper nesting — at the cost of more reserved static memory.
+
 **Caveats.**
 
-- **Non-nestable.** The two scratch buffers are shared global state. A chain inside a predicate lambda passed to another chain would corrupt the outer chain's buffers — don't do `arr.filter(x => x.subArr.any(p))`. Compile-time enforcement is deferred.
-- **Lifetime ends at the next chain start.** A chain's non-terminal returns a typed handle into scratch. The next chain that runs overwrites that scratch. Consume the result inline (or via terminal) — don't store a non-terminal result for later reads.
-- **Local-array source caveat.** Local arrays passed as a chain source are safe within the same statement, but the return-expression evaluates after local-array cleanup runs; don't `return arr.filter(p);` from a function with local arrays.
+- **Lifetime ends at the next chain start — capture to keep it.** A chain's non-terminal returns a typed handle into scratch; the next chain that runs overwrites that scratch. Consume the result inline (or via a scalar terminal), OR **assign it to a typed array local — that copies it** (value-semantic copy-on-assign, §4.7.2) into stable storage that survives later chains: `array<int> evens = arr.filter(isEven);` then use `evens` freely. This is the capture mechanism for both stored results and *sibling* chains in one statement.
+- **Local-array source caveat.** Local arrays passed as a chain source are safe within the same statement, but a *returned* local array is ephemeral — its frame slice is freed on routine exit (§4.7.2). Don't `return arr.filter(p);` from a function with local arrays; assign the result to a typed local first (which copies it) if it must outlive the call.
 
 ### 17.2.7 `bglInit()` — Runtime Initialization
 
