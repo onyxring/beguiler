@@ -194,8 +194,8 @@ void exerciseReplace(){
 // Search: indexOf with default + explicit start, and predicate-driven
 // indexOfFirstTrue / indexOfFirstFalse using a captured-arg lambda.
 // ─────────────────────────────────────────────────────────────────────────────
-bool isLetter(char c){ return _bglChar.isAlpha(c); }
-bool isDigit(char c) { return _bglChar.isNumeric(c); }
+bool isLetter(char c){ return c.isAlpha(); }
+bool isDigit(char c) { return c.isNumeric(); }
 bool isWhitespace(char c) { return c == ' '; }
 
 void exerciseSearch(){

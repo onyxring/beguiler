@@ -3,6 +3,7 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
+Constant _BGL_WORLD_BUFSIZE = 128;
 global _bgl_temp0;
 global _bgl_temp1;
 global _bgl_temp2;
@@ -230,6 +231,7 @@ object _bglArray
     }
   ]
 ;
+global _bglWorldBufIdx = -1;
 class room
   class object
   with

@@ -17,8 +17,156 @@
 #once
 
 #include <buf>
-#include <bglAllocated>
-#include <_todostring>
+// bglAllocated is now auto-loaded in core (no include needed); _bglString inherits it.
+//------------------------------------------------------------------------------
+// String pool & buffer allocation — I6 island (the last un-ported piece of the
+// orString port). Folded in from the former root-level _todostring.bgl so the
+// beguiLib root holds only user-includable extensions. This is string-internal
+// machinery: _bglStringPool (the allocator), _bglDsbuf (the backing mega-buffer),
+// _bglBufferWrapper, the live/free sentinel pools, and _bglInitializeStringBuffers
+// (seeded from #startup above). It will disappear once the pool is ported to
+// Beguile-native (see string.bgl's port note).
+//------------------------------------------------------------------------------
+#i6 {
+    Default bglStringPoolReserve 10;                            ! number of pre-allocated _bglString instances
+    Default bglBufferPoolReserve (bglStringPoolReserve + 2);    ! a few extra wrappers for ephemeral usage
+    ! bglStringDefaultSize is declared in <buf>, already in scope.
+
+    Array _bglDsbuf buffer bglStringDefaultSize * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
+
+    class _bglBufferWrapper(bglBufferPoolReserve) with buf 0;   ! buffer-as-object so it can move between sentinel containers
+
+    object _bglAllocatedObjects;   ! sentinel — live pool (parent of currently-locked instances)
+    object _bglObjectHeap;         ! sentinel — free pool (parent of available instances)
+
+    ! _bglStr was here. Ported to Beguile-native (see string.bgl). I6-side
+    ! callers (e.g. _bglString.set, _bglString.equals) still invoke
+    ! _bglStr.X(...) — same I6 dispatch surface, just the implementation
+    ! moved out.
+
+    ! _bglString class was here. Ported to Beguile-native pooled class (see
+    ! string.bgl). I6-side callers (_bglInitializeStringBuffers,
+    ! _bglStringPool.allocateString, .freeString, etc.) still see _bglString
+    ! as a class with create()/remaining()/.method() dispatch at link time —
+    ! the I6 emission of the Beguile-declared class IS a Class _bglString(N).
+
+    ! _bglStringPool provides a pattern to reuse buffers and _bglString instances, somewhat working around
+    ! the fact memory cannot be dynamically allocated in the Z-machine
+    object _bglStringPool
+        private _allocateObj[type  !pick an arbitrary free object, lock it, and return it for use
+                o retval;
+            objectloop(o in _bglObjectHeap && o ofclass type) {
+                retval=o;
+                break;
+            }
+            if(retval==0) {
+                print "[ERROR: Unable to allocate a new instance.]";
+                return 0;
+            }
+            move retval to _bglAllocatedObjects;
+            return retval;
+        ]
+    ,	_freeObj[obj; !take specific allocated object, and free it for later allocations
+            if(obj==0) return 0;
+            move obj to _bglObjectHeap;
+            return obj;
+        ]
+    ,	_reclaimObj[obj; !take a specific free object, and lock it
+            if(obj==0) return 0;
+            move obj to _bglAllocatedObjects;
+            return obj;
+        ]
+        !find the allocated object wrapper for the given buffer
+    ,	_findAllocatedObjFromBuffer[b o;
+            objectloop(o in _bglAllocatedObjects && o ofclass _bglBufferWrapper ) if(o.buf==b) return o;
+            return 0;
+        ]
+            !find the unallocated object wrapper for the given buffer
+    ,	_findAvailableObjFromBuffer[b o;
+            objectloop(o in _bglObjectHeap && o ofclass _bglBufferWrapper ) if(o.buf==b) return o;
+            return 0;
+        ]
+    ,	isManagedBuffer[b; !-is the buffer one of the ones we manage in our allocation/free pool?
+            if(self._findAllocatedObjFromBuffer(b)==0) rfalse;
+            rtrue;
+        ]
+    ,	_findObjFromBuffer[b retval;
+            retval=self._findAllocatedObjFromBuffer(b);
+            if(retval==0) retval=self._findAvailableObjFromBuffer(b);
+            return retval;
+        ]
+        !find the allocated object wrapper for the given buffer
+    ,	_findAllocatedObj[b o;
+            objectloop(o in _bglAllocatedObjects) if(o==b) return o;
+            return 0;
+        ]
+        !find the unallocated object wrapper for the given buffer
+    ,	_findAvailableObj[b o;
+            objectloop(o in _bglObjectHeap) if(o==b) return o;
+            return 0;
+        ]
+    with allocateString[retval; !pick an arbitrary free string, lockit, then initialize it with an arbitrary free buffer; return the string
+            retval = self._allocateObj(_bglString);
+            retval.getBuf(); !force initilization
+            return retval;
+        ]
+    ,	freeString[str; !take a specific allocated string, and free it for later use
+            self.freeBuffer(self._findAllocatedObj(str));
+            self._freeObj(self._findAllocatedObj(str));
+
+            return str;
+        ]
+    ,	reclaimString[b retval; !take a previously freed string and lock it again
+            retval = self._reclaimObj(self._findAvailableObj(b));
+            if(retval~=0) self.reclaimBuffer(retval.getBuf(true));
+            return retval;
+        ]
+    ,	allocateBuffer[retval; !pick an arbitrary buffer, allocate it, and set its length to 0, returning it
+            retval = self._allocateObj(_bglBufferWrapper).buf;
+            _bglBuf.setLength(retval,0);
+            return retval;
+        ]
+    ,	freeBuffer[b; !take a specific buffer and free it for later allocation
+            self._freeObj(self._findAllocatedObjFromBuffer(b));
+            return b;
+        ]
+    ,	reclaimBuffer[b retval;
+            retval = self._reclaimObj(self._findAvailableObjFromBuffer(b));
+            if(retval~=0) return retval.buf;
+            return 0;
+        ]
+    , 	isLocked[obj;
+            if(self._findAllocatedObj(obj)) return true;
+            if(self._findAllocatedObjFromBuffer(obj)) return true;
+            return false;
+        ]
+    ,	isFree[obj;
+            if(self._findAvailableObj(obj)) return true;
+            if(self._findAvailableObjFromBuffer(obj)) return true;
+            return false;
+        ]
+    ;
+
+    ! _bglConvertToSizedBuffer was here. Ported to Beguile-native in <string>
+    ! (see string.bgl). I6-side callers (currently _bglInitializeStringBuffers)
+    ! invoke it by name as an ordinary I6 routine.
+
+    [_bglInitializeStringBuffers
+            i obj;
+        for(i=0:_bglBufferWrapper.remaining()>0:i++){
+            obj=_bglBufferWrapper.create();
+            obj.buf=_bglDsbuf+(i*bglStringDefaultSize);
+            obj.buf=_bglConvertToSizedBuffer(obj.buf,bglStringDefaultSize);
+            move obj to _bglObjectHeap;
+        }
+
+        for(i=0:_bglString.remaining()>0:i++){
+            obj=_bglString.create();
+            obj.getBuf(); !lets make sure that we've associated a buffer to all strings: getBuf will allocate one if not previously allocated
+            move obj to _bglObjectHeap;
+        }
+    ];
+}
 
 #startup {
     _bglInitializeStringBuffers();

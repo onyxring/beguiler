@@ -3,8 +3,7 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-global _bgl_temp0;
-global _bgl_temp1;
+Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -13,98 +12,212 @@ global _bglInitDone = 0;
 object _zcode
 ;
 object _bglUtil
-  with math _bglmath
 ;
 object bgl
   with zcode _zcode,
        bglUtil _bglutil
 ;
-object _bglMath
-  with unsignedCompare [x y u v;
-    if (x == y) {
+[_bglArrayCompareAsc lhs rhs;
+    
+        if(lhs < rhs) return -1;
+        if(lhs > rhs) return 1;
         return 0;
+    
+    return 0;
+];
+object _bglArray
+  with rawGet [addr slot;
+     return addr-->slot; 
+    return 0;
+  ],
+       rawSet [addr slot v;
+     addr-->slot = v; 
+  ],
+       get [obj prop n;
+    
+            if(metaclass(obj)==object) return obj.&prop-->n;
+            return obj-->(n+1);
+        
+    return 0;
+  ],
+       set [obj prop n v;
+    
+            if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
+            obj-->(n+1) = v;
+        
+  ],
+       copy [dobj dprop sobj sprop n cap i;
+    n=self.length(sobj,sprop);
+    cap=self.size(dobj,dprop);
+    if (n > cap) {
+        n = cap;
     }
-    if (x < 0 && y >= 0) {
-        return 1;
+    for (i = 0 : i < n : i++) {
+        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
     }
-    if (x >= 0 && y < 0) {
-        return -1;
+    self.setlength(dobj, dprop, n);
+  ],
+       isTracked [obj prop hdr;
+     if(metaclass(obj)==object) rfalse; 
+    hdr = self.rawget(obj,0);
+    return self.rawget(obj,hdr)==36996&&self.rawget(obj,hdr-1)>=0;
+  ],
+       size [obj prop;
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+    if (self.istracked(obj,prop)) {
+        return self.rawget(obj,0)-2;
     }
-    u=x & 32767;
-    v=y & 32767;
-    if (u > v) {
-        return 1;
+    return self.rawget(obj,0);
+  ],
+       length [obj prop;
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+    if (self.istracked(obj,prop)) {
+        return self.rawget(obj,self.rawget(obj,0)-1);
+    }
+    return self.rawget(obj,0);
+  ],
+       setLength [obj prop n;
+     if(metaclass(obj)==object) return; 
+    if (self.istracked(obj,prop)) {
+        if (n < 0) {
+            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+             quit; 
+        }
+        self.set(obj, prop, self.size(obj,prop), n);
+    }
+  ],
+       indexOf [obj prop val sz t;
+    sz=self.size(obj,prop);
+    for (t = 0 : t < sz : t++) {
+        if (self.get(obj,prop,t)==val) {
+            return t;
+        }
     }
     return -1;
   ],
-       shiftLeft [i numBits;
-    return i * self.pow(2,numbits);
+       clear [obj prop sz t;
+    sz=self.size(obj,prop);
+    for (t = 0 : t < sz : t++) {
+        self.set(obj, prop, t, 0);
+    }
+    self.setLength(obj, prop, 0);
   ],
-       shiftRight [i numBits;
-    return i / self.pow(2,numbits);
+       swap [obj prop pos1 pos2 tmp;
+    tmp = self.get(obj,prop,pos1);
+    self.set(obj, prop, pos1, self.get(obj,prop,pos2));
+    self.set(obj, prop, pos2, tmp);
   ],
-       abs [p;
-    if (p < 0) _bgl_temp0 = -p; else _bgl_temp0 = p;
-    return _bgl_temp0;
+       reverse [obj prop len half i;
+    len=self.length(obj,prop);
+    half=len / 2;
+    for (i = 0 : i < half : i++) {
+        self.swap(obj, prop, i, len - 1 - i);
+    }
   ],
-       unsignedDiv [a b lowHalf hq hr combined;
-    if (b == 0) {
-        return 0;
+       append [obj prop val len;
+    len=self.length(obj,prop);
+    if (len >= self.size(obj,prop)) {
+        return false;
     }
-    if (a >= 0 && b > 0) {
-        return a / b;
-    }
-    if (b < 0) {
-        if (self.unsignedcompare(a,b) >= 0) _bgl_temp1 = 1; else _bgl_temp1 = 0;
-        return _bgl_temp1;
-    }
-    lowHalf=a & 32767;
-    hq=32767 / b;
-    hr=32767 % b + 1;
-    if (hr >= b) {
-        hq = hq + 1;
-        hr = hr - b;
-    }
-    combined=lowhalf + hr;
-    if (combined >= 0) {
-        return hq + combined / b;
-    }
-    return hq + self.unsigneddiv(combined,b);
+    self.set(obj, prop, len, val);
+    self.setLength(obj, prop, len + 1);
+    return true;
   ],
-       unsignedMod [a b;
-    if (b == 0) {
-        return 0;
+       insert [obj prop pos val len i;
+    len=self.length(obj,prop);
+    if (len >= self.size(obj,prop)) {
+        return false;
     }
-    if (a >= 0 && b > 0) {
-        return a % b;
+    if (pos < 0 || pos > len) {
+        return false;
     }
-    return a - self.unsigneddiv(a,b) * b;
+    for (i = len : i > pos : i--) {
+        self.set(obj, prop, i, self.get(obj,prop,i - 1));
+    }
+    self.set(obj, prop, pos, val);
+    self.setLength(obj, prop, len + 1);
+    return true;
   ],
-       pow [i p retval t;
-    if (p == 0) {
-        return 1;
-    }
-    retval=i;
-    if (p < 0) {
-        for (t = 0 : t < (-p) - 1 : t++) {
-            retval = retval / i;
-        }
-        return retval;
-    }
-    for (t = 0 : t < p - 1 : t++) {
-        retval = retval * i;
-    }
-    return retval;
-  ]
-;
-[_bglPrintUint v;
-    if (v >= 0) {
-        print v;
+       prepend [obj prop val;
+    return self.insert(obj,prop,0,val);
+  ],
+       remove [obj prop pos len i;
+    len=self.length(obj,prop);
+    if (pos < 0 || pos >= len) {
         return;
     }
-    print _bglmath.unsigneddiv(v, 10);
-    print _bglmath.unsignedmod(v, 10);
-];
+    for (i = pos : i < len - 1 : i++) {
+        self.set(obj, prop, i, self.get(obj,prop,i + 1));
+    }
+    self.set(obj, prop, len - 1, 0);
+    self.setLength(obj, prop, len - 1);
+  ],
+       removeValue [obj prop val pos len;
+    pos = 0;
+    len=self.length(obj,prop);
+    while (pos < len) {
+        if (self.get(obj,prop,pos)==val) {
+            self.remove(obj, prop, pos);
+            len = self.length(obj,prop);
+        }
+        else {
+             pos++ ;
+        }
+    }
+  ],
+       push [obj prop val;
+    self.insert(obj, prop, 0, val);
+  ],
+       pop [obj prop v;
+    if (self.length(obj,prop) == 0) {
+        return 0;
+    }
+    v = self.get(obj,prop,0);
+    self.remove(obj, prop, 0);
+    return v;
+  ],
+       dequeue [obj prop;
+    return self.pop(obj,prop);
+  ],
+       enqueue [obj prop val;
+    self.append(obj, prop, val);
+  ],
+       peek [obj prop;
+    if (self.length(obj,prop) == 0) {
+        return 0;
+    }
+    return self.get(obj,prop,0);
+  ],
+       peekEnd [obj prop len;
+    len=self.length(obj,prop);
+    if (len == 0) {
+        return 0;
+    }
+    return self.get(obj,prop,len - 1);
+  ],
+       popEnd [obj prop len v;
+    len=self.length(obj,prop);
+    if (len == 0) {
+        return 0;
+    }
+    v = self.get(obj,prop,len - 1);
+    self.remove(obj, prop, len - 1);
+    return v;
+  ],
+       sort [obj prop compare len i key j;
+    len=self.length(obj,prop);
+    for (i = 1 : i < len : i++) {
+        key = self.get(obj,prop,i);
+        j=i - 1;
+        while (j >= 0 && compare(self.get(obj,prop,j),key) > 0) {
+            self.set(obj, prop, j + 1, self.get(obj,prop,j));
+             j-- ;
+        }
+        self.set(obj, prop, j + 1, key);
+    }
+  ]
+;
+global _bglWorldBufIdx = -1;
 [testInit a i b j;
     a = 42;
     i = 100;
@@ -117,8 +230,8 @@ object _bglMath
     sum=a + b;
     diff=a - b;
     prod=a * b;
-    quot=_bglMath.unsignedDiv(a, b);
-    rem=_bglMath.unsignedMod(a, b);
+    quot=_bglUnsignedDiv(a, b);
+    rem=_bglUnsignedMod(a, b);
 ];
 [testBitwise a b and_ or_ xor_;
     a = 12;
@@ -135,18 +248,18 @@ object _bglMath
     y = 10;
     eq=x == y;
     neq=x ~= y;
-    lt=_bglMath.unsignedCompare(x, y) < 0;
-    lte=_bglMath.unsignedCompare(x, y) <= 0;
-    gt=_bglMath.unsignedCompare(x, y) > 0;
-    gte=_bglMath.unsignedCompare(x, y) >= 0;
+    lt=_bglUnsignedCompare(x, y) < 0;
+    lte=_bglUnsignedCompare(x, y) <= 0;
+    gt=_bglUnsignedCompare(x, y) > 0;
+    gte=_bglUnsignedCompare(x, y) >= 0;
 ];
 [testCompound n;
     n = 10;
     n = n + 5;
     n = n - 2;
     n = n * 3;
-    n = _bglMath.unsignedDiv(n, 4);
-    n = _bglMath.unsignedMod(n, 7);
+    n = _bglUnsignedDiv(n, 4);
+    n = _bglUnsignedMod(n, 7);
 ];
 [testIncDec i;
     i = 0;
@@ -171,4 +284,64 @@ object _bglMath
     testcompound();
     testincdec();
     testprint();
+];
+[_bglPrintUint v;
+    if (v >= 0) {
+        print v;
+        return;
+    }
+    print _bglunsigneddiv(v,10);
+    print _bglunsignedmod(v,10);
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
+];
+[_bglUnsignedDiv a b lowHalf hq hr combined;
+    if (b == 0) {
+        return 0;
+    }
+    if (a >= 0 && b > 0) {
+        return a / b;
+    }
+    if (b < 0) {
+        if (_bglunsignedcompare(a,b) >= 0) {
+            return 1;
+        }
+        return 0;
+    }
+    lowHalf=a & 32767;
+    hq=32767 / b;
+    hr=32767 % b + 1;
+    if (hr >= b) {
+        hq = hq + 1;
+        hr = hr - b;
+    }
+    combined=lowhalf + hr;
+    if (combined >= 0) {
+        return hq + combined / b;
+    }
+    return hq + _bglunsigneddiv(combined,b);
+];
+[_bglUnsignedMod a b;
+    if (b == 0) {
+        return 0;
+    }
+    if (a >= 0 && b > 0) {
+        return a % b;
+    }
+    return a - _bglunsigneddiv(a,b) * b;
 ];

@@ -134,7 +134,7 @@
 - 9.3 Parameters
 - 9.4 Overload Resolution
 - 9.5 The `self` Keyword
-- 9.6 `superposed` Routines
+- 9.6 `superposed` Routines, Globals, and Objects
 
 ### Chapter 10 — Statements
 - 10.1 Overview
@@ -2356,6 +2356,34 @@ The final segment is resolved as an enum/bnum value lookup, equivalent to writin
 
 **Interaction with `#using`**: Type aliases are importable via `#using` (§3.5.8). `#using bgl.glulx` makes `window` available as a bare type name; `#using bgl` makes `glulx.window` available as a partial path. Both resolve through the same alias mechanism.
 
+### 5.11.1 Value aliases: `alias name = Target`
+
+The `for` form above aliases a *type*. A namespace member can also alias a *value* — an object instance or a class — so its members are reachable through the namespace path (`bgl.world.getAll()`, `bgl.util.math.pow(...)`). Two forms expose a backing object, and they differ in whether a **runtime property** is emitted on the host:
+
+```bgl
+extend bgl { auto  world = _bglWorld; }   // (a) emits a runtime `world` property on bgl
+extend bgl { alias world = _bglWorld; }   // (b) compile-time only — no property
+```
+
+- **`auto name = obj`** binds `name` as a runtime property whose value is `obj`. `bgl.world` therefore exists as a first-class runtime value — but that property also *forces* `obj` (and everything it references) to be emitted, unconditionally.
+- **`alias name = obj`** is a **compile-time-only indirection**: `bgl.world.getAll()` is rewritten to `_bglWorld.getAll()` at parse time, and **no `world` property is emitted**. Since nothing links the host to `obj` at runtime, `obj` is referenced only where the alias is actually used. Paired with a `superposed` target (§9.6), the whole namespace then costs nothing until it is called:
+
+```bgl
+superposed object _bglWorld { array<object> getAll() { ... } ... }
+extend bgl { alias world = _bglWorld; }
+// A game that never writes `bgl.world` emits neither the object nor its routines.
+```
+
+The `= Target` form also accepts a **class**: `alias asm = bglOpCodes` is a class namespace alias (`bgl.asm.add(a,b)` → `bglOpCodes.add(a,b)`), equivalent to `emitter auto asm = bglOpCodes`. Prefer `emitter auto` when the target is specifically an emitter class (which has no runtime object at all — the `emitter` reads truthfully there); use plain `alias name = Target` for the general "compile-time indirection, no runtime property" case.
+
+Summary of the three member-alias forms:
+
+| Form | Target | Runtime property? | Use |
+|------|--------|-------------------|-----|
+| `alias name for Type` | class / enum | no | namespace-scoped **types** (§5.11 above) |
+| `alias name = Target` | object or class | **no** | compile-time value/dispatch alias; gates a `superposed` target on use |
+| `auto name = obj` | object | **yes** | when `namespace.name` must be a runtime value |
+
 ---
 
 # Chapter 6 — Objects
@@ -3328,15 +3356,56 @@ class Counter {
 
 `self` is not valid outside a method body.
 
-## 9.6 `superposed` Routines
+## 9.6 `superposed` Routines, Globals, and Objects
 
-A routine marked `superposed` is emitted into the story file **only if something references it**; if no call site ever names it, it evaporates from the output. The routine sits in superposition until a call "observes" it.
+A declaration marked `superposed` is emitted into the story file **only if something references it**; if no use ever names it, it evaporates from the output. It sits in superposition until a use "observes" it.
 
 ```bgl
 superposed void debugDump() { ... }   // emitted only if debugDump() is called somewhere
 ```
 
-This is useful for library helpers that should cost nothing when unused — a game that never calls the routine pays no code-size or link cost for it. It pairs with the `omitUnusedRoutines` compilation setting (§3.4): `superposed` withholds the routine at the Beguile emission layer (it is never written unless observed), while `omitUnusedRoutines` asks the I6 compiler to strip routines that were emitted but end up unreferenced. `superposed` applies to global/free routines and may appear in any qualifier order.
+This is useful for library helpers and data that should cost nothing when unused — a game that never touches them pays no code-size or link cost. It pairs with the `omitUnusedRoutines` compilation setting (§3.4): `superposed` withholds the declaration at the Beguile emission layer (it is never written unless observed), while `omitUnusedRoutines` asks the I6 compiler to strip routines that were emitted but end up unreferenced.
+
+### File-scope globals and data
+
+`superposed` applies to **file-scope global variables and arrays**, not just routines. This lets an always-loaded library carry lookup tables and constants that cost nothing unless a routine actually reads them:
+
+```bgl
+// Always parsed (it lives in an auto-loaded library), but the table is written to
+// the story file only if _bglCharIsVowel is itself reached.
+superposed array<char> _bglVowels = "aeiou…";
+
+superposed bool _bglCharIsVowel(char c){
+    for(char v in _bglVowels) if(v == c) rtrue;   // observing _bglVowels
+    rfalse;
+}
+```
+
+Materialization is **transitive** and runs to a fixed point: observing `_bglCharIsVowel` pulls its body into the output, whose reference to `_bglVowels` then pulls the table in as well. A superposed declaration may freely reference other superposed declarations — each is materialized the moment it is first named in the assembled output.
+
+### Whole objects
+
+`superposed` also applies to a whole **object declaration** — its entire `object X with …;` block is withheld and emitted only if the object's name is referenced. This is how an always-declared namespace/helper object costs nothing until it is used. Combined with a compile-time value alias (§5.11.1), a namespace can gate on use entirely:
+
+```bgl
+superposed object _bglWorld {
+    array<object> getAll() { ... }        // reference these -> they materialize too
+}
+extend bgl { alias world = _bglWorld; }   // compile-time alias: NO runtime property
+
+// `bgl.world.getAll()` emits `_bglworld.getall(...)` at the call site; that mention
+// materializes the object, which references its routines, which reference their buffers —
+// the whole cascade appears only in games that actually call bgl.world.
+```
+
+The two pieces do distinct jobs: the **alias** removes the runtime property that would otherwise force the object to emit (§5.11.1), and **`superposed`** withholds the object's definition until its name is observed. An I6 object may be declared after its uses (forward references resolve), so append-at-end works for objects just as it does for routines.
+
+### Scope and caveats
+
+- **File scope, whole declarations only.** `superposed` gates free routines, file-scope globals/arrays, and whole objects — each is a self-contained block that can be withheld and appended. It does **not** gate an individual **member** of a class or object (a single property or method): members share I6's flat property table and can't be withheld one at a time.
+- **Reference matching is case-insensitive**, in keeping with Beguile's case-insensitive identity: a `superposed` `_bglPow` is still observed when it is called as `_bglpow`.
+- **Over-inclusion is the safe direction.** Observation is a textual name scan over the assembled output, so a name that also appears inside a string literal or comment falsely materializes its declaration (a harmless dead entry) — it never drops a genuinely-referenced one. Give superposed helpers distinctive names (a `_bgl`-style prefix) to avoid accidental matches.
+- `superposed` may appear in any qualifier order.
 
 ---
 

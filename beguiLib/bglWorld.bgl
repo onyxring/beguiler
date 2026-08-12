@@ -1,156 +1,122 @@
 //-----------------------------------------------------------------------------
-// bglWorld.bgl — replace `objectloop` with array-returning queries.
+// bglWorld.bgl — object-tree queries that replace I6's `objectloop`.
 //
-// Usage:
-//   #include <bglWorld>
-//   for(object o in bgl.world.getAll())                          { ... }
-//   for(object o in bgl.world.inParent(location))                { ... }
-//   for(object o in bgl.world.instances(Animal))                 { ... }
-//   for(object o in bgl.world.instances(Animal, (object o) =>
-//                                       o.parent == cage))       { ... }
+// Auto-included by the core (see __beguileCore.bgl), so `bgl.world` is available
+// in every Beguile game with no `#include`.
 //
-// Each method fills a shared scratch buffer and returns it as a tracked
-// `array<object>`, so all `<array>` operations work on the result. LINQ chain
-// ops (filter, map, take, distinct, ...) also work — but chaining requires
-// `#include <linq>` (bglWorld itself only pulls in `<array>`). Combine
-// `instances(Animal).filter(p)` instead of `objectloop(o ofclass Animal) if(p(o)) ...`.
+//   for(object o in bgl.world.getAll())            { ... }   // all objects
+//   for(object o in bgl.world.inParent(location))  { ... }   // children of a room
+//   for(object o in bgl.world.instances(Animal))   { ... }   // objects ofclass
+//   for(object o in bgl.world.instances(Animal,
+//                       (object o) => o.parent==cage)) { ... } // + inline predicate
 //
-// Each method also accepts an optional `func<bool, object>` predicate. The
-// predicate runs INSIDE the `objectloop` walk, so non-matching objects never
-// reach the buffer — preferable to `instances(Animal).filter(p)` when the
-// filter is selective, since the unfiltered intermediate would have been
-// capacity-bound and may have overflowed before the .filter() ran.
+// Each query walks the tree, fills a scratch buffer, and returns it as a tracked
+// `array<object>` — so every <array>/<linq> op works on the result. The optional
+// `func<bool, object>` predicate runs INSIDE the walk, so non-matching objects
+// never reach the buffer.
 //
-// The scratch buffer is SHARED state. Don't store the result across turns
-// Results rotate through a small POOL of scratch buffers (default 4), so an
-// outer `for(o in bgl.world…)` loop body can call routines that also run a
-// bgl.world query (e.g. `numRocksIn(x)`) without clobbering the outer loop's
-// snapshot — each fresh query grabs the next buffer in the rotation.
+// Beguile-native: the routine shells, the rotating buffer pool, and the trailer
+// stamping are all Beguile. The only I6 left is the `objectloop` core of each
+// query — an irreducible primitive (Beguile has no all-objects iterator) — and
+// the trailer write (below the array surface). Queries and buffers are
+// `superposed`, and `bgl.world` is a compile-time-only alias (no runtime property),
+// so the whole thing gates on actual use: a game that never calls bgl.world emits
+// none of it.
 //
-// LIMIT: this tolerates up to (pool size − 1) concurrent live iterations. It is
-// NOT a hard guarantee — an outer loop that issues MORE than that many world
-// queries over its lifetime will eventually rotate back onto its own live
-// buffer. For deep/heavy nesting, raise the pool below (edit _BGL_WORLD_BUFCOUNT
-// + the decls/arms/stamps to match), or snapshot into your own `array<object>`
-// first. Don't store a result across turns.
-//
-// Capacity per buffer defaults to 128 objects. Configure via
-//   #beguilerSettings { worldBufSize = 256; }
-// at the top of your .bgl file if your world is larger. Cap-exceeding walks
-// silently stop at the configured size.
+// SHARED rotating scratch (4 buffers, 128 objects each): a nested query inside a
+// `for(o in bgl.world…)` loop gets a different buffer than the live outer one.
+// Tolerates up to (pool − 1) concurrent live iterations. Don't store a result
+// across turns; snapshot into your own `array<object>` for deep nesting or large
+// worlds (walks that exceed 128 stop silently).
 //-----------------------------------------------------------------------------
 #once
 #include <array>
 
-#emitfirst{
-    ! `_BGL_WORLD_BUFSIZE` is declared by the compiler when `<bglWorld>` is
-    ! included — value comes from #beguilerSettings.worldBufSize (default 128).
-    ! Tracked-array layout: `Array X table N` sets slot 0 = N (the capacity) and
-    ! gives N data slots (1..N). We reserve slots 1..BUFSIZE for data, BUFSIZE+1
-    ! for length, BUFSIZE+2 for the magic marker — hence `table BUFSIZE+2`. (The
-    ! `-->` size form does NOT set slot 0, so the buf-->0 stamp would run off the
-    ! end — this must be `table`, matching how the compiler emits its own sized arrays.)
-    !
-    ! ROTATING POOL: _BGL_WORLD_BUFCOUNT buffers, round-robined by _bglWorldNextBuf,
-    ! so a nested bgl.world call gets a different buffer than the live outer loop.
-    ! To resize the pool, edit the constant AND add/remove buffer decls + switch
-    ! arms + #startup stamps to match (I6 cannot declare arrays in a loop).
-    Constant _BGL_WORLD_BUFCOUNT = 4;
-    Array _bglWorldBuf0 table _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf1 table _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf2 table _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf3 table _BGL_WORLD_BUFSIZE + 2;
-    Global _bglWorldBufIdx = -1;
+// Scratch pool — superposed. (Fixed 128/buffer: a Beguile array size must be a
+// literal, so the former #beguilerSettings.worldBufSize knob is gone — edit the
+// [128]s to resize.)
+superposed array<object> _bglWorldBuf0[128];
+superposed array<object> _bglWorldBuf1[128];
+superposed array<object> _bglWorldBuf2[128];
+superposed array<object> _bglWorldBuf3[128];
+// Rotation index: a plain global. A superposed scalar Global can't be forward-referenced
+// by the routine that uses it (I6 wants it declared first); arrays forward-reference fine.
+int _bglWorldBufIdx = -1;
 
-    ! Advance the rotation and return the next buffer in the pool.
-    [ _bglWorldNextBuf ;
-        _bglWorldBufIdx = (_bglWorldBufIdx + 1) % _BGL_WORLD_BUFCOUNT;
-        switch(_bglWorldBufIdx) {
-            0: return _bglWorldBuf0;
-            1: return _bglWorldBuf1;
-            2: return _bglWorldBuf2;
-            3: return _bglWorldBuf3;
-        }
-    ];
+// Advance the rotation and hand back the next buffer in the pool.
+superposed array<object> _bglWorldNextBuf(){
+    _bglWorldBufIdx = (_bglWorldBufIdx + 1) % 4;
+    switch(_bglWorldBufIdx){
+        case 0: return _bglWorldBuf0;
+        case 1: return _bglWorldBuf1;
+        case 2: return _bglWorldBuf2;
+        case 3: return _bglWorldBuf3;
+    }
+    return _bglWorldBuf0;
+}
 
-    ! Walk all objects in the I6 object tree. `pred` is a routine address;
-    ! pred==0 means no filter. The check is inside the loop so a selective
-    ! predicate keeps the buffer small.
-    [ _bglWorldGetAll pred o i buf;
-        buf = _bglWorldNextBuf();
-        i = 0;
+// Stamp the tracked-array trailer (magic + length) on a freshly-filled buffer.
+// Raw #i6 because the length/magic slots live below the user-visible array surface
+// (buf-->0 is the allocated size; length at -1, magic at -0).
+superposed void _bglWorldStamp(array<object> buf, int count){
+    #i6 {
+        buf-->(buf-->0)     = $9084;
+        buf-->(buf-->0 - 1) = count;
+    }
+}
+
+// Walk ALL objects. `objectloop(o)` is an irreducible I6 primitive (Beguile has no
+// all-objects iterator — child/sibling only reach tree-attached objects).
+superposed array<object> _bglWorldGetAll(var pred){
+    array<object> buf = _bglWorldNextBuf();
+    object o;
+    int n = 0;
+    #i6 {
         objectloop(o) {
-            if(i >= _BGL_WORLD_BUFSIZE) break;
-            if(pred == 0 || indirect(pred, o)) {
-                i++;
-                buf-->i = o;
-            }
+            if(n >= buf-->0 - 2) break;
+            if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
         }
-        buf-->(buf-->0 - 1) = i;
-        return buf;
-    ];
+    }
+    _bglWorldStamp(buf, n);
+    return buf;
+}
 
-    ! Walk children of `parent`. Same pred semantics as _bglWorldGetAll.
-    [ _bglWorldInParent parent pred o i buf;
-        buf = _bglWorldNextBuf();
-        i = 0;
-        objectloop(o in parent) {
-            if(i >= _BGL_WORLD_BUFSIZE) break;
-            if(pred == 0 || indirect(pred, o)) {
-                i++;
-                buf-->i = o;
-            }
-        }
-        buf-->(buf-->0 - 1) = i;
-        return buf;
-    ];
-
-    ! Walk objects of a class. Same pred semantics as _bglWorldGetAll.
-    [ _bglWorldInstances cls pred o i buf;
-        buf = _bglWorldNextBuf();
-        i = 0;
+// Walk objects of a class.
+superposed array<object> _bglWorldInstances(var cls, var pred){
+    array<object> buf = _bglWorldNextBuf();
+    object o;
+    int n = 0;
+    #i6 {
         objectloop(o ofclass cls) {
-            if(i >= _BGL_WORLD_BUFSIZE) break;
-            if(pred == 0 || indirect(pred, o)) {
-                i++;
-                buf-->i = o;
-            }
+            if(n >= buf-->0 - 2) break;
+            if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
         }
-        buf-->(buf-->0 - 1) = i;
-        return buf;
-    ];
+    }
+    _bglWorldStamp(buf, n);
+    return buf;
 }
 
-// Stamp tracked-array magic + initial length=0 on every pool buffer at program
-// start, so _bglArray.isTracked / .length work even before any fill method runs.
-#startup{
-    _bglWorldBuf0-->(_bglWorldBuf0-->0)     = $9084;
-    _bglWorldBuf0-->(_bglWorldBuf0-->0 - 1) = 0;
-    _bglWorldBuf1-->(_bglWorldBuf1-->0)     = $9084;
-    _bglWorldBuf1-->(_bglWorldBuf1-->0 - 1) = 0;
-    _bglWorldBuf2-->(_bglWorldBuf2-->0)     = $9084;
-    _bglWorldBuf2-->(_bglWorldBuf2-->0 - 1) = 0;
-    _bglWorldBuf3-->(_bglWorldBuf3-->0)     = $9084;
-    _bglWorldBuf3-->(_bglWorldBuf3-->0 - 1) = 0;
+// Walk children of `parent`.
+superposed array<object> _bglWorldInParent(object parent, var pred){
+    array<object> buf = _bglWorldNextBuf();
+    object o;
+    int n = 0;
+    #i6 {
+        objectloop(o in parent) {
+            if(n >= buf-->0 - 2) break;
+            if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
+        }
+    }
+    _bglWorldStamp(buf, n);
+    return buf;
 }
 
-// Beguile-side bridges to the I6 routines emitted above. Each takes an
-// optional `pred` (a func<bool, object> reference); 0 means no filter.
-// Using `var` here so callers can pass either 0 or a typed func reference.
-extern array<object> _bglWorldGetAll(var pred);
-extern array<object> _bglWorldInParent(object p, var pred);
-extern array<object> _bglWorldInstances(var cls, var pred);
-
-// Public surface — `bgl.world.getAll()` etc. The predicate parameter defaults
-// to 0 (no filter), so callers can omit it. Single method per name because I6
-// doesn't allow same-named object properties (method overloading on objects
-// fails at the I6 level with 'Property given twice'). Methods are regular
-// (non-emitter) because `emitter array<T>` is only accepted on
-// `extend extern class array`.
-_bglObject _bglWorld {
+// Public surface — bgl.world.getAll()/inParent()/instances(). Non-emitter because
+// `emitter array<T>` is only accepted on `extend extern class array`.
+superposed _bglObject _bglWorld {
     array<object> getAll(func<bool, object> pred = 0)            { return _bglWorldGetAll(pred); }
     array<object> inParent(object p, func<bool, object> pred = 0){ return _bglWorldInParent(p, pred); }
     array<object> instances(var cls, func<bool, object> pred = 0){ return _bglWorldInstances(cls, pred); }
 }
 
-extend bgl { auto world = _bglWorld; }
+extend bgl { alias world = _bglWorld; }

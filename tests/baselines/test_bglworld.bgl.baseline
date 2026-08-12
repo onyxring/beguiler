@@ -4,98 +4,10 @@
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 Constant _BGL_WORLD_BUFSIZE = 128;
-
-    ! `_BGL_WORLD_BUFSIZE` is declared by the compiler when `<bglWorld>` is
-    ! included — value comes from #beguilerSettings.worldBufSize (default 128).
-    ! Tracked-array layout: `Array X table N` sets slot 0 = N (the capacity) and
-    ! gives N data slots (1..N). We reserve slots 1..BUFSIZE for data, BUFSIZE+1
-    ! for length, BUFSIZE+2 for the magic marker — hence `table BUFSIZE+2`. (The
-    ! `-->` size form does NOT set slot 0, so the buf-->0 stamp would run off the
-    ! end — this must be `table`, matching how the compiler emits its own sized arrays.)
-    !
-    ! ROTATING POOL: _BGL_WORLD_BUFCOUNT buffers, round-robined by _bglWorldNextBuf,
-    ! so a nested bgl.world call gets a different buffer than the live outer loop.
-    ! To resize the pool, edit the constant AND add/remove buffer decls + switch
-    ! arms + #startup stamps to match (I6 cannot declare arrays in a loop).
-    Constant _BGL_WORLD_BUFCOUNT = 4;
-    Array _bglWorldBuf0 table _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf1 table _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf2 table _BGL_WORLD_BUFSIZE + 2;
-    Array _bglWorldBuf3 table _BGL_WORLD_BUFSIZE + 2;
-    Global _bglWorldBufIdx = -1;
-
-    ! Advance the rotation and return the next buffer in the pool.
-    [ _bglWorldNextBuf ;
-        _bglWorldBufIdx = (_bglWorldBufIdx + 1) % _BGL_WORLD_BUFCOUNT;
-        switch(_bglWorldBufIdx) {
-            0: return _bglWorldBuf0;
-            1: return _bglWorldBuf1;
-            2: return _bglWorldBuf2;
-            3: return _bglWorldBuf3;
-        }
-    ];
-
-    ! Walk all objects in the I6 object tree. `pred` is a routine address;
-    ! pred==0 means no filter. The check is inside the loop so a selective
-    ! predicate keeps the buffer small.
-    [ _bglWorldGetAll pred o i buf;
-        buf = _bglWorldNextBuf();
-        i = 0;
-        objectloop(o) {
-            if(i >= _BGL_WORLD_BUFSIZE) break;
-            if(pred == 0 || indirect(pred, o)) {
-                i++;
-                buf-->i = o;
-            }
-        }
-        buf-->(buf-->0 - 1) = i;
-        return buf;
-    ];
-
-    ! Walk children of `parent`. Same pred semantics as _bglWorldGetAll.
-    [ _bglWorldInParent parent pred o i buf;
-        buf = _bglWorldNextBuf();
-        i = 0;
-        objectloop(o in parent) {
-            if(i >= _BGL_WORLD_BUFSIZE) break;
-            if(pred == 0 || indirect(pred, o)) {
-                i++;
-                buf-->i = o;
-            }
-        }
-        buf-->(buf-->0 - 1) = i;
-        return buf;
-    ];
-
-    ! Walk objects of a class. Same pred semantics as _bglWorldGetAll.
-    [ _bglWorldInstances cls pred o i buf;
-        buf = _bglWorldNextBuf();
-        i = 0;
-        objectloop(o ofclass cls) {
-            if(i >= _BGL_WORLD_BUFSIZE) break;
-            if(pred == 0 || indirect(pred, o)) {
-                i++;
-                buf-->i = o;
-            }
-        }
-        buf-->(buf-->0 - 1) = i;
-        return buf;
-    ];
-
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
-
-    _bglWorldBuf0-->(_bglWorldBuf0-->0)     = $9084;
-    _bglWorldBuf0-->(_bglWorldBuf0-->0 - 1) = 0;
-    _bglWorldBuf1-->(_bglWorldBuf1-->0)     = $9084;
-    _bglWorldBuf1-->(_bglWorldBuf1-->0 - 1) = 0;
-    _bglWorldBuf2-->(_bglWorldBuf2-->0)     = $9084;
-    _bglWorldBuf2-->(_bglWorldBuf2-->0 - 1) = 0;
-    _bglWorldBuf3-->(_bglWorldBuf3-->0)     = $9084;
-    _bglWorldBuf3-->(_bglWorldBuf3-->0 - 1) = 0;
-
 ];
 object _zcode
 ;
@@ -103,8 +15,7 @@ object _bglUtil
 ;
 object bgl
   with zcode _zcode,
-       bglUtil _bglutil,
-       world _bglworld
+       bglUtil _bglutil
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -306,17 +217,7 @@ object _bglArray
     }
   ]
 ;
-object _bglWorld
-  with getAll [pred;
-    return _bglworldgetall(pred);
-  ],
-       inParent [p pred;
-    return _bglworldinparent(p,pred);
-  ],
-       instances [cls pred;
-    return _bglworldinstances(cls,pred);
-  ]
-;
+global _bglWorldBufIdx = -1;
 class animal
   class object
   with
@@ -337,7 +238,7 @@ animal fish
 object stone cage
   with short_name "stone"
 ;
-[main totalCount caged animals o _bglfia0 _bglfi1 cagedAnimals cageWithoutStones notFish _bglfia2 _bglfi3 here;
+[main totalCount caged animals o _bglfia1 _bglfi2 cagedAnimals cageWithoutStones notFish _bglfia3 _bglfi4 here;
     totalCount=_bglArray.length(_bglworld.getall(0), 0);
     print (string)"total objects: ";
     print totalCount;
@@ -351,10 +252,10 @@ object stone cage
     print animals;
     print (string)"^";
     print (string)"named animals:^";
-    _bglfia0 = _bglworld.instances(animal, 0);
-    _bglfi1 = 0;
-    for (: _bglfi1 < _bglArray.length(_bglfia0, 0) : _bglfi1++) {
-        o = _bglfia0-->(_bglfi1+1);
+    _bglfia1 = _bglworld.instances(animal, 0);
+    _bglfi2 = 0;
+    for (: _bglfi2 < _bglArray.length(_bglfia1, 0) : _bglfi2++) {
+        o = _bglfia1-->(_bglfi2+1);
         print (string)" - ";
         print (string)o.short_name;
         print (string)"^";
@@ -372,10 +273,10 @@ object stone cage
     print notFish;
     print (string)"^";
     print (string)"nested walk:^";
-    _bglfia2 = _bglworld.instances(animal, 0);
-    _bglfi3 = 0;
-    for (: _bglfi3 < _bglArray.length(_bglfia2, 0) : _bglfi3++) {
-        o = _bglfia2-->(_bglfi3+1);
+    _bglfia3 = _bglworld.instances(animal, 0);
+    _bglfi4 = 0;
+    for (: _bglfi4 < _bglArray.length(_bglfia3, 0) : _bglfi4++) {
+        o = _bglfia3-->(_bglfi4+1);
         here=_bglArray.length(_bglworld.inparent(parent(o), 0), 0);
         print (string)" - ";
         print (string)o.short_name;
@@ -393,3 +294,74 @@ object stone cage
 [_bglLambda_2 o;
     return o ~= fish;
 ];
+object _bglWorld
+  with getAll [pred;
+    return _bglworldgetall(pred);
+  ],
+       inParent [p pred;
+    return _bglworldinparent(p,pred);
+  ],
+       instances [cls pred;
+    return _bglworldinstances(cls,pred);
+  ]
+;
+[_bglWorldGetAll pred buf o n;
+    buf = _bglworldnextbuf();
+    n = 0;
+    
+        objectloop(o) {
+            if(n >= buf-->0 - 2) break;
+            if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
+        }
+    
+    _bglworldstamp(buf, n);
+    return buf;
+];
+[_bglWorldInParent parent pred buf o n;
+    buf = _bglworldnextbuf();
+    n = 0;
+    
+        objectloop(o in parent) {
+            if(n >= buf-->0 - 2) break;
+            if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
+        }
+    
+    _bglworldstamp(buf, n);
+    return buf;
+];
+[_bglWorldInstances cls pred buf o n;
+    buf = _bglworldnextbuf();
+    n = 0;
+    
+        objectloop(o ofclass cls) {
+            if(n >= buf-->0 - 2) break;
+            if(pred == 0 || indirect(pred, o)) { n++; buf-->n = o; }
+        }
+    
+    _bglworldstamp(buf, n);
+    return buf;
+];
+[_bglWorldNextBuf;
+    _bglworldbufidx=(_bglworldbufidx + 1) % 4;
+    switch (_bglworldbufidx) {
+        0:
+            return _bglworldbuf0;
+        1:
+            return _bglworldbuf1;
+        2:
+            return _bglworldbuf2;
+        3:
+            return _bglworldbuf3;
+    }
+    return _bglworldbuf0;
+];
+[_bglWorldStamp buf count;
+    
+        buf-->(buf-->0)     = $9084;
+        buf-->(buf-->0 - 1) = count;
+    
+];
+array _bglworldbuf0 table 130;
+array _bglworldbuf1 table 130;
+array _bglworldbuf2 table 130;
+array _bglworldbuf3 table 130;

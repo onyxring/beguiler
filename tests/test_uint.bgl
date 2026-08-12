@@ -8,7 +8,7 @@
     informName = "none";
     outputPath = "tests/output";
 }
-#include <uint>
+// uint is now always available in core — no include needed.
 
 // --- Literal and cast initialization ---
 void testInit() {

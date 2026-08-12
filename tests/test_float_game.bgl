@@ -8,7 +8,7 @@
     structural shape catches regressions in the cast/operator/print pipeline.
 */
 #beguilerSettings { target = Glulx; informName = "none"; outputPath = "tests/output"; }
-#include <float>
+// float is always available in core on Glulx — no include needed.
 
 // ─── Combat: fractional HP and weapon damage ─────────────────────────────────
 // Note: float member initializers can't be (float)N — that's a function call,

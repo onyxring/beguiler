@@ -91,6 +91,10 @@ class objectDef: public typeDef{
         vector<typeDef*> baseClasses;
         vector<typeMember*> members;
         classDef* objectClass = nullptr; // the Beguile class this object is an instance of (if known)
+        bool isSuperposed = false;
+        // isSuperposed: withhold the object's whole `object X with …;` declaration and emit it only
+        // if its name is referenced in the assembled output (same mechanism as superposed routines/
+        // globals). Lets an always-declared namespace/helper object cost nothing until it is used.
 };
 
 //a parameter of a function
@@ -190,6 +194,10 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         typeDef type;
         bool isConst = false;
         // isConst: for globals, emits as I6 Constant; for class members, prevents reassignment (property still has runtime storage)
+        bool isSuperposed = false;
+        // isSuperposed: file-scope globals/arrays only — withhold the declaration and emit it
+        // only if its name is referenced in the assembled output (same mechanism as superposed
+        // routines). Lets always-loaded data (e.g. lookup tables) cost nothing unless used.
         bool isStatic = false;   // static members: class-level state, emitted as mangled I6 global
         bool isAlias = false;    // type alias member: `alias name for Type;` — compile-time type reference, no I6 backing
         bool isTypeSealed = false; // `typesealed` base-class member: subclass/instance re-declarations keep this type (and warn)

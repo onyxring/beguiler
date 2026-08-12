@@ -51,7 +51,7 @@
 // both libraries in the same project.
 //-----------------------------------------------------------------------------
 #once
-#include <char>
+// char case/classification routines (_bglCharToLower/…) are always in core — no include needed.
 
 // The active target's assembly-opcode set (bgl.asm.X) is pulled in automatically
 // by the core (_zcodeCore / _glulxCore), so buf methods can dispatch through
@@ -375,7 +375,7 @@ object _bglBuf {
 
     // ── Comparison ────────────────────────────────────────────────────────────
     // equals: byte-equal of two bufs' character data. Optional case-insensitive
-    // compare via _bglChar.toLower.
+    // compare via _bglCharToLower.
     bool equals(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
         int len1 = length(buf1);
         if(len1 != length(buf2)) return false;
@@ -383,8 +383,8 @@ object _bglBuf {
             int c1 = _bglGetByte(buf1, t + bgl.wordsize);
             int c2 = _bglGetByte(buf2, t + bgl.wordsize);
             if(caseInsensitive){
-                c1 = _bglChar.toLower(c1);
-                c2 = _bglChar.toLower(c2);
+                c1 = _bglCharToLower(c1);
+                c2 = _bglCharToLower(c2);
             }
             if(c1 != c2) return false;
         }
@@ -399,8 +399,8 @@ object _bglBuf {
             int c1 = _bglGetByte(buf1, t + bgl.wordsize);
             int c2 = _bglGetByte(buf2, t + bgl.wordsize);
             if(caseInsensitive){
-                c1 = _bglChar.toLower(c1);
-                c2 = _bglChar.toLower(c2);
+                c1 = _bglCharToLower(c1);
+                c2 = _bglCharToLower(c2);
             }
             if(c1 != c2) return false;
         }
@@ -416,8 +416,8 @@ object _bglBuf {
             int c1 = _bglGetByte(buf1, offset + t + bgl.wordsize);
             int c2 = _bglGetByte(buf2, t + bgl.wordsize);
             if(caseInsensitive){
-                c1 = _bglChar.toLower(c1);
-                c2 = _bglChar.toLower(c2);
+                c1 = _bglCharToLower(c1);
+                c2 = _bglCharToLower(c2);
             }
             if(c1 != c2) return false;
         }
@@ -550,14 +550,14 @@ object _bglBuf {
     array<char> toUpper(array<char> buf){
         int buflen = length(buf);
         for(int t = 0; t < buflen; t++)
-            _bglSetByte(buf, t + bgl.wordsize, _bglChar.toUpper(_bglGetByte(buf, t + bgl.wordsize)));
+            _bglSetByte(buf, t + bgl.wordsize, _bglCharToUpper(_bglGetByte(buf, t + bgl.wordsize)));
         return buf;
     }
 
     array<char> toLower(array<char> buf){
         int buflen = length(buf);
         for(int t = 0; t < buflen; t++)
-            _bglSetByte(buf, t + bgl.wordsize, _bglChar.toLower(_bglGetByte(buf, t + bgl.wordsize)));
+            _bglSetByte(buf, t + bgl.wordsize, _bglCharToLower(_bglGetByte(buf, t + bgl.wordsize)));
         return buf;
     }
 

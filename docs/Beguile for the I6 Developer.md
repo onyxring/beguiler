@@ -867,7 +867,9 @@ Notice that the `grammarRule` itself is just one element in an enclosing, `gramm
 
 ## Select Additional Topics
 
-While Cloak of Darkness serves as a gentle introduction to Beguile, it only scratches the surface of the language.  In this section, I'll go over select topics which are meaningful to the I6 developer.
+While Cloak of Darkness serves as a gentle introduction to Beguile, it only scratches the surface of the language.  In this section, I'll go over select topics which are meaningful to the I6 developer.  
+
+***Note:** this is a bit of an overview of extended features, letting you know what is available.  For deeper details, see the Language Reference.*
 
 ### The Beguile Language Runtime
 
@@ -935,13 +937,13 @@ The bare type carries no runtime overhead beyond what I6 would emit.  If your ga
 
 The moment you write...
 
-```
+```bgl
 #include <string>
 ```
 
 ...the `string` type grows up.  It's still the same type, you don't change any declarations, but a wealth of new methods and operators become available.  The most important shift for I6 devs to remember: `==` now compares content.  Unlike the previous example...
 
-```
+```bgl
 string a = "hello";
 string b = "hello";
 if(a == b) { print("MATCHED."); else print("unmatched.")}
@@ -955,16 +957,16 @@ Beguile also adds routine members and operators to `string` (e.g. `replace`, `to
 
 **Construction, copying, changing**
 
-```
+```bgl
 string name  = "Cloak";        // name is "Cloak" 
 string label = name;           // label is also "Cloak", but its own copy 
 name = name + " of Darkness";  // name is "Cloak of Darkness"; lable is still just "Cloak" 
 name += "!";                   // name is now "Cloak of Darkness!"; lable is unchanged
 ```
 
-**`switch` on string values** — cases compare by content, exactly like `==`, mixing literals and runtime strings freely:
+**`switch` on string values** cases compare by content, exactly like `==`, mixing literals and runtime strings freely:
 
-```
+```bgl
 switch(command){
     case "look":  print("You see nothing special.^"); break;
     case "quit":  print("Goodbye.^");                  break;
@@ -974,28 +976,28 @@ switch(command){
 
 **Slicing, search, replace** (all return new strings):
 
-```
+```bgl
 string s = "Hello, World";
-s.mid(3, 5)                      // "lo, W"  — 5 chars from index 3 (0-based)
+s.mid(3, 5)                      // "lo, W"  5 chars from index 3 (0-based)
 s.left(5)                        // "Hello"
 s.right(5)                       // "World"
-s.indexOf("World")               // 7        — or -1 if not found
+s.indexOf("World")               // 7        or -1 if not found
 s.contains(",")                  // true     (also startsWith / endsWith)
-s.replace("World", "Beguile")    // "Hello, Beguile"  — first match only
-s.replaceAll("l", "L")           // "HeLLo, WorLd"    — every match
+s.replace("World", "Beguile")    // "Hello, Beguile"   first match only
+s.replaceAll("l", "L")           // "HeLLo, WorLd"     every match
 ```
 
 **Case conversion and trimming**
 
-```
+```bgl
 ("Mixed").toUpper()              // "MIXED"
 ("Mixed").toLower()              // "mixed"
 ("  hi  ").trim()                // "hi"      (also trimLeft / trimRight)
 ```
 
-**Indexed character access** — read or write a single `char` at a zero-based position:
+**Indexed character access** read or write a single `char` at a zero-based position:
 
-```
+```bgl
 string s = "Hello";
 char first = s[0];               // 'H'
 s[0] = 'J';                      // s is now "Jello"
@@ -1003,28 +1005,28 @@ s[0] = 'J';                      // s is now "Jello"
 
 **Format strings** via `string.format(pattern, args...)`:
 
-```
+``` bgl
 string who = "world";
 who.format("Hi $0, arg=$1", "extra")   // "Hi world, arg=extra"
 ```
 
 `$0` is the receiver string itself; `$1`, `$2`, … are the extra arguments in order. Reach for this when interpolation (`$"..."`) won't do because the pattern itself is a runtime value.
 
-> ***Note**: Including `<string>` does add runtime cost — a small string pool and the dispatch routines that make typed comparisons work.  If your game is content-string heavy, the cost is well-paid.  If you're only printing literals and never comparing them, you don't need the extension and shouldn't include it.*
+> ***Note**: Including `<string>` does add runtime cost: a small string pool and the dispatch routines that make typed comparisons work.  If your game is content-string heavy, the cost is well-paid.  If you're only printing literals and never comparing them, you don't need the extension and shouldn't include it.*
 
 #### `print` is a routine, not a statement
 
 We touched on this in the CoD walkthrough, but it's worth saying again here while strings are top of mind.  Beguile's `print` is a global routine with overloads:
 
-```
+```bgl
 print("plain text");      // string overload
-print(score);             // int overload — prints decimal
-print(noun);              // object overload — prints short_name
+print(score);             // int overload prints decimal
+print(noun);              // object overload prints short_name
 ```
 
-Each call takes a single argument of a known type.  If you want to print three things, that's three calls — or, much more commonly, one interpolated string.
+Each call takes a single argument of a known type.  If you want to print three things, that's three calls - or, much more commonly, one interpolated string.
 
-> ***Note**: This differs sharply from I6's `print` statement, which takes comma-separated arguments and uses keyword tokens like `(string)`, `(name)`, `(the)` to coerce them.  Beguile relies on the type system instead — the right overload runs because the argument carries its type.*
+> ***Note**: This differs sharply from I6's `print` statement, which takes comma-separated arguments and uses keyword tokens like `(string)`, `(name)`, `(the)` to coerce them.  Beguile relies on the type system instead; the right overload runs because the argument carries its type.*
 
 #### Interpolation revisited
 
@@ -1033,34 +1035,102 @@ The CoD walkthrough introduced interpolated strings; here's the I6-dev mental mo
 - Interpolation is a *compile-time* expansion. The compiler walks the literal, finds each `{...}` expression, and emits a sequence of `print` calls with the right overload for each piece.  There is no runtime "format" call.
 - Because each `{...}` expression resolves to its natural type and `print` is overloaded, you can interpolate ints, objects, strings, and any other type with a `print` overload without explicit conversion:
 
-  ```
-  print($"You picked up {count} {item}.");
-  ```
+``` bgl
+print($"You picked up {count} {item}.");
+```
 - Escape sequences (`\n`, `\t`, `\"`) work inside interpolated strings.  I6's `^` for newline passes straight through.
 
-### Using Arrays
-<Start here>
-Beguile has rich support for typed arrays. The approach and syntax differs sharply from that of I6.  The following declares an array of integer values containing the first five odd numbers:
+## Arrays
+Beguile's approach to arrays differs sharply from I6's.  In I6, a `table` `array` is just a bare region of memory with a name.  The allocated size fills in the first element; the width of each element and run-time length are left to you to remember and manage via the `->` or `-->` accessors: 
 
-	array<int> myArray={1,3,5,7,9};
+``` i6
+array table primes --> 2 3 5 7 11;      
+for (i=0: i < primes-->0: i++) print primes-->(i+1); 
+```
 
-Beguile supports different ways to iterate over the array elements.  For example:
+Beguile arrays are far richer.  They are **typed**, track their own allocated **size** and run-time **lengths**, and leverage subscripts which automatically shield you from offset bookkeeping:
 
-for(int i=0; i<myArray.length();i++){
-	print(myArray[i]);
+```bgl
+array<int>  primes = {2, 3, 5, 7, 11};  
+for (int i=0: i<primes.size(): i++) print(primes[i]); 
+```
+
+As shown above, the element **type** is mandatory and rides inside angle brackets, and you pre-populate an array with a brace-enclosed initializer list.  Also note that the index is automatically adjusted to compensate for the `size`, so `primes[0]` points to the 1st element, and *not* the size or the array (as is the case for i6 `table`arrays).
+
+You can also declare an array with a fixed size (a sized array).  The following does this, then subsequently assigns values to it:
+
+```bgl
+array<int>  primes[52];
+...
+for(int i = 0; i<primes.size(); i++){ 
+	primes[i] = calcNthPrime(i);
 }
+```
 
-or:
+> ***Note**: `calcNthprime()` is NOT an actual routine provided by Beguile or the BLR.  This is included for demonstration purposes only.
 
-for(int v in myArray){
-	print(v);
-}
+The type is enforced everywhere.  An `array<int>` will not accept a `string`.  The correct `print` overload, operators, and member access all follow from the declared type.  
 
-- some DM4 examples contrasted in Beguile
-<end here>
+> ***Note**: `array<char>` compiles to an I6 byte array under the hood.  Iterating over a char array works as expected, regardless of the length of a byte vs `WORDSIZE`.*
+
+> ***Note**: The same declaration form works at global scope, as an object property, and as a class member; however, object-property arrays inherit the Z-machine's property-size ceiling (4 elements on Z3, 32 on Z5/Z8).*
+
+#### `for`... `in`
+Beguile also supports an additional iteration pattern which keeps you from having to worry about tracking indexes...
+
+```bgl
+for(int p in primes) print(p);
+```
+
+This approach uses the `length` if available or the `size` otherwise *(see "Size() vs. length" below)*.
+### With `<array>`
+The core Beguile language gives you declaration, subscripting, and `size()`.  Pull in BLR `<array>` language extension to expand the core functionality of arrays...
+
+```
+#include <array>
+```
+#### `size()` vs. `length()`
+
+I6 `table` arrays gives you one number: the allocated size.  Beguile gives you two:
+
+- **`size()`** is *capacity*: the slots reserved at compile time.  It never changes.
+- **`length()`** is the live count of in-use entries.  A list-initialized array starts with `length` and `size` being equal.  A sized array starts at `length` equal to 0.  
+
+The distinction matters because **a plain slot write does not move the cursor**.  `scores[3] = 90;` stores the word but leaves `length()` at `0`.  An `array<T>` is a *buffer with a cursor*, and only explicit operations (`setLength`, `clear`, `append`, …) advance that cursor.  
+#### Additional `array` features
+Beguile arrays are more than just arrays.  They additionally provide the functionality of the `stack`, `queue`, and `deque` containers from other languages...
+
+```bgl
+array<string> superHeroes[10]={"Batman", "Superman", "Wonder Woman"};
+superHeroes.push("Aquaman");
+superHeroes.push("Flash");
+
+print(superHeroes.length()); //prints 5
+print(superHeroes.pop()); // prints Flash
+print(superHeroes.length()); //prints 4
+
+print (superHeroes.indexOf("Superman")); //prints 3
+```
+
+`sort()` takes a comparator routine (a `func<string, T, T>` returning `-1`/`0`/`+1`).  A lambda works inline: `arr.sort((sting a, int b) => a < b);`.
+
+#### Fluent chains: `#include <linq>`
+
+For query-style transformations, `<linq>` adds chainable, C#-flavored operations on top of `<array>` (which it includes automatically):
+
+```
+#include <linq>
+array<int> bigEvens = nums.filter((int x) => x > 100).orderBy();
+```
+
+Non-terminals (`filter`, `map`, `take`, `skip`, `distinct`, `orderBy`, …) return a typed array and keep chaining; terminals (`first`, `last`, `count`, `any`, `all`) collapse the chain to a single value.
+
+#### A note on ownership
+
+Assigning one array to another **copies its elements**: `array<int> keep = build();` snapshots the source into `keep` (value semantics, not pointer aliasing).  This is also how you preserve a LINQ result or a returned **local** array beyond its lifetime: a local array's storage is reclaimed when its routine returns, so capture it into a typed local before it escapes.  File-scope arrays live in permanent storage and may be returned freely.
 #### Raw I6 word arrays
 
-A Beguile `array<T>` is not laid out like a bare I6 `-->` array: it reserves word 0 for a live element count (plus a tracking marker past the data), so `arr[i]` compiles to `arr-->(i+1)`.  That is what you want for arrays Beguile owns, but it is *wrong* for a raw I6 buffer handed to you from the outside — the `results` array inside a `parse_error` entry point, a library table, a `-->` array you declared in an `#i6` island.  Those start their data at word 0 with no header.
+A Beguile `array<T>` is not laid out like a bare I6 `-->` array: it reserves word 0 for a live element count (plus a tracking marker past the data), so `arr[i]` compiles to `arr-->(i+1)`.  That is what you want for arrays Beguile owns, but it is *wrong* for a raw I6 buffer handed to you from the outside.  The `results` array inside a `parse_error` entry point, a library table, a `-->` array you declared in an `#i6` island.  Those start their data at word 0 with no header.
 
 Receive such a buffer as a **`rawArray<T>`** and subscripting emits the raw form `arr-->i`, indexing straight from word 0:
 
@@ -1072,7 +1142,7 @@ bool ext_parsererror(int etype, rawArray<var> results){
 }
 ```
 
-`results[0]` compiles to `results-->0`, and `(verb)results[0]` re-labels that word as an action so it compares against `##PutOn` — the same idiom you would write by hand in I6, minus the offset bookkeeping.  Since a raw array carries no length, `size()` is derived as `(arr.#)/WORDSIZE` and **`for…in` over a `rawArray` parameter is refused at compile time** (there is no count to stop at); loop it explicitly with a bound you know: `for(int i in 0 to n-1) results[i]`.
+`results[0]` compiles to `results-->0`, and `(verb)results[0]` re-labels that word as an action so it compares against `##PutOn`, ;the same idiom you would write by hand in I6, minus the offset bookkeeping.  Since a raw array carries no length, `size()` is derived as `(arr.#)/WORDSIZE` and **`for…in` over a `rawArray` parameter is refused at compile time** (there is no count to stop at); loop it explicitly with a bound you know: `for(int i in 0 to n-1) results[i]`.
 
 ### Declaring a Verb from Scratch
 
@@ -1092,16 +1162,16 @@ verb Flip {
 
 This declares a `Flip` action and binds both `flip` and `toggle` as trigger words; either matches a `HELD` noun and runs `handler`.
 
-`handler()` is the action body — its contents become the I6 `<verbName>Sub` routine (here, `FlipSub`).  A from-scratch (non-`extern`) verb **must** define `handler()`; omitting it is a compile error.  An `extern verb` is exempt — its `Sub` already lives in the library — which is exactly why the binding's `extern verb PutOn { ... }` carries grammar but no `handler`.
+`handler()` is the action body; its contents become the I6 `<verbName>Sub` routine (here, `FlipSub`).  A from-scratch (non-`extern`) verb **must** define `handler()`; omitting it is a compile error.  An `extern verb` is exempt - its `Sub` already lives in the library - which is exactly why the binding's `extern verb PutOn { ... }` carries grammar but no `handler`.
 
 #### Launching an Action
 
-In I6 you fire an action from your own code with the angle-bracket forms — `<Take noun>` to run it, `<<Take noun>>` to run it and return true.  Beguile has no such punctuation; you call **`perform()`** on the verb instead:
+In I6 you fire an action from your own code with the angle-bracket forms: `<Take noun>` to run it, `<<Take noun>>` to run it and return true.  Beguile has no such punctuation; you call **`perform()`** on the verb instead:
 
 ```
 Take.perform(noun);             // I6:  <Take noun>
 Take.perform(noun, second);     // I6:  <Take noun second>
-Take.perform(noun); rtrue;      // I6:  <<Take noun>>   (run, then return true — explicit)
+Take.perform(noun); rtrue;      // I6:  <<Take noun>>   (run, then return trueexplicit)
 ```
 
-`perform()` emits the `<...>` form under the hood, so whichever library you compiled against (Standard Library or Puny Inform) supplies its own action runner and handles the usual save/restore of `actor`/`action`/`noun`/`second` plus the before/after rules.  You never name that runner, and you never write `<...>`.  It works on any verb — your own or an `extern` library verb — and the `<<...>>` "and return" behaviour stays an explicit `rtrue;` so the control flow is visible rather than buried in the call.
+`perform()` emits the `<...>` form under the hood, so whichever library you compiled against (Standard Library or Puny Inform) supplies its own action runner and handles the usual save/restore of `actor`/`action`/`noun`/`second` plus the before/after rules.  You never name that runner, and you never write `<...>`.  It works on any verb,  your own or an `extern` library verb,  and the `<<...>>` "and return" behavior stays an explicit `rtrue;` so the control flow is visible rather than buried in the call.

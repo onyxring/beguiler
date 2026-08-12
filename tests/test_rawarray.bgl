@@ -5,9 +5,10 @@
     a parse_error entry point.
       • subscript emits `p-->i` (no +1 offset, unlike the count-prefixed array<T>)
       • read and write through operator[] / operator[]=
-      • size()/length() derive from `.#` (byte size / WORDSIZE)
       • an element cast to (verb) compares inline as ##Verb, and the comparison
         resolves as ebool so it can be combined with `||`
+    (size()/length() are NOT available on a rawArray — a bare pointer has no
+     recoverable extent; that rejection is covered by _test_rawarray_size_rejected.bgl.)
 */
 #beguilerSettings {
     target = z5;
@@ -25,11 +26,6 @@ int firstOf(rawArray<var> results) {
 
 void setSecond(rawArray<var> results, var v) {
     results[1] = v;
-}
-
-// size()/length() come from `.#`
-int howMany(rawArray<int> xs) {
-    return xs.size();
 }
 
 // cast an element to (verb) for an action match — inline, no temporary needed.

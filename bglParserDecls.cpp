@@ -104,13 +104,14 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
 // ===============================================================================
 // Array / variable / routine declarations
 // ===============================================================================
-bool bglParser::processArrayDeclaration(token dataType, token name, string elementType, token symbol, abstractObject& contextObj, bool isExternal) {
+bool bglParser::processArrayDeclaration(token dataType, token name, string elementType, token symbol, abstractObject& contextObj, bool isExternal, bool isSuperposed) {
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
     arrDecl.src = file.currentLocation();
     arrDecl.name = (string)name;
     arrDecl.type = languageService.getType(elementType == "char" ? "bytearray" : "array");
     arrDecl.elementType = elementType;
     arrDecl.isExternal = isExternal;
+    arrDecl.isSuperposed = isSuperposed;
     if(elementType == "char") arrDecl.isByteArray = true;
     // A file-scope `rawArray<T>` literal is an UNTRACKED `array<T>`: same count-prefixed layout
     // (word0 = count, data at 1..N, subscript `-->(i+1)`) but with NO <len>+<magic> trailer, even
@@ -197,7 +198,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
 //--      int myParam=5) 
 //--      int myParam=5, ...
 
-bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst, string i6alias, bool isRef){
+bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst, string i6alias, bool isRef, bool isSuperposed){
     // Ban bare `array` as a type — every array variable must declare its element type.
     // `array<T>` / `array<char>` are handled earlier via processArrayDeclaration and never
     // reach here as a plain variable declaration.
@@ -229,6 +230,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     varDecl.isExternal=isExternal;
     varDecl.isConst=isConst;
     varDecl.isRefLocal=isRef;
+    varDecl.isSuperposed=isSuperposed;
     // For func<...> types, getType returns the base "func" type. Set the full parameterized name.
     {
         string dtLower = (string)dataType;

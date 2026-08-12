@@ -18,16 +18,21 @@
 #include <core/_attribute>
 #include <core/_property>
 #include <core/_class>
+#include <core/_bglAllocated>
+#include <core/_math>
+#include <core/_uint>
 #include <core/_array>
+#include <core/_charExtended>
 #include <core/_string>
 #include <core/_grammar>
 #include <core/_verb>
 
 #if TARGET_GLULX
     #include<core/_glulxCore> //also includes _glulxOpCodes
+    #include<core/_float>     //IEEE 754 float — Glulx-only (needs the float opcodes)
 #else
     #include<core/_zcodeCore>
-#endif 
+#endif
 
 
 // Namespace objects derive from _bglObject (the base below `object`, defined further down),
@@ -169,95 +174,6 @@ emitter class _bglObject{
 
 
 //-----------------------------------------------------------------------------
-// TODO: revisit all of this theoretical stuff, when Arrays are dealt with
-//-----------------------------------------------------------------------------
-// bglWorld — iterate over the I6 object tree.
-//
-// Methods fill a shared scratch buffer (_bglWorldBuf) and return it as an
-// array<object>.  The buffer is reused on every call; do not store the result
-// across turns or nest two bglWorld calls.
-//
-// Format: TABLE array following the size/length convention —
-//   _bglWorldBuf-->0       = allocated size (256)
-//   _bglWorldBuf-->(i+1)   = element at 0-based index i
-//   first 0 entry is the end sentinel (length stops here)
-//
-// Usage:
-//   for(object o in bglWorld.getAll()) { ... }
-//   for(object o in bglWorld.getFiltered((object v)-->v.has(light))) { ... }
-//   for(object o in bglWorld.inParent(location)) { ... }
-//-----------------------------------------------------------------------------
-/*
-    extern class bglWorldType  : _bglObject{
-    emitter array getAll() {
-        go$self.getAll()
-    }
-    emitter array getFiltered(var pred) {
-        $self.getFiltered($pred)
-    }
-    emitter array inParent(object parent) {
-        $self.inParent($parent, 0)
-    }
-    emitter array inParent(object parent, var pred) {
-        $self.inParent($parent, $pred)
-    }
-    emitter array ofClass(var cls) {
-        $self.ofClass($cls, 0)
-    }
-    emitter array ofClass(var cls, var pred) {
-        $self.ofClass($cls, $pred)
-    }
-}
-extern bglWorldType bglWorld;
-
-#i6{
-Array _bglWorldBuf --> 257;   ! capacity word (-->0) + 256 object slots
-
-object bglWorld
-    with getAll [ o i;
-        _bglWorldBuf-->0 = 256;
-        i = 1;
-        objectloop(o) {
-            if (i > 256) break;
-            _bglWorldBuf-->i = o;
-            i++;
-        }
-        _bglWorldBuf-->i = 0;
-        return _bglWorldBuf;
-    ],
-    getFiltered [ pred o i;
-        _bglWorldBuf-->0 = 256;
-        i = 1;
-        objectloop(o) {
-            if (i > 256) break;
-            if (indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
-        }
-        _bglWorldBuf-->i = 0;
-        return _bglWorldBuf;
-    ],
-    inParent [ parent pred o i;
-        _bglWorldBuf-->0 = 256;
-        i = 1;
-        objectloop(o in parent) {
-            if (i > 256) break;
-            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
-        }
-        _bglWorldBuf-->i = 0;
-        return _bglWorldBuf;
-    ],
-    ofClass [ cls pred o i;
-        _bglWorldBuf-->0 = 256;
-        i = 1;
-        objectloop(o ofclass cls) {
-            if (i > 256) break;
-            if (pred == 0 || indirect(pred, o)) { _bglWorldBuf-->i = o; i++; }
-        }
-        _bglWorldBuf-->i = 0;
-        return _bglWorldBuf;
-    ]
-;
-}
-*/
 
 emitter void print(var val){ print $val; } //the default, which will be used for all data types not defined
 emitter void print(_bglObject val){ if($val provides print) $val.print(); else print (name)$val;} //the default, which will be used for all data types not defined
@@ -283,3 +199,12 @@ emitter void printName(object o){ print (name)$o; }   // I6 `(name) obj` print r
 //=============================================================================
 // bglInit() is a special, compiler built routine
 extern void bglInit();
+
+//=============================================================================
+// bgl.world — object-tree queries (getAll/inParent/instances) are now part of the
+// automatic core: every Beguile game gets `bgl.world` with no `#include`. This
+// pulls in <array> (the queries return tracked array<object>), so it currently
+// carries a real footprint on every program. That's deliberate for now — the plan
+// is to decompose it incrementally (superpose the pieces that can be, keep the
+// rest opt-in). Included last, after bgl / object / array are all defined.
+#include <bglWorld>

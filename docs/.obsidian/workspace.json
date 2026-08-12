@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Beguile for the I6 Developer.md",
+                "file": "languageSpec.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Beguile for the I6 Developer"
+              "title": "languageSpec"
             }
           }
         ]
@@ -185,6 +185,7 @@
   },
   "active": "080d2637f1181162",
   "lastOpenFiles": [
+    "Beguile for the I6 Developer.md",
     "Beguile for the I6 Developer.afpub~lock~",
     "Beguile for the I6 Developer.afpub"
   ]

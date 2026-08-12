@@ -1095,9 +1095,9 @@ bool bglParser::processArray(vector<token>& t, Qualifiers& q, abstractObject& c)
 bool bglParser::processRoutine(vector<token>& t, Qualifiers& q, abstractObject& c)
     { t[0] = consumeTypeToken(t[0]); return processRoutineDeclaration(t[0], t[1], c, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed); }
 bool bglParser::processObject(vector<token>& t, Qualifiers& q, abstractObject&)
-    { t[0] = consumeTypeToken(t[0]); return processObjectDeclaration(t[0], t[1], q.isExtern, "", "", true, q.isEmitter); }
+    { t[0] = consumeTypeToken(t[0]); return processObjectDeclaration(t[0], t[1], q.isExtern, "", "", true, q.isEmitter, q.isSuperposed); }
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
-    { t[0] = consumeTypeToken(t[0]); return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef); }
+    { t[0] = consumeTypeToken(t[0]); return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef, q.isSuperposed); }
 bool bglParser::processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c)
     { t[0] = consumeTypeToken(t[0]); return processTypedObjectDeclaration(t[0], t[1], t[3], q, c); }
 bool bglParser::processAliased(vector<token>& t, Qualifiers& q, abstractObject& c)
@@ -1145,7 +1145,7 @@ bool bglParser::processFunc(vector<token>& t, Qualifiers& q, abstractObject& ctx
     else if(symbol.is(token::braceOpen))
         return processObjectDeclaration(typeTok, name, q.isExtern, objectClassName, i6alias, true, q.isEmitter);
     else
-        return processVariableDeclaration(typeTok, name, symbol, ctx, q.isExtern, q.isConst, i6alias, q.isRef);
+        return processVariableDeclaration(typeTok, name, symbol, ctx, q.isExtern, q.isConst, i6alias, q.isRef, q.isSuperposed);
 }
 
 bool bglParser::processNextStatement(abstractObject& contextObject) {

@@ -2,15 +2,14 @@
     test_bitwise_int.bgl
     Tests: XOR (`^`, `^=`), shift left (`<<`, `<<=`), shift right (`>>`, `>>=`).
     AND/OR (`&`, `|`, `&=`, `|=`) are covered in test_expressions.bgl::testBitwise().
-    Shifts delegate to _bglMath.shiftLeft/shiftRight via `#include <int>`.
+    Shifts delegate to the core superposed _bglShiftLeft/_bglShiftRight routines;
+    int (including shifts) is always available in core — no include needed.
 */
 #beguilerSettings {
     target = z5;
     informName = "none";
     outputPath = "tests/output";
 }
-
-#include <int>
 
 void main() {
     int a = 12;

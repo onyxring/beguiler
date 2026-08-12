@@ -1,14 +1,11 @@
 //-----------------------------------------------------------------------------
-// punyInform.bgl - extern declarations for the PunyInform library.
-//      Include this file to get typed access to PunyInform globals and objects.
-//      Corresponds to: #includeI6 "globals" and #includeI6 "puny"
+//  punyInform.bgl - extern declarations for the PunyInform library.
+//  Include this file to get typed access to PunyInform globals and objects:
+//      #include <bindings/punyInform>
 //
-// Key differences from i6StandardLibrary.bgl:
-//   - PunyInform defines NO classes (no Room, Container, etc.)
-//   - Two includes instead of three (globals.h + puny.h)
-//   - Objects with before/after/each_turn/react_before/react_after must have 'reactive'
-//   - Feature constants (OPTIONAL_*) must be defined before including globals.h
-//   - INITIAL_LOCATION_VALUE constant replaces setting location in Initialise
+//  Includes bindings for...
+//      #includeI6 "globals" 
+//      #includeI6 "puny"
 //-----------------------------------------------------------------------------
 #once
 

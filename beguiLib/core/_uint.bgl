@@ -1,21 +1,19 @@
-//-----------------------------------------------------------------------------
-// uint.bgl — A standard Beguile extension adding the unsigned integer type.
-//
-// Usage:
-//   #include <uint> in your .bgl file to activate the uint type.
-//
-// Provides the `uint` wrapper over the native word, with operators that treat
-// the value as unsigned. Ordering and comparison go through _bglMath.unsignedCompare,
-// so this file implicitly depends on <math>.
-//-----------------------------------------------------------------------------
 #once
-#include <math>
-
 //=============================================================================
 // type uint — unsigned integer wrapper over the same native word as int.
-// Same bit pattern as int, but comparison and division treat the value as unsigned.
-// Conversion to/from int is an explicit cast: (uint)i / (int)u — no implicit conversion.
-// On Z-machine that's 16 bits (0..65535); on Glulx 32 bits (0..4294967295).
+//
+// ALWAYS present, no manual include. `uint` is a pure emitter class (its
+// operators inline, emitting nothing of their own), and the one real routine it
+// needs — _bglPrintUint — is `superposed`, so it's emitted only when print(uint)
+// is actually used. A game that never touches uint pays nothing.
+//
+// Same bit pattern as int, but comparison and division treat the value as
+// unsigned. Conversion to/from int is an explicit cast: (uint)i / (int)u — no
+// implicit conversion. On Z-machine that's 16 bits (0..65535); on Glulx 32 bits
+// (0..4294967295). Division, modulo and ordering call the core `superposed`
+// unsigned-math routines (core/_math.bgl) directly — uint's operators are
+// emitters and can't nest-call the _bglMath facade, so they target the
+// standalones (_bglUnsignedDiv / _bglUnsignedMod / _bglUnsignedCompare).
 //=============================================================================
 extern emitter class uint : _bglObject { //--unsigned integer wrapper; same I6 representation as int
     emitter int operator = (uint v){ $target=$v; }
@@ -25,10 +23,10 @@ extern emitter class uint : _bglObject { //--unsigned integer wrapper; same I6 r
     emitter uint operator - (uint v){ $val - $v }
     emitter uint operator * (uint v){ $val * $v }
 
-    // Division and modulo — route through _bglMath.unsignedDiv/unsignedMod for correct
+    // Division and modulo — route through the core unsigned routines for correct
     // unsigned semantics when either operand has the sign bit set.
-    emitter uint operator / (uint v){ _bglMath.unsignedDiv($val, $v) }
-    emitter uint operator % (uint v){ _bglMath.unsignedMod($val, $v) }
+    emitter uint operator / (uint v){ _bglUnsignedDiv($val, $v) }
+    emitter uint operator % (uint v){ _bglUnsignedMod($val, $v) }
 
     // Equality — identical signed and unsigned.
     emitter bool operator == (uint v){ $val == $v }
@@ -36,17 +34,17 @@ extern emitter class uint : _bglObject { //--unsigned integer wrapper; same I6 r
 
     // Ordering — must route through unsignedCompare to get correct behavior at the high end
     // of the range (values with the sign bit set, which signed `<` would treat as negative).
-    emitter bool operator <  (uint v){ _bglMath.unsignedCompare($val, $v) < 0 }
-    emitter bool operator <= (uint v){ _bglMath.unsignedCompare($val, $v) <= 0 }
-    emitter bool operator >  (uint v){ _bglMath.unsignedCompare($val, $v) > 0 }
-    emitter bool operator >= (uint v){ _bglMath.unsignedCompare($val, $v) >= 0 }
+    emitter bool operator <  (uint v){ _bglUnsignedCompare($val, $v) < 0 }
+    emitter bool operator <= (uint v){ _bglUnsignedCompare($val, $v) <= 0 }
+    emitter bool operator >  (uint v){ _bglUnsignedCompare($val, $v) > 0 }
+    emitter bool operator >= (uint v){ _bglUnsignedCompare($val, $v) >= 0 }
 
     // Compound assignment
     emitter uint operator += (uint v){ $val = $val + $v }
     emitter uint operator -= (uint v){ $val = $val - $v }
     emitter uint operator *= (uint v){ $val = $val * $v }
-    emitter uint operator /= (uint v){ $val = _bglMath.unsignedDiv($val, $v) }
-    emitter uint operator %= (uint v){ $val = _bglMath.unsignedMod($val, $v) }
+    emitter uint operator /= (uint v){ $val = _bglUnsignedDiv($val, $v) }
+    emitter uint operator %= (uint v){ $val = _bglUnsignedMod($val, $v) }
 
     // Increment / decrement — wrap-around is well-defined for uint.
     emitter uint operator ++() { $val++ }
@@ -85,10 +83,10 @@ extend extern class negativeIntLiteral {
 // values, one unsigned div by 10 always brings the quotient into the signed range
 // (largest case: 65535/10=6553 on Z; 4294967295/10=429496729 on Glulx — both fit
 // in signed at their width). Native print handles the quotient; the remainder is
-// always a single digit 0-9.
-void _bglPrintUint(int v){
+// always a single digit 0-9. `superposed`, so it costs nothing unless print(uint) is used.
+superposed void _bglPrintUint(int v){
     if(v >= 0){ print(v); return; }
-    print(_bglMath.unsignedDiv(v, 10));
-    print(_bglMath.unsignedMod(v, 10));
+    print(_bglUnsignedDiv(v, 10));
+    print(_bglUnsignedMod(v, 10));
 }
 emitter void print(uint c){ _bglPrintUint($c); }

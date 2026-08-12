@@ -1827,6 +1827,18 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
                                         vector<expression*>& args, vector<string>& namedArgNames,
                                         vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
                                         const string& elementType){
+    // A rawArray<T> is a bare I6 word pointer with no length header, so its extent
+    // isn't recoverable at runtime: there is no count slot to read, and I6's `.#`
+    // operator is property-only (it needs an object.property operand, not a bare
+    // address — `(ptr.#)` fails to compile). Reject size()/length() here, mirroring
+    // the for-in rejection in processFor, rather than emit invalid I6. A file-scope
+    // rawArray *literal* is count-prefixed and dispatches through the <array> path
+    // (`_bglArray.size(arr, 0)`), so it never carries a `rawarray<...>` static type
+    // and never reaches this guard.
+    if((methodName == "size" || methodName == "length") && objType.rfind("rawarray<", 0) == 0)
+        parsingError(format("'{0}()' is unavailable on rawArray '{1}': a rawArray is a bare I6 word "
+            "pointer with no length header, so its size isn't known at runtime. Pass the length "
+            "explicitly (e.g. as a separate parameter) instead.", methodName, objPath));
     MethodMatch mm = resolveMethodWithConversion(objType, objPath, methodName, args, elementType);
     // If type-resolution failed but we have named args and a unique arity-matching candidate,
     // reorder against that candidate's parameter positions and retry. This covers the common

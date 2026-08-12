@@ -43,15 +43,25 @@ string i6Emitter::resolvedOutput(){
     // (captured in superposedBlocks), so any word-boundary occurrence of the name IS a genuine
     // call/reference. Loop to a fixed point: an included routine may itself reference another
     // still-withheld superposed routine.
+    // Case-INSENSITIVE word-boundary match. Beguile is case-insensitive and lowercases
+    // identifiers when emitting normal routine bodies, but routine/definition headers and
+    // emitter-inlined text preserve the source case — so a superposed routine `_bglPow` may
+    // be referenced as `_bglpow` from inside another (transitively materialized) routine.
+    // A case-sensitive scan would miss that and silently drop the dependency (I6 then errors
+    // "No such constant"). Match case-insensitively so every genuine reference is observed.
     auto referenced = [&](const string& name) -> bool {
-        size_t p = 0;
-        while((p = buf.find(name, p)) != string::npos){
+        auto lc = [](char c){ return (char)tolower((unsigned char)c); };
+        if(name.empty() || name.size() > buf.size()) return false;
+        for(size_t p = 0; p + name.size() <= buf.size(); p++){
+            size_t i = 0;
+            for(; i < name.size(); i++)
+                if(lc(buf[p + i]) != lc(name[i])) break;
+            if(i != name.size()) continue;
             char before = p > 0 ? buf[p-1] : ' ';
             char after  = p + name.size() < buf.size() ? buf[p + name.size()] : ' ';
             bool wb = !(isalnum((unsigned char)before) || before=='_')
                    && !(isalnum((unsigned char)after)  || after=='_');
             if(wb) return true;
-            p += name.size();
         }
         return false;
     };
@@ -869,6 +879,8 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             auto* arr = dynamic_cast<arrayDeclaration*>(g);
             if(arr == nullptr) continue;
             if(arr->isExternal || arr->isByteArray || arr->isRaw) continue;  // rawArray: no tracking, no magic stamp
+            if(arr->isSuperposed) continue;  // superposed arrays may not be emitted; a bglInit stamp
+                                             // would dangle. They self-init at their point of use.
             // Sized-uninit only — list-init arrays bake the magic inline.
             if(arr->arraySize > 0 && arr->stringInitializer.empty()
                && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
@@ -1147,11 +1159,47 @@ void i6Emitter::generateI6(typeDef* node){
      }
      if (typeid(*node) == typeid(enumDef))  emitEnum((enumDef*)node);
      else if (typeid(*node) == typeid(classDef)) emitClass((classDef*)node);
-     else if (typeid(*node) == typeid(objectDef)) emitObject((objectDef*)node);
+     else if (typeid(*node) == typeid(objectDef)) {
+         // `superposed` object: withhold its whole `object X with …;` block, keyed by name, and
+         // let resolvedOutput() append it only if the name is referenced — same mechanism as
+         // superposed routines/globals. An I6 object can be declared after its uses (forward
+         // references resolve), so appending at end is valid. Lets an always-declared namespace/
+         // helper object (and everything it transitively references) cost nothing until used.
+         auto* od = (objectDef*)node;
+         if(od->isSuperposed && !emittingSuperposedBody){
+             stringstream captured;
+             std::swap(out, captured);
+             emittingSuperposedBody = true;
+             emitObject(od);
+             emittingSuperposedBody = false;
+             std::swap(out, captured);
+             string rName = od->i6name.empty() ? od->dName() : od->i6name;
+             superposedBlocks[rName] = captured.str();
+         } else {
+             emitObject(od);
+         }
+     }
      else if (typeid(*node) == typeid(verbObjectDef)) emitVerbObject((verbObjectDef*)node);
      else if (auto* gtd = dynamic_cast<grammarRuleListDecl*>(node)) emitGrammarRuleListDecl(gtd);
      else if (auto* vsd = dynamic_cast<verbSynonymDecl*>(node)) emitVerbSynonym(vsd);
-     else if (auto* vd = dynamic_cast<variableDeclaration*>(node)) emitGlobal(vd);
+     else if (auto* vd = dynamic_cast<variableDeclaration*>(node)) {
+         // `superposed` file-scope global/array: withhold its declaration, keyed by name, and
+         // let resolvedOutput() append it only if something references the name — same mechanism
+         // as superposed routines (i6Emitter emitFunction). Lets always-loaded lookup data cost
+         // nothing unless used.
+         if(vd->isSuperposed && !emittingSuperposedBody){
+             stringstream captured;
+             std::swap(out, captured);
+             emittingSuperposedBody = true;
+             emitGlobal(vd);
+             emittingSuperposedBody = false;
+             std::swap(out, captured);
+             string rName = vd->i6name.empty() ? vd->dName() : vd->i6name;
+             superposedBlocks[rName] = captured.str();
+         } else {
+             emitGlobal(vd);
+         }
+     }
      else if (typeid(*node) == typeid(functionDef)) emitFunction((functionDef*)node);
      else if (typeid(*node) == typeid(i6RawNode)) {
          auto* raw = (i6RawNode*)node;

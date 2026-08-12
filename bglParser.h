@@ -245,11 +245,15 @@ class bglParser {
         // Parser handler methods — called from grammar handlers and processNextStatement.
         bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool isByVal=false);
         bool processEnumDeclaration(token, bool, token nameOverride=token());
-        bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false);
+        bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false, bool isSuperposed = false);
+        // Parse an alias member (the `alias` qualifier is already consumed; `aliasName` is the member
+        // name). Handles both `alias name for Type;` (type alias) and `alias name = Target;` (compile-
+        // time value alias — no runtime property). Shared by object-body and extend-body member loops.
+        void parseAliasMember(token aliasName, std::vector<typeMember*>& members, const std::string& context);
         bool processEmitterValueDeclaration(token typeTok, token nameTok);
         bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false, bool = false, bool = false);
-        bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "", bool isRef = false);
-        bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false);
+        bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "", bool isRef = false, bool isSuperposed = false);
+        bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false, bool isSuperposed = false);
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
         bool processGrammarDeclaration(token nameOverride=token());
         bool processObjectExtension(token nameTok);

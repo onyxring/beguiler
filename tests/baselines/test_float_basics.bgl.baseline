@@ -3,6 +3,7 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
+Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -16,117 +17,314 @@ object bgl
   with glulx _glulx,
        bglUtil _bglutil
 ;
-object _bglFloat
-  with fadd [x y r;
-     @fadd x y r; 
-    return r;
+[_bglArrayCompareAsc lhs rhs;
+    
+        if(lhs < rhs) return -1;
+        if(lhs > rhs) return 1;
+        return 0;
+    
+    return 0;
+];
+object _bglArray
+  with rawGet [addr slot;
+     return addr-->slot; 
+    return 0;
   ],
-       fsub [x y r;
-     @fsub x y r; 
-    return r;
+       rawSet [addr slot v;
+     addr-->slot = v; 
   ],
-       fmul [x y r;
-     @fmul x y r; 
-    return r;
+       get [obj prop n;
+    
+            if(metaclass(obj)==object) return obj.&prop-->n;
+            return obj-->(n+1);
+        
+    return 0;
   ],
-       fdiv [x y r;
-     @fdiv x y r; 
-    return r;
+       set [obj prop n v;
+    
+            if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
+            obj-->(n+1) = v;
+        
   ],
-       fmod [x y r;
-     @fmod x y r sp; 
-    return r;
-  ],
-       numtof [n r;
-     @numtof n r; 
-    return r;
-  ],
-       ftonumz [f r;
-     @ftonumz f r; 
-    return r;
-  ],
-       sqrt [v r;
-     @sqrt v r; 
-    return r;
-  ],
-       exp [v r;
-     @exp v r; 
-    return r;
-  ],
-       log [v r;
-     @log v r; 
-    return r;
-  ],
-       pow [a b r;
-     @pow a b r; 
-    return r;
-  ],
-       sin [v r;
-     @sin v r; 
-    return r;
-  ],
-       cos [v r;
-     @cos v r; 
-    return r;
-  ],
-       tan [v r;
-     @tan v r; 
-    return r;
-  ],
-       asin [v r;
-     @asin v r; 
-    return r;
-  ],
-       acos [v r;
-     @acos v r; 
-    return r;
-  ],
-       atan [v r;
-     @atan v r; 
-    return r;
-  ],
-       atan2 [y x r;
-     @atan2 y x r; 
-    return r;
-  ],
-       ceil [v r;
-     @ceil v r; 
-    return r;
-  ],
-       floor [v r;
-     @floor v r; 
-    return r;
-  ],
-       abs [v;
-    if (_bglfloat.lt(v, _bglFloat.numtof(0))) {
-        return _bglFloat.fsub(_bglFloat.numtof(0), v);
+       copy [dobj dprop sobj sprop n cap i;
+    n=self.length(sobj,sprop);
+    cap=self.size(dobj,dprop);
+    if (n > cap) {
+        n = cap;
     }
+    for (i = 0 : i < n : i++) {
+        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
+    }
+    self.setlength(dobj, dprop, n);
+  ],
+       isTracked [obj prop hdr;
+     if(metaclass(obj)==object) rfalse; 
+    hdr = self.rawget(obj,0);
+    return self.rawget(obj,hdr)==36996&&self.rawget(obj,hdr-1)>=0;
+  ],
+       size [obj prop;
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+    if (self.istracked(obj,prop)) {
+        return self.rawget(obj,0)-2;
+    }
+    return self.rawget(obj,0);
+  ],
+       length [obj prop;
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+    if (self.istracked(obj,prop)) {
+        return self.rawget(obj,self.rawget(obj,0)-1);
+    }
+    return self.rawget(obj,0);
+  ],
+       setLength [obj prop n;
+     if(metaclass(obj)==object) return; 
+    if (self.istracked(obj,prop)) {
+        if (n < 0) {
+            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+             quit; 
+        }
+        self.set(obj, prop, self.size(obj,prop), n);
+    }
+  ],
+       indexOf [obj prop val sz t;
+    sz=self.size(obj,prop);
+    for (t = 0 : t < sz : t++) {
+        if (self.get(obj,prop,t)==val) {
+            return t;
+        }
+    }
+    return -1;
+  ],
+       clear [obj prop sz t;
+    sz=self.size(obj,prop);
+    for (t = 0 : t < sz : t++) {
+        self.set(obj, prop, t, 0);
+    }
+    self.setLength(obj, prop, 0);
+  ],
+       swap [obj prop pos1 pos2 tmp;
+    tmp = self.get(obj,prop,pos1);
+    self.set(obj, prop, pos1, self.get(obj,prop,pos2));
+    self.set(obj, prop, pos2, tmp);
+  ],
+       reverse [obj prop len half i;
+    len=self.length(obj,prop);
+    half=len / 2;
+    for (i = 0 : i < half : i++) {
+        self.swap(obj, prop, i, len - 1 - i);
+    }
+  ],
+       append [obj prop val len;
+    len=self.length(obj,prop);
+    if (len >= self.size(obj,prop)) {
+        return false;
+    }
+    self.set(obj, prop, len, val);
+    self.setLength(obj, prop, len + 1);
+    return true;
+  ],
+       insert [obj prop pos val len i;
+    len=self.length(obj,prop);
+    if (len >= self.size(obj,prop)) {
+        return false;
+    }
+    if (pos < 0 || pos > len) {
+        return false;
+    }
+    for (i = len : i > pos : i--) {
+        self.set(obj, prop, i, self.get(obj,prop,i - 1));
+    }
+    self.set(obj, prop, pos, val);
+    self.setLength(obj, prop, len + 1);
+    return true;
+  ],
+       prepend [obj prop val;
+    return self.insert(obj,prop,0,val);
+  ],
+       remove [obj prop pos len i;
+    len=self.length(obj,prop);
+    if (pos < 0 || pos >= len) {
+        return;
+    }
+    for (i = pos : i < len - 1 : i++) {
+        self.set(obj, prop, i, self.get(obj,prop,i + 1));
+    }
+    self.set(obj, prop, len - 1, 0);
+    self.setLength(obj, prop, len - 1);
+  ],
+       removeValue [obj prop val pos len;
+    pos = 0;
+    len=self.length(obj,prop);
+    while (pos < len) {
+        if (self.get(obj,prop,pos)==val) {
+            self.remove(obj, prop, pos);
+            len = self.length(obj,prop);
+        }
+        else {
+             pos++ ;
+        }
+    }
+  ],
+       push [obj prop val;
+    self.insert(obj, prop, 0, val);
+  ],
+       pop [obj prop v;
+    if (self.length(obj,prop) == 0) {
+        return 0;
+    }
+    v = self.get(obj,prop,0);
+    self.remove(obj, prop, 0);
     return v;
   ],
-       lt [x y;
-     @jflt x y ?yes; rfalse; .yes; rtrue; 
-    return false;
+       dequeue [obj prop;
+    return self.pop(obj,prop);
   ],
-       le [x y;
-     @jfle x y ?yes; rfalse; .yes; rtrue; 
-    return false;
+       enqueue [obj prop val;
+    self.append(obj, prop, val);
   ],
-       gt [x y;
-     @jfgt x y ?yes; rfalse; .yes; rtrue; 
-    return false;
+       peek [obj prop;
+    if (self.length(obj,prop) == 0) {
+        return 0;
+    }
+    return self.get(obj,prop,0);
   ],
-       ge [x y;
+       peekEnd [obj prop len;
+    len=self.length(obj,prop);
+    if (len == 0) {
+        return 0;
+    }
+    return self.get(obj,prop,len - 1);
+  ],
+       popEnd [obj prop len v;
+    len=self.length(obj,prop);
+    if (len == 0) {
+        return 0;
+    }
+    v = self.get(obj,prop,len - 1);
+    self.remove(obj, prop, len - 1);
+    return v;
+  ],
+       sort [obj prop compare len i key j;
+    len=self.length(obj,prop);
+    for (i = 1 : i < len : i++) {
+        key = self.get(obj,prop,i);
+        j=i - 1;
+        while (j >= 0 && compare(self.get(obj,prop,j),key) > 0) {
+            self.set(obj, prop, j + 1, self.get(obj,prop,j));
+             j-- ;
+        }
+        self.set(obj, prop, j + 1, key);
+    }
+  ]
+;
+global _bglWorldBufIdx = -1;
+[main a b sum diff prod quot c neg h back pi_ish;
+    a = _bglFloatNumtof(5);
+    b = _bglFloatNumtof(2);
+    sum = _bglFloatFadd(a, b);
+    diff = _bglFloatFsub(a, b);
+    prod = _bglFloatFmul(a, b);
+    quot = _bglFloatFdiv(a, b);
+    print (string)"a+b = ";
+    _bglFloatPrintDecimal(sum);
+    print (string)"^";
+    print (string)"a-b = ";
+    _bglFloatPrintDecimal(diff);
+    print (string)"^";
+    print (string)"a*b = ";
+    _bglFloatPrintDecimal(prod);
+    print (string)"^";
+    print (string)"a/b = ";
+    _bglFloatPrintDecimal(quot);
+    print (string)"^";
+    c = _bglFloatNumtof(10);
+    c = c + _bglFloatNumtof(1);
+    c = c - _bglFloatNumtof(2);
+    c = c * _bglFloatNumtof(3);
+    c = c / _bglFloatNumtof(2);
+    print (string)"c = ";
+    _bglFloatPrintDecimal(c);
+    print (string)"^";
+    if (_bglFloatGt(a, b)) {
+        print (string)"a > b ok^";
+    }
+    if (_bglFloatLt(b, a)) {
+        print (string)"b < a ok^";
+    }
+    if (_bglFloatGe(a, a)) {
+        print (string)"a >= a ok^";
+    }
+    if (_bglFloatLe(b, a)) {
+        print (string)"b <= a ok^";
+    }
+    if (a == a) {
+        print (string)"a == a ok^";
+    }
+    if (a ~= b) {
+        print (string)"a != b ok^";
+    }
+    neg = _bglFloatNumtof(-3);
+    print (string)"neg = ";
+    _bglFloatPrintDecimal(neg);
+    print (string)"^";
+    h = _bglFloatNumtof(42);
+    back=_bglFloatFtonumz(h);
+    print (string)"back = ";
+    print back;
+    print (string)"^";
+    pi_ish = _bglFloatFdiv(_bglFloatNumtof(22), _bglFloatNumtof(7));
+    print (string)"22/7 = ";
+    _bglFloatPrintDecimal(pi_ish);
+    print (string)"^";
+];
+[_bglFloatFadd x y r;
+     @fadd x y r; 
+    return r;
+];
+[_bglFloatFdiv x y r;
+     @fdiv x y r; 
+    return r;
+];
+[_bglFloatFmul x y r;
+     @fmul x y r; 
+    return r;
+];
+[_bglFloatFsub x y r;
+     @fsub x y r; 
+    return r;
+];
+[_bglFloatFtonumz f r;
+     @ftonumz f r; 
+    return r;
+];
+[_bglFloatGe x y;
      @jfge x y ?yes; rfalse; .yes; rtrue; 
     return false;
-  ],
-       printDecimal [v isNeg ipart frac fdigits;
-    isNeg=_bglfloat.lt(v, _bglFloat.numtof(0));
+];
+[_bglFloatGt x y;
+     @jfgt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+];
+[_bglFloatLe x y;
+     @jfle x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+];
+[_bglFloatLt x y;
+     @jflt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+];
+[_bglFloatNumtof n r;
+     @numtof n r; 
+    return r;
+];
+[_bglFloatPrintDecimal v isNeg ipart frac fdigits;
+    isNeg=_bglfloatlt(v,_bglFloatNumtof(0));
     if (isNeg) {
-        v = _bglFloat.fsub(_bglFloat.numtof(0), v);
+        v = _bglFloatFsub(_bglFloatNumtof(0), v);
     }
-    ipart=_bglFloat.ftonumz(v);
-    frac = _bglFloat.fsub(v, _bglFloat.numtof(ipart));
-    fdigits=_bglFloat.ftonumz((_bglFloat.fmul(frac, _bglFloat.numtof(10000))));
+    ipart=_bglFloatFtonumz(v);
+    frac = _bglFloatFsub(v, _bglFloatNumtof(ipart));
+    fdigits=_bglFloatFtonumz((_bglFloatFmul(frac, _bglFloatNumtof(10000))));
     if (fdigits < 0) {
         fdigits = -fdigits;
     }
@@ -145,64 +343,4 @@ object _bglFloat
         print (string)"0";
     }
     print fdigits;
-  ]
-;
-[main a b sum diff prod quot c neg h back pi_ish;
-    a = _bglFloat.numtof(5);
-    b = _bglFloat.numtof(2);
-    sum = _bglFloat.fadd(a, b);
-    diff = _bglFloat.fsub(a, b);
-    prod = _bglFloat.fmul(a, b);
-    quot = _bglFloat.fdiv(a, b);
-    print (string)"a+b = ";
-    _bglFloat.printDecimal(sum);
-    print (string)"^";
-    print (string)"a-b = ";
-    _bglFloat.printDecimal(diff);
-    print (string)"^";
-    print (string)"a*b = ";
-    _bglFloat.printDecimal(prod);
-    print (string)"^";
-    print (string)"a/b = ";
-    _bglFloat.printDecimal(quot);
-    print (string)"^";
-    c = _bglFloat.numtof(10);
-    c = c + _bglFloat.numtof(1);
-    c = c - _bglFloat.numtof(2);
-    c = c * _bglFloat.numtof(3);
-    c = c / _bglFloat.numtof(2);
-    print (string)"c = ";
-    _bglFloat.printDecimal(c);
-    print (string)"^";
-    if (_bglFloat.gt(a, b)) {
-        print (string)"a > b ok^";
-    }
-    if (_bglFloat.lt(b, a)) {
-        print (string)"b < a ok^";
-    }
-    if (_bglFloat.ge(a, a)) {
-        print (string)"a >= a ok^";
-    }
-    if (_bglFloat.le(b, a)) {
-        print (string)"b <= a ok^";
-    }
-    if (a == a) {
-        print (string)"a == a ok^";
-    }
-    if (a ~= b) {
-        print (string)"a != b ok^";
-    }
-    neg = _bglFloat.numtof(-3);
-    print (string)"neg = ";
-    _bglFloat.printDecimal(neg);
-    print (string)"^";
-    h = _bglFloat.numtof(42);
-    back=_bglFloat.ftonumz(h);
-    print (string)"back = ";
-    print back;
-    print (string)"^";
-    pi_ish = _bglFloat.fdiv(_bglFloat.numtof(22), _bglFloat.numtof(7));
-    print (string)"22/7 = ";
-    _bglFloat.printDecimal(pi_ish);
-    print (string)"^";
 ];

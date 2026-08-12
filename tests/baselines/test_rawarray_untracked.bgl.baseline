@@ -3,6 +3,7 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
+Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -216,6 +217,7 @@ object _bglArray
     }
   ]
 ;
+global _bglWorldBufIdx = -1;
 array trk table "a" "b" "c" 3 $9084;
 [main;
     print (string) raw-->(0+1) ;

@@ -44,22 +44,22 @@
         emitter int operator --() { $val-- }
 
         // Bitwise — I6 supports `&` and `|` natively on both Z-machine and Glulx, so the
-        // AND/OR operators are direct passthroughs. XOR and shifts have no native I6 op
-        // on Z-machine (Glulx has `@bitxor`/`@bitshl`/`@bitshr`); the stubs below need
-        // either a target-split implementation or a runtime helper before they can be
-        // enabled. See tests/broken/test_bitwise_int.bgl for the test that drives them.
+        // AND/OR operators are direct passthroughs; XOR is synthesized from and/or. Shifts
+        // have no native Z-machine op, so `<<`/`>>` delegate to the core `superposed`
+        // routines _bglShiftLeft/_bglShiftRight (core/_math.bgl) — auto-loaded and emitted
+        // only when a shift is actually used. (These are emitters, so they call the
+        // standalone routines directly rather than the _bglMath facade.)
         emitter int operator & (int v){ $val & $v }
         emitter int operator | (int v){ $val | $v }
         emitter int operator &= (int v){ $val = $val & $v }
         emitter int operator |= (int v){ $val = $val | $v }
         emitter int operator ^  (int v){ ($val | $v) - ($val & $v) }
         emitter int operator ^= (int v){ $val = (($val | $v) - ($val & $v)) }
-        
-        // emitter int operator <<= (int v){ /* TODO: same as << */ }
-        // emitter int operator >> (int v){ /* TODO: no native Z-machine shift.
-        //   Glulx: @bitshr $val $v sp;
-        //   Z: $val / (1 << $v) — same constant-only restriction */ }
-        // emitter int operator >>= (int v){ /* TODO: same as >> */ }
+
+        emitter int operator <<  (int v){ _bglShiftLeft($val, $v) }
+        emitter int operator <<= (int v){ $val = _bglShiftLeft($val, $v) }
+        emitter int operator >>  (int v){ _bglShiftRight($val, $v) }
+        emitter int operator >>= (int v){ $val = _bglShiftRight($val, $v) }
     }
     
     emitter void print(int c){ print $c; }

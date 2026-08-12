@@ -1,0 +1,15 @@
+/*
+    _test_rawarray_size_rejected.bgl  (negative)
+    A rawArray is a bare I6 word pointer with no length header. I6 stores no length
+    for `-->` arrays, and its `.#` operator is property-only (a bare `(ptr.#)` will
+    not compile), so the extent is unrecoverable at runtime. size()/length() on a
+    rawArray must be rejected at compile time — the same reason for-in is rejected —
+    rather than emit invalid I6. (A file-scope rawArray literal is count-prefixed and
+    reaches size() through the <array> path, so it is unaffected.)
+*/
+#beguilerSettings { informName = "none"; }
+
+int howMany(rawArray<int> xs) {
+    return xs.size();
+}
+// EXPECT_ERROR: 'size()' is unavailable on rawArray

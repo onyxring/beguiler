@@ -3,6 +3,7 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
+Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -16,137 +17,207 @@ object bgl
   with glulx _glulx,
        bglUtil _bglutil
 ;
-object _bglFloat
-  with fadd [x y r;
-     @fadd x y r; 
-    return r;
+[_bglArrayCompareAsc lhs rhs;
+    
+        if(lhs < rhs) return -1;
+        if(lhs > rhs) return 1;
+        return 0;
+    
+    return 0;
+];
+object _bglArray
+  with rawGet [addr slot;
+     return addr-->slot; 
+    return 0;
   ],
-       fsub [x y r;
-     @fsub x y r; 
-    return r;
+       rawSet [addr slot v;
+     addr-->slot = v; 
   ],
-       fmul [x y r;
-     @fmul x y r; 
-    return r;
+       get [obj prop n;
+    
+            if(metaclass(obj)==object) return obj.&prop-->n;
+            return obj-->(n+1);
+        
+    return 0;
   ],
-       fdiv [x y r;
-     @fdiv x y r; 
-    return r;
+       set [obj prop n v;
+    
+            if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
+            obj-->(n+1) = v;
+        
   ],
-       fmod [x y r;
-     @fmod x y r sp; 
-    return r;
-  ],
-       numtof [n r;
-     @numtof n r; 
-    return r;
-  ],
-       ftonumz [f r;
-     @ftonumz f r; 
-    return r;
-  ],
-       sqrt [v r;
-     @sqrt v r; 
-    return r;
-  ],
-       exp [v r;
-     @exp v r; 
-    return r;
-  ],
-       log [v r;
-     @log v r; 
-    return r;
-  ],
-       pow [a b r;
-     @pow a b r; 
-    return r;
-  ],
-       sin [v r;
-     @sin v r; 
-    return r;
-  ],
-       cos [v r;
-     @cos v r; 
-    return r;
-  ],
-       tan [v r;
-     @tan v r; 
-    return r;
-  ],
-       asin [v r;
-     @asin v r; 
-    return r;
-  ],
-       acos [v r;
-     @acos v r; 
-    return r;
-  ],
-       atan [v r;
-     @atan v r; 
-    return r;
-  ],
-       atan2 [y x r;
-     @atan2 y x r; 
-    return r;
-  ],
-       ceil [v r;
-     @ceil v r; 
-    return r;
-  ],
-       floor [v r;
-     @floor v r; 
-    return r;
-  ],
-       abs [v;
-    if (_bglfloat.lt(v, _bglFloat.numtof(0))) {
-        return _bglFloat.fsub(_bglFloat.numtof(0), v);
+       copy [dobj dprop sobj sprop n cap i;
+    n=self.length(sobj,sprop);
+    cap=self.size(dobj,dprop);
+    if (n > cap) {
+        n = cap;
     }
+    for (i = 0 : i < n : i++) {
+        self.set(dobj, dprop, i, self.get(sobj,sprop,i));
+    }
+    self.setlength(dobj, dprop, n);
+  ],
+       isTracked [obj prop hdr;
+     if(metaclass(obj)==object) rfalse; 
+    hdr = self.rawget(obj,0);
+    return self.rawget(obj,hdr)==36996&&self.rawget(obj,hdr-1)>=0;
+  ],
+       size [obj prop;
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+    if (self.istracked(obj,prop)) {
+        return self.rawget(obj,0)-2;
+    }
+    return self.rawget(obj,0);
+  ],
+       length [obj prop;
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+    if (self.istracked(obj,prop)) {
+        return self.rawget(obj,self.rawget(obj,0)-1);
+    }
+    return self.rawget(obj,0);
+  ],
+       setLength [obj prop n;
+     if(metaclass(obj)==object) return; 
+    if (self.istracked(obj,prop)) {
+        if (n < 0) {
+            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+             quit; 
+        }
+        self.set(obj, prop, self.size(obj,prop), n);
+    }
+  ],
+       indexOf [obj prop val sz t;
+    sz=self.size(obj,prop);
+    for (t = 0 : t < sz : t++) {
+        if (self.get(obj,prop,t)==val) {
+            return t;
+        }
+    }
+    return -1;
+  ],
+       clear [obj prop sz t;
+    sz=self.size(obj,prop);
+    for (t = 0 : t < sz : t++) {
+        self.set(obj, prop, t, 0);
+    }
+    self.setLength(obj, prop, 0);
+  ],
+       swap [obj prop pos1 pos2 tmp;
+    tmp = self.get(obj,prop,pos1);
+    self.set(obj, prop, pos1, self.get(obj,prop,pos2));
+    self.set(obj, prop, pos2, tmp);
+  ],
+       reverse [obj prop len half i;
+    len=self.length(obj,prop);
+    half=len / 2;
+    for (i = 0 : i < half : i++) {
+        self.swap(obj, prop, i, len - 1 - i);
+    }
+  ],
+       append [obj prop val len;
+    len=self.length(obj,prop);
+    if (len >= self.size(obj,prop)) {
+        return false;
+    }
+    self.set(obj, prop, len, val);
+    self.setLength(obj, prop, len + 1);
+    return true;
+  ],
+       insert [obj prop pos val len i;
+    len=self.length(obj,prop);
+    if (len >= self.size(obj,prop)) {
+        return false;
+    }
+    if (pos < 0 || pos > len) {
+        return false;
+    }
+    for (i = len : i > pos : i--) {
+        self.set(obj, prop, i, self.get(obj,prop,i - 1));
+    }
+    self.set(obj, prop, pos, val);
+    self.setLength(obj, prop, len + 1);
+    return true;
+  ],
+       prepend [obj prop val;
+    return self.insert(obj,prop,0,val);
+  ],
+       remove [obj prop pos len i;
+    len=self.length(obj,prop);
+    if (pos < 0 || pos >= len) {
+        return;
+    }
+    for (i = pos : i < len - 1 : i++) {
+        self.set(obj, prop, i, self.get(obj,prop,i + 1));
+    }
+    self.set(obj, prop, len - 1, 0);
+    self.setLength(obj, prop, len - 1);
+  ],
+       removeValue [obj prop val pos len;
+    pos = 0;
+    len=self.length(obj,prop);
+    while (pos < len) {
+        if (self.get(obj,prop,pos)==val) {
+            self.remove(obj, prop, pos);
+            len = self.length(obj,prop);
+        }
+        else {
+             pos++ ;
+        }
+    }
+  ],
+       push [obj prop val;
+    self.insert(obj, prop, 0, val);
+  ],
+       pop [obj prop v;
+    if (self.length(obj,prop) == 0) {
+        return 0;
+    }
+    v = self.get(obj,prop,0);
+    self.remove(obj, prop, 0);
     return v;
   ],
-       lt [x y;
-     @jflt x y ?yes; rfalse; .yes; rtrue; 
-    return false;
+       dequeue [obj prop;
+    return self.pop(obj,prop);
   ],
-       le [x y;
-     @jfle x y ?yes; rfalse; .yes; rtrue; 
-    return false;
+       enqueue [obj prop val;
+    self.append(obj, prop, val);
   ],
-       gt [x y;
-     @jfgt x y ?yes; rfalse; .yes; rtrue; 
-    return false;
+       peek [obj prop;
+    if (self.length(obj,prop) == 0) {
+        return 0;
+    }
+    return self.get(obj,prop,0);
   ],
-       ge [x y;
-     @jfge x y ?yes; rfalse; .yes; rtrue; 
-    return false;
+       peekEnd [obj prop len;
+    len=self.length(obj,prop);
+    if (len == 0) {
+        return 0;
+    }
+    return self.get(obj,prop,len - 1);
   ],
-       printDecimal [v isNeg ipart frac fdigits;
-    isNeg=_bglfloat.lt(v, _bglFloat.numtof(0));
-    if (isNeg) {
-        v = _bglFloat.fsub(_bglFloat.numtof(0), v);
+       popEnd [obj prop len v;
+    len=self.length(obj,prop);
+    if (len == 0) {
+        return 0;
     }
-    ipart=_bglFloat.ftonumz(v);
-    frac = _bglFloat.fsub(v, _bglFloat.numtof(ipart));
-    fdigits=_bglFloat.ftonumz((_bglFloat.fmul(frac, _bglFloat.numtof(10000))));
-    if (fdigits < 0) {
-        fdigits = -fdigits;
+    v = self.get(obj,prop,len - 1);
+    self.remove(obj, prop, len - 1);
+    return v;
+  ],
+       sort [obj prop compare len i key j;
+    len=self.length(obj,prop);
+    for (i = 1 : i < len : i++) {
+        key = self.get(obj,prop,i);
+        j=i - 1;
+        while (j >= 0 && compare(self.get(obj,prop,j),key) > 0) {
+            self.set(obj, prop, j + 1, self.get(obj,prop,j));
+             j-- ;
+        }
+        self.set(obj, prop, j + 1, key);
     }
-    if (isNeg) {
-        print (string)"-";
-    }
-    print ipart;
-    print (string)".";
-    if (fdigits < 1000) {
-        print (string)"0";
-    }
-    if (fdigits < 100) {
-        print (string)"0";
-    }
-    if (fdigits < 10) {
-        print (string)"0";
-    }
-    print fdigits;
   ]
 ;
+global _bglWorldBufIdx = -1;
 class combatant
   class object
   with
@@ -166,19 +237,19 @@ combatant goblin
 ];
 [applyDamage target damage;
     target.hp = target.hp - damage;
-    if (_bglFloat.lt(target.hp, _bglFloat.numtof(0))) {
-        target.hp = _bglFloat.numtof(0);
+    if (_bglFloatLt(target.hp, _bglFloatNumtof(0))) {
+        target.hp = _bglFloatNumtof(0);
     }
 ];
 [healthBar c pct;
-    pct = _bglFloat.fmul(_bglFloat.fdiv(c.hp, c.maxhp), _bglFloat.numtof(100));
+    pct = _bglFloatFmul(_bglFloatFdiv(c.hp, c.maxhp), _bglFloatNumtof(100));
     print (string)c.short_name;
     print (string)": ";
-    _bglFloat.printDecimal(c.hp);
+    _bglFloatPrintDecimal(c.hp);
     print (string)"/";
-    _bglFloat.printDecimal(c.maxhp);
+    _bglFloatPrintDecimal(c.maxhp);
     print (string)" (";
-    _bglFloat.printDecimal(pct);
+    _bglFloatPrintDecimal(pct);
     print (string)"%)^";
 ];
 class marker
@@ -190,12 +261,12 @@ class marker
 marker home;
 marker treasure;
 [distance a b dx dy;
-    dx = _bglFloat.fsub(a.x, b.x);
-    dy = _bglFloat.fsub(a.y, b.y);
-    return _bglfloat.sqrt(_bglFloat.fadd(_bglFloat.fmul(dx, dx), _bglFloat.fmul(dy, dy)));
+    dx = _bglFloatFsub(a.x, b.x);
+    dy = _bglFloatFsub(a.y, b.y);
+    return _bglFloatSqrt(_bglFloatFadd(_bglFloatFmul(dx, dx), _bglFloatFmul(dy, dy)));
 ];
 [roll threshold sample;
-    return _bglFloat.le(sample, threshold);
+    return _bglFloatLe(sample, threshold);
 ];
 class runningavg
   class object
@@ -205,82 +276,183 @@ class runningavg
 ;
 runningavg avg;
 [addSample a v;
-    a.total = _bglFloat.fadd(a.total, v);
+    a.total = _bglFloatFadd(a.total, v);
     a.count++;
 ];
 [mean a;
     if (a.count == 0) {
-        return _bglFloat.numtof(0);
+        return _bglFloatNumtof(0);
     }
-    return _bglFloat.fdiv(a.total, _bglFloat.numtof(a.count));
+    return _bglFloatFdiv(a.total, _bglFloatNumtof(a.count));
 ];
 [main crit d dSquared roundTrip pi4 sinComp cosComp threshold dx modPart;
-    sethp(player, _bglFloat.numtof(100));
-    sethp(goblin, _bglFloat.numtof(25));
-    treasure.x = _bglFloat.numtof(6);
-    treasure.y = _bglFloat.numtof(8);
+    sethp(player, _bglFloatNumtof(100));
+    sethp(goblin, _bglFloatNumtof(25));
+    treasure.x = _bglFloatNumtof(6);
+    treasure.y = _bglFloatNumtof(8);
     print (string)"--- combat ---^";
     healthbar(player);
     healthbar(goblin);
-    applydamage(goblin, _bglFloat.numtof(8));
-    applydamage(goblin, _bglFloat.numtof(3));
-    crit = _bglFloat.fmul(_bglFloat.numtof(15), _bglFloat.numtof(2));
+    applydamage(goblin, _bglFloatNumtof(8));
+    applydamage(goblin, _bglFloatNumtof(3));
+    crit = _bglFloatFmul(_bglFloatNumtof(15), _bglFloatNumtof(2));
     applydamage(goblin, crit);
-    applydamage(player, _bglFloat.fdiv(_bglFloat.numtof(125), _bglFloat.numtof(10)));
+    applydamage(player, _bglFloatFdiv(_bglFloatNumtof(125), _bglFloatNumtof(10)));
     healthbar(player);
     healthbar(goblin);
     print (string)"--- map ---^";
     d = distance(home,treasure);
     print (string)"distance home->treasure: ";
-    _bglFloat.printDecimal(d);
+    _bglFloatPrintDecimal(d);
     print (string)"^";
-    dSquared = _bglfloat.pow(d, _bglFloat.numtof(2));
+    dSquared = _bglFloatPow(d, _bglFloatNumtof(2));
     print (string)"d^2 = ";
-    _bglFloat.printDecimal(dSquared);
+    _bglFloatPrintDecimal(dSquared);
     print (string)"^";
-    roundTrip = _bglfloat.exp(_bglfloat.log(d));
+    roundTrip = _bglFloatExp(_bglFloatLog(d));
     print (string)"exp(log(d)) ~ ";
-    _bglFloat.printDecimal(roundTrip);
+    _bglFloatPrintDecimal(roundTrip);
     print (string)"^";
-    pi4 = _bglFloat.fdiv(_bglFloat.numtof(3927), _bglFloat.numtof(5000));
-    sinComp = _bglfloat.sin(pi4);
-    cosComp = _bglfloat.cos(pi4);
+    pi4 = _bglFloatFdiv(_bglFloatNumtof(3927), _bglFloatNumtof(5000));
+    sinComp = _bglFloatSin(pi4);
+    cosComp = _bglFloatCos(pi4);
     print (string)"sin(pi/4) ~ ";
-    _bglFloat.printDecimal(sinComp);
+    _bglFloatPrintDecimal(sinComp);
     print (string)"^";
     print (string)"cos(pi/4) ~ ";
-    _bglFloat.printDecimal(cosComp);
+    _bglFloatPrintDecimal(cosComp);
     print (string)"^";
     print (string)"--- chance ---^";
-    threshold = _bglFloat.fdiv(_bglFloat.numtof(3), _bglFloat.numtof(10));
-    if (roll(threshold,_bglFloat.fdiv(_bglFloat.numtof(15), _bglFloat.numtof(100)))) {
+    threshold = _bglFloatFdiv(_bglFloatNumtof(3), _bglFloatNumtof(10));
+    if (roll(threshold,_bglFloatFdiv(_bglFloatNumtof(15), _bglFloatNumtof(100)))) {
         print (string)"0.15 hit^";
     }
-    if (roll(threshold,_bglFloat.fdiv(_bglFloat.numtof(45), _bglFloat.numtof(100)))) {
+    if (roll(threshold,_bglFloatFdiv(_bglFloatNumtof(45), _bglFloatNumtof(100)))) {
         print (string)"0.45 hit^";
     }
-    if (roll(threshold,_bglFloat.fdiv(_bglFloat.numtof(30), _bglFloat.numtof(100)))) {
+    if (roll(threshold,_bglFloatFdiv(_bglFloatNumtof(30), _bglFloatNumtof(100)))) {
         print (string)"0.30 hit^";
     }
     print (string)"--- stats ---^";
-    addsample(avg, _bglFloat.fdiv(_bglFloat.numtof(15), _bglFloat.numtof(10)));
-    addsample(avg, _bglFloat.fdiv(_bglFloat.numtof(23), _bglFloat.numtof(10)));
-    addsample(avg, _bglFloat.fdiv(_bglFloat.numtof(8), _bglFloat.numtof(10)));
+    addsample(avg, _bglFloatFdiv(_bglFloatNumtof(15), _bglFloatNumtof(10)));
+    addsample(avg, _bglFloatFdiv(_bglFloatNumtof(23), _bglFloatNumtof(10)));
+    addsample(avg, _bglFloatFdiv(_bglFloatNumtof(8), _bglFloatNumtof(10)));
     print (string)"turn-cost mean: ";
-    _bglFloat.printDecimal(mean(avg));
+    _bglFloatPrintDecimal(mean(avg));
     print (string)"^";
-    dx = _bglFloat.fsub(_bglFloat.numtof(0), _bglFloat.numtof(7));
+    dx = _bglFloatFsub(_bglFloatNumtof(0), _bglFloatNumtof(7));
     print (string)"abs(-7) = ";
-    _bglFloat.printDecimal(_bglfloat.abs(dx));
+    _bglFloatPrintDecimal(_bglFloatAbs(dx));
     print (string)"^";
-    modPart = _bglFloat.fmod(_bglFloat.fdiv(_bglFloat.numtof(17), _bglFloat.numtof(2)), _bglFloat.numtof(3));
+    modPart = _bglFloatFmod(_bglFloatFdiv(_bglFloatNumtof(17), _bglFloatNumtof(2)), _bglFloatNumtof(3));
     print (string)"8.5 mod 3 = ";
-    _bglFloat.printDecimal(modPart);
+    _bglFloatPrintDecimal(modPart);
     print (string)"^";
     print (string)"ceil(3.2)  = ";
-    _bglFloat.printDecimal(_bglfloat.ceil(_bglFloat.fdiv(_bglFloat.numtof(32), _bglFloat.numtof(10))));
+    _bglFloatPrintDecimal(_bglFloatCeil(_bglFloatFdiv(_bglFloatNumtof(32), _bglFloatNumtof(10))));
     print (string)"^";
     print (string)"floor(3.8) = ";
-    _bglFloat.printDecimal(_bglfloat.floor(_bglFloat.fdiv(_bglFloat.numtof(38), _bglFloat.numtof(10))));
+    _bglFloatPrintDecimal(_bglFloatFloor(_bglFloatFdiv(_bglFloatNumtof(38), _bglFloatNumtof(10))));
     print (string)"^";
+];
+[_bglFloatAbs v;
+    if (_bglfloatlt(v,_bglFloatNumtof(0))) {
+        return _bglFloatFsub(_bglFloatNumtof(0), v);
+    }
+    return v;
+];
+[_bglFloatCeil v r;
+     @ceil v r; 
+    return r;
+];
+[_bglFloatCos v r;
+     @cos v r; 
+    return r;
+];
+[_bglFloatExp v r;
+     @exp v r; 
+    return r;
+];
+[_bglFloatFadd x y r;
+     @fadd x y r; 
+    return r;
+];
+[_bglFloatFdiv x y r;
+     @fdiv x y r; 
+    return r;
+];
+[_bglFloatFloor v r;
+     @floor v r; 
+    return r;
+];
+[_bglFloatFmod x y r;
+     @fmod x y r sp; 
+    return r;
+];
+[_bglFloatFmul x y r;
+     @fmul x y r; 
+    return r;
+];
+[_bglFloatFsub x y r;
+     @fsub x y r; 
+    return r;
+];
+[_bglFloatLe x y;
+     @jfle x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+];
+[_bglFloatLog v r;
+     @log v r; 
+    return r;
+];
+[_bglFloatLt x y;
+     @jflt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+];
+[_bglFloatNumtof n r;
+     @numtof n r; 
+    return r;
+];
+[_bglFloatPow a b r;
+     @pow a b r; 
+    return r;
+];
+[_bglFloatPrintDecimal v isNeg ipart frac fdigits;
+    isNeg=_bglfloatlt(v,_bglFloatNumtof(0));
+    if (isNeg) {
+        v = _bglFloatFsub(_bglFloatNumtof(0), v);
+    }
+    ipart=_bglFloatFtonumz(v);
+    frac = _bglFloatFsub(v, _bglFloatNumtof(ipart));
+    fdigits=_bglFloatFtonumz((_bglFloatFmul(frac, _bglFloatNumtof(10000))));
+    if (fdigits < 0) {
+        fdigits = -fdigits;
+    }
+    if (isNeg) {
+        print (string)"-";
+    }
+    print ipart;
+    print (string)".";
+    if (fdigits < 1000) {
+        print (string)"0";
+    }
+    if (fdigits < 100) {
+        print (string)"0";
+    }
+    if (fdigits < 10) {
+        print (string)"0";
+    }
+    print fdigits;
+];
+[_bglFloatSin v r;
+     @sin v r; 
+    return r;
+];
+[_bglFloatSqrt v r;
+     @sqrt v r; 
+    return r;
+];
+[_bglFloatFtonumz f r;
+     @ftonumz f r; 
+    return r;
 ];

@@ -102,7 +102,7 @@ void exerciseReplace(){
     _bglBuf.replaceAll(bufA, bufB, bufSmall, 5);
 }
 
-bool isLetter(char c){ return _bglChar.isAlpha(c); }
+bool isLetter(char c){ return c.isAlpha(); }
 
 void exerciseSearch(){
     int p = _bglBuf.indexOf(bufA, bufB);

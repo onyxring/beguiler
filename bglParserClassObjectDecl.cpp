@@ -1387,7 +1387,7 @@ bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q
     token symbol = file.getToken({token::bracketOpen, token::assignment, token::endStatement, token::parenOpen});
     if(symbol.is(token::parenOpen))
         return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed);
-    processArrayDeclaration(arrayTok, name, elemType, symbol, ctx, q.isExtern);
+    processArrayDeclaration(arrayTok, name, elemType, symbol, ctx, q.isExtern, q.isSuperposed);
     return false;
 }
 
@@ -1424,7 +1424,57 @@ bool bglParser::processAliasedDeclaration(token typeTok, token nameTok, token al
 }
 
 
-bool bglParser::processObjectDeclaration(token objectType, token name, bool isExternal, string className, string i6alias, bool hasBody, bool isEmitter){
+// Parse an alias member (`alias` qualifier already consumed; `aliasName` is the member name).
+// Two forms, both emitting NO I6 for the member itself (pure compile-time indirection):
+//   alias name for Type;   — TYPE alias: `host.name` used in a type position resolves to Type.
+//   alias name = Target;   — VALUE alias: `host.name.method()` resolves to Target's members at parse
+//                            time, with NO runtime property on the host. If Target is an object, the
+//                            objectDef redirect in qualifyIdentifier resolves the dispatch (via
+//                            declaredExpressionValue); if a class, it's a class namespace alias (same
+//                            shape as `emitter auto name = Class`). Because no property links the host
+//                            to Target, Target is referenced only where the alias is actually used —
+//                            so a `superposed` Target is emitted only then. This is what lets a
+//                            namespace like `bgl.world` (alias to `superposed object _bglWorld`) cost
+//                            nothing until a query is called.
+void bglParser::parseAliasMember(token aliasName, std::vector<typeMember*>& members, const std::string& context){
+    token sep = file.getToken();
+    variableDeclaration& aliasDef = *(new variableDeclaration());
+    aliasDef.name = (string)aliasName;
+    aliasDef.displayName = aliasName.originalValue;
+    aliasDef.isExternal = true;  // no I6 emission — compile-time indirection only
+    if(sep.is("for")){
+        token typeTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
+        if(!languageService.isClassType(typeTok.value))
+            parsingError(format("alias member '{0}': '{1}' is not a declared type (class or enum)",
+                aliasName.value, typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue));
+        aliasDef.type = languageService.getType(typeTok.value);
+        aliasDef.isAlias = true;  // type alias
+    } else if(sep.is(token::assignment)){
+        token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        typeDef& rhsType = languageService.getType(rhs.value);
+        objectDef* rhsObj = dynamic_cast<objectDef*>(&rhsType);
+        classDef*  rhsCls = dynamic_cast<classDef*>(&rhsType);
+        if(!rhsObj && !rhsCls)
+            parsingError(format("alias member '{0}': '{1}' is not a declared object or class",
+                aliasName.value, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
+        aliasDef.type = languageService.getType(rhs.value);
+        if(rhsObj){
+            // Object value alias: dispatch resolves through the objectDef redirect, which reads
+            // declaredExpressionValue for the target object name.
+            expression* e = new expression();
+            e->tokens.push_back(rhs.value);
+            aliasDef.declaredExpressionValue = e;
+        }
+        // class target: type-only alias — same shape the emitter-auto class namespace alias uses.
+    } else {
+        parsingError(format("'alias {0}' in {1} requires 'for Type' or '= objectOrClass'",
+            aliasName.value, context));
+    }
+    file.getToken(token::endStatement);
+    members.push_back(&aliasDef);
+}
+
+bool bglParser::processObjectDeclaration(token objectType, token name, bool isExternal, string className, string i6alias, bool hasBody, bool isEmitter, bool isSuperposed){
     // If emitter qualifier is set and body is present, this is an emitter value declaration
     if(isEmitter && hasBody) return processEmitterValueDeclaration(objectType, name);
 
@@ -1457,6 +1507,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
         objPtr = &od;
     }
     objectDef& newObj = *objPtr;
+    newObj.isSuperposed = isSuperposed;
     if(!i6alias.empty()) newObj.i6name = i6alias;
     // Doc-comment attached to the object's declaration (leading type or name token).
     if(!objectType.docComment.empty())   newObj.docComment = objectType.docComment;
@@ -1644,24 +1695,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
         if(q.isExtern)  parsingError("'extern' is not valid inside an object body");
         if(q.isExtend)  parsingError("'extend' is not valid inside an object body");
         if(q.isAlias){
-            // Type alias member: `alias memberName for TypeName;`
-            // Creates a compile-time type reference — used by namespace-scoped type resolution.
-            token aliasName = tok;  // tok is already the first token after qualifiers
-            token forKw = file.getToken();
-            if(!forKw.is("for"))
-                parsingError(format("'alias {0}' in object body requires 'for': alias {0} for TypeName;", aliasName.value));
-            token typeTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
-            if(!languageService.isClassType(typeTok.value))
-                parsingError(format("alias member '{0}': '{1}' is not a declared type (class or enum)", aliasName.value,
-                    typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue));
-            file.getToken(token::endStatement);
-            variableDeclaration& aliasDef = *(new variableDeclaration());
-            aliasDef.name = (string)aliasName;
-            aliasDef.displayName = aliasName.originalValue;
-            aliasDef.type = languageService.getType(typeTok.value);
-            aliasDef.isExternal = true;  // no I6 emission
-            aliasDef.isAlias = true;     // marks as type alias, not instance
-            newObj.members.push_back(&aliasDef);
+            parseAliasMember(tok, newObj.members, "object body");
             tok = file.getToken();
             continue;
         }
@@ -1819,23 +1853,7 @@ bool bglParser::processObjectExtension(token nameTok){
         if(q.isExtern)  parsingError("'extern' is not valid inside an extend body");
         if(q.isExtend)  parsingError("'extend' is not valid inside an extend body");
         if(q.isAlias){
-            // Type alias member: `alias memberName for TypeName;`
-            token aliasName = tok;
-            token forKw = file.getToken();
-            if(!forKw.is("for"))
-                parsingError(format("'alias {0}' in extend body requires 'for': alias {0} for TypeName;", aliasName.value));
-            token typeTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
-            if(!languageService.isClassType(typeTok.value))
-                parsingError(format("alias member '{0}': '{1}' is not a declared type (class or enum)", aliasName.value,
-                    typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue));
-            file.getToken(token::endStatement);
-            variableDeclaration& aliasDef = *(new variableDeclaration());
-            aliasDef.name = (string)aliasName;
-            aliasDef.displayName = aliasName.originalValue;
-            aliasDef.type = languageService.getType(typeTok.value);
-            aliasDef.isExternal = true;
-            aliasDef.isAlias = true;
-            obj->members.push_back(&aliasDef);
+            parseAliasMember(tok, obj->members, "extend body");
             tok = file.getToken();
             continue;
         }
@@ -1874,13 +1892,18 @@ bool bglParser::processObjectExtension(token nameTok){
             // another class. Mirrors the same case in the primary object-body parser so
             // `extend bgl { emitter auto asm = bglOpCodes; }` works the same as declaring
             // it inside the original `object bgl { ... }`.
+            // `emitter auto name = Class;` aliases an *emitter class* (all methods inlined, no runtime
+            // object). For a compile-time alias to a real *object* — no runtime property — use
+            // `alias name = objectInstance;` (see parseAliasMember) instead; `emitter` would be a
+            // misnomer there since the target is not an emitter.
             if(tok.value == "auto"){
                 token aliasName = file.getToken({eTokenType::identifier, eTokenType::dataType});
                 file.getToken(token::assignment);
                 token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
                 classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(rhs.value));
                 if(!rhsCls)
-                    parsingError(format("'auto' alias member '{0}': '{1}' is not a declared class",
+                    parsingError(format("'emitter auto' alias member '{0}': '{1}' is not a declared class "
+                        "(use `alias {0} = {1};` for an object)",
                         (string)aliasName, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
                 file.getToken(token::endStatement);
                 variableDeclaration& aliasDef = *(new variableDeclaration());

@@ -1,5 +1,6 @@
-//-----------------------------------------------------------------------------
-// bglAllocated.bgl — opt-in mixin for pool-allocated objects (`class Foo[N] {...}`).
+#once
+//=============================================================================
+// type bglAllocated — opt-in mixin for pool-allocated objects (`class Foo[N] {...}`).
 //
 // `[N]` on a class declaration grants `new` / `delete`. Inheriting from
 // `bglAllocated` adds two operations expected of allocator-managed objects:
@@ -10,8 +11,6 @@
 //                            (wraps I6's built-in remaining op)
 //
 // Usage:
-//
-//   #include <bglAllocated>
 //
 //   class marbleClass[10] : object, bglAllocated {
 //       int weight = 0;
@@ -26,8 +25,12 @@
 //   `marbleClass x = new marbleClass();` would otherwise dispatch through operator=,
 //   which would allocate a slot AND copy from it into uninitialized `x` — a wasted
 //   slot and meaningless copy. Keeping copy explicit avoids that trap.
-//-----------------------------------------------------------------------------
-#once
+//
+// This is a pure emitter class: its methods are inlined at call sites and emit
+// nothing to I6 when unused, so it costs nothing to auto-load in core. It lives
+// here (rather than as a manual `#include <bglAllocated>`) precisely because a
+// zero-cost mixin has no reason to be opt-in.
+//=============================================================================
 
 emitter class bglAllocated {
     // Bulk-copy all properties from src into self. Both must be active pool instances

@@ -3,6 +3,7 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
+Constant _BGL_WORLD_BUFSIZE = 128;
 Array _bglFramePool --> 64;
 Global _bglFrameTop = 0;
  [ _bglFrameAlloc size r;
@@ -268,6 +269,7 @@ object _bglArray
     }
   ]
 ;
+global _bglWorldBufIdx = -1;
 array src table 11 22 33 44 4 $9084;
 array dst table 10;
 [main keep picked;
