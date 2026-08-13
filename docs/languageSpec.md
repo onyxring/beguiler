@@ -236,9 +236,9 @@
 
 ## 1.1 What Is Beguile?
 
-Beguile is a statically-typed, compiled language designed for authoring interactive fiction (IF). It provides a structured, C-like syntax that transpiles to Inform 6 (I6), a low-level language traditionally used to target the Z-Machine and Glulx virtual machines, the runtime platforms used by most modern, parser-based interpreters.
+Beguile is a statically-typed, compiled language designed for authoring Interactive Fiction (IF). It provides a structured, C-like syntax which transpiles to Inform 6.
 
-Beguile is not a general-purpose language. Its type system and object model are shaped by the needs of interactive fiction: rooms, objects, attributes, verbs, and the grammar that connects player input to game logic.
+Although it borrows features from popular compilers, Beguile itself is not general-purpose language. Its features are shaped by the needs of Interactive Fiction and the constraints of the virtual machines its code ultimately compiles down to.
 
 ## 1.2 Design Goals
 
@@ -246,45 +246,46 @@ Beguile is not a general-purpose language. Its type system and object model are 
 - **Strong typing.** All variables, parameters, and return values carry a declared type. Type mismatches are caught at compile time, not at runtime.
 - **Transparency.** The generated I6 is readable and maps closely to the Beguile source. Developers who know I6 can inspect or supplement the output.
 - **Extensibility through emitters.** Performance-sensitive or platform-specific operations can be expressed as *emitters*, inline I6 fragments that are substituted at the call site. This gives library authors full control over the generated code without sacrificing type safety at the Beguile level.
-- **IF-native constructs.** Verbs, grammar, attributes, and world objects are first-class concepts in the language, not simulated through generic data structures.
 
 ### Pretty Lies - Shorthand over a Consistent Core
 
 Beguile aims for **one consistent set of rules**.  For example: declarations live in member bodies; assignments end in `;`; types precede variable names... The canonical form of every construct follows those rules.
 
-But strict adherence to a consistent syntax can require needless boilerplate.  Some languages address this by introducing shorthand idioms or special-case syntaxes.  I6's implied `switch(action)` statement in `before` routines is one example of this, so is the micro-grammar used to define verbs.  These additions save keystrokes at the cost of a larger, less uniform grammar.
+But strict adherence to a consistent syntax sometimes translates into needless boilerplate.  Some languages address this by introducing shorthand idioms or special-case syntaxes seem to diverge from the core language patterns.  I6's implied `switch(action)` statement in `before` routines is one example of this, so is the micro-grammar used to define verbs.  These additions save keystrokes at the cost of a larger, less uniform grammar.
 
-Beguile takes the other side of that trade: **shorthand forms ("pretty lies") translate into the canonical form** at parse time. The author sees a compact, readable surface; the canonical form remains the underlying truth, available whenever the shorthand doesn't fit.
+Beguile takes the other side of that trade: **shorthand forms translate into the canonical form** at parse time. The author sees a compact, readable surface; the canonical form remains the underlying truth, available whenever the shorthand doesn't fit.
 
-Here's a list of current pretty lies, supported in Beguile:
-- **Inferred member type for inherited properties.** Inside an object body, members may be declared without a type if it is declared anywhere in the object's ancestry. The parser looks this up and infers the type as though it had been specified. This rule saves restating `bool meta`, `int priority`, `grammarRuleList grammar`, and the like for every standard property each time an object is authored.  For example, `meta = true;` and `priority = 5;` inside a `verb` body lean on this rule, with `bool` and `int` carried in from `class verb`.
+These "Pretty Lies" are few and far between, we'll cover them in detail when they become relevant, but here are a few examples:
+
+[TODO: fixe the ?.? section reference.]
+- **Inferred member type for inherited properties** (§?.?): Inside an object body, members may be declared without a type ***if*** it's type was previously declared in the object's ancestry. 
   
 - **Extern verb trigger-word declarations** (§13.2): `extern verb V { .w1|.w2|.w3 }` is equivalent to `extern verb V { grammarRuleList grammar = { {.w1|.w2|.w3} }; }`.
 
-- **Single-line grammar shorthand** (§13.2): when a `grammar = { ... }` assignment contains a single line, the inner braces may be omitted, so `grammar = {.trigger, pattern...}` is equivalent to `grammar = { {.trigger, pattern...} }`. Detected by a dictionary-word literal as the first content token after the outer `{`.
+- **Single-line grammar shorthand** (§13.2): when a `grammar = { ... }` assignment contains a single line, the inner braces may be omitted, so `grammar = {.trigger, pattern...}` is equivalent to `grammar = { {.trigger, pattern...} }`.  
 
 ## 1.3 Compilation Model
 
 A Beguile source file (`.bgl`) is processed by the Beguile compiler through the following stages. Steps 1 and 6 are conditional and only run when blorb packaging is enabled (`generateBlorb = true` in `#beguilerSettings`); see §3.4.1.
 
-1. *(optional)* **Asset pre-scan** - when blorb packaging is enabled, the compiler scans `blorbAssetPath` for image and audio files and writes `_blorbAssets.bgl` containing an `eAssets` enum the source code can reference. The user must include this file to make use of it.
-2. **Pre-scans** the source (and all included files) to register type, object, function, and variable stubs. This pass resolves forward references so that declarations may appear in any order.
-3. **Lexes and parses** the source in full, resolving types and checking compatibility against the stubs established in the previous pass.
-4. **Emits** an Inform 6 source file (`.inf`) that is semantically equivalent to the Beguile source.
-5. **Invokes the Inform 6 compiler** (`inform`) on the generated `.inf` file to produce the story file (`.ulx` for Glulx or `.z8`, `.z5`, or `.z3` for Z-Machine).
-6. *(optional)* **Blorb assembly** - when blorb packaging is enabled and the I6 step succeeded, the compiler assembles a `.zblorb` (Z-Machine) or `.gblorb` (Glulx) file containing the story file plus all discovered assets and an iFiction metadata record.
+1. *(optional)* **Pre-scans for assets** when blorb packaging is enabled.  The compiler searches the folder defined by `blorbAssetPath` for image and audio files, the writes `_blorbAssets.bgl`for the source code to reference. The user must include this file to make use of it.
+2. **Pre-scans** the source to register type, object, function, and variable names. This pass resolves forward references so that declarations may appear in any order.
+3. **Lexes and parses** the source in full, resolving types and checking type compatibility.
+4. **Emits** an Inform 6 source file (`.inf`) that is semantically equivalent to the Beguile source.  If enabled, a debug file is also generated for use by run-time debuggers (see below). 
+5. **Invokes the Inform 6 compiler** on the generated `.inf` file to produce the story file (`.ulx` for Glulx or `.z8`, `.z5`, or `.z3` for Z-Machine).
+6. *(optional)* **Blorb assembly** when blorb packaging is enabled.  The compiler assembles a `.zblorb` (Z-Machine) or `.gblorb` (Glulx) file containing the story file plus all discovered assets and an iFiction metadata record.
 
 The intermediate `.inf` file is retained alongside the story file. When compiled with `--debug`, Beguile generates a debug file and triggers Inform 6 to do the same, supporting source-level debugging in the VS Code extension.
 
-Precompiler-mode files (`.inf` entry, see §15.1.1) follow the same pipeline with one variation: the source IS already an I6 file, so the Beguile passes (steps 2-4) run only over Beguile islands embedded in it; the surrounding I6 passes through to step 5 unchanged. Blorb packaging steps 1 and 6 work identically.
+Precompiler-mode files (`.inf` entry, see §15.1.1) follow the same pipeline with one variation: the source IS already an I6 file, so the Beguile passes (steps 2-4) run only over Beguile islands embedded in it; the surrounding I6 passes through to step 5 unchanged. 
 
 ## 1.4 Relationship to Inform 6
 
-Beguile is built on top of Inform 6, not a replacement for it. The generated I6 is valid, human-readable Inform 6 source. Several Beguile features exist specifically to bridge the two languages cleanly:
+Beguile is built on top of Inform 6; it is not a replacement for it. It generates human-readable I6 source and several Beguile features exist specifically to bridge the two languages cleanly:
 
 - `extern` declarations allow Beguile to use types, functions, attributes, and constants that are defined in I6 without re-implementing them.
-- `#includeI6` passes raw I6 include directives through to the generated file.
 - `#i6` output blocks of raw I6 code, declared inline with Beguile code, to the generated file.
+- `#includeI6` passes raw I6 include directives through to the generated file.
 - Emitter bodies contain literal I6 code, giving library authors precise control over the output.
 
 Authors who need capabilities beyond what Beguile exposes can always drop down to I6 through these mechanisms.
@@ -316,7 +317,7 @@ Comments are discarded by the lexer and have no effect on compilation.
 
 ## 2.3 Case Sensitivity
 
-Beguile is **case-insensitive** for all tokens except string literal contents. Keywords, type names, identifiers, and operator names are normalized to lowercase at lex time. The following are all equivalent:
+Beguile is **case-insensitive** for all tokens except string literal values. Keywords, type names, identifiers, and operator names are normalized to lowercase at lex time. The following are all equivalent:
 
 ```bgl
 if(X == 1) print("yes");
@@ -334,6 +335,7 @@ Examples of valid identifiers: `score`, `myVar`, `_internal`, `room1`, `velvetCl
 
 Identifiers that match a reserved keyword (§2.8) may not be used as variable or function names.
 
+[TODO: This paragraph needs work.  It is unclear and contains an incomplete statement positioned as an independent clause]
 A **member or method name may collide with a type name**. Because Beguile is case-insensitive, a field named `color` and a class named `Color` are the same identifier; likewise a member literally named after a built-in type keyword such as `object`. Such members are still fully reachable through dot-access, as in `thing.color`, `self.color`, `win.draw()`, since a name after `.` is unambiguously a member. (Type names remain reserved for *top-level* identifiers per §2.8; the relaxation applies only to member positions.)
 
 ### 2.4.1 Special Prefixes `_bgl` and `bgl`
@@ -344,7 +346,7 @@ Identifiers beginning with `_bgl` or `bgl` are earmarked for language-generated 
 
 ### 2.5.1 Integer Literals
 
-Integer literals may be expressed in decimal, hexadecimal, or binary notation. All three forms are converted to decimal at compile time; the generated I6 output always contains plain decimal values.
+Integers may be expressed in decimal, hexadecimal, or binary notation. All three forms resemble established I6 notation but are converted to decimal at compile time. The generated I6 output is always rendered as plain decimal.
 
 #### Decimal
 
@@ -358,7 +360,7 @@ A sequence of digits `0` to `9`. Negative values are formed by prefixing `-`.
 
 #### Hexadecimal
 
-Prefixed with `$`, followed by one or more hex digits (`0` to `9`, `A` to `F`, `a` to `f`). Follows the Inform 6 convention.
+Prefixed with `$`, followed by one or more hex digits (`0` to `9`, `A` to `F`, `a` to `f`). 
 
 ```bgl
 $FF         // 255
@@ -371,7 +373,7 @@ C-style hex notation (`0xFF`) is not supported. The compiler rejects it with an 
 
 #### Binary
 
-Prefixed with `$$`, followed by one or more binary digits (`0` or `1`). Follows the Inform 6 convention. Useful for bitmask constants and attribute flags.
+Prefixed with `$$`, followed by one or more binary digits (`0` or `1`). 
 
 ```bgl
 $$11111111  // 255
@@ -406,7 +408,7 @@ As a design decision, Beguile preserves most of Inform's conventions for embeddi
 
 #### Numeric character escapes
 
-Characters can be specified by their numeric code, using either decimal or hexadecimal (prefixed with `$`):
+Characters escapes can be specified by their numeric code, using either decimal or hexadecimal (prefixed with `$`):
 
 | Escape | Meaning |
 |--------|---------|
@@ -463,7 +465,7 @@ The full ZSCII extended character set is supported (codes 155 to 224): diaeresis
 
 ### 2.5.2a Raw String Literals
 
-A **raw string literal** is prefixed with `@` and disables all Beguile escape processing except `\"`. Every character between the delimiters is passed through to the generated I6 string as-is, except that `~` and `^` are escaped to their I6 ZSCII equivalents (`@@126` and `@@94`) so they remain literal rather than being interpreted by I6 as quote/newline.
+A **raw string literal** is prefixed with `@` and disables all Beguile escape processing except `\"`. Every character between the delimiters is passed through to the generated I6 string as-is, except that `~` and `^` are emitted as their I6 ZSCII equivalents (`@@126` and `@@94`) so they remain literal rather than being interpreted by I6 as quote/newline.
 
 Raw strings are useful for Windows-style file paths or any string that contains many backslashes.
 
@@ -471,7 +473,7 @@ Raw strings are useful for Windows-style file paths or any string that contains 
 string path = @"C:\Users\jim\IF-Games\medusa.bgl";
 ```
 
-The closing `"` terminates the raw string; there is no way to embed a literal `"` inside a raw string (use an escaped string `"\""` for that).
+The closing `"` terminates the raw string.
 
 Raw strings may be used anywhere a regular string literal is valid: in assignments, as function arguments, and in `#beguilerSettings` property values.
 
@@ -485,14 +487,14 @@ print($"Score: {score}  Turns: {turns}");
 log($"Entering handler for {actor.name}");
 ```
 
-When the target type provides an `operator=(interpolatedStringLiteral)` emitter, interpolated strings can also appear in assignment and variable initialization, making the following, which uses Beguile's `string` language extension (`#include <string>`) possible:
+By default, interpolated strings work with `print()` and `log()`; however,  interpolated strings can also appear in assignment and variable initialization when used with Beguile's `string` language extension (`#include <string>`) (see [TODO: make this reference]):
 
 ```bgl
 string greeting = $"Hello, {name}!";
 greeting = $"Score: {score}  Turns: {turns}";
 ```
 
-See §14.6 for how `print()`, `log()`, and `string` handle interpolated strings through emitters.
+[TODO: we need to refactor this document to include a whole section of emitters; pulling in various sections into this new chapter/section.]
 
 **Escape sequences** inside interpolated strings follow the same rules as plain string literals. To include a literal `{` character, write `\{`:
 
@@ -538,7 +540,7 @@ A dictionary word may contain an **internal hyphen** (I6 dictionary words such a
 adjective = { .medium-sized, .well-worn };   // → I6  'medium-sized' 'well-worn'
 ```
 
-Only an *internal* hyphen is absorbed. A trailing `-` (one not followed by another word character) remains the operator, so `.foo-` lexes as the dictionary word `.foo` followed by `-`. Apostrophes are likewise part of the word (`.monkey's` → `'monkey^s'`); a leading `.` immediately followed by a hyphen or other non-word character is not a dictionary word.
+Apostrophes are likewise acceptable (`.monkey's` → `'monkey^s'`).
 
 ## 2.6 Operators and Symbols
 
@@ -570,9 +572,12 @@ The complete list of directives is described in Chapter 3.
 
 ## 2.8 Reserved Keywords
 
+[TODO: double check these. There's a section elsewhere which says that variable name conflicts are acceptable as long as they are prefixed with a . to verify them as members]
 The following identifiers are reserved and may not be used as variable, function, type, or object names. They are grouped by origin.
 
 ### Beguile keywords
+
+[todo: this list of keywords has 3 tables, 2 describe the role, 1 just lists the words.  It think the purpose of this section should only be to list the words, I'm not sure I see the value is the description in the keywords section].
 
 Structural and type keywords unique to Beguile. They have no corresponding I6 keyword and are fully consumed by the transpiler; nothing from this group appears in the generated output.
 
