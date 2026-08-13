@@ -268,12 +268,12 @@ These "Pretty Lies" are few and far between, we'll cover them in detail when the
 
 A Beguile source file (`.bgl`) is processed by the Beguile compiler through the following stages. Steps 1 and 6 are conditional and only run when blorb packaging is enabled (`generateBlorb = true` in `#beguilerSettings`); see §3.4.1.
 
-1. *(optional)* **Pre-scans for assets** when blorb packaging is enabled.  The compiler searches the folder defined by `blorbAssetPath` for image and audio files, the writes `_blorbAssets.bgl`for the source code to reference. The user must include this file to make use of it.
+1. *(optional)* **Pre-scans for assets** when blorb packaging is enabled.
 2. **Pre-scans** the source to register type, object, function, and variable names. This pass resolves forward references so that declarations may appear in any order.
 3. **Lexes and parses** the source in full, resolving types and checking type compatibility.
 4. **Emits** an Inform 6 source file (`.inf`) that is semantically equivalent to the Beguile source.  If enabled, a debug file is also generated for use by run-time debuggers (see below). 
 5. **Invokes the Inform 6 compiler** on the generated `.inf` file to produce the story file (`.ulx` for Glulx or `.z8`, `.z5`, or `.z3` for Z-Machine).
-6. *(optional)* **Blorb assembly** when blorb packaging is enabled.  The compiler assembles a `.zblorb` (Z-Machine) or `.gblorb` (Glulx) file containing the story file plus all discovered assets and an iFiction metadata record.
+6. *(optional)* **Blorb assembly** when blorb packaging is enabled.  
 
 The intermediate `.inf` file is retained alongside the story file. When compiled with `--debug`, Beguile generates a debug file and triggers Inform 6 to do the same, supporting source-level debugging in the VS Code extension.
 
@@ -572,35 +572,12 @@ The complete list of directives is described in Chapter 3.
 
 ## 2.8 Reserved Keywords
 
-[TODO: double check these. There's a section elsewhere which says that variable name conflicts are acceptable as long as they are prefixed with a . to verify them as members]
 The following identifiers are reserved and may not be used as variable, function, type, or object names. They are grouped by origin.
-
 ### Beguile keywords
-
-[todo: this list of keywords has 3 tables, 2 describe the role, 1 just lists the words.  It think the purpose of this section should only be to list the words, I'm not sure I see the value is the description in the keywords section].
 
 Structural and type keywords unique to Beguile. They have no corresponding I6 keyword and are fully consumed by the transpiler; nothing from this group appears in the generated output.
 
-| Keyword | Role |
-|---------|------|
-| `const` | Compile-time constant or immutable member declaration |
-| `default` | Marks a class method, or an `extern` stub function (§15.2.1), as expected to be overridden; a plain definition overrides it, no `replace` required |
-| `extern` | Declares a type or value backed by I6 with no Beguile body emitted |
-| `extend` | Opens an extension block on an existing class or object |
-| `alias` | Declares a type alias |
-| `emitter` | Marks a function or class as containing inline I6 fragments |
-| `explicit` | Restricts a conversion operator to explicit cast sites only |
-| `replace` | Replaces an existing function or class member; suppresses shadowing warnings |
-| `replaced` | Calls the previous version of a replaced function |
-| `static` | Declares a class-level member shared across all instances |
-| `typesealed` | On a base-class member: locks the slot's type. A subclass/instance that re-declares the member with a different type keeps the sealed type (and gets a warning). See §5.2.7 |
-| `enum` | Enumeration type declaration |
-| `int` | Integer primitive type |
-| `bool` | Boolean primitive type |
-| `void` | Absence-of-value marker on function return types |
-| `auto` | Type inferred from the initializer expression |
-| `var` | Dynamically-typed (untyped) variable |
-| `null` | Absent/unset value |
+`const`  `default`  `extern`  `extend`  `alias` `emitter`  `explicit`  `replaced` `static`  `typesealed` `enum` `int`  `bool`  `void`  `auto` `var` `null`
 
 ### Control flow keywords
 
@@ -612,30 +589,22 @@ Reserved by Beguile and transpile to I6 statements of the same or equivalent nam
 
 Beguile uses these as language constructs, but they also appear verbatim in the generated I6 output as keywords or well-known global identifiers. Reusing them as names would produce invalid or ambiguous I6.
 
-| Keyword | Emitted as |
-|---------|-----------|
-| `class` | `Class` - I6 class declaration |
-| `object` | `Object` - I6 object declaration |
-| `array` | `Array` - I6 array declaration |
-| `attribute` | `Attribute` - I6 attribute declaration |
-| `property` | `Property` - I6 property declaration |
-| `grammar` | `Grammar` - I6 grammar directive |
-| `verb` | `Verb` - I6 verb table directive |
-| `replace` | `Replace` - I6 routine replacement directive |
-| `string` | `String` - I6 string array type |
-| `self` | `self` - implicit current object inside a method body |
-| `true` / `false` | I6 library constants `true` / `false` |
+`class` `object` `array` `attribute` `property` `grammar` `verb` `replace` `string` `self` `true` `false` 
+
+[TODO: there are also I6 keywords which do not appear in the Beguile language.  There should be a section covering these as well.  And perhaps a compiler mod to enable their use if reasonable.]
 
 ---
 
 # Chapter 3 - Program Structure
 
+[TODO: This looks like it needs to be reworked.  It discusses .bgl as source files; touches on the need for a Main function; then blurs into global scope.  Consider if this needs to be reworked to different sections or simply clarified.  A "Basic Beguile" program of just a few lines might help clarify these concepts.]
 ## 3.1 Source Files
 
 A Beguile program consists of one or more `.bgl` source files.  Beguile programs inherit the Inform 6 requirement of defining a `Main` global function as an entry point *(Note: general-purpose libraries, such as the Inform Standard Library or Puny Inform, typically define this for you and have library-specific entry point requirements, such as `Initialise`.) 
 
 Declarations at the outermost level of a file (types, classes, enums, variables, functions, objects, verbs, and grammar) constitute the *global scope*. Declarations may appear in any order within a file. The two-pass compilation model (pre-scan then full parse) ensures that forward references are resolved: a name may be used before it is declared as long as it appears in the same compilation unit.
 
+[TODO: the following feels out of place.  perhaps it should be moved to the sections which cover class and object declaration]
 ### Declaration Qualifiers
 
 Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `extern`, `emitter`, `const`, `static`, `extend`, `alias`, `default`, `superposed`, and `typesealed` (§5.2.7). Qualifiers may appear in **any order**, so `emitter replace void foo()` and `replace emitter void foo()` are equivalent. The compiler validates invalid combinations:
@@ -652,13 +621,13 @@ Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `exte
 
 ### 3.2.1 `#include <name>`
 
-Includes a file from the Beguile language extensions (`beguiLib`) directory. The compiler searches the `beguiLib` tree **recursively** and matches the include name as a **path suffix**:
+This directive includes a file from the language extensions provided by the Beguile Language Runtime (BLR). The compiler searches the `beguiLib` tree **recursively** and matches the include name, regardless of the folder it exists in:
 
 - `#include <name>` finds `name.bgl` **anywhere** in `beguiLib`, root or any subfolder, so a subfolder prefix is optional. `<i6StandardLibrary>` finds `bindings/i6StandardLibrary.bgl` just as `<bindings/i6StandardLibrary>` does.
 - `#include <sub/name>` matches `name.bgl` only when its **immediate parent folder** is `sub` (at any depth): `<orLibrary/orDialogue>` matches `.../orLibrary/orDialogue.bgl`.
 - `#include <a/b/name>` requires the resolved path to end with `a/b/name.bgl`.
 
-The search is deterministic: it checks the current folder's files first, then descends into subfolders in **alphabetical order**, depth-first, and the **first match wins**. Matching is case-insensitive (`<String>` ≡ `<string>`). The `.bgl` extension is supplied by the compiler; write the base name only.
+The search is deterministic: it checks the root folder's files first, then descends into subfolders in **alphabetical order**, depth-first, and the **first match wins**. Matching is case-insensitive (`<String>` ≡ `<string>`) *even if your filesystem is case insensitive*. The `.bgl` extension is supplied by the compiler, so write the base name only.
 
 ```bgl
 #include <string>                  // core extension at beguiLib/string.bgl
@@ -668,7 +637,7 @@ The search is deterministic: it checks the current folder's files first, then de
 
 ### 3.2.2 `#include "path"`
 
-Includes a Beguile source file by path. The compiler searches the current source file's directory, then each `includePaths` directory, trying with `.bgl` extension first, then without. Subdirectory paths are supported; `#include "utils/helpers"` resolves relative to each search root.
+This directive includes a Beguile source file by path. The compiler searches the current source file's directory, then each `includePaths` directory, trying with `.bgl` extension first, then without. Subdirectory paths are supported; `#include "utils/helpers"` resolves relative to each folder searched.
 
 A compile-time error is reported if the file is not found. It is legal to include files more than once; protect against this with `#once` (see §3.2.5).
 
@@ -685,24 +654,25 @@ Same as `#include "path"`, but silently skips if the file is not found instead o
 #include ?"optionalExtension"
 ```
 
+[TODO: does #includeI6 also support ?"file", the option pattern. Confirm this, because it should.]
 ### 3.2.4 `#includeI6 "name"`
 
-Includes an I6 source file. The compiler resolves the file by searching the current source file's directory, then each `includePaths` directory, trying the name as-is and with `.h` extension. The resolved absolute path is emitted into the I6 output.
+Includes an I6 source file. The compiler resolves the file in the same manner as `#include`, by searching the current source file's directory, then each `includePaths` directory, trying the name as-is and with `.h` extension. The resolved absolute path is emitted into the I6 output.
 
 A compile-time error is reported if the file is not found. Subdirectory paths are supported.
 
 ```bgl
 #includeI6 "parser"
-// emits: #include "/full/path/to/parser.h";
 ```
 
 An optional variant `#includeI6 ?"name"` silently skips if the file is not found.
 
 All `includePaths` directories are also emitted as `!% ++include_path=` directives in the I6 output, so that I6 can resolve its own internal includes (e.g., `parser.h` including `linklpa.h`).
 
+[TODO: this should move to follow the path resolution sections.]
 ### 3.2.5 `#once`
 
-When placed at the top of a Beguile source file, `#once` marks the file so that any subsequent `#include` of the same file (by any path that resolves to the same absolute location) is silently ignored. Without `#once`, a file may be processed multiple times if included from different places.
+When placed at the top of a Beguile source file, `#once` marks the file so that any subsequent `#include` of the same file (by any path that resolves to the same absolute location) is silently ignored. Without `#once`, a file may be processed multiple times.
 
 ```bgl
 #once
@@ -713,6 +683,7 @@ When placed at the top of a Beguile source file, `#once` marks the file so that 
 
 The compiler also enforces a maximum include nesting depth of 255. Exceeding this limit, for example through circular includes in files without `#once`, is a compile-time error.
 
+[TODO: In the following section, we should give examples of how paths are emitted, fully qualified] 
 ### 3.2.6 Path resolution
 
 All file paths in Beguile source (`#include` paths, `#includeI6` paths, and `#beguilerSettings` path properties such as `informPath`, `outputPath`, `blorbAssetPath`) receive two normalization passes at parse time.
@@ -721,9 +692,10 @@ All file paths in Beguile source (`#include` paths, `#includeI6` paths, and `#be
 
 **Case-insensitive resolution.** Include matching is case-insensitive throughout (lowercased comparison). For `#include <name>` (library search) the compiler walks the `beguiLib` tree recursively, files in each folder first, then subfolders alphabetically, depth-first, and takes the first file whose path ends with the requested `name` suffix (see §3.2.1). For `#include "path"` (relative search) it matches against the current source directory and each `includePaths` root. If nothing matches, a normal file-not-found error results.
 
+[TODO: Why?  It feels like we should also convert folders to case-insensitive in the same way.  This would be a compiler change.]
 > Note: case-insensitive resolution only applies to the **filename** portion of the path, not to intermediate directory components. On a case-sensitive file system, directories in the path must still be cased correctly.
 
-**Resolved paths emitted to I6.** For `#includeI6`, the *fully resolved absolute path* is what gets written into the generated I6 stream, not the literal path the user typed. This isolates I6's own include lookup from the user's working-directory and search-path setup; I6 sees a single canonical filename and never has to re-search. (Beguile's `#include <bgl>` directives are processed entirely at the Beguile layer and don't appear in the I6 output at all.)
+**Resolved paths emitted to I6.** For `#includeI6`, the *fully resolved absolute path* is what gets written into the generated I6 stream, not the literal path the user typed. This isolates I6's own include lookup from the user's working-directory and search-path setup; I6 sees a single canonical filename and never has to re-search. 
 
 ### 3.2.7 Differences from I6 path conventions
 
@@ -742,15 +714,16 @@ The `>` convention still works for I6's own `Include` directives appearing insid
 
 ### 3.3.1 `#define`
 
-Defines a named compilation symbol. Defining the symbol without a value assigns it a `true` boolean value by default.
+Defines a named compilation symbol and value. Defining the symbol without a value assigns it a `true` boolean value by default.
 
 ```bgl
-#define DEBUG
-#define MAX_SCORE 100
+#define DEBUG         // ← DEBUG equals true
+#define MAX_SCORE 100 // ← MAX_SCORE equals 100
 ```
 
-Symbols defined with `#define` can be tested with `#if`. A value-bearing symbol is also resolved as an inline compile-time literal in Beguile expressions; the symbol name is replaced by its value at compile time. Numeric values resolve as `intLiteral`; other values resolve as `stringLiteral`.
+Symbols defined with `#define` can be tested with `#if`. A value-bearing symbol is also resolved as an inline compile-time literal in Beguile expressions.  That is, the symbol name is replaced by its value at compile time. These numeric values resolve as `intLiteral`; other values resolve as `stringLiteral`.
 
+[TODO: confirm that #undef actually exists in the compiler; I brought it up as an example and it may have been added in error.  Also, if #undef does exist, there should probably be a #redef which would act like #define but not throw an error if the value is already present].
 `#define` and `#undef` are **position-dependent** (linear), like a standard C-style preprocessor: a directive affects only the source that follows it. An `#if` sees a symbol as defined only if a `#define` for it appears *earlier* in the source (and no intervening `#undef` removed it); a `#define` placed after an `#if` does not retroactively affect that `#if`. Redefining or `#undef`-ing a symbol partway through a file changes its meaning from that point forward. (Beguile compiles in two passes, but both evaluate conditionals with identical linear semantics.)
 
 ```bgl
@@ -804,7 +777,7 @@ The target symbols are set from `#beguilerSettings target` before parsing begins
 #endif
 ```
 
-All symbols (both pre-defined and user `#define`) are resolved as inline compile-time literals in Beguile expressions; the symbol name is replaced by its value at compile time. They are not emitted as I6 `Constant` declarations unless explicitly assigned to a `const` variable:
+All symbols (both pre-defined and user `#define` symbols) are resolved as inline compile-time literals in Beguile expressions; the symbol name is replaced by its value at compile time. They are not emitted as I6 `Constant` declarations unless explicitly assigned to a `const` variable:
 
 ```bgl
 if(beguiler >= 1010) { ... }             // resolved at compile time
@@ -850,15 +823,13 @@ Conditional directives and `#define`/`#undef` are honored during **both** compil
 
 > **Note: there is no `#ifdef`.** Beguile does not have a separate `#ifdef` directive. Use `#if SYMBOL` to test whether a symbol is defined; it evaluates to `false` when the symbol is absent, which is equivalent to `#ifdef SYMBOL` in C-family languages. Similarly, use `#if !SYMBOL` in place of `#ifndef SYMBOL`.
 
+[TODO: how does this behave for #define VAL false?  VAL is defined, but its defined as false.  Shouldn't #if VAL and #if VAL == false be treated differently?]
+
 The `##if` / `##else` / `##endif` forms (double-hash prefix) provide the same conditional logic inside **emitter bodies**; see §14.2. They support the same expression syntax as `#if` (symbols, comparisons, `&&`, `||`, `!`). They are evaluated at emit time and are not valid in ordinary Beguile source.
 
 ## 3.4 `#beguilerSettings`
 
 The `#beguilerSettings` block configures the transpiler and the downstream Inform 6 invocation. Multiple `#beguilerSettings` blocks are allowed; properties follow **first-writer-wins** semantics (the first block to set a property wins; later blocks are ignored for that property), except for `includePaths`, which is **additive**, so every occurrence adds a directory to the search path.
-
-The schema for this directive is declared as `extern class beguilerSettingsType` in `__beguileCore.bgl`. The parser validates property names and value types against this class.
-
-Enum-typed properties accept either the bare value name or the optionally qualified `EnumType.Value` form; both are equivalent:
 
 ```bgl
 #beguilerSettings {
@@ -872,25 +843,25 @@ Enum-typed properties accept either the bare value name or the optionally qualif
 
 These settings tell the transpiler where to find external tools. They are not written to the generated output.
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `informPath` | string | none | Full path to the Inform 6 compiler binary. Takes precedence over `informName`. |
-| `informName` | string | `"inform"` | Filename of the Inform 6 binary (looked up adjacent to the `beguiler` binary). Use `"none"` to skip the I6 handoff entirely. CLI `-inform=` overrides this. |
-| `beguiLibPath` | string | `"beguiLib"` | Path to the Beguile language extensions directory. Overrides the default binary-adjacent search. |
-| `includePaths` | string | none | Adds a directory to the include search path for both `#include` and `#includeI6`. May be specified multiple times (additive). Duplicates are ignored. CLI `-includepaths=` also adds to this list. |
+| Setting        | Type   | Default      | Description                                                                                                                                                                                        |
+| -------------- | ------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `informPath`   | string | none         | Full path to the Inform 6 compiler binary. Takes precedence over `informName`.                                                                                                                     |
+| `informName`   | string | `"inform"`   | Filename of the Inform 6 binary (looked up adjacent to the `beguiler` binary). Use `"none"` to skip the I6 handoff entirely. CLI `-inform=` overrides this.                                        |
+| `beguiLibPath` | string | `"beguiLib"` | Path to the Beguile Language Runtime language extensions directory. Overrides the default binary-adjacent search.                                                                                  |
+| `includePaths` | string | none         | Adds a directory to the include search path for both `#include` and `#includeI6`. May be specified multiple times (additive). Duplicates are ignored. CLI `-includepaths=` also adds to this list. |
 
 ### Compilation settings
 
 These settings control the compilation target and output characteristics.
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `target` | `eTarget` | `Glulx` | Compilation target: `Glulx`, `Z3`, `Z5`, or `Z8`. Either the bare enum value (`target = Z5;`) or the qualified form (`target = eTarget.Z5;`) is accepted. |
-| `outputPath` | string | `"output"` | Directory for the compiled story file. Relative paths are resolved from the source file's directory. CLI `-o` overrides this. |
-| `release` | int | `0` | Sets the story release number. `0` means unset. |
-| `errorFormat` | `eErrorFormat` | `E1` | Error reporting style passed to the I6 compiler. `E1` = Microsoft-style; `E2` = Macintosh-style. |
-| `omitUnusedRoutines` | bool | `true` | When `true` (the default), emits the I6 `!% $OMIT_UNUSED_ROUTINES=1` setting, so routines that are never referenced (and whose address is never taken) are dropped from the story file. Set `false` for debug builds to keep all routines. Pairs naturally with `superposed` routines (§15.9). |
-| `economy` | bool | `false` | When `true`, auto-compresses story text: after transpiling, the compiler computes the optimal set of I6 text abbreviations (an `inform6 -u` pre-pass), injects them at the top of the generated `.inf`, and compiles the real pass with `-e` (economy mode). Typically reclaims 5 to 15% of story size on prose-heavy games (≈14 KB on mack); useful headroom on the Z5 256 KB ceiling. **Opt-in and non-intrusive:** if your source already defines its own `Abbreviate` directives, auto-abbreviation is skipped entirely; your hand-tuned set is respected. **Why opt-in:** the `-u` optimization runs a second full I6 pass over the text and roughly quadruples build time (≈0.7 s → 2.6 s on mack), so it's a *ship-time* optimization; enable it for release builds, leave it off for the fast edit-compile-test loop. Off by default; ignored when there is no I6 handoff (`informName = "none"`). |
+| Setting              | Type           | Default    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------- | -------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target`             | `eTarget`      | `Glulx`    | Compilation target: `Glulx`, `Z3`, `Z5`, or `Z8`. Either the bare enum value (`target = Z5;`) or the qualified form (`target = eTarget.Z5;`) is accepted.                                                                                                                                                                                                                                                                                                                     |
+| `outputPath`         | string         | `"output"` | Directory for the compiled intermediate I6 source file, debug files, and story file. Relative paths are resolved from the source file's directory. CLI `-o` overrides this.                                                                                                                                                                                                                                                                                                   |
+| `release`            | int            | `0`        | Sets the story release number. `0` means unset.                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `errorFormat`        | `eErrorFormat` | `E1`       | Error reporting style passed to the I6 compiler. `E1` = Microsoft-style; `E2` = Macintosh-style.                                                                                                                                                                                                                                                                                                                                                                              |
+| `omitUnusedRoutines` | bool           | `true`     | When `true` (the default), emits the I6 `!% $OMIT_UNUSED_ROUTINES=1` setting, so routines that are never referenced (and whose address is never taken) are dropped from the story file. Set `false` for debug builds to keep all routines.                                                                                                                                                                                                                                    |
+| `economy`            | bool           | `false`    | When `true`, auto-compresses story text: after transpiling, the compiler computes the optimal set of I6 text abbreviations (an `inform6 -u` pre-pass), injects them at the top of the generated `.inf`, and compiles the real pass with `-e` (economy mode). Useful headroom on the Z5 256 KB ceiling. **Opt-in and non-intrusive:** if your source already defines its own `Abbreviate` directives, auto-abbreviation is skipped entirely; your hand-tuned set is respected. |
 
 ### Runtime settings
 
@@ -905,20 +876,20 @@ These settings affect the generated code.
 
 These settings carry game identity information. They feed blorb packaging directly (see §3.4.1) and can be surfaced as Beguile constants; see §3.4.2.
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `title` | string | `""` | Game title (iFiction `<title>`). |
-| `author` | string | `""` | Game author (iFiction `<author>`). |
-| `headline` | string | `""` | Subtitle or tagline, e.g. `"An Interactive Mystery"` (iFiction `<headline>`). |
-| `genre` | string | `""` | Genre, e.g. `"Fantasy"`, `"Mystery"`, `"Science Fiction"` (iFiction `<genre>`). |
-| `description` | string | `""` | Blurb text; may contain line breaks; max ~2400 chars (iFiction `<description>`). |
-| `language` | string | `""` | ISO-639 language code, e.g. `"en"`, `"en-US"` (iFiction `<language>`). |
-| `series` | string | `""` | Series name (iFiction `<series>`). |
-| `seriesNumber` | int | `0` | Position in series; requires `series` to be set (iFiction `<seriesnumber>`). |
-| `firstPublished` | string | `""` | Publication date: `"YYYY"` or `"YYYY-MM-DD"` (iFiction `<firstpublished>`). |
-| `forgiveness` | string | `""` | Difficulty: `"Merciful"`, `"Polite"`, `"Tough"`, `"Nasty"`, or `"Cruel"` (iFiction `<forgiveness>`). |
-| `release` | int | `0` | Story release number. `0` means unset. |
-| `ifid` | string | (auto) | Treaty of Babel IFID in UUID format (e.g. `"A0B1C2D3-E4F5-6789-ABCD-EF0123456789"`). Auto-generated when blorb packaging is enabled and no explicit IFID is provided. Once published, the IFID must never change across releases. |
+| Setting          | Type                                                                                                                                                          | Default | Description                                                                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------- |
+| `title`          | string                                                                                                                                                        | `""`    | Game title (iFiction `<title>`                                                                                                                                                            |
+| `author`         | string                                                                                                                                                        | `""`    | Game author (iFiction `<author>                                                                                                                                                           |
+| `headline`       | string                                                                                                                                                        | `""`    | Subtitle or tagline, e.g. `"An Interactive Mystery"` (iFiction `<headline                                                                                                                 |
+| `genre`          | string                                                                                                                                                        | `""`    | Genre, e.g. `"Fantasy"`, `"Mystery"`, `"Science Fiction"` (iFiction `<genr                                                                                                                |
+| `description`    | string                                                                                                                                                        | `""`    | Blurb text; may contain line breaks; max ~2400 chars (iFiction `<descripti                                                                                                                |
+| `language`       | string                                                                                                                                                        | `""`    | ISO-639 language code, e.g. `"en"`, `"en-US"` (iFiction `<langu                                                                                                                           |
+| `series`         | string                                                                                                                                                        | `""`    | Series name (iFiction `<se                                                                                                                                                                |
+| `seriesNumber`   | int                                                                                                                                                           | `0`     | Position in series; requires `series` to be set (iFiction `<seriesn                                                                                                                       |
+| `firstPublished` | string                                                                                                                                                        | `""`    | Publication date: `"YYYY"` or `"YYYY-MM-DD"` (iFiction `<firstpub                                                                                                                         |
+| `forgiveness`    | string                                                                                                                                                        | `""`    | Difficulty: `"Merciful"`, `"Polite"`, `"Tough"`, `"Nasty"`, or `"Cruel"` (iFiction `<forg                                                                                                 |
+| `release`        | int                                                                                                                                                           | `0`     | Story release number. `0`                                                                                                                                                                 |
+| `ifid`           | strin Treaty of Babel IFID in UUID format (e.g. `"A0B1C2D3-E4F5-6789-ABCD-EF0123456789"`). Auto-generated deterministically if no explicit IFID is provided.  |
 
 All iFiction fields are included in the blorb `IFmd` chunk when blorb packaging is enabled. `<title>` and `<author>` default to "Untitled" / "Anonymous" if not set (Treaty of Babel requires both).
 
