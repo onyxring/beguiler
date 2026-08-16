@@ -65,6 +65,12 @@ class i6Emitter{
         map<string,string> currentLocalRenames;
         int currentSpillCount = 0;
         bool frameAllocEmitted = false;
+        // Per-routine snapshots of the spill map, persisted from currentSpillAliases at emit time so
+        // writeDebugBundle can record each local's storage location (the transient maps are cleared
+        // between routines). Keyed by the routine's I6 name. `routineSpillCounts[name] > 0` means the
+        // routine has the synthetic `_bglFrm` frame pointer, which the debugger should hide.
+        map<string, map<string,string>> routineSpillAliases;   // routineI6Name → localName → "_bglFrm-->N"/"_bglXPn"
+        map<string, int>                routineSpillCounts;    // routineI6Name → frame-pool slot count
         int xpGlobalsNeeded = 0;                           // how many _bglXPn globals were emitted
         int framePoolSize = 64;                            // configurable via beguilerSettings framePoolSize
 

@@ -604,18 +604,32 @@ void i6Emitter::writeTypesFile(const string& path){
         if(!fd || fd->isEmitter || fd->isExternal) continue;
         const string& funcI6n = fd->i6name.empty() ? fd->name : fd->i6name;
         f << "routine " << funcI6n << "\n";
+        // Storage location per local: `slot` = a direct I6 routine local; `_bglFrm-->N` = spilled
+        // into the frame pool at offset N; `_bglXPn` = an excess-param global. Lets the debugger
+        // read a value that isn't in the VM's local frame. Format: `local <name> <type> <storage>`.
+        auto sit = routineSpillAliases.find(funcI6n);
+        const map<string,string>* spills = (sit != routineSpillAliases.end()) ? &sit->second : nullptr;
+        auto storage = [&](const string& nm) -> string {
+            if(spills){ auto it = spills->find(nm); if(it != spills->end()) return it->second; }
+            return "slot";
+        };
         for(paramDef* p : fd->params){
             if(p->type.name.empty() || p->type.name == "void") continue;
-            f << "  local " << p->name << " " << p->type.name << "\n";
+            f << "  local " << p->name << " " << p->type.name << " " << storage(p->name) << "\n";
         }
         auto* body = dynamic_cast<statementBlock*>(fd->body);
         if(body){
             for(statement* s : body->statements){
                 auto* vd = dynamic_cast<variableDeclaration*>(s);
                 if(!vd || vd->type.name.empty()) continue;
-                f << "  local " << vd->name << " " << vd->type.name << "\n";
+                f << "  local " << vd->name << " " << vd->type.name << " " << storage(vd->name) << "\n";
             }
         }
+        // Synthetic frame pointer, present only when the routine spills. Marked `synthetic` so the
+        // debugger hides it from the locals view (the robust replacement for a `_bgl` name heuristic).
+        auto cit = routineSpillCounts.find(funcI6n);
+        if(cit != routineSpillCounts.end() && cit->second > 0)
+            f << "  local _bglFrm int slot synthetic\n";
     }
 
     // ── Global variables ──────────────────────────────────────────────────────
@@ -767,18 +781,32 @@ void i6Emitter::writeDebugBundle(const string& path){
         if(!fd || fd->isEmitter || fd->isExternal) continue;
         const string& funcI6n = fd->i6name.empty() ? fd->name : fd->i6name;
         f << "routine " << funcI6n << "\n";
+        // Storage location per local: `slot` = a direct I6 routine local; `_bglFrm-->N` = spilled
+        // into the frame pool at offset N; `_bglXPn` = an excess-param global. Lets the debugger
+        // read a value that isn't in the VM's local frame. Format: `local <name> <type> <storage>`.
+        auto sit = routineSpillAliases.find(funcI6n);
+        const map<string,string>* spills = (sit != routineSpillAliases.end()) ? &sit->second : nullptr;
+        auto storage = [&](const string& nm) -> string {
+            if(spills){ auto it = spills->find(nm); if(it != spills->end()) return it->second; }
+            return "slot";
+        };
         for(paramDef* p : fd->params){
             if(p->type.name.empty() || p->type.name == "void") continue;
-            f << "  local " << p->name << " " << p->type.name << "\n";
+            f << "  local " << p->name << " " << p->type.name << " " << storage(p->name) << "\n";
         }
         auto* body = dynamic_cast<statementBlock*>(fd->body);
         if(body){
             for(statement* s : body->statements){
                 auto* vd = dynamic_cast<variableDeclaration*>(s);
                 if(!vd || vd->type.name.empty()) continue;
-                f << "  local " << vd->name << " " << vd->type.name << "\n";
+                f << "  local " << vd->name << " " << vd->type.name << " " << storage(vd->name) << "\n";
             }
         }
+        // Synthetic frame pointer, present only when the routine spills. Marked `synthetic` so the
+        // debugger hides it from the locals view (the robust replacement for a `_bgl` name heuristic).
+        auto cit = routineSpillCounts.find(funcI6n);
+        if(cit != routineSpillCounts.end() && cit->second > 0)
+            f << "  local _bglFrm int slot synthetic\n";
     }
     // Global variables
     for(typeDef* node : languageService.globals){
@@ -1504,6 +1532,13 @@ void i6Emitter::emitFunction(functionDef* funcNode){
         return;
     }
     buildSpillMap(funcNode);
+    // Persist this routine's spill map for the debug bundle (the transient maps are cleared per
+    // routine). Key matches writeDebugBundle's lookup: i6name, else canonical name.
+    {
+        string rn = funcNode->i6name.empty() ? funcNode->name : funcNode->i6name;
+        routineSpillAliases[rn] = currentSpillAliases;
+        routineSpillCounts[rn]  = currentSpillCount;
+    }
     if(!funcNode->src.file.empty())
         pushSourceMap(currentLine(), funcNode->src.file, funcNode->src.line);
     out << format("[{0}", funcNode->i6name.empty() ? funcNode->dName() : funcNode->i6name);

@@ -92,6 +92,11 @@ def validate(bgl):
     for ln in b["types"]:
         check(re.match(r'^(enum |type |routine |global |  value |  local |  prop )', ln) is not None,
               f"[types] malformed line: {ln!r}")
+        # `local` lines carry a storage location so the debugger can find spilled/XP values:
+        #   `  local <name> <type> <storage> [synthetic]`  storage = slot | _bglFrm-->N | _bglXPn
+        if ln.startswith("  local "):
+            check(re.match(r'^  local \S+ \S+ (slot|_bglFrm-->\d+|_bglXP\d+)( synthetic)?$', ln) is not None,
+                  f"[types] local line missing/invalid storage location: {ln!r}")
 
     # parse map, well-formed rows only
     rows = []
