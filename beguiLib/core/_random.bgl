@@ -1,0 +1,53 @@
+#once
+//=============================================================================
+// Random — ALWAYS present, no manual include. Exposed as the `bgl.util.random`
+// utility object (a facade, like `bgl.util.math`):
+//
+//   bgl.util.random.get(n)          → a uniform value in 1..n  (I6 random(n))
+//   bgl.util.random.get(a, b, c, …) → one of the listed values (I6 random(a,b,c))
+//   bgl.util.random.seed(s)         → seed the RNG (s == 0 re-seeds from the
+//                                     environment; s > 0 is deterministic)
+//
+// `get` delegates straight to Inform 6's built-in `random()`, which the I6
+// COMPILER lowers itself — `random(n)` → the @random opcode (1..n), and the
+// multi-argument form `random(a, b, c, …)` → compiler-generated selection of one
+// argument. Both are library-independent builtins (verified: they compile in a
+// bare .inf with no library), so Beguile writes NO backing routine of its own —
+// it would only be reimplementing what the compiler already provides for free.
+//
+// The facade is pure emitters: each `get` inlines to the I6 `random(...)` call at
+// the site, so the whole namespace costs zero unless referenced, and there is
+// nothing to materialize. `seed` is the one target-specific piece (below).
+//=============================================================================
+emitter class _bglRandom {
+    // get(n) → 1..n. Single-arg I6 random() is the ranged roll.
+    emitter int get(int range){ random($range) }
+
+    // get(a, b, …) → one of the values, chosen uniformly. Multi-arg I6 random() is
+    // the pick; the I6 compiler emits the selection, so these are one-line pass-throughs.
+    // Arity overloads (2..8): `get(6)` resolves to the roll above, `get(a, b, …)` here.
+    // (I6 random() is itself variadic; the cap is only how many overloads we spell out.
+    // For more choices, index an array: `arr[bgl.util.random.get(arr.size()) - 1]`.)
+    emitter var get(var a, var b){ random($a, $b) }
+    emitter var get(var a, var b, var c){ random($a, $b, $c) }
+    emitter var get(var a, var b, var c, var d){ random($a, $b, $c, $d) }
+    emitter var get(var a, var b, var c, var d, var e){ random($a, $b, $c, $d, $e) }
+    emitter var get(var a, var b, var c, var d, var e, var f){ random($a, $b, $c, $d, $e, $f) }
+    emitter var get(var a, var b, var c, var d, var e, var f, var g){ random($a, $b, $c, $d, $e, $f, $g) }
+    emitter var get(var a, var b, var c, var d, var e, var f, var g, var h){ random($a, $b, $c, $d, $e, $f, $g, $h) }
+
+    // seed — the one target-specific piece. Glulx has a dedicated @setrandom; the
+    // Z-machine has no seed opcode and instead seeds via @random with a non-positive
+    // argument (0 = re-seed from the environment, negative = deterministic sequence
+    // keyed by |n|). We map seed(0) → re-seed, seed(s>0) → deterministic-to-s on both.
+    // Inline `##if` is honored inside emitter bodies (see _math.bgl).
+    emitter void seed(int s){
+        ##if TARGET_GLULX
+        @setrandom $s;
+        ##else
+        random(-$s);
+        ##endif
+    }
+}
+
+extend _bglUtil { emitter auto random = _bglRandom; }   // bgl.util.random.get(...) / .seed(...)

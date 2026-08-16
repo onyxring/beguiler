@@ -82,6 +82,20 @@ superposed int _bglAbs(int p){ if(p < 0) return -p; return p; }
 superposed int _bglShiftLeft(int i, int numBits){ return i * _bglPow(2, numBits); }
 superposed int _bglShiftRight(int i, int numBits){ return i / _bglPow(2, numBits); }
 
+// Logical (zero-fill) right shift — divides as UNSIGNED, so a value with the sign
+// bit set does not sign-extend. This is what `uint >>` needs; signed `_bglShiftRight`
+// (native `/`) would smear the sign bit. Left shift is bit-identical either way, so
+// uint reuses `_bglShiftLeft`.
+superposed int _bglUnsignedShiftRight(int i, int numBits){ return _bglUnsignedDiv(i, _bglPow(2, numBits)); }
+
+// Plain if/else, never ternary — see the _bglUnsignedDiv note: ternary lowering leaks
+// a `_bgl_temp` global that superposition can't withhold, which would land in every
+// story file since this is always-parsed core.
+superposed int _bglMin(int a, int b){ if(a < b) return a; return b; }
+superposed int _bglMax(int a, int b){ if(a > b) return a; return b; }
+superposed int _bglClamp(int v, int lo, int hi){ if(v < lo) return lo; if(v > hi) return hi; return v; }
+superposed int _bglSign(int v){ if(v < 0) return -1; if(v > 0) return 1; return 0; }
+
 //=============================================================================
 // _bglMath — the nicely-named facade (also reachable as bgl.util.math). Each
 // method is an emitter that inlines to its `superposed` implementation above, so
@@ -97,6 +111,10 @@ emitter class _bglMath {
     emitter int abs(int p)                   { _bglAbs($p) }
     emitter int shiftLeft(int i, int numBits) { _bglShiftLeft($i, $numBits) }
     emitter int shiftRight(int i, int numBits){ _bglShiftRight($i, $numBits) }
+    emitter int min(int a, int b)            { _bglMin($a, $b) }
+    emitter int max(int a, int b)            { _bglMax($a, $b) }
+    emitter int clamp(int v, int lo, int hi) { _bglClamp($v, $lo, $hi) }
+    emitter int sign(int v)                  { _bglSign($v) }
 }
 
 extend _bglUtil{ emitter auto math = _bglMath; }

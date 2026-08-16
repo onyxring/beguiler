@@ -173,14 +173,21 @@ bool bglParser::evaluateCondition(const string& expr){
         const string& s;
         size_t pos = 0;
         map<string,string>& syms;
+        bool lastWasSymbol = false;      // last atom read was a symbol name (not a literal)
+        bool lastSymbolDefined = false;  // ...and that symbol was defined
 
         void skipWs(){ while(pos<s.size() && isspace(s[pos])) pos++; }
 
-        // Read a value atom — returns its string representation.
-        // Symbols resolve to their defined value ("" → "1"), undefined → "0".
-        // Numeric literals return the literal text.
+        // Read a value atom — returns its string representation, used for comparisons.
+        // A symbol resolves to its defined value ("" → "1"), undefined → "0"; the keyword
+        // values `true`/`false` resolve to "1"/"0". `lastWasSymbol` / `lastSymbolDefined`
+        // record whether the atom was a symbol and whether it was defined, so a bare atom
+        // in boolean position (no comparison operator) can test *definedness* rather than
+        // value: `#if V` means "is V defined", while `#if V == false` compares V's value.
         string readAtom(){
             skipWs();
+            lastWasSymbol = false;
+            lastSymbolDefined = false;
             if(pos<s.size() && (isdigit(s[pos]) || (s[pos]=='-' && pos+1<s.size() && isdigit(s[pos+1])))){
                 size_t start=pos; if(s[pos]=='-') pos++;
                 while(pos<s.size() && isdigit(s[pos])) pos++;
@@ -192,9 +199,19 @@ bool bglParser::evaluateCondition(const string& expr){
                 string name=s.substr(start,pos-start);
                 // normalize to lowercase to match stored keys
                 transform(name.begin(),name.end(),name.begin(),::tolower);
+                // `true` / `false` are literal boolean values (1 / 0), not symbols.
+                if(name=="true")  return "1";
+                if(name=="false") return "0";
+                lastWasSymbol = true;
                 auto it=syms.find(name);
-                if(it==syms.end()) return "0";               // undefined → 0
-                return it->second.empty() ? "1" : it->second; // boolean flag → 1
+                if(it==syms.end()) return "0";               // undefined → value 0 (lastSymbolDefined stays false)
+                lastSymbolDefined = true;
+                string v = it->second.empty() ? "1" : it->second; // bare #define → value 1
+                // Normalize a symbol whose value is the keyword true/false for comparisons.
+                string vl=v; transform(vl.begin(),vl.end(),vl.begin(),::tolower);
+                if(vl=="true")  return "1";
+                if(vl=="false") return "0";
+                return v;
             }
             return "0";
         }
@@ -238,7 +255,11 @@ bool bglParser::evaluateCondition(const string& expr){
             }
             if(op.empty() && pos<s.size() && (s[pos]=='<' || s[pos]=='>')){ op=string(1,s[pos]); pos++; }
             if(op.empty()){
-                // no comparison — treat atom as boolean (non-empty and non-"0")
+                // No comparison operator: bare atom in boolean position.
+                // A bare symbol tests DEFINEDNESS (`#if SYMBOL` == "is SYMBOL defined",
+                // the #ifdef equivalent), regardless of its value. A bare numeric or
+                // true/false literal tests truthiness (non-zero).
+                if(lastWasSymbol) return lastSymbolDefined;
                 return !lhsVal.empty() && lhsVal!="0";
             }
             skipWs();
@@ -828,7 +849,9 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             return false;
             break;
         }
-        case chk("#define"):{
+        case chk("#define"):
+        case chk("#redef"):{
+            bool isRedef = directive.is("#redef");
             token sym = file.getToken(eTokenType::identifier);
             // optional value on the same line — skip horizontal whitespace only (not newlines)
             while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
@@ -840,6 +863,9 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                 token rest = file.getBasicToken(true);
                 while(rest.isNot("\n") && rest.isNot(eTokenType::eof)) rest = file.getBasicToken(true);
             }
+            // `#define` errors if the symbol is already defined; `#redef` overwrites silently.
+            if(!isRedef && definedSymbols.count(sym.value))
+                parsingError(format("'#define {0}' redefines a symbol that is already defined; use '#redef {0}' to intentionally redefine it", sym.value));
             definedSymbols[sym.value] = valStr;
             return false;
         }
@@ -1125,7 +1151,7 @@ bool bglParser::processBeguilerSettings(){
         }
         else if(key == "target"){
             if(languageService.getEnumType(strVal) != "etarget")
-                parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z3, Z5, or Z8).", strVal));
+                parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z5, or Z8).", strVal));
             if(cfg.target.empty()) cfg.target = strVal;
         }
         else if(key == "rewritepaths"){

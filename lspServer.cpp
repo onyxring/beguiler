@@ -992,6 +992,38 @@ json LspServer::handleHover(const json& params) {
     string word = lineText.substr(start, end - start);
     if(word.empty()) return nullptr;
 
+    // Verb-extend member keywords — hover doc for `synonyms` / `priority` / `grammar`, gated on being
+    // inside a `verb <name> { … }` or `extend <verb> { … }` body (so a user identifier of the same
+    // name elsewhere never false-hovers). Mirrors the extend-body completion docs.
+    if(word == "synonyms" || word == "priority" || word == "grammar") {
+        const string& dt = docIt->second;
+        size_t cursorOffset = 0;
+        { int cl = 0; size_t i = 0; while(i < dt.size() && cl < line) { if(dt[i] == '\n') cl++; i++; } cursorOffset = i + (size_t)col; if(cursorOffset > dt.size()) cursorOffset = dt.size(); }
+        ptrdiff_t openerPos = -1; int depth = 0;
+        for(ptrdiff_t i = (ptrdiff_t)cursorOffset - 1; i >= 0; i--) { char c = dt[(size_t)i]; if(c == '}') depth++; else if(c == '{') { depth--; if(depth < 0) { openerPos = i; break; } } }
+        bool inVerbBody = false;
+        if(openerPos >= 0) {
+            ptrdiff_t i = openerPos - 1;
+            while(i >= 0 && isspace((unsigned char)dt[(size_t)i])) i--;
+            ptrdiff_t ne = i + 1; while(i >= 0 && (isalnum((unsigned char)dt[(size_t)i]) || dt[(size_t)i] == '_')) i--; ptrdiff_t ns = i + 1;
+            string nm = (ns < ne) ? dt.substr((size_t)ns, (size_t)(ne - ns)) : "";
+            while(i >= 0 && isspace((unsigned char)dt[(size_t)i])) i--;
+            ptrdiff_t ke = i + 1; while(i >= 0 && (isalnum((unsigned char)dt[(size_t)i]) || dt[(size_t)i] == '_')) i--;
+            string kw = (i + 1 < ke) ? dt.substr((size_t)(i + 1), (size_t)(ke - (i + 1))) : "";
+            transform(kw.begin(), kw.end(), kw.begin(), ::tolower);
+            transform(nm.begin(), nm.end(), nm.begin(), ::tolower);
+            if((kw == "extend" || kw == "verb") && !nm.empty())
+                for(auto* v : languageService.verbs) if(v->name == nm) { inVerbBody = true; break; }
+        }
+        if(inVerbBody) {
+            string hd;
+            if(word == "synonyms")      hd = "**`synonyms`** — declare true I6 aliases of this verb: `synonyms = {.w1, .w2};` emits `Verb 'w1' 'w2' = '<anchor>';`, so any later `extend` of the verb flows to them too (unlike copying a grammar line, which is a one-time snapshot).";
+            else if(word == "priority") hd = "**`priority`** — grammar match order. On the verb block it sets the anchor (default `10`); inside an `extend` it is a block-local directive stamped onto the lines that block adds. Lower number = matched earlier.";
+            else                        hd = "**`grammar`** — this verb's grammar lines. In an `extend`: `grammar += { … }` appends, `grammar -= { … }` removes matching lines (or evicts a library word), `replace grammar = { … }` wipes and replaces.";
+            return {{"contents", {{"kind", "markdown"}, {"value", hd}}}};
+        }
+    }
+
     // Check for dotted path: walk back through full owner chain (bgl.glulx.window → owner = "bgl.glulx")
     string ownerName;
     if(start > 0 && lineText[start - 1] == '.') {
@@ -1962,6 +1994,64 @@ json LspServer::handleCompletion(const json& params) {
                 break;
             }
             return items;
+        }
+    }
+
+    // ── Phase 1.6: extend-body member completion ─────────────────────────
+    // Inside `extend <Verb> { ▮ }` at member position, offer the members you add to a
+    // verb via an extend: `grammar` (+=/-=/replace), `synonyms`, `priority`, and the
+    // `replace` qualifier. Gated on the extended name resolving to a known verb, so
+    // object/class extends are unaffected. The grammar-pattern brace
+    // (`grammar = { {.w ▮} }`) is caught by Phase 1.5 above, which runs first and returns.
+    {
+        // Byte offset of the cursor.
+        size_t cursorOffset = 0;
+        {
+            int curLine = 0; size_t i = 0;
+            while(i < docText.size() && curLine < line) { if(docText[i] == '\n') curLine++; i++; }
+            cursorOffset = i + (size_t)col;
+            if(cursorOffset > docText.size()) cursorOffset = docText.size();
+        }
+        // Immediately-enclosing `{`.
+        ptrdiff_t openerPos = -1; int depth = 0;
+        for(ptrdiff_t i = (ptrdiff_t)cursorOffset - 1; i >= 0; i--) {
+            char c = docText[(size_t)i];
+            if(c == '}') depth++;
+            else if(c == '{') { depth--; if(depth < 0) { openerPos = i; break; } }
+        }
+        if(openerPos >= 0) {
+            // Walk back over the opener's head: whitespace, the extended name, whitespace,
+            // then require the keyword `extend` immediately before it.
+            ptrdiff_t i = openerPos - 1;
+            while(i >= 0 && isspace((unsigned char)docText[(size_t)i])) i--;
+            ptrdiff_t nameEnd = i + 1;
+            while(i >= 0 && (isalnum((unsigned char)docText[(size_t)i]) || docText[(size_t)i] == '_')) i--;
+            ptrdiff_t nameStart = i + 1;
+            string extName = (nameStart < nameEnd) ? docText.substr((size_t)nameStart, (size_t)(nameEnd - nameStart)) : "";
+            while(i >= 0 && isspace((unsigned char)docText[(size_t)i])) i--;
+            ptrdiff_t kwEnd = i + 1;
+            while(i >= 0 && (isalnum((unsigned char)docText[(size_t)i]) || docText[(size_t)i] == '_')) i--;
+            string kw = (i + 1 < kwEnd) ? docText.substr((size_t)(i + 1), (size_t)(kwEnd - (i + 1))) : "";
+            string kwl = kw, extl = extName;
+            transform(kwl.begin(), kwl.end(), kwl.begin(), ::tolower);
+            transform(extl.begin(), extl.end(), extl.begin(), ::tolower);
+            if(kwl == "extend" && !extl.empty()) {
+                bool isVerb = false;
+                for(auto* v : languageService.verbs) if(v->name == extl) { isVerb = true; break; }
+                if(isVerb) {
+                    json items = json::array();
+                    auto add = [&](const char* label, const char* detail, const char* doc) {
+                        items.push_back({{"label", label}, {"kind", 14},  // CompletionItemKind.Keyword
+                            {"detail", detail},
+                            {"documentation", {{"kind", "markdown"}, {"value", doc}}}});
+                    };
+                    add("grammar",  "verb grammar",  "Add or alter this verb's grammar: `grammar += { … }` (append), `grammar -= { … }` (remove matching lines / evict a word), `replace grammar = { … }` (wipe and replace).");
+                    add("synonyms", "verb synonyms", "`synonyms = {.w1, .w2};` — declare true I6 aliases of this verb (emits `Verb 'w1' 'w2' = '<anchor>';`), so later extensions flow to them.");
+                    add("priority", "verb priority", "`priority = N;` — block-local grammar priority stamped onto the lines this extend adds (lower number = matched earlier).");
+                    add("replace",  "member replace","Qualifier to override an inherited member: `replace grammar = { … }` or `replace void handler(){ … }`.");
+                    return items;
+                }
+            }
         }
     }
 

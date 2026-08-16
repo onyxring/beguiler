@@ -1,0 +1,17 @@
+// test_grammar_remove_extern.bgl — Beguile can `grammar +=` new grammar onto a library verb
+// (emitted as I6 additions routed to the library action) and remove ITS OWN additions with
+// `grammar -=`. It cannot remove the library's original grammar. Transpile-checked (the test
+// harness has no I6 stdlib, so the routed action's Sub is absent — the emitted directives are
+// what matters).
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+extend Take { grammar += { {.grab, noun}, {.snatch, noun} }; }
+extend Take { grammar -= { {.grab, noun} }; }    // remove Beguile's own 'grab'; 'snatch' stays
+
+void main(){}

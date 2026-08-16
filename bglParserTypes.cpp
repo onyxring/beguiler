@@ -1537,7 +1537,15 @@ string bglParser::addCapture(const string& outerName, const string& typeName){
 classDef* bglParser::getDispatchClass(const string& typeName){
     typeDef& td = languageService.getType(typeName);
     if(auto* cls = dynamic_cast<classDef*>(&td)) return cls;
-    if(auto* obj = dynamic_cast<objectDef*>(&td)) return obj->objectClass;
+    if(auto* obj = dynamic_cast<objectDef*>(&td)){
+        if(obj->objectClass) return obj->objectClass;
+        // A bare `object X {}` that is forward-referenced has a pre-scan stub whose objectClass was
+        // never set (the pre-scanner only records an explicit non-`object` class). Fall back to the
+        // `object` base so its inherited world-tree methods (remove/move/give/…) resolve regardless
+        // of declaration order — matching how a typed base class already resolves forward.
+        if(auto* baseCls = dynamic_cast<classDef*>(&languageService.getType("object"))) return baseCls;
+        return nullptr;
+    }
 
     // Generic specialization fallback: templated names like "array<int>" aren't
     // registered as their own typeDef — only the generic base ("array") is.
@@ -1608,6 +1616,12 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
         auto* ed = dynamic_cast<enumDef*>(&languageService.getType(argType));
         if(ed && ed->isBnum) return true;
     }
+    // char → int widening: a char is a byte-sized non-negative integer (0..255), so it widens to int
+    // freely, exactly like bnum above. This is what makes byte arrays usable numerically — reading
+    // `array<char>` elements into ints (`int a = bytes[i]`) and doing arithmetic on them. The reverse
+    // (int → char) stays a narrowing that needs an explicit cast, except inside array-element
+    // initializers/writes where the intent is unambiguous (see isArrayElementCompatible).
+    if(paramType == "int" && argType == "char") return true;
     // bnum → ancestor bnum (via shared-base chain): a child bnum is compatible with any
     // ancestor in its baseBnum chain. Mirrors class subtype compatibility for bnum families.
     {
@@ -1703,6 +1717,40 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
         return fn && fn->name == "operator()" && fn->params.empty() && !fn->isExplicit && fn->returnType.name == paramType;
     })) return true;
     return false;
+}
+
+// Element-type compatibility for array / list initializers. Same as isTypeCompatible, plus one
+// initializer-only relaxation: a byte array (element type `char`) accepts integer literals, since a
+// char is a byte-sized int — so `array<char> = {5, 10, 15}` type-checks. This is kept SEPARATE from
+// isTypeCompatible on purpose: a global intliteral→char rule perturbs operator-overload resolution
+// (it changes `<` / `==` dispatch and thus emitted spacing), so the relaxation is scoped to array
+// element checks only. Out-of-byte-range values are caught by Inform 6 when the byte array is emitted.
+bool bglParser::isArrayElementCompatible(string argType, string elementType){
+    // Byte array (element type `char`) accepts integer values — literals and plain `int` — as
+    // elements: `array<char> t = {5, 10, 15}` and `t[i] = someInt`. This is a scoped int→char
+    // narrowing, allowed only where the byte-array intent is explicit (initializers and element
+    // writes), never as a global rule (that perturbs operator-overload dispatch). Integer LITERALS
+    // outside 0..255 are rejected at compile time by checkByteElementRange (called at the same
+    // sites); non-literal int values that overflow a byte wrap at runtime, like any byte assignment.
+    if(elementType == "char" && (argType == "intliteral" || argType == "negativeintliteral" || argType == "int"))
+        return true;
+    return isTypeCompatible(argType, elementType);
+}
+
+// A byte array (`array<char>`) stores unsigned bytes (0..255). When an element is given as an integer
+// LITERAL we know its value at compile time, so reject anything that would not fit — otherwise it
+// silently wraps to its low byte at runtime (300 -> 44), a quiet data bug. Non-literal int values
+// (variables, expressions) can't be checked here and wrap at runtime, matching a byte assignment.
+void bglParser::checkByteElementRange(expression* elem, const string& elementType){
+    if(elementType != "char" || elem == nullptr) return;
+    if(elem->resolvedType != "intliteral" && elem->resolvedType != "negativeintliteral") return;
+    string t = elem->text();
+    size_t s = t.find_first_not_of(" \t\r\n"); if(s == string::npos) return; t = t.substr(s);
+    size_t e = t.find_last_not_of(" \t\r\n"); if(e != string::npos) t = t.substr(0, e + 1);
+    long v;
+    try { v = stol(t, nullptr, 0); } catch(...) { return; }  // not a plain numeric literal — skip
+    if(v < 0 || v > 255)
+        parsingError(format("Byte value {0} is out of range for array<char> (must be 0..255).", v));
 }
 
 // Reorder named arguments to match parameter positions. Validates that all named args match valid parameter names.

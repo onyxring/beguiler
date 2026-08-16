@@ -26,6 +26,7 @@
 #include <core/_string>
 #include <core/_grammar>
 #include <core/_verb>
+#include <core/_ui>          // bgl.ui namespace + emitter-based text styles (bgl.ui.style.*); runtime routines are opt-in via <ui>
 
 #if TARGET_GLULX
     #include<core/_glulxCore> //also includes _glulxOpCodes
@@ -34,16 +35,28 @@
     #include<core/_zcodeCore>
 #endif
 
+#include <core/_random>       // bgl.util.random.get(...) / .seed(...); built on bgl.asm (@random), after platform core
+
 
 // Namespace objects derive from _bglObject (the base below `object`, defined further down),
 // not from `object` itself — so completion/type-checking see only their own members and not
 // the world-tree surface (give/has/parent/remove/…). They still emit as plain I6 objects.
-_bglObject _bglUtil{}
+// superposed: `bgl.util` is reached only through its members (math, random — all
+// emitter facades / compile-time aliases), so the object itself is never referenced
+// as a value and is withheld from emission entirely. A game that only calls
+// bgl.util.math.* / bgl.util.random.* pays zero bytes for the namespace object.
+superposed _bglObject _bglUtil{}
 _bglObject bgl{
     emitter int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
-    // Exposed as `bgl.util`, but emitted as the I6 property `bglUtil` so it doesn't collide with
-    // orLibrary's global `object util` (I6 keeps object + property short-names in one namespace).
-    auto util as bglUtil = _bglUtil;
+    // `bgl.util` is a member-bearing namespace (math, random, …), so it must be attached with
+    // `alias` (§5.11.1 compile-time indirection), NOT `auto`. `auto` widens the member to its
+    // declared base (_bglObject) and drops the surface in *statement* position — `bgl.util.math.X()`
+    // limps along in expression position but `bgl.util.random.seed(…)` (a void statement) fails with
+    // "Unknown variable 'bgl.util'". `alias` keeps the full member surface in every position. It also
+    // emits NO runtime property (it resolves to _bglUtil at compile time), so the old `as bglUtil`
+    // I6-name remap — added to dodge a collision with orLibrary's `object util` — is now moot:
+    // nothing named `util`/`bglUtil` is emitted at all. (Same form as `bgl.ui` / `bgl.world`.)
+    alias util = _bglUtil;
 }
 // Target-specific platform code is selected automatically above (see the
 // TARGET_GLULX branch): _zcodeCore or _glulxCore is pulled in per the active
@@ -184,17 +197,6 @@ emitter void cA(object o){ print (A)$o; }
 emitter void the(object o){ print (the)$o; }
 emitter void cThe(object o){ print (The)$o; }
 emitter void printName(object o){ print (name)$o; }   // I6 `(name) obj` print rule — bare short name, no article
-
-//=============================================================================
-// style emitter namespace.  TODO: add the rest of these.
-// emitter style{
-//     void italics(){
-//         style underline;
-//     }
-//     void roman(){
-//         style roman;
-//     }
-// }
 
 //=============================================================================
 // bglInit() is a special, compiler built routine

@@ -1,0 +1,13 @@
+/*
+    _test_byte_array_range.bgl  (negative)
+    A byte array (array<char>) stores unsigned bytes (0..255). An integer LITERAL outside that
+    range would silently wrap to its low byte at runtime (300 -> 44), a quiet data bug, so the
+    compiler rejects it at the point of use. Non-literal int values can't be checked and wrap.
+*/
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+array<char> scores = {5, 300, 15};   // 300 does not fit in a byte
+
+void main() { }
+
+// EXPECT_ERROR: Byte value 300 is out of range for array<char> (must be 0..255).

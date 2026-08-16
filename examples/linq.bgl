@@ -1,0 +1,25 @@
+/*  linq.bgl - LINQ-style array queries (the <linq> extension).
+
+    `#include <linq>` adds chainable operations over `array<T>`: filter, map,
+    take, skip, distinct, orderBy, and terminals such as count / any / first.
+    Library-free.  */
+
+#beguilerSettings {
+    target     = z5;
+    informName = "none";
+}
+
+#include <linq>
+
+void main() {
+    array<int> nums = { 5, 12, 3, 8, 21, 6 };
+
+    // Keep the even values and sort them ascending.
+    array<int> evens = nums.filter((int x) => x % 2 == 0).orderBy();
+    for(int v in evens) { print(v); print(" "); }
+    print("^");
+
+    // A terminal collapses a chain to a single value.
+    print(nums.filter((int x) => x > 5).count());   // how many exceed 5
+    print("^");
+}

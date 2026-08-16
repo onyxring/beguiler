@@ -22,6 +22,10 @@ class i6Emitter{
         map<string,string> superposedBlocks;
         bool emittingSuperposedBody = false;
         set<string> declaredVerbWords;             // tracks which I6 trigger words have been Verb-declared
+        set<string> evictedEmitted;                // evicted library words already emitted as `Extend only 'w' replace`
+        void emitEvictions();                      // emit empty `Extend only 'w' replace;` for evicted words no verb reclaimed
+        set<string> splitEmitted;                  // `only`-split library words already peeled off via `Extend only 'w'`
+        bool isGroupedExternWord(const string& w); // true if w is claimed by an extern verb with >1 trigger word (has synonyms)
         // built-in I6 templates loaded from beguilib/_builtins.i6b
         map<string, pair<vector<string>, string>> builtinTemplates;
         // Per-template ##triggerEmitter <names> annotations, lowercased. When a template
@@ -130,6 +134,12 @@ class i6Emitter{
         // as the right mix of Verb / Extend first / Extend directives. Shared by
         // emitVerbObject (own + extends) and emitGrammarRuleListDecl (grammar-object rules).
         void emitVerbGrammar(const string& verbName, int anchor, bool isMeta, const vector<grammarLine>& lines);
+        // Resolve a FULLY-Beguile-owned verb's grammar (own block + all its extend/replace blocks)
+        // at compile time and emit PURE `Verb` declarations — no I6 `Extend`. I6 `Extend` is reserved
+        // for extern/library verbs Beguile doesn't own. Returns false (emitting nothing) when the verb
+        // can't be cleanly resolved (a trigger word is extern-owned, or an extend introduces alternate
+        // trigger words / ambiguous routing); the caller then falls back to the Extend-based path.
+        bool emitVerbGrammarResolved(const string& verbName, int anchor, bool isMeta, const vector<grammarLine>& lines);
         // I6 directive form used when a trigger word is encountered after its first declaration:
         //   First   → `Extend 'w' first` (insert before existing rules — higher matching priority)
         //   Last    → `Extend 'w'`       (append after existing — default last)

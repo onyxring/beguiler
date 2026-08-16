@@ -1,9 +1,9 @@
-// EXPECT_ERROR: 'reverse' must be the last element in a grammar line literal
+// EXPECT_ERROR: only the 'withI6Synonyms' modifier may follow 'reverse' in a grammar line literal
 //
-// The `reverse` pseudo-token is an action-target modifier, not a pattern token,
-// and must appear at the end of the grammar line literal. Any token after it
-// (here, `noun`) is a compile error — there's no I6 semantics for "reverse, then
-// more pattern matching."
+// The `reverse` pseudo-token is an action-target modifier, not a pattern token. It sits at the
+// tail of the line literal; the only element permitted to follow it is the `withI6Synonyms` modifier
+// (`{.foo, …, reverse, withI6Synonyms}`). Any pattern token after it (here, `noun`) is a compile
+// error — there's no I6 semantics for "reverse, then more pattern matching."
 
 #beguilerSettings { target = z5; informName = "none"; }
 #include <bindings/i6StandardLibrary>

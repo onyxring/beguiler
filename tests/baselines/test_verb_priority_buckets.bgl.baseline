@@ -16,13 +16,11 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _zcode
 ;
-object _bglUtil
-;
 object bgl
-  with zcode _zcode,
-       bglUtil _bglutil
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -234,18 +232,12 @@ object tinker
                 tinker.handler();
             ];
 verb 'tinker'
-    * noun -> tinker;
-extend 'tinker' first
-    * 'roughly' noun -> tinker;
-extend 'tinker' first
-    * 'carefully' noun -> tinker;
-extend 'tinker' first
-    * 'gingerly' noun -> tinker;
-extend 'tinker'
-    * 'quickly' noun -> tinker;
-extend 'tinker'
-    * 'slowly' noun -> tinker;
-extend 'tinker'
+    * 'gingerly' noun -> tinker
+    * 'carefully' noun -> tinker
+    * 'roughly' noun -> tinker
+    * noun -> tinker
+    * 'quickly' noun -> tinker
+    * 'slowly' noun -> tinker
     * 'lazily' noun -> tinker;
 [main;
 ];

@@ -1,0 +1,35 @@
+// test_grammar_word_remove.bgl — the two GRAINS of `grammar -=`.
+//
+// A `-=` spec's grain is set by how much of the line it names:
+//   • WORD-LEVEL  `{.w}`        (no pattern)  → remove ALL of that word's grammar.
+//   • LINE-LEVEL  `{.w, pat…}`  (with pattern) → remove the one exactly-matching line.
+// A single bare word is the only "match-many" form; partial-pattern prefix matching is NOT
+// supported (naming a pattern means "this rule", naming just the word means "all rules for it").
+//
+// Verifies (native verb):
+//   - word-level `-= { {.poke} }` drops BOTH poke lines, leaving its synonyms intact
+//   - line-level `-= { {.jab, noun} }` drops exactly that one line
+//   - untouched synonyms (prod) still emit
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+verb Poke {
+    grammar = {
+        {.poke, noun},
+        {.poke, noun, .hard},
+        {.prod, noun},
+        {.jab, noun},
+    };
+    void handler(){ print("poke"); }
+}
+
+extend Poke { grammar -= { {.poke} }; }        // word-level: removes every 'poke' line
+extend Poke { grammar -= { {.jab, noun} }; }   // line-level: removes exactly the 'jab noun' line
+
+void main(){}

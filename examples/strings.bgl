@@ -1,0 +1,26 @@
+/*  strings.bgl - mutable strings (the <string> extension).
+
+    Beguile's auto-loaded `string` prints and compares by content. Adding
+    `#include <string>` upgrades it to a mutable, pool-backed string with a rich
+    method surface: concatenation, case conversion, search, slicing, and more.
+    Library-free, so it transpiles with beguiler alone (informName = "none");
+    point informName at Inform 6 and add an IF library to build a playable story.  */
+
+#beguilerSettings {
+    target     = z5;
+    informName = "none";
+}
+
+#include <string>
+
+void main() {
+    bglInit();                                  // the string pool needs one-time init
+
+    string s = "cloak";
+    s = s + " of darkness";                     // concatenation
+    s = s.toUpper();                            // "CLOAK OF DARKNESS"
+    print(s); print("^");
+
+    print(s.getLength()); print("^");           // 16
+    print(s.contains("DARK") ? "found^" : "missing^");
+}

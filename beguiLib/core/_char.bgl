@@ -15,16 +15,20 @@ extern emitter class char : _bglObject{
     emitter bool operator <= (char c){ $val<=$c}
     emitter bool operator >= (char c){ $val>=$c}
                                     
-    //By design, int and char are NOT the same. For example, we don't support an integer test against a character by default (intA == 'c'); however, we do overload character for the reverse test for convenience (charA==64).
-    // emitter bool operator == (int i){ $val==i} 
-    // emitter bool operator != (int i){ $val~=i} 
-    // emitter bool operator < (int i)	{ $val<i} 
-    // emitter bool operator > (int i)	{ $val>i} 
-    // emitter bool operator <= (int i){ $val<+i} 
-    // emitter bool operator >= (int i){ $val>=i} 
+    //By design, int and char are NOT the same. For example, we don't support an integer test against a character by default (intA == 'c'); however, we do overload character for the reverse test for convenience (charA==64). This also makes a byte array of numeric values (array<char> = {5, 10, ...}) usable: its elements read as chars but compare against int thresholds.
+    emitter bool operator == (int i){ $val==$i}
+    emitter bool operator != (int i){ $val~=$i}
+    emitter bool operator < (int i)	{ $val<$i}
+    emitter bool operator > (int i)	{ $val>$i}
+    emitter bool operator <= (int i){ $val<=$i}
+    emitter bool operator >= (int i){ $val>=$i}
 
     emitter char operator + (int c){$val+$c}
     emitter char operator - (int c){$val-$c}
+    // char + char / char - char: byte-array arithmetic (e.g. summing byte values). Result is a char
+    // (byte-wide); accumulate into an int (int + char widens) when a running total may exceed 255.
+    emitter char operator + (char c){$val+$c}
+    emitter char operator - (char c){$val-$c}
         
     replace emitter void print(){ print (char)$val; }
 }

@@ -2,7 +2,7 @@
 //=============================================================================
 // beguilerSettings
     extern class beguilerSettingsType { //--schema for #beguilerSettings directive blocks; provides property IntelliSense
-        eTarget         target         = Glulx;         // compilation target: Glulx (default), Z3, Z5, or Z8
+        eTarget         target         = Glulx;         // compilation target: Glulx (default), Z5, or Z8
         string          informPath;                     // full path to the Inform 6 compiler binary (overrides informName)
         string          informName     = "inform";      // I6 binary filename (default "inform"); use "none" to skip I6 handoff
         string          beguiLibPath   = "beguiLib";    // path to the Beguile language extensions directory
@@ -35,7 +35,6 @@
 
     extern enum eTarget{
         Glulx,
-        Z3,
         Z5,
         Z8
     }

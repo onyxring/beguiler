@@ -23,13 +23,11 @@ global _bglInitDone = 0;
     g_stack-->(g_stack-->0) = $9084;
     g_queue-->(g_queue-->0) = $9084;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _zcode
 ;
-object _bglUtil
-;
 object bgl
-  with zcode _zcode,
-       bglUtil _bglutil
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     

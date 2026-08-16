@@ -10,13 +10,11 @@ global _bglInitDone = 0;
     _bglInitDone = 1;
     g_sized-->(g_sized-->0) = $9084;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _glulx
 ;
-object _bglUtil
-;
 object bgl
-  with glulx _glulx,
-       bglUtil _bglutil
+  with glulx _glulx
 ;
 [_bglArrayCompareAsc lhs rhs;
     

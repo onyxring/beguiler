@@ -40,14 +40,11 @@ global _bglInitDone = 0;
     (bufsmall_raw + 2)-->0 = 16;
     bufsmall = bufsmall_raw + WORDSIZE + 2;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _glulx
 ;
-object _bglUtil
-  with buf _bglbuf
-;
 object bgl
-  with glulx _glulx,
-       bglUtil _bglutil
+  with glulx _glulx
 ;
 [_bglArrayCompareAsc lhs rhs;
     

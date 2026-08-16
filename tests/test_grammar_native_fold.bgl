@@ -1,0 +1,44 @@
+// test_grammar_native_fold.bgl — two INDEPENDENT native verbs that claim the same trigger word
+// fold into a single pure I6 `Verb 'w'` directive. A fully-Beguile program never leaks `Extend`.
+//
+// I6 permits a dictionary word to trigger only one `Verb`. The naive lowering emits `Verb 'w'` for
+// the first native declarer and `Extend 'w'` for the rest; that `Extend` is reserved for words a
+// native verb does NOT own (extern/library verbs). So when two native verbs share a word, the
+// first declarer owns the `Verb 'w'` and the later verb's lines FOLD into it, each routed to its
+// own action.
+//
+// Verifies:
+//   - Two separate native verbs sharing 'beep' → one `verb 'beep'` with BOTH lines, no `Extend`
+//   - Each folded line still routes to its own verb's action (-> beep1, -> beep2)
+//   - Lower priority number sorts a folded line ahead of the owner's (matched first)
+//   - A non-shared word on either verb still gets its own plain `verb 'w'`
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+// Beep1 declares 'beep' first, so it owns the `Verb 'beep'` directive. Default priority (10).
+verb Beep1 {
+    grammar = {
+        {.beep, noun},
+        {.honk, noun},          // a non-shared word — gets its own `verb 'honk'`
+    };
+    void handler(){ print("beep one"); }
+}
+
+// Beep2 also claims 'beep', at a higher matching priority (5 < 10), so its folded line sorts
+// ahead of Beep1's inside `verb 'beep'`. Its brand-new word 'chime' gets its own directive.
+verb Beep2 {
+    priority = 5;
+    grammar = {
+        {.beep, .twice, noun},
+        {.chime, noun},
+    };
+    void handler(){ print("beep two"); }
+}
+
+void main(){}

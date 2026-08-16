@@ -1,0 +1,12 @@
+/*
+    _test_define_redefine.bgl  (negative)
+    `#define` errors if the symbol is already defined; the author must use `#redef`
+    to intentionally redefine it.
+*/
+#beguilerSettings { informName = "none"; }
+
+#define FOO 1
+#define FOO 2
+
+void Main(){}
+// EXPECT_ERROR: redefines a symbol that is already defined

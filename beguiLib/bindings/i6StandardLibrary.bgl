@@ -256,7 +256,7 @@ extern verb Answer { .answer|.say|.shout|.speak }                   // answer <t
 extern verb Ask { .ask }                                            // ask <creature> about <topic>
 extern verb AskFor { .ask }                                         // ask <creature> for <noun>
 extern verb AskTo { .ask|.tell }                                    // ask/tell <creature> to <topic>
-extern verb Attack { .attack|.break|.smash|.hit|.fight|.wreck|.crack }  // attack / hit / kill <noun>
+extern verb Attack { .attack|.break|.crack|.destroy|.fight|.hit|.kill|.murder|.punch|.smash|.thump|.torture|.wreck }  // attack / hit / kill / destroy <noun>
 extern verb Blow { .blow }                                          // blow <held>
 extern verb Burn { .burn|.light }                                   // burn / light <noun>
 extern verb Buy { .buy|.purchase }                                  // buy / purchase <noun>
@@ -267,18 +267,17 @@ extern verb Cut { .cut|.slice|.prune|.chop }                        // cut / cho
 extern verb Dig { .dig }                                            // dig <noun>
 extern verb Disrobe { .shed|.doff|.disrobe }                        // shed / doff / disrobe <worn>
 extern verb Drink { .drink|.swallow|.sip }                          // drink / sip <noun>
-extern verb Drop { .drop|.throw|.discard }                          // drop <multiheld>
+extern verb Drop { .drop|.discard }                                 // drop <multiheld>
 extern verb Eat { .eat }                                            // eat <held>
 extern verb Empty { .empty }                                        // empty <noun>
 extern verb EmptyT { .empty }                                       // empty <noun> into <noun>
-extern verb Enter { .enter|.cross }                                 // enter / go into <noun>
+extern verb Enter { .enter|.cross|.sit|.lie }                       // enter / sit on / lie on <noun>
 extern verb Examine { .examine|.x|.watch|.describe|.check|.read }   // examine / x <noun>
 extern verb Exit { .exit|.out|.outside|.stand }                     // exit / out
 extern verb Fill { .fill }                                          // fill <noun>
 extern verb GetOff { .get }                                         // get off <noun>
 extern verb Give { .give|.pay|.offer|.feed }                        // give <held> to <creature>
 extern verb Go { .go|.run|.walk }                                   // go <direction>
-extern verb Going { .go|.run|.walk }                                // go <direction>
 extern verb GoIn { .enter|.cross|.in|.inside }                      // go in / enter
 extern verb Insert { .insert }                                      // insert <noun> into <noun>
 extern verb Inv { .inventory|.inv|.i }                              // inventory / i
@@ -313,6 +312,8 @@ extern verb Smell { .smell|.sniff }                                 // smell / s
 extern verb Sorry { .sorry }                                        // sorry
 extern verb Squeeze { .squeeze|.squash }                            // squeeze / squash <noun>
 extern verb Strong { .shit|.fuck|.damn|.sod }                       // strong expletive
+extern verb Swim { .swim|.dive }                                    // swim / dive
+extern verb Swing { .swing }                                        // swing <noun>
 extern verb SwitchOff { .switch|.turn }                             // switch <noun> off / turn off <noun>
 extern verb SwitchOn { .switch|.turn }                              // switch <noun> on / turn on <noun>
 extern verb Take { .take|.carry|.hold|.get|.pick|.peel }            // take / get / pick up <noun>
@@ -320,7 +321,7 @@ extern verb Taste { .taste }                                        // taste <no
 extern verb Tell { .tell }                                          // tell <creature> about <topic>
 extern verb Think { .think }                                        // think
 extern verb ThrowAt { .throw }                                      // throw <held> at <noun>
-extern verb Tie { .tie|.attach|.fasten|.fix }                       // tie / attach <noun> to <noun>
+extern verb Tie { .tie|.attach|.connect|.fasten|.fix }              // tie / attach / connect <noun> to <noun>
 extern verb Touch { .touch|.fondle|.feel|.grope }                   // touch / feel <noun>
 extern verb Transfer { .transfer }                                  // transfer <noun> to <noun>
 extern verb Turn { .turn|.rotate|.twist|.unscrew|.screw }           // turn / rotate <noun>
@@ -340,7 +341,7 @@ extern verb CommandsOff { .recording }                              // recording
 extern verb CommandsOn { .recording }                               // recording / recording on
 extern verb CommandsRead { .replay }                                // replay
 extern verb FullScore { .fullscore|.full }                          // fullscore / full
-extern verb LMode1 { .brief|.normal }                               // brief / normal
+extern verb LMode1 { .brief }                                       // brief
 extern verb LMode2 { .verbose|.long }                               // verbose / long
 extern verb LMode3 { .superbrief|.short }                           // superbrief / short
 extern verb LModeNormal { .normal }                                 // normal
@@ -394,12 +395,15 @@ extern verb XTree { .tree }                     // tree
 // / `action == X` comparisons (emits `##Name`). Filled in as needed; not yet exhaustive.
 extern verb Receive;                            // ##PutOn/##Insert delivery — `before` of the container/supporter
 extern verb LetGo;                              // fake action fired on a container/supporter when its contents are taken (verblib.h)
+extern verb Going;                              // direction travel — library sets `action = ##Going` during a move (parser.h Fake_Action; no grammar of its own)
 
 //-- Standard library routines ------------------------------------------------
 extern int  RunRoutines(object obj, property prop);   // run obj.prop() and return its value (parser.h) — used to delegate before/react_before/etc.
 extern int  PrintOrRun(object obj, property prop);    // if obj.prop is a routine, run it; if a string, print it (parser.h)
 extern int  PrintOrRunVar(var v);                     // if v is a routine, run it; if a string, print it (parser.h) — value-or-run
-extern int  random(int range);                        // I6 built-in RNG: returns 1..range
+// (I6's `random(...)` built-in is not bound as a Beguile symbol: the canonical API is
+// `bgl.util.random.get(...)` / `.seed(...)` (core/_random.bgl), whose emitters emit I6's
+// native `random(...)` directly. It is a compiler builtin, so it needs no binding anyway.)
 // NOTE: the I6 built-in `parent()` is intentionally NOT bound for Beguile. The Beguile idiom is
 // `obj.parent` (and `obj.parent.parent`, …), which the parentProp emitter lowers to the I6
 // `parent(...)` construct. Exposing `parent()` as a callable would blur that Beguile↔I6 boundary.
@@ -409,6 +413,11 @@ extern void AddToScope(object obj);                   // inside an add_to_scope 
 extern void MoveFloatingObjects();                    // relocate `found_in` backdrops/floating objects for the current location (verblib.h)
 extern void StartTimer(object obj, int turns);        // begin a daemon/timer countdown on obj; fires its time_out after N turns (parser.h)
 extern void StopTimer(object obj);                    // cancel a running timer on obj (parser.h)
+extern void StartDaemon(object obj);                  // begin running obj's `daemon` property every turn (parser.h)
+extern void StopDaemon(object obj);                   // stop running obj's `daemon` (parser.h)
+extern void PlayerTo(object obj, int flag = 0);       // move the player to obj; flag 0=look, 1=no look, 2=no newline (parser.h)
+extern bool TestScope(object obj, object actor = 0);  // true if obj is in scope (for the given actor, default the player) (parser.h)
+extern void Banner();                                 // print the standard game banner (story title/headline/version) (parser.h)
 extern void ClearScreen();                    // clear the screen (parser.h)
 extern void NotifyTheScore();                 // print "[Your score has gone up…]" (parser.h)
 extern void ScoreSub();                       // the SCORE action handler (verblib.h)

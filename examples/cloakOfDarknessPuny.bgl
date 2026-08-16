@@ -135,4 +135,4 @@ bool Initialise(){
         aren't more people about but, hey, what do you expect in a cheap 
         demo game...?^^^");
 }
-extend PutOn { grammar = {{.hang, HELD, .on, NOUN}}; }
+extend PutOn { grammar += {{.hang, HELD, .on, NOUN}}; }

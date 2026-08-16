@@ -9,13 +9,11 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _glulx
 ;
-object _bglUtil
-;
 object bgl
-  with glulx _glulx,
-       bglUtil _bglutil
+  with glulx _glulx
 ;
 [_bglArrayCompareAsc lhs rhs;
     

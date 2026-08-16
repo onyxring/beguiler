@@ -207,8 +207,10 @@ void bglParser::preScanDirective(token tok){
             filesystem::path libPath = findLibIncludeRecursive(settings.libPath, includeName2);
             if(!libPath.empty()) preScanFile(libPath.string());
         }
-    } else if(tok.is("#define")){
-        // Store symbol in definedSymbols so #if works during pre-scan
+    } else if(tok.is("#define") || tok.is("#redef")){
+        // Store symbol in definedSymbols so #if works during pre-scan. Pre-scan
+        // overwrites silently for both forms; the `#define`-redefine error is
+        // raised in the main pass (processDirective) to avoid double-reporting.
         token sym = file.getToken(eTokenType::identifier);
         while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
         token val = file.getBasicToken(true);

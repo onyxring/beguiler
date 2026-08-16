@@ -1,10 +1,18 @@
+//-----------------------------------------------------------------------------
+// ui.bgl — the <ui> extension: the opt-in half of the UI namespace.
+//
+// Usage:
+//   #include <ui> in your .bgl file to activate these routines.
+//
+// The bgl.ui namespace and its emitter-based text styles (bgl.ui.style.bold()
+// etc.) are always present in core (core/_ui.bgl) and need no include. This
+// file adds the *runtime* routines — real property-routines on the _bglUi
+// object, so they only exist when a program opts in — via `extend _bglUi`, the
+// same shape <array>/<string> use to grow their core-defined type.
+//-----------------------------------------------------------------------------
 #once
-extend bgl {
-    auto ui = _bglUi;
-}
 
-
-object _bglUi {
+extend _bglUi {
     void waitForKey(){
         bgl.asm.read_char();
     }

@@ -104,6 +104,10 @@ struct Qualifiers {
                                // different type keeps the sealed type (and gets a warning). Lets
                                // `object parent = <room>` initialize the inherited `parentProp parent`
                                // without shadowing it to type `object`.
+    bool isAdditive = false;   // `additive` qualifier on a file-scope `property` declaration: emits
+                               // I6 `Property additive foo;`, so the property slot accumulates values
+                               // across the class hierarchy (obj + ancestors) rather than overriding.
+                               // Directive-only in I6 — valid only on a non-extern `property`.
 };
 
 // Forward-declare bglParser so handler signature can reference it
@@ -252,7 +256,7 @@ class bglParser {
         void parseAliasMember(token aliasName, std::vector<typeMember*>& members, const std::string& context);
         bool processEmitterValueDeclaration(token typeTok, token nameTok);
         bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false, bool = false, bool = false);
-        bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "", bool isRef = false, bool isSuperposed = false);
+        bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "", bool isRef = false, bool isSuperposed = false, bool isAdditive = false);
         bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false, bool isSuperposed = false);
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
         bool processGrammarDeclaration(token nameOverride=token());
@@ -393,6 +397,12 @@ class bglParser {
         bool splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                   string& ownerOut, string& propOut);
         bool isTypeCompatible(string argType, string paramType);
+        // Element-type compatibility for array/list initializers: isTypeCompatible plus an
+        // initializer-only relaxation letting a byte array (`array<char>`) accept integer literals.
+        bool isArrayElementCompatible(string argType, string elementType);
+        // For a byte array (`array<char>`) element, if `elem` is an integer literal outside 0..255,
+        // raise a compile error. No-op for non-char element types and non-literal values.
+        void checkByteElementRange(expression* elem, const string& elementType);
         // Returns the classDef whose member/operator hierarchy applies to `typeName`-typed
         // values. For a classDef-typed name, returns that classDef. For an objectDef-typed
         // name, returns the objectDef's `objectClass`. nullptr if `typeName` isn't a class

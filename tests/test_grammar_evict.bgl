@@ -1,0 +1,38 @@
+// test_grammar_evict.bgl — word-level `grammar -=` on an EXTERN (library) verb EVICTS the word.
+//
+// Beguile has only partial sight of a library verb: it can line-match its own `+=` additions, but
+// the library's original grammar is opaque. Word-level `-= { {.w} }` doesn't need to see patterns —
+// it lowers to I6 `Extend only 'w' replace`, which peels the whole word off the library verb.
+//
+// Two outcomes:
+//   - a native verb reclaims the freed word → `Extend only 'w' replace * <patterns> -> V;`
+//     (the keypad case: 'enterx' taken from the library and rerouted)
+//   - nobody reclaims it → empty `Extend only 'w' replace;` (disable a library command: 'zapx')
+//
+// A brand-new native word (dialx) still emits a plain `Verb`. (Made-up words so nothing collides
+// with the real stdlib binding; I6 handoff is skipped, so they need not be real library verbs.)
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+extern verb LibEnter { grammar = { {.enterx} }; }   // pretend-library verb claiming 'enterx'
+extern verb LibZap   { grammar = { {.zapx} }; }     // pretend-library verb claiming 'zapx'
+
+extend LibEnter { grammar -= { {.enterx} }; }       // evict 'enterx' — reclaimed by Keypad below
+extend LibZap   { grammar -= { {.zapx} }; }         // evict 'zapx' — nobody reclaims it → disabled
+
+verb Keypad {
+    grammar = {
+        {.dialx,  number, .into, noun},              // brand-new native word → Verb 'dialx'
+        {.enterx, number, .into, noun},              // reclaimed evicted word → Extend only replace
+        {.enterx, number},
+    };
+    void handler(){ print("keypad"); }
+}
+
+void main(){}

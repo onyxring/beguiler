@@ -1,0 +1,36 @@
+// test_grammar_synonyms.bgl — word-precise DEFAULT vs. the `withI6Synonyms` opt-out.
+//
+// A grammar line whose trigger word belongs to a GROUPED I6 library verb is word-precise by
+// default: it lowers to `Extend only 'w'`, splitting the word off (inherits the library grammar,
+// leaves the word's synonyms untouched). The `withI6Synonyms` trailing modifier opts back into
+// I6's whole-group `Extend 'w'`, spreading the line across every synonym of the verb. Solo/new
+// words are plain `Extend`/`Verb` regardless — no synonym group to split or spread.
+//
+// Verifies both, in a verb `grammar` property AND a grammar object.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+extern verb LibGo  { .gox|.crossx|.climbx }   // grouped library verb (3 synonyms)
+extern verb LibPut { .putx }                  // solo library verb
+
+verb Keypad {
+    grammar = {
+        {.dialx,  number, .into, noun},                    // native new word → Verb 'dialx'
+        {.gox,    number, .into, noun},                    // grouped, DEFAULT → Extend only 'gox' (word-precise)
+        {.crossx, number, .into, noun, withI6Synonyms},    // grouped, opt-out → plain Extend 'crossx' (whole group)
+        {.putx,   number, .into, noun},                    // solo → plain Extend 'putx' (no synonyms)
+    };
+    void handler(){ print("keypad"); }
+}
+
+grammar extras {
+    grammarRule r = {Keypad, {.climbx, number, .into, noun}};   // grouped, DEFAULT → Extend only 'climbx'
+}
+
+void main(){}

@@ -1,20 +1,23 @@
 // test_verb_multi_trigger.bgl — multi-trigger grammar-line syntax via |-alternation in first position.
 //
 // `{.w1|.w2|.w3, pat...}` declares a grammar line that fires on any of the listed trigger words,
-// with one shared pattern. When all triggers are first-occurrence in this verb's emission, Beguile
-// emits a single combined I6 directive: `verb 'w1' 'w2' 'w3' * pat -> Action;`.
+// with one shared pattern. It expands to one grammar line per word, and Beguile emits one pure
+// I6 `Verb 'w'` directive per word (a word carried by several lines gets one directive with
+// several `*` patterns).
 //
-// When any trigger is already declared (or the line is contributed via extend/+= or replace mode),
-// the emitter fans out to one I6 directive per trigger word, each with the same pattern.
+// A trigger word owned by ANOTHER native verb does NOT emit `Extend`: the first native verb to
+// claim a word owns its `Verb 'w'`, and every later native verb's lines for that word FOLD into
+// it (routed to their own action). A fully-Beguile program therefore never leaks I6 `Extend`.
+// (`Extend` is reserved for words owned by an extern/library verb — not exercised here.)
 //
 // Verifies:
-//   - Single multi-trigger line → combined Verb directive
-//   - Multiple multi-trigger lines with the SAME trigger set → consolidated under one directive
-//     with multiple `*` patterns
-//   - Multi-trigger line whose triggers overlap a prior single-trigger declaration → fan-out
-//     emission (one Verb for the new trigger, Extend for the existing one)
-//   - Multi-trigger line inside `extend V { grammar = { ... } }` → fan-out emission (I6 Extend
-//     directives accept only one trigger word)
+//   - Single multi-trigger line → one pure Verb directive per word
+//   - Multiple multi-trigger lines with the SAME trigger set → each word's directive carries
+//     multiple `*` patterns
+//   - Multi-trigger line whose triggers overlap another native verb's word → the overlapping
+//     word folds into that verb's Verb directive (no Extend); brand-new words get their own
+//   - Multi-trigger contributions inside `extend V { grammar += { ... } }` → fold into the
+//     verb's own Verb directive (brand-new words get their own Verb)
 
 #beguilerSettings {
     target = z5;
@@ -41,8 +44,8 @@ verb Toggle {
     void handler(){ print("toggle"); }
 }
 
-// A single-trigger verb whose word later appears in a multi-trigger line for another verb —
-// the multi-trigger line must fan out (Beep already declared 'beep')
+// A single-trigger verb whose word later appears in a multi-trigger line for another native verb —
+// the overlapping word folds into Beep's `Verb 'beep'` directive (Beep declared 'beep' first)
 verb Beep {
     grammar = {
         {.beep, noun},
@@ -52,7 +55,7 @@ verb Beep {
 
 verb Chirp {
     grammar = {
-        {.chirp|.beep|.tweet, noun},   // 'beep' is already declared → fan out
+        {.chirp|.beep|.tweet, noun},   // 'beep' owned by Beep → folds into its Verb; chirp/tweet are new
     };
     void handler(){ print("chirp"); }
 }
@@ -67,15 +70,15 @@ verb Squelch {
 }
 
 extend Squelch {
-    grammar = {
+    grammar += {
         {.mash|.squish, noun},
     };
 }
 
 // Multi-trigger inside an extend, mixed state — one trigger already exists, two are new.
-// Emits fan-out: extend for the existing trigger, fresh Verbs for the new ones.
+// The existing trigger (squelch) folds into Squelch's own Verb directive; crush/grind get their own.
 extend Squelch {
-    grammar = {
+    grammar += {
         {.squelch|.crush|.grind, noun, .firmly},
     };
 }

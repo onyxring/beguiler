@@ -29,6 +29,8 @@ class bglLanguageService{
     map<string,string> storedEmitLastBlocks;
     set<string>        firedStoredNames;       // names that fired via ##triggerEmitter during emission
     vector<verbObjectDef*> verbs;  // all verb declarations (extern and non-extern) for action-constant lookup
+    set<string> evictedExternWords;  // words evicted from a library verb via word-level `grammar -= {.w}`;
+                                     // emitter lowers each to I6 `Extend only 'w' replace` (see i6Emitter)
     int ternaryTempCount = 0;  // number of _bgl_tempN globals needed; increments per ternary/null-coalesce
     bool tryCatchNeeded = false;     // set true when try/catch is used; drives conditional _bgl_catch_cookie emission
     int tryCatchCounter = 0;         // unique ID for try/catch label generation

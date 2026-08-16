@@ -1,0 +1,6 @@
+/* Negative test: `additive` is a property-only qualifier (I6 `Property additive foo;` is a
+   directive-only form). Applying it to any other declaration must error. */
+// EXPECT_ERROR: 'additive' is only valid on a property declaration
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+additive int counter;

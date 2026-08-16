@@ -28,7 +28,7 @@ settingsStruct settings;
 // I6 ICL switches recognized:
 //   -G          → Glulx target
 //   -z          → Z-machine target (no version specified; default to z5)
-//   -v3/v5/v8   → explicit Z-machine version
+//   -z5/z8      → explicit Z-machine version
 //
 // First match wins. If none found, leaves beguilerSettings.target alone — beguiler.cpp's
 // later default-fill (line ~155) will set Glulx as the fallback for non-.inf files; for
@@ -161,7 +161,7 @@ void beguiler::extractBlorbSettings(const string& filename) {
         // defined AFTER the loop (below) so it's set even for files with no #beguilerSettings block.
         extractBool("autoinitialize", beguilerSettings.autoInitialize);
 
-        // Extract target for compile-time #if symbols (target = Glulx / Z3 / Z5 / Z8)
+        // Extract target for compile-time #if symbols (target = Glulx / Z5 / Z8)
         {
             size_t k = blockLower.find("target");
             if(k != string::npos){
@@ -173,8 +173,8 @@ void beguiler::extractBlorbSettings(const string& filename) {
                         string val = blockLower.substr(vs, ve - vs);
                         if(val == "glulx")
                             parser.defineSymbol("target_glulx");
-                        else if(val == "z3" || val == "z5" || val == "z8")
-                            parser.defineSymbol("target_zcode", val.substr(1)); // "3", "5", or "8"
+                        else if(val == "z5" || val == "z8")
+                            parser.defineSymbol("target_zcode", val.substr(1)); // "5" or "8"
                     }
                 }
             }
@@ -427,9 +427,7 @@ bool beguiler::go(int argc, char* argv[]) {
     if(settings.outFile.empty()) {
         string extension = "ulx";
         const string& t = beguilerSettings.target;
-        if(t == "z3") extension = "z3";
-        else if(t == "z5") extension = "z5";
-        else if(t == "z6") extension = "z6";
+        if(t == "z5") extension = "z5";
         else if(t == "z8") extension = "z8";
         settings.outFile = (outDir / (srcPath.stem().string() + "." + extension)).string();
     }
@@ -582,6 +580,14 @@ bool beguiler::go(int argc, char* argv[]) {
             }
             return found;
         };
+        // True if a back-mapped source path lives inside the runtime library (BLR).
+        auto isBlrSource = [&](const string& f) -> bool {
+            if(f.empty() || settings.libPath.empty()) return false;
+            std::error_code ec;
+            string src = fs::weakly_canonical(f, ec).string();
+            string lib = fs::weakly_canonical(settings.libPath, ec).string();
+            return !lib.empty() && src.rfind(lib, 0) == 0;
+        };
         // Format: `<file>(<line>): <Severity>: ...` (note: I6 may emit double spaces after `:`).
         regex i6DiagRe(R"(^(.+\.inf)\((\d+)\):\s+(Error|Warning|Fatal error):\s+(.*)$)");
 
@@ -594,6 +600,7 @@ bool beguiler::go(int argc, char* argv[]) {
         }
         char buf[4096];
         bool sawError = false;
+        int i6WarnHidden = 0;   // count of BLR-internal I6 warnings filtered from display
         while(fgets(buf, sizeof(buf), pipe)){
             string line(buf);
             // Strip trailing newline for processing; restore on output.
@@ -604,19 +611,41 @@ bool beguiler::go(int argc, char* argv[]) {
                 int infLine   = stoi(m[2]);
                 string severity = m[3];
                 string message  = m[4];
+                bool isError = (severity == "Error" || severity == "Fatal error");
+                string bglFile; int bglLine = 0;
+                bool mapped = resolveBglSource(infLine, bglFile, bglLine);
+                // Suppress WARNINGS that map into the runtime library (BLR): they concern
+                // the compiler's own infrastructure (unused housekeeping globals, unreachable
+                // library-routine fallthroughs, and the like), which the user cannot act on.
+                // Also catch warnings that name a `_bgl` symbol even when unmapped (they are
+                // emitted before any source-map entry, e.g. a housekeeping constant at the top
+                // of the file). Errors are always shown, wherever they map.
+                string lowerMsg = message;
+                transform(lowerMsg.begin(), lowerMsg.end(), lowerMsg.begin(), ::tolower);
+                bool blrSymbol = lowerMsg.find("\"_bgl") != string::npos;
+                if(!isError && ((mapped && isBlrSource(bglFile)) || blrSymbol)){ i6WarnHidden++; continue; }
                 // ERROR uppercase / warning lowercase — the visual contrast surfaces
                 // severity at a glance. Fatal errors collapse to ERROR for tooling consistency.
-                string sevTag;
-                if(severity == "Error" || severity == "Fatal error"){ sevTag = "ERROR"; sawError = true; }
-                else                                                   sevTag = "warning";
+                string sevTag = isError ? "ERROR" : "warning";
+                if(isError) sawError = true;
                 cout << infFile << ":" << infLine << ":1: " << sevTag << ": " << message << "\n";
-                string bglFile; int bglLine = 0;
-                if(resolveBglSource(infLine, bglFile, bglLine))
+                if(mapped)
                     cout << "  ↳ " << bglFile << ":" << bglLine << ":1\n";  // ↳
                 // Unmappable .inf lines simply omit the continuation — the absence is
                 // self-evident next to mapped errors that have one.
             } else {
-                cout << line << "\n";
+                // Reconcile I6's warning-count summary with what was actually shown, since
+                // BLR-internal warnings were filtered out above.
+                smatch sm;
+                static const regex i6WarnSummary(R"(^Compiled with (\d+) warnings?(.*)$)");
+                if(!sawError && i6WarnHidden > 0 && regex_match(line, sm, i6WarnSummary)){
+                    int shown = stoi(sm[1]) - i6WarnHidden;
+                    if(shown < 0) shown = 0;
+                    if(shown == 0) cout << "Compiled with no warnings" << string(sm[2]) << "\n";
+                    else           cout << "Compiled with " << shown << (shown==1 ? " warning" : " warnings") << string(sm[2]) << "\n";
+                } else {
+                    cout << line << "\n";
+                }
             }
         }
         int rc = pclose(pipe);
@@ -662,7 +691,7 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
         cout << "Options:\n";
         cout << "  -o <dir>              Output directory for compiled files\n";
         cout << "  -G                    Target Glulx (default)\n";
-        cout << "  -z3, -z5, -z8        Target Z-machine version 3, 5, or 8\n";
+        cout << "  -z5, -z8             Target Z-machine version 5 or 8\n";
         cout << "  -E1, -E2             Error format: E1=Microsoft, E2=Macintosh\n";
         cout << "  -inform=<name>       I6 compiler binary name (use 'none' to skip I6)\n";
         cout << "  -includepaths=<dir>  Add a directory to the include search path\n";
@@ -702,12 +731,8 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
                 }
             } else if(arg == "-G" || arg == "-g") {
                 beguilerSettings.target = "glulx";
-            } else if(arg == "-z3" || arg == "-Z3") {
-                beguilerSettings.target = "z3";
             } else if(arg == "-z5" || arg == "-Z5") {
                 beguilerSettings.target = "z5";
-            } else if(arg == "-z6" || arg == "-Z6") {
-                beguilerSettings.target = "z6";
             } else if(arg == "-z8" || arg == "-Z8") {
                 beguilerSettings.target = "z8";
             } else if(arg.size() >= 3 && arg[1] == 'E' && isdigit(arg[2])) {

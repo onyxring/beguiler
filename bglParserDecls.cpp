@@ -155,8 +155,9 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             if(!elementType.empty() && elementType != "var"){
                 for(size_t i = 0; i < list->elements.size(); i++){
                     expression* elem = list->elements[i];
-                    if(!elem->resolvedType.empty() && !isTypeCompatible(elem->resolvedType, elementType))
+                    if(!elem->resolvedType.empty() && !isArrayElementCompatible(elem->resolvedType, elementType))
                         parsingError(format("Array element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, elementType));
+                    checkByteElementRange(elem, elementType);
                 }
             }
             arrDecl.declaredExpressionValue = list;
@@ -198,7 +199,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
 //--      int myParam=5) 
 //--      int myParam=5, ...
 
-bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst, string i6alias, bool isRef, bool isSuperposed){
+bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst, string i6alias, bool isRef, bool isSuperposed, bool isAdditive){
     // Ban bare `array` as a type — every array variable must declare its element type.
     // `array<T>` / `array<char>` are handled earlier via processArrayDeclaration and never
     // reach here as a plain variable declaration.
@@ -231,6 +232,17 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     varDecl.isConst=isConst;
     varDecl.isRefLocal=isRef;
     varDecl.isSuperposed=isSuperposed;
+    varDecl.isAdditive=isAdditive;
+    // `additive` marks an I6 property slot as accumulating across the class hierarchy. In I6 this is
+    // a directive-only qualifier (`Property additive foo;`), so it is valid only on a non-extern,
+    // file-scope `property` declaration — never on a member, a value type, or an extern property
+    // (whose additivity is owned by the external I6 declaration).
+    if(isAdditive){
+        if(varDecl.type.name != "property")
+            parsingError("'additive' is only valid on a property declaration (e.g. `additive property foo;`)");
+        if(isExternal)
+            parsingError("'additive' cannot be combined with 'extern' — an extern property's additivity is owned by its external I6 declaration");
+    }
     // For func<...> types, getType returns the base "func" type. Set the full parameterized name.
     {
         string dtLower = (string)dataType;
@@ -355,8 +367,9 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                 expression* elem = list->elements[i];
                 if(elem->resolvedType.empty())
                     parsingError(format("Undeclared identifier in initializer list (element {0})", i));
-                else if(!expectedElemType.empty() && !isTypeCompatible(elem->resolvedType, expectedElemType))
+                else if(!expectedElemType.empty() && !isArrayElementCompatible(elem->resolvedType, expectedElemType))
                     parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
+                checkByteElementRange(elem, expectedElemType);
             }
 
             varDecl.declaredExpressionValue = list;
@@ -1042,15 +1055,30 @@ grammarLine bglParser::parseGrammarLineContent(){
                 }
             }
 
-            // `reverse` pseudo-token — action-target modifier, not a pattern token.
-            // Must be the LAST element in the line literal (next token must be `}`).
-            // Sets line.isReverse and skips push_back so it doesn't end up in the I6 pattern.
-            if(resolvedType == "grammartoken" && tokenStr == "reverse"){
-                token next = file.peekToken();
-                if(next.isNot(token::braceClose))
-                    parsingError("'reverse' must be the last element in a grammar line literal — no tokens may follow it");
-                line.isReverse = true;
-                tok = file.getToken({token::comma, token::braceClose});  // consume `}`
+            // `reverse` and `withI6Synonyms` pseudo-tokens — trailing action-target modifiers, not
+            // pattern tokens (neither is pushed into the I6 pattern). Tail grammar (both optional, in
+            // this order): pattern… [, reverse] [, withI6Synonyms].
+            //   `reverse`        — swaps noun/second when the action receives its args (`-> Act reverse`).
+            //   `withI6Synonyms` — opt OUT of the word-precise default: a line whose trigger word is a
+            //                      grouped I6 library word is otherwise SPLIT off via `Extend only 'w'`
+            //                      (leaving synonyms untouched); this modifier instead spreads it across
+            //                      the whole verb group via plain `Extend 'w'`. Meaningless on native/
+            //                      solo words (no synonym group) — the emitter ignores it there.
+            // `withI6Synonyms`, when present, must be the very last element. A bare `.reverse`/`.withI6Synonyms`
+            // dict word (with the dot) is unaffected — this only matches the bare identifiers.
+            if(pt.value == "reverse" || pt.value == "withi6synonyms"){
+                if(pt.value == "reverse") line.isReverse = true;
+                else                      line.withI6Synonyms = true;
+                token sep = file.getToken({token::comma, token::braceClose});
+                if(sep.is(token::braceClose)) break;                     // end of literal
+                if(line.withI6Synonyms)                                  // something follows withI6Synonyms
+                    parsingError("'withI6Synonyms' must be the last element in a grammar line literal — no tokens may follow it");
+                // A comma after `reverse`: the only element allowed to follow it is `withI6Synonyms`.
+                token nxt = file.getToken({eTokenType::identifier, eTokenType::dataType});
+                if(nxt.value != "withi6synonyms")
+                    parsingError("only the 'withI6Synonyms' modifier may follow 'reverse' in a grammar line literal");
+                line.withI6Synonyms = true;
+                file.getToken(token::braceClose);                        // consume `}`
                 break;
             }
 
@@ -1104,19 +1132,35 @@ vector<grammarLine> bglParser::parseGrammarLines(){
     // outer close here.
     if(file.peekToken().is(eTokenType::dictionaryWord)){
         result.push_back(parseGrammarLineContent());
-        return result;
+    } else {
+        token tok = file.getToken();
+        while(tok.isNot(token::braceClose)){
+            if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside grammar — missing closing '}'");
+            tok.assert(token::braceOpen, "Expected '{' to start a grammar line");
+            result.push_back(parseGrammarLineContent());
+
+            // After }, expect , (more lines) or } (end of list)
+            tok = file.getToken({token::comma, token::braceClose});
+            if(tok.is(token::comma))
+                tok = file.getToken();   // either { for next line, or } for end
+        }
     }
 
-    token tok = file.getToken();
-    while(tok.isNot(token::braceClose)){
-        if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside grammar — missing closing '}'");
-        tok.assert(token::braceOpen, "Expected '{' to start a grammar line");
-        result.push_back(parseGrammarLineContent());
-
-        // After }, expect , (more lines) or } (end of list)
-        tok = file.getToken({token::comma, token::braceClose});
-        if(tok.is(token::comma))
-            tok = file.getToken();   // either { for next line, or } for end
+    // Expand alternation trigger words into per-word grammar lines: `{.a|.b, pat}` becomes two
+    // lines `{.a, pat}` and `{.b, pat}`. Every grammar line then carries exactly ONE trigger word,
+    // so each lowers to its own I6 `Verb` directive (each dictionary word owns one verb — simpler
+    // I6 management), and grammar `-=` matches/removes an individual (word + pattern) rather than a
+    // whole trigger set (dropping `.a` from a shared line keeps `.b`).
+    vector<grammarLine> expanded;
+    for(const grammarLine& gl : result){
+        expanded.push_back(gl);
+        expanded.back().additionalVerbWords.clear();
+        for(const string& w : gl.additionalVerbWords){
+            grammarLine copy = gl;
+            copy.verbWord = w;
+            copy.additionalVerbWords.clear();
+            expanded.push_back(copy);
+        }
     }
-    return result;
+    return expanded;
 }

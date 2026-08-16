@@ -13,7 +13,7 @@ Here's the Beguile compilation pipeline:
 ```
 {idea}   -> you      -> game.bgl
 game.bgl -> beguiler -> game.inf
-game.inf -> inform6  -> game.ulx (or .z3, .z5, or .z8)
+game.inf -> inform6  -> game.ulx (or .z5 or .z8)
 game.ulx -> beguiler -> game.blorb (optionally)
 ```
 But most of this is transparent to the user. For all practical purposes, here's the pipeline for game designers:

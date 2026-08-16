@@ -16,13 +16,11 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _zcode
 ;
-object _bglUtil
-;
 object bgl
-  with zcode _zcode,
-       bglUtil _bglutil
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -234,12 +232,10 @@ object quaff
                 quaff.handler();
             ];
 verb 'quaff'
-    * noun -> quaff;
-extend 'quaff' replace
     * 'deeply' noun -> quaff;
 [main;
 ];
-extend 'take' replace
+extend only 'take' replace
     * 'firmly' noun -> take;
 verb 'pilfer'
     * noun -> take;

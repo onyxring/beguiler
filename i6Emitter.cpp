@@ -1064,6 +1064,10 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
         generateI6(node);
     }
 
+    // Any word evicted via `grammar -= {.w}` that NO native verb reclaimed is a pure removal
+    // (disable a library command): emit an empty `Extend only 'w' replace;` after all verb grammar.
+    emitEvictions();
+
     // Emit #emitlast blocks at the very end of the I6 output
     for(const string& block : languageService.emitLastBlocks)
         out << block << "\n";
@@ -2298,7 +2302,9 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         return;
     }
     if(varNode->type.name == "property"){
-        out << format("property {0}", varNode->dName());
+        // `additive` marks the slot so I6 accumulates values across the class hierarchy
+        // (obj + ancestors) instead of the descendant overriding — `Property additive foo;`.
+        out << format("property {0}{1}", varNode->isAdditive ? "additive " : "", varNode->dName());
         out << ";\n";
         return;
     }
@@ -2589,9 +2595,227 @@ void i6Emitter::liftAllVerbCompileTimeFields(){
         if(vd->isExternal)
             for(const string& w : vd->verbWords)
                 declaredVerbWords.insert(w);
+
+    // --- Final prep step: fold trigger words shared by multiple NATIVE verbs into one owner ---
+    // A dictionary word may be the trigger of only ONE I6 `Verb`. When two NATIVE Beguile verbs
+    // both claim a word, the naive path emits `Verb 'w'` for the first declarer and `Extend 'w'`
+    // for the rest — leaking I6 `Extend` into a program that is entirely Beguile-owned. That
+    // contradicts the model's promise that a totally-native verb never lowers through `Extend`.
+    //
+    // Fold instead: the first native verb (in declaration order) to claim a word OWNS it, and every
+    // later native verb's grammar lines for that word are MOVED into the owner's grammar, tagged with
+    // the origin verb's action (`targetVerb`) so each line still routes to its own handler. The owner
+    // then resolves to a single pure `Verb 'w' * … -> a * … -> b;` covering every contributor, and the
+    // donor verbs emit no grammar directive for that word (their object + action routine still emit).
+    //
+    // Runs here (not as a separate emit() pass) because it needs exactly what the loops above have
+    // just produced: extern-claimed words seeded into declaredVerbWords, so extern-owned words are
+    // excluded. A moved line keeps its priority and is marked non-own, so the resolver sorts it into
+    // the owner's rule list by priority exactly as an in-verb contribution would — rule order (and
+    // thus runtime matching) is identical to the old Verb+Extend form.
+    //
+    // Excluded from folding:
+    //   - extern/library-owned words (already in declaredVerbWords): Beguile does not own that I6
+    //     `Verb`, so those lines must still reach it via `Extend` (emitVerbGrammar's fallback path).
+    //   - any word touched by a `replace grammar` line: whole-verb replace is per-verb-object
+    //     semantics that do not compose across a shared directive; those words keep the Extend path.
+
+    // Words a native `replace grammar` touches — folding these would let one verb's replace wipe
+    // another verb's contribution, so leave the whole word to the Extend path.
+    set<string> replaceWords;
+    for(verbObjectDef* vd : languageService.verbs){
+        if(vd->isExternal) continue;
+        for(const grammarLine& gl : vd->grammarLines)
+            if(gl.isReplaceMode && !gl.verbWord.empty()) replaceWords.insert(gl.verbWord);
+    }
+
+    // Owner (first native declarer) per foldable word.
+    map<string, verbObjectDef*> ownerOf;
+    for(verbObjectDef* vd : languageService.verbs){
+        if(vd->isExternal) continue;
+        for(const grammarLine& gl : vd->grammarLines){
+            const string& w = gl.verbWord;
+            if(w.empty() || declaredVerbWords.count(w) || replaceWords.count(w)) continue;
+            ownerOf.emplace(w, vd);   // first insert wins → first declarer owns the word
+        }
+    }
+
+    // Move every non-owner native verb's lines for an owned word into that word's owner.
+    for(verbObjectDef* vd : languageService.verbs){
+        if(vd->isExternal) continue;
+        vector<grammarLine> kept;
+        for(grammarLine gl : vd->grammarLines){
+            auto it = gl.verbWord.empty() ? ownerOf.end() : ownerOf.find(gl.verbWord);
+            if(it != ownerOf.end() && it->second != vd){
+                verbObjectDef* owner = it->second;
+                if(gl.targetVerb.empty()) gl.targetVerb = vd->name;  // route to this verb's action
+                gl.isOwnLine = false;   // a contribution into the owner's Verb; priority sorts it
+                owner->grammarLines.push_back(gl);
+            } else {
+                kept.push_back(gl);
+            }
+        }
+        vd->grammarLines.swap(kept);
+    }
+}
+
+bool i6Emitter::emitVerbGrammarResolved(const string& verbName, int anchor, bool isMeta, const vector<grammarLine>& lines){
+    auto toI6Word = [](const string& w) -> string {
+        string e; for(char ch : w) e += (ch == '\'') ? '^' : ch;
+        return (e.size() == 1) ? ("'" + e + "//'") : ("'" + e + "'");
+    };
+    auto triggerSetOf = [](const grammarLine& gl){
+        vector<string> s; s.push_back(gl.verbWord);
+        for(const string& w : gl.additionalVerbWords) s.push_back(w);
+        return s;
+    };
+
+    // --- Bail conditions (return false → caller uses the Extend-based path) ---
+    // A word is "already claimed" if it is in declaredVerbWords at entry: either extern/library-owned
+    // (pre-seeded) or owned by an earlier-emitted verb (verbs emit in declaration order, so the first
+    // declarer owns the word — exactly I6's one-word-one-verb ownership). Beguile can only resolve a
+    // verb to pure `Verb` declarations when it owns every word outright; a claimed word must reach its
+    // owning verb via I6 `Extend`, so we defer the whole verb to the Extend-based path.
+    for(const grammarLine& gl : lines){
+        if(declaredVerbWords.count(gl.verbWord)) return false;
+        for(const string& w : gl.additionalVerbWords) if(declaredVerbWords.count(w)) return false;
+        // An extend/replace contribution that lists alternate trigger words is ambiguous to route
+        // (which group does it join, and does it introduce new words?) — defer to the safe path.
+        if(!gl.isOwnLine && !gl.additionalVerbWords.empty()) return false;
+    }
+
+    // A resolved group maps a trigger-word set to one emitted I6 `Verb` directive. Groups are seeded
+    // by own-block lines; extend/replace lines route to the group owning their (single) trigger word,
+    // or form a fresh single-word group when the word is brand new.
+    struct Group {
+        vector<string> triggerWords;
+        set<string> wordSet;
+        vector<grammarLine> prefix;   // priority-`first` contributions (matched before own)
+        vector<grammarLine> own;      // own-block lines (and fresh-word contributions)
+        vector<grammarLine> suffix;   // default / priority-`last` contributions (matched after own)
+        bool replaced = false;
+        vector<grammarLine> replaceLines;
+    };
+    vector<Group> groups;
+    auto groupForWord = [&](const string& w) -> int {
+        for(size_t i = 0; i < groups.size(); i++) if(groups[i].wordSet.count(w)) return (int)i;
+        return -1;
+    };
+
+    // Partition exactly as the Extend-based path does, so ordering semantics match.
+    vector<grammarLine> replaceL, anchorOwn, lessThan, gteNonOwn;
+    for(const grammarLine& gl : lines){
+        if(gl.isReplaceMode)          replaceL.push_back(gl);
+        else if(gl.isOwnLine)         anchorOwn.push_back(gl);
+        else if(gl.priority < anchor) lessThan.push_back(gl);
+        else                          gteNonOwn.push_back(gl);
+    }
+
+    // `replace grammar` on a verb wipes ALL of that verb's grammar — every trigger word, not just the
+    // group the replace line happens to name — and the replace lines become the verb's complete new
+    // grammar. (It affects only THIS verb; a word another verb also uses is that verb's own business.)
+    // So when any replace line is present, discard the verb's normal grammar and treat the replace
+    // lines as its whole grammar.
+    if(!replaceL.empty()){
+        anchorOwn = replaceL;   // the replace lines ARE the verb's new grammar
+        lessThan.clear();
+        gteNonOwn.clear();
+        replaceL.clear();
+    }
+
+    // Seed groups from own-block lines. Route by first word; a group's trigger set must be consistent
+    // across its own lines (otherwise routing is ambiguous → bail).
+    for(const grammarLine& gl : anchorOwn){
+        vector<string> ts = triggerSetOf(gl);
+        int gi = groupForWord(gl.verbWord);
+        if(gi < 0){
+            Group g; g.triggerWords = ts; for(const string& w : ts) g.wordSet.insert(w);
+            groups.push_back(g); gi = (int)groups.size() - 1;
+        } else {
+            // First word already grouped: require this line's full trigger set to match that group.
+            for(const string& w : ts) if(!groups[gi].wordSet.count(w)) return false;
+            if(ts.size() != groups[gi].triggerWords.size()) return false;
+        }
+        groups[gi].own.push_back(gl);
+    }
+
+    // stable-ascending bucket order: for `first` lines this lands lower priority numbers nearer the
+    // top of the group's rule list (higher matching priority); for `last` lines, nearer the bottom.
+    auto byPriorityAsc = [](vector<grammarLine>& v){
+        stable_sort(v.begin(), v.end(),
+            [](const grammarLine& a, const grammarLine& b){ return a.priority < b.priority; });
+    };
+    byPriorityAsc(lessThan);
+    byPriorityAsc(gteNonOwn);
+
+    // Route priority-`first` (prefix) and default/`last` (suffix) contributions.
+    auto routeExtend = [&](const grammarLine& gl, bool asPrefix) -> bool {
+        int gi = groupForWord(gl.verbWord);
+        if(gi < 0){
+            // Brand-new trigger word → its own single-word group (a fresh `Verb`, priority moot).
+            Group g; g.triggerWords = {gl.verbWord}; g.wordSet.insert(gl.verbWord);
+            g.own.push_back(gl);
+            groups.push_back(g);
+            return true;
+        }
+        (asPrefix ? groups[gi].prefix : groups[gi].suffix).push_back(gl);
+        return true;
+    };
+    for(const grammarLine& gl : lessThan)  if(!routeExtend(gl, /*asPrefix*/true))  return false;
+    for(const grammarLine& gl : gteNonOwn) if(!routeExtend(gl, /*asPrefix*/false)) return false;
+
+    // Replace: wipe the target group's rules and install these. A replace on a brand-new word is an
+    // add (nothing to wipe) → fresh group.
+    for(const grammarLine& gl : replaceL){
+        int gi = groupForWord(gl.verbWord);
+        if(gi < 0){
+            Group g; g.triggerWords = {gl.verbWord}; g.wordSet.insert(gl.verbWord);
+            g.own.push_back(gl);   // no wipe; behaves as a fresh Verb
+            groups.push_back(g);
+        } else {
+            groups[gi].replaced = true;
+            groups[gi].replaceLines.push_back(gl);
+        }
+    }
+
+    // --- Emit: one pure `Verb` directive per group ---
+    for(Group& g : groups){
+        vector<grammarLine> finalLines;
+        if(g.replaced){
+            finalLines = g.replaceLines;
+        } else {
+            finalLines.insert(finalLines.end(), g.prefix.begin(), g.prefix.end());
+            finalLines.insert(finalLines.end(), g.own.begin(),    g.own.end());
+            finalLines.insert(finalLines.end(), g.suffix.begin(), g.suffix.end());
+        }
+        if(finalLines.empty()) continue;
+
+        string head;
+        for(size_t i = 0; i < g.triggerWords.size(); i++){
+            if(i) head += " ";
+            head += toI6Word(g.triggerWords[i]);
+            declaredVerbWords.insert(g.triggerWords[i]);
+        }
+        out << (isMeta ? format("verb meta {0}\n", head) : format("verb {0}\n", head));
+        for(size_t i = 0; i < finalLines.size(); i++){
+            const grammarLine& line = finalLines[i];
+            out << "    *";
+            for(const string& pt : line.patternTokens) out << " " << pt;
+            out << format(" -> {0}", line.targetVerb.empty() ? verbName : line.targetVerb);
+            if(line.isReverse) out << " reverse";
+            if(i + 1 == finalLines.size()) out << ";";
+            out << "\n";
+        }
+    }
+    return true;
 }
 
 void i6Emitter::emitVerbGrammar(const string& verbName, int anchor, bool isMeta, const vector<grammarLine>& lines){
+    // Prefer resolving a fully-Beguile-owned verb down to pure `Verb` declarations (no I6 `Extend`);
+    // fall back to the Extend-based path below when the verb touches extern/library-owned words or is
+    // otherwise not cleanly resolvable.
+    if(emitVerbGrammarResolved(verbName, anchor, isMeta, lines)) return;
+
     // Separate replace lines from priority-sorted lines. Replace lines emit LAST so I6's
     // `Extend 'w' replace` wipes prior rules for that trigger word.
     vector<grammarLine> replaceLines, normalLines;
@@ -2716,12 +2940,24 @@ void i6Emitter::emitVerbSynonym(verbSynonymDecl* vsd){
 //   Replace → `extend 'w' replace`
 // Per-line targetVerb overrides verbName (for multi-verb grammar objects).
 // When isMeta is true, the first emission of each trigger word emits as `Verb meta 'word'`.
+// A trigger word "has synonyms" if some extern (library) verb claims it alongside other words —
+// i.e. it belongs to a multi-word I6 verb grouping. Only such words need `Extend only` to peel
+// them out cleanly; a solo library word (or a brand-new word) has no synonyms to over-reach, so
+// `only` on it downgrades to a plain `Extend`/`Verb`. Reads the binding-declared verbWords.
+bool i6Emitter::isGroupedExternWord(const string& w){
+    for(verbObjectDef* v : languageService.verbs)
+        if(v->isExternal && v->verbWords.size() > 1)
+            for(const string& vw : v->verbWords)
+                if(vw == w) return true;
+    return false;
+}
+
 void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLine>& lines, bool isMeta, extendDirective mode){
     // Group by full trigger set. Multi-trigger lines (additionalVerbWords non-empty) emit as
     // one combined `verb 'w1' 'w2' 'w3' …` directive when all triggers are first-occurrence;
     // single-trigger lines fall through to the per-trigger byWord path. Two lines with the
     // SAME trigger set get consolidated into one directive with multiple `*` pattern entries.
-    struct lineEntry { vector<string> patternTokens; string actionName; bool isReverse; };
+    struct lineEntry { vector<string> patternTokens; string actionName; bool isReverse; bool withI6Synonyms; };
     vector<vector<string>> setOrder;
     map<vector<string>, vector<lineEntry>> bySet;
     for(const grammarLine& line : lines){
@@ -2731,7 +2967,7 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
         if(bySet.find(triggerSet) == bySet.end())
             setOrder.push_back(triggerSet);
         string action = line.targetVerb.empty() ? verbName : line.targetVerb;
-        bySet[triggerSet].push_back({line.patternTokens, action, line.isReverse});
+        bySet[triggerSet].push_back({line.patternTokens, action, line.isReverse, line.withI6Synonyms});
     }
 
     auto toI6Word = [](const string& w) -> string {
@@ -2760,11 +2996,38 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
         return true;
     };
 
-    auto emitDirectiveHead = [&](const string& word, bool isFirst){
+    auto emitDirectiveHead = [&](const string& word, bool isFirst, bool withSynonymsWord){
         if(isFirst){
             declaredVerbWords.insert(word);
             if(isMeta) out << format("verb meta {0}\n", toI6Word(word));
             else       out << format("verb {0}\n",      toI6Word(word));
+        } else if(languageService.evictedExternWords.count(word)){
+            // Evicted library word being reclaimed by a native verb: peel it off the library verb
+            // with `Extend only 'w' replace` (the first emission wipes the library's grammar for w),
+            // then any further contribution to the same word appends via plain `Extend only 'w'`.
+            if(evictedEmitted.insert(word).second) out << format("extend only {0} replace\n", toI6Word(word));
+            else                                   out << format("extend only {0}\n",         toI6Word(word));
+        } else if(isGroupedExternWord(word) && !withSynonymsWord){
+            // DEFAULT for a GROUPED library word: word-precise. Split it off its verb via
+            // `Extend only 'w'` — inherits the library grammar, adds this line, leaves the word's
+            // I6 synonyms untouched. Combined with `replace grammar =` it emits `Extend only 'w'
+            // replace`, wiping the split word's inherited grammar and installing only these lines.
+            // The first split carries the only/replace head; further contributions to the now-split
+            // word append with plain `extend`. (The `withI6Synonyms` modifier opts OUT of this, into
+            // the whole-group `Extend` below; solo/new words never reach here — no synonyms.)
+            if(splitEmitted.insert(word).second){
+                switch(mode){
+                    case extendDirective::First:   out << format("extend only {0} first\n",   toI6Word(word)); break;
+                    case extendDirective::Last:    out << format("extend only {0}\n",         toI6Word(word)); break;
+                    case extendDirective::Replace: out << format("extend only {0} replace\n", toI6Word(word)); break;
+                }
+            } else {
+                switch(mode){
+                    case extendDirective::First:   out << format("extend {0} first\n",   toI6Word(word)); break;
+                    case extendDirective::Last:    out << format("extend {0}\n",         toI6Word(word)); break;
+                    case extendDirective::Replace: out << format("extend {0} replace\n", toI6Word(word)); break;
+                }
+            }
         } else {
             switch(mode){
                 case extendDirective::First:   out << format("extend {0} first\n",   toI6Word(word)); break;
@@ -2788,6 +3051,11 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
     for(const vector<string>& triggerSet : setOrder){
         const vector<lineEntry>& entries = bySet[triggerSet];
 
+        // A grouped library word splits by default; it stays whole-group only if a line opted out
+        // with `withI6Synonyms` (decided against isGroupedExternWord in emitDirectiveHead).
+        bool withSynonymsWord = false;
+        for(const lineEntry& e : entries) if(e.withI6Synonyms){ withSynonymsWord = true; break; }
+
         // Combined multi-trigger Verb directive: only legal when ALL triggers are first-
         // occurrence (I6's `Verb 'w1' 'w2' …` doesn't accept already-claimed words without
         // warnings), AND we're emitting a Verb-mode directive (Extend takes a single trigger).
@@ -2810,11 +3078,26 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
             // Single-trigger, or multi-trigger with mixed first/existing — fan out per trigger.
             // Each trigger gets the same pattern list (one I6 directive per trigger).
             for(const string& word : triggerSet){
-                emitDirectiveHead(word, isFirstOccurrence(word));
+                emitDirectiveHead(word, isFirstOccurrence(word), withSynonymsWord);
                 emitPatterns(entries);
             }
         }
     }
+}
+
+// A word evicted via `grammar -= {.w}` that a native verb reclaimed was already emitted as
+// `Extend only 'w' replace * … -> V;` during that verb's grammar (tracked in evictedEmitted).
+// Whatever remains is a pure removal — the author disabled a library command with nobody taking
+// the word — so emit an empty `Extend only 'w' replace;`, which strips the word from its library
+// verb and leaves it triggering nothing.
+void i6Emitter::emitEvictions(){
+    auto toI6Word = [](const string& w) -> string {
+        string e; for(char ch : w) e += (ch == '\'') ? '^' : ch;
+        return (e.size() == 1) ? ("'" + e + "//'") : ("'" + e + "'");
+    };
+    for(const string& w : languageService.evictedExternWords)
+        if(!evictedEmitted.count(w))
+            out << format("extend only {0} replace;\n", toI6Word(w));
 }
 
 i6Emitter emitter;

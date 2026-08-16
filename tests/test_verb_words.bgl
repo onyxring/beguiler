@@ -12,9 +12,10 @@
 //     collection (multiple lines, same union).
 //   - Beguile-side extends of an extern verb targeting one of its declared alias triggers
 //     emit as I6 Extend, not as fresh Verb directives.
-//   - A non-extern verb that claims a word an extern verb also claims routes through
-//     Extend (I6 treats all triggers as equivalent synonyms — emitting a fresh Verb 'w'
-//     when 'w' is already declared causes I6's "two different verb definitions" error).
+//   - A non-extern verb that claims a word a GROUPED extern verb also claims routes through
+//     I6 `Extend only 'w'` — word-precise by default (splits that word off, leaving the verb's
+//     synonyms untouched), rather than a fresh `Verb 'w'` (which would cause I6's "two different
+//     verb definitions" error). The `withI6Synonyms` modifier opts back into whole-group `Extend`.
 
 #beguilerSettings {
     target = z5;
@@ -44,7 +45,7 @@ extern verb MyExtVerb2 {
 // (priority 5 < anchor 10).
 extend MyExtVerb {
     priority = 5;
-    grammar = {
+    grammar += {
         {.foo, noun},
     };
 }
@@ -52,24 +53,24 @@ extend MyExtVerb {
 // Extend MyExtVerb using an ALIAS trigger — also Extend (not fresh Verb), because
 // 'bar' is now pre-seeded via MyExtVerb's grammar declaration.
 extend MyExtVerb {
-    grammar = {
+    grammar += {
         {.bar, noun, .down},
     };
 }
 
 // Extend MyExtVerb2 using a middle alias — also routes to Extend.
 extend MyExtVerb2 {
-    grammar = {
+    grammar += {
         {.beta, noun},
     };
 }
 
-// A new Beguile verb whose trigger word collides with an extern alias. Because
-// 'gamma' is already claimed by MyExtVerb2, MyOwn's line emits as
-// `extend 'gamma' * 'check' -> myown;` — a fresh Verb directive would produce
-// I6's "two different verb definitions" error. The default-last form (no `first`)
-// is used because MyOwn's priority (default 10) is not lower than the implicit
-// extern anchor (10); a verb declared with `priority = 5` would emit `extend first`.
+// A new Beguile verb whose trigger word collides with an extern alias. Because 'gamma' is already
+// claimed by the GROUPED MyExtVerb2, MyOwn's line is word-precise by default and emits as
+// `extend only 'gamma' * 'check' -> myown;` — splitting 'gamma' off (leaving 'alpha'/'beta'
+// untouched); a fresh Verb directive would produce I6's "two different verb definitions" error.
+// The default-last form (no `first`) is used because MyOwn's priority (default 10) is not lower
+// than the implicit extern anchor (10); a verb declared with `priority = 5` would emit `first`.
 verb MyOwn {
     grammar = {
         {.gamma, .check},

@@ -1,0 +1,23 @@
+/*  operators.bgl - operator overloading.
+
+    A class can define operators so its instances work with the built-in
+    operators (+, ==, <, [], and more), either as inlined emitters or as regular
+    methods. Here `operator >` compares two Money values by content. Library-free.  */
+
+#beguilerSettings {
+    target     = z5;
+    informName = "none";
+}
+
+class Money : object {
+    int cents = 0;
+    bool operator > (Money other) { return self.cents > other.cents; }
+}
+
+Money price  { cents = 250; }   // $2.50
+Money budget { cents = 300; }   // $3.00
+
+void main() {
+    if(budget > price) print("Affordable.^");
+    else               print("Too expensive.^");
+}

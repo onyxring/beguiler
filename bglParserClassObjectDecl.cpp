@@ -319,7 +319,16 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 name.value = "?";
                 tok = file.getToken(eTokenType::symbol);
             } else {
-                opTok.assert(eTokenType::oper);
+                // Validate the operator symbol against the overloadable set (spec §5.6.6).
+                // This also rejects valid operator tokens that are NOT overloadable
+                // (e.g. `?.`, `??`, `=>`), which asserting `oper` alone would let through.
+                static const string overloadableOps =
+                    " = + - * / % == != =~ < > <= >= ?= && || & | ^ << >> "
+                    "+= -= *= /= %= &= |= ^= <<= >>= ++ -- ! ";
+                if(overloadableOps.find(" " + opTok.value + " ") == string::npos)
+                    parsingError(format("'{0}' is not an overloadable operator. Overloadable operators are:"
+                        "{1}and the special forms operator(), operator[], operator[]=, operator switch, "
+                        "operator auto, and the ? query operator.", opTok.value, overloadableOps));
                 name = opTok;
                 tok=file.getToken(eTokenType::symbol);
             }
@@ -642,8 +651,9 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                                 expression* elem = list->elements[i];
                                 if(elem->resolvedType.empty())
                                     parsingError(format("Undeclared identifier in initializer list (element {0})", i));
-                                else if(!isTypeCompatible(elem->resolvedType, expectedElemType))
+                                else if(!isArrayElementCompatible(elem->resolvedType, expectedElemType))
                                     parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
+                                checkByteElementRange(elem, expectedElemType);
                             }
                     }
                     varDef.declaredExpressionValue = list;
@@ -779,8 +789,9 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             expression* elem = list->elements[i];
             if(elem->resolvedType.empty())
                 parsingError(format("Undeclared identifier in initializer list (element {0})", i));
-            else if(!expectedElemType.empty() && !isTypeCompatible(elem->resolvedType, expectedElemType))
+            else if(!expectedElemType.empty() && !isArrayElementCompatible(elem->resolvedType, expectedElemType))
                 parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
+            checkByteElementRange(elem, expectedElemType);
         }
         prop.declaredExpressionValue = list;
     } else {
@@ -1195,6 +1206,11 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
         string inferredVerb;
         if(vod) inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
 
+        // `+=` / `-=` are extend-body operators, not declaration forms — give a clear message
+        // instead of the generic "expected '='".
+        { token opPeek = file.peekToken();
+          if(opPeek.is("+=") || opPeek.is("-="))
+              parsingError(format("`{0} {1}` is only valid inside an `extend` body. A declaration establishes the base grammar with `{0} = {{ ... }}`; use `extend` to append (`+=`), remove (`-=`), or `replace {0} = …`.", propName.value, opPeek.value)); }
         file.getToken(token::assignment);
         grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
         gtd.name = propName.value;
@@ -1319,6 +1335,10 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
         string inferredVerb;
         if(vod) inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
 
+        // `+=` / `-=` are extend-body operators, not declaration forms — clear message here too.
+        { token opPeek = file.peekToken();
+          if(opPeek.is("+=") || opPeek.is("-="))
+              parsingError(format("`{0} {1}` is only valid inside an `extend` body. A declaration establishes the base grammar with `{0} = {{ ... }}`; use `extend` to append (`+=`), remove (`-=`), or `replace {0} = …`.", nameTok.value, opPeek.value)); }
         file.getToken(token::assignment);
         grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
         gtd.name = nameTok.value;
@@ -1963,13 +1983,12 @@ bool bglParser::processObjectExtension(token nameTok){
             // Check for += / -= compound assignment (inferred type)
             token peekOp = file.peekToken();
             if(peekOp.is("+=") || peekOp.is("-=")){
-                if(vod != nullptr && tok.value == "grammar"){
-                    // `grammar +=` / `grammar -=` are not part of the grammar surface — the
-                    // visual closeness to `=` made silent typo-flips between append and replace
-                    // too easy. In `extend`, plain `grammar = { ... }` appends (default safe);
-                    // destructive replacement requires the explicit `replace` qualifier.
-                    parsingError(format("'grammar {0}' is not supported. In an `extend` body, `grammar = {{ ... }}` appends (default); use `replace grammar = {{ ... }}` for destructive replacement.", peekOp.value));
-                }
+                // In an `extend` body the grammar operators are explicit: `grammar += { ... }`
+                // appends, `grammar -= { ... }` removes (matching lines; warns if none match).
+                // Destructive whole-verb replacement is the separate `replace grammar = { ... }`.
+                // A bare `grammar = { ... }` is rejected below so an append/replace can't be
+                // silently confused. The grammarrulelist +=/-= logic lives in
+                // processExtendCompoundAssignment (which also rejects -= on extern verbs).
                 token op = file.getToken();
                 processExtendCompoundAssignment(*obj, tok, op.value, vod, extendBlockPriority);
             } else if(vod != nullptr && tok.value == "priority" && peekOp.is(token::assignment)){
@@ -1987,16 +2006,17 @@ bool bglParser::processObjectExtension(token nameTok){
                 extendBlockPriority = newPriority;
                 file.getToken(token::endStatement);
             } else if(vod != nullptr && tok.value == "grammar" && peekOp.is(token::assignment)){
-                // Verb extend block: `grammar = { ... }` is APPEND by default (additive,
-                // priority-stamped from the surrounding extend block). `replace grammar = { ... }`
-                // is destructive REPLACE — emits I6 `Extend 'v' replace …` directives, wiping
-                // the verb's previous rules for each trigger word. The `replace` qualifier is
-                // captured upstream into `memberIsReplace`.
-                //
+                // In an `extend` body, only `replace grammar = { ... }` uses `=` (destructive
+                // whole-verb replace). A BARE `grammar = { ... }` is rejected: append is `+=`,
+                // remove is `-=`. This forces intent so an `=` can never silently append-or-replace
+                // (the reason `grammar =` append was retired). In a `verb` DECLARATION, `grammar =`
+                // remains the (only) form — that path is handled elsewhere, not here.
+                bool isReplace = memberIsReplace;
+                if(!isReplace)
+                    parsingError("In an `extend` body, `grammar = { ... }` is not allowed. Use `grammar += { ... }` to append, `grammar -= { ... }` to remove, or `replace grammar = { ... }` to replace the whole verb.");
                 // Priority is meaningless under replace; if the user also set a non-default
                 // `priority = N;` in the same extend block, that's a contradiction.
-                bool isReplace = memberIsReplace;
-                if(isReplace && extendBlockPriority != verbPriorityDefault)
+                if(extendBlockPriority != verbPriorityDefault)
                     parsingError("`replace grammar = { ... }` cannot be combined with a non-default `priority = N;` in the same extend block — priority is meaningless under replace");
                 file.getToken(token::assignment);
                 vector<grammarLine> lines = parseGrammarLines();
@@ -2021,22 +2041,11 @@ bool bglParser::processObjectExtension(token nameTok){
                 for(grammarLine& gl : lines){
                     gl.targetVerb    = inferredVerb;
                     gl.isOwnLine     = false;
-                    gl.isReplaceMode = isReplace;
-                    if(!isReplace){
-                        // Append path: stamp the extend block's priority and create per-rule
-                        // grammarRuleDecl tracking (mirrors what `+=` used to do).
-                        gl.priority = extendBlockPriority;
-                        grammarRuleDecl& rd = *(new grammarRuleDecl());
-                        rd.name = "grammar";
-                        rd.type = languageService.getType("grammarrule");
-                        rd.line = gl;
-                        rd.targetVerb = inferredVerb;
-                        gtd->rules.push_back(&rd);
-                    }
+                    gl.isReplaceMode = true;   // only the replace path reaches here now
                     gtd->grammarLines.push_back(gl);
                     vod->grammarLines.push_back(gl);
                 }
-                if(isReplace) extendHadReplaceGrammar = true;
+                extendHadReplaceGrammar = true;
             } else if(tok.value == "synonyms" && peekOp.is(token::assignment)){
                 // `synonyms = {.w1, .w2};` → I6 `Verb 'w1' 'w2' = 'anchor';`. The listed words become
                 // TRUE ALIASES of the anchor verb's grammar table (a later `Extend` on the verb flows
@@ -2122,9 +2131,14 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
     if(memberType.empty())
         parsingError(format("'{0}' is not a member of this object; cannot use {1}", display, op));
 
-    // -= on extern objects is not allowed — we don't control their original data
+    // -= on extern objects is not allowed — we don't control their original data. The ONE exception
+    // is grammar: Beguile can `grammar +=` new lines onto a library verb (emitted as I6 `Extend`),
+    // and it tracks exactly what it added — so it can remove ITS OWN additions again (`grammar -=`
+    // just drops that `Extend`). It still cannot touch the library's original grammar (I6 has no
+    // remove-a-line primitive, and Beguile doesn't know those patterns); the grammar `-=` handler
+    // enforces that by matching only Beguile-added lines and warning otherwise.
     bool isExternalObj = obj.isExternal || (vod && vod->isExternal);
-    if(isExternalObj && op == "-=")
+    if(isExternalObj && op == "-=" && memberType != "grammarrulelist")
         parsingError(format("Cannot use -= on extern object '{0}'; the original data is defined externally",
             obj.displayName.empty() ? obj.name : obj.displayName));
 
@@ -2164,25 +2178,120 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
             if(vod)
                 vod->grammarLines.insert(vod->grammarLines.end(), gtd->grammarLines.end() - lines.size(), gtd->grammarLines.end());
         } else {
-            // -= : remove matching grammar lines
+            // -= : remove grammar. The GRAIN is set by how much of the line the spec names:
+            //   • WORD-LEVEL  `{.w}`        (no pattern)  → remove ALL of that word's grammar.
+            //   • LINE-LEVEL  `{.w, pat…}`  (with pattern) → remove the one exactly-matching line.
+            // (A single word is the only "match-many" form; partial-pattern prefix matching is
+            // deliberately NOT supported — see languageSpec / Verbs-Grammar for the rationale.)
+            //
+            // Removal is source-order: a `-=` only sees lines accumulated so far (base + earlier
+            // extends), so a later `+=` of the same line is unaffected. parseGrammarLines expands
+            // alternations, so each spec carries a single trigger word.
+            //
+            // On an EXTERN (library) verb the two grains behave very differently, because Beguile
+            // has only partial sight of a library verb:
+            //   • line-level  → can match only Beguile's OWN additions (isOwnLine == false); the
+            //     library's original patterns are opaque, so a spec naming one can't match and warns.
+            //   • word-level  → EVICTION. It doesn't need to see patterns: it records the word in
+            //     evictedExternWords, and the emitter lowers it to I6 `Extend only 'w' replace`,
+            //     which peels the whole word off the library verb (and lets a native verb reclaim it).
             vector<grammarLine> toRemove = parseGrammarLines();
-            for(typeMember* m : obj.members){
-                if(auto* g = dynamic_cast<grammarRuleListDecl*>(m)){
-                    if(g->name != memberNameStr) continue;
-                    for(const grammarLine& rem : toRemove){
-                        g->grammarLines.erase(
-                            remove_if(g->grammarLines.begin(), g->grammarLines.end(),
-                                [&](const grammarLine& gl){ return gl.verbWord == rem.verbWord && gl.additionalVerbWords == rem.additionalVerbWords && gl.patternTokens == rem.patternTokens; }),
-                            g->grammarLines.end());
-                    }
+
+            // Is `w` a trigger word this (extern) verb is known to claim? verbWords is populated at
+            // emit time, so at parse time we read the extern verb's own declared lines (isOwnLine) and
+            // its name (the bare-`extern verb V;` default). Used only for extern diagnostics/eviction.
+            auto externClaims = [&](const string& w) -> bool {
+                if(!vod) return false;
+                for(const grammarLine& gl : vod->grammarLines)
+                    if(gl.isOwnLine && gl.verbWord == w) return true;
+                bool anyOwn = false;
+                for(const grammarLine& gl : vod->grammarLines) if(gl.isOwnLine){ anyOwn = true; break; }
+                return !anyOwn && w == vod->name;   // bare `extern verb V;` claims its own name
+            };
+            // Count Beguile-added lines (isOwnLine == false) for word `w`.
+            auto beguileAddedCount = [&](const string& w) -> int {
+                int n = 0;
+                if(vod) for(const grammarLine& gl : vod->grammarLines)
+                    if(!gl.isOwnLine && gl.verbWord == w) n++;
+                return n;
+            };
+
+            for(const grammarLine& rem : toRemove){
+                bool wordLevel = rem.patternTokens.empty() && rem.additionalVerbWords.empty();
+                string vn = obj.displayName.empty() ? obj.name : obj.displayName;
+
+                // ---- EXTERN word-level: eviction via `Extend only 'w' replace` ----
+                if(wordLevel && isExternalObj){
+                    bool claimed = externClaims(rem.verbWord);
+                    int  added   = beguileAddedCount(rem.verbWord);
+                    // Drop Beguile's own additions for this word — the eviction subsumes them.
+                    if(vod)
+                        vod->grammarLines.erase(
+                            remove_if(vod->grammarLines.begin(), vod->grammarLines.end(),
+                                [&](const grammarLine& gl){ return !gl.isOwnLine && gl.verbWord == rem.verbWord; }),
+                            vod->grammarLines.end());
+                    for(typeMember* m : obj.members)
+                        if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+                            if(g->name == memberNameStr)
+                                g->grammarLines.erase(
+                                    remove_if(g->grammarLines.begin(), g->grammarLines.end(),
+                                        [&](const grammarLine& gl){ return gl.verbWord == rem.verbWord; }),
+                                    g->grammarLines.end());
+                    if(claimed || added > 0)
+                        languageService.evictedExternWords.insert(rem.verbWord);
+                    else
+                        parsingWarning(format("grammar -= on extern verb '{0}': '{1}' is not a word this verb claims and Beguile added no grammar for it, so nothing was evicted. Check the trigger word.", vn, rem.verbWord));
+                    continue;
                 }
-            }
-            if(vod){
-                for(const grammarLine& rem : toRemove){
+
+                // ---- NATIVE word-level, or LINE-level (native or extern) ----
+                auto matchesSpec = [&](const grammarLine& gl){
+                    // Extern line-level: only Beguile's OWN additions are matchable.
+                    if(isExternalObj && gl.isOwnLine) return false;
+                    if(gl.verbWord != rem.verbWord) return false;
+                    if(wordLevel) return true;                              // whole word: ignore pattern
+                    return gl.additionalVerbWords == rem.additionalVerbWords
+                        && gl.patternTokens == rem.patternTokens
+                        && gl.isReverse == rem.isReverse;
+                };
+                int matched = 0;
+                if(vod){
+                    for(const grammarLine& gl : vod->grammarLines) if(matchesSpec(gl)) matched++;
+                } else {
+                    for(typeMember* m : obj.members)
+                        if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+                            if(g->name == memberNameStr)
+                                for(const grammarLine& gl : g->grammarLines) if(matchesSpec(gl)) matched++;
+                }
+                for(typeMember* m : obj.members)
+                    if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+                        if(g->name == memberNameStr)
+                            g->grammarLines.erase(
+                                remove_if(g->grammarLines.begin(), g->grammarLines.end(),
+                                    [&](const grammarLine& gl){ return matchesSpec(gl); }),
+                                g->grammarLines.end());
+                if(vod)
                     vod->grammarLines.erase(
                         remove_if(vod->grammarLines.begin(), vod->grammarLines.end(),
-                            [&](const grammarLine& gl){ return gl.verbWord == rem.verbWord && gl.patternTokens == rem.patternTokens; }),
+                            [&](const grammarLine& gl){ return matchesSpec(gl); }),
                         vod->grammarLines.end());
+
+                if(matched == 0){
+                    string patStr;
+                    for(size_t i = 0; i < rem.patternTokens.size(); i++){ if(i) patStr += " "; patStr += rem.patternTokens[i]; }
+                    if(patStr.empty()) patStr = "(no pattern)";
+                    if(isExternalObj){
+                        // Two-layer diagnostic: distinguish "opaque library grammar" (word IS claimed —
+                        // point the user at word-level eviction) from a genuine typo (word not claimed).
+                        if(externClaims(rem.verbWord))
+                            parsingWarning(format("grammar -= on extern verb '{0}': no Beguile-added grammar matches `'{1}' * {2}`. '{1}' is a library word whose own grammar Beguile can't see line-by-line — use `grammar -= {{ {{.{1}}} }}` to evict the whole word, or check your pattern.", vn, rem.verbWord, patStr));
+                        else
+                            parsingWarning(format("grammar -= on extern verb '{0}': '{1}' is not a word this verb claims and Beguile added no grammar line `'{1}' * {2}`, so nothing was removed. Check the trigger word.", vn, rem.verbWord, patStr));
+                    } else if(wordLevel){
+                        parsingWarning(format("grammar -= on '{0}': no grammar for word `'{1}'` exists, so nothing was removed. Check the trigger word, or the order relative to the matching `grammar +=`.", vn, rem.verbWord));
+                    } else {
+                        parsingWarning(format("grammar -= on '{0}': no grammar line `'{1}' * {2}` exists, so nothing was removed. Check the trigger word and pattern, or the order relative to the matching `grammar +=`.", vn, rem.verbWord, patStr));
+                    }
                 }
             }
         }

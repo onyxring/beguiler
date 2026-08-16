@@ -201,6 +201,8 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         bool isStatic = false;   // static members: class-level state, emitted as mangled I6 global
         bool isAlias = false;    // type alias member: `alias name for Type;` — compile-time type reference, no I6 backing
         bool isTypeSealed = false; // `typesealed` base-class member: subclass/instance re-declarations keep this type (and warn)
+        bool isAdditive = false;   // `additive` file-scope `property` decl: emits I6 `Property additive foo;`
+                                   // so the slot accumulates values across the class hierarchy instead of overriding
         // Class-typed function local with synthesized static backing: at parse time we
         // registered a global `_bglLocal_<func>_<name>` of the same type so the local is
         // a real per-instance I6 object and `localname = expr` can dispatch operator=
@@ -423,6 +425,13 @@ struct grammarLine {
     bool isReverse = false;         // true → emit as I6 `* pattern -> Action reverse;` (swaps noun/second_noun
                                     // when the action receives the parsed args). Set by the trailing `reverse`
                                     // pseudo-token in the line literal: `{.give, creature, held, reverse}`.
+    bool withI6Synonyms = false;    // Grouped-library-word emission control. DEFAULT (false): a line whose
+                                    // trigger word belongs to a multi-word I6 verb is word-precise — it lowers
+                                    // to `Extend only 'w'` (splits the word off, inherits the library grammar,
+                                    // leaves the word's synonyms untouched). TRUE (the `withI6Synonyms` trailing
+                                    // modifier): opt back into I6's whole-group `Extend 'w'`, spreading the line
+                                    // across all the verb's synonym words. Solo/new words are plain `Extend`/
+                                    // `Verb` regardless (no synonyms to spread or over-reach).
 };
 
 // a verb declaration — an objectDef of class 'verb'; holds optional action body and inline grammar

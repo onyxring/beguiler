@@ -58,6 +58,15 @@ extern emitter class uint : _bglObject { //--unsigned integer wrapper; same I6 r
     emitter uint operator ^  (uint v){ ($val | $v) - ($val & $v) }
     emitter uint operator ^= (uint v){ $val = (($val | $v) - ($val & $v)) }
 
+    // Shifts — left is bit-identical to the signed form (reuse _bglShiftLeft); right
+    // must be LOGICAL (zero-fill), so it routes through _bglUnsignedShiftRight —
+    // signed `>>` would sign-extend a value whose high bit is set. Like uint's other
+    // routed operators, these are emitters, so they call the standalones directly.
+    emitter uint operator <<  (uint v){ _bglShiftLeft($val, $v) }
+    emitter uint operator <<= (uint v){ $val = _bglShiftLeft($val, $v) }
+    emitter uint operator >>  (uint v){ _bglUnsignedShiftRight($val, $v) }
+    emitter uint operator >>= (uint v){ $val = _bglUnsignedShiftRight($val, $v) }
+
     // Explicit conversions to/from int — bit-preserving cast, no runtime work.
     explicit emitter int  operator() { $val }
 }

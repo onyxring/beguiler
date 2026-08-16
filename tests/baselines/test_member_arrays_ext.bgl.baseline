@@ -57,13 +57,11 @@ global _bglInitDone = 0;
     _bglLinqS1B-->(_bglLinqS1B-->0) = $9084;  _bglLinqS1B-->(_bglLinqS1B-->0 - 1) = 0;
 
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _zcode
 ;
-object _bglUtil
-;
 object bgl
-  with zcode _zcode,
-       bglUtil _bglutil
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     

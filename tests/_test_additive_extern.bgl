@@ -1,0 +1,6 @@
+/* Negative test: an extern property's additivity is owned by its external I6 declaration, so
+   `additive` cannot be combined with `extern`. */
+// EXPECT_ERROR: 'additive' cannot be combined with 'extern'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+additive extern property libHook;

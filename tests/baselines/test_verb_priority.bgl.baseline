@@ -16,13 +16,11 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _zcode
 ;
-object _bglUtil
-;
 object bgl
-  with zcode _zcode,
-       bglUtil _bglutil
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -234,10 +232,8 @@ object tickle
                 tickle.handler();
             ];
 verb 'tickle'
-    * noun -> tickle;
-extend 'tickle' first
-    * 'gently' noun -> tickle;
-extend 'tickle'
+    * 'gently' noun -> tickle
+    * noun -> tickle
     * 'roughly' noun -> tickle;
 object burnish
   with handler [;
@@ -248,10 +244,8 @@ object burnish
                 burnish.handler();
             ];
 verb 'burnish'
-    * -> burnish;
-extend 'burnish' first
-    * 'carefully' -> burnish;
-extend 'burnish'
+    * 'carefully' -> burnish
+    * -> burnish
     * 'casually' -> burnish;
 [main;
 ];

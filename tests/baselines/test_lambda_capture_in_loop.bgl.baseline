@@ -14,13 +14,11 @@ global _bglCap3;
 global _bglCap2;
 global _bglCap1;
 global _bglCap0;
+ Constant NO_ATTRIBUTE 0; 
 object _zcode
 ;
-object _bglUtil
-;
 object bgl
-  with zcode _zcode,
-       bglUtil _bglutil
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     

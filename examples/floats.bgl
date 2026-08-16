@@ -1,0 +1,17 @@
+/*  floats.bgl - floating-point arithmetic (Glulx only).
+
+    `float` is a core type available when the target is Glulx; the Z-machine has
+    no floating-point support. Construct a float by casting, then use the ordinary
+    arithmetic operators.  */
+
+#beguilerSettings {
+    target     = Glulx;
+    informName = "none";
+}
+
+void main() {
+    float radius = (float)5;
+    float pi     = (float)314 / (float)100;      // 3.14
+    float area   = pi * radius * radius;         // ~78.5
+    print(area); print("^");
+}

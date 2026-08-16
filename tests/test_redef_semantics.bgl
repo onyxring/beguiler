@@ -1,0 +1,35 @@
+/*
+    test_redef_semantics.bgl
+    Tests the preprocessor semantics:
+      • `#redef` overwrites an existing symbol with no error (unlike `#define`).
+      • A bare `#if SYMBOL` tests DEFINEDNESS (any value, including false / 0).
+      • `#if SYMBOL == value` compares the symbol's literal value; `true`/`false`
+        are recognized as 1 / 0.
+    Only the branches whose guards hold should appear in the emitted I6.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+#define v false
+#redef  v true       // overwrites v without error
+#define zero 0
+
+void Main() {
+    #if v            // defined -> included
+        print("v-defined^");
+    #endif
+    #if v == true    // value is now true (after #redef) -> included
+        print("v-eq-true^");
+    #endif
+    #if v == false   // value is not false -> excluded
+        print("v-eq-false^");
+    #endif
+    #if zero         // defined even though its value is 0 -> included
+        print("zero-defined^");
+    #endif
+    #if !undef       // undefined -> included
+        print("not-undef^");
+    #endif
+    #if undef        // undefined -> excluded
+        print("undef^");
+    #endif
+}

@@ -1,0 +1,38 @@
+/* test_math_random_shift.bgl — core numeric utilities added to the BLR:
+     • bgl.util.math.min / max / clamp / sign   (core/_math.bgl — superposed routines)
+     • bgl.util.random.get / seed               (core/_random.bgl — delegates to I6's
+                                                  built-in random(); NO backing routine)
+     • uint << >> <<= >>=                        (core/_uint.bgl; >> is LOGICAL)
+   All are core (always present) and zero-cost unless referenced. The math/shift
+   superposed routines appear only because these call sites name them; the random
+   facade emits I6's native random(...) inline (roll, pick, and seed) with nothing to
+   materialize. Also exercises a bgl.util.<facade> call in STATEMENT position
+   (random.seed), which the `alias util` wiring makes resolvable. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+void main(){
+    // min / max / clamp / sign
+    int lo = bgl.util.math.min(3, 7);
+    int hi = bgl.util.math.max(3, 7);
+    int c  = bgl.util.math.clamp(15, 0, 10);
+    int s  = bgl.util.math.sign(-4);
+    print(lo); print(hi); print(c); print(s);
+
+    // random facade — seed (STATEMENT position) then get(n) → 1..n; library-independent (@random)
+    bgl.util.random.seed(42);
+    int r = bgl.util.random.get(6);
+    print(r);
+
+    // multi-arg pick form — mirrors I6's random(a, b, c, …); get() resolves by arity
+    int p3 = bgl.util.random.get(10, 20, 30);
+    int p7 = bgl.util.random.get(1, 2, 3, 4, 5, 6, 7);
+    print(p3); print(p7);
+
+    // uint shifts — left reuses _bglShiftLeft; right is logical (_bglUnsignedShiftRight)
+    uint u = (uint)200;
+    uint ul = u << 2;
+    uint ur = u >> 1;
+    ul <<= 1;
+    ur >>= 1;
+    print((int)ul); print((int)ur);
+}

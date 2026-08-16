@@ -1,0 +1,23 @@
+// test_grammar_remove.bgl — extend-body grammar operators += (append) and -= (remove).
+// Emission is per-word (each trigger word = its own I6 Verb), so `-=` is per-word too: it
+// matches on a single trigger word + pattern, letting you drop one synonym while keeping the
+// other. Removal is source-order (only sees lines before it) and warns if nothing matches.
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+verb Poke {
+    grammar = {
+        {.poke|.prod, noun},        // poke and prod are synonyms
+        {.poke, .hard, noun},
+    };
+    void handler(){ print("poke"); }
+}
+extend Poke { grammar += { {.poke, .gently, noun} }; }   // append (to poke only)
+extend Poke { grammar -= { {.prod, noun} }; }            // drop prod's line; poke keeps its own
+
+void main(){}

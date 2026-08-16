@@ -192,145 +192,152 @@ extern enum grammarToken {
     /// Any number typed by the player (no range check).
     anynumber,
     /// A number typed by the player (range-checked to fit a word).
-    number
+    number,
+    /// Placeholder marker — use the `scope=Routine` form on a real grammar line to set scope.
+    scope,
+    /// Action-target modifier — must appear as the LAST element of a grammar line literal,
+    /// e.g. `{.give, creature, held, reverse}`. Emits I6's `-> Action reverse`, which swaps
+    /// `noun` and `second_noun` before the action routine runs (so `give X to Y` and
+    /// `give Y X` both land X in `noun`, Y in `second_noun`). Not a pattern token — does
+    /// not match user input. Compile error if it appears anywhere other than last.
+    reverse
 }
 
 //-- Standard game actions ----------------------------------------------------
-extern verb Answer;
-extern verb Ask;
-extern verb AskFor;             // ask <creature> for <noun>
-extern verb AskTo;              // ask/tell <creature> to <topic>
-extern verb Attack;
-extern verb Blow;
-extern verb Burn;
-extern verb Buy;
-extern verb Climb;
-extern verb Close;
-extern verb Consult;            // consult <noun> about <topic>
-extern verb Cut;
-extern verb Dig;
-extern verb Disrobe;
-extern verb Drink;
-extern verb Drop;
-extern verb Eat;
-extern verb Empty;
-extern verb EmptyT;             // empty <noun> into <noun>
-extern verb Enter;
-extern verb Examine;
-extern verb Exit;
-extern verb Fill;
-extern verb GetOff;
-extern verb Give;
-extern verb Go;
-extern verb GoIn;               // go in / enter
-extern verb GoNear;             // (debug) go to/near <object>
-extern verb Going;              // synthetic action fired during movement;
+extern verb Answer { .answer|.say|.speak }                          // answer <topic> to <creature>
+extern verb Ask { .ask }                                            // ask <creature> about <topic>
+extern verb AskFor { .ask }                                         // ask <creature> for <noun>
+extern verb AskTo { .ask|.tell }                                    // ask/tell <creature> to <topic>
+extern verb Attack { .attack|.break|.crack|.destroy|.fight|.hit|.kill|.murder|.punch|.smash|.thump|.torture|.wreck }  // attack / hit / kill <noun>
+extern verb Blow { .blow }                                          // blow <held>
+extern verb Burn { .burn|.light }                                   // burn / light <noun>
+extern verb Buy { .buy|.purchase }                                  // buy / purchase <noun>
+extern verb Climb { .climb|.scale }                                 // climb / scale <noun>
+extern verb Close { .close|.cover|.shut }                           // close / shut <noun>
+extern verb Consult { .consult }                                    // consult <noun> about <topic>
+extern verb Cut { .cut|.chop|.prune|.slice }                        // cut / chop <noun>
+extern verb Dig { .dig }                                            // dig <noun>
+extern verb Disrobe { .shed|.disrobe|.doff }                        // shed / doff / disrobe <held>
+extern verb Drink { .drink|.sip|.swallow }                          // drink / sip <noun>
+extern verb Drop { .drop|.discard|.throw }                          // drop <multiheld> (puny folds 'throw' into the drop verb)
+extern verb Eat { .eat }                                            // eat <held>
+extern verb Empty { .empty }                                        // empty <noun>
+extern verb EmptyT { .empty }                                       // empty <noun> into <noun>
+extern verb Enter { .enter|.sit|.lie }                              // enter / sit on / lie on <noun>
+extern verb Examine { .examine|.x|.read }                           // examine / x / read <noun>
+extern verb Exit { .exit|.leave|.stand }                            // exit / leave / stand up
+extern verb Fill { .fill }                                          // fill <noun>
+extern verb GetOff { .get }                                         // get off <noun>
+extern verb Give { .give|.feed|.offer|.pay }                        // give <held> to <creature>
+extern verb Go { .go }                                              // go <direction>
+extern verb GoIn { .enter|.in|.inside }                             // go in / enter
+extern verb GoNear { .gonear }                                      // (debug) go to/near <object>
+extern verb Going;              // synthetic action fired during movement (Fake_Action);
                                 // before/after on rooms see selected_direction
-extern verb Goto;               // (debug) goto <object>
-extern verb Insert;
-extern verb Inv;
-extern verb Jump;
-extern verb JumpOver;           // jump over <noun>
-extern verb Kiss;
+extern verb Goto { .goto }                                          // (debug) goto <object>
+extern verb Insert { .insert }                                      // insert <noun> into <noun>
+extern verb Inv { .inventory|.i }                                   // inventory / i
+extern verb Jump { .jump }                                          // jump
+extern verb JumpOver { .jump }                                      // jump over <noun>
+extern verb Kiss { .kiss|.embrace|.hug }                            // kiss / hug <creature>
 extern verb LetGo;              // synthetic; fires on the source when an object
-                                // is taken (counterpart of Receive)
-extern verb Listen;
-extern verb Lock;
-extern verb Look;
-extern verb LookUnder;
-extern verb Mild;               // mild expletive
-extern verb No;
-extern verb Open;
-extern verb Pray;
-extern verb Pull;
-extern verb Push;
-extern verb PushDir;
-extern verb PutOn;
+                                // is taken (Fake_Action, counterpart of Receive)
+extern verb Listen { .listen }                                      // listen
+extern verb Lock { .lock }                                          // lock <noun> with <held>
+extern verb Look { .look|.l }                                       // look / l
+extern verb Mild { .bother|.curses|.darn|.drat }                    // mild expletive
+extern verb No { .no }                                              // no
+extern verb Open { .open|.uncover|.unwrap }                         // open <noun>
+extern verb Pray { .pray }                                          // pray
+extern verb Pull { .pull|.drag }                                    // pull / drag <noun>
+extern verb Push { .push|.clear|.move|.press|.shift }               // push / move <noun>
+extern verb PushDir { .push|.clear|.move|.press|.shift }            // push <noun> <direction>
+extern verb PutOn { .put|.place }                                   // put <noun> on <noun>
 extern verb Receive;            // synthetic; fires on the destination when an
-                                // object is placed inside or onto it
-extern verb Remove;
-extern verb Rub;
-extern verb Search;
-extern verb Set;
-extern verb SetTo;
-extern verb Shout;              // shout
-extern verb ShoutAt;            // shout at <creature>
-extern verb Show;
-extern verb Sing;
-extern verb Sleep;
-extern verb Smell;
-extern verb Sorry;              // sorry
-extern verb Squeeze;
-extern verb Strong;             // strong expletive
-extern verb Swim;               // swim
-extern verb Swing;              // swing <noun>
-extern verb SwitchOff;
-extern verb SwitchOn;
-extern verb Take;
-extern verb Taste;
-extern verb Tell;
-extern verb Think;
-extern verb ThrowAt;            // throw <held> at <noun>
-extern verb ThrownAt;           // synthetic; fires on the target after ThrowAt
-extern verb Tie;
-extern verb Touch;
-extern verb Transfer;
-extern verb Turn;
-extern verb Unlock;
-extern verb Wait;
-extern verb Wake;
-extern verb WakeOther;          // wake <creature>
-extern verb Wave;
-extern verb WaveHands;          // wave (no object)
-extern verb Wear;
-extern verb Yes;
+                                // object is placed inside or onto it (Fake_Action)
+extern verb Remove { .remove }                                      // remove <noun> from <noun>
+extern verb Rub { .rub|.clean|.dust|.polish|.scrub|.shine|.sweep|.wipe }  // rub / clean / polish <noun>
+extern verb Search { .search }                                      // search <noun>
+extern verb Set { .set|.adjust }                                    // set / adjust <noun>
+extern verb SetTo { .set|.adjust }                                  // set <noun> to <value>
+extern verb Shout { .shout|.scream|.yell }                          // shout
+extern verb ShoutAt { .shout|.scream|.yell }                        // shout at <creature>
+extern verb Show { .show|.display|.present }                        // show <held> to <creature>
+extern verb Sing { .sing }                                          // sing
+extern verb Sleep { .sleep|.nap }                                   // sleep / nap
+extern verb Smell { .smell|.sniff }                                 // smell / sniff
+extern verb Sorry { .sorry }                                        // sorry
+extern verb Squeeze { .squeeze|.squash }                            // squeeze / squash <noun>
+extern verb Strong { .shit|.damn|.fuck|.sod }                       // strong expletive
+extern verb Swim { .swim|.dive }                                    // swim / dive
+extern verb Swing { .swing }                                        // swing <noun>
+extern verb SwitchOff { .switch|.turn }                             // switch <noun> off / turn off <noun>
+extern verb SwitchOn { .switch|.turn }                              // switch <noun> on / turn on <noun>
+extern verb Take { .take|.carry|.hold|.get|.pick|.peel }            // take / get / pick up <noun>
+extern verb Taste { .taste }                                        // taste <noun>
+extern verb Tell { .tell }                                          // tell <creature> about <topic>
+extern verb Think { .think }                                        // think
+extern verb ThrowAt { .throw }                                      // throw <held> at <noun>
+extern verb ThrownAt;           // synthetic; fires on the target after ThrowAt (Fake_Action)
+extern verb Tie { .tie|.attach|.fasten|.fix }                       // tie / attach <noun> to <noun>
+extern verb Touch { .touch|.feel|.fondle|.grope }                   // touch / feel <noun>
+extern verb Transfer { .transfer }                                  // transfer <noun> to <noun>
+extern verb Turn { .turn|.rotate|.screw|.twist|.unscrew }           // turn / rotate <noun>
+extern verb Unlock { .unlock|.pry|.prise|.prize|.lever|.jemmy|.force }  // unlock / pry open <noun> with <held>
+extern verb Wait { .wait|.z }                                       // wait / z
+extern verb Wake { .wake|.awake|.awaken }                           // wake / awake
+extern verb WakeOther { .wake|.awake|.awaken }                      // wake <creature>
+extern verb Wave { .wave }                                          // wave <noun>
+extern verb WaveHands { .wave }                                     // wave (no object)
+extern verb Wear { .wear }                                          // wear <held>
+extern verb Yes { .yes|.y }                                         // yes
 
 //-- Synthetic / parser actions ------------------------------------------------
 // These actions are set by the parser itself (not bound to a verb word). They
 // surface as `case Again:`/`case Oops:` etc. in user-side action handlers.
-extern verb Again;              // "g" — repeat last command
-extern verb Oops;               // "oops <word>" — correct a misspelled word
-extern verb OopsCorrection;     // synthetic; fired after Oops applies
+extern verb Again { .again|.g }                                     // again / g — repeat last command
+extern verb Oops { .oops }                                          // oops <word> — correct a misspelled word
+extern verb OopsCorrection;     // synthetic; fired after Oops applies (no verb word of its own)
 
 //-- Meta actions -------------------------------------------------------------
-extern verb Quit;
-extern verb Restart;
-extern verb Restore;
-extern verb Save;
-extern verb Score;
-extern verb FullScore;
-extern verb Version;
-extern verb Verify;
-extern verb ScriptOn;
-extern verb ScriptOff;
-extern verb Pronouns;
-extern verb LookModeNormal;
-extern verb LookModeShort;
-extern verb LookModeLong;
-extern verb NotifyOn;
-extern verb NotifyOff;
+extern verb Quit { .quit|.q }                                       // quit / q
+extern verb Restart { .restart }                                    // restart
+extern verb Restore { .restore }                                    // restore
+extern verb Save { .save }                                          // save
+extern verb Score { .score }                                        // score
+extern verb FullScore { .fullscore|.full }                          // fullscore / full
+extern verb Version { .version }                                    // version
+extern verb Verify { .verify }                                      // verify
+extern verb ScriptOn { .script|.transcript }                        // script / transcript (on)
+extern verb ScriptOff { .noscript|.unscript }                       // noscript / unscript
+extern verb Pronouns { .pronoun|.pronouns }                         // pronoun / pronouns
+extern verb LookModeNormal { .brief|.normal }                       // brief / normal
+extern verb LookModeShort { .superbrief|.short }                    // superbrief / short
+extern verb LookModeLong { .verbose|.long }                         // verbose / long
+extern verb NotifyOn { .notify }                                    // notify / notify on
+extern verb NotifyOff { .notify }                                   // notify off
 
 //-- Debug actions ------------------------------------------------------------
 // Available only when the puny debug feature constants are defined; declared
 // here so user code can reference them under the same conditional.
-extern verb ActionsOn;
-extern verb ActionsOff;
-extern verb CommandsOn;
-extern verb CommandsOff;
-extern verb CommandsRead;
-extern verb Debug;
-extern verb Forest;
-extern verb Tree;
-extern verb Objects;
-extern verb Places;
-extern verb Purloin;
-extern verb RandomSeed;
-extern verb Rooms;
-extern verb RoutinesOn;
-extern verb RoutinesOff;
-extern verb Scope;
-extern verb TimersOn;
-extern verb TimersOff;
+extern verb ActionsOn { .actions }                                  // actions / actions on
+extern verb ActionsOff { .actions }                                 // actions off
+extern verb CommandsOn { .recording }                               // recording / recording on
+extern verb CommandsOff { .recording }                              // recording off
+extern verb CommandsRead { .replay }                                // replay
+extern verb Debug { .debug }                                        // debug
+extern verb Forest { .forest }                                      // forest
+extern verb Tree { .tree }                                          // tree
+extern verb Objects { .objects }                                    // objects
+extern verb Places { .places }                                      // places
+extern verb Purloin { .purloin }                                    // purloin <noun>
+extern verb RandomSeed { .random }                                  // random / random seed <number>
+extern verb Rooms { .rooms }                                        // rooms
+extern verb RoutinesOn { .routines|.messages }                      // routines / routines on
+extern verb RoutinesOff { .routines|.messages }                     // routines off
+extern verb Scope { .scope }                                        // scope
+extern verb TimersOn { .timers|.daemons }                           // timers / daemons on
+extern verb TimersOff { .timers|.daemons }                          // timers / daemons off
 
 //-- Map beguilerSettings metadata to PunyInform constants ----------------------
 // Hoisted via #emitfirst so the constants appear ABOVE the user's #includeI6

@@ -1,0 +1,14 @@
+/*
+    _test_bad_operator.bgl  (negative)
+    Defining an operator that is not in the overloadable set (spec §5.6.6) is a
+    compile error whose message names the overloadable operators. This also closes
+    the gap where a valid-but-non-overloadable token like `??` parsed silently.
+*/
+#beguilerSettings { informName = "none"; }
+
+class T : _bglObject {
+    emitter int operator ?? (int v){ $val }
+}
+
+void Main(){}
+// EXPECT_ERROR: is not an overloadable operator

@@ -16,6 +16,10 @@ property hidden_flag;
 /// Provided by a hypothetical I6 library; we never define it.
 extern property libDefinedProp;
 
+/// Accumulating hook — emits `Property additive my_hooks;` so the slot gathers values
+/// across the class hierarchy instead of the descendant overriding.
+additive property my_hooks;
+
 class Box : object {
     int weight;
     string description;

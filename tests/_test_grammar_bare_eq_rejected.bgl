@@ -1,0 +1,20 @@
+// _test_grammar_bare_eq_rejected.bgl
+// In an `extend` body a BARE `grammar = { ... }` is rejected: append is `grammar += { ... }`,
+// remove is `grammar -= { ... }`, and destructive whole-verb replace is `replace grammar = { ... }`.
+// This forces intent so an `=` can never silently append-or-replace.
+// EXPECT_ERROR: `grammar = { ... }` is not allowed
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <bindings/i6StandardLibrary>
+
+verb Frob { grammar = { {.frob, noun} }; void handler(){ print("frob"); } }
+extend Frob {
+    grammar = { {.tweak, noun} };   // bare '=' in an extend body -> error
+}
+
+void main(){}

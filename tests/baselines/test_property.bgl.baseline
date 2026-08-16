@@ -9,13 +9,11 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _zcode
 ;
-object _bglUtil
-;
 object bgl
-  with zcode _zcode,
-       bglUtil _bglutil
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -219,6 +217,7 @@ object _bglArray
 ;
 global _bglWorldBufIdx = -1;
 property hidden_flag;
+property additive my_hooks;
 class box
   class object
   with

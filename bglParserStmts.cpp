@@ -1325,9 +1325,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         }
         // Validate value type against element type
         string valType = valExpr ? valExpr->resolvedType : "";
-        if(!valType.empty() && !isTypeCompatible(valType, elemType))
+        if(!valType.empty() && !isArrayElementCompatible(valType, elemType))
             parsingError(format("Cannot assign value of type '{0}' to element of array<{1}>",
                 typeDisplayName(valType), typeDisplayName(elemType)));
+        checkByteElementRange(valExpr, elemType);
 
         // Compute $self and $prop
         size_t innerDot = arrPath.rfind('.');

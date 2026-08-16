@@ -16,13 +16,11 @@ global _bglInitDone = 0;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _zcode
 ;
-object _bglUtil
-;
 object bgl
-  with zcode _zcode,
-       bglUtil _bglutil
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -233,7 +231,7 @@ object give2
 [give2sub;
                 give2.handler();
             ];
-extend 'give'
+extend only 'give'
     * held 'to' creature -> give2
     * creature held -> give2 reverse;
 [main;

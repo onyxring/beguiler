@@ -64,6 +64,7 @@ void bglParser::initGrammarTable() {
         {"#i6 directive",            {"#i6"},                                                       &Self::processDirectiveDispatch},
         {"#i6replace directive",     {"#i6replace"},                                                &Self::processDirectiveDispatch},
         {"#define directive",        {"#define"},                                                   &Self::processDirectiveDispatch},
+        {"#redef directive",         {"#redef"},                                                    &Self::processDirectiveDispatch},
         {"#undef directive",         {"#undef"},                                                    &Self::processDirectiveDispatch},
         {"#if directive",            {"#if"},                                                       &Self::processDirectiveDispatch},
         {"#elif directive",          {"#elif"},                                                     &Self::processDirectiveDispatch},

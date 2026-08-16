@@ -12,7 +12,17 @@
         // useful meaning — an `attribute` value isn't a boolean.
         emitter attribute operator !() { ~$val }
     }
-    
+
+    // The "no attribute" sentinel. An `attribute`-typed value that emits as I6's 0, for leaving an
+    // attribute-valued property unset — e.g. `attribute tangentType = NO_ATTRIBUTE;` emits
+    // `tangentType 0`, and `self.tangentType = NO_ATTRIBUTE;` clears it. Use this instead of a bare
+    // integer 0: an attribute is not an int, so only this typed sentinel (or a real attribute) is
+    // assignable to an attribute value. Backed by an I6 `Constant NO_ATTRIBUTE 0;` (compile-time
+    // only, no story-file footprint and no unused-constant warning), typed on the Beguile side by the
+    // extern below.
+    #i6 { Constant NO_ATTRIBUTE 0; }
+    extern const attribute NO_ATTRIBUTE;
+
     extern emitter class attributeList : _bglObject{
         emitter void give(attribute attr){
             give $self $attr

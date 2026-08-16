@@ -55,31 +55,53 @@
 
 using namespace std;
 
-// Normalize path separators to the OS path separator unless rewritePaths is explicitly false.
-// Treats unset (nullopt) as true — rewriting is the default.
+// Resolve `rel` under `base`, matching EVERY path component (intermediate directories
+// and the final filename) case-insensitively. Each component prefers an exact match
+// when one exists, then falls back to the first directory entry whose lowercased name
+// matches. Returns the existing resolved path, or empty if any component has no match.
+static filesystem::path resolveCaseInsensitive(const filesystem::path& base, const filesystem::path& rel){
+    std::error_code ec;
+    filesystem::path cur = base;
+    for(const auto& comp : rel){
+        string cs = comp.string();
+        if(cs.empty() || cs == ".") continue;
+        filesystem::path exact = cur / comp;
+        if(filesystem::exists(exact, ec)){ cur = exact; continue; }
+        // No exact match — scan `cur` for a case-insensitive component match.
+        string want = cs;
+        transform(want.begin(), want.end(), want.begin(), ::tolower);
+        bool found = false;
+        if(filesystem::exists(cur, ec)){
+            for(const auto& e : filesystem::directory_iterator(cur, ec)){
+                string nm = e.path().filename().string(), nml = nm;
+                transform(nml.begin(), nml.end(), nml.begin(), ::tolower);
+                if(nml == want){ cur = e.path(); found = true; break; }
+            }
+        }
+        if(!found) return {};
+    }
+    return cur;
+}
+
 // Resolve an include file path by searching source directory then a list of search paths.
-// Tries each root + filename, optionally with an added extension.
-// Returns the resolved absolute path, or empty string if not found.
+// Tries each root + filename, optionally with an added extension. Path separators are
+// normalized first; every path component is then matched case-insensitively (see
+// resolveCaseInsensitive). Returns the resolved absolute path, or empty if not found.
 string resolveIncludePath(const string& filename, const string& extension,
                                   const filesystem::path& sourceDir,
                                   const vector<string>& searchPaths){
     string normalized = filename;
     for(char& c : normalized)
         if(c == '/' || c == '\\') c = filesystem::path::preferred_separator;
-    // Try source directory first
-    filesystem::path candidate = sourceDir / (normalized + extension);
-    if(filesystem::exists(candidate)) return filesystem::canonical(candidate).string();
-    if(!extension.empty()){
-        candidate = sourceDir / normalized;
-        if(filesystem::exists(candidate)) return filesystem::canonical(candidate).string();
-    }
-    // Try each search path
-    for(const string& sp : searchPaths){
-        candidate = filesystem::path(sp) / (normalized + extension);
-        if(filesystem::exists(candidate)) return filesystem::canonical(candidate).string();
+    vector<filesystem::path> roots;
+    roots.push_back(sourceDir);
+    for(const string& sp : searchPaths) roots.push_back(filesystem::path(sp));
+    for(const auto& root : roots){
+        filesystem::path r = resolveCaseInsensitive(root, filesystem::path(normalized + extension));
+        if(!r.empty()) return filesystem::canonical(r).string();
         if(!extension.empty()){
-            candidate = filesystem::path(sp) / normalized;
-            if(filesystem::exists(candidate)) return filesystem::canonical(candidate).string();
+            r = resolveCaseInsensitive(root, filesystem::path(normalized));
+            if(!r.empty()) return filesystem::canonical(r).string();
         }
     }
     return "";
@@ -820,6 +842,14 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
         // the user edits it): re-loading it here would parse the same file twice, double-register
         // every core type ('object'/'bgl'/… "already defined"), and derail. The entry parse below
         // registers them once.
+        // Mark the entry file as already-included BEFORE loading core. If the entry file is itself
+        // a core library file that core pulls back in via #include (e.g. the LSP parsing the editor
+        // buffer of core/_ui.bgl while the user edits it — __beguileCore does `#include <core/_ui>`),
+        // the disk copy is then skipped by #once, leaving the entry buffer as the single authoritative
+        // definition. Without this every symbol in an edited core file reports a spurious "already
+        // defined" against itself. The `systemAbs != absPath` guard below handles the narrower case of
+        // editing __beguileCore.bgl directly (skip re-loading core wholesale).
+        onceFiles.insert(absPath);
         filesystem::path systemPath = filesystem::path(settings.libPath) / "core" / "__beguileCore.bgl";
         string systemAbs;
         try { systemAbs = filesystem::canonical(systemPath).string(); } catch(...) { systemAbs = systemPath.string(); }
@@ -1097,7 +1127,7 @@ bool bglParser::processRoutine(vector<token>& t, Qualifiers& q, abstractObject& 
 bool bglParser::processObject(vector<token>& t, Qualifiers& q, abstractObject&)
     { t[0] = consumeTypeToken(t[0]); return processObjectDeclaration(t[0], t[1], q.isExtern, "", "", true, q.isEmitter, q.isSuperposed); }
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
-    { t[0] = consumeTypeToken(t[0]); return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef, q.isSuperposed); }
+    { t[0] = consumeTypeToken(t[0]); return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef, q.isSuperposed, q.isAdditive); }
 bool bglParser::processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c)
     { t[0] = consumeTypeToken(t[0]); return processTypedObjectDeclaration(t[0], t[1], t[3], q, c); }
 bool bglParser::processAliased(vector<token>& t, Qualifiers& q, abstractObject& c)
@@ -1612,6 +1642,7 @@ Qualifiers bglParser::parseQualifiers(token& tok){
         else if(tok.is("byval"))                   { q.isByVal    = true; advance(); }
         else if(tok.is("superposed"))              { q.isSuperposed = true; advance(); }
         else if(tok.is("typesealed"))              { q.isTypeSealed = true; advance(); }
+        else if(tok.is("additive"))                { q.isAdditive   = true; advance(); }
         else break;
     }
     // Validate nonsensical combinations
@@ -1674,6 +1705,15 @@ void bglParser::parsingWarning(string msg){
             fileName = get<1>(detail);
             curLine  = get<2>(detail);
             curCol   = get<3>(detail);
+        }
+        // Suppress warnings that originate in the runtime library (BLR): they concern the
+        // compiler's own internals, which the user cannot act on. (I6 warnings that map into
+        // the BLR are filtered the same way when I6 runs.)
+        if(!settings.libPath.empty() && !fileName.empty()){
+            std::error_code ec;
+            string f   = filesystem::weakly_canonical(fileName, ec).string();
+            string lib = filesystem::weakly_canonical(settings.libPath, ec).string();
+            if(!lib.empty() && f.rfind(lib, 0) == 0) return;
         }
         warningMessage=format("{0}:{1}:{2}: warning: {3}",fileName,curLine,curCol,msg);
     }

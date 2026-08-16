@@ -56,7 +56,7 @@ Beguiler orchestrates all compilation steps, making them transparent to users, i
 
 ## An Overview: Cloak of Darkness
 
-Arguably, the fastest way to familiarize yourself with a language is to review a working example.  The canonical Cloak of Darkness game is perfect for this since it is well-known and there are Inform 6 versions readily available for comparison against.  The following is a straight-forward port of that work, ported to Beguile and using Puny Inform.
+Arguably, the fastest way to familiarize yourself with a language is to review a working example.  The canonical Cloak of Darkness game is perfect for this since it is well-known and there are Inform 6 versions readily availabel for comparison against.  The following is a straight-forward port of that work, ported to Beguile and using Puny Inform.
 
 > ***Note**: The version of Cloak Of Darkness which I started with worked for both the I6 Standard Library and Puny Inform.  In the interest of clarity, I've stripped down the cross-library support.  Additionally, the code reflects decisions which favor the explanation, rather than the **best** way of doing things.*
 
@@ -406,7 +406,7 @@ These are two library files used to include the Puny Inform library.  Notice tha
 
 > ***Note**: Directives in Beguile do not end in `;`.  This is an I6 convention; however, extraneous `;` characters are ignored by Beguile, so specifying them out of muscle memory seldom raises an error.*
 
-It's worth clarifying that Beguile does not process these files. Beguile is not an I6 compiler and can't parse I6 to know what objects and routines are available for use.  That's where Beguile "bindings" come into play (we'll cover these in a bit).
+It's worth clarifying that Beguile does not process these files. Beguile is not an I6 compiler and can't parse I6 to know what objects and routines are availabel for use.  That's where Beguile "bindings" come into play (we'll cover these in a bit).
 
 ### `#include`
 
@@ -431,7 +431,7 @@ In this example, the file being included is the `punyInform` binding file, which
 
 ### Binding Files
 
-Since Beguile doesn't know how to parse I6, files pulled in using `#includeI6`, mean nothing to it.  Binding files bridge the gap between I6 and Beguile, making the I6 declarations - attributes, routines, objects, and variables - available to be referenced in Beguile. The `punyInform` binding is used when writing games using Puny Inform; there's also a binding file for the I6 Standard Library, `i6StandardLibrary` (pulled in with `#include <bindings/i6StandardLibrary>`).
+Since Beguile doesn't know how to parse I6, files pulled in using `#includeI6`, mean nothing to it.  Binding files bridge the gap between I6 and Beguile, making the I6 declarations - attributes, routines, objects, and variables - availabel to be referenced in Beguile. The `punyInform` binding is used when writing games using Puny Inform; there's also a binding file for the I6 Standard Library, `i6StandardLibrary` (pulled in with `#include <bindings/i6StandardLibrary>`).
 
 > ***Note**: Recall from the above that Beguile accepts either path delimiter, `/` or `\` regardless of OS.*
 
@@ -639,7 +639,7 @@ There are a few things in the above example to take note of...
     ```
 
     Beguile type casting can be thought of as "compiler hints".  Usually they mimic the C++/C# behavior of type conversion; here, the cast changes *what gets emitted*, not the value's type.  Without the cast, `n_to` would emit as `self.n_to`, the *value stored at* that property.  With the cast, it emits as `n_to`, the property *identifier itself* (an integer).  The property id is what Puny stores in the `selected_direction` variable, so that's what we need to compare against.
-- Beguile also supports a host of additional operators, unavailable in I6:
+- Beguile also supports a host of additional operators, unavailabel in I6:
 
   ```
   message.number += 2;   
@@ -869,7 +869,7 @@ Notice that the `grammarRule` itself is just one element in an enclosing, `gramm
 
 While Cloak of Darkness serves as a gentle introduction to Beguile, it only scratches the surface of the language.  In this section, I'll go over select topics which are meaningful to the I6 developer.  
 
-***Note:** this is a bit of an overview of extended features, letting you know what is available.  For deeper details, see the Language Reference.*
+***Note:** this is a bit of an overview of extended features, letting you know what is availabel.  For deeper details, see the Language Reference.*
 
 ### The Beguile Language Runtime
 
@@ -922,7 +922,7 @@ string greeting = "Hello, world.";
 ```
 string a = "hello";
 string b = "hello";
-if(a == b) { print("MATCHED."); else print("unmatched.")}
+if(a == b) { print("MATCHED."); } else { print("unmatched."); }
 ```
 
 Counterintuitively, the above outputs...
@@ -941,12 +941,12 @@ The moment you write...
 #include <string>
 ```
 
-...the `string` type grows up.  It's still the same type, you don't change any declarations, but a wealth of new methods and operators become available.  The most important shift for I6 devs to remember: `==` now compares content.  Unlike the previous example...
+...the `string` type grows up.  It's still the same type, you don't change any declarations, but a wealth of new methods and operators become availabel.  The most important shift for I6 devs to remember: `==` now compares content.  Unlike the previous example...
 
 ```bgl
 string a = "hello";
 string b = "hello";
-if(a == b) { print("MATCHED."); else print("unmatched.")}
+if(a == b) { print("MATCHED."); } else { print("unmatched."); }
 ```
 
 > MATCHED.
@@ -960,8 +960,8 @@ Beguile also adds routine members and operators to `string` (e.g. `replace`, `to
 ```bgl
 string name  = "Cloak";        // name is "Cloak" 
 string label = name;           // label is also "Cloak", but its own copy 
-name = name + " of Darkness";  // name is "Cloak of Darkness"; lable is still just "Cloak" 
-name += "!";                   // name is now "Cloak of Darkness!"; lable is unchanged
+name = name + " of Darkness";  // name is "Cloak of Darkness"; label is still just "Cloak" 
+name += "!";                   // name is now "Cloak of Darkness!"; label is unchanged
 ```
 
 **`switch` on string values** cases compare by content, exactly like `==`, mixing literals and runtime strings freely:
@@ -1082,7 +1082,7 @@ Beguile also supports an additional iteration pattern which keeps you from havin
 for(int p in primes) print(p);
 ```
 
-This approach uses the `length` if available or the `size` otherwise *(see "Size() vs. length" below)*.
+This approach uses the `length` if availabel or the `size` otherwise *(see "Size() vs. length" below)*.
 ### With `<array>`
 The core Beguile language gives you declaration, subscripting, and `size()`.  Pull in BLR `<array>` language extension to expand the core functionality of arrays...
 
@@ -1112,7 +1112,7 @@ print(superHeroes.length()); //prints 4
 print (superHeroes.indexOf("Superman")); //prints 3
 ```
 
-`sort()` takes a comparator routine (a `func<string, T, T>` returning `-1`/`0`/`+1`).  A lambda works inline: `arr.sort((sting a, int b) => a < b);`.
+`sort()` takes a comparator routine (a `func<int, T, T>` returning `-1`/`0`/`+1`).  A lambda works inline: `arr.sort((string a, string b) => a < b);`.
 
 #### Fluent chains: `#include <linq>`
 
@@ -1171,7 +1171,7 @@ In I6 you fire an action from your own code with the angle-bracket forms: `<Take
 ```
 Take.perform(noun);             // I6:  <Take noun>
 Take.perform(noun, second);     // I6:  <Take noun second>
-Take.perform(noun); rtrue;      // I6:  <<Take noun>>   (run, then return trueexplicit)
+Take.perform(noun); rtrue;      // I6:  <<Take noun>>   (run, then explicitly return true)
 ```
 
 `perform()` emits the `<...>` form under the hood, so whichever library you compiled against (Standard Library or Puny Inform) supplies its own action runner and handles the usual save/restore of `actor`/`action`/`noun`/`second` plus the before/after rules.  You never name that runner, and you never write `<...>`.  It works on any verb,  your own or an `extern` library verb,  and the `<<...>>` "and return" behavior stays an explicit `rtrue;` so the control flow is visible rather than buried in the call.

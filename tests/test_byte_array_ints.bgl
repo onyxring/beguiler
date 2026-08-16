@@ -1,0 +1,31 @@
+// Byte arrays of integer values (array<char> as a numeric byte array).
+// Exercises: int-literal initializer, numeric read (char→int widening), int element write,
+// and that char/text arrays are unaffected. The I6 `Array x -> ...` byte-array idiom, now native.
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+// file-scope numeric byte array, int-literal initializer
+array<char> task_scores = {5, 10, 5, 10, 5, 5, 5, 5, 10, 5, 10, 5, 5, 5, 10};
+
+// a text byte array still works as characters
+array<char> greeting = {'H', 'i'};
+
+int sumFirstThree() {
+    // numeric reads widen char→int; arithmetic on byte-array elements
+    return task_scores[0] + task_scores[1] + task_scores[2];
+}
+
+void writeAndRead() {
+    task_scores[0] = 99;        // int write into a byte element
+    int v = task_scores[0];     // read back as int
+    print(v);
+    print("^");
+}
+
+void main() {
+    int total = sumFirstThree();
+    print(total);
+    print("^");
+    print(greeting[0]); print(greeting[1]);   // prints "Hi"
+    print("^");
+    writeAndRead();
+}

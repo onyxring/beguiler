@@ -11,13 +11,11 @@ global _bglInitDone = 0;
     g_roomexits-->(g_roomexits-->0) = $9084;
     g_itemids-->(g_itemids-->0) = $9084;
 ];
+ Constant NO_ATTRIBUTE 0; 
 object _zcode
 ;
-object _bglUtil
-;
 object bgl
-  with zcode _zcode,
-       bglUtil _bglutil
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     

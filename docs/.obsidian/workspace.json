@@ -20,8 +20,23 @@
               "icon": "lucide-file",
               "title": "languageSpec"
             }
+          },
+          {
+            "id": "37fadee483013347",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "languageSpec.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "languageSpec"
+            }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -183,16 +198,17 @@
       "bases:Create new base": false
     }
   },
-  "active": "080d2637f1181162",
+  "active": "37fadee483013347",
   "lastOpenFiles": [
+    "Verbs-Grammar.md",
+    "quickStart.md",
+    "languageSpec.md",
     "languageSpec.md.tmp.24775.975c27c38369",
     "languageSpec.md.tmp.24775.fbf2429d4b45",
     "languageSpec.md.tmp.24775.02f26a930d10",
     "languageSpec.md.tmp.24775.1ed9c32875ac",
     "languageSpec.md.tmp.24775.fea6bad88a4c",
     "languageSpec.md.tmp.24775.23073915c6cf",
-    "quickStart.md",
-    "languageSpec.md",
     "languageSpec.md.tmp.24775.83ced279def7",
     "Beguile for the I6 Developer.md",
     "Beguile for the I6 Developer.afpub~lock~",
