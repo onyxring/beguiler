@@ -122,13 +122,24 @@ def validate(bgl):
         check(n < 3, f"[map] {n} entries anchor onto non-executable .inf line {i6} "
                      f"('{inf_lst[i6-1].strip()}') — superposed/spliced source-map anchor cluster")
 
-    # E. every top-level user function is emitted as a routine AND its line is mapped
-    src_lines = {r[2] for r in rows if os.path.realpath(r[1]) == os.path.realpath(bgl)}
+    # E. every top-level user function is emitted as a routine AND its line is mapped, LINE-EXACTLY:
+    #    its declaration must map to the exact .inf line of its `[name` routine header. A whole-map
+    #    shift (e.g. the #storedEmitFirst marker→empty off-by-one) breaks this even though every entry
+    #    still points at real code, so it needs a line-exact assertion to catch.
+    own_pairs = {(r[0], r[2]) for r in rows if os.path.realpath(r[1]) == os.path.realpath(bgl)}
+    src_lines = {b for _, b in own_pairs}
+    inf_lst   = inf_text.split("\n")
     for fn, decl_line in user_functions(bgl):
-        check(re.search(r'^\[ ?' + re.escape(fn) + r'\b', inf_text, re.M) is not None,
+        hdr = next((i for i, ln in enumerate(inf_lst, 1)
+                    if re.match(r'^\[ ?' + re.escape(fn) + r'\b', ln)), None)
+        check(hdr is not None,
               f"user function '{fn}' has no routine in the transpiled .inf (dropped from debug output)")
         check(decl_line in src_lines,
               f"user function '{fn}' (source line {decl_line}) is not covered by the map — cannot break at it")
+        if hdr is not None:
+            check((hdr, decl_line) in own_pairs,
+                  f"user function '{fn}' decl (bgl line {decl_line}) does not map to its routine header "
+                  f".inf line {hdr} — line-exact map skew (off-by-one in statement line accounting)")
 
     # F. the user's own source is represented in the map ------------------------
     check(any(os.path.realpath(r[1]) == os.path.realpath(bgl) for r in rows),

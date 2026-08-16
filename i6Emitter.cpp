@@ -33,7 +33,19 @@ string i6Emitter::resolvedOutput(){
         for(const auto& [name, body] : blocks)
             if(languageService.firedStoredNames.count(name))
                 content += body + "\n";
+        // The marker is a whole-line placeholder in `out`, which the sourceMap was built against.
+        // Replacing it with content of a different line count shifts every later .inf line, so
+        // re-base each map entry below the marker by that delta — otherwise a fired-nothing
+        // #storedEmitFirst (marker → empty) leaves the whole map off by one. (Superposed blocks are
+        // appended after these substitutions, so their offsets already see the corrected buffer.)
+        int markerLine   = (int)std::count(buf.begin(), buf.begin() + pos, '\n') + 1;
+        int markerLines  = (int)std::count(marker, marker + strlen(marker), '\n');
+        int contentLines = (int)std::count(content.begin(), content.end(), '\n');
+        int delta = contentLines - markerLines;
         buf.replace(pos, strlen(marker), content);
+        if(delta != 0)
+            for(auto& e : sourceMap)
+                if(std::get<0>(e) > markerLine) std::get<0>(e) += delta;
     };
     substitute(kStoredFirstMarker, languageService.storedEmitFirstBlocks);
     substitute(kStoredLastMarker,  languageService.storedEmitLastBlocks);
