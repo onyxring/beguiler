@@ -203,6 +203,8 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         bool isTypeSealed = false; // `typesealed` base-class member: subclass/instance re-declarations keep this type (and warn)
         bool isAdditive = false;   // `additive` file-scope `property` decl: emits I6 `Property additive foo;`
                                    // so the slot accumulates values across the class hierarchy instead of overriding
+        bool isSynthetic = false;  // compiler-generated local (e.g. for-in temps), not user-written; the debug
+                                   // bundle marks it `synthetic` so the debugger hides it from the locals view
         // Class-typed function local with synthesized static backing: at parse time we
         // registered a global `_bglLocal_<func>_<name>` of the same type so the local is
         // a real per-instance I6 object and `localname = expr` can dispatch operator=

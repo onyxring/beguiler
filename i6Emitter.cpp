@@ -622,7 +622,8 @@ void i6Emitter::writeTypesFile(const string& path){
             for(statement* s : body->statements){
                 auto* vd = dynamic_cast<variableDeclaration*>(s);
                 if(!vd || vd->type.name.empty()) continue;
-                f << "  local " << vd->name << " " << vd->type.name << " " << storage(vd->name) << "\n";
+                f << "  local " << vd->name << " " << vd->type.name << " " << storage(vd->name)
+                  << (vd->isSynthetic ? " synthetic" : "") << "\n";
             }
         }
         // Synthetic frame pointer, present only when the routine spills. Marked `synthetic` so the
@@ -799,7 +800,8 @@ void i6Emitter::writeDebugBundle(const string& path){
             for(statement* s : body->statements){
                 auto* vd = dynamic_cast<variableDeclaration*>(s);
                 if(!vd || vd->type.name.empty()) continue;
-                f << "  local " << vd->name << " " << vd->type.name << " " << storage(vd->name) << "\n";
+                f << "  local " << vd->name << " " << vd->type.name << " " << storage(vd->name)
+                  << (vd->isSynthetic ? " synthetic" : "") << "\n";
             }
         }
         // Synthetic frame pointer, present only when the routine spills. Marked `synthetic` so the

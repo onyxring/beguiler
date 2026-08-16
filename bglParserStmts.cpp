@@ -549,12 +549,14 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         variableDeclaration& tmpDecl = *(new variableDeclaration());
         tmpDecl.name = arrName;
         tmpDecl.type = languageService.getType("var");
+        tmpDecl.isSynthetic = true;   // for-in array temp — compiler-generated, hidden in the debugger
         if(body != nullptr) body->statements.push_back(&tmpDecl);
 
         string counterName = format("_bglfi{0}", forInCounter++);
         variableDeclaration& counterDecl = *(new variableDeclaration());
         counterDecl.name = counterName;
         counterDecl.type = languageService.getType("var");
+        counterDecl.isSynthetic = true;   // for-in counter temp — compiler-generated, hidden in the debugger
         if(body != nullptr) body->statements.push_back(&counterDecl);
 
         if(elemVarType == "auto" && !elements.empty() && !elements[0]->resolvedType.empty()){
@@ -684,6 +686,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         variableDeclaration& tmpDecl = *(new variableDeclaration());
         tmpDecl.name = arrName;
         tmpDecl.type = languageService.getType("var");
+        tmpDecl.isSynthetic = true;   // for-in array temp — compiler-generated, hidden in the debugger
         if(body != nullptr) body->statements.push_back(&tmpDecl);
         i6RawNode& assign = *(new i6RawNode());
         assign.text = arrName + " = " + arrExprText + ";";
@@ -717,6 +720,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     variableDeclaration& counterDecl = *(new variableDeclaration());
     counterDecl.name = counterName;
     counterDecl.type = languageService.getType("var");
+    counterDecl.isSynthetic = true;   // for-in counter temp — compiler-generated, hidden in the debugger
     if(body != nullptr) body->statements.push_back(&counterDecl);
 
     forInStatement& fi = *(new forInStatement());

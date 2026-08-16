@@ -97,6 +97,11 @@ def validate(bgl):
         if ln.startswith("  local "):
             check(re.match(r'^  local \S+ \S+ (slot|_bglFrm-->\d+|_bglXP\d+)( synthetic)?$', ln) is not None,
                   f"[types] local line missing/invalid storage location: {ln!r}")
+            # Compiler owns the `_bgl` local namespace, so every such local is compiler-generated and
+            # MUST be marked synthetic — this is what lets the debugger drop its `_bgl` name heuristic.
+            if re.match(r'^  local _bgl', ln):
+                check(ln.endswith(" synthetic"),
+                      f"[types] compiler-generated local not marked synthetic: {ln!r}")
 
     # parse map, well-formed rows only
     rows = []
