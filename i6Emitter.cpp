@@ -70,7 +70,17 @@ string i6Emitter::resolvedOutput(){
         added = false;
         for(auto it = superposedBlocks.begin(); it != superposedBlocks.end(); ){
             if(referenced(it->first)){
+                // The block's captured sourceMap i6Lines are relative to its own text (line 1 =
+                // its `[name` header). It lands here, starting at line offset+1, so re-base each
+                // entry by `offset` before merging into the real map.
+                int offset = (int)std::count(buf.begin(), buf.end(), '\n');
                 buf += it->second;          // observed — collapse it into the story file
+                auto mit = superposedBlockMaps.find(it->first);
+                if(mit != superposedBlockMaps.end()){
+                    for(auto& e : mit->second)
+                        sourceMap.push_back({offset + std::get<0>(e), std::get<1>(e), std::get<2>(e)});
+                    superposedBlockMaps.erase(mit);
+                }
                 it = superposedBlocks.erase(it);
                 added = true;
             } else ++it;
@@ -923,7 +933,7 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             if(auto* fd = dynamic_cast<functionDef*>(g))
                 if(fd->name == "bglinit"){ bglInitSrc = fd->src; break; }
         if(!bglInitSrc.file.empty() && bglInitSrc.line > 0)
-            sourceMap.push_back({currentLine() + 1, bglInitSrc.file, bglInitSrc.line});
+            pushSourceMap(currentLine() + 1, bglInitSrc.file, bglInitSrc.line);
     }
     out << "global _bglInitDone = 0;\n";
     out << "[bglInit;\n";
@@ -1146,21 +1156,22 @@ void i6Emitter::generateI6(typeDef* node){
      if(auto* fd = dynamic_cast<functionDef*>(node)){
          if(fd->isValueEmitter) return;
      }
-     // Record source mapping for the upcoming emission so I6 diagnostics can be remapped
-     // back to .bgl positions. Each node carries its own `src` (sourceLocation); pull it
-     // and push a sourceMap entry at the current output line. emitFunction / emitStatement
-     // push their own finer-grained entries inside; this is the coarse top-level anchor.
-     {
-         sourceLocation s;
-         if(auto* fd = dynamic_cast<functionDef*>(node))           s = fd->src;
-         else if(auto* cd = dynamic_cast<classDef*>(node))         s = cd->src;
-         else if(auto* od = dynamic_cast<objectDef*>(node))        s = od->src;
-         else if(auto* ed = dynamic_cast<enumDef*>(node))          s = ed->src;
-         else if(auto* vd = dynamic_cast<variableDeclaration*>(node)) s = vd->src;
-         else if(auto* rn = dynamic_cast<i6RawNode*>(node))        s = rn->src;
-         if(!s.file.empty() && s.line > 0)
-             sourceMap.push_back({currentLine(), s.file, s.line});
-     }
+     // Coarse top-level source anchor. The node's own `src` is stamped onto the .inf line where
+     // its emission begins — but only AFTER emission, and only if the node actually produced output
+     // (see the push at the end of this function). Pushing after-the-fact self-skips every
+     // zero-output node (extern/emitter/extend declarations, and `superposed`/captured bodies whose
+     // text goes to a side buffer so currentLine() does not advance here) without enumerating them;
+     // those cases are handled by the capture paths + resolvedOutput re-basing. emitFunction /
+     // emitStatement push their own finer-grained entries inside.
+     sourceLocation s;
+     if(auto* fd = dynamic_cast<functionDef*>(node))           s = fd->src;
+     else if(auto* cd = dynamic_cast<classDef*>(node))         s = cd->src;
+     else if(auto* od = dynamic_cast<objectDef*>(node))        s = od->src;
+     else if(auto* ed = dynamic_cast<enumDef*>(node))          s = ed->src;
+     else if(auto* vd = dynamic_cast<variableDeclaration*>(node)) s = vd->src;
+     else if(auto* rn = dynamic_cast<i6RawNode*>(node))        s = rn->src;
+     int anchorPreLine = currentLine();
+
      if (typeid(*node) == typeid(enumDef))  emitEnum((enumDef*)node);
      else if (typeid(*node) == typeid(classDef)) emitClass((classDef*)node);
      else if (typeid(*node) == typeid(objectDef)) {
@@ -1174,11 +1185,16 @@ void i6Emitter::generateI6(typeDef* node){
              stringstream captured;
              std::swap(out, captured);
              emittingSuperposedBody = true;
+             vector<tuple<int,string,int>> blockMap;
+             vector<tuple<int,string,int>>* prevTarget = sourceMapTarget;
+             sourceMapTarget = &blockMap;       // capture the object's method-body entries per-block
              emitObject(od);
+             sourceMapTarget = prevTarget;
              emittingSuperposedBody = false;
              std::swap(out, captured);
              string rName = od->i6name.empty() ? od->dName() : od->i6name;
              superposedBlocks[rName] = captured.str();
+             superposedBlockMaps[rName] = std::move(blockMap);
          } else {
              emitObject(od);
          }
@@ -1195,11 +1211,16 @@ void i6Emitter::generateI6(typeDef* node){
              stringstream captured;
              std::swap(out, captured);
              emittingSuperposedBody = true;
+             vector<tuple<int,string,int>> blockMap;
+             vector<tuple<int,string,int>>* prevTarget = sourceMapTarget;
+             sourceMapTarget = &blockMap;
              emitGlobal(vd);
+             sourceMapTarget = prevTarget;
              emittingSuperposedBody = false;
              std::swap(out, captured);
              string rName = vd->i6name.empty() ? vd->dName() : vd->i6name;
              superposedBlocks[rName] = captured.str();
+             superposedBlockMaps[rName] = std::move(blockMap);
          } else {
              emitGlobal(vd);
          }
@@ -1223,6 +1244,12 @@ void i6Emitter::generateI6(typeDef* node){
              out << "\n";
          }
      }
+
+     // Coarse anchor, pushed now that emission is done: only if the node produced real output on
+     // the main buffer (currentLine advanced). Captured/superposed and zero-output nodes are skipped
+     // automatically because currentLine() did not move here.
+     if(!s.file.empty() && s.line > 0 && currentLine() > anchorPreLine)
+         pushSourceMap(anchorPreLine, s.file, s.line);
 }
 
 // Stream `text` to the output while pushing a sourceMap entry whenever a newline is
@@ -1245,7 +1272,7 @@ void i6Emitter::emitRawTextWithSourceMap(const string& text, const sourceLocatio
             // Map it to the corresponding source line. Skip when there's no content after
             // (avoids a spurious entry past the end of the block).
             if(i + 1 < text.size())
-                sourceMap.push_back({currentLine(), srcStart.file, srcStart.line + srcOffset});
+                pushSourceMap(currentLine(), srcStart.file, srcStart.line + srcOffset);
         }
     }
 }
@@ -1439,16 +1466,24 @@ void i6Emitter::emitFunction(functionDef* funcNode){
         stringstream captured;
         std::swap(out, captured);          // out ↔ captured: out is now empty, captured holds real output
         emittingSuperposedBody = true;
+        // Redirect sourceMap pushes into a per-block buffer. Because `out` is now empty, currentLine()
+        // during the re-emit is the routine's own (capture-relative) line — resolvedOutput() re-bases
+        // these onto the real splice position later.
+        vector<tuple<int,string,int>> blockMap;
+        vector<tuple<int,string,int>>* prevTarget = sourceMapTarget;
+        sourceMapTarget = &blockMap;
         emitFunction(funcNode);            // re-enter; this time the branch is bypassed
+        sourceMapTarget = prevTarget;
         emittingSuperposedBody = false;
         std::swap(out, captured);          // restore out; captured now holds the routine's I6 text
         string rName = funcNode->i6name.empty() ? funcNode->dName() : funcNode->i6name;
         superposedBlocks[rName] = captured.str();
+        superposedBlockMaps[rName] = std::move(blockMap);
         return;
     }
     buildSpillMap(funcNode);
-    if(!funcNode->src.file.empty() && !emittingSuperposedBody)
-        sourceMap.push_back({currentLine(), funcNode->src.file, funcNode->src.line});
+    if(!funcNode->src.file.empty())
+        pushSourceMap(currentLine(), funcNode->src.file, funcNode->src.line);
     out << format("[{0}", funcNode->i6name.empty() ? funcNode->dName() : funcNode->i6name);
     for(paramDef* param : funcNode->params)
         if(currentSpillAliases.find(param->name) == currentSpillAliases.end())
@@ -1560,8 +1595,8 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     out << "];\n";
 }
 void i6Emitter::emitStatement(statement* stmt, string indent){
-    if(!stmt->src.file.empty() && !emittingSuperposedBody)
-        sourceMap.push_back({currentLine(), stmt->src.file, stmt->src.line});
+    if(!stmt->src.file.empty())
+        pushSourceMap(currentLine(), stmt->src.file, stmt->src.line);
     // Local arrayDeclaration with a non-list initializer: pointer-aliasing decl
     // like `array<var> dst = _bglLinqWrite();`. The local slot already exists in
     // the routine header (collected via collectBodyLocals); we just emit the

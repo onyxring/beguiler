@@ -15,11 +15,21 @@ class i6Emitter{
         stringstream out;
         vector<pair<string,string>>* currentCleanups = nullptr; // set during emitFunction; used by emitStatement for return
         vector<tuple<int,string,int>> sourceMap;  // (i6Line, bglFile, bglLine)
+        // When non-null, sourceMap pushes are redirected here instead of `sourceMap`. Set while
+        // capturing a `superposed` body so its entries are recorded with capture-relative i6Lines,
+        // then re-based onto the real output line when resolvedOutput() splices the block in.
+        vector<tuple<int,string,int>>* sourceMapTarget = nullptr;
+        void pushSourceMap(int i6Line, const string& bglFile, int bglLine){
+            (sourceMapTarget ? *sourceMapTarget : sourceMap).push_back({i6Line, bglFile, bglLine});
+        }
         // `superposed` routines: captured out-of-band during emitFunction (name → full routine text),
         // then appended by resolvedOutput() only if referenced (called) in the final output. The
         // reentrancy flag lets emitFunction re-emit the body into a side buffer without recursing
-        // into the capture branch (and suppresses sourceMap entries for the withheld text).
+        // into the capture branch. `superposedBlockMaps` holds each block's capture-relative sourceMap
+        // entries; resolvedOutput() re-bases them onto the real output position at splice time so the
+        // debug map anchors on the routine's actual `.inf` lines (not the splice-region line).
         map<string,string> superposedBlocks;
+        map<string,vector<tuple<int,string,int>>> superposedBlockMaps;
         bool emittingSuperposedBody = false;
         set<string> declaredVerbWords;             // tracks which I6 trigger words have been Verb-declared
         set<string> evictedEmitted;                // evicted library words already emitted as `Extend only 'w' replace`

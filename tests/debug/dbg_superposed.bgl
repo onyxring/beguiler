@@ -1,0 +1,8 @@
+/* calls superposed core routines (bgl.util.math) — the source-map anchor bug case */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "out"; }
+void main(){
+    int lo = bgl.util.math.min(3, 7);
+    int hi = bgl.util.math.max(3, 7);
+    int c  = bgl.util.math.clamp(20, 0, 10);
+    print(lo); print(hi); print(c);
+}

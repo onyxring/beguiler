@@ -1,0 +1,3 @@
+/* try/catch: reorders control flow */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "out"; }
+void main(){ try { throw 7; } catch(int e) { print(e); } }

@@ -140,8 +140,16 @@ if [ "$CAPTURE" = true ]; then
     echo "Baselines captured."
     echo "(Negative tests run on every invocation; --capture only affects positive baselines.)"
 else
+    # Debug-bundle soundness — static .bgldbg validator over the tests/debug/ corpus.
+    DBG_FAIL=0
+    if [ -f "$SCRIPT_DIR/validate_bgldbg.py" ] && command -v python3 >/dev/null 2>&1; then
+        echo ""
+        echo "Validating .bgldbg debug bundles..."
+        if ! python3 "$SCRIPT_DIR/validate_bgldbg.py"; then DBG_FAIL=1; fi
+    fi
+    echo ""
     echo "Results: $PASS passed, $FAIL failed, $ERRORS errors"
-    if [ $FAIL -gt 0 ] || [ $ERRORS -gt 0 ]; then
+    if [ $FAIL -gt 0 ] || [ $ERRORS -gt 0 ] || [ $DBG_FAIL -gt 0 ]; then
         exit 1
     fi
 fi

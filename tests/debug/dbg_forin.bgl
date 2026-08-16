@@ -1,0 +1,3 @@
+/* for-in over an array literal: exercises scratch temporaries */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "out"; }
+void main(){ int t = 0; for(int x in {10, 20, 30}) { t = t + x; } print(t); }
