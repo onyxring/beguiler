@@ -656,12 +656,21 @@ void i6Emitter::writeDebugBundle(const string& path){
 
     // ── [sym] section ─────────────────────────────────────────────────────────
     f << "[sym]\n";
+    // A `superposed` node that was never referenced is still sitting in superposedBlocks — resolvedOutput()
+    // only erases the ones it materialized, and it ran before this (writeFile precedes writeDebugBundle).
+    // Such a node has no routine/object in the final .inf, so listing it as a symbol points the debugger
+    // at a nonexistent addr 0. Skip it. (Key matches the capture: i6name, else display name.)
+    auto unplacedSuperposed = [&](bool isSup, const string& i6n, const string& dn){
+        return isSup && superposedBlocks.count(i6n.empty() ? dn : i6n) > 0;
+    };
     for(typeDef* node : languageService.globals){
         if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
             if(vd->isExternal) continue;
+            if(unplacedSuperposed(vd->isSuperposed, vd->i6name, vd->dName())) continue;
             f << vd->name << "\t" << vd->name << "\tglobal\n";
         } else if(auto* od = dynamic_cast<objectDef*>(node)){
             if(od->isExternal) continue;
+            if(unplacedSuperposed(od->isSuperposed, od->i6name, od->dName())) continue;
             f << od->name << "\t" << od->name << "\tobject\n";
             for(typeMember* m : od->members){
                 if(auto* mv = dynamic_cast<variableDeclaration*>(m)){
@@ -671,6 +680,7 @@ void i6Emitter::writeDebugBundle(const string& path){
             }
         } else if(auto* fd = dynamic_cast<functionDef*>(node)){
             if(fd->isEmitter || fd->isExternal) continue;
+            if(unplacedSuperposed(fd->isSuperposed, fd->i6name, fd->dName())) continue;
             f << fd->name << "\t" << fd->name << "\tfunction\n";
         }
     }
