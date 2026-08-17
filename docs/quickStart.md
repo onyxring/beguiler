@@ -26,13 +26,13 @@ If you build from source, read this...
 
 > **Build Inform 6 with a real path length.** Inform 6 keeps each `#include` path in a fixed-size buffer, and a default build, using the instructions from the Inform 6 repository ( `cc -O2 -o inform *.c`) falls back to a **128-character** limit, a size that was generous back when directory trees were shallower. Beguile's resolved include paths routinely exceed this.  If you are building it yourself, be sure and specify the platform (one of these lines, and assuming you have a cpp compiler installed locally):
 > 
-> # macOS
+> macOS...
 > cc -DMACOS -O2 -o inform6 *.c
 > 
-> # Linux
+> Linux...
 > cc -DLINUX -O2 -o inform6 *.c
 > 
-> # Windows  (MinGW / gcc)
+> Windows  (MinGW / gcc)...
 > gcc -DPC_WIN32 -O2 -o inform6.exe *.c
 
 You will also need to install one of I6's foundational libraries, either [Puny Inform](https://github.com/johanberntsson/PunyInform) for the popular, compressed library targeting the Z-machine, or the [Inform 6 Standard Library](https://gitlab.com/DavidGriffith/inform6lib) the OG library which supports Glulx as well as Z5 and Z8 versions.  Take note of the paths to where your library of choice lands.
