@@ -58,10 +58,12 @@ jobs:
         run: |
           BIN=./beguiler
           [ -f ./beguiler.exe ] && BIN=./beguiler.exe
-          rm -f examples/hello.bgl.transpiled.inf
+          # beguiler writes artifacts into an output/ dir beside the source (default outputPath).
+          OUT=examples/output/hello.bgl.transpiled.inf
+          rm -f "$OUT"
           "$BIN" examples/hello.bgl
-          if [ ! -f examples/hello.bgl.transpiled.inf ]; then
-            echo "::error::beguiler produced no .transpiled.inf for examples/hello.bgl"
+          if [ ! -f "$OUT" ]; then
+            echo "::error::beguiler produced no .transpiled.inf for examples/hello.bgl (expected $OUT)"
             exit 1
           fi
           echo "✓ ${{ matrix.target }}: examples/hello.bgl transpiled"
