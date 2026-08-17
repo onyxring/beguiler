@@ -102,6 +102,24 @@ def validate(bgl):
             if re.match(r'^  local _bgl', ln):
                 check(ln.endswith(" synthetic"),
                       f"[types] compiler-generated local not marked synthetic: {ln!r}")
+        # `prop` lines must carry a type — `  prop <name> <i6name> <type>`.
+        if ln.startswith("  prop "):
+            check(len(ln.split()) >= 4,
+                  f"[types] prop line missing type: {ln!r}")
+
+    # An object property assigned a dict-word-array literal (`p = {.a, .b}`) has its type inherited
+    # from the class; it must still reach [types] with that type, else the debugger renders it as a
+    # raw number. (Excludes verb/grammar props, which are intentionally not in [types].)
+    KNOWN_SKIP = {"grammar", "synonyms", "priority", "attributes"}
+    src = open(bgl, errors="replace").read()
+    # Match `<prop> = {.` anywhere (object bodies are often on one line, so no line-start anchor).
+    dictword_props = {p for p in re.findall(r'\b([A-Za-z_]\w*)\s*=\s*\{\s*\.', src)
+                      if p not in KNOWN_SKIP}
+    types_props = set(re.findall(r'^  prop (\S+) ', "\n".join(b["types"]), re.M))
+    for p in dictword_props:
+        check(p in types_props,
+              f"object property '{p}' (dict-word-array literal) missing from [types] — "
+              f"inference-typed/inherited property dropped, debugger will show a raw number")
 
     # parse map, well-formed rows only
     rows = []

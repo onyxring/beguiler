@@ -1,0 +1,7 @@
+/* object property whose type is INHERITED from an extern base (not declared on the instance):
+   `name = {.a,.b}` inherits array<dictionaryWord> from bigThing, so it must still reach the
+   .bgldbg [types] with its type or the debugger renders it as a raw number. */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "out"; }
+extern class bigThing : object { array<dictionaryWord> name; }
+bigThing widget { name = {.small, .brass, .hook}; string description = "a hook"; }
+void main(){ print(widget.description); }

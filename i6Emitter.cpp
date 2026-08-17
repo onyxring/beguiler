@@ -734,6 +734,23 @@ void i6Emitter::writeDebugBundle(const string& path){
             return "array<" + arr->elementType + ">";
         return mv->type.name;
     };
+    // Recover a member's declared type from the object's class hierarchy (incl. extern bases). An
+    // inference-typed instance assignment like `name = {.a,.b}` (type inherited from the class) leaves
+    // the instance member's own type.name empty, so without this the debugger can't decode it (e.g. an
+    // object's `name` array<dictionaryword> would render as a raw number).
+    std::function<string(classDef*, const string&)> inheritedMemberType =
+        [&](classDef* cd, const string& nm) -> string {
+            if(!cd) return "";
+            for(typeMember* cm : cd->members)
+                if(auto* cmv = dynamic_cast<variableDeclaration*>(cm))
+                    if(cmv->name == nm && !propTypeName(cmv).empty())
+                        return propTypeName(cmv);
+            for(classDef* base : cd->baseClasses){
+                string t = inheritedMemberType(base, nm);
+                if(!t.empty()) return t;
+            }
+            return "";
+        };
 
     // Class declarations
     for(typeDef* node : languageService.globals){
@@ -754,26 +771,28 @@ void i6Emitter::writeDebugBundle(const string& path){
     for(typeDef* node : languageService.globals){
         auto* od = dynamic_cast<objectDef*>(node);
         if(!od || od->isExternal) continue;
-        // Collect properties that are on this object instance
+        // Debug type of an instance member: its own type if it has one, else the type inherited from
+        // the object's class (so inference-typed assignments like `name = {.a,.b}` still emit). Empty
+        // = skip (parent slot, grammar/attribute props, or genuinely untyped).
+        auto memberDbgType = [&](variableDeclaration* mv) -> string {
+            if(!mv || mv->isExternal || mv->name == "parent") return "";
+            string tn = !mv->type.name.empty() ? propTypeName(mv)
+                                               : inheritedMemberType(od->objectClass, mv->name);
+            if(tn.empty() || tn == "grammartable" || tn == "grammarrulelist"
+               || tn == "grammarrule" || tn == "attributelist") return "";
+            return tn;
+        };
         bool hasProps = false;
-        for(typeMember* m : od->members){
-            auto* mv = dynamic_cast<variableDeclaration*>(m);
-            if(mv && !mv->isExternal && !mv->type.name.empty() && mv->name != "parent"
-               && mv->type.name != "grammartable" && mv->type.name != "grammarrulelist"
-               && mv->type.name != "grammarrule" && mv->type.name != "attributelist"){
-                hasProps = true; break;
-            }
-        }
+        for(typeMember* m : od->members)
+            if(!memberDbgType(dynamic_cast<variableDeclaration*>(m)).empty()){ hasProps = true; break; }
         if(!hasProps) continue;
         f << "type " << od->name << "\n";
         for(typeMember* m : od->members){
             auto* mv = dynamic_cast<variableDeclaration*>(m);
-            if(!mv || mv->isExternal || mv->type.name.empty()) continue;
-            if(mv->name == "parent") continue;
-            if(mv->type.name == "grammartable" || mv->type.name == "grammarrulelist"
-               || mv->type.name == "grammarrule" || mv->type.name == "attributelist") continue;
+            string tn = memberDbgType(mv);
+            if(tn.empty()) continue;
             const string& i6n = mv->i6name.empty() ? mv->name : mv->i6name;
-            f << "  prop " << mv->name << " " << i6n << " " << propTypeName(mv) << "\n";
+            f << "  prop " << mv->name << " " << i6n << " " << tn << "\n";
         }
     }
     // Routine locals
