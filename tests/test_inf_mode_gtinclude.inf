@@ -1,0 +1,28 @@
+! test_inf_mode_gtinclude.inf — .inf-mode positive baseline.
+!
+! Regression for the current-file-relative include rewrite.
+!
+! I6 resolves an Include whose filename begins with '>' relative to the directory of the
+! *including* file. The compiler relocates the transpiled .inf into the output directory,
+! so a bare `Include >helper` would look in output/ (not the source folder) and fail to
+! open. The compiler therefore rewrites such includes to hop from the output directory back
+! to the source directory: for the default one-level output/, a '>' filename gains a leading
+! '../'. The '>' is preserved so any nested current-file-relative include still resolves, and
+! a directory prefix in the filename is kept.
+!
+! The two sibling files below (gtIncludeHelper.inf and sub/gtOther.inf) exist next to this
+! fixture so a real I6 compile of the relocated .inf resolves the rewritten '>../' includes.
+! Quoted includes WITHOUT a leading '>' are working-directory / include-path relative and are
+! left untouched; that behaviour is already covered by every other baseline's plain includes.
+
+Include ">gtIncludeHelper.inf";
+Include ">sub/gtOther.inf";
+
+! A directive guarded on the same line — the common `#ifdef X; #include ">f"; #endif;` idiom —
+! must be rewritten too, even though it does not begin the line. Guarded by an undefined symbol
+! so I6 skips the include; the '>../' rewrite is still asserted by the captured baseline.
+#ifdef GT_NEVER_DEFINED; #include ">gtGuarded.inf"; #endif;
+
+[ Main;
+    print "hi ", GT_HELPER, " ", GT_OTHER, "^";
+];

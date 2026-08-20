@@ -1,0 +1,2 @@
+! sibling included via >../gtIncludeHelper.inf after relocation
+Constant GT_HELPER = 1;

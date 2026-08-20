@@ -1,0 +1,2 @@
+! sibling included via >../sub/gtOther.inf after relocation
+Constant GT_OTHER = 2;

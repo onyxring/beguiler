@@ -812,6 +812,40 @@ string beguiler::getPath(string filename){
     return filePath;
 }
 
+// I6 resolves an Include whose filename begins with '>' relative to the directory of the
+// *including* file. Since we relocate the transpiled .inf into the output directory, such a
+// current-file-relative include would look in output/ instead of the author's source folder
+// and fail to open. Rewrite each `Include ">X"` to hop from the output directory back to the
+// source directory (e.g. `>X` -> `>../X` for the default output/), preserving the '>' so any
+// nested current-file-relative include inside X still resolves. Quoted includes without '>'
+// are working-directory / include-path relative and unaffected by the move, so they are left
+// alone. The edit stays within a line, so .inf line numbering (and the .bgldbg map) is preserved.
+static string rewriteCurrentFileRelativeIncludes(const string& i6, const fs::path& srcDir, const fs::path& outDir) {
+    std::error_code ec;
+    fs::path rel = fs::relative(srcDir, outDir, ec);
+    string ins;  // inserted right after the opening quote, replacing the leading '>'
+    if(ec || rel.empty()) {
+        // No common ancestor (e.g. different Windows drives): fall back to an absolute source
+        // path and drop the '>' — an absolute path is location- and cwd-independent.
+        ins = srcDir.generic_string();
+        if(!ins.empty() && ins.back() != '/') ins += '/';
+    } else if(rel == fs::path(".")) {
+        return i6;   // output dir *is* the source dir: no move, nothing to rewrite
+    } else {
+        ins = ">" + rel.generic_string() + "/";
+    }
+    // '$' is special in a regex replacement; escape any that appear in a path before substituting.
+    string safe; for(char c : ins) { if(c == '$') safe += "$$"; else safe += c; }
+    // Match an Include directive — optionally '#'-prefixed — followed by a quoted filename
+    // starting with '>'. The directive may sit mid-line after a guard on the same line, e.g.
+    // `#ifdef DEV; #include ">f"; #endif;`, so we do NOT anchor to line start; we only require a
+    // non-identifier char (or start of file) before it, so we never match inside a longer word.
+    // A well-formed I6 string cannot contain a literal `Include ">` (the '"' would close it),
+    // and rewriting such a mention inside a comment is harmless, so this stays false-positive-safe.
+    static const std::regex inc(R"(([^A-Za-z0-9_]|^)(#?[Ii]nclude[ \t]*")>)");
+    return std::regex_replace(i6, inc, string("$1$2") + safe);
+}
+
 //When we're all done, commit the final transpiled text to the output file.
 bool beguiler::writeFile(string filename) {
     std::ofstream outFileStream(filename);
@@ -824,7 +858,9 @@ bool beguiler::writeFile(string filename) {
     emitter.emit(languageService.globals);
     // resolvedOutput() substitutes #storedEmitFirst/#storedEmitLast placeholders with the
     // bodies of stored blocks whose names fired via ##triggerEmitter during emission.
-    outFileStream << emitter.resolvedOutput();
+    fs::path srcDir = fs::absolute(fs::path(settings.inFile)).parent_path();
+    fs::path outDir = fs::absolute(fs::path(filename)).parent_path();
+    outFileStream << rewriteCurrentFileRelativeIncludes(emitter.resolvedOutput(), srcDir, outDir);
     outFileStream.close();
     return false;
 
