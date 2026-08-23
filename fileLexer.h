@@ -4,6 +4,8 @@
 #include <sstream>
 #include <fstream>
 #include <stack>
+#include <cstdint>
+#include <functional>
 #include "token.h"
 #include "typeDef.h"
 
@@ -20,6 +22,13 @@ enum class eBglDirective {
     BglStmt,    // #bglStmt{...}           — statements only
 };
 
+// String-literal character translation, shared between the plain-string lexer
+// (fileLexer::getBasicToken) and the interpolated-string parser
+// (bglParser::parseInterpolatedSegments) so both handle raw UTF-8, smart quotes, accents,
+// and the backtick identically. Defined in fileLexer.cpp.
+uint32_t decodeUtf8(unsigned char lead, function<char()> readNext, function<char()> peekNext);
+bool i6TranslateStringCodepoint(uint32_t codepoint, string& out);
+
 class fileLexer{
     public:
         // Stream pointer is istream so the stack can hold both ifstream (file-backed) and
@@ -29,6 +38,12 @@ class fileLexer{
         std::stack<std::tuple<std::istream*, std::string, int, int>> files;
         eTokenType prevTokenType = eTokenType::unknown; // tracks last token returned by getToken()
         std::string prevTokenValue;                      // tracks last token's value (for symbol disambiguation)
+        // Split-">>" support: when the type parser meets a ">>" that closes two generic
+        // levels at once (e.g. array<func<T>>), it consumes one ">" and stashes the other
+        // here so the next getToken() delivers it. Everywhere else ">>" stays a shift
+        // operator — only the type parser (parseFuncType) ever requests the split.
+        bool  hasPendingToken = false;
+        token pendingToken;
         // Running count of '{' minus '}' tokens delivered through getToken() (and consumed by
         // getRawTextThroughClosingBrace). Used by LSP error recovery to unwind nested blocks
         // correctly when an exception fires from deeply inside a class/function body.
@@ -63,6 +78,7 @@ class fileLexer{
         token getToken();
         token peekToken();
         token peekToken(int);
+        void  pushBackCloseAngle(const token& doubled); // split a ">>": deliver one ">" now, stash the other
 
         // Reads raw chars up to the matching `}`. The `isI6Content` flag controls
         // `!` handling: true means `!` starts an I6 line comment (correct for raw-I6

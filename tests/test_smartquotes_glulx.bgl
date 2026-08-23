@@ -1,0 +1,14 @@
+/*
+    test_smartquotes_glulx.bgl
+    Smart quotes and the reverse tick under a Glulx target. Glulx can render the real
+    typographic glyphs, so curly double quotes, curly single quotes, and the backtick are
+    emitted with the I6 @{HHHH} Unicode escape (backtick stays a literal backtick). The
+    captured baseline pins the emitted I6.
+*/
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+string smart = "“curly” and ‘single’ and `tick`";

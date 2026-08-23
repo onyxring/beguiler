@@ -301,6 +301,8 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     token peek = file.peekToken();
     if(peek.isDataType()){
         token typeTok = file.getToken(eTokenType::dataType);
+        if(typeTok.value == "func") typeTok.value = parseFuncType();  // func<...> loop var type
+
         // Accept both identifier and dataType for the loop variable name. A dataType here means
         // the user chose a name that collides with a registered class (e.g. 'Counter'); the
         // shadow check below produces a cleaner error than a raw token-type mismatch.
@@ -355,6 +357,10 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                 variableDeclaration& elemDecl = *(new variableDeclaration());
                 elemDecl.name = elemVarName;
                 elemDecl.type = languageService.getType(elemVarType);
+                // getType returns the base "func" type for func<...>; keep the full
+                // parameterized name so the loop var is recognized as callable (rfind "func<").
+                if(elemDecl.type.name.empty() || elemVarType.rfind("func<", 0) == 0)
+                    elemDecl.type.name = elemVarType;
                 if(body != nullptr) body->statements.push_back(&elemDecl);
             }
         } else {
@@ -599,6 +605,9 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         paramDef& elemParam = *(new paramDef());
         elemParam.name = elemVarName;
         elemParam.type = languageService.getType(elemVarType);
+        // getType returns the base "func" type for func<...>; keep the full parameterized
+        // name so a func-typed loop var is recognized as callable (e.g. `for(func<E> r ...) r()`).
+        if(elemVarType.rfind("func<", 0) == 0) elemParam.type.name = elemVarType;
         forCtx.params.push_back(&elemParam);
         token next = file.getToken();
         currentLoopVars.insert(elemVarName); loopDepth++;
@@ -764,6 +773,9 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     paramDef& elemParam = *(new paramDef());
     elemParam.name = elemVarName;
     elemParam.type = languageService.getType(elemVarType);
+    // getType returns the base "func" type for func<...>; keep the full parameterized
+    // name so a func-typed loop var is recognized as callable (e.g. `for(func<E> r ...) r()`).
+    if(elemVarType.rfind("func<", 0) == 0) elemParam.type.name = elemVarType;
     forCtx.params.push_back(&elemParam);
     forCtx.body = fi.body;
     token next = file.getToken();
@@ -1735,6 +1747,45 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
         if(isConstVariable(tok.value, func, body))
             parsingError(format("Cannot assign to const variable '{0}'", tok.value));
+
+        // Array braced-list compound: `arr += {a, b, c}` (and `-=`) applies the per-element
+        // operator (append / removeValue) to EACH element in turn — the grammar/extend `+=`
+        // list idiom, at runtime. Only for the append/remove ops on a word/byte array; every
+        // other case falls through to the single-RHS operator dispatch below.
+        if((symbol.value == "+=" || symbol.value == "-=") && file.peekToken().is(token::braceOpen)){
+            string aType = resolveIdentifierType(tok.value, func, body);
+            if(isWordArrayType(aType) || aType == "bytearray"){
+                classDef* ac = dynamic_cast<classDef*>(&languageService.getType(aType));
+                typeMember* opm = ac ? findMemberInHierarchy(ac, [&](typeMember* m){
+                    auto* f = dynamic_cast<functionDef*>(m);
+                    return f && f->name == symbol.value && f->isEmitter && f->params.size() == 1
+                           && dynamic_cast<i6Block*>(f->body) != nullptr;
+                }) : nullptr;
+                if(!opm)
+                    parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(aType)));
+                auto* opFunc = dynamic_cast<functionDef*>(opm);
+                string opBody = replaceWord(processBglConditionals(dynamic_cast<i6Block*>(opFunc->body)->i6Body), "$prop", "0");
+                file.getToken();  // consume '{'
+                token et = file.getToken();
+                while(!et.is(token::braceClose)){
+                    expression* elem = parseExpression(et, {",", token::braceClose}, func, body);
+                    assignmentStatement& a = *(new assignmentStatement());
+                    a.src = stmtLoc;
+                    a.variableLeft = lhs;
+                    a.assignedExpression = elem;
+                    a.emitterBody = opBody;
+                    a.emitterParam = opFunc->params[0]->name;
+                    a.emitterSelf = lhs;
+                    if(body != nullptr) body->statements.push_back(&a);
+                    if(elem != nullptr && elem->terminator == token::braceClose) break;
+                    et = file.getToken();
+                }
+                file.getToken(token::endStatement);
+                for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+                postInjections.clear();
+                return false;
+            }
+        }
         expression* rhs = parseExpression(file.getToken(), {token::endStatement}, func, body);
 
         // Try emitter lookup for this compound operator on the LHS type
@@ -1782,6 +1833,12 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 a.variableLeft = lhs;
                 a.assignedExpression = rhs;
                 a.emitterBody = processBglConditionals(blk->i6Body);
+                // $prop: a bare (non-member) word/byte array uses the 0 sentinel — the same
+                // value the method-call path computes for a non-member array receiver. Member
+                // arrays (obj.arr op= x) route through the dotted-path compound assignment, not
+                // here, so this bare-identifier path is always the non-member case.
+                if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray")
+                    a.emitterBody = replaceWord(a.emitterBody, "$prop", "0");
                 a.emitterParam = opFunc->params[0]->name;
                 a.emitterSelf = lhs;
                 if(body != nullptr) body->statements.push_back(&a);

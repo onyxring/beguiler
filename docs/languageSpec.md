@@ -487,6 +487,13 @@ Common accented characters can be written using shorthand escape sequences that 
 
 The full ZSCII extended character set is supported (codes 155 to 224): diaeresis, acute, grave, circumflex, angstrom, slashed o, tilde, æ/Æ, ç/Ç, þ/Þ, ð/Ð, œ/Œ, ß, £, ¡, ¿. Unrecognized Unicode characters produce a compile-time error.
 
+**Smart quotes and the reverse tick:** Typographic quotation marks — the curly double quotes `“` (U+201C) and `”` (U+201D), the curly single quotes `‘` (U+2018) and `’` (U+2019) — and the backtick `` ` `` are accepted in string literals and translated according to the target:
+
+- **Glulx** renders the real glyphs, so each is emitted with the I6 Unicode escape (`@{201C}`, `@{201D}`, `@{2018}`, `@{2019}`); the backtick is kept as a literal backtick.
+- **Z-code** has no typographic glyphs, so the curly double quotes fold to `~` (I6's double quote) and the curly single quotes and the backtick fold to a straight apostrophe `'`.
+
+The target is taken from the resolved build target (`#beguilerSettings target`, a command-line target flag, or the ICL target); Glulx is the default. Only the directly typed characters are affected — an explicit `\$201C` numeric escape is emitted verbatim.
+
 ### 2.5.3 Raw String Literals
 
 A **raw string literal** is prefixed with `@` and disables all Beguile escape processing except `\"`. Every character between the delimiters is passed through to the generated I6 string as-is, except that `~` and `^` are emitted as their I6 ZSCII equivalents (`@@126` and `@@94`) so they remain literal rather than being interpreted by I6 as quote/newline.
@@ -3915,6 +3922,25 @@ The first type argument is the return type; the remaining arguments (if any) are
 func<void, int>    printer;   // takes one int, returns nothing
 func<int, int>     doubler;   // takes one int, returns int
 func<void>         callback;  // takes nothing, returns nothing
+```
+
+`func<>` works as a variable, a parameter, a return type, and as the **element type of a generic collection** (including doubly-nested closes like `array<func<T>>`, whose trailing `>>` the type parser splits automatically). A func-typed collection is directly callable through a for-in loop variable:
+
+```bgl
+array<func<eVerdict>> rulebook = { ruleA, ruleB };
+for(func<eVerdict> r in rulebook) { eVerdict v = r(); ... }   // r() calls the element
+```
+
+`func<>` also works fully as a **class/object member (property)** — declare it, assign to it, read it, and call it directly (`obj.handler()` runs the routine stored in the property), including members typed `array<func<...>>`:
+
+```bgl
+class Menu : object {
+    func<void, int> onSelect;         // a func-typed member
+    array<func<eVerdict>> rules;      // a member collection of functions
+}
+menu.onSelect = pickItem;             // assign
+menu.onSelect(3);                     // call through the property
+for(func<eVerdict> r in menu.rules) { r(); }
 ```
 
 Lambdas support **closures**: they can capture variables from the enclosing scope. When a lambda body references a local variable or parameter from the enclosing function, the compiler automatically captures its value at the point where the lambda is created.

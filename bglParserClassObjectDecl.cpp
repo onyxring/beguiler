@@ -281,6 +281,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             }
         } else {
             returnType=tok.assertDataType();
+            if(returnType.value == "func") returnType.value = parseFuncType();  // func<...> member type: consume its own <...>
             name=file.getToken({eTokenType::identifier, eTokenType::dataType});
         }
         if(name.is("operator")){
@@ -584,6 +585,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             varDef.displayName = name.originalValue;
             varDef.src = name.src.line > 0 ? name.src : file.currentLocation();
             varDef.type=languageService.getType((string) returnType);
+            if(((string)returnType).rfind("func<", 0) == 0) varDef.type.name = (string)returnType;  // keep parameterized func type
             if(isMemberConst) varDef.isConst = true;
             varDef.isStatic = isMemberStatic;
             if(q.isTypeSealed) varDef.isTypeSealed = true;
@@ -840,6 +842,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
                                    abstractObject* ctx, Qualifiers* q){
     file.getToken("<");
     string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+    if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
     file.getToken(">");
     token propName = file.getToken(eTokenType::identifier);
 
@@ -1082,6 +1085,7 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     prop.i6name = i6alias;  // `Type member as <i6name>;` — emitted I6 property short-name (empty = use Beguile name)
     prop.src = file.currentLocation();
     prop.type = languageService.getType(typeName);
+    if(typeName.rfind("func<", 0) == 0) prop.type.name = typeName;  // getType returns base "func"; keep the parameterized name
     prop.isRefLocal = isRef;  // `ref` member: assignments are pointer-copy (opt out of operator= dispatch)
     // Type-sealed inherited member: if a base class marked this member `typesealed`, the slot type is
     // locked — a re-typed declaration keeps the sealed type (and warns). This lets `object parent =
@@ -1136,6 +1140,8 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
 
 
 void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace, bool isRef){
+    // func<...> member: consume its own <...> so it isn't mistaken for the member name.
+    if(typeTok.value == "func") typeTok.value = parseFuncType();
     token propName = file.getToken(eTokenType::identifier);
     if(propName.is("operator")){
         token opTok = file.getToken();
@@ -1398,6 +1404,7 @@ bool bglParser::processEmitterValueDeclaration(token typeTok, token nameTok){
 bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx){
     // Entered after "array" "<" have been consumed. Reads: elementType > name symbol
     string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+    if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
     file.getToken(">");
     // Build the full generic type token (e.g. "array<int>" or "rawarray<int>") so downstream sees it.
     // arrayTok is the base-name token ("array" or "rawarray"), routed here by the grammar table.

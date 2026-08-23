@@ -163,13 +163,10 @@ void bglParser::preScanCaptureParams(vector<paramDef*>& out){
 
 void bglParser::preScanConsumeGenericSuffix(const token& typeTok){
     if(!file.peekToken().is("<")) return;
-    if(typeTok.value == "array"){
-        file.getToken(); // '<'
-        file.getToken(); // element type
-        file.getToken(); // '>'
-        return;
-    }
-    if(typeTok.value == "func"){
+    // array<...> and func<...> can nest arbitrarily (e.g. array<func<eVerdict>>),
+    // so consume the whole <...> by matching angle-bracket depth rather than a
+    // fixed number of tokens.
+    if(typeTok.value == "array" || typeTok.value == "func"){
         file.getToken(); // '<'
         int depth = 1;
         while(depth > 0){

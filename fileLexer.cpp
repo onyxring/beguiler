@@ -53,11 +53,40 @@ static const map<uint32_t, ZsciiEntry> unicodeToZscii = {
     {0xBF, {224, "@??"}},  // ¿
 };
 
+// Smart quotes and the backtick are handled per target. Glulx can render the real Unicode
+// glyphs, so they are emitted with the I6 @{HHHH} escape; Z-code has no such glyphs, so the
+// curly double quotes fold to '~' (I6's double quote) and the curly single quotes / backtick
+// fold to a straight apostrophe. Glulx is the default target, and its @{...} form is valid I6
+// on any target, so an as-yet-unresolved (empty) target is treated as Glulx.
+static bool targetIsZcode(){
+    const string& t = beguilerSettings.target;
+    return !t.empty() && (t[0] == 'z' || t[0] == 'Z');
+}
+
+// Translate one decoded Unicode codepoint (plus the ASCII backtick, 0x60) to its I6 string
+// form inside a string literal. Smart quotes and the backtick are target-dependent (see
+// targetIsZcode); the rest map through the ZSCII accent set. Returns false if the codepoint
+// has no I6 representation. Shared by the plain-string lexer (getBasicToken) AND the
+// interpolated-string parser (parseInterpolatedSegments in bglParser.cpp), so both paths
+// translate identically — the two had diverged, which is what this consolidates.
+bool i6TranslateStringCodepoint(uint32_t codepoint, string& out){
+    switch(codepoint){
+        case 0x201C: out = targetIsZcode() ? "~" : "@{201C}"; return true;  // “ left double
+        case 0x201D: out = targetIsZcode() ? "~" : "@{201D}"; return true;  // ” right double
+        case 0x2018: out = targetIsZcode() ? "'" : "@{2018}"; return true;  // ‘ left single
+        case 0x2019: out = targetIsZcode() ? "'" : "@{2019}"; return true;  // ’ right single
+        case 0x60:   out = targetIsZcode() ? "'" : "`";       return true;  // ` reverse tick
+    }
+    auto it = unicodeToZscii.find(codepoint);
+    if(it != unicodeToZscii.end()){ out = it->second.i6Accent; return true; }
+    return false;
+}
+
 // Decode a UTF-8 lead byte + continuation bytes into a Unicode codepoint.
 // Returns the codepoint, consuming continuation bytes from the stream.
 // If the byte is plain ASCII (< 0x80), returns it as-is.
 // Falls back to Latin-1 interpretation if the next byte isn't a valid UTF-8 continuation.
-static uint32_t decodeUtf8(unsigned char lead, function<char()> readNext, function<char()> peekNext){
+uint32_t decodeUtf8(unsigned char lead, function<char()> readNext, function<char()> peekNext){
     if(lead < 0x80) return lead;
     if((lead & 0xE0) == 0xC0){
         // 2-byte: 110xxxxx 10xxxxxx — verify continuation byte before consuming
@@ -376,15 +405,19 @@ token fileLexer::getBasicToken(bool suppressBleed){
                 else           { retval.value+='\\'; retval.value+=c; } // unknown: pass through
             }
             else if((unsigned char)c >= 0x80){
-                // Non-ASCII: decode UTF-8 (or Latin-1) and emit I6 accent notation
+                // Non-ASCII: decode UTF-8 (or Latin-1) and translate to I6 notation.
                 uint32_t codepoint = decodeUtf8((unsigned char)c, [&](){ return readChar(); }, [&](){ return peekChar(); });
-                auto it = unicodeToZscii.find(codepoint);
-                if(it != unicodeToZscii.end())
-                    retval.value += it->second.i6Accent;
+                string tr;
+                if(i6TranslateStringCodepoint(codepoint, tr))
+                    retval.value += tr;
                 else {
                     char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "%04X", codepoint);
                     parser.parsingError(format("Unsupported Unicode character U+{0} in string literal", string(hexBuf)));
                 }
+            }
+            else if(c=='`'){
+                // Reverse tick: target-dependent (Z-code folds to a straight apostrophe; Glulx keeps the glyph).
+                string tr; i6TranslateStringCodepoint('`', tr); retval.value += tr;
             }
             else{
                 retval.value+=c;
@@ -392,7 +425,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
             }
             c=peekChar(); //peek at the next character to process
             continue;
-        } 
+        }
         if(retval.tokenType==eTokenType::rawQuote){
             readChar(); // consume the peeked character
             // No Beguile escape processing — but translate I6-special chars so they stay literal
@@ -745,9 +778,12 @@ sourceLocation fileLexer::currentLocation(){
     Note: comment tokens are discarded, whether single line or multiline comments 
 */
 token fileLexer::getToken(){
+    // Deliver a ">" stashed by pushBackCloseAngle (from splitting a ">>") before
+    // touching the stream.
+    if(hasPendingToken){ hasPendingToken = false; return pendingToken; }
     token next;
     token retval;
-    
+
     // Doc-comment capture (`///` line form, `/** */` block form):
     // Comments are normally discarded, but doc-comments are accumulated into `pendingDocComment`
     // and attached to the next non-comment token. A blank line between accumulated docs and the
@@ -1083,6 +1119,8 @@ token fileLexer::peekToken(int tokNum){
     eTokenType savedPrev = prevTokenType;
     string savedPrevValue = prevTokenValue;
     int savedBraceDepth = braceDepth;
+    bool savedHasPending = hasPendingToken;
+    token savedPending = pendingToken;
     // Save line/col from the current file's tuple (stream seek doesn't reset these)
     auto& [pStream, pName, pLine, pCol] = files.top();
     int saveLine = pLine;
@@ -1094,9 +1132,21 @@ token fileLexer::peekToken(int tokNum){
     prevTokenType = savedPrev;
     prevTokenValue = savedPrevValue;
     braceDepth = savedBraceDepth;
+    hasPendingToken = savedHasPending;
+    pendingToken = savedPending;
     pLine = saveLine;
     pCol  = saveCol;
     return retval;
+}
+
+// Split a ">>" (or the caller's just-read doubled close angle) into two ">":
+// the caller treats the token in hand as one ">", and this stashes the other so
+// the next getToken() delivers it. Used only by the type parser so ">>" keeps
+// working as a shift operator everywhere else.
+void fileLexer::pushBackCloseAngle(const token& doubled){
+    pendingToken = doubled;
+    pendingToken.value = ">";
+    hasPendingToken = true;
 }
 //Get tokens, limited to specific types or values. Throw a compile-time error if the next token does not match the requirements.
 //These are used when the language absolutely requires the next token to conform to a specific set of features.

@@ -83,6 +83,14 @@ extend extern class array {
     emitter void swap(int pos1, int pos2) { _bglArray.swap($self, $prop, $pos1, $pos2) }
     emitter void reverse()                { _bglArray.reverse($self, $prop) }
 
+    // Compound-assignment sugar for the append/remove idiom:
+    //   arr += item;   appends one element   (mirrors grammar/extend `+=`)
+    //   arr -= item;   removes it by value
+    // The braced-list forms `arr += {a, b}` / `arr -= {a, b}` bind to the
+    // array<T> overloads below, which append/remove each element in turn.
+    emitter void operator += (var v)        { _bglArray.append($self, $prop, $v) }
+    emitter void operator -= (var v)        { _bglArray.removeValue($self, $prop, $v) }
+
     // Length-changing mutators — each grows or shrinks the explicit length.
     // append / prepend / insert return false on a full array (no growth happened).
     emitter bool append(T item)             { _bglArray.append($self, $prop, $item) }

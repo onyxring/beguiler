@@ -1341,6 +1341,7 @@ string bglParser::parseFuncType(){
         result += typeName;
         first = false;
         token sep = file.getToken();
+        if(sep.value == ">>"){ file.pushBackCloseAngle(sep); break; }  // closes this level + an outer one
         if(sep.is(">")) break;
         // else sep is "," — continue
     }
@@ -1365,6 +1366,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
             string base = paramTypeName;
             file.getToken("<");
             string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+            if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
             file.getToken(">");
             // array<char> maps to bytearray (byte-access operators); others keep the <T> format.
             // rawarray<char> stays word-indexed (raw I6 arrays are the caller's own layout).
@@ -1584,6 +1586,19 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             seg.injections = pendingInjections;
             pendingInjections.clear();
             segments.push_back(seg);
+        } else if((unsigned char)c >= 0x80) {
+            // Directly-typed non-ASCII (smart quotes, accented characters): decode and translate
+            // exactly as a plain string literal would, so raw UTF-8 bytes never leak into I6.
+            uint32_t codepoint = decodeUtf8((unsigned char)c, [&](){ return file.readChar(); }, [&](){ return file.peekChar(); });
+            string tr;
+            if(i6TranslateStringCodepoint(codepoint, tr)) currentStr += tr;
+            else {
+                char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "%04X", codepoint);
+                parsingError(format("Unsupported Unicode character U+{0} in interpolated string literal", string(hexBuf)));
+            }
+        } else if(c == '`') {
+            // Reverse tick: same target-dependent fold as a plain string literal.
+            string tr; i6TranslateStringCodepoint('`', tr); currentStr += tr;
         } else {
             currentStr += c;
         }

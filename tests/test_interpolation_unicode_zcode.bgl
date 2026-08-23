@@ -1,0 +1,18 @@
+/*
+    test_interpolation_unicode_zcode.bgl
+    Regression: directly-typed smart quotes, accented characters, and the reverse tick inside an
+    INTERPOLATED string ($"...") must translate the same as in a plain string literal — the two
+    code paths had diverged, leaking raw UTF-8. Under Z-code the curly double quotes fold to '~',
+    the curly single quotes and the backtick fold to a straight apostrophe, and accents map to I6
+    notation. The {x} interpolation expression must still emit. The captured baseline pins this.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void main() {
+    int x = 5;
+    print($"say “hi” café {x} ‘ok’ `t`");
+}

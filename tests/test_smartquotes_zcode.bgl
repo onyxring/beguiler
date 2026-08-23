@@ -1,0 +1,13 @@
+/*
+    test_smartquotes_zcode.bgl
+    Smart quotes and the reverse tick under a Z-code target. The Z-machine has no typographic
+    glyphs, so curly double quotes fold to '~' (I6's double quote) and curly single quotes and
+    the backtick fold to a straight apostrophe. The captured baseline pins the emitted I6.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+string smart = "“curly” and ‘single’ and `tick`";

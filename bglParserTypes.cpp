@@ -1905,6 +1905,36 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
         }
     }
     if(!mm.nameFound){
+        // obj.member() where `member` is a func<...> property: an indirect call through the
+        // property (I6 runs the routine stored in it). Synthesize a non-emitter functionDef
+        // carrying the func's return type so the caller emits `obj.member(args)` verbatim.
+        // Covers both class instances and bare object instances (and their class hierarchy).
+        {
+            auto funcMemberType = [&](typeMember* m) -> string {
+                auto* vd = dynamic_cast<variableDeclaration*>(m);
+                return (vd && vd->name == methodName && vd->type.name.rfind("func<", 0) == 0) ? vd->type.name : string();
+            };
+            string fpt;
+            if(classDef* dc = getDispatchClass(objType))
+                if(typeMember* fm = findMemberInHierarchy(dc, [&](typeMember* m){ return !funcMemberType(m).empty(); }))
+                    fpt = funcMemberType(fm);
+            if(fpt.empty())
+                if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(objType))){
+                    for(typeMember* m : od->members){ string t = funcMemberType(m); if(!t.empty()){ fpt = t; break; } }
+                    if(fpt.empty() && od->objectClass)
+                        if(typeMember* fm = findMemberInHierarchy(od->objectClass, [&](typeMember* m){ return !funcMemberType(m).empty(); }))
+                            fpt = funcMemberType(fm);
+                }
+            if(!fpt.empty()){
+                size_t lt = fpt.find('<'), comma = fpt.find(',', lt), gt = fpt.rfind('>');
+                string ret = (comma != string::npos && comma < gt)
+                    ? fpt.substr(lt+1, comma-lt-1) : fpt.substr(lt+1, gt-lt-1);
+                functionDef* synth = new functionDef();
+                synth->name = methodName;
+                synth->returnType.name = ret;
+                return synth;
+            }
+        }
         // If the receiver is an array and <linq> isn't included, the missing method is very
         // likely a LINQ chain op (filter/map/take/…) that now lives in <linq>. Point there.
         if(!languageService.linqInUse && getDispatchClass(objType) != nullptr
