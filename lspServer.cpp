@@ -3127,12 +3127,32 @@ json LspServer::handleSemanticTokensFull(const json& params) {
     vector<int> data;
     int prevLine = 0, prevChar = 0;
 
-    // Helper: emit a token at (lineNum, start) with given length and type
+    // The current line being tokenized. Declared here (ahead of `emit`) so `emit` can convert its
+    // byte offsets to UTF-16 columns against it — LSP positions are UTF-16 code units, but the scanner
+    // works in bytes, so without this tokens misalign on lines containing non-ASCII text (e.g. the
+    // curly “smart quotes” that fill prose strings). The main tokenizer loop reads into this.
+    string lineText;
+    // Count UTF-16 code units in s[0, byteEnd) — 1 per BMP char, 2 per astral char (surrogate pair).
+    auto byteToU16 = [](const string& s, int byteEnd) -> int {
+        int units = 0, k = 0, n = (int)s.size();
+        if(byteEnd > n) byteEnd = n;
+        while(k < byteEnd) {
+            unsigned char ch = (unsigned char)s[k];
+            if(ch < 0x80)      { units += 1; k += 1; }
+            else if(ch < 0xE0) { units += 1; k += 2; }
+            else if(ch < 0xF0) { units += 1; k += 3; }
+            else               { units += 2; k += 4; }
+        }
+        return units;
+    };
+    // Helper: emit a token at (lineNum, byte start) with given byte length and type.
     auto emit = [&](int lineNum, int start, int len, int tokenType) {
+        int u16start = byteToU16(lineText, start);
+        int u16len   = byteToU16(lineText, start + len) - u16start;
         int deltaLine = lineNum - prevLine;
-        int deltaChar = (deltaLine == 0) ? start - prevChar : start;
-        data.insert(data.end(), {deltaLine, deltaChar, len, tokenType, 0});
-        prevLine = lineNum; prevChar = start;
+        int deltaChar = (deltaLine == 0) ? u16start - prevChar : u16start;
+        data.insert(data.end(), {deltaLine, deltaChar, u16len, tokenType, 0});
+        prevLine = lineNum; prevChar = u16start;
     };
 
     // Pre-scan the document for #beguilerSettings block ranges so we can tokenize property
@@ -3314,9 +3334,89 @@ json LspServer::handleSemanticTokensFull(const json& params) {
         };
         return walk(b->cls);
     };
+
+    // `#using`-imported namespace members (bug: a bare `style` from `#using bgl.ui`, and its dotted
+    // `.italics`/`.roman`, were never colored — only receivers already declared as globals resolved).
+    // Precompute, from every active `#using <path>` in the doc (mirrors the completion-side resolution):
+    //   usingMemberTok   — bare member name → token type, for coloring a bare `style`.
+    //   usingMemberType  — bare member name → the (classDef, objectDef) it resolves to, so a dotted
+    //                      `style.italics` can be resolved against that type. `#using` is file-scoped.
+    std::map<string,int> usingMemberTok;
+    std::map<string,std::pair<classDef*,objectDef*>> usingMemberType;
+    {
+        auto objByName = [&](const string& nm) -> objectDef* {
+            for(typeDef* g : languageService.globals)
+                if(auto* od = dynamic_cast<objectDef*>(g)) if(od->name == nm) return od;
+            for(typeDef* t : languageService.objectInstances)
+                if(auto* od = dynamic_cast<objectDef*>(t)) if(od->name == nm) return od;
+            return nullptr;
+        };
+        auto walkObjectPath = [&](const string& path) -> objectDef* {
+            size_t dot = path.find('.');
+            string head = (dot == string::npos) ? path : path.substr(0, dot);
+            string rest = (dot == string::npos) ? "" : path.substr(dot + 1);
+            objectDef* curObj = objByName(head);
+            while(curObj && !rest.empty()){
+                dot = rest.find('.');
+                string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
+                rest = (dot == string::npos) ? "" : rest.substr(dot + 1);
+                objectDef* next = nullptr;
+                for(typeMember* m : curObj->members){
+                    auto* vd = dynamic_cast<variableDeclaration*>(m);
+                    if(!vd || vd->name != seg) continue;
+                    string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+                    if(!initName.empty()) next = objByName(initName);
+                    if(!next)             next = objByName(vd->type.name);
+                    break;
+                }
+                curObj = next;
+            }
+            return curObj;
+        };
+        auto addMember = [&](typeMember* m){
+            if(auto* fd = dynamic_cast<functionDef*>(m)){
+                if(fd->isPrePassStub) return;
+                usingMemberTok[fd->name] = fd->isValueEmitter ? stVariable : stMethod;
+            } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+                usingMemberTok[vd->name] = vd->isAlias ? stClass : stVariable;
+                // Resolve what this member points at, so `member.foo` colors against it.
+                string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+                objectDef* target = initName.empty() ? nullptr : objByName(initName);
+                if(!target) target = objByName(vd->type.name);
+                if(target) usingMemberType[vd->name] = {target->objectClass, target};
+                else if(auto* cd = dynamic_cast<classDef*>(&languageService.getType(vd->type.name)))
+                    usingMemberType[vd->name] = {cd, nullptr};
+            }
+        };
+        istringstream ds(docIt->second);
+        string dl;
+        while(getline(ds, dl)){
+            size_t p = dl.find_first_not_of(" \t");
+            if(p == string::npos || dl.compare(p, 7, "#using ") != 0) continue;
+            size_t s = p + 7;
+            while(s < dl.size() && (dl[s] == ' ' || dl[s] == '\t')) s++;
+            size_t e = s;
+            while(e < dl.size() && (isalnum((unsigned char)dl[e]) || dl[e] == '_' || dl[e] == '.')) e++;
+            if(e <= s) continue;
+            string path = dl.substr(s, e - s);
+            transform(path.begin(), path.end(), path.begin(), ::tolower);
+            if(objectDef* ns = walkObjectPath(path)) {
+                for(typeMember* m : ns->members) addMember(m);
+            } else if(path.find('.') == string::npos) {
+                if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(path)))
+                    for(typeMember* m : cls->members) addMember(m);
+            }
+        }
+    }
+
     // Resolve a dotted-access receiver name to a transient block-style lookup context.
     // Returns a pair (classDef*, objectDef*) — the caller uses findInBlock via a temp range.
     auto lookupDotted = [&](const string& receiverLower, int lineNum, const string& member) -> int {
+        // A `#using`-imported member used as a receiver (e.g. `style.italics()`).
+        if(auto ut = usingMemberType.find(receiverLower); ut != usingMemberType.end()) {
+            InstanceBlockRange tmp{0,0,ut->second.first,ut->second.second};
+            if(int r = findInBlock(&tmp, member)) return r;
+        }
         if(receiverLower == "self") {
             return findInBlock(blockForLine(lineNum), member);
         }
@@ -3348,12 +3448,121 @@ json LspServer::handleSemanticTokensFull(const json& params) {
         }
         return 0;
     };
+    auto usingMemberKind = [&](const string& lowerName, int /*lineNum*/) -> int {
+        auto it = usingMemberTok.find(lowerName);
+        return it == usingMemberTok.end() ? -1 : it->second;
+    };
+
+    // Scan an interpolated-string body from cursor `i`, with the current literal segment beginning
+    // at `segStart`. Emits literal runs as stString and carves each `{expr}` slot as code. Used for
+    // BOTH the opening `$"…"` line and any continuation lines of a multi-line interpolated string, so
+    // embedded `{expr}` is colored the same on every line. Advances `i`; returns true iff the closing
+    // '"' is on this line (false means the string carries to the next line).
+    auto scanInterpString = [&](const string& lineText, size_t& i, int lineNum, size_t segStart) -> bool {
+        while(i < lineText.size()) {
+            char ic = lineText[i];
+            if(ic == '\\' && i + 1 < lineText.size()) { i += 2; continue; }
+            if(ic == '{') {
+                if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
+                i++;                // past {
+                int exprDepth = 1;
+                while(i < lineText.size() && exprDepth > 0) {
+                    char ec = lineText[i];
+                    if(isspace((unsigned char)ec)) { i++; continue; }
+                    if(ec == '{') { exprDepth++; i++; continue; }
+                    if(ec == '}') { exprDepth--; i++; continue; }
+                    if(ec == '"') {
+                        size_t ss = i++;
+                        while(i < lineText.size() && lineText[i] != '"') {
+                            if(lineText[i] == '\\' && i + 1 < lineText.size()) i++;
+                            i++;
+                        }
+                        if(i < lineText.size()) i++;
+                        emit(lineNum, (int)ss, (int)(i - ss), stString);
+                        continue;
+                    }
+                    if(ec == '\'') {
+                        size_t ss = i++;
+                        while(i < lineText.size() && lineText[i] != '\'') {
+                            if(lineText[i] == '\\') i++;
+                            i++;
+                        }
+                        if(i < lineText.size()) i++;
+                        emit(lineNum, (int)ss, (int)(i - ss), stString);
+                        continue;
+                    }
+                    if(isalpha((unsigned char)ec) || ec == '_') {
+                        size_t ss = i;
+                        while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
+                        string word = lineText.substr(ss, i - ss);
+                        string lowerWord = word;
+                        transform(lowerWord.begin(), lowerWord.end(), lowerWord.begin(), ::tolower);
+                        if(ss > 0 && lineText[ss-1] == '.') {
+                            int rEnd = (int)ss - 1;
+                            int rStart = rEnd - 1;
+                            while(rStart >= 0 && (isalnum((unsigned char)lineText[rStart]) || lineText[rStart] == '_')) rStart--;
+                            rStart++;
+                            if(rStart < rEnd) {
+                                string recvLower = lineText.substr(rStart, rEnd - rStart);
+                                transform(recvLower.begin(), recvLower.end(), recvLower.begin(), ::tolower);
+                                int kind = lookupDotted(recvLower, lineNum, lowerWord);
+                                if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
+                                if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
+                            }
+                        }
+                        if(const InstanceBlockRange* blk = blockForLine(lineNum)) {
+                            int kind = findInBlock(blk, lowerWord);
+                            if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
+                            if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
+                        }
+                        int usingKind = usingMemberKind(lowerWord, lineNum);
+                        if(usingKind >= 0) { emit(lineNum, (int)ss, (int)(i - ss), usingKind); continue; }
+                        int tokenType = classifyWord(word);
+                        if(tokenType >= 0) emit(lineNum, (int)ss, (int)(i - ss), tokenType);
+                        continue;
+                    }
+                    if(isdigit((unsigned char)ec)) {
+                        size_t ss = i;
+                        if(i + 1 < lineText.size() && lineText[i] == '0' && lineText[i+1] == 'x') {
+                            i += 2;
+                            while(i < lineText.size() && isxdigit((unsigned char)lineText[i])) i++;
+                        } else {
+                            while(i < lineText.size() && isdigit((unsigned char)lineText[i])) i++;
+                        }
+                        if(ss == 0 || !(isalnum((unsigned char)lineText[ss-1]) || lineText[ss-1] == '_'))
+                            emit(lineNum, (int)ss, (int)(i - ss), stNumber);
+                        continue;
+                    }
+                    if(ec == '.' && i + 1 < lineText.size() && isalpha((unsigned char)lineText[i+1])
+                       && (i == 0 || !(isalnum((unsigned char)lineText[i-1]) || lineText[i-1] == '_'))) {
+                        size_t ss = i++;
+                        if(i < lineText.size() && lineText[i] == '.') i++;
+                        while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
+                        emit(lineNum, (int)ss, (int)(i - ss), stString);
+                        continue;
+                    }
+                    i++;            // unrecognized inside expression slot
+                }
+                segStart = i;       // resume literal segment after closing }
+                continue;
+            }
+            if(ic == '"') {
+                emit(lineNum, (int)segStart, (int)(i - segStart + 1), stString);
+                i++;
+                return true;
+            }
+            i++;
+        }
+        if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
+        return false;
+    };
 
     istringstream stream(docIt->second);
-    string lineText;
+    lineText.clear();              // (declared earlier, ahead of `emit`, for UTF-16 column conversion)
     int lineNum = 0;
     bool inBlockComment = false;
     bool inString       = false;   // a "..." opened on a prior line; consume until closing '"'
+    bool inInterpolatedString = false;   // a `$"…"` opened on a prior line; continuation lines carve {expr}
     bool inI6Block      = false;   // inside a multi-line #i6 { ... } raw Inform 6 region
     string i6BlockIndent;          // opener's leading whitespace; region ends at ^<indent>}
 
@@ -3375,7 +3584,15 @@ json LspServer::handleSemanticTokensFull(const json& params) {
         // line-by-line scanner re-enters code-mode on subsequent lines of a multi-line
         // string and emits semantic tokens (keyword/identifier colors) that overlay on
         // top of the TextMate string scope.
-        if(inString) {
+        if(inInterpolatedString) {
+            // Continuation of a multi-line `$"…"`: carve `{expr}` slots as code, same as the opening
+            // line, instead of flat whole-line stString (which swallowed embedded interpolation code).
+            size_t j = 0;
+            bool closed = scanInterpString(lineText, j, lineNum, 0);
+            if(!closed) { lineNum++; continue; }   // string still open — whole line consumed
+            inInterpolatedString = false;
+            i = j;                                 // resume code scanning after the closing '"'
+        } else if(inString) {
             size_t j = 0;
             while(j < lineText.size() && lineText[j] != '"') {
                 if(lineText[j] == '\\' && j + 1 < lineText.size()) j++;
@@ -3471,106 +3688,10 @@ json LspServer::handleSemanticTokensFull(const json& params) {
             // inner-string contents as code and tokenizing English words like "to" as
             // keywords. Mirrors the TS-side stringRanges in beguilex/semanticTokens.ts.
             if(c == '$' && i + 1 < lineText.size() && lineText[i+1] == '"') {
-                size_t segStart = i;       // start of current stString segment
+                size_t segStart = i;       // start of current stString segment ($" included)
                 i += 2;                     // past $"
-                bool closed = false;
-                while(i < lineText.size()) {
-                    char ic = lineText[i];
-                    if(ic == '\\' && i + 1 < lineText.size()) { i += 2; continue; }
-                    if(ic == '{') {
-                        if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
-                        i++;                // past {
-                        int exprDepth = 1;
-                        while(i < lineText.size() && exprDepth > 0) {
-                            char ec = lineText[i];
-                            if(isspace((unsigned char)ec)) { i++; continue; }
-                            if(ec == '{') { exprDepth++; i++; continue; }
-                            if(ec == '}') { exprDepth--; i++; continue; }
-                            if(ec == '"') {
-                                size_t ss = i++;
-                                while(i < lineText.size() && lineText[i] != '"') {
-                                    if(lineText[i] == '\\' && i + 1 < lineText.size()) i++;
-                                    i++;
-                                }
-                                if(i < lineText.size()) i++;
-                                emit(lineNum, (int)ss, (int)(i - ss), stString);
-                                continue;
-                            }
-                            if(ec == '\'') {
-                                size_t ss = i++;
-                                while(i < lineText.size() && lineText[i] != '\'') {
-                                    if(lineText[i] == '\\') i++;
-                                    i++;
-                                }
-                                if(i < lineText.size()) i++;
-                                emit(lineNum, (int)ss, (int)(i - ss), stString);
-                                continue;
-                            }
-                            if(isalpha((unsigned char)ec) || ec == '_') {
-                                size_t ss = i;
-                                while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
-                                string word = lineText.substr(ss, i - ss);
-                                string lowerWord = word;
-                                transform(lowerWord.begin(), lowerWord.end(), lowerWord.begin(), ::tolower);
-                                if(ss > 0 && lineText[ss-1] == '.') {
-                                    int rEnd = (int)ss - 1;
-                                    int rStart = rEnd - 1;
-                                    while(rStart >= 0 && (isalnum((unsigned char)lineText[rStart]) || lineText[rStart] == '_')) rStart--;
-                                    rStart++;
-                                    if(rStart < rEnd) {
-                                        string recvLower = lineText.substr(rStart, rEnd - rStart);
-                                        transform(recvLower.begin(), recvLower.end(), recvLower.begin(), ::tolower);
-                                        int kind = lookupDotted(recvLower, lineNum, lowerWord);
-                                        if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
-                                        if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
-                                    }
-                                }
-                                if(const InstanceBlockRange* blk = blockForLine(lineNum)) {
-                                    int kind = findInBlock(blk, lowerWord);
-                                    if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
-                                    if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
-                                }
-                                int tokenType = classifyWord(word);
-                                if(tokenType >= 0) emit(lineNum, (int)ss, (int)(i - ss), tokenType);
-                                continue;
-                            }
-                            if(isdigit((unsigned char)ec)) {
-                                size_t ss = i;
-                                if(i + 1 < lineText.size() && lineText[i] == '0' && lineText[i+1] == 'x') {
-                                    i += 2;
-                                    while(i < lineText.size() && isxdigit((unsigned char)lineText[i])) i++;
-                                } else {
-                                    while(i < lineText.size() && isdigit((unsigned char)lineText[i])) i++;
-                                }
-                                if(ss == 0 || !(isalnum((unsigned char)lineText[ss-1]) || lineText[ss-1] == '_'))
-                                    emit(lineNum, (int)ss, (int)(i - ss), stNumber);
-                                continue;
-                            }
-                            if(ec == '.' && i + 1 < lineText.size() && isalpha((unsigned char)lineText[i+1])
-                               && (i == 0 || !(isalnum((unsigned char)lineText[i-1]) || lineText[i-1] == '_'))) {
-                                size_t ss = i++;
-                                if(i < lineText.size() && lineText[i] == '.') i++;
-                                while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
-                                emit(lineNum, (int)ss, (int)(i - ss), stString);
-                                continue;
-                            }
-                            i++;            // unrecognized inside expression slot
-                        }
-                        segStart = i;       // resume literal segment after closing }
-                        continue;
-                    }
-                    if(ic == '"') {
-                        emit(lineNum, (int)segStart, (int)(i - segStart + 1), stString);
-                        i++;
-                        closed = true;
-                        break;
-                    }
-                    i++;
-                }
-                if(!closed) {
-                    if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
-                    inString = true;        // remainder carries to next line
-                }
+                bool closed = scanInterpString(lineText, i, lineNum, segStart);
+                if(!closed) inInterpolatedString = true;   // carries to next line (continuation carves {expr})
                 continue;
             }
 
@@ -3689,6 +3810,11 @@ json LspServer::handleSemanticTokensFull(const json& params) {
                     if(kind == 2) { emit(lineNum, (int)start, (int)(i - start), stMethod);   continue; }
                     if(kind == 1) { emit(lineNum, (int)start, (int)(i - start), stProperty); continue; }
                 }
+
+                // A bare identifier that names a `#using`-imported namespace member (e.g. `style`
+                // from `#using bgl.ui`) — color it as that member rather than leaving it default.
+                int usingKind = usingMemberKind(lowerWord, lineNum);
+                if(usingKind >= 0) { emit(lineNum, (int)start, (int)(i - start), usingKind); continue; }
 
                 int tokenType = classifyWord(word);
                 if(tokenType >= 0)
