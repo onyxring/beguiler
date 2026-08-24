@@ -2051,6 +2051,25 @@ json LspServer::handleCompletion(const json& params) {
                     add("replace",  "member replace","Qualifier to override an inherited member: `replace grammar = { … }` or `replace void handler(){ … }`.");
                     return items;
                 }
+                // extend <array> { inject/remove/move … } — declarative build-time array editing.
+                // Gated on the extended name resolving to a non-extern declared array (extern arrays
+                // have no Beguile-owned initializer to edit, matching the compiler's rejection).
+                bool isArray = false;
+                for(typeDef* g : languageService.globals)
+                    if(auto* ad = dynamic_cast<arrayDeclaration*>(g))
+                        if(ad->name == extl && !ad->isExternal) { isArray = true; break; }
+                if(isArray) {
+                    json items = json::array();
+                    auto add = [&](const char* label, const char* detail, const char* doc) {
+                        items.push_back({{"label", label}, {"kind", 14},  // CompletionItemKind.Keyword
+                            {"detail", detail},
+                            {"documentation", {{"kind", "markdown"}, {"value", doc}}}});
+                    };
+                    add("inject", "add an element", "`inject <element> [after X | before X | first | last];` — splice an element in at a position (no clause = append). The element is a reference, a value, or an inline object `Type{ … }` / inferred `{ … }`.");
+                    add("remove", "remove an element", "`remove <name | [N]>;` — remove an element by reference or index.");
+                    add("move",   "reposition an element", "`move <name | [N]> <after Y | before Y | first | last>;` — reposition an existing element (remove-then-inject at the new spot).");
+                    return items;
+                }
             }
         }
     }
@@ -2946,7 +2965,7 @@ static const set<string> bglKeywords = {
 // further down. `has` / `hasnt` were removed entirely — they're methods on object, not
 // keywords.
 static const set<string> bglModifiers = {
-    "class", "enum", "extern", "emitter", "static", "const",
+    "class", "enum", "extern", "emitter", "static", "const", "inline",
     "replace", "extend", "readonly", "explicit", "default"
 };
 static const set<string> bglDirectives = {
