@@ -1044,7 +1044,7 @@ print (name)item;
 print ".");
 ```
 
-- Escape sequences (`\n`, `\t`, `\"`) work inside interpolated strings.  I6's `^` for newline passes straight through.
+- Escape sequences (`\n`, `\t`, `\"`) work inside interpolated strings.  I6's `^` for newline passes straight through to I6 (which translates it into a new line).
 
 ## Arrays
 Beguile's approach to arrays differs sharply from I6's.  In I6, a `table` `array` is just a bare region of memory with a name.  The allocated size fills in the first element; the width of each element and run-time length are left to you to remember and manage via the `->` or `-->` accessors: 
