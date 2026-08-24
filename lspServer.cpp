@@ -2074,6 +2074,98 @@ json LspServer::handleCompletion(const json& params) {
         }
     }
 
+    // ── Phase 1.7: class/object member-declaration position — offer member modifiers ──
+    // At the FIRST token of a member declaration inside a class or object body, offer the
+    // modifiers valid there. Context-scoped (never a flat always-on list): gated on the
+    // enclosing '{' being a class/object body (NOT a function body, control block, array
+    // initializer, or inline-object literal) AND the cursor being at a fresh member start.
+    // Returned as isIncomplete so type-name/word-based completions still merge in.
+    if(!insideBsBlock) {
+        // Cursor byte offset.
+        size_t cursorOffset = 0;
+        {
+            int curLine = 0; size_t i = 0;
+            while(i < docText.size() && curLine < line) { if(docText[i] == '\n') curLine++; i++; }
+            cursorOffset = i + (size_t)col;
+            if(cursorOffset > docText.size()) cursorOffset = docText.size();
+        }
+        // Immediately-enclosing '{' (depth-matched).
+        ptrdiff_t openerPos = -1; int depth = 0;
+        for(ptrdiff_t i = (ptrdiff_t)cursorOffset - 1; i >= 0; i--) {
+            char c = docText[(size_t)i];
+            if(c == '}') depth++;
+            else if(c == '{') { depth--; if(depth < 0) { openerPos = i; break; } }
+        }
+        if(openerPos >= 0) {
+            // (a) Fresh member start? Between the nearest statement boundary ('{', ';', '}') and the
+            //     cursor there must be at most a single partial identifier (the first token being typed)
+            //     — no completed type, '=', or '(' yet.
+            ptrdiff_t b = (ptrdiff_t)cursorOffset - 1;
+            while(b >= 0 && docText[(size_t)b] != '{' && docText[(size_t)b] != ';' && docText[(size_t)b] != '}') b--;
+            string seg = docText.substr((size_t)(b + 1), cursorOffset - (size_t)(b + 1));
+            size_t sp = seg.find_first_not_of(" \t\r\n");
+            string head0 = (sp == string::npos) ? "" : seg.substr(sp);
+            bool firstToken = head0.find_first_of(" \t\r\n=(){}") == string::npos;
+            if(firstToken && b >= openerPos) {
+                // (b) Classify the enclosing opener: walk back to the statement boundary before '{'.
+                ptrdiff_t h = openerPos - 1;
+                while(h >= 0 && docText[(size_t)h] != ';' && docText[(size_t)h] != '{' && docText[(size_t)h] != '}') h--;
+                string headText = docText.substr((size_t)(h + 1), (size_t)(openerPos - (h + 1)));
+                bool hasParen = headText.find('(') != string::npos;
+                // An '=' anywhere in the head means this '{' is an initializer / inline-object value
+                // (`array<T> a = {`, `T x = T{ … }`), not an object or class body.
+                bool isInitializer = headText.find('=') != string::npos;
+                // First two words of the head.
+                string firstWord, secondWord;
+                {
+                    size_t s0 = headText.find_first_not_of(" \t\r\n");
+                    if(s0 != string::npos) {
+                        size_t e0 = headText.find_first_of(" \t\r\n:{<", s0);
+                        firstWord = headText.substr(s0, (e0 == string::npos ? headText.size() : e0) - s0);
+                        if(e0 != string::npos && headText[e0] != ':') {
+                            size_t s1 = headText.find_first_not_of(" \t\r\n", e0);
+                            if(s1 != string::npos && headText[s1] != ':' && headText[s1] != '{') {
+                                size_t e1 = headText.find_first_of(" \t\r\n:{<(", s1);
+                                secondWord = headText.substr(s1, (e1 == string::npos ? headText.size() : e1) - s1);
+                            }
+                        }
+                    }
+                }
+                string fw = firstWord;
+                transform(fw.begin(), fw.end(), fw.begin(), ::tolower);
+                static const set<string> controlKw = {"if","while","for","switch","do","else","try","catch","func"};
+                // `extend` over a VERB or ARRAY is owned by Phase 1.6 (which returns before this phase),
+                // so only an EXPLICIT `extend class`/`extend object` counts as a member body here — a
+                // bare `extend <name> {` stays silent rather than guessing modifiers for a verb/array.
+                string sw = secondWord; transform(sw.begin(), sw.end(), sw.begin(), ::tolower);
+                bool isClassBody  = (fw == "class")
+                                 || (fw == "extend" && (sw == "class" || sw == "object"));
+                // `Type name {` (two identifiers, no parens/initializer/control-or-extend kw) → object body.
+                bool isObjectBody = !hasParen && !isInitializer && !controlKw.count(fw)
+                                    && fw != "class" && fw != "enum" && fw != "grammar" && fw != "extend"
+                                    && !firstWord.empty() && !secondWord.empty();
+                if(isClassBody || isObjectBody) {
+                    json items = json::array();
+                    auto add = [&](const char* label, const char* detail, const char* doc) {
+                        items.push_back({{"label", label}, {"kind", 14},  // CompletionItemKind.Keyword
+                            {"detail", detail},
+                            {"documentation", {{"kind", "markdown"}, {"value", doc}}}});
+                    };
+                    add("static", "static member", "`static` — one shared slot at class level, not per-instance.");
+                    add("const",  "constant member", "`const` — an immutable member (must be initialized).");
+                    add("replace","override inherited", "`replace` — override an inherited member (`replace void handler(){…}` / `replace grammar = {…}`).");
+                    add("emitter","emitter member", "`emitter` — an inline-I6 member (expanded at the call site, no runtime call).");
+                    add("superposed","superposed member", "`superposed` — a lazily-emitted, zero-footprint member.");
+                    if(isClassBody) {
+                        add("inline", "positional slot", "`inline` — mark a member so it takes a positional value in inline object construction `Type{ v1, v2 }` (§6.2.1).");
+                        add("default","class default member", "`default` — a member value provided as the class default (valid in class declarations only).");
+                    }
+                    return json{{"isIncomplete", true}, {"items", items}};
+                }
+            }
+        }
+    }
+
     // ── Phases 2 & 3: #beguilerSettings block ─────────────────────────────
     if(insideBsBlock) {
         classDef* schema = dynamic_cast<classDef*>(&languageService.getType("beguilersettingstype"));
