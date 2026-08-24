@@ -1126,7 +1126,7 @@ For query-style transformations, `<linq>` adds chainable, C#-flavored operations
 
 ```
 #include <linq>
-array<int> bigEvens = nums.filter((int x) => x > 100).orderBy();
+array<int> bigEvens = nums.filter((int x) => x > 100 && x%2 == 0).orderBy();
 ```
 
 Non-terminals (`filter`, `map`, `take`, `skip`, `distinct`, `orderBy`, …) return a typed array and keep chaining; terminals (`first`, `last`, `count`, `any`, `all`) collapse the chain to a single value.
