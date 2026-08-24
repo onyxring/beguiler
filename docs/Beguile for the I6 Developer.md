@@ -1033,6 +1033,17 @@ The CoD walkthrough introduced interpolated strings; here's the I6-dev mental mo
 ``` bgl
 print($"You picked up {count} {item}.");
 ```
+
+The above translates into the following I6:
+
+``` I6
+print "You picked up ";
+print count;
+print " ";
+print (name)item;
+print ".");
+```
+
 - Escape sequences (`\n`, `\t`, `\"`) work inside interpolated strings.  I6's `^` for newline passes straight through.
 
 ## Arrays
