@@ -539,11 +539,21 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
              continue;
          }
          // Skip string literals — braces inside don't count. Raw I6 uses ^/~/@ for special
-         // chars rather than C-style backslash escapes, so we terminate at the next "
-         // without interpreting \" as an escaped quote.
+         // chars rather than C-style backslash escapes, so there we terminate at the next "
+         // without interpreting \" as an escaped quote. BEGUILE strings (outside an embedded
+         // `#i6` region) DO use C-style escapes, so honor `\"`/`\\`/`\'` — otherwise a `"\"…\""`
+         // ends early at the escaped quote and a following apostrophe opens a runaway char-literal
+         // scan that swallows the closing brace.
          if(c=='"'){
+             bool beguileEscapes = !(isI6Content || i6Depth != -1);
              retval += c; c = readChar();
              while(c != '"' && c != EOF){
+                 if(beguileEscapes && c == '\\'){
+                     retval += c; c = readChar();          // the backslash
+                     if(c == EOF) break;
+                     retval += c; c = readChar();          // the escaped char (\" does not close)
+                     continue;
+                 }
                  retval += c; c = readChar();
              }
              if(c == '"'){ retval += c; c = readChar(); }

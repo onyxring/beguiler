@@ -1,0 +1,22 @@
+#beguilerSettings { target = eTarget.Glulx; }
+// Regression: a Beguile string literal that mixes escaped `\"` quotes with an apostrophe
+// contraction (`"\"I don't...\""`) inside a `{ … }` initializer. The pre-scan's brace/body
+// skip used to treat `\"` with I6 rules (not an escape), ending the string early — then the
+// apostrophe opened a runaway char-literal that swallowed the closing '}'. Common IF dialogue.
+
+array<string> lines = {
+    "\"I don't trust you,\" he mutters.",
+    "\"...for you, friend,\" the guard says, \"the gate's always open.\"",
+    "plain line, no quotes",
+};
+
+class Response : object { inline int weight; inline string text; }
+array<Response> table = {
+    { 1, "\"Don't move,\" she warns." },
+    { 2, "He won't say." },
+};
+
+void main() {
+    print(lines[0]);
+    print(table[0].text);
+}
