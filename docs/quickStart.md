@@ -73,8 +73,9 @@ Download the latest `.vsix` from the Beguilex [Releases](https://github.com/onyx
 
 The extension needs to know where Beguiler and Inform 6 live. Open VS Code **Settings** and set:
 
-- **the Beguiler path** to the `beguiler` executable from Step 1, and
-- **the Inform 6 path** to the `inform6` executable from the prerequisites.
+- **the Inform 6 path** to the `inform6` executable from Step 0, and
+- **the Beguiler path** to the `beguiler` executable from Step 1
+
 
 That is the whole configuration. The extension passes these to Beguiler on every build, so you never touch command-line switches.
 ## Step 4: Build a complete game
