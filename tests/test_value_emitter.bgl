@@ -1,0 +1,26 @@
+#beguilerSettings { target = eTarget.Glulx; }
+// Emitter values (§14.4.5): emitters declared WITHOUT parentheses, used WITHOUT `()`. Covers all
+// four documented forms — global typed in an expression, global void as a statement, a class-name
+// member (typed + void), and a namespace path through an `emitter auto` alias to an emitter class.
+
+emitter int  wordSize { 4 }
+emitter void setBold  { style bold }
+
+emitter class txt : _bglObject {
+    emitter void bold { style bold }
+    emitter int  two  { 2 }
+}
+
+superposed _bglObject _ns {}
+extend _ns { emitter auto style = txt; }   // namespace alias to an emitter class
+
+void main() {
+    int r1 = wordSize;         // global typed, expression       → r1 = 4
+    int r2 = 4 + wordSize;     // global typed, sub-expression    → r2 = 4 + 4
+    setBold;                   // global void, statement          → style bold
+    txt.bold;                  // class-name void, statement      → style bold
+    int r3 = txt.two;          // class-name typed, expression    → r3 = 2
+    _ns.style.bold;            // namespace-path void, statement  → style bold
+    int r4 = _ns.style.two;    // namespace-path typed, expr      → r4 = 2
+    print(r1); print(r2); print(r3); print(r4);
+}

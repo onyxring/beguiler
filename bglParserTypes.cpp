@@ -1089,6 +1089,13 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                                 if(auto* od = dynamic_cast<objectDef*>(g))
                                     if(od->name == initName)
                                         return qualifyIdentifier(rest.empty() ? od->name : od->name + "." + rest, func, body);
+                        // Alias member targeting an emitter CLASS (`emitter auto style = _bglStyle`):
+                        // recurse into the class so `ns.style.member` reaches its value emitters.
+                        if(!rest.empty()){
+                            string clsName = !initName.empty() ? initName : vd->type.name;
+                            if(dynamic_cast<classDef*>(&languageService.getType(clsName)))
+                                return qualifyIdentifier(clsName + "." + rest, func, body);
+                        }
                         break;
                     }
         }

@@ -2060,6 +2060,30 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     if(after.is(eTokenType::identifier) || after.is(eTokenType::dataType))
                         memberHint = after.value;
                 }
+                // Bare GLOBAL value emitter (an emitter declared WITHOUT parentheses, §14.4.5): expand
+                // its body inline as a typed value, so `int x = wordSize;` works like the member form
+                // `ns.wordSize`. Only when used as a value — not a call/subscript, not a dotted access.
+                if(memberHint.empty() && !next.is(token::parenOpen) && !next.is(token::bracketOpen)){
+                    functionDef* ve = nullptr;
+                    for(typeDef* g : languageService.globals)
+                        if(auto* fd = dynamic_cast<functionDef*>(g))
+                            if(fd->name == cur.value && fd->isValueEmitter && fd->isEmitter){ ve = fd; break; }
+                    if(ve == nullptr)
+                        for(classDef* imp : usingImports)
+                            for(typeMember* m : imp->members)
+                                if(auto* fd = dynamic_cast<functionDef*>(m))
+                                    if(fd->name == cur.value && fd->isValueEmitter && fd->isEmitter){ ve = fd; break; }
+                    if(ve != nullptr)
+                        if(auto* blk = dynamic_cast<i6Block*>(ve->body)){
+                            string b = processBglConditionals(blk->i6Body);
+                            size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
+                            size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
+                            expr->tokens.push_back(b);
+                            if(expr->resolvedType.empty()) expr->resolvedType = ve->returnType.name;
+                            cur = getNext();
+                            continue;
+                        }
+                }
                 string qualified = qualifyIdentifier(cur.value, func, body, memberHint);
                 if(!qualified.empty()){
                     if(!castType.empty()){
