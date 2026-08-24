@@ -1126,6 +1126,23 @@ bool bglParser::processRoutine(vector<token>& t, Qualifiers& q, abstractObject& 
     { t[0] = consumeTypeToken(t[0]); return processRoutineDeclaration(t[0], t[1], c, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed); }
 bool bglParser::processObject(vector<token>& t, Qualifiers& q, abstractObject&)
     { t[0] = consumeTypeToken(t[0]); return processObjectDeclaration(t[0], t[1], q.isExtern, "", "", true, q.isEmitter, q.isSuperposed); }
+// Standalone inline object declaration statement — `Type{ … };` with no name and no assignment.
+// The matcher has already consumed the type and the '{'. Bake an anonymous object (§6.2.1); the
+// reference is discarded, so the object is only reachable if it self-links (e.g. a positional
+// `parent`) — otherwise it is an intentional, unreferenced baked object.
+bool bglParser::processInlineObjectStatement(vector<token>& t, Qualifiers&, abstractObject& ctx)
+    {
+        t[0] = consumeTypeToken(t[0]);
+        classDef* cls = getDispatchClass(t[0].value);
+        if(cls == nullptr)
+            parsingError(format("'{0}{{ … }}': '{0}' is not a class type", t[0].value));
+        functionDef* func = dynamic_cast<functionDef*>(&ctx);
+        statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+        string anonName = format("_bglanon{0}", anonObjectCounter++);
+        bakeInlineObjectAggregate(cls, t[0].value, anonName, func, body);   // '{' already consumed by the matcher
+        file.getToken(token::endStatement);                                 // consume trailing ';'
+        return false;
+    }
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
     { t[0] = consumeTypeToken(t[0]); return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef, q.isSuperposed, q.isAdditive); }
 bool bglParser::processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c)
@@ -1650,6 +1667,7 @@ Qualifiers bglParser::parseQualifiers(token& tok){
         else if(tok.is("emitter"))                 { q.isEmitter  = true; advance(); }
         else if(tok.is(token::constantDeclararion)){ q.isConst    = true; advance(); }
         else if(tok.is("static"))                  { q.isStatic   = true; advance(); }
+        else if(tok.is("inline"))                  { q.isInline   = true; advance(); }
         else if(tok.is(token::extend))             { q.isExtend   = true; advance(); }
         else if(tok.is("alias"))                   { q.isAlias    = true; advance(); }
         else if(tok.is("default"))                 { q.isDefault  = true; advance(); }

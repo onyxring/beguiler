@@ -1,0 +1,32 @@
+#beguilerSettings { target = eTarget.Glulx; }
+// Inline object declarations with NESTED aggregate field values, `inline array<>` members, and the
+// standalone (no-name, no-assignment) statement form. A nested `{ … }` value takes its shape from
+// the target member's type: an `array<T>` member → a braced array literal; an object-backed member
+// → a nested inline object. See §6.2.1.
+
+class menu : object {
+    inline object linkTo;                 // object-ref positional slot
+    inline string title;                  // scalar positional slot
+    inline array<dictionaryWord> words;   // `inline array<>` member — a positional slot too
+}
+
+menu root { title = "root"; }
+
+// nested array<dictionaryWord> value, all positional
+menu child = { root, "a child", {.foo, .bar, .baz} };
+
+// standalone statement form: no name, no assignment. Self-links via the positional `linkTo`.
+menu{ root, "text to display", {.type, .kind} };
+
+// a lonely baked object (no name, no link) — allowed; just unreferenced compile-time data
+menu{ "lonely" };
+
+// nested INLINE OBJECT as an object-typed field value (positional first, then a named nested array)
+class wrapper : object { inline menu head; }
+wrapper w = { { root, "nested", {.x} } };
+
+void main() {
+    print(child.title);
+    print(child.words);
+    print(w.head.title);
+}

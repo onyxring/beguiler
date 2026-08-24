@@ -1,0 +1,32 @@
+#beguilerSettings { target = eTarget.Glulx; }
+// Inline object declaration: `Type{ fields }` — the named object declaration (`Type name {…}`)
+// minus the name, used in an expression position. It BRIDGES the object-declaration machinery:
+// each brace becomes a baked anonymous static object, and the expression is a reference to it.
+// Compile-time only (nothing runs). Fields may be NAMED (`{ x = 1; y = 2; }`) or POSITIONAL
+// (`{ 1, 2 }` → mapped to the class's `inline`-marked fields in order). Generic: any class.
+
+class point : object { inline int x; inline int y; }
+
+// --- inline objects as array-literal elements (named + positional) ---
+array<point> pts = {
+    point{ x = 1; y = 2; },     // named fields
+    point{3, 4},                // positional
+};
+
+// --- inline objects injected declaratively (compile-time), positioned ---
+point origin { x = 0; y = 0; }
+array<point> path = { origin };
+extend path {
+    inject {5, 5}               after origin;   // inferred inline object (type from array<point>)
+    inject point{ x = 9; y = 9; } last;         // explicit named inline object, appended
+}
+
+// --- type INFERRED from the target (no repeated type) ---
+array<point> inferred = { {7, 8}, {9, 10} };   // element type `point` inferred from array<point>
+point pb = {11, 12};                            // var initializer folds into the object `pb`
+point pc = point{13, 14};                       // explicit type, same baked result
+
+void main() {
+    print(pts[1].x); print(path[1].y); print(path[2].x);
+    print(inferred[0].x); print(inferred[1].y); print(pb.y); print(pc.x);
+}

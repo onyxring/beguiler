@@ -1056,6 +1056,25 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             expr->tokens.push_back(call);
             if(expr->resolvedType.empty()) expr->resolvedType = cls->name;
         }
+        // `Type{ fields }` — inline anonymous object declaration: the named object declaration
+        // (`Type name { ... }`) minus the name, in an expression position. This BRIDGES to the
+        // existing declaration machinery: synthesize an anonymous global object, route the body
+        // through processObjectDeclaration (so field parsing + baking are identical to a named
+        // object), and evaluate the expression to a REFERENCE to that baked object. Compile-time
+        // only — nothing runs; it's one more baked static object plus a pointer to it. Generic:
+        // works for any class that can be declared as a named object.
+        else if((cur.is(eTokenType::dataType) || cur.is(eTokenType::identifier))
+                && getDispatchClass(cur.value) != nullptr && file.peekToken().is(token::braceOpen)){
+            classDef* cls = getDispatchClass(cur.value);
+            token nameTok = cur;                          // inherit src/line; override identity
+            nameTok.value = format("_bglanon{0}", anonObjectCounter++);
+            nameTok.originalValue = "";
+            nameTok.tokenType = eTokenType::identifier;
+            file.getToken(token::braceOpen);              // consume '{'
+            bakeInlineObjectAggregate(cls, cur.value, nameTok.value, func, body);
+            expr->tokens.push_back(nameTok.value);        // the expression is a reference to the baked object
+            if(expr->resolvedType.empty()) expr->resolvedType = cur.value;
+        }
         // ═── IDENTIFIER: the largest branch ═════════════════════════════
         // Handles: subscript name[i], function call name(args), optional
         // chain name?., dot-access name.member/name.method(), postfix
@@ -1159,6 +1178,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 // (e.g. arr[0].field or arr[0].method()). Resolve against the element type's class.
                 if(!subscriptText.empty() && file.peekToken().is(token::period)){
                     file.getToken(); // consume '.'
+                    // I6's property operator `.` binds TIGHTER than the array operator `-->`, so a bare
+                    // `arr-->(i).member` parses as `arr --> ((i).member)`. Parenthesize the subscript so
+                    // member/method access lands on the element: `(arr-->(i)).member`.
+                    string recv = "(" + subscriptText + ")";
                     string elemType = expr->resolvedType;
                     token member = file.getToken();
                     if(file.peekToken().is(token::parenOpen)){
@@ -1175,8 +1198,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 string b = processBglConditionals(blk->i6Body);
                                 for(size_t pi = 0; pi < method->params.size() && pi < pal.args.size(); pi++)
                                     b = replaceWord(b, "$" + method->params[pi]->name, pal.args[pi]->text());
-                                b = replaceWord(b, "$self", subscriptText);
-                                b = replaceWord(b, "$val",  subscriptText);
+                                b = replaceWord(b, "$self", recv);
+                                b = replaceWord(b, "$val",  recv);
                                 size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                 size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                                 expr->tokens.push_back(b);
@@ -1184,7 +1207,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         } else {
                             // Non-emitter method: emit as subscriptText.method(args)
                             const string& callName = method->i6name.empty() ? member.value : method->i6name;
-                            string call = subscriptText + "." + callName + "(";
+                            string call = recv + "." + callName + "(";
                             for(size_t pi = 0; pi < pal.args.size(); pi++){
                                 if(pi > 0) call += ", ";
                                 call += pal.args[pi]->text();
@@ -1210,9 +1233,9 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             string propType = findPropType(elemCls);
                             if(!propType.empty()) expr->resolvedType = propType;
                         }
-                        // Replace the subscript text with subscriptText.member
+                        // Replace the subscript text with (subscript).member
                         if(!expr->tokens.empty()) expr->tokens.pop_back();
-                        expr->tokens.push_back(subscriptText + "." + member.value);
+                        expr->tokens.push_back(recv + "." + member.value);
                     }
                 }
                 // Apply a pending cast to the subscript (or subscript.member) result —

@@ -1,4 +1,4 @@
-!% -v5
+!% -G
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
@@ -216,23 +216,27 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-class room
+class thing
   class object
   with
-    visits 0,
-    visit[;
-        self.visits=self.visits + 1;
-    ],
-    getVisits[;
-        return self.visits;
-    ]
+    v
 ;
-room r1;
-room r2;
-array g_rooms table r1 r2 2 $9084;
-[main v v2;
-     g_rooms-->(0+1) .visit();
-    v=( g_rooms-->(0+1) ).visits;
-    v2=( g_rooms-->(0+1) ).getvisits();
-     g_rooms-->(1+1) .visit();
+thing r1
+  with v 1
+;
+thing r2
+  with v 2
+;
+thing r3
+  with v 3
+;
+thing r4
+  with v 4
+;
+thing r5
+  with v 5
+;
+array reflist table r5 r4 r3 r1 4 $9084;
+array nums table 10 40 30 50 4 $9084;
+[main;
 ];

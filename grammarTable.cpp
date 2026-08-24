@@ -29,6 +29,7 @@ void bglParser::initGrammarTable() {
         {"aliased declaration",      {TYPE_NAME, NEW_NAME, "as", NEW_NAME},                         &Self::processAliased},
         {"routine declaration",      {TYPE_NAME, NEW_NAME, "("},                                    &Self::processRoutine},
         {"object declaration",       {TYPE_NAME, NEW_NAME, "{"},                                    &Self::processObject},
+        {"inline object statement",  {TYPE_NAME, "{"},                                              &Self::processInlineObjectStatement},
         {"variable declaration",     {TYPE_NAME, NEW_NAME, "="},                                    &Self::processVariable},
         {"variable declaration",     {TYPE_NAME, NEW_NAME, ";"},                                    &Self::processVariable},
 

@@ -143,8 +143,26 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             // array<T> name = { v1, v2, ... };
             file.getToken(token::braceOpen);
             initializerList* list = new initializerList();
+            classDef* elemCls = getDispatchClass(elementType);
+            bool inferInlineObjects = elemCls != nullptr && inheritsFromObject(elemCls);
             token t = file.getToken();
             while(!t.is(token::braceClose) && !t.is(eTokenType::eof)) {
+                if(inferInlineObjects && t.is(token::braceOpen)){
+                    // Inferred inline object: a bare `{...}` element of an object-backed array takes the
+                    // array's element type — `array<rule> b = { {a,b}, ... }` ≡ `{ rule{a,b}, ... }`.
+                    // Bake an anonymous object (§6.2.1) and store a reference to it. The '{' is already
+                    // consumed (it is `t`), which is exactly what bakeInlineObjectAggregate expects.
+                    string anonName = format("_bglanon{0}", anonObjectCounter++);
+                    bakeInlineObjectAggregate(elemCls, elementType, anonName, func, body);
+                    expression* elem = new expression();
+                    elem->tokens.push_back(anonName);
+                    elem->resolvedType = elementType;
+                    list->elements.push_back(elem);
+                    token sep = file.getToken({",", token::braceClose});
+                    if(sep.is(token::braceClose)) break;
+                    t = file.getToken();
+                    continue;
+                }
                 expression* elem = parseExpression(t, {",", token::braceClose}, func, body);
                 list->elements.push_back(elem);
                 if(elem->terminator == token::braceClose) break;
@@ -336,6 +354,53 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
 
     if(symbol.value==token::assignment){
         token first = file.getToken();
+        // Inline-aggregate folding: for a FILE-SCOPE object-backed class variable, `Type name = {...}`
+        // and `Type name = Type{...}` are the same declaration as `Type name {...}` — bake the fields
+        // straight into the object `name` (§6.2.1) instead of building an intermediate anonymous object
+        // and an invalid `Type name = _bglanon`. Value/collection classes are NOT object-backed (they
+        // take an init-list operator=), so they fall through to the initializer-list path below.
+        if(func == nullptr){
+            classDef* declCls = getDispatchClass((string)dataType);
+            if(declCls != nullptr && inheritsFromObject(declCls)){
+                classDef* rhsCls = nullptr;
+                bool bareBrace = first.is(token::braceOpen);
+                bool explicitBrace = (first.is(eTokenType::dataType) || first.is(eTokenType::identifier))
+                                     && (rhsCls = getDispatchClass(first.value)) != nullptr
+                                     && file.peekToken().is(token::braceOpen);
+                if(bareBrace || explicitBrace){
+                    classDef* bakeCls = bareBrace ? declCls : rhsCls;
+                    // An explicit RHS type must be assignment-compatible (the declared type or a subclass).
+                    if(explicitBrace && bakeCls != declCls){
+                        function<bool(classDef*)> isA = [&](classDef* c)->bool{
+                            if(!c) return false;
+                            if(c == declCls || c->name == declCls->name) return true;
+                            for(classDef* b : c->baseClasses) if(isA(b)) return true;
+                            return false;
+                        };
+                        if(!isA(bakeCls))
+                            parsingError(format("'{0} {1} = {2}{{...}}': inline object type '{2}' is not compatible with declared type '{0}'",
+                                                (string)dataType, (string)variableName, first.value));
+                    }
+                    if(explicitBrace) file.getToken(token::braceOpen);   // consume '{' (bare: `first` is it)
+                    // The pre-pass saw the `=` and registered `name` as a class-typed variable stub;
+                    // drop it so the folded object below is the sole declaration of `name` (otherwise
+                    // both an empty `rule name;` and the baked `rule name with …` would be emitted).
+                    {
+                        string lname = (string)variableName;
+                        transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
+                        auto& gl = languageService.globals;
+                        gl.erase(std::remove_if(gl.begin(), gl.end(), [&](typeDef* g){
+                            auto* vd = dynamic_cast<variableDeclaration*>(g);
+                            return vd && vd->name == lname && vd->isPrePassStub;
+                        }), gl.end());
+                    }
+                    bakeInlineObjectAggregate(bakeCls, bareBrace ? (string)dataType : first.value,
+                                              (string)variableName, func, body);
+                    file.getToken(token::endStatement);   // consume trailing ';'
+                    return false;   // the object IS the declaration — no variable/assignment emitted
+                }
+            }
+        }
         if(first.is(token::braceOpen)){
             // initializer list: { expr, expr, ... }
             initializerList* list = new initializerList();

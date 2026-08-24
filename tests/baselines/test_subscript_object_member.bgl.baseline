@@ -1,4 +1,4 @@
-!% -v5
+!% -G
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
@@ -216,23 +216,32 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-class room
+class thing
+  class object
+;
+thing shirt
+;
+class rule
   class object
   with
-    visits 0,
-    visit[;
-        self.visits=self.visits + 1;
-    ],
-    getVisits[;
-        return self.visits;
+    matcher,
+    pri,
+    run[;
+        return 2;
     ]
 ;
-room r1;
-room r2;
-array g_rooms table r1 r2 2 $9084;
-[main v v2;
-     g_rooms-->(0+1) .visit();
-    v=( g_rooms-->(0+1) ).visits;
-    v2=( g_rooms-->(0+1) ).getvisits();
-     g_rooms-->(1+1) .visit();
+array book table _bglanon0 _bglanon1 2 $9084;
+[main v;
+    print ( book-->(1+1) ).pri;
+    if(( book-->(0+1) ).matcher provides print) ( book-->(0+1) ).matcher.print(); else print (name)( book-->(0+1) ).matcher;
+    v = ( book-->(0+1) ).run();
+    print v;
 ];
+rule _bglanon0
+  with matcher shirt,
+       pri 5
+;
+rule _bglanon1
+  with matcher shirt,
+       pri 7
+;

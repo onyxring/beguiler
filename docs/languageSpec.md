@@ -629,7 +629,7 @@ The following identifiers are reserved and may not be used as variable, function
 
 Structural and type keywords unique to Beguile. They have no corresponding I6 keyword and are fully consumed by the transpiler; nothing from this group appears in the generated output.
 
-`const`  `default`  `extern`  `extend`  `alias` `emitter`  `explicit`  `replaced` `static`  `typesealed` `enum` `int`  `bool`  `void`  `auto` `var` `null`
+`const`  `default`  `extern`  `extend`  `alias` `emitter`  `explicit`  `replaced` `static`  `inline`  `typesealed` `enum` `int`  `bool`  `void`  `auto` `var` `null`
 
 ### Control flow keywords
 
@@ -1601,7 +1601,7 @@ This applies to chained/`<array>` results too; see the local-array source caveat
 
 ## Declaration Qualifiers
 
-Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `extern`, `emitter`, `const`, `static`, `extend`, `alias`, `default`, `superposed`, and `typesealed` (§5.2.7). Qualifiers may appear in **any order**, so `emitter replace void foo()` and `replace emitter void foo()` are equivalent. The compiler validates invalid combinations:
+Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `extern`, `emitter`, `const`, `static`, `inline`, `extend`, `alias`, `default`, `superposed`, and `typesealed` (§5.2.7). Qualifiers may appear in **any order**, so `emitter replace void foo()` and `replace emitter void foo()` are equivalent. The compiler validates invalid combinations:
 
 - `explicit` without `operator()` - error (explicit is only valid on conversion operators)
 - `const` + `static` - error
@@ -1610,6 +1610,8 @@ Declarations may be preceded by qualifier keywords: `replace`, `explicit`, `exte
 - `alias` + `extern` - error
 - `alias` + `emitter` - error
 - `default` in an object or verb instance body - error (only valid in class declarations)
+
+`inline` is a **class-member** modifier: it marks a member variable as a positional slot for inline object construction (`Type{ v1, v2 }` — §6.2.1). It affects only how positional values map to members and has no runtime effect; it is meaningful only on a member variable declaration inside a class body.
 
 ## 5.1 Defining a Class
 
@@ -2387,6 +2389,41 @@ When the assigned value is a declared object instance, it is stored as a direct 
 
 Non-emitter methods with bodies and properties with initializers are compile errors; extern objects are defined in I6, not Beguile.
 
+### 5.9.1 `extend` for Arrays — changing a previously defined array
+
+`extend <arrayName> { … }` **changes a previously defined array** by editing its initializer **at compile time**, so the emitted I6 `array` directive reflects the final, edited order — there is **no runtime cost** (nothing runs at startup; the baked data is simply different). This lets one file declare an array and later files (or later in the same file) add to, remove from, or reorder it without touching the original declaration. It is generic: it works on any declared array and knows nothing about what the elements represent.
+
+Three verbs are available inside the block:
+
+```bgl
+array<rule> before = { cantTakeYourself, cantTakeScenery };
+
+extend before {
+    inject enteringDark  after  cantTakeScenery;   // add a new element, positioned
+    inject reachRule     before cantTakeYourself;
+    inject fallbackRule  first;                     // at the start
+    inject wrapUpRule;                              // no clause = append (end)
+
+    remove cantTakeScenery;                         // take an element out
+
+    move   reachRule     last;                      // reposition an existing element
+    move   fallbackRule  after cantTakeYourself;
+}
+```
+
+- **`inject <element> [after X | before X | first | last]`** — splice an element in at a position (no clause = append). The element is a single reference or value (a named object, or a literal), or an **inline object declaration** `Type{ … }` (§6.2.1) that bakes an anonymous object and injects a reference to it. When the array's element type is an object-backed class, the type may be **omitted** — a bare `inject { … } last;` takes the element type (§6.2.1, *Type inference from the target*).
+- **`remove <X>`** — remove an element.
+- **`move <X> [after Y | before Y | first | last]`** — reposition an existing element (equivalent to remove-then-inject at the new spot).
+
+**Positions and references** (`X`, `Y`) are given by:
+- **element name** — the identifier of the object an element points to (`after cantTakeScenery`). Requires the element to be a named reference; this is the array-of-named-references case.
+- **`[N]` index** — a zero-based position (`remove [2]`, `after [0]`). Use for value arrays or one-off edits.
+- **`first` / `last`** — absolute start/end positions.
+
+**Semantics.** Directives apply in **source order** (a later `move`/`remove` sees the effect of earlier ones), and the compiler bakes the array once at the end. Every reference is checked at compile time: an unknown name or an out-of-range `[N]` is a **compile error** (no silent misses). Because indices are relative to the array's current state as directives apply, prefer **names** over `[N]` when editing a named array across several directives — names don't shift.
+
+Runtime mutation of an array is a separate thing: use the array's methods (`.append()`, `.insert()`, …) inside a routine. `extend … { … }` is build-time only.
+
 ## 5.10 `_bglGlobalDeclaration`
 
 A class can define a `_bglGlobalDeclaration` emitter to inject additional top-level I6 declarations for every object instance of that class. This mechanism allows a class definition to generate companion routines, arrays, or other I6 constructs that accompany each instance.
@@ -2549,6 +2586,68 @@ object foyer {
 The object name becomes a globally visible identifier that can be used wherever an `object`-typed value is expected. An object declaration may optionally carry an `as i6name` clause to specify a different name in the emitted I6 (see §7.9).
 
 An object that is defined in I6 rather than Beguile is declared `extern`: `extern object Name;` records just the name (§14.2), while `extern object Name { ... }` also declares the types of its members (bodyless method signatures and typed properties) so calls against it type-check (see §14.2.2).
+
+### 6.2.1 Inline (anonymous) object declaration — `Type{ … }`
+
+An object declaration used in an **expression position, without a name**, creates an **anonymous instance** and evaluates to a **reference** to it:
+
+```bgl
+class point : object { inline int x; inline int y; string label; }
+
+array<point> pts = {
+    point{ 3, 4 },                 // positional — fills the class's `inline` members, in order
+    point{ x = 1; y = 2; },        // named fields
+    point{ 5, 6; label = "p"; },   // positional first, then a ';' transition, then named
+};
+```
+
+This is the same declaration you'd write with a name (`point p { x = 1; y = 2; }`) — it just omits the name and appears where a value is expected. It is a **compile-time declaration**, not runtime construction: the compiler bakes an anonymous static object (exactly as a named object bakes) and the expression is a pointer to it. Nothing runs at startup; it is unrelated to `new`/`create` (§10.7), which allocate at runtime.
+
+**Positional vs. named fields.** A field may be given **positionally** or **by name**, and the separators carry meaning:
+
+- **Positional** values are `,`-separated and read like a list: `{ 3, 4 }`. Each fills the next **`inline`-marked member**, in declaration order, **base class first** (a subclass's `inline` members follow its base's). Only members explicitly declared `inline` participate — this keeps positional order under the class author's control rather than tied to arbitrary declaration order. Supplying more positional values than there are `inline` members is a compile error.
+- **Named** members use the declaration style `field = value;` and are `;`-separated — exactly like a normal object/class body. The **`=` is required**; any member (inline or not) may be set by name. Normal object/class bodies remain `;`-only; `,` is never a member separator there.
+- **The two may be combined, positional first.** A single `;` **trails the positional section and enters the named section**; after it, only named members (`;`-separated) may follow. So `,` always means "still positional", the first `;` means "now naming", and a `,` sitting before or among named members is an error. Named-before-positional is likewise an error.
+
+**Type inference from the target.** Where the target type is already known, the leading `Type` may be **omitted** — a bare `{ … }` takes the target's type:
+
+```bgl
+class rule : object { inline verb action; inline var matcher; inline func<eVerdict> body; }
+
+array<rule> book = {           // each element inferred as `rule` from array<rule>
+    { drop, shirt, dropBody },
+    { take, cloak, takeBody },
+};
+
+rule fallback = { look, any, lookBody };   // object-backed variable initializer folds into `fallback`
+```
+
+Inference applies in three slots: an **`array<T>` element**, an **object-backed variable initializer** (`Type name = { … }`, which is the same declaration as `Type name { … }` — the fields bake straight into the named object), and a declarative **`inject`** (§5.9.1). It only ever produces an *object aggregate* when the target type is an **object-backed class**; if the target is an `array<…>` or a value/collection type (one with an `operator=(initializerList)`), a bare `{ … }` stays a braced *list*, exactly as before. An explicit `Type{ … }` is always available and additionally disambiguates a single element from a list.
+
+**Nested aggregate values.** A field value may itself be a `{ … }` aggregate, whose shape is taken from the *member's* type: an `array<T>` member takes a braced **array literal**, and an object-backed member takes a **nested inline object**. An `array<T>` member may itself be declared `inline`, making it a positional slot like any other. So a whole record can be built in one positional expression:
+
+```bgl
+class menu : object {
+    inline object linkTo;                 // object-ref slot
+    inline string title;                  // scalar slot
+    inline array<dictionaryWord> words;   // `inline array<>` — a positional slot too
+}
+
+menu child = { root, "a child", {.foo, .bar, .baz} };   // 3rd value is a nested array literal
+```
+
+**Standalone declaration.** Because it is an ordinary declaration, an inline object may also stand alone as a statement — no name and no assignment:
+
+```bgl
+menu{ root, "text to display", {.type, .kind} };
+```
+
+This bakes an anonymous object and discards the reference, so the object is reachable only if it **self-links** — for example by setting a positional `parent`/`linkTo` that places it in the I6 object tree. Without such a link it is an intentional but unreferenced baked object (reachable only by a low-level object-tree walk).
+
+Other properties:
+
+- **Generic** — it works for any class that can be declared as a named object; it reuses the object-declaration machinery, so it automatically tracks whatever that supports. It has no meaning for namespace types (`emitter class` / `alias class`) or value types.
+- Usable anywhere an expression is: array-literal elements, the element of a declarative `inject` (§5.9.1), a variable initializer, etc.
 
 ## 6.3 Object Types
 

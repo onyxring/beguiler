@@ -1,4 +1,4 @@
-!% -v5
+!% -G
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
@@ -216,23 +216,57 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-class room
+class point
   class object
   with
-    visits 0,
-    visit[;
-        self.visits=self.visits + 1;
-    ],
-    getVisits[;
-        return self.visits;
-    ]
+    x,
+    y
 ;
-room r1;
-room r2;
-array g_rooms table r1 r2 2 $9084;
-[main v v2;
-     g_rooms-->(0+1) .visit();
-    v=( g_rooms-->(0+1) ).visits;
-    v2=( g_rooms-->(0+1) ).getvisits();
-     g_rooms-->(1+1) .visit();
+array pts table _bglanon0 _bglanon1 2 $9084;
+point origin
+  with x 0,
+       y 0
+;
+array path table origin _bglanon2 _bglanon3 3 $9084;
+array inferred table _bglanon4 _bglanon5 2 $9084;
+[main;
+    print ( pts-->(1+1) ).x;
+    print ( path-->(1+1) ).y;
+    print ( path-->(2+1) ).x;
+    print ( inferred-->(0+1) ).x;
+    print ( inferred-->(1+1) ).y;
+    print pb.y;
+    print pc.x;
 ];
+point _bglanon0
+  with x 1,
+       y 2
+;
+point _bglanon1
+  with x 3,
+       y 4
+;
+point _bglanon2
+  with x 5,
+       y 5
+;
+point _bglanon3
+  with x 9,
+       y 9
+;
+point _bglanon4
+  with x 7,
+       y 8
+;
+point _bglanon5
+  with x 9,
+       y 10
+;
+point pb
+  with x 11,
+       y 12
+;
+point pc
+  with x 13,
+       y 14
+;

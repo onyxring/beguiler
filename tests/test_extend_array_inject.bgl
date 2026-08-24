@@ -1,0 +1,32 @@
+#beguilerSettings { target = eTarget.Glulx; }
+// Declarative build-time array editing: `extend <array> { inject / remove / move ... }`.
+// The verbs edit the array's baked initializer at compile time, so the emitted I6 `array`
+// directive must show the reordered/edited result — zero runtime cost. Positions are given by
+// element name, by [N] index, or by first/last. Generic: it knows nothing about "rules".
+
+// --- named-reference array (elements referenced by object name) ---
+class thing : object { int v; }
+thing r1 { v = 1; }
+thing r2 { v = 2; }
+thing r3 { v = 3; }
+thing r4 { v = 4; }
+thing r5 { v = 5; }
+
+array<thing> refList = {r1, r2, r3};
+extend refList {
+    inject r4 before r2;    // r1 r4 r2 r3
+    inject r5 first;        // r5 r1 r4 r2 r3
+    move   r1 after r3;     // r5 r4 r2 r3 r1
+    remove r2;              // r5 r4 r3 r1  (final)
+}
+
+// --- value array (positions by index / first / last) ---
+array<int> nums = {10, 20, 30};
+extend nums {
+    inject 40 after [0];    // 10 40 20 30
+    inject 50 first;        // 50 10 40 20 30
+    remove [3];             // 50 10 40 30  (removes 20)
+    move   [0] last;        // 10 40 30 50  (final)
+}
+
+void main() { }

@@ -588,6 +588,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(((string)returnType).rfind("func<", 0) == 0) varDef.type.name = (string)returnType;  // keep parameterized func type
             if(isMemberConst) varDef.isConst = true;
             varDef.isStatic = isMemberStatic;
+            varDef.isInline = q.isInline;   // participates in positional inline construction (§6.2.1)
             if(q.isTypeSealed) varDef.isTypeSealed = true;
             varDef.isRefLocal = q.isRef;   // `ref` member: assignments are pointer-copy (opt out of operator=)
             // A subclass re-declaring a base member that was marked `typesealed` keeps the sealed
@@ -934,6 +935,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     token sym = file.getToken({token::bracketOpen, token::assignment, token::endStatement});
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
     arrDecl.name = (string)propName;
+    if(q) arrDecl.isInline = q->isInline;   // an `inline array<T>` member is a positional slot (§6.2.1)
     arrDecl.type = languageService.getType("array");
     arrDecl.elementType = elemType;
     if(sym.is(token::bracketOpen)){
@@ -1419,6 +1421,133 @@ bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q
 }
 
 
+void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDisplay, const string& objName,
+                                          functionDef* func, statementBlock* body){
+    objectDef& od = languageService.registerObject(objName, false, "");
+    od.objectClass = cls;
+    // Positional slots = the class's `inline` members, BASE CLASS FIRST, in declaration order
+    // (a subclass appends its own after its base's). Only `inline` members take positional values.
+    std::vector<variableDeclaration*> inlineFields;
+    std::function<void(classDef*)> collectInline = [&](classDef* c){
+        if(!c) return;
+        for(classDef* base : c->baseClasses) collectInline(base);   // base first
+        for(typeMember* m : c->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(vd->isInline) inlineFields.push_back(vd);
+    };
+    collectInline(cls);
+    std::function<variableDeclaration*(classDef*, const std::string&)> findField =
+        [&](classDef* c, const std::string& fname) -> variableDeclaration* {
+        if(!c) return nullptr;
+        for(typeMember* m : c->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(vd->name == fname) return vd;
+        for(classDef* base : c->baseClasses){ auto* r = findField(base, fname); if(r) return r; }
+        return nullptr;
+    };
+    // Separators carry meaning: POSITIONAL values are ','-separated (they read like a list);
+    // a single ';' TRAILS the positional section and enters the NAMED section; NAMED members
+    // are `field = value;` — ';'-separated, exactly like a normal object/class body. So a ','
+    // always means "still positional", the first ';' means "now naming", and after that only
+    // named members (';'-separated) may follow.
+    size_t idx = 0;             // next positional slot
+    bool inNamed = false;       // have we entered the named section
+    bool sawPositional = false;
+    bool expectNamed = false;   // previous separator was ';' → only a named member may follow
+    token vt = file.getToken();
+    while(!vt.is(token::braceClose)){
+        bool isNamed = (vt.is(eTokenType::identifier) || vt.is(eTokenType::dataType)) && file.peekToken().is("=");
+        // Validate this item is legal in the current position.
+        if(inNamed && !isNamed)
+            parsingError(format("inline '{0}{{...}}': positional values must come before named ones", typeDisplay));
+        if(expectNamed && !isNamed)
+            parsingError(format("inline '{0}{{...}}': positional values are ','-separated; ';' begins the named section, "
+                                "so only named members may follow it", typeDisplay));
+        if(!inNamed && !expectNamed && isNamed && sawPositional)
+            parsingError(format("inline '{0}{{...}}': named members follow a ';' — write `... ; {1} = value;` "
+                                "(',' separates positional values only)",
+                                typeDisplay, vt.originalValue.empty() ? vt.value : vt.originalValue));
+        variableDeclaration* target;
+        if(isNamed){
+            inNamed = true;
+            target = findField(cls, vt.value);
+            if(!target)
+                parsingError(format("inline '{0}{{...}}': '{1}' is not a member of the class",
+                                    typeDisplay, vt.originalValue.empty() ? vt.value : vt.originalValue));
+            file.getToken(token::assignment);   // consume '='
+            vt = file.getToken();               // first token of the value
+        } else {
+            sawPositional = true;
+            if(idx >= inlineFields.size())
+                parsingError(format("inline '{0}{{...}}': too many positional values — the class declares {1} inline member(s)",
+                                    typeDisplay, (int)inlineFields.size()));
+            target = inlineFields[idx++];
+        }
+        // The value is either a scalar expression or a NESTED `{ … }` aggregate. A nested aggregate
+        // takes its shape from the target member's type: an `array<T>` member → a braced array literal
+        // (baked as an array property), an object-backed member → a nested inline object (§6.2.1).
+        string terminator;
+        if(vt.is(token::braceOpen)){
+            if(arrayDeclaration* arrTarget = dynamic_cast<arrayDeclaration*>(target)){
+                // array-typed member: parse `{ v1, v2, … }` as an array literal → array property.
+                arrayDeclaration& amem = *(new arrayDeclaration());
+                amem.name = target->name;
+                amem.type = languageService.getType("array");
+                amem.elementType = arrTarget->elementType;
+                initializerList* list = new initializerList();
+                token t = file.getToken();
+                while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+                    expression* e = parseExpression(t, {",", token::braceClose}, func, body);
+                    list->elements.push_back(e);
+                    if(e->terminator == token::braceClose) break;
+                    t = file.getToken();
+                }
+                amem.declaredExpressionValue = list;
+                od.members.push_back(&amem);
+            } else {
+                classDef* fcls = getDispatchClass(target->type.name);
+                if(fcls == nullptr || !inheritsFromObject(fcls))
+                    parsingError(format("inline '{0}{{...}}': member '{1}' is neither an array nor an object-backed type, so it cannot take a '{{ … }}' value",
+                                        typeDisplay, target->name));
+                // object-typed member: a nested inline object (the '{' is already consumed as `vt`).
+                string anonName = format("_bglanon{0}", anonObjectCounter++);
+                bakeInlineObjectAggregate(fcls, target->type.name, anonName, func, body);
+                variableDeclaration& mem = *(new variableDeclaration());
+                mem.name = target->name;
+                mem.type = target->type;
+                expression* ref = new expression();
+                ref->tokens.push_back(anonName);
+                ref->resolvedType = target->type.name;
+                mem.declaredExpressionValue = ref;
+                od.members.push_back(&mem);
+            }
+            token sep = file.getToken({",", token::endStatement, token::braceClose});   // outer separator after '}'
+            terminator = sep.value;
+        } else {
+            expression* val = parseExpression(vt, {",", token::endStatement, token::braceClose}, func, body);
+            variableDeclaration& mem = *(new variableDeclaration());
+            mem.name = target->name;
+            mem.type = target->type;
+            mem.declaredExpressionValue = val;
+            od.members.push_back(&mem);
+            terminator = val->terminator;
+        }
+        if(terminator == token::braceClose) break;
+        if(inNamed){
+            // Named section: ';'-separated. A ',' between named members is an error.
+            if(terminator == ",")
+                parsingError(format("inline '{0}{{...}}': named members are separated by ';', not ',' — write `{1} = value;`",
+                                    typeDisplay, target->name));
+            expectNamed = true;
+        } else {
+            // Positional section: ',' stays positional; ';' transitions to the named section.
+            expectNamed = (terminator == token::endStatement);
+        }
+        vt = file.getToken();
+    }
+}
+
+
 bool bglParser::processTypedObjectDeclaration(token typeTok, token nameTok, token classNameTok, Qualifiers& q, abstractObject& ctx){
     // Entered after "Type name : ClassName" have been consumed. Reads optional "as alias" then symbol.
     string objectClassName = classNameTok.value;
@@ -1827,6 +1956,125 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
 }
 
 // ===============================================================================
+// extend <array> { inject/remove/move ... } - declarative build-time array editing
+// ===============================================================================
+// Edits a previously-declared array's baked initializer list in place. The normal array
+// baking (i6Emitter) then emits the reordered/edited result — so this is a pure compile-time
+// transform, zero runtime cost. Generic: it knows nothing about rules; any array works.
+// Elements are referenced by NAME (matches an element's rendered text — the array-of-named-
+// references case) or by [N] index; positions are `after X | before X | first | last`.
+bool bglParser::processArrayExtension(arrayDeclaration* arr){
+    string arrName = arr->name;
+    // An extern array's data is defined in I6, not Beguile — there is no initializer for us to
+    // edit, and Beguile emits no array directive for it. Editing it declaratively is meaningless.
+    if(arr->isExternal)
+        parsingError(format("extend {0}: cannot edit an extern array — its contents are defined "
+                            "in I6, not Beguile, so there is no initializer to inject into", arrName));
+    initializerList* init = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
+    if(!init){
+        // Sized/uninitialized array had no list — start one so injects have somewhere to land.
+        init = new initializerList();
+        arr->declaredExpressionValue = init;
+    }
+
+    // Resolve an element reference (a name or [N]) to its index in init->elements.
+    auto resolveElemRef = [&]() -> int {
+        token t = file.getToken();
+        if(t.is(token::bracketOpen)){
+            token nTok = file.getToken(eTokenType::integer);
+            file.getToken(token::bracketClose);
+            int idx = stoi(nTok.value);
+            if(idx < 0 || idx >= (int)init->elements.size())
+                parsingError(format("extend {0}: index [{1}] out of range (array has {2} element(s))",
+                                    arrName, idx, (int)init->elements.size()));
+            return idx;
+        }
+        string name = t.value;   // lexer lowercases identifiers
+        for(size_t i = 0; i < init->elements.size(); i++){
+            string et = init->elements[i]->text();
+            transform(et.begin(), et.end(), et.begin(), ::tolower);
+            if(et == name) return (int)i;
+        }
+        parsingError(format("extend {0}: no element named '{1}' in the array",
+                            arrName, t.originalValue.empty() ? t.value : t.originalValue));
+        return -1;
+    };
+
+    // Given a just-read position keyword, return the insert index into init->elements.
+    // `after`/`before` read an element reference; `first`/`last` are absolute.
+    auto resolvePosition = [&](const std::string& clause) -> int {
+        if(clause == "first")  return 0;
+        if(clause == "last")   return (int)init->elements.size();
+        if(clause == "after")  return resolveElemRef() + 1;
+        if(clause == "before") return resolveElemRef();
+        parsingError(format("extend {0}: expected 'after', 'before', 'first', 'last', or ';' but found '{1}'",
+                            arrName, clause));
+        return (int)init->elements.size();
+    };
+
+    file.getToken(token::braceOpen);
+    token verb = file.getToken();
+    while(!verb.is(token::braceClose)){
+        if(verb.is("inject")){
+            // inject <element> [after X | before X | first | last];   (no clause = append)
+            // The element is a single reference/value (a named object or a literal) OR an inline
+            // object declaration `Type{ … }` (parsed by parseExpression's primary → a baked anon
+            // object + a reference). Both end up as an expression stored the same way the array's
+            // original elements are, so they bake identically.
+            token elemTok = file.getToken();
+            expression* elem;
+            std::string clauseStr;
+            classDef* elemCls = getDispatchClass(arr->elementType);
+            if(elemTok.is(token::braceOpen) && elemCls != nullptr && inheritsFromObject(elemCls)){
+                // Inferred inline object: a bare `{ … }` takes the array's element type (the '{' is
+                // already consumed). Bake an anon object and inject a reference, just like the explicit
+                // `Type{ … }` form below. The clause keyword (or ';') follows the closing '}'.
+                string anonName = format("_bglanon{0}", anonObjectCounter++);
+                bakeInlineObjectAggregate(elemCls, arr->elementType, anonName, nullptr, nullptr);
+                elem = new expression();
+                elem->tokens.push_back(anonName);
+                elem->resolvedType = arr->elementType;
+                clauseStr = file.getToken().value;            // after | before | first | last | ;
+            } else if(getDispatchClass(elemTok.value) != nullptr && file.peekToken().is(token::braceOpen)){
+                // Inline object element — let the expression parser build it; it stops at the
+                // position keyword or ';' (all terminators here).
+                elem = parseExpression(elemTok, {"after", "before", "first", "last", token::endStatement}, nullptr, nullptr);
+                clauseStr = elem->terminator;                 // "after"/"before"/"first"/"last", or the ';' terminator
+                if(elem->terminator == token::endStatement) clauseStr = ";";
+            } else {
+                // Single reference or value: stored as a one-token expression.
+                elem = new expression();
+                elem->tokens.push_back(elemTok.value);
+                clauseStr = file.getToken().value;            // after | before | first | last | ;
+            }
+            int pos;
+            if(clauseStr == ";") pos = (int)init->elements.size();  // append
+            else { pos = resolvePosition(clauseStr); file.getToken(token::endStatement); }
+            init->elements.insert(init->elements.begin() + pos, elem);
+        } else if(verb.is("remove")){
+            // remove <name | [N]>;
+            int idx = resolveElemRef();
+            file.getToken(token::endStatement);
+            init->elements.erase(init->elements.begin() + idx);
+        } else if(verb.is("move")){
+            // move <name | [N]>  <after X | before X | first | last>;
+            int from = resolveElemRef();
+            expression* moved = init->elements[from];
+            init->elements.erase(init->elements.begin() + from);   // remove first; positions below are on the reduced list
+            token clause = file.getToken();
+            int pos = resolvePosition(clause.value);
+            file.getToken(token::endStatement);
+            init->elements.insert(init->elements.begin() + pos, moved);
+        } else {
+            parsingError(format("extend {0}: expected 'inject', 'remove', or 'move' but found '{1}'",
+                                arrName, verb.originalValue.empty() ? verb.value : verb.originalValue));
+        }
+        verb = file.getToken();
+    }
+    return false;
+}
+
+// ===============================================================================
 // extend object { ... } - add members to an existing object
 // ===============================================================================
 bool bglParser::processObjectExtension(token nameTok){
@@ -1844,8 +2092,16 @@ bool bglParser::processObjectExtension(token nameTok){
             if(auto* od = dynamic_cast<objectDef*>(g))
                 if(od->name == lower){ obj = od; break; }
     }
+    // Not a verb or object — a previously-declared array? Route to the declarative
+    // build-time array editor (inject / remove / move).
+    if(!obj){
+        for(typeDef* g : languageService.globals)
+            if(auto* arr = dynamic_cast<arrayDeclaration*>(g))
+                if(arr->name == lower)
+                    return processArrayExtension(arr);
+    }
     if(!obj)
-        parsingError(format("extend '{0}': no previously declared object with that name",
+        parsingError(format("extend '{0}': no previously declared object or array with that name",
             nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
 
     bool isExternalObj = obj->isExternal || (vod && vod->isExternal);

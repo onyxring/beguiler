@@ -87,6 +87,7 @@ struct Qualifiers {
     bool isEmitter  = false;
     bool isConst    = false;
     bool isStatic   = false;
+    bool isInline   = false;   // `inline` class member: joins the positional inline-construction slots (§6.2.1)
     bool isExtend   = false;
     bool isAlias    = false;
     bool isDefault  = false;
@@ -222,6 +223,7 @@ class bglParser {
         bool processArray(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processRoutine(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processObject(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processInlineObjectStatement(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processVariable(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processAliased(vector<token>& t, Qualifiers& q, abstractObject& c);
@@ -250,6 +252,15 @@ class bglParser {
         bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool isByVal=false);
         bool processEnumDeclaration(token, bool, token nameOverride=token());
         bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false, bool isSuperposed = false);
+        // Bake an object of `cls` from an inline-aggregate body `{ ... }`, registered under `objName`.
+        // ASSUMES the opening '{' has already been consumed; parses fields up to the matching '}'.
+        // Fields are POSITIONAL values (→ the class's `inline` members, in declaration order, base
+        // class first) and/or NAMED `field = value` members (positional first; ',' keeps positional,
+        // the first ';' enters the named section, then ';'-only). `typeDisplay` names the type in
+        // error messages. Used by inline `Type{…}` expressions, inferred `{…}` in typed slots
+        // (array-literal elements, object-backed variable initializers), and `inject Type{…}`.
+        void bakeInlineObjectAggregate(class classDef* cls, const string& typeDisplay, const string& objName,
+                                       class functionDef* func, class statementBlock* body);
         // Parse an alias member (the `alias` qualifier is already consumed; `aliasName` is the member
         // name). Handles both `alias name for Type;` (type alias) and `alias name = Target;` (compile-
         // time value alias — no runtime property). Shared by object-body and extend-body member loops.
@@ -261,6 +272,10 @@ class bglParser {
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
         bool processGrammarDeclaration(token nameOverride=token());
         bool processObjectExtension(token nameTok);
+        // Declarative build-time editing of a previously-declared array's baked initializer:
+        // `extend <array> { inject/remove/move ... }`. Edits the initializerList in place; the
+        // normal array baking then emits the result. Generic (any array of elements/references).
+        bool processArrayExtension(class arrayDeclaration* arr);
         bool processTypedObjectDeclaration(token typeTok, token nameTok, token classNameTok, Qualifiers& q, abstractObject& ctx);  // Type name : ClassName ...
         bool processAliasedDeclaration(token typeTok, token nameTok, token aliasTok, Qualifiers& q, abstractObject& ctx);  // Type name as alias ...
 
@@ -277,6 +292,7 @@ class bglParser {
         int includeDepth = 0;               // current include nesting depth
         static constexpr int maxIncludeDepth = 255;
         int forInCounter = 0;               // counter for unique _bglfiN variable names
+        int anonObjectCounter = 0;          // counter for unique _bglAnonN inline-object names
         int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
         set<string> currentLoopVars;        // names of active for-loop init variables (for capture warnings)

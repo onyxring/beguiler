@@ -1,4 +1,4 @@
-!% -v5
+!% -G
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
@@ -216,23 +216,44 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-class room
+class menu
   class object
   with
-    visits 0,
-    visit[;
-        self.visits=self.visits + 1;
-    ],
-    getVisits[;
-        return self.visits;
-    ]
+    linkTo,
+    title,
+    words 
 ;
-room r1;
-room r2;
-array g_rooms table r1 r2 2 $9084;
-[main v v2;
-     g_rooms-->(0+1) .visit();
-    v=( g_rooms-->(0+1) ).visits;
-    v2=( g_rooms-->(0+1) ).getvisits();
-     g_rooms-->(1+1) .visit();
+menu root
+  with title "root"
+;
+class wrapper
+  class object
+  with
+    head
+;
+[main;
+    print (string)child.title;
+    if(child.words provides print) child.words.print(); else print (name)child.words;
+    print (string)_bglanon2.title;
 ];
+menu child
+  with linkto root,
+       title "a child",
+       words 'foo' 'bar' 'baz' 
+;
+menu _bglanon0
+  with linkto root,
+       title "text to display",
+       words 'type' 'kind' 
+;
+menu _bglanon1
+  with linkto "lonely"
+;
+wrapper w
+  with head _bglanon2
+;
+menu _bglanon2
+  with linkto root,
+       title "nested",
+       words 'x//' 
+;

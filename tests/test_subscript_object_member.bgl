@@ -1,0 +1,25 @@
+#beguilerSettings { target = eTarget.Glulx; }
+// Regression: subscript-then-member access on an array of object references. I6's property `.`
+// binds tighter than the array operator `-->`, so `arr-->(i).member` must be emitted as
+// `(arr-->(i)).member` or it silently reads the wrong slot (and the print-object idiom hard-errors
+// with "word array operator '-->' has no effect"). Covers a property read, an object-typed
+// property (which triggers the print-object idiom), and a method call — all off `book[i]`.
+
+enum eVerdict { proceed, stop, block }
+class thing : object { }
+thing shirt { }
+
+class rule : object {
+    inline thing matcher;
+    inline int   pri;
+    eVerdict run() { return eVerdict.stop; }
+}
+
+array<rule> book = { { shirt, 5 }, { shirt, 7 } };
+
+void main() {
+    print(book[1].pri);          // int property off an element
+    print(book[0].matcher);      // object property — exercises the print-object idiom
+    eVerdict v = book[0].run();  // method call off an element
+    print(v);
+}
