@@ -54,16 +54,13 @@ clang++ -std=c++20 -O2 *.cpp -o beguiler
 
 You'll also need [Inform 6][i6] installed.  You can pass the path to Inform to Beguiler in a number of ways, but the easiest is to configure it in the Beguilex extension.  Otherwise, you can pass it via the `-inform=` switch, define it in your Beguile source code, or define it on your `PATH` environment variable.  Beguile invokes Inform to produce the final story file.
 
-See [`docs/languageSpec.md`](docs/languageSpec.md) for the full language reference, [`Beguile Quick Start.md`](docs/quickStart.md) to get up and running quickly, and [`Beguile for the I6 Developer.md`](docs/Beguile%20for%20the%20I6%20Developer.md) for a guide aimed at existing Inform 6 authors. At the moment, since this is a preview, much of these documents are actively being revised.
+Use [`Beguile Quick Start.md`](docs/quickStart.md) to get up and running quickly, and [`Beguile for the I6 Developer.md`](docs/Beguile%20for%20the%20I6%20Developer.md) for a guide aimed at existing Inform 6 authors. See [`docs/languageSpec.md`](docs/languageSpec.md) for the full language reference. At the moment, since this is a preview, much of these documents are actively being revised.
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
-[i6]: https://github.com/DavidKinder/Inform6
-[Beguilex]: https://github.com/OnyxRing/Beguilex
-
-## Project Origin and the Use of AI
+## A Note on the project origin and the use of AI...
 
 I've been writing code since the late 70's (starting on my TRS-80 model I), and I've had some preconceived opinions on the *right* way to code; however, this AI-assisted coding thing is clearly more than a fleeting trend.  I believe it's a seismic shift, here to stay.  Naturally, I felt the need to understand it and explore what's possible.
 
@@ -75,5 +72,8 @@ The point is, some people have a moral issue with use of code-assisting LLMs.  A
 ...feel free to send me a note.
 
 Thanks!
+
+[i6]: https://github.com/DavidKinder/Inform6
+[Beguilex]: https://github.com/OnyxRing/Beguilex
 
 
