@@ -1,6 +1,6 @@
 # Beguile Language Specification
 
-> **How to read this document.** This is the complete language reference. If you are new to Beguile and coming from Inform 6, start with the companion document **"Beguile for the I6 Developer"** instead: it teaches the language through a complete, runnable Cloak of Darkness port and maps each construct back to the Inform 6 you already know. This specification is the reference you graduate to, for looking things up once you know the language. A glossary of the terms of art used here is in Appendix A.
+> **How to read this document.** This is the complete language reference. If you are new to Beguile and coming from Inform 6, start with the companion document [**"Beguile for the I6 Developer"**](https://github.com/onyxring/beguiler/blob/main/docs/Beguile%20for%20the%20I6%20Developer.md) instead: it teaches the language through a complete, runnable Cloak of Darkness port and maps each construct back to the Inform 6 you already know. This specification is the reference you graduate to, for looking things up once you know the language. A glossary of the terms of art used here is in Appendix A.
 
 ## Table of Contents
 
