@@ -33,11 +33,11 @@ If you are looking into Beguile, you should also use the associated VS Code exte
 
 ## Quick Start
 
-### Download the binaries
+### Download the binaries...
 
 Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are attached to each [Release](https://github.com/onyxring/beguiler/releases).
 
-### Or build it from source
+### Or build it from source...
 
 Beguile requires a C++20 compiler.
 
@@ -45,14 +45,14 @@ Beguile requires a C++20 compiler.
 clang++ -std=c++20 -O2 *.cpp -o beguiler
 ```
 
-You'll also need [Inform 6][i6] installed.  You can pass the path to Inform to Beguiler in a number of ways, but the easiest is to configure it in the Beguilex extension.  Otherwise, you can pass it via the `-inform=` switch, define it in your Beguile source code, or define it on your `PATH` environment variable.  Beguile invokes Inform to produce the final story file.
-
 ### Compile a Beguile program from the command line
 *(if you really **aren't** going to use the extension)*
 
 ```sh
 ./beguiler -inform=path\to\inform\ myStory.bgl
 ```
+
+You'll also need [Inform 6][i6] installed.  You can pass the path to Inform to Beguiler in a number of ways, but the easiest is to configure it in the Beguilex extension.  Otherwise, you can pass it via the `-inform=` switch, define it in your Beguile source code, or define it on your `PATH` environment variable.  Beguile invokes Inform to produce the final story file.
 
 See [`docs/languageSpec.md`](docs/languageSpec.md) for the full language reference, [`Beguile Quick Start.md`](docs/quickStart.md) to get up and running quickly, and [`Beguile for the I6 Developer.md`](docs/Beguile%20for%20the%20I6%20Developer.md) for a guide aimed at existing Inform 6 authors. At the moment, since this is a preview, much of these documents are actively being revised.
 
