@@ -33,11 +33,11 @@ If you are looking into Beguile, you should also use the associated VS Code exte
 
 ## Quick Start
 
-### Download
+### Download the binaries
 
 Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are attached to each [Release](https://github.com/onyxring/beguiler/releases).
 
-### Or, you can build from source
+### Or build it from source
 
 Beguile requires a C++20 compiler.
 
