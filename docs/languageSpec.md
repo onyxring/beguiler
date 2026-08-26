@@ -2415,10 +2415,18 @@ extend before {
 - **`remove <X>`** — remove an element.
 - **`move <X> [after Y | before Y | first | last]`** — reposition an existing element (equivalent to remove-then-inject at the new spot).
 
-**Positions and references** (`X`, `Y`) are given by:
-- **element name** — the identifier of the object an element points to (`after cantTakeScenery`). Requires the element to be a named reference; this is the array-of-named-references case.
-- **`[N]` index** — a zero-based position (`remove [2]`, `after [0]`). Use for value arrays or one-off edits.
-- **`first` / `last`** — absolute start/end positions.
+**Positioning — any slot, not just the ends.** `inject` and `move` can place an element **anywhere** in the array. `after X` and `before X` position it in the **interior**, immediately next to an existing element `X`; `first` and `last` are shorthands for the two ends (and no clause = `last`). Together these reach every slot — you are not limited to the head and tail:
+
+```bgl
+extend rules {
+    inject checkLocked  after  checkReachable;   // drop a new rule into the middle
+    move   fallbackRule before checkLocked;      // slide an existing rule up next to it
+}
+```
+
+The reference (`X`, `Y`) is either:
+- an **element name** — the identifier of the object an element points to (`after cantTakeScenery`); the array-of-named-references case.
+- a **`[N]` index** — a zero-based position (`after [0]`, `before [3]`, `remove [2]`); for value arrays or one-off edits.
 
 **Semantics.** Directives apply in **source order** (a later `move`/`remove` sees the effect of earlier ones), and the compiler bakes the array once at the end. Every reference is checked at compile time: an unknown name or an out-of-range `[N]` is a **compile error** (no silent misses). Because indices are relative to the array's current state as directives apply, prefer **names** over `[N]` when editing a named array across several directives — names don't shift.
 
