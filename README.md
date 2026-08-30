@@ -39,10 +39,24 @@ Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are att
 
 ### Or build it from source...
 
-Beguile requires a C++20 compiler.
+Beguile requires a C++20 compiler. Pick the line for your platform.
+
+macOS:
 
 ```sh
-clang++ -std=c++20 -O2 *.cpp -o beguiler
+clang++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional *.cpp -o beguiler
+```
+
+Linux:
+
+```sh
+clang++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional -stdlib=libc++ -Disnumber=isdigit *.cpp -o beguiler
+```
+
+Windows (clang++):
+
+```sh
+clang++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional -Disnumber=isdigit -Dstrncasecmp=_strnicmp -Dpopen=_popen -Dpclose=_pclose *.cpp -o beguiler.exe
 ```
 
 ### Compile a Beguile program from the command line
