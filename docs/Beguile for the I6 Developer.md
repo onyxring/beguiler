@@ -251,26 +251,38 @@ Generally, individual settings retain the first value assigned.  Attempts to rea
 
 #### 1. `includePaths`
 
+The `includePaths` setting tells the compilers where to search for files. This...
 ```
-includePaths="../../inform6/puny/lib, ../../orLibraryI6";
+includePaths="../../inform6/puny/lib";
+```
+...will output to I6 in the ICL as a fully qualified path.  Something like...
+
+```
+!% ++include_path=/Users/jim/projects/IF-Projects/inform6/puny/lib
 ```
 
-Unlike other settings, Beguiler aggregates all definitions of `includePaths`, deduplicates these, and emits them into I6's ICL header. The above line generates something like the following I6:
+Like I6, you can specify multiple paths, comma delimited...
+
+```
+includePaths="../../inform6/stdlib, ../../orLibraryI6";
+```
+
+Unlike other settings, Beguiler aggregates all definitions of `includePaths`, deduplicates these, and emits them into I6's ICL header. The above line emits something like the following...:
 
 ```
 !% ++include_path=/Users/jim/projects/IF-Projects/orLibraryI6
-!% ++include_path=/Users/jim/projects/IF-Projects/inform6/puny/lib
+!% ++include_path=/Users/jim/projects/IF-Projects/inform6/stdlib
 ```
 
 There are some things to note about the way Beguile processes paths.
 
-- You can specify paths in a comma-separated format, just like you can in I6; however, Beguile emits these as individual lines.
-- The same path, specified more than once, is deduplicated, and only emitted once.
-- The order paths are emitted is in reverse of the order they are declared. This is due to how I6 manages the `++include_path` ICL setting, which is to prepend the path to its running list of paths.
+- Comma-separated paths are emitted as individual lines.
+- Beguile converts relative paths to absolute paths.  This keeps things unambiguous and guards against any "relative from what directory" questions that sometimes arise.
+- The same resolved path, specified more than once, is deduplicated, and only emitted once.
+- The order paths are emitted is in _reverse_ of the order they are declared. This is due to how I6 manages the `++include_path` ICL setting, which is to prepend the path to its running list of paths.
 
   > ***In other words**: The order you write paths in Beguile is the order I6 searches them. The reverse emission just makes this work as expected.*
-  >
-- Beguile converts relative paths to absolute paths.  This keeps things unambiguous and guards against any "relative from what directory" questions that sometimes arise.
+
 - Beguile converts path delimiters to whatever your current OS expects, so if you are compiling source written on Windows (e.g., `..\..\folder`), Beguile will still process this on a Linux box.
 - If the path you are specifying cannot be found, Beguile will throw an error and tell you what folder it was looking for:
 
@@ -287,7 +299,7 @@ There are some things to note about the way Beguile processes paths.
 target=Z5;   
 ```
 
-This setting, `target`, specifies which virtual machine your game is to be compiled to.  Allowable values are contained within the `eTarget` enumeration, so you *can* specify them as `eTarget.Z5`, for example; however, specifying the `enum` type is optional. The four legal values are: `Z3`, `Z5`, `Z8`, and `Glulx`.
+This setting, `target`, specifies which virtual machine your game is to be compiled to.  Allowable values are contained within the `eTarget` enumeration, so you *can* specify them as `eTarget.Z5`, for example; however, specifying the `enum` type is optional. The legal values are: `Z5`, `Z8`, and `Glulx`.
 
 #### 3. `title` & `headline`
 
@@ -347,7 +359,7 @@ While ***I6*** happily accepts the following, assigning `MAX_SCORE` the *memory 
 constant MAX_SCORE = "2";
 ```
 
-> ***Note**: Of course, you can't have a type-safe language without types. Beguile distinguishes a lot of types and enables you to opt-in to more advanced types or to create your own.*
+> ***Note**: Of course, you can't have a type-safe language without types. Beguile provides a lot of types and enables you to optionally create your own.*
 
 > ***Note**: It's also worth mentioning that, like I6, Beguile is case-*insensitive*, differing from C and C++ in this regard.  So `MAX_SCORE`, `Max_Score`, and `MaX_sCoRE` are synonymous.*
 
@@ -373,10 +385,10 @@ There's quite a bit of substance to Beguile routines which will become more appa
 
 - Beguile routines always have a return type, even if that type means "No return type". That's the case here, where the return type is `void`. If you attempt to return a value from a `void` routine, Beguile will tell you that's not allowed.
 - Parameters are enclosed in parentheses.  There are no parameters to the `DeathMessage` routine, so the parenthetical is empty.
-- The body of a routine is contained within braces; the routine name and parameters are always defined outside of the body.
+- The body of a routine is contained within braces; the routine name and parameters are always  outside of, and precede, the body.
 - The name of a Beguile routine is usually emitted exactly to I6 as it is in Beguile.
 
-  > ***Note**: There are a few features which, when used, cause this to not be true.  For example, Beguile supports signature overloading, allowing you to define two routines with the same name, but taking different parameters.  In this case, Beguiler employs a technique called "name mangling" which emits different I6 names entirely.*
+  > ***Note**: There are a few features which, when used, cause this to not hold true.  For example, Beguile supports signature overloading, allowing you to define two routines with the same name, but taking different parameters.  In this case, Beguiler employs a technique called "name mangling" which emits different I6 names entirely.*
   >
 
 - Notice the single statement in `DeathMessage`. In Beguile, `print` is a global routine, not a language construct.  This distinction has more nuance than it may seem at first glance.  We'll see some of this when we revisit `print` in a bit.
@@ -502,7 +514,7 @@ A few additional key differences between Beguile objects and I6 objects become a
 
   Notice that the attributes `light` and `general`, which are instances of the `attribute` class, are assigned to an instance of the `attributeList` type, using the array-initializer syntax, which is a comma-separated list of attributes, wrapped in braces.  Beguile uses this same syntax to initialize `array`s of other types too.
 
-  > ***Note**: The members of the list, assigned to an `attributeList` instance, must be instances of the `Attribute` class.  Beguile will throw an error otherwise.*
+  > ***Note**: The members of the list, assigned to an `attributeList` instance, must be instances of the `attribute` class.  Beguile will throw an error otherwise.*
   >
 
 ### Member Type Inference
@@ -521,7 +533,7 @@ extend class object {
 
 > ***Note**: `extend` is a powerful feature that deserves its own discussion; here, we'll explain just enough to follow the example. In short: `extend` adds members to an already-declared object or class, including the built-in `object` itself.*
 
-Here we extend `object` by defining several properties and their types.  On the surface, what this does isn't obvious, but it demonstrates the Beguile rule of "Type Inference".  Put another way, when a member is declared on a class, its type will be inferred, even if not specified, on instances of that class.  This enables the following to compile:
+Here we extend `object` by defining several properties and their types.  On the surface, what this does isn't obvious, but it demonstrates the Beguile rule of "Type Inference".  Put another way, when a member is declared on a class, its type will be inferred, even if not specified, on instances of that class.  This enables the next block to compile:
 
 ```
 object foyer{
@@ -537,7 +549,7 @@ object foyer{
 }
 ```
 
-Notice that most of the members don't have types specified.  The `description` member is understood to be of type `string` because `foyer` is of type `object` and our `extend`-ed `object` declaration defines the data type that way.  The same is true of `s_to` and `w_to`, both of which are of type `object`.
+Notice that most of the members don't have types specified.  For example, the `description` member of `foyer` is understood to be of type `string` because `foyer` is an `object` and our `extend`-ed `object` declaration predefines `description` that way.  The same is true of `s_to` and `w_to`, both of which are of type `object`.
 
 > ***Note**: The "Type Inference" rule is an example of the **Ease of Use** principle applied.*
 
@@ -546,7 +558,7 @@ Two points of clarification:
 - `n_to`, which would normally be inferred as type `object` has been overridden to type `string`.  We could just as easily have declared the default types for direction properties as `string`, then overridden `s_to` and `w_to` to be `objects`.  Either way is acceptable.
 - You might note that we neither defined the default type for `attributes` as type `attributeList` nor `short_name` as type `string`, and Beguiler still accepted the property without error.  This is because the `attributes` and `short_name` property types are already set on the `object` definition, even without `extend`-ing it.  We declared the type explicitly on the `cloakroom` object to further the example.  Had we left that particular member untyped, even without the `extend object` code, the example would still have compiled.
 
-> ***Note**: From the sequencing of the above examples, you might suspect that objects declared *before* `object` was `extend`-ed  would still require member types to be specified.  This is actually untrue.  Beguile supports declarations in any order, so the presence of `extend object` affects all instances of `object` across all files, regardless of the order declarations appear in.  I presented it in this fashion for the purpose of illustration.
+> ***Note**: From the sequencing of the above examples, you might suspect that objects declared *before* `object` was `extend`-ed  would still require member types to be specified.  This is actually untrue.  Beguile supports declarations in any order, so the presence of `extend object` affects all instances of `object` across all files, regardless of the order declarations appear in.  I presented it in this fashion for the purpose of illustration.*
 
 ### Analyzing `Before` as an Example Member Routine
 Among its other members, the `bar` object contains a member *routine*, specifically the `before` routine, which the Puny Inform and the I6 Standard Library both use:
