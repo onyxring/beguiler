@@ -118,6 +118,10 @@ emitter class _bglObject{
                                      //  `typesealed`: writing `object parent = <room>` keeps parent as
                                      //  parentProp (with a warning) so `.parent = X` always emits `move`.
                                      //  Idiomatic form is the bare `parent = <room>` (no type keyword).
+        childrenProp children;       //--the world-tree child collection (inverse of `parent`). Iterable
+                                     //  (`for(o in c.children)`) with `.length()`/`.size()` = count;
+                                     //  `children = {a,b}` in a body places those objects, `.children += {x}`
+                                     //  adds at runtime. Compiler-tracked, like `parent`; not a stored property.
         attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
         string short_name;           //--object's short name (string or routine). Backs the `(name)` print rule
                                      //  used by print() below; the compiler auto-declares it, so it's core, not
@@ -152,9 +156,6 @@ emitter class _bglObject{
         emitter object child{
             child($val)
         }
-        emitter int children{
-            children($val)
-        }
         emitter object sibling{
             sibling($val)
         }
@@ -183,6 +184,17 @@ emitter class _bglObject{
         emitter object operator(){
             parent($self)
         }
+    }
+
+    //--the world-tree child collection. `obj.children` is iterable (the compiler lowers
+    //  `for(o in obj.children)` to an I6 objectloop); placement (`children = {a,b}` in a body,
+    //  `.children += {x}` at runtime) is compiler-tracked. `length()`/`size()` report the child
+    //  count — routines like `<array>`'s, using `$host` (the object the proxy member is read on,
+    //  i.e. `obj` in `obj.children`) since the proxy has no storage of its own. size()==length()
+    //  here: a world-tree collection has no capacity-vs-in-use distinction.
+    extern emitter class childrenProp{
+        emitter int length(){ children($host) }
+        emitter int size()  { children($host) }
     }
 
 

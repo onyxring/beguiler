@@ -37,6 +37,10 @@ string typeDisplayName(const string& typeName){
 }
 
 string mangleOperatorName(const string& opName){
+    // The conversion operator's name is the whole token "operator()" (not a bare symbol like
+    // "="), and it contains parentheses that aren't valid in an I6 identifier. Give it a fixed
+    // mangled name so a non-emitter (regular-method) conversion operator emits a callable routine.
+    if(opName == "operator()") return "_opconv";
     string safe = "_op";
     for(char ch : opName){
         if     (ch == '=') safe += "eq";

@@ -690,7 +690,17 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                 break;
             }
 
-    if(arrName.empty()){
+    // World-tree child collection: `for (o in container.children)` iterates the container's I6
+    // children directly (objectloop), no array. Detected by the `.children` tail on the source.
+    bool isChildrenSource = false;
+    if(arrName.empty() && arrExprText.size() > 9 && arrExprText.substr(arrExprText.size() - 9) == ".children"){
+        isChildrenSource = true;
+        string owner = arrExprText.substr(0, arrExprText.size() - 9);
+        arrName = func != nullptr ? qualifyIdentifier(owner, func, body) : owner;   // container's emitted name
+        arrElemType = "object";
+    }
+
+    if(!isChildrenSource && arrName.empty()){
         arrName = format("_bglfia{0}", forInCounter++);
         variableDeclaration& tmpDecl = *(new variableDeclaration());
         tmpDecl.name = arrName;
@@ -760,6 +770,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     // A <string> is a managed object: iterate via getLength()/getChar() dispatch
     // (handled in the emitter), not the raw byte template.
     fi.isStringForIn = isStringContainer;
+    fi.isChildrenForIn = isChildrenSource;
     // Byte iteration for array<char> (hybrid layout: length word -->0, data bytes
     // ->WORDSIZE). The elemVarType clause catches array<char> reached as an
     // external object member, where the element-type lookups above fall back to
@@ -1392,6 +1403,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         assignmentStatement& assignExpr=*(new assignmentStatement());
         assignExpr.src = stmtLoc;
         string lhsOriginal = (string)tok;
+        // `container.children = { … }` at runtime reads as "replace all contents" — a footgun. Only the
+        // object-body form (initial population) uses `=`; at runtime require `+=` to add.
+        if(lhsOriginal.size() > 9 && lhsOriginal.substr(lhsOriginal.size() - 9) == ".children")
+            parsingError("assigning to `.children` with `=` would replace all contents; use `.children += { … }` to add objects (or move them individually).");
         if(isConstVariable(lhsOriginal, func, body))
             parsingError(format("Cannot assign to const variable '{0}'", lhsOriginal));
         if(func != nullptr){
@@ -1632,6 +1647,51 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             found = true;
                         }
                     }
+                    // Compatible-arg operator= match: an operator= whose parameter is isTypeCompatible
+                    // with the RHS but not caught by the exact/var/template/upcast passes above. The key
+                    // case is a LITERAL RHS into a value-typed setter — `obj.height = 5` where `height`'s
+                    // type declares `operator=(int)`: the literal is typed `intliteral`, which is
+                    // assignable to `int` (isTypeCompatible) but is not a subclass of it, so the
+                    // inheritance-based upcast pass misses it. Runs last, so exact overloads still win.
+                    // Handles the emitter form (inline body) and the non-emitter form (mangled call).
+                    // Guard: only when the RHS is NOT already assignable to the member type by the raw
+                    // path — otherwise a plain `intVar = 0` would needlessly route through int's identity
+                    // `operator=($target=$v)` and reformat. This fires precisely for a proxy member whose
+                    // type isn't literal-compatible on its own but declares an operator= that accepts the
+                    // literal's base type (e.g. `heightProxy` with `operator=(int)`).
+                    if(!found && !isTypeCompatible(valueTypeName, leftType->name)){
+                        typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
+                            auto* opFunc = dynamic_cast<functionDef*>(mm);
+                            return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
+                                   && dynamic_cast<i6Block*>(opFunc->body)!=nullptr
+                                   && isTypeCompatible(valueTypeName, opFunc->params[0]->type.name);
+                        });
+                        if(m){
+                            auto* opFunc = dynamic_cast<functionDef*>(m);
+                            auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                            a.emitterBody = processBglConditionals(blk->i6Body);
+                            a.emitterParam = opFunc->params[0]->name;
+                            if(classType != nullptr)
+                                a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
+                            found = true;
+                        }
+                        if(!found){
+                            m = findMemberInHierarchy(classType, [&](typeMember* mm){
+                                auto* opFunc = dynamic_cast<functionDef*>(mm);
+                                return opFunc && opFunc->name=="=" && !opFunc->isEmitter && !opFunc->isPrePassStub
+                                       && opFunc->params.size()==1
+                                       && isTypeCompatible(valueTypeName, opFunc->params[0]->type.name);
+                            });
+                            if(m){
+                                auto* opFunc = dynamic_cast<functionDef*>(m);
+                                if(opFunc->i6name.empty()) opFunc->i6name = mangleOperatorName(opFunc->name);
+                                string paramName = opFunc->params[0]->name;
+                                a.emitterBody  = format("$target.{0}(${1});", opFunc->i6name, paramName);
+                                a.emitterParam = paramName;
+                                found = true;
+                            }
+                        }
+                    }
                     bool foundViaOperatorEq = found;
                     // array<char> (byteArray) matches the inherited array<T> word-copy operator=
                     // (via the upcast pass — byteArray : array). That word-copy corrupts byte data
@@ -1666,6 +1726,24 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                                 while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
                                 val->tokens.clear();
                                 val->tokens.push_back(b);
+                                val->resolvedType = leftType->name;
+                                found = true;
+                            }
+                        // Same fallback for a NON-emitter (regular-method) conversion operator on the
+                        // RHS type: call its emitted routine. Parity with the emitter form above and with
+                        // operator=; this is what makes `int a = obj.height` convert through a Beguile-method
+                        // `operator()` getter, not just an emitter one.
+                        if(!found && rhsCls != nullptr)
+                            if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
+                                auto* opFn = dynamic_cast<functionDef*>(m);
+                                return opFn && opFn->name=="operator()" && opFn->params.empty() && !opFn->isEmitter && !opFn->isExplicit
+                                       && opFn->returnType.name==leftType->name;
+                            })){
+                                auto* opFn = dynamic_cast<functionDef*>(m);
+                                if(opFn->i6name.empty()) opFn->i6name = mangleOperatorName(opFn->name);
+                                string argText = val->text();
+                                val->tokens.clear();
+                                val->tokens.push_back(argText + "." + opFn->i6name + "()");
                                 val->resolvedType = leftType->name;
                                 found = true;
                             }
@@ -1752,6 +1830,30 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         // operator (append / removeValue) to EACH element in turn — the grammar/extend `+=`
         // list idiom, at runtime. Only for the append/remove ops on a word/byte array; every
         // other case falls through to the single-RHS operator dispatch below.
+        // World-model child placement at runtime: `container.children += { a, b }` moves each listed
+        // object INTO the container. Only `+=` (add) — plain `=` reads as "replace all contents" and is
+        // rejected below; `-=` has no well-defined target (move out to where?) so it's rejected too.
+        if(tok.value.size() > 9 && tok.value.substr(tok.value.size() - 9) == ".children"){
+            if(symbol.value != "+=")
+                parsingError(format("'{0}' on `.children` is not supported; use `+=` to add objects (e.g. `x.children += {{ a, b }}`), or move objects individually.", symbol.value));
+            if(!file.peekToken().is(token::braceOpen))
+                parsingError("`.children += ` expects a brace list of objects, e.g. `x.children += { a, b }`.");
+            string owner = tok.value.substr(0, tok.value.size() - 9);
+            string container = func != nullptr ? qualifyIdentifier(owner, func, body) : owner;
+            file.getToken();  // consume '{'
+            token et = file.getToken();
+            while(!et.is(token::braceClose)){
+                expression* elem = parseExpression(et, {token::comma, token::braceClose}, func, body);
+                i6RawNode* mv = new i6RawNode();
+                mv->text = "move " + elem->text() + " to " + container + ";";
+                mv->src = stmtLoc;
+                if(body != nullptr) body->statements.push_back(mv);
+                if(elem != nullptr && elem->terminator == token::braceClose) break;
+                et = file.getToken();
+            }
+            if(file.peekToken().is(token::endStatement)) file.getToken();
+            return false;
+        }
         if((symbol.value == "+=" || symbol.value == "-=") && file.peekToken().is(token::braceOpen)){
             string aType = resolveIdentifierType(tok.value, func, body);
             if(isWordArrayType(aType) || aType == "bytearray"){

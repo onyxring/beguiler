@@ -32,6 +32,7 @@ class abstractObject{
         const string& dName() const { return displayName.empty() ? name : displayName; } // display name for error messages
         virtual void dummy(){}  //typeid requires at lease one virtual function in the base class to work
 };
+class expression;  // forward decl: objectDef::childrenPlacement holds parsed object references
 //things defined at the global level, such as type definitions, objects, enums, and functions and global variables.
 class typeDef:virtual public abstractObject{
     public:         
@@ -91,6 +92,10 @@ class objectDef: public typeDef{
         vector<typeDef*> baseClasses;
         vector<typeMember*> members;
         classDef* objectClass = nullptr; // the Beguile class this object is an instance of (if known)
+        // World-model child placement: `children = { a, b, c }` in this object's body lists objects to
+        // place INTO this object (i.e. set their `parent` to it). Desugared to parent-sets in a pre-emit
+        // pass (synthesizeChildrenPlacement) so it reuses the compile-time positional-parent tree.
+        vector<expression*> childrenPlacement;
         bool isSuperposed = false;
         // isSuperposed: withhold the object's whole `object X with …;` declaration and emit it only
         // if its name is referenced in the assembled output (same mechanism as superposed routines/
@@ -356,6 +361,9 @@ class forInStatement : public statement {
         bool isByteArray = false; // true when iterating array<char> — use byte for-in template
         bool isStringForIn = false; // true when the container is a <string> object — iterate via
                                     // getLength()/getChar() dispatch rather than raw buffer reads
+        bool isChildrenForIn = false; // true when iterating `container.children` — the world-tree
+                                      // child collection; lowers to I6 `objectloop(el in <container>)`.
+                                      // `arrayVar` holds the container's emitted name.
         statementBlock* body = nullptr;
         vector<expression*> inlineElements; // non-empty when source is {a, b, c} initializer list
 };

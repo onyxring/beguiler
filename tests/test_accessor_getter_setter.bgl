@@ -1,0 +1,25 @@
+/*
+    test_accessor_getter_setter.bgl
+    Named-class accessor: a value-helper class (NOT `: object`, so it owns a backing instance via
+    create+populate) with regular Beguile-method get/set operators. `t.height = v` dispatches the
+    setter, `= t.height` dispatches the getter, across read contexts; the write target isn't hijacked.
+    The emitter bakes a `heightproxy` instance for `t.height` and wires the property to it.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class heightProxy {                                // no `: object` → owned instance, baked
+    int _val = 0;
+    int  operator()        { return _val; }
+    void operator = (int v){ _val = v * 2; }
+}
+class thing : object { heightProxy height; }
+thing t {}
+
+void main() {
+    t.height = 5;              // setter
+    int a = t.height;          // getter (init)
+    int b;  b = t.height;      // getter (assignment)
+    int c = t.height + 1;      // getter (expression)
+    print(t.height);           // getter (argument)
+    print(a); print(b); print(c);
+}

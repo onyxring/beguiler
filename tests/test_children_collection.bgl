@@ -1,0 +1,22 @@
+/*
+    test_children_collection.bgl
+    `children` is the world-tree child collection. Read: for-in lowers to I6 `objectloop(o in c)`,
+    `.length`/`.count` give the child count (`children(c)`). Runtime placement: `c.children += { … }`
+    moves each object into c. Declaration-body `children = { … }` (compile-time placement) is covered
+    by test_children_placement. Runtime-verified via dfrotz.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object apple {}
+object bowl {}
+object shelf {}
+
+void main() {
+    bowl.children += { apple };          // runtime add
+    shelf.children += { bowl };
+    int n = 0;
+    for(object o in shelf.children) { n = n + 1; }   // objectloop
+    print(n);
+    print(shelf.children.length());        // count via .length
+    print(bowl.children.size());           // count via .size (synonym)
+}

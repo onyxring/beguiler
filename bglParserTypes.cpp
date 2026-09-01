@@ -367,6 +367,9 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     bool forceGlobalScope = false;
     if(name.size() > 2 && name[0]==':' && name[1]==':'){ forceGlobalScope = true; name = name.substr(2); }
     if(name == "null") return "object";
+    // `outer` inside an inline accessor's operator body = the enclosing (host) object; its type is
+    // that object's own type. Only meaningful while synthesizing the accessor class body.
+    if(name == "outer" && accessorOuter != nullptr) return accessorOuter->name;
     if(name == "self" && lambdaOuterFunc == nullptr){
         // `self` inside an objectDef is the objectDef's own identity, regardless of base class.
         // resolveMethod walks `objectClass`'s hierarchy for inherited methods, so this works
@@ -1032,6 +1035,10 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     if(name.size() > 2 && name[0]==':' && name[1]==':'){ forceGlobalScope = true; name = name.substr(2); }
     if(name == "null") return "nothing";
     if(name == "self" && lambdaOuterFunc == nullptr) return "self";
+    // `outer` emits the enclosing (host) object's I6 name — a compile-time constant captured while
+    // synthesizing an inline accessor's class body.
+    if(name == "outer" && accessorOuter != nullptr)
+        return accessorOuter->i6name.empty() ? accessorOuter->dName() : accessorOuter->i6name;
     // Handle dot-path: qualify the head, then check for value emitter on the tail
     size_t dot = name.find('.');
     if(dot != string::npos){
@@ -1091,9 +1098,13 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                                         return qualifyIdentifier(rest.empty() ? od->name : od->name + "." + rest, func, body);
                         // Alias member targeting an emitter CLASS (`emitter auto style = _bglStyle`):
                         // recurse into the class so `ns.style.member` reaches its value emitters.
+                        // Restrict to emitter-class targets and alias members — a PLAIN class-typed
+                        // (owned) member is a real instance, so `obj.member.field` must stay the
+                        // runtime instance path (`obj.member.field`), not be rewritten to the type.
                         if(!rest.empty()){
                             string clsName = !initName.empty() ? initName : vd->type.name;
-                            if(dynamic_cast<classDef*>(&languageService.getType(clsName)))
+                            auto* tcls = dynamic_cast<classDef*>(&languageService.getType(clsName));
+                            if(tcls && (tcls->isEmitterClass || vd->isAlias))
                                 return qualifyIdentifier(clsName + "." + rest, func, body);
                         }
                         break;

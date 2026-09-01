@@ -1,0 +1,8 @@
+// _test_children_assign.bgl — runtime `.children = { … }` reads as replace-all and is rejected;
+// use `+=` to add objects instead.
+//
+// EXPECT_ERROR: would replace all contents
+#beguilerSettings { target = z5; }
+object a {}
+object b {}
+void main() { b.children = { a }; }

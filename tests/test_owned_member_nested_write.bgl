@@ -1,0 +1,17 @@
+/*
+    test_owned_member_nested_write.bgl
+    Writing a FIELD of an owned member through a chain (`obj.member.field = v`) must target the
+    runtime instance, not the member's type. Regression: qualifyIdentifier's namespace-alias redirect
+    used to rewrite `player.stats.agility` → `statblock.agility` (the class) for a plain owned member;
+    now restricted to emitter-class/alias members. Reads were already correct.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class statBlock { int strength = 10; int agility = 7; }
+object player { statBlock stats; }
+
+void main() {
+    print(player.stats.strength);   // read: 10
+    player.stats.agility = 12;       // write a nested field of the owned member
+    print(player.stats.agility);     // read: 12
+}

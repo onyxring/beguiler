@@ -1,0 +1,23 @@
+/*
+    test_accessor_auto_inline.bgl
+    Inline anonymous accessor: `auto name = { <fields + operators> }` on an object synthesizes a
+    (non-object) accessor class, bakes a backing instance (create+populate), and wires the member.
+    `outer` in the operator bodies resolves to the enclosing (host) object at compile time. Getter
+    and setter dispatch on the real backing instance.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object gadget {
+    int scale = 3;
+    auto level = {
+        int _raw = 0;
+        int  operator()        { return _raw; }
+        void operator = (int v){ _raw = v * outer.scale; }    // outer = gadget
+    }
+}
+
+void main() {
+    gadget.level = 4;          // setter: _raw = 4 * gadget.scale(3) = 12
+    int a = gadget.level;      // getter: 12
+    print(a);
+}

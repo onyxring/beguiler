@@ -1,0 +1,20 @@
+/*
+    test_operator_conversion_native.bgl
+    Parity: a regular Beguile-method operator() (conversion) executes natively — emitted as a
+    routine (_opconv) and dispatched at a cast site — like operator= already does. Emitter operator()
+    still inlines. Both member types are non-`object` value-helpers, so create+populate bakes real
+    instances for the cast targets.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class nativeBox { int _v = 7; int operator(){ return _v * 3; } }   // regular-method conversion
+class emitBox   { int _v = 9; emitter int operator(){ $self._v } } // emitter conversion
+
+class holder : object { nativeBox n; emitBox e; }
+holder h {}
+
+void main() {
+    int a = (int)h.n;      // regular-method → h.n._opconv()
+    int b = (int)h.e;      // emitter        → inlined
+    print(a); print(b);
+}

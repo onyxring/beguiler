@@ -850,6 +850,8 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // to every downstream emit path regardless of source order — grammar objects can target a
     // verb whose own-body declaration comes later in source.
     liftAllVerbCompileTimeFields();
+    synthesizeChildrenPlacement();
+    synthesizePooledOwnedMembers();
 
     // .inf-mode with zero #bgl/#bglDecl/#bglStmt islands: the file is pure I6. None of
     // the BLR-derived output (bglInit, _bglUtil, bgl, _glulx, __glkHook, etc.) is
@@ -1912,6 +1914,16 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             out << indent << "}\n";
             return;
         }
+        // World-tree child collection: iterate the container's I6 children directly.
+        if(fi->isChildrenForIn){
+            string el = spillName(fi->elementVar);
+            out << indent << "objectloop (" << el << " in " << fi->arrayVar << ") {\n";
+            if(fi->body != nullptr)
+                for(statement* s : fi->body->statements)
+                    emitStatement(s, indent + "    ");
+            out << indent << "}\n";
+            return;
+        }
         // Inline initializer list: emit push/make templates before the loop
         if(!fi->inlineElements.empty()){
             for(auto* elem : fi->inlineElements)
@@ -2510,6 +2522,75 @@ void i6Emitter::emitObject(objectDef* obj){
         }
     }
 
+    // Create + populate: a class-typed member that OWNS its instance (a value-helper class with
+    // stored fields that does NOT inherit `object`, and has no initializer pointing elsewhere) needs
+    // a real backing object, not a bare property slot — otherwise `obj.member.method()` / operator
+    // dispatch lands on `nothing`. Bake one instance of the member's class per such member and point
+    // the property at it below. World-tree object references (members of `object`-derived classes, or
+    // members initialized to an existing object) keep their existing reference semantics.
+    map<string, string> ownedInstanceNames;                 // member name → baked backing object name
+    map<string, variableDeclaration*> ownedMemberDecl;      // member name → its declaration (for the property short-name)
+    {
+        std::function<bool(classDef*)> inheritsObj = [&](classDef* c) -> bool {
+            if(!c) return false;
+            for(classDef* b : c->baseClasses)
+                if(b->name == "object" || b->name == "_bglobject" || inheritsObj(b)) return true;
+            return false;
+        };
+        // Does this instance override the member with an initializer (→ a reference/value it points
+        // at, not an owned instance)? Then leave it alone.
+        auto overriddenWithInit = [&](const string& mname) -> bool {
+            for(typeMember* m : obj->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                    if(vd->name == mname && vd->declaredExpressionValue) return true;
+            return false;
+        };
+        auto consider = [&](variableDeclaration* vd){
+            if(!vd || vd->isExternal || vd->name == "parent" || vd->type.name.empty()) return;
+            if(ownedInstanceNames.count(vd->name)) return;         // already baked (own beats inherited)
+            if(overriddenWithInit(vd->name)) return;               // instance points it elsewhere
+            auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+            if(!cls || cls->name == "object" || cls->name == "_bglobject") return;
+            if(inheritsObj(cls)) return;                            // world-tree reference, not owned
+            bool hasStored = false;
+            for(typeMember* cm : cls->members)
+                if(auto* cvd = dynamic_cast<variableDeclaration*>(cm))
+                    if(!cvd->isExternal && !cvd->isStatic){ hasStored = true; break; }
+            if(!hasStored) return;
+            // One backing PER OBJECT (per class instance), so every instance owns independent state.
+            string backing = "_" + obj->name + "_" + vd->name;
+            out << format("{0} {1};\n", cls->i6Name(), backing);
+            ownedInstanceNames[vd->name] = backing;
+            ownedMemberDecl[vd->name] = vd;
+        };
+        // Own members first (an instance-level declaration wins), then members inherited from the
+        // object's class chain — so `class Thing { Box b; }` gives every `Thing` instance its own Box.
+        for(typeMember* m : obj->members) consider(dynamic_cast<variableDeclaration*>(m));
+        std::function<void(classDef*)> scanClass = [&](classDef* c){
+            if(!c) return;
+            for(typeMember* m : c->members) consider(dynamic_cast<variableDeclaration*>(m));
+            for(classDef* b : c->baseClasses) scanClass(b);
+        };
+        scanClass(obj->objectClass);
+    }
+
+    // Owned members that are INHERITED from the class chain (not redeclared on this instance) still
+    // need their property wired to the baked backing; the obj->members property loop won't see them,
+    // so emit `with <member> <backing>` for them explicitly (overriding the class-level default).
+    vector<pair<string,string>> inheritedOwned;   // (property short-name, backing object name)
+    {
+        set<string> ownMemberNames;
+        for(typeMember* m : obj->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m)) ownMemberNames.insert(vd->name);
+        for(auto& kv : ownedInstanceNames)
+            if(!ownMemberNames.count(kv.first)){
+                variableDeclaration* vd = ownedMemberDecl[kv.first];
+                string propName = (vd && !vd->i6name.empty()) ? vd->i6name
+                                : (vd ? vd->dName() : kv.first);
+                inheritedOwned.push_back({propName, kv.second});
+            }
+    }
+
     // Use the declared class name (if any) as the I6 object prefix; fall back to 'Object'.
     // `_bglObject` is the backing-less type-tree root (below `object`; also the base of the
     // primitive wrappers). Namespace objects (bgl/_bglUtil/_bglWorld/_glulx) are declared
@@ -2531,7 +2612,7 @@ void i6Emitter::emitObject(objectDef* obj){
     // 'meta' / 'priority' on a verb are excluded — they're compile-time-only fields lifted by the
     // verb emitter (meta → `Verb meta '…'` directive; priority → grammar sort anchor).
     bool isVerbInstance = (dynamic_cast<verbObjectDef*>(obj) != nullptr);
-    bool hasProps = false;
+    bool hasProps = !inheritedOwned.empty();
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
             if(vd->isExternal) continue; // alias members have no I6 backing
@@ -2570,11 +2651,15 @@ void i6Emitter::emitObject(objectDef* obj){
                 // symbol clash (e.g. `auto util = _bglUtil as bglUtil` avoids orLibrary's `object util`).
                 // Mirrors the function-member path below.
                 out << (vd->i6name.empty() ? vd->dName() : vd->i6name) << " ";
+                // Owned-instance member: point the property at the backing object baked above.
+                auto ownIt = ownedInstanceNames.find(vd->name);
                 // Initializer-list value (typically an inherited array<T> member reassigned
                 // here as `name = {...}`). expression::text() returns empty for these since
                 // their content lives in `elements`, so walk elements explicitly. See the
                 // matching comment in emitClass.
-                if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
+                if(ownIt != ownedInstanceNames.end()){
+                    out << ownIt->second;
+                } else if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
                     for(expression* elem : list->elements) out << elem->text() << " ";
                 } else if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
                 first = false;
@@ -2619,6 +2704,12 @@ void i6Emitter::emitObject(objectDef* obj){
                 first = false;
             }
         }
+        // Wire inherited owned members (baked above, not present in obj->members).
+        for(auto& io : inheritedOwned){
+            out << (first ? "  with " : ",\n       ");
+            out << io.first << " " << io.second;
+            first = false;
+        }
         if(!first) out << "\n";
     }
 
@@ -2651,6 +2742,206 @@ void i6Emitter::emitObject(objectDef* obj){
 //===============================================================================================================================
 // Verb and grammar emission
 //===============================================================================================================================
+
+void i6Emitter::synthesizeChildrenPlacement(){
+    // Map object name → objectDef for placement lookups (Beguile names are lowercased by the lexer,
+    // as are the parsed child references, so a direct name match is exact).
+    map<string, objectDef*> byName;
+    for(typeDef* g : languageService.globals)
+        if(auto* od = dynamic_cast<objectDef*>(g))
+            byName[od->name] = od;
+
+    set<string> claimed;                              // child already placed (one parent per world-tree node)
+    map<objectDef*, objectDef*> placedParent;         // placed child → its container (for reorder below)
+
+    for(typeDef* g : languageService.globals){
+        auto* container = dynamic_cast<objectDef*>(g);
+        if(!container || container->childrenPlacement.empty()) continue;
+        const string& containerI6 = container->i6name.empty() ? container->dName() : container->i6name;
+
+        for(expression* childExpr : container->childrenPlacement){
+            string childName = childExpr->text();
+            auto it = byName.find(childName);
+            if(it == byName.end()){
+                std::cerr << format("WARNING: children placement in '{0}': '{1}' is not a placeable object; skipped.\n",
+                                    container->dName(), childName);
+                continue;
+            }
+            objectDef* child = it->second;
+            // A world-tree object has exactly one parent. Two containers naming the same child is a
+            // genuine conflict — the resulting tree would be ambiguous — so it's a hard error.
+            if(claimed.count(childName))
+                throw runtime_error(format("children conflict: '{0}' is listed in more than one container's `children` — a world-tree object has exactly one parent.", childName));
+            // An explicit `parent` on the child: a conflict ONLY if it names a different container.
+            // Declaring the same link both ways (`a.children = { b }` and `b.parent = a`) is redundant
+            // but consistent — the explicit `parent` already places it, so accept it silently.
+            string ownParent;
+            for(typeMember* m : child->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                    if(vd->name == "parent" && vd->declaredExpressionValue){ ownParent = vd->declaredExpressionValue->text(); break; }
+            if(!ownParent.empty()){
+                if(ownParent != containerI6)
+                    throw runtime_error(format("children conflict: '{0}' is placed in '{1}'.children but also sets `parent = {2}` — a world-tree object has exactly one parent.", childName, container->dName(), ownParent));
+                claimed.insert(childName);   // same container, declared both ways — consistent; parent stands
+                continue;
+            }
+            claimed.insert(childName);
+            // Desugar: child.parent = container. The existing positional-parent emission does the rest.
+            expression* pv = new expression();
+            pv->tokens.push_back(containerI6);
+            pv->resolvedType = "object";
+            variableDeclaration* pd = new variableDeclaration();
+            pd->name = "parent";
+            pd->type = languageService.getType("parentprop");
+            pd->declaredExpressionValue = pv;
+            child->members.push_back(pd);
+            placedParent[child] = container;
+        }
+    }
+    if(placedParent.empty()) return;
+
+    // I6 requires a positional parent to be DEFINED before the child that names it. A container is
+    // often declared after its contents, so reorder `globals` to emit each placed child after its
+    // container. Dependency-respecting and stable: non-placed objects keep their relative order, and a
+    // container pulled earlier drags in its own container first (nested rooms/containers).
+    vector<typeDef*> reordered;
+    set<typeDef*> emitted;
+    std::function<void(typeDef*)> place = [&](typeDef* g){
+        if(emitted.count(g)) return;
+        if(auto* od = dynamic_cast<objectDef*>(g)){
+            auto pit = placedParent.find(od);
+            if(pit != placedParent.end()) place(pit->second);   // container first
+        }
+        if(emitted.insert(g).second) reordered.push_back(g);
+    };
+    for(typeDef* g : languageService.globals) place(g);
+    languageService.globals = reordered;
+}
+
+void i6Emitter::synthesizePooledOwnedMembers(){
+    // World-tree reference? (member of an `object`-derived class keeps reference semantics.)
+    std::function<bool(classDef*)> inheritsObj = [&](classDef* c) -> bool {
+        if(!c) return false;
+        for(classDef* b : c->baseClasses)
+            if(b->name == "object" || b->name == "_bglobject" || inheritsObj(b)) return true;
+        return false;
+    };
+    // An owned value-helper member: a non-`object` class with stored fields, no initializer.
+    auto ownedClass = [&](variableDeclaration* vd) -> classDef* {
+        if(!vd || vd->isExternal || vd->isStatic || vd->name == "parent") return nullptr;
+        if(vd->type.name.empty() || vd->declaredExpressionValue) return nullptr;
+        auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+        if(!cls || cls->name == "object" || cls->name == "_bglobject" || inheritsObj(cls)) return nullptr;
+        for(typeMember* cm : cls->members)
+            if(auto* cvd = dynamic_cast<variableDeclaration*>(cm))
+                if(!cvd->isExternal && !cvd->isStatic) return cls;   // has stored storage
+        return nullptr;
+    };
+
+    // Collect pooled classes up front (we mutate globals as we go).
+    vector<classDef*> pooled;
+    for(typeDef* g : languageService.globals)
+        if(auto* cd = dynamic_cast<classDef*>(g))
+            if(cd->poolSize > 0)
+                pooled.push_back(cd);
+
+    for(classDef* cd : pooled){
+        // Symbolic pool size can't be expanded into N discrete backing instances at compile time.
+        if(!cd->poolSizeExpr.empty()){
+            for(typeMember* m : cd->members)
+                if(ownedClass(dynamic_cast<variableDeclaration*>(m)))
+                    { std::cerr << format("WARNING: class '{0}': pooled owned member on a symbolically-sized pool (`[{1}]`) is not yet supported; declare a numeric pool size to give each instance its own backing.\n", cd->dName(), cd->poolSizeExpr); break; }
+            continue;
+        }
+        int N = cd->poolSize;
+
+        // Owned members: own declarations plus those inherited from the class chain (dedup by name).
+        vector<variableDeclaration*> owned;
+        set<string> seenName;
+        std::function<void(classDef*)> scan = [&](classDef* c){
+            if(!c) return;
+            for(typeMember* m : c->members){
+                auto* vd = dynamic_cast<variableDeclaration*>(m);
+                if(vd && !seenName.count(vd->name) && ownedClass(vd)){ owned.push_back(vd); seenName.insert(vd->name); }
+            }
+            for(classDef* b : c->baseClasses) scan(b);
+        };
+        scan(cd);
+        if(owned.empty()) continue;
+
+        // Insertion point: just before the pooled class in `globals`, so the backing instances and
+        // free-list precede any create/destroy references. (Pass-3 lazy emission pulls the member's
+        // own class up ahead of its instances, so we needn't order that here.)
+        auto insertBefore = [&](typeDef* node){
+            auto& g = languageService.globals;
+            size_t pos = g.size();
+            for(size_t i = 0; i < g.size(); i++) if(g[i] == (typeDef*)cd){ pos = i; break; }
+            g.insert(g.begin() + pos, node);
+        };
+
+        string createInject, destroyInject;
+        for(variableDeclaration* vd : owned){
+            classDef* mc = ownedClass(vd);
+            string base  = "_" + cd->name + "_" + vd->name;                 // e.g. _thing_b
+            string memI6 = vd->i6name.empty() ? vd->dName() : vd->i6name;
+
+            // N preallocated backing instances (plain objectDefs; emitObject + create+populate
+            // bake any nested owned members of each).
+            string elems;
+            for(int k = 0; k < N; k++){
+                string boxName = format("{0}_{1}", base, k);
+                objectDef* box = new objectDef();
+                box->name = boxName;
+                box->objectClass = mc;
+                insertBefore(box);
+                elems += " " + boxName;
+            }
+            // Compile-time free-list: array of the backings + a top-of-stack counter (starts full).
+            i6RawNode* fl = new i6RawNode();
+            fl->text = format("Array {0}_free -->{1};\nGlobal {0}_top = {2};\n", base, elems, N);
+            insertBefore(fl);
+
+            // create(): pop a free backing, wire it, reset its scalar fields to their defaults.
+            createInject += format("{0}_top = {0}_top - 1; self.{1} = {0}_free-->{0}_top;\n", base, memI6);
+            for(typeMember* cm : mc->members){
+                auto* fvd = dynamic_cast<variableDeclaration*>(cm);
+                if(!fvd || fvd->isExternal || fvd->isStatic) continue;
+                if(ownedClass(fvd)) continue;   // nested owned instance: keeps its baked backing
+                string fi6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
+                string def = fvd->declaredExpressionValue ? fvd->declaredExpressionValue->text() : "0";
+                if(def.empty()) def = "0";
+                createInject += format("self.{0}.{1} = {2};\n", memI6, fi6, def);
+            }
+            // destroy(): return the backing to the free-list.
+            destroyInject += format("{0}_free-->{0}_top = self.{1}; {0}_top = {0}_top + 1;\n", base, memI6);
+        }
+
+        // Inject into create()/destroy(): prepend to an existing method, or synthesize one.
+        auto injectHook = [&](const string& hookName, const string& code){
+            functionDef* fn = nullptr;
+            for(typeMember* m : cd->members)
+                if(auto* f = dynamic_cast<functionDef*>(m))
+                    if(f->name == hookName){ fn = f; break; }
+            i6RawNode* raw = new i6RawNode();
+            raw->text = code;
+            if(fn){
+                auto* body = dynamic_cast<statementBlock*>(fn->body);
+                if(body){ body->statements.insert(body->statements.begin(), raw); return; }
+                // Non-statement body (e.g. raw i6 create) — fall through to synthesize instead.
+            }
+            functionDef* nf = new functionDef();
+            nf->name = hookName;
+            nf->isEmitter = false;
+            nf->returnType.name = "void";
+            statementBlock* sb = new statementBlock();
+            sb->statements.push_back(raw);
+            nf->body = sb;
+            cd->members.push_back(nf);
+        };
+        injectHook("create",  createInject);
+        injectHook("destroy", destroyInject);
+    }
+}
 
 void i6Emitter::liftAllVerbCompileTimeFields(){
     int defaultPriority = languageService.getClassFieldIntDefault("verb", "priority", 10);

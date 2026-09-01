@@ -48,8 +48,11 @@ using namespace std;
 // ===============================================================================
 // Top-level: processClassDeclaration
 // ===============================================================================
-bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool isByVal){
-    if(getCurrentCompileContext()!=eCompileContext::global) parsingError(format("Class declarations are only allowed in global context:'{0}'", (string) tok));
+bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool isByVal, bool allowNested){
+    // `allowNested` = synthesizing an inline accessor's anonymous class from inside an object body
+    // (`auto name = { … }`); the class is still registered globally, it's just parsed nested. All
+    // other class declarations must be at global scope.
+    if(!allowNested && getCurrentCompileContext()!=eCompileContext::global) parsingError(format("Class declarations are only allowed in global context:'{0}'", (string) tok));
 
     token nameTok = nameOverride.tokenType != eTokenType::unknown ? nameOverride : file.getToken({eTokenType::identifier, eTokenType::dataType});
     classDef* classPtr = nullptr;
@@ -355,7 +358,9 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             // an i6name by parse time — instead of relying solely on lazy call-site mangling,
             // which leaves a declared-but-never-called operator emitting a bare `=` as its I6
             // property name (invalid I6).
-            if(!isEmitter && !funcDef.name.empty() && !isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')
+            if(!isEmitter && !funcDef.name.empty()
+               && (funcDef.name == "operator()"
+                   || (!isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')))
                 funcDef.i6name = mangleOperatorName(funcDef.name);
             if(isExplicitConversion && funcDef.name != "operator()")
                 parsingError("'explicit' is only valid on conversion operators (operator())");
@@ -748,6 +753,46 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
 // Object body member parsers
 // ===============================================================================
 void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
+    // Inline accessor declaration: `auto name = { <member decls + operators> }`. The braces hold a
+    // CLASS BODY (backing fields + get/set operators), not an initializer list. Synthesize an
+    // anonymous (non-`object`) class from the body — registered globally, so the emitter bakes a
+    // backing instance for `name` (create+populate) and get/set dispatch lands on a real object.
+    // Detected by a class-body shape at the front of the brace (`<type> <ident>` / `<type> operator`
+    // / `operator`); an ordinary `{ v1, v2 }` / `{ f = v }` initializer takes the path below.
+    if((typeName == "auto" || typeName == "var") && file.peekToken().is(token::braceOpen)){
+        token b2 = file.peekToken(2);
+        token b3 = file.peekToken(3);
+        bool classBody = b2.is("operator")
+            || ((b2.is(eTokenType::dataType) || b2.is(eTokenType::identifier))
+                && (b3.is(eTokenType::identifier) || b3.is("operator")));
+        if(classBody){
+            string anon = format("_bglaccessor{0}", anonObjectCounter++);
+            token nameTok; nameTok.tokenType = eTokenType::identifier; nameTok.value = anon; nameTok.originalValue = anon;
+            token clsTok;  clsTok.tokenType  = eTokenType::identifier; clsTok.value  = "class";
+            // Parse the brace body as a class body (full reuse of member/operator parsing), registering
+            // the anonymous class globally. Stream is at the '{', which processClassDeclaration reads.
+            // No base → a non-`object` value-helper class, so create+populate bakes its instance.
+            // Capture the enclosing object so `outer` resolves to it inside the accessor's bodies.
+            objectDef* savedAccOuter = accessorOuter;
+            accessorOuter = currentObject;
+            processClassDeclaration(clsTok, /*isExternal*/false, /*isExtend*/false, /*isEmitterClass*/false,
+                                    /*isAlias*/false, nameTok, /*isByVal*/false, /*allowNested*/true);
+            accessorOuter = savedAccOuter;
+            prop.type = languageService.getType(anon);   // `name` is an instance of the synthesized class
+            // registerClass only adds to the emit list (`globals`) at global scope; we're nested, so
+            // the class registered in the type system but wouldn't emit. Insert it into `globals`
+            // BEFORE the enclosing object (which is already in `globals`, mid-parse), so the I6 `Class`
+            // directive precedes the backing instance the emitter bakes for this member.
+            if(auto* accCls = dynamic_cast<classDef*>(&languageService.getType(anon))){
+                auto& g = languageService.globals;
+                size_t pos = g.size();                          // default: append
+                if(currentObject)                               // insert just before the enclosing object
+                    for(size_t i = 0; i < g.size(); i++) if(g[i] == (typeDef*)currentObject){ pos = i; break; }
+                g.insert(g.begin() + pos, accCls);
+            }
+            return;
+        }
+    }
     token first = file.getToken();
     if(first.is(token::braceOpen)){
         initializerList* list = new initializerList();
@@ -1267,6 +1312,29 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
 
 
 void bglParser::processInheritedMember(objectDef& obj, token nameTok){
+    // World-model child placement: `children = { a, b, c }` lists objects to move INTO this object.
+    // It's the inverse of `parent`: instead of naming this object's container, it names its contents.
+    // Parse the object list here (the inherited `children` accessor isn't a stored property, so the
+    // generic path would reject it) and stash it on the objectDef; a pre-emit pass desugars each entry
+    // to a `parent` set on the listed object, reusing the compile-time positional-parent tree.
+    if(nameTok.value == "children"){
+        file.getToken(token::assignment);
+        file.getToken(token::braceOpen);
+        if(!file.peekToken().is(token::braceClose)){
+            token t = file.getToken();
+            while(true){
+                expression* elem = parseExpression(t, {token::comma, token::braceClose}, nullptr, nullptr);
+                if(elem->resolvedType.empty())
+                    parsingError(format("children placement in '{0}': element is not a declared object", obj.dName()));
+                obj.childrenPlacement.push_back(elem);
+                if(elem->terminator == token::braceClose) break;
+                t = file.getToken();
+                if(t.is(token::braceClose)) break;   // trailing comma
+            }
+        } else file.getToken(token::braceClose);
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        return;
+    }
     string propTypeName;
     // Search the object's declared class first (if any), then fall back to the base 'object' class.
     // For arrayDeclaration members, reconstruct the full templated typeName (e.g. `array<dictionaryWord>`)

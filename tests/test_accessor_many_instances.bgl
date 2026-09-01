@@ -1,0 +1,24 @@
+/*
+    test_accessor_many_instances.bgl
+    An owned value-helper member declared on a CLASS: every instance of that class must get its OWN
+    baked backing (independent state), not one shared slot. create+populate scans the instance's class
+    hierarchy and bakes `_<instance>_<member>` per instance, wiring `with <member> <backing>`.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Box {                                         // no `: object` → owned instance, baked per host
+    int _val = 0;
+    int  operator()        { return _val; }
+    void operator = (int v){ _val = v; }
+}
+class Thing : object { Box b; }                     // member declared on the class, inherited by instances
+Thing t1 {}
+Thing t2 {}
+Thing t3 {}
+
+void main() {
+    t1.b = 5;
+    t2.b = 9;
+    t3.b = 100;
+    print(t1.b); print(t2.b); print(t3.b);          // 5 9 100 — independent
+}

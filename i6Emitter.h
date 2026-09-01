@@ -146,6 +146,16 @@ class i6Emitter{
         // start of `emit()` so the lifted values are available to ALL emission paths
         // regardless of source order (grammar objects can precede their target verb decls).
         void liftAllVerbCompileTimeFields();
+        // Pre-emit pass: for each pooled class (`class Foo[N]`) that owns a value-helper member
+        // (a non-`object` class with stored fields, no initializer), synthesize a preallocated
+        // pool of N backing instances per member + a compile-time free-list, and inject pop/reset
+        // into create() and push into destroy() so every `new`/`delete` gets an independent,
+        // reset-to-defaults backing. The static analogue is create+populate in emitObject.
+        void synthesizePooledOwnedMembers();
+        // Pre-emit pass: desugar each object's `children = { a, b, c }` placement list into a `parent`
+        // set on the listed objects, so world-tree population written on the container reuses the
+        // compile-time positional-parent tree. The inverse of writing `parent` on each child.
+        void synthesizeChildrenPlacement();
         // Partition a verb's grammar contributions against the verb's anchor and emit them
         // as the right mix of Verb / Extend first / Extend directives. Shared by
         // emitVerbObject (own + extends) and emitGrammarRuleListDecl (grammar-object rules).

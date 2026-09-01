@@ -1,0 +1,17 @@
+/*
+    test_operator_eq_literal_dispatch.bgl
+    Regression: assigning a LITERAL to a member whose type declares operator=(int) dispatches through
+    it (the literal `intliteral` is bridged to its base `int`). The member type is a non-`object`
+    value-helper with its own storage, so create+populate bakes a real instance to dispatch on.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class clamped { int _raw = 0; void operator = (int v){ _raw = (v > 100 ? 100 : v); } }
+class widget : object { clamped value; }
+widget w {}
+
+void main() {
+    w.value = 250;      // literal RHS → operator=(int), clamps to 100
+    int v = 999;
+    w.value = v;        // variable RHS → same dispatch
+}

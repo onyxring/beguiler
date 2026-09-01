@@ -871,7 +871,22 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                    && fn->isEmitter && fn->returnType.name == targetType
                    && dynamic_cast<i6Block*>(fn->body) != nullptr;
         });
-        if(found == nullptr) return srcText;
+        if(found == nullptr){
+            // Non-emitter (regular-method) conversion operator → call the emitted routine, mirroring
+            // the non-emitter operator= dispatch. This is the parity that lets a regular Beguile-method
+            // `operator()` execute at a conversion site, not just an emitter operator().
+            typeMember* nm = findMemberInHierarchy(srcCls, [&](typeMember* m){
+                auto* fn = dynamic_cast<functionDef*>(m);
+                return fn && fn->name == "operator()" && fn->params.empty()
+                       && !fn->isEmitter && fn->returnType.name == targetType;
+            });
+            if(nm){
+                auto* fn = dynamic_cast<functionDef*>(nm);
+                if(fn->i6name.empty()) fn->i6name = mangleOperatorName(fn->name);
+                return srcText + "." + fn->i6name + "()";
+            }
+            return srcText;
+        }
         auto* fn = dynamic_cast<functionDef*>(found);
         auto* blk = dynamic_cast<i6Block*>(fn->body);
         string b = processBglConditionals(blk->i6Body);
@@ -1649,6 +1664,17 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 if(isMemberArr) exprPropValue = mProp;
                                 b = replaceWord(b, "$self", selfHost);
                                 b = replaceWord(b, "$val",  selfHost);
+                                // $host — the object a PROXY member is accessed on: the receiver with its
+                                // trailing `.member` stripped. For `container.children.length()` the method
+                                // receiver ($self/$val) is `container.children`, but a storageless world-tree
+                                // proxy (childrenProp) needs the host `container`. Emitters opt in by naming
+                                // $host; ordinary methods (which want the full receiver) are unaffected.
+                                {
+                                    string hostText = selfHost;
+                                    size_t hd = selfHost.rfind('.');
+                                    if(hd != string::npos) hostText = selfHost.substr(0, hd);
+                                    b = replaceWord(b, "$host", hostText);
+                                }
                                 // $class — declared type of the receiver. Ignores multiple inheritance:
                                 // resolves to the variable's static type, not the type that owns the
                                 // inherited emitter. Useful for emitters that emit class-message I6
@@ -1944,6 +1970,27 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 string readRet;
                                 string readText = applyReadEmitter(objText, propType, readRet);
                                 if(!readText.empty()){ accessText = readText; if(!readRet.empty()) propType = readRet; }
+                            }
+                            // Regular-method (non-emitter) operator() getter: if the emitter read above
+                            // didn't rewrite it and the member's type declares a Beguile-method conversion
+                            // operator, fire it on this read — `<obj>.<member>._opconv()` — so a native
+                            // getter "works as intended" on a bare read, not only at an explicit cast
+                            // (which the castType block below still handles). This is a READ site;
+                            // assignment targets are parsed by the statement parser (→ operator=), and
+                            // explicit conversions (cast-only) are excluded.
+                            if(castType.empty() && accessText == objText + "." + member.value && !propType.empty()){
+                                classDef* pcls = getDispatchClass(propType);
+                                typeMember* g = pcls ? findMemberInHierarchy(pcls, [&](typeMember* m){
+                                    auto* fn = dynamic_cast<functionDef*>(m);
+                                    return fn && fn->name=="operator()" && fn->params.empty() && !fn->isEmitter && !fn->isExplicit
+                                           && !fn->returnType.name.empty() && fn->returnType.name != "void";
+                                }) : nullptr;
+                                if(g){
+                                    auto* fn = dynamic_cast<functionDef*>(g);
+                                    if(fn->i6name.empty()) fn->i6name = mangleOperatorName(fn->name);
+                                    accessText = accessText + "." + fn->i6name + "()";
+                                    propType = fn->returnType.name;
+                                }
                             }
                             // Cast precedence: `(T)obj.prop` means cast applies to the property
                             // access result, not to the bare `obj`. If castType is set here, run
@@ -2251,6 +2298,32 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             continue;
                         }
                     }
+                    // Regular-method (non-emitter) operator() getter: a bare *read* of `<expr>.member`
+                    // whose member type declares a Beguile-method conversion operator fires that getter
+                    // — parity with the emitter property-accessor read path above, so a native-method
+                    // operator() "works as intended" on read (not only at an explicit cast). This is a
+                    // READ path: an assignment target `<expr>.member = v` is handled by the statement
+                    // parser (→ operator=) and never reaches here. Explicit conversions are excluded
+                    // (they fire only at explicit casts). Emits `<recv>.member._opconv()`.
+                    if(!mtype.empty()){
+                        classDef* mcls = getDispatchClass(mtype);
+                        typeMember* g = mcls ? findMemberInHierarchy(mcls, [&](typeMember* m){
+                            auto* fn = dynamic_cast<functionDef*>(m);
+                            return fn && fn->name=="operator()" && fn->params.empty() && !fn->isEmitter && !fn->isExplicit
+                                   && !fn->returnType.name.empty() && fn->returnType.name != "void";
+                        }) : nullptr;
+                        if(g){
+                            auto* fn = dynamic_cast<functionDef*>(g);
+                            if(fn->i6name.empty()) fn->i6name = mangleOperatorName(fn->name);
+                            string selfText; for(const auto& t : expr->tokens) selfText += t;
+                            expr->tokens.clear();
+                            expr->tokens.push_back(selfText + "." + member.value + "." + fn->i6name + "()");
+                            expr->resolvedType = fn->returnType.name;
+                            prefetched = afterMember;
+                            cur = getNext();
+                            continue;
+                        }
+                    }
                     // Plain field read through a class-typed member: `<expr>.field` where `field`
                     // is a declared variableDeclaration member of the receiver's class. Append the
                     // raw property read and retype to the field's type so further chaining works.
@@ -2365,6 +2438,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     size_t e = b.find_last_not_of(" \t\n\r"); if(e != string::npos) b = b.substr(0, e+1);
                     b = replaceWord(b, "$self", chainSelf);
                     b = replaceWord(b, "$val",  chainSelf);
+                    // $host — the object a storageless proxy member is accessed on (chainSelf minus its
+                    // trailing `.member`): `container` for `container.children`. Lets childrenProp's
+                    // length()/size() reach the host. Opt-in; ordinary methods keep the full receiver.
+                    { string h = chainSelf; size_t hd = chainSelf.rfind('.'); if(hd != string::npos) h = chainSelf.substr(0, hd); b = replaceWord(b, "$host", h); }
                     for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
                         b = replaceWord(b, "$" + method->params[i]->name, callArgs[i]->text());
                     b = replaceWord(b, "$prop", chainProp);

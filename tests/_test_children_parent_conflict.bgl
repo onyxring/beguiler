@@ -1,0 +1,9 @@
+// _test_children_parent_conflict.bgl — placing an object via a container's `children` while it also
+// sets `parent` to a DIFFERENT object is a world-tree conflict (a node has one parent).
+//
+// EXPECT_ERROR: children conflict
+#beguilerSettings { target = z5; }
+object cee {}
+object bee { parent = cee; }
+object aye { children = { bee }; }
+void main() {}

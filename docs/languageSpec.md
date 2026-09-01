@@ -1909,10 +1909,32 @@ Rules for `destroy()`:
 - **No parameters.** I6's destroy veneer takes no forwarded args.
 - **One `destroy` per class.**
 
+#### Owned members in a pool
+
+A pooled class may hold **owned members** (§5.3) — value-helper members that need their own backing instance. Each of the `N` pool slots must have an independent backing, and reused slots must come back clean. Beguile handles this automatically: it preallocates `N` backings per owned member, keeps them on a compile-time free-list, and wires the lifecycle so that
+
+- `new` pops a free backing, attaches it, and **resets its fields to their defaults** (a reused slot always starts fresh); and
+- `delete` returns the backing to the free-list.
+
+```bgl
+class Box { int _val = 0; int operator(){ return _val; } void operator = (int v){ _val = v; } }
+class Thing[3] : object { Box b; }             // each Thing owns its own Box
+
+Thing p = new Thing();
+Thing q = new Thing();
+p.b = 11;  q.b = 22;                            // independent: 11 and 22
+delete p;
+Thing r = new Thing();                          // reuses a slot
+// r.b reads 0 (reset to defaults); q.b still 22
+```
+
+This is transparent — the pop/reset/push is generated into the class's `create`/`destroy` lifecycle, composing with any `create()`/`destroy()` you write (your code runs after the reset). Pools sized with an identifier (`[IDENT]`) do not yet support owned members and emit a warning; use a numeric size.
+
 #### Limitations
 
 - Z-machine class-message dispatch caps `create` arguments at 3.
 - A static-instance variable of a pooled type (e.g. `marbleClass M;` declared at file scope, not allocated via `new`) cannot be safely passed to `delete`, because Beguile does not currently distinguish pool references from static instances at compile time. I6 will catch the misuse at runtime via `RT__Err`. Avoid mixing static and pool-allocated instances of the same type.
+- Owned members on an identifier-sized pool (`[IDENT]`) are not yet supported (numeric sizes only).
 
 ## 5.2.6 `byVal class` - Value-Semantic Class Parameters
 
@@ -2029,6 +2051,22 @@ class Counter {
 Static members are accessed using `ClassName.memberName` syntax, both for reads and writes. Inside a class method, the class name must be used explicitly; bare `instanceCount` would look for an instance property.
 
 `const` and `static` are mutually exclusive.
+
+### Owned members
+
+Most class-typed members hold a **reference**: an object-derived member (a world-tree citizen) or a member you initialize to an existing object points at that object. A member whose type is a **value-helper class** — a class that is *not* `object`-derived, has stored fields, and is declared **without** an initializer — is instead an **owned member**: the compiler bakes a real backing instance for it, so the member is a live object you can call methods and operators on, not a bare `0` slot.
+
+```bgl
+class Box { int _val = 0; void set(int v){ _val = v; } }
+
+class thing : object { Box b; }     // `b` is owned — each thing gets its own Box instance
+thing t1 {}
+thing t2 {}
+```
+
+Here `t1.b` and `t2.b` are distinct `Box` instances with independent state; the member declared on the class gives **every** instance its own backing. This is what makes property accessors (§5.6.7) work, and it also applies to a plain value-helper member you call methods on. Owned members allocated through pooled classes (`new`) are covered in §5.2.5.
+
+An owned member is detected structurally — no keyword. If you want reference semantics instead, derive the member's type from `object`, or initialize the member to an existing instance.
 
 ## 5.4 Member Methods
 
@@ -2172,6 +2210,30 @@ string s = (string)t;  // OK - explicit cast
 
 This prevents silent coercion to surprising overloads while still allowing intentional casts. See §10.6 for cast syntax.
 
+#### Emitter vs. regular-method conversion, and the bare read
+
+`operator()` may be written as an **emitter** (inlined at the use site) or as a **regular method** (emitted as a callable property and executed at runtime). Both forms participate in the same resolution — casts, argument matching, and assignment — so a regular-method conversion is a first-class alternative when the body is complex or you want it visible to the debugger:
+
+```bgl
+class heightProxy {
+    int _val = 0;
+    int operator(){ return _val; }   // regular method: runs at runtime, no `$` substitution
+}
+```
+
+A regular-method `operator()` also fires on a **bare read** of a member of that type — not only at explicit cast sites — so the value flows out with natural syntax:
+
+```bgl
+class thing : object { heightProxy height; }
+thing t {}
+
+int a = t.height;        // getter runs: a = t.height's operator()
+print(t.height);         // getter runs in argument position
+int b = t.height + 1;    // getter runs in an expression
+```
+
+The bare-read getter combines with `operator=` (the setter) to form a **property accessor** — a member that looks like a plain field but runs code on read and write. See §5.6.7.
+
 ### 5.6.5 Special Operators
 
 In addition to standard arithmetic and comparison operators, these special operators may be overloaded:
@@ -2198,6 +2260,61 @@ The complete list of operators that may be overloaded (as either emitters or reg
 **Special:** `switch` `?` `()` `[]` `[]=`
 
 Declaring `operator` with any symbol outside this set is a compile error that names the overloadable operators. This includes valid operator tokens that are not overloadable, such as `?.`, `??`, and `=>`.
+
+### 5.6.7 Property Accessors (Getters and Setters)
+
+A **property accessor** is a member that reads and writes like a plain field but runs code on each access. It is built from two operators you have already seen — a getter (`operator()`, §5.6.4) and a setter (`operator=`, §5.6.2) — declared on a small value-helper class, and then used as a member:
+
+```bgl
+class heightProxy {                       // a value-helper class (NOT `: object`)
+    int _val = 0;
+    int  operator()        { return _val; }         // getter — fires on read
+    void operator = (int v){ _val = v * 2; }        // setter — fires on write
+}
+
+class thing : object { heightProxy height; }
+thing t {}
+
+t.height = 5;            // setter runs: _val = 5 * 2  → 10
+int a = t.height;        // getter runs: a = 10
+```
+
+Reads dispatch the getter; writes dispatch the setter. The write target is never hijacked by the read path, so `t.height = 5` always calls `operator=`.
+
+#### Owned members
+
+For the accessor to run, the member must be a **real instance**, not a bare property slot. When a member's type is a value-helper class — a class that is **not** `object`-derived, has stored fields, and is declared without an initializer — Beguile treats it as an **owned member** and bakes a backing instance for it automatically (see §5.3, *Owned members*). This is what lets `t.height.operator()` land on a live object. `object`-derived members (world-tree references) and members with an initializer keep ordinary reference semantics.
+
+#### Inline accessors with `auto { … }`
+
+Declaring a named class for every accessor is often noise. The `auto { … }` form declares the accessor inline: the braces hold a class body (backing fields plus the get/set operators), and the compiler synthesizes a hidden class for it:
+
+```bgl
+object gadget {
+    int scale = 3;
+    auto level = {
+        int _raw = 0;
+        int  operator()        { return _raw; }
+        void operator = (int v){ _raw = v * outer.scale; }
+    }
+}
+
+gadget.level = 4;        // setter runs: _raw = 4 * 3  → 12
+int a = gadget.level;    // getter runs: a = 12
+```
+
+`auto` (not `var`) is required: the member's type is *inferred* from the synthesized body. The brace is recognized as a class body — rather than an ordinary `{ v1, v2 }` initializer — when it leads with a member declaration or an `operator`.
+
+#### `outer` — the host object
+
+Inside an accessor body, two references are available:
+
+- **`self`** — the accessor instance itself (its own backing fields).
+- **`outer`** — the enclosing host object the accessor is declared on (`gadget` above).
+
+`outer` is resolved at compile time to the host, so an accessor can read and write the host's other members (`outer.scale`). It is available in inline `auto { … }` accessors declared directly on an object.
+
+Accessors work on single objects, on **many instances** of a class (each instance gets its own backing — see §5.3), and on **pooled** classes allocated with `new` (see §5.2.5).
 
 ## 5.7 Class Inheritance
 
@@ -2730,6 +2847,36 @@ object cloak {
     object parent = selfobj;    // player is carrying it at game start
 }
 ```
+
+**`children`** - the inverse of `parent`: the object's **child collection** in the world tree. It lets a container name its contents (rather than each item naming its container), and it reads as a collection.
+
+*Placement.* In an object body, `children = { a, b, c }` places each listed object inside this one at game start. It desugars to a `parent` set on each child, so it reuses the same compile-time positional-parent tree as `parent` (no runtime cost) — you may declare the container before or after its contents:
+
+```bgl
+object table {}
+object chair {}
+
+object kitchen {
+    children = { table, chair };     // one-line population; equivalent to setting each item's parent
+}
+```
+
+A world-tree object has exactly one parent, so conflicting placement is a **compile error**: listing an object in two different containers' `children`, or placing it in one container's `children` while it also sets `parent` to a *different* object. Declaring the same link both ways — `kitchen.children = { table }` *and* `table.parent = kitchen` — is redundant but consistent, and is accepted silently.
+
+*Reading.* `obj.children` is a collection: iterate it with `for`, and read its size with `.length()` (or `.size()`, a synonym here — a world-tree collection has no capacity-vs-in-use distinction). These are routines, matching the `size()`/`length()` surface on arrays and buffers:
+
+```bgl
+for (object o in kitchen.children) { o.give(seen); }
+int n = kitchen.children.length();    // number of direct children
+```
+
+*Runtime placement.* Add objects to a container at runtime with `+=`:
+
+```bgl
+bowl.children += { apple, pear };     // moves each into `bowl`
+```
+
+Plain `=` is **not** allowed at runtime — it reads as "replace all contents", a footgun — and `-=` has no well-defined destination; use `+=` to add, or move objects individually. (The `=` form is reserved for the object-body population above.)
 
 **`attributes`** - an `attributeList` property (equivalent to `array<attribute>`) that declares the object's initial attributes using an initializer list:
 
@@ -5069,6 +5216,7 @@ When an emitter is called, the compiler performs textual substitution on the bod
 |-------------|---------------|
 | `$self` | The **host**, the owning object of the receiver. For a property access (`obj.parent`), `$self` is `obj`. For a bare identifier (`localVar`, global `foo`) or a literal (`5`), there is no separate host, so `$self` equals the expression itself. Mirrors I6's `self` keyword (which refers to the routine's owning object); use this when the body needs to act on the *owner* rather than the property value. |
 | `$val` | The **full receiver expression** as written by the author. For a property access (`obj.parent`), `$val` is `obj.parent`. For a bare identifier or literal, `$val` equals the identifier/literal, the same as `$self` in those non-property cases. Use this in value-type operators (`int.operator+` etc.) where the body needs to read the property *value*, not the host. |
+| `$host` | The object a **storageless proxy member** is accessed on — the method receiver with its trailing `.member` stripped. For `container.children.length()`, `$self`/`$val` are `container.children` but `$host` is `container`. Use this in emitter methods on a proxy type (a member that represents a relation over its owner rather than storing a value, e.g. `childrenProp`) that need to act on the owner. For a non-proxy method call `$host` equals `$self`. |
 | `$paramName` | The corresponding argument expression at the call site. Each parameter is referenced by `$` followed by its declared name. |
 | `$prop` | (For array emitters) The property name when the array is an object property; `0` for global arrays. |
 | `$target` | The assignment target, the **full lvalue path** (e.g. `obj.prop` for a dotted assignment, just `x` for a bare assignment). Used by primitive `operator=` emitters that perform a literal store, and by emitters that need to store a result directly (e.g. assembly opcodes). When assigned (`int r = foo();`), `$target` is the LHS variable. When called as a statement without assignment (`foo();`), `$target` is a compiler-generated temporary. When `$target` appears in the body, the normal `LHS = RHS` assignment is suppressed; the emitter body handles the store itself. |

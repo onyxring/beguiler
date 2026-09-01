@@ -1,0 +1,25 @@
+/*
+    test_children_placement.bgl
+    World-model `children = { a, b, c }` in an object body places each listed object INTO the container
+    (the inverse of writing `parent` on each child). Desugared at pre-emit to a `parent` set on each
+    child, reusing the compile-time positional-parent tree — so `object table kitchen` etc. is emitted,
+    with `globals` reordered so the container precedes its children (I6 needs the parent defined first),
+    even though `kitchen` is declared AFTER its contents here. Runtime-verified via dfrotz:
+    parent(table)==kitchen, parent(chair)==kitchen, children(kitchen)==3.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object table {}
+object chair {}
+object stove {}
+
+object kitchen {
+    children = { table, chair, stove };     // one-line population; kitchen declared after its contents
+}
+
+void main() {
+    int n = 0;
+    for(object o in kitchen.children) { n = n + 1; }   // iterate the child collection (objectloop)
+    print(n);
+    print(kitchen.children.length());                     // count via .length
+}

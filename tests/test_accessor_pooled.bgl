@@ -1,0 +1,28 @@
+/*
+    test_accessor_pooled.bgl
+    A POOLED class (`class Thing[N]`) that owns a value-helper member. Each `new Thing()` must get its
+    own independent backing, reset to defaults; `delete` returns it to a free-list. synthesizePooled-
+    OwnedMembers bakes N backing instances + a compile-time free-list and injects pop/reset into
+    create() and push into destroy(). Runtime-verified via dfrotz: p=11 q=22 (independent), reused
+    slot fresh (0), other live instance unaffected.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+class Box {                                         // value-helper (not `: object`) → owned instance
+    int _val = 0;
+    int  operator()        { return _val; }
+    void operator = (int v){ _val = v; }
+}
+class Thing[3] : object { Box b; }                  // pooled world object owning a Box per instance
+
+void main() {
+    Thing p = new Thing();
+    Thing q = new Thing();
+    p.b = 11;
+    q.b = 22;
+    print(p.b); print(q.b);        // 11 22 — independent
+    delete p;
+    Thing r = new Thing();          // reuses a slot
+    print(r.b);                     // 0 — fresh (reset to defaults)
+    print(q.b);                     // 22 — unaffected
+}
