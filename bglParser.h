@@ -557,6 +557,13 @@ class bglParser {
         // retroactively enable an earlier `#if`). See preScanFile / parseFile.
         map<string,string> definedSymbolsPreScanSeed;
         bool hasPreScanSeed = false;
+        // Symbols declared via #declare: like #define but ORDER-INDEPENDENT and IMMUTABLE. Collected
+        // across the whole include graph during the pre-scan and hoisted into definedSymbols at the
+        // start of the main pass, so `#if NAME` is true everywhere regardless of where (or in which
+        // later-included file) the #declare appears. Cannot be #undef'd or redefined. Lets an early
+        // core file detect an optional binding/library that is #included later (e.g. the standard
+        // library advertising a capability the core file conditionally uses).
+        map<string,string> declaredSymbols;
         bool evaluateCondition(const string& expr);   // evaluates a #if boolean expression
         void skipConditionalBlock(abstractObject& ctx);    // skips tokens until #elif/#else/#endif at depth 0
         void skipBglConditionalBlock(abstractObject& ctx); // skips tokens until ##else/##endif at depth 0

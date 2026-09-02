@@ -1,0 +1,22 @@
+/*
+    test_declare.bgl
+    #declare is an order-independent, immutable #define: this #if sees FEATURE and the inline literal
+    N even though both #declare lines appear BELOW their use. (A plain #define would be linear and this
+    #if would take the #else.) Value-bearing declares resolve as inline literals like #define.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+#if FEATURE;
+    int a = 1;
+#else;
+    int a = 0;
+#endif;
+
+#declare FEATURE
+#declare N 7
+
+void main() {
+    int b = N;
+    print(a);      // 1 — FEATURE seen despite being declared later
+    print(b);      // 7 — value-bearing declare
+}

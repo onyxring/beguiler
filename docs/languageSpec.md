@@ -41,8 +41,9 @@
 - 3.3 Preprocessor Symbols
   - 3.3.1 `#define`
   - 3.3.2 `#redef` and `#undef`
-  - 3.3.3 Pre-Defined Symbols
-  - 3.3.4 Conditional Compilation
+  - 3.3.3 `#declare` (order-independent symbols)
+  - 3.3.4 Pre-Defined Symbols
+  - 3.3.5 Conditional Compilation
 - 3.4 `#beguilerSettings`
   - 3.4.1 Blorb packaging
   - 3.4.2 Referencing settings values in Beguile source
@@ -818,7 +819,41 @@ const int maxScore = MAX_SCORE;            // emits: Constant maxscore = 100;
 
 Pre-defined compiler symbols (`beguiler`, `beguilerMajor`, etc.) behave the same way; they are resolved inline and do not emit I6 `Constant` declarations unless explicitly assigned to a `const` variable.
 
-### 3.3.3 Pre-Defined Symbols
+### 3.3.3 `#declare` — order-independent symbols
+
+`#declare NAME [value]` defines a symbol like `#define`, but with two differences that make it suited to **capability detection** across files:
+
+- **Order-independent.** A `#declare` is visible to *every* `#if` in the whole program, regardless of where it appears — even in a file that is `#include`d *after* the code testing it. (The compiler gathers all `#declare`s in its pre-scan, before any conditional is evaluated.)
+- **Immutable.** A declared symbol cannot be `#undef`'d, `#redef`'d, or shadowed by a `#define` — each is a compile error, as is re-`#declare`ing it with a different value.
+
+In every other respect it matches `#define`: it may carry a value (bare `#declare NAME` is a boolean flag; `#declare NAME value` resolves inline as a literal), and it is tested with the same `#if NAME` / `#if NAME >= x` expressions.
+
+```bgl
+// A core file, parsed early:
+#if STANDARD_LIBRARY;
+    // use something the standard-library binding provides
+#else;
+    // self-contained fallback
+#endif;
+
+// The standard-library binding, #included later:
+#declare STANDARD_LIBRARY
+```
+
+The core file's `#if` sees `STANDARD_LIBRARY` even though the `#declare` lives in a file included afterwards. With `#define` this is impossible: `#define` is linear (§3.3.1), so the `#if` is evaluated before the definition is seen and takes the `#else` branch.
+
+**`#declare` vs `#define`**
+
+| | `#define` / `#redef` | `#declare` |
+|---|---|---|
+| Visibility | Linear — affects only code *after* it | Global — visible to every `#if`, before or after |
+| Across `#include` | Only if defined in an earlier-parsed file | Anywhere in the program, in any include order |
+| Mutability | `#redef` overwrites, `#undef` removes | Immutable — `#undef` / `#redef` / `#define` / conflicting re-`#declare` are errors |
+| Intended for | Local configuration, constants, toggles | Capability flags a library or binding advertises for other files to detect |
+
+Use `#define` for ordinary configuration and constants; reach for `#declare` when one file must detect a feature or binding that may be pulled in from elsewhere (or not at all) — the case where `#define`'s linear visibility can't help because the detecting code is parsed first.
+
+### 3.3.4 Pre-Defined Symbols
 
 The compiler pre-defines the following symbols before any source file is parsed:
 
@@ -866,7 +901,7 @@ if(beguiler >= 1010) { ... }             // resolved at compile time
 const int myVer = beguilerMajor;         // emits: Constant myver = 1;
 ```
 
-### 3.3.4 Conditional Compilation
+### 3.3.5 Conditional Compilation
 
 `#if`, `#elif`, `#else`, and `#endif` conditionally include or exclude blocks of source text. The expression following `#if` or `#elif` is evaluated at compile time against the currently defined symbols.
 

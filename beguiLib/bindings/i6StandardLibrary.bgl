@@ -5,6 +5,10 @@
 //-----------------------------------------------------------------------------
 #once
 
+// Advertise the standard library so core/BLR files can detect it regardless of include order
+// (see §3.3.3). e.g. core/_statusBar keys off this to defer to the library's status-window handling.
+#declare STANDARD_LIBRARY
+
 //-- Standard I6 library attributes ------------------------------------------
 extern attribute light;         // object is a light source
 extern attribute worn;          // clothing item is currently worn
@@ -100,6 +104,7 @@ extern int    before_first_turn;    // true before first LOOK
 //-- Glulx windows ------------------------------------------------------------
 extern int    gg_mainwin;           // main window handle
 extern int    gg_statuswin;         // status window handle
+extern int    gg_statuswin_cursize; // current status-window height, in lines (tracked by StatusLineHeight)
 extern int    gg_quotewin;          // quote window handle
 
 //-- Objects ------------------------------------------------------------------
@@ -422,6 +427,7 @@ extern void ClearScreen();                    // clear the screen (parser.h)
 extern void NotifyTheScore();                 // print "[Your score has gone up…]" (parser.h)
 extern void ScoreSub();                       // the SCORE action handler (verblib.h)
 extern void DisplayStatus();                  // refresh the status line (parser.h)
+extern void StatusLineHeight(int height);     // set the status window height to `height` lines (parser.h)
 extern void AfterGameOver();                  // post-game-over menu loop: AMUSING/UNDO/etc. (parser.h)
 
 //-- Standard library entry points (`Stub` defaults) --------------------------

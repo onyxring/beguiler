@@ -863,14 +863,40 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                 token rest = file.getBasicToken(true);
                 while(rest.isNot("\n") && rest.isNot(eTokenType::eof)) rest = file.getBasicToken(true);
             }
+            // A `#declare`d symbol is immutable — neither form may touch it.
+            if(declaredSymbols.count(sym.value))
+                parsingError(format("'{0} {1}' cannot redefine '{1}': it was declared with '#declare' (immutable)", directive.value, sym.value));
             // `#define` errors if the symbol is already defined; `#redef` overwrites silently.
             if(!isRedef && definedSymbols.count(sym.value))
                 parsingError(format("'#define {0}' redefines a symbol that is already defined; use '#redef {0}' to intentionally redefine it", sym.value));
             definedSymbols[sym.value] = valStr;
             return false;
         }
+        case chk("#declare"):{
+            // Order-independent, immutable define: visible to every `#if` regardless of where it
+            // appears (hoisted from the pre-scan). Value is optional (bare = boolean flag). Already
+            // collected by the pre-scan; re-declaring with a different value, or shadowing a #define,
+            // is an error.
+            token sym = file.getToken(eTokenType::identifier);
+            while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
+            token val = file.getBasicToken(true);
+            string valStr;
+            if(val.isNot("\n") && val.isNot(eTokenType::eof)){
+                valStr = val.value;
+                token rest = file.getBasicToken(true);
+                while(rest.isNot("\n") && rest.isNot(eTokenType::eof)) rest = file.getBasicToken(true);
+            }
+            auto existing = declaredSymbols.find(sym.value);
+            if(existing != declaredSymbols.end() && existing->second != valStr)
+                parsingError(format("'#declare {0}' conflicts with an earlier '#declare {0}' of a different value", sym.value));
+            declaredSymbols[sym.value] = valStr;
+            definedSymbols[sym.value]  = valStr;
+            return false;
+        }
         case chk("#undef"):{
             token sym = file.getToken(eTokenType::identifier);
+            if(declaredSymbols.count(sym.value))
+                parsingError(format("'#undef {0}' is not allowed: '{0}' was declared with '#declare' (immutable)", sym.value));
             definedSymbols.erase(sym.value);
             return false;
         }

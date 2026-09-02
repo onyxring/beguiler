@@ -1,29 +1,10 @@
-/*-----------------------------------------------------------------------------
-    core/_ui.bgl — the always-present half of the UI namespace (bgl.ui).
-
-    Only the *emitter-based* surface lives here, so it costs nothing at runtime
-    and is safe on every target: `bgl.ui.style.bold()` / `.roman()` / `.italics()`
-    each emit an I6 `style` statement, which the I6 compiler maps to the
-    Z-machine text-style opcode or the Glulx glk style.
-
-    The runtime routines that need a real object to hang property-routines on
-    (waitForKey, setStatusHeight) are the opt-in half: `#include <ui>` (ui.bgl),
-    mirroring how <array>/<string> extend their core-defined type.
- -----------------------------------------------------------------------------*/
 #once
+/*-----------------------------------------------------------------------------
+    _ui.bgl - User Interface elements
+ -----------------------------------------------------------------------------*/
 
-// Namespace object — derives from _bglObject (no world-tree surface). `superposed`
-// so it costs nothing unless referenced as a value: bgl.ui.style is pure-emitter
-// and never touches _bglUi, so a program that only uses styles emits no object;
-// the <ui> runtime routines (waitForKey/setStatusHeight) are real methods on it,
-// so opting into <ui> and calling one pulls the object in.
-superposed _bglObject _bglUi{}
-
-// Text styles — reached through `bgl.ui.style.bold()` etc. `italics()` maps to
-// `style underline` (the Z-machine convention, matching orLibrary's `$i;` markup).
-// Backed by an emitter class: a compile-time namespace with no runtime object,
-// attached to _bglUi as a value alias (§5.11.1 `emitter auto`).
-emitter class _bglStyle {
+superposed _bglObject _bglUi{
+    //styles
     emitter void bold()      { style bold }
     emitter void roman()     { style roman }
     emitter void italics()   { style underline }
@@ -31,12 +12,22 @@ emitter class _bglStyle {
     emitter void reverse()   { style reverse }
     emitter void fixed()     { style fixed }
 }
-extend _bglUi { emitter auto style = _bglStyle; }   // bgl.ui.style.bold() → _bglStyle.bold()
 
-// Attached as an `alias` (§5.11.1 compile-time indirection), NOT `auto`:
-// bgl.ui.style must resolve through to _bglUi's own member surface. A runtime
-// `auto` property widens bgl.ui to its declared base (_bglObject), which drops
-// the `style` member; `alias` keeps the full surface and only emits _bglUi when
-// it is actually referenced. (bgl.world uses the same form.)
 extend bgl { alias ui = _bglUi; }
 
+
+/*
+[ StatusLineHeight height;
+    if (gg_statuswin_cursize ~= height)
+        @split_window height;
+    gg_statuswin_cursize = height;
+];
+
+[ StatusLineHeight hgt parwin;
+    if (gg_statuswin == 0) return;
+    if (hgt == gg_statuswin_cursize) return;
+    parwin = glk_window_get_parent(gg_statuswin);
+    glk_window_set_arrangement(parwin, $12, hgt, 0);
+    gg_statuswin_cursize = hgt;
+];
+*/

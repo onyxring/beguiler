@@ -218,9 +218,26 @@ void bglParser::preScanDirective(token tok){
             while(rest.isNot("\n") && rest.isNot(eTokenType::eof)) rest = file.getBasicToken(true);
         }
         definedSymbols[sym.value] = valStr;
+    } else if(tok.is("#declare")){
+        // Order-independent, immutable define. Collect into declaredSymbols (persists into the main
+        // pass, where it's hoisted so `#if` sees it everywhere regardless of source order) and also
+        // into definedSymbols so the rest of THIS pre-scan sees it. Conflict/immutability errors are
+        // raised in the main pass (processDirective) to avoid double-reporting.
+        token sym = file.getToken(eTokenType::identifier);
+        while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
+        token val = file.getBasicToken(true);
+        string valStr;
+        if(val.isNot("\n") && val.isNot(eTokenType::eof)){
+            valStr = val.value;
+            token rest = file.getBasicToken(true);
+            while(rest.isNot("\n") && rest.isNot(eTokenType::eof)) rest = file.getBasicToken(true);
+        }
+        declaredSymbols[sym.value] = valStr;
+        definedSymbols[sym.value]  = valStr;
     } else if(tok.is("#undef")){
         token sym = file.getToken(eTokenType::identifier);
-        definedSymbols.erase(sym.value);
+        if(!declaredSymbols.count(sym.value))   // a #declare'd symbol can't be #undef'd (error raised in main pass)
+            definedSymbols.erase(sym.value);
     } else if(tok.value == "#startup" || tok.value == "#emitfirst" || tok.value == "#emitlast"){
         preScanSkipBody();
     } else if(tok.value == "#storedemitfirst" || tok.value == "#storedemitlast"){

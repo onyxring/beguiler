@@ -3061,7 +3061,7 @@ static const set<string> bglModifiers = {
     "replace", "extend", "readonly", "explicit", "default"
 };
 static const set<string> bglDirectives = {
-    "#include", "#once", "#define", "#if", "#else", "#endif", "#ifdef",
+    "#include", "#once", "#define", "#declare", "#if", "#else", "#endif", "#ifdef",
     "#ifndef", "#i6", "#startup", "#emitfirst", "#emitlast", "#using", "#exit"
 };
 

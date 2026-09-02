@@ -1,0 +1,7 @@
+// _test_declare_undef.bgl — a #declare'd symbol is immutable; #undef of it is an error.
+//
+// EXPECT_ERROR: was declared with '#declare' (immutable)
+#beguilerSettings { target = z5; }
+#declare CAP
+#undef CAP
+void main(){}

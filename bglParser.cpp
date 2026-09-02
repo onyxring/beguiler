@@ -238,6 +238,7 @@ void bglParser::reset(){
     definedSymbols["beguilerpatch"]   = to_string(BEGUILER_VERSION % 10);
     definedSymbolsPreScanSeed.clear();
     hasPreScanSeed = false;
+    declaredSymbols.clear();   // #declare set — repopulated by the pre-scan across the whole include graph
     lspErrors.clear();
     // Drain any files left open by a prior parse that bailed under LSP error recovery. Otherwise
     // getNumberOfOpenFiles() stays > 0 and the next entry parse skips the BLR auto-load (see
@@ -835,6 +836,11 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
         // enable an earlier `#if`. Done before the BLR load so the BLR is parsed with the same
         // clean seed the pre-scan used.
         if(hasPreScanSeed) definedSymbols = definedSymbolsPreScanSeed;
+        // Hoist #declare'd symbols on top of the clean seed. Unlike #define (linear), these are
+        // order-independent: the pre-scan collected every #declare across the whole include graph,
+        // so they are visible to `#if` from the very first line of the main pass — even ones declared
+        // in files included later. See declaredSymbols.
+        for(auto& kv : declaredSymbols) definedSymbols[kv.first] = kv.second;
 
         // Always load the Beguile Language Runtime first so built-in types (eBool, eTarget, etc.)
         // and emitters are available to user code — including #bgl{} blocks inside .inf files.

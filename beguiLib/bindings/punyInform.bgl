@@ -9,6 +9,10 @@
 //-----------------------------------------------------------------------------
 #once
 
+// Advertise the PunyInform library so core/BLR files can detect it regardless of include order
+// (see §3.3.3). Its counterpart in the I6 standard library binding is STANDARD_LIBRARY.
+#declare PUNYINFORM
+
 //-- PunyInform attributes ------------------------------------------------------
 extern attribute light;         // object is a light source
 extern attribute edible;        // can be eaten
