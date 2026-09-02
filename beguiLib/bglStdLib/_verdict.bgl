@@ -1,0 +1,26 @@
+#once
+/*============================================================================
+  beguiLib / bglStdLib / _verdict.bgl
+
+  eVerdict - the outcome every rule body returns.  A rulebook is an array of
+  rules; the runner interprets each rule's verdict to decide whether to continue
+  down the book, stop with success, or block the action.  (Design locked
+  2026-08-22; see bglStdLib/README.md.)
+
+  The explicit 0/1/2 numbering is load-bearing:
+    - Falling off the end of a rule body returns I6's default 0 = `proceed`, so
+      no-op rules need no explicit `return`.
+    - The legacy `bool before()` / `after()` bridge is automatic:
+        rfalse (0) -> proceed,  rtrue (1) -> stop.
+    - `block` (2) is the new capability the old bool could not express:
+      veto-with-a-message, distinct from `stop`'s handled-success.
+
+  Note: `continue` is a reserved control-flow keyword (spec 2.8), so the
+  fall-through member is named `proceed`.
+  ============================================================================*/
+
+enum eVerdict {
+    proceed = 0,   // no decision - fall through to the next rule in the book
+    stop    = 1,   // handled - halt this book; the action succeeds
+    block   = 2    // veto     - halt; the action fails (message already printed)
+}

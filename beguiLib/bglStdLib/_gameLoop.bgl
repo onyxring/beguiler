@@ -1,0 +1,88 @@
+#once
+/*============================================================================
+  beguiLib / bglStdLib / _gameLoop.bgl
+
+  The two outermost rulebooks and the program entry point.
+
+    rootRulebook       - runs once at startup
+      1. configureUi     - set up the UI
+      2. gameTurnLoop    - loop the game-turn rulebook until it halts
+
+    gameTurnRulebook   - runs once per turn
+      1. getInput        - read a line from the player
+      2. printInput      - echo it
+      3. continueTurn    - proceed (== 0 == "false"): keep the loop going
+
+  I/O NOTE: the two "reuse existing I/O" shortcuts both have blockers, so real
+  Glulx input is its own step (the input layer):
+    - the full i6 standard library brings its own Main / InformLibrary.play
+      loop, which would fight this root rulebook; and
+    - the runtime's bgl.ui.waitForKey() is Z-machine only (glk has no read_char),
+      so it does not work on our Glulx target.
+  Real input on Glulx means a Glk event loop (bgl.asm.requestLineEvent +
+  bgl.asm.select into a <buf>).  Bodies below are honest stubs until then; the
+  rulebook *structure* is the real deliverable.
+  ============================================================================*/
+
+// The main text-buffer window (Glk window id).  0 until configureUi opens it.
+int mainWindow = 0;
+
+// ===========================================================================
+//  Game-turn rulebook - one player turn.
+// ===========================================================================
+
+eVerdict getInput() {
+    // TODO(input-layer): Glk line read into a <buf> via bgl.asm.requestLineEvent
+    //   + bgl.asm.select, so printInput can echo the actual typed line.
+    return proceed;
+}
+
+eVerdict printInput() {
+    print("^(turn)^");
+    return proceed;
+}
+
+eVerdict continueTurn() {
+    return proceed;     // your "return false": proceed == 0 == false -> keep looping.
+                        // A future quit / game-over rule returns `stop` to end it.
+}
+
+array<func<eVerdict>> gameTurnRulebook = {
+    getInput,
+    printInput,
+    continueTurn,
+};
+
+// ===========================================================================
+//  Root rulebook - program lifetime.
+// ===========================================================================
+
+eVerdict configureUi() {
+    // TODO(display-layer): open the Glk windows (main / status / graphics).
+    return proceed;
+}
+
+eVerdict gameTurnLoop() {
+    // Run the game-turn rulebook repeatedly until a turn halts it (game over):
+    // loop while the book yields `proceed`.
+    while (runRulebook(gameTurnRulebook) == proceed) { }
+    return proceed;
+}
+
+array<func<eVerdict>> rootRulebook = {
+    configureUi,
+    gameTurnLoop,
+};
+
+// ===========================================================================
+//  Entry point.  With no standard I6 binding, bglStdLib owns the starting
+//  routine and must call bglInit() first (spec 3.5.5).
+//  NOTE(verify): confirm the exact entry-point convention for a binding-less
+//  Glulx build - I6's entry routine is `Main`; Beguile is case-insensitive so
+//  `main` should serve, but this needs a build to confirm.
+// ===========================================================================
+
+void main() {
+    bglInit();
+    runRulebook(rootRulebook);
+}

@@ -1,0 +1,27 @@
+#once
+/*============================================================================
+  beguiLib / bglStdLib / _rulebook.bgl
+
+  The generic rulebook runner.  A rulebook is an ordered array of rules; a rule
+  is a zero-arg body returning eVerdict (see _verdict.bgl).  Everything in the
+  engine - the game loop, the per-turn sequence, the action pipeline - is a
+  rulebook run by this one function.  No special compiler treatment.
+
+  `runRulebook` is the stop-on-first-decision strategy: run the rules in order
+  and return the first non-`proceed` verdict (which halts the book); if every
+  rule proceeds, the book returns `proceed`.  This is the strategy the game loop
+  and the pipeline's before/check books use.  Run-all strategies (carryOut,
+  report, react) and the accumulate strategy (verify) come later.
+
+  A rulebook is `array<func<eVerdict>>`: a plain, typed array of zero-arg rule
+  bodies.  (Relies on `func<...>` as a generic type argument and a directly
+  callable func-typed for-in loop var, both of which beguiler gained 2026-08-22.)
+  ============================================================================*/
+
+eVerdict runRulebook(array<func<eVerdict>> book) {
+    for (func<eVerdict> r in book) {
+        eVerdict v = r();
+        if (v != proceed) return v;     // a rule made a decision - halt the book
+    }
+    return proceed;                     // every rule proceeded - no decision
+}
