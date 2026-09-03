@@ -1,4 +1,4 @@
-!% -G
+!% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
@@ -216,44 +216,28 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-class menu
-  class object
+class widget
   with
-    linkTo,
-    title,
-    words 
+    weight 4
 ;
-menu root
-  with title "root"
-;
-class wrapper
-  class object
-  with
-    head
+widget gizmo;
+object rock
 ;
 [main;
-    print (string)child.title;
-    if(child.words provides print) child.words.print(); else print (name)child.words;
-    print (string)_bglanon3.title;
+    gizmo.weight = 9;
+    print (string)"W=";
+    print gizmo.weight;
+    print (string)"^";
+    if ((rock ofclass hammer)) {
+        print (string)"hammer^";
+    }
+    else {
+        print (string)"notHammer^";
+    }
 ];
-menu child
-  with linkto root,
-       title "a child",
-       words 'foo' 'bar' 'baz' 
+class tool
+  class object
 ;
-menu _bglanon1
-  with linkto root,
-       title "text to display",
-       words 'type' 'kind' 
-;
-menu _bglanon2
-  with linkto "lonely"
-;
-wrapper w
-  with head _bglanon3
-;
-menu _bglanon3
-  with linkto root,
-       title "nested",
-       words 'x//' 
+class hammer
+  class tool
 ;

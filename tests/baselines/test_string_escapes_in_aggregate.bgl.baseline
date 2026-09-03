@@ -223,16 +223,16 @@ class response
     weight,
     text
 ;
-array table table _bglanon0 _bglanon1 2 $9084;
+array table table _bglanon1 _bglanon2 2 $9084;
 [main;
     print (string) lines-->(0+1) ;
     print (string)( table-->(0+1) ).text;
 ];
-response _bglanon0
+response _bglanon1
   with weight 1,
        text "~Don't move,~ she warns."
 ;
-response _bglanon1
+response _bglanon2
   with weight 2,
        text "He won't say."
 ;

@@ -249,7 +249,7 @@ class bglParser {
         bool processFunc(vector<token>& t, Qualifiers& q, abstractObject& c);
 
         // Parser handler methods — called from grammar handlers and processNextStatement.
-        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool isByVal=false, bool allowNested=false);
+        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool isByVal=false, bool allowNested=false, bool isSuperposed=false);
         bool processEnumDeclaration(token, bool, token nameOverride=token());
         bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false, bool isSuperposed = false);
         // Bake an object of `cls` from an inline-aggregate body `{ ... }`, registered under `objName`.

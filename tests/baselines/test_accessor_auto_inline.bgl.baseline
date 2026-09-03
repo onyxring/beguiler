@@ -216,7 +216,7 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-class _bglaccessor0
+class _bglaccessor1
   with
     _raw 0,
     _opconv[;
@@ -226,7 +226,7 @@ class _bglaccessor0
         self._raw=v * gadget.scale;
     ]
 ;
-_bglaccessor0 _gadget_level;
+_bglaccessor1 _gadget_level;
 object gadget
   with scale 3,
        level _gadget_level

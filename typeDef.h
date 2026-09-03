@@ -59,6 +59,13 @@ class classDef:public typeDef{
         // bases. Mutually exclusive with `extern`, `emitter`, `extend`, and inheriting
         // from `object`. See [[project_class_typed_locals_gap]] (parameter section).
         bool isByVal = false;
+        // `superposed` class: withhold the I6 `Class` directive from the source-order emit and let it
+        // materialize only when a backing instance is baked for it (inside its host's create+populate,
+        // or via the lazy instance→class path). A synthesized `auto {}` accessor class is auto-marked
+        // superposed: it's a one-off tied to a single host member, so if the host object is itself
+        // superposed-and-unused the whole thing (class + backing + object) evaporates — zero bytes.
+        // Ordinary named classes stay non-superposed (emitted in source order as before).
+        bool isSuperposed = false;
         // Walk the alias chain to find the I6 class name used in emitted output.
         // Alias classes delegate to their first base class; all others use their own name.
         std::string i6Name() const {

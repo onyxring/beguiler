@@ -30,7 +30,13 @@ class i6Emitter{
         // debug map anchors on the routine's actual `.inf` lines (not the splice-region line).
         map<string,string> superposedBlocks;
         map<string,vector<tuple<int,string,int>>> superposedBlockMaps;
+        // For superposed CLASS blocks (keyed like superposedBlocks): the I6 names of their superposed
+        // base classes. Unlike objects, an I6 `Class` directive must physically precede any class that
+        // derives from it, so resolvedOutput() revives a referenced class's superposed bases FIRST.
+        map<string,vector<string>> superposedClassBaseNames;
         bool emittingSuperposedBody = false;
+        set<classDef*> emittedClasses;             // classes whose I6 `Class` directive has been written (shared by Pass-3 + create+populate)
+        void emitDeferredBackingClass(classDef*);  // emit a superposed accessor class before its baked backing instance (once)
         set<string> declaredVerbWords;             // tracks which I6 trigger words have been Verb-declared
         set<string> evictedEmitted;                // evicted library words already emitted as `Extend only 'w' replace`
         void emitEvictions();                      // emit empty `Extend only 'w' replace;` for evicted words no verb reclaimed

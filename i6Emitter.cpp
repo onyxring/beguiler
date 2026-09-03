@@ -77,25 +77,43 @@ string i6Emitter::resolvedOutput(){
         }
         return false;
     };
+    // Splice one captured block into buf. For a superposed CLASS, first splice its superposed bases
+    // (recursively) — an I6 `Class` directive must physically precede any class that derives from it,
+    // and the deriving subclass may be the ONLY thing that references the base. Erase before recursing
+    // so a (pathological) inheritance cycle can't loop forever.
+    std::function<void(const string&)> splice = [&](const string& name){
+        auto it = superposedBlocks.find(name);
+        if(it == superposedBlocks.end()) return;        // absent: already spliced, or emitted in-place
+        string body = it->second;
+        superposedBlocks.erase(it);
+        auto bit = superposedClassBaseNames.find(name);
+        if(bit != superposedClassBaseNames.end()){
+            vector<string> bases = bit->second;
+            superposedClassBaseNames.erase(bit);
+            for(const string& base : bases) splice(base);   // base-first
+        }
+        // The block's captured sourceMap i6Lines are relative to its own text (line 1 = its header).
+        // It lands here, starting at line offset+1, so re-base each entry by `offset` before merging.
+        int offset = (int)std::count(buf.begin(), buf.end(), '\n');
+        buf += body;                                     // observed — collapse it into the story file
+        auto mit = superposedBlockMaps.find(name);
+        if(mit != superposedBlockMaps.end()){
+            for(auto& e : mit->second)
+                sourceMap.push_back({offset + std::get<0>(e), std::get<1>(e), std::get<2>(e)});
+            superposedBlockMaps.erase(mit);
+        }
+    };
     bool added = true;
     while(added){
         added = false;
-        for(auto it = superposedBlocks.begin(); it != superposedBlocks.end(); ){
-            if(referenced(it->first)){
-                // The block's captured sourceMap i6Lines are relative to its own text (line 1 =
-                // its `[name` header). It lands here, starting at line offset+1, so re-base each
-                // entry by `offset` before merging into the real map.
-                int offset = (int)std::count(buf.begin(), buf.end(), '\n');
-                buf += it->second;          // observed — collapse it into the story file
-                auto mit = superposedBlockMaps.find(it->first);
-                if(mit != superposedBlockMaps.end()){
-                    for(auto& e : mit->second)
-                        sourceMap.push_back({offset + std::get<0>(e), std::get<1>(e), std::get<2>(e)});
-                    superposedBlockMaps.erase(mit);
-                }
-                it = superposedBlocks.erase(it);
+        // Snapshot keys — splice() mutates superposedBlocks (including base classes it pulls in).
+        vector<string> keys;
+        for(auto& kv : superposedBlocks) keys.push_back(kv.first);
+        for(const string& k : keys){
+            if(superposedBlocks.count(k) && referenced(k)){
+                splice(k);
                 added = true;
-            } else ++it;
+            }
         }
     }
     return buf;
@@ -1068,7 +1086,7 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // emitted normally (unless already emitted by a prior lazy trigger). This keeps source
     // order everywhere except for classes that must move up ahead of a forward-referenced
     // instance — minimising reordering so extern attribute dependencies stay satisfied.
-    set<classDef*> emittedClasses;
+    emittedClasses.clear();   // member (shared with create+populate's emitDeferredBackingClass); reset per emit
     auto resolveInstanceClass = [&](typeDef* node) -> classDef* {
         if(auto* od = dynamic_cast<objectDef*>(node)){
             if(dynamic_cast<verbObjectDef*>(node)) return nullptr;
@@ -1132,6 +1150,36 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             }
         }
         generateI6(cd);
+        // If this class was captured as superposed (below) but is now emitted in-place — because a
+        // source-order instance or a subclass needs its directive to physically precede them — drop the
+        // captured copy so resolvedOutput() doesn't also revive it (which would duplicate the Class).
+        if(cd->isSuperposed){
+            const string& k = cd->i6Name();
+            superposedBlocks.erase(k);
+            superposedBlockMaps.erase(k);
+            superposedClassBaseNames.erase(k);
+        }
+    };
+    // Capture a superposed class's OWN `Class` directive into superposedBlocks, keyed by its I6 name,
+    // so resolvedOutput() revives it only if the name is referenced (`new Foo`, `o ofclass Foo`, …).
+    // Base classes are recorded (not inlined) so revival can emit them base-first.
+    auto captureSuperposedClass = [&](classDef* cd){
+        stringstream captured;
+        std::swap(out, captured);
+        bool prevSup = emittingSuperposedBody; emittingSuperposedBody = true;
+        vector<tuple<int,string,int>> blockMap;
+        vector<tuple<int,string,int>>* prevTarget = sourceMapTarget;
+        sourceMapTarget = &blockMap;
+        generateI6(cd);                                   // emits just this Class directive
+        sourceMapTarget = prevTarget;
+        emittingSuperposedBody = prevSup;
+        std::swap(out, captured);
+        const string& k = cd->i6Name();
+        superposedBlocks[k] = captured.str();
+        superposedBlockMaps[k] = std::move(blockMap);
+        vector<string> baseKeys;
+        for(classDef* b : cd->baseClasses) if(b && b->isSuperposed) baseKeys.push_back(b->i6Name());
+        superposedClassBaseNames[k] = baseKeys;
     };
     for(typeDef* node : nodeList){
         // Update extern-attribute availability as we pass each extern declaration.
@@ -1139,6 +1187,16 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             if(vd->isExternal && vd->type.name == "attribute")
                 seenExternAttributes.insert(vd->name);
         if(auto* cd = dynamic_cast<classDef*>(node)){
+            // Superposed class: withhold its source-order emit. Capture the directive keyed by name so
+            // resolvedOutput() revives it if referenced (`new`/`ofclass`/typed use), base-first. It may
+            // still be emitted in-place earlier/later — by the lazy instance→class path below (a static
+            // instance needs the class before it), a subclass's base recursion, or a baked owned member
+            // (emitDeferredBackingClass) — in which case the capture is dropped there / above.
+            if(cd->isSuperposed){
+                if(!emittedClasses.count(cd))    // not already emitted in-place by an earlier instance
+                    captureSuperposedClass(cd);
+                continue;
+            }
             emitClassRecursive(cd, "source-order class declaration");
             continue;
         }
@@ -2241,6 +2299,24 @@ void i6Emitter::emitInterpolatedEmitterBody(const string& body, const string& pa
             out << indent << after << ";\n";
     }
 }
+// Emit a superposed accessor class's I6 `Class` directive right before the backing instance that
+// needs it — once. Its source-order emit was withheld (Pass-3 skips superposed classes), so a
+// baked backing (in create+populate) triggers it here. When the host object is itself superposed,
+// this runs inside the host's captured block, so class + backing + object materialize (or evaporate)
+// together. `emittedClasses` is shared with Pass-3's emitClassRecursive so nothing double-emits.
+void i6Emitter::emitDeferredBackingClass(classDef* cls){
+    if(!cls || !cls->isSuperposed) return;
+    if(!emittedClasses.insert(cls).second) return;    // already emitted
+    for(classDef* base : cls->baseClasses)
+        if(base && base->isSuperposed) emitDeferredBackingClass(base);  // non-superposed bases came out in source order
+    generateI6(cls);
+    // Emitted in-place (here, inside the host's block) — drop the name-triggered capture so
+    // resolvedOutput() won't also revive it.
+    const string& k = cls->i6Name();
+    superposedBlocks.erase(k);
+    superposedBlockMaps.erase(k);
+    superposedClassBaseNames.erase(k);
+}
 string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited){
     string clause;
     bool first = true;
@@ -2552,13 +2628,21 @@ void i6Emitter::emitObject(objectDef* obj){
             auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
             if(!cls || cls->name == "object" || cls->name == "_bglobject") return;
             if(inheritsObj(cls)) return;                            // world-tree reference, not owned
-            bool hasStored = false;
-            for(typeMember* cm : cls->members)
+            // Bake a backing instance when the member needs one to be a live object: it has stored
+            // state, OR it has a non-emitter method/operator that dispatches ON an instance (e.g. a
+            // fieldless getter/setter accessor whose bodies reach the host through `outer`). A class
+            // with only emitter members and no fields needs no instance (emitters inline).
+            bool needsInstance = false;
+            for(typeMember* cm : cls->members){
                 if(auto* cvd = dynamic_cast<variableDeclaration*>(cm))
-                    if(!cvd->isExternal && !cvd->isStatic){ hasStored = true; break; }
-            if(!hasStored) return;
+                    if(!cvd->isExternal && !cvd->isStatic){ needsInstance = true; break; }
+                if(auto* cfd = dynamic_cast<functionDef*>(cm))
+                    if(!cfd->isEmitter && !cfd->isExternal){ needsInstance = true; break; }
+            }
+            if(!needsInstance) return;
             // One backing PER OBJECT (per class instance), so every instance owns independent state.
             string backing = "_" + obj->name + "_" + vd->name;
+            emitDeferredBackingClass(cls);   // materialize a withheld superposed accessor class first
             out << format("{0} {1};\n", cls->i6Name(), backing);
             ownedInstanceNames[vd->name] = backing;
             ownedMemberDecl[vd->name] = vd;
@@ -2826,15 +2910,20 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             if(b->name == "object" || b->name == "_bglobject" || inheritsObj(b)) return true;
         return false;
     };
-    // An owned value-helper member: a non-`object` class with stored fields, no initializer.
+    // An owned value-helper member: a non-`object`, non-initialized member whose class needs a live
+    // instance — it has stored state, OR a non-emitter method/operator that dispatches on an instance
+    // (e.g. a fieldless getter/setter accessor that reaches the host through `outer`).
     auto ownedClass = [&](variableDeclaration* vd) -> classDef* {
         if(!vd || vd->isExternal || vd->isStatic || vd->name == "parent") return nullptr;
         if(vd->type.name.empty() || vd->declaredExpressionValue) return nullptr;
         auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
         if(!cls || cls->name == "object" || cls->name == "_bglobject" || inheritsObj(cls)) return nullptr;
-        for(typeMember* cm : cls->members)
+        for(typeMember* cm : cls->members){
             if(auto* cvd = dynamic_cast<variableDeclaration*>(cm))
                 if(!cvd->isExternal && !cvd->isStatic) return cls;   // has stored storage
+            if(auto* cfd = dynamic_cast<functionDef*>(cm))
+                if(!cfd->isEmitter && !cfd->isExternal) return cls;  // instance-dispatched method/operator
+        }
         return nullptr;
     };
 

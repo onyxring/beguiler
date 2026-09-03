@@ -1123,7 +1123,7 @@ GrammarMatch bglParser::matchGrammar(token& firstToken) {
 bool bglParser::processEnum(vector<token>& t, Qualifiers& q, abstractObject&)
     { return processEnumDeclaration(t[0], q.isExtern, t[1]); }
 bool bglParser::processClass(vector<token>& t, Qualifiers& q, abstractObject&)
-    { return processClassDeclaration(t[0], q.isExtern, q.isExtend, q.isEmitter, q.isAlias, t[1], q.isByVal); }
+    { return processClassDeclaration(t[0], q.isExtern, q.isExtend, q.isEmitter, q.isAlias, t[1], q.isByVal, /*allowNested*/false, q.isSuperposed); }
 bool bglParser::processGrammar(vector<token>& t, Qualifiers&, abstractObject&)
     { return processGrammarDeclaration(t[1]); }
 bool bglParser::processArray(vector<token>& t, Qualifiers& q, abstractObject& c)

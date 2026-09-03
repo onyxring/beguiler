@@ -238,7 +238,7 @@
   - 14.7.6 No-island fast path
 - 14.8 I6 Emission Ordering
 - 14.9 Debug Bundle
-- 14.10 `superposed` Routines, Globals, and Objects
+- 14.10 `superposed` Routines, Globals, Objects, and Classes
 
 ### Chapter 15 - Runtime Library
 - 15.1 Overview
@@ -830,17 +830,17 @@ In every other respect it matches `#define`: it may carry a value (bare `#declar
 
 ```bgl
 // A core file, parsed early:
-#if STANDARD_LIBRARY;
+#if I6_STANDARD_LIBRARY;
     // use something the standard-library binding provides
 #else;
     // self-contained fallback
 #endif;
 
 // The standard-library binding, #included later:
-#declare STANDARD_LIBRARY
+#declare I6_STANDARD_LIBRARY
 ```
 
-The core file's `#if` sees `STANDARD_LIBRARY` even though the `#declare` lives in a file included afterwards. With `#define` this is impossible: `#define` is linear (§3.3.1), so the `#if` is evaluated before the definition is seen and takes the `#else` branch.
+The core file's `#if` sees `I6_STANDARD_LIBRARY` even though the `#declare` lives in a file included afterwards. With `#define` this is impossible: `#define` is linear (§3.3.1), so the `#if` is evaluated before the definition is seen and takes the `#else` branch.
 
 **`#declare` vs `#define`**
 
@@ -5848,7 +5848,7 @@ global <varName> <valueType>
 
 Together these two files give the VS Code extension everything it needs for source-level debugging: the chain `VM address → I6 line → .bgl file + line`, full call stack reconstruction, and typed variable display.
 
-## 14.10 `superposed` Routines, Globals, and Objects
+## 14.10 `superposed` Routines, Globals, Objects, and Classes
 
 A declaration marked `superposed` is emitted into the story file **only if something references it**; if no use ever names it, it evaporates from the output. It sits in superposition until a use "observes" it.
 
@@ -5892,9 +5892,25 @@ extend bgl { alias world = _bglWorld; }   // compile-time alias: NO runtime prop
 
 The two pieces do distinct jobs: the **alias** removes the runtime property that would otherwise force the object to emit (§5.11.1), and **`superposed`** withholds the object's definition until its name is observed. An I6 object may be declared after its uses (forward references resolve), so append-at-end works for objects just as it does for routines.
 
+### Classes
+
+`superposed` also applies to a **class declaration**: its `Class X …;` directive is withheld and emitted only if the class name is referenced — as a **static instance** (`X inst;`), a **subclass** (`class Y : X`), a **pooled allocation** (`new X()` on `class X[N]`), an **`ofclass` test** (`obj.is(X)`), or any typed use. A superposed class nothing references costs zero bytes.
+
+```bgl
+superposed class Weapon { int damage = 0; }   // withheld until referenced
+
+Weapon sword;      // <- references Weapon: the Class directive materializes, ahead of this instance
+```
+
+This makes it safe for a library — or an always-included core file — to declare a class that most games never touch: including it is free unless used. (It's also how an inline `auto {}` accessor object stays free: the compiler auto-marks the synthesized accessor class `superposed`, so an accessor-bearing core file like `bgl.ui.statusBar` costs nothing until the accessor is read or written.)
+
+Unlike objects and routines, an I6 `Class` directive must physically **precede** any class that derives from it and any static instance of it. The compiler honors this automatically: a class referenced in a directive position (a static instance, a subclass) is emitted **in place, ahead of** the referrer; a class referenced only from routine bodies (`new`, `ofclass`) is appended at the end, where I6's forward references resolve. When a revived class has a `superposed` **base**, the base is revived **first**, so `Class Base` always appears before `Class Derived`.
+
+`superposed` is rejected on `extern`, `emitter`, and `alias` classes (they emit no directive to withhold) and on `extend class` (it belongs on the original declaration).
+
 ### Scope and caveats
 
-- **File scope, whole declarations only.** `superposed` gates free routines, file-scope globals/arrays, and whole objects; each is a self-contained block that can be withheld and appended. It does **not** gate an individual **member** of a class or object (a single property or method): members share I6's flat property table and can't be withheld one at a time.
+- **File scope, whole declarations only.** `superposed` gates free routines, file-scope globals/arrays, whole objects, and whole classes; each is a self-contained block that can be withheld and revived. It does **not** gate an individual **member** of a class or object (a single property or method): members share I6's flat property table and can't be withheld one at a time.
 - **Reference matching is case-insensitive**, in keeping with Beguile's case-insensitive identity: a `superposed` `_bglPow` is still observed when it is called as `_bglpow`.
 - **Over-inclusion is the safe direction.** A name that also appears inside a string literal or comment falsely materializes its declaration (a harmless dead entry); however, it never drops a genuinely-referenced one. Give superposed helpers distinctive names (a `_bgl`-style prefix) to avoid accidental matches.
 - `superposed` may appear in any qualifier order.

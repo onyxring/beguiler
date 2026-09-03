@@ -7,7 +7,7 @@
 
 // Advertise the standard library so core/BLR files can detect it regardless of include order
 // (see §3.3.3). e.g. core/_statusBar keys off this to defer to the library's status-window handling.
-#declare STANDARD_LIBRARY
+#declare I6_STANDARD_LIBRARY
 
 //-- Standard I6 library attributes ------------------------------------------
 extern attribute light;         // object is a light source
@@ -429,6 +429,19 @@ extern void ScoreSub();                       // the SCORE action handler (verbl
 extern void DisplayStatus();                  // refresh the status line (parser.h)
 extern void StatusLineHeight(int height);     // set the status window height to `height` lines (parser.h)
 extern void AfterGameOver();                  // post-game-over menu loop: AMUSING/UNDO/etc. (parser.h)
+
+// Under the I6 standard library the status window is the library's own. Defer bgl.ui.statusBar.height
+// to the library: read its tracked height (gg_statuswin_cursize), write through its canonical routine
+// (StatusLineHeight) — instead of core's self-managed @split_window / _h. `_bglStatus` is auto-included
+// by core (with a self-contained inline `height` accessor); here we replace that whole member with a
+// stdlib-backed one. Core stays library-ignorant; this binding owns the integration.
+extend _bglStatus {
+    replace auto height = {
+        int operator()        { return gg_statuswin_cursize; }
+        void operator = (int v){ StatusLineHeight(v); }
+    }
+}
+
 
 //-- Standard library entry points (`Stub` defaults) --------------------------
 // The optional hooks the library calls at defined moments (grammar.h's `Stub` list). Each is

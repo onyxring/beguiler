@@ -48,7 +48,7 @@ using namespace std;
 // ===============================================================================
 // Top-level: processClassDeclaration
 // ===============================================================================
-bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool isByVal, bool allowNested){
+bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool isByVal, bool allowNested, bool isSuperposed){
     // `allowNested` = synthesizing an inline accessor's anonymous class from inside an object body
     // (`auto name = { … }`); the class is still registered globally, it's just parsed nested. All
     // other class declarations must be at global scope.
@@ -73,11 +73,19 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         if(isEmitterClass) newClass.isEmitterClass = true;
         if(isAlias)        newClass.isAlias = true;
         if(isByVal)        newClass.isByVal = true;
+        if(isSuperposed)   newClass.isSuperposed = true;   // withhold source-order emit; revive on reference
     }
     // `byVal` validation: rejects combinations that can't sensibly support a class-
     // controlled copy-in path. `extend byVal class` is rejected because byVal is a
     // class-identity decision that belongs on the original declaration; an extend
     // should pick up the existing class's identity, not re-declare it.
+    // `superposed` only makes sense for a class that emits a revivable `Class` directive.
+    if(isSuperposed){
+        if(isExtend)       parsingError(format("'extend class {0}': 'superposed' belongs on the original class declaration, not on extend.", (string)nameTok));
+        if(isExternal)     parsingError(format("'superposed extern class {0}': extern classes are I6-defined — Beguile emits no directive to withhold.", (string)nameTok));
+        if(isEmitterClass) parsingError(format("'superposed emitter class {0}': emitter classes have no I6 backing to withhold.", (string)nameTok));
+        if(isAlias)        parsingError(format("'superposed alias class {0}': alias classes dissolve to their parent for emission; nothing to withhold.", (string)nameTok));
+    }
     if(isByVal){
         if(isExtend)       parsingError(format("'extend class {0}': 'byVal' belongs on the original class declaration, not on extend.", (string)nameTok));
         if(isExternal)     parsingError(format("'extern byVal class {0}': extern classes are I6-defined and Beguile can't insert copy-in code at their use sites.", (string)nameTok));
@@ -784,6 +792,11 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             // BEFORE the enclosing object (which is already in `globals`, mid-parse), so the I6 `Class`
             // directive precedes the backing instance the emitter bakes for this member.
             if(auto* accCls = dynamic_cast<classDef*>(&languageService.getType(anon))){
+                // A one-off accessor class tied to this single host member: superposed, so its I6
+                // `Class` directive is withheld from source-order emit and materializes only when a
+                // backing instance is baked (in the host's create+populate). If the host object is
+                // itself superposed-and-unused, class + backing + object all evaporate — zero bytes.
+                accCls->isSuperposed = true;
                 auto& g = languageService.globals;
                 size_t pos = g.size();                          // default: append
                 if(currentObject)                               // insert just before the enclosing object

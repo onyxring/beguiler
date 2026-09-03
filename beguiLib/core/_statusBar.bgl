@@ -2,66 +2,34 @@
 /*-----------------------------------------------------------------------------
     core/_statusBar.bgl — bgl.ui.statusBar: status-window control.
 
-    `bgl.ui.statusBar.height` is a get/set property (in lines), built with the
-    getter/setter accessor pattern:
+    `bgl.ui.statusBar.height` is a get/set property (in lines):
       - reading  `bgl.ui.statusBar.height`      -> the current height
       - assigning `bgl.ui.statusBar.height = n` -> resizes the status window to n
 
-    Two regimes, chosen at compile time via the STANDARD_LIBRARY capability (see §3.3.3):
-      - With the I6 standard library: defer entirely to it — set via `StatusLineHeight()` (the
-        library's canonical resize, both targets) and read its own height global,
-        `gg_statuswin_cursize`. The property is a thin, always-in-sync view over the library.
-      - Without it (custom Beguile library): self-contained — Glulx opens a BLR-owned window and
-        queries the VM for the height in real time; Z-machine tracks it in a backing field (no read
-        opcode).
+    `height` is an inline accessor object (a one-off, so it's declared inline rather than as a named
+    class with a single instance). It is SELF-CONTAINED and library-ignorant: it tracks the height in
+    `_h` and does the resize itself (`@split_window` on Z, a BLR-owned window on Glulx). Core stays
+    unaware of which IF library, if any, is in play.
  -----------------------------------------------------------------------------*/
 extend _bglUi { alias statusBar = _bglStatus; }
 
-// `StatusLineHeight` and `gg_statuswin_cursize` are declared by the standard-library binding
-// (<bindings/i6StandardLibrary>). When STANDARD_LIBRARY is set that binding is in the build, and the
-// compiler's pre-scan registers its extern stubs across the whole include graph — so referencing
-// them here resolves regardless of include order.
-
-#if TARGET_GLULX;
-    // Out-buffer for glk_window_get_size — Glk writes [0]=width, [1]=height (offset past the
-    // array's length word, mirroring glulxWindow.bgl's _glkSizeBuf).
-    array<int> _bglStatusSizeBuf[2];
-#endif;
-
 superposed _bglObject _bglStatus {
     auto height = {
-        int _h   = 0;    // tracked height (Z-machine always; with the standard library, both targets)
-        int _win = 0;    // Glulx, self-contained: BLR-owned status-window handle (0 = not yet opened)
+        int _h   = 0;                 // tracked height
+        int _win = 0;                 // Glulx: BLR-owned status-window handle (0 = not yet opened); unused on Z
 
-        int operator() {
-            #if STANDARD_LIBRARY;
-                return gg_statuswin_cursize;  // the library's own current-height global
-            #else;
-                #if TARGET_ZCODE;
-                    return _h;
-                #else;
-                    if(_win == 0) return 0;
-                    bgl.asm.windowGetSize(_win, ((int)_bglStatusSizeBuf) + bgl.wordsize,
-                                                ((int)_bglStatusSizeBuf) + (2 * bgl.wordsize));
-                    return _bglStatusSizeBuf[1];   // real-time height
-                #endif;
-            #endif;
-        }
+        int operator() { return _h; }
 
         void operator = (int v){
-            #if STANDARD_LIBRARY;
-                StatusLineHeight(v);          // library's canonical resize; it updates gg_statuswin_cursize
+            _h = v;
+            #if TARGET_GLULX;
+                bGlulxWindowMethodFlags winMethod = bGlulxWindowPlacement.above | bGlulxWindowScale.fixed | bGlulxWindowBorder.noBorder;
+                if(_win == 0)
+                    _win = bgl.asm.windowOpen(bgl.asm.windowGetRoot(), eGlulxWindowType.textGrid, v, winMethod, 0);
+                else
+                    bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(_win), winMethod, v, _win);
             #else;
-                #if TARGET_ZCODE;
-                    _h = v;
-                    bgl.asm.split_window(v);
-                #else;
-                    // winmethod = Above(2) | Fixed(16) | NoBorder(256) = 274.
-                    if(_win == 0)
-                        _win = bgl.asm.windowOpen(bgl.asm.windowGetRoot(), eGlulxWindowType.textGrid, v, (bGlulxWindowMethodFlags)274, 0);
-                    else
-                        bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(_win), 274, v, _win);
-                #endif;
+                bgl.asm.split_window(v);
             #endif;
         }
     }

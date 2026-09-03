@@ -1,0 +1,22 @@
+/*
+    test_accessor_fieldless.bgl
+    An `auto {}` accessor with NO stored field — just get/set operators that reach the host via `outer`.
+    create+populate must still bake a backing instance (a non-emitter operator dispatches ON an
+    instance), otherwise `gadget.level._opeq()` would run on `nothing`. Runtime-verified: set writes
+    through to outer.scale, get reads it back.
+*/
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object gadget {
+    int scale = 3;
+    auto level = {                          // fieldless: operators only, via outer
+        int  operator()        { return outer.scale; }
+        void operator = (int v){ outer.scale = v; }
+    }
+}
+
+void main() {
+    gadget.level = 5;          // -> gadget.scale = 5
+    print(gadget.level);       // -> 5
+    print(gadget.scale);       // -> 5
+}

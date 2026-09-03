@@ -1,0 +1,23 @@
+// superposed class: the Class directive is withheld from source-order emit and revived only if the
+// class name is referenced — a static instance, a subclass, `new` (pooled), or `ofclass`. An unused
+// superposed class costs zero bytes. A revived subclass pulls its superposed base FIRST (I6 requires
+// a Class to precede any class that derives from it).
+#beguilerSettings { target = z5; }
+
+// Used via a file-scope static instance → emitted in-place, before the instance.
+superposed class Widget { int weight = 4; }
+Widget gizmo;
+
+// Used only via `ofclass` on an unrelated object → revived at end; base Tool must precede Hammer.
+superposed class Tool : object { }
+superposed class Hammer : Tool { }
+object rock { }
+
+// Never referenced anywhere → must NOT appear in the output at all (zero cost).
+superposed class GhostUnused { int nothing = 0; }
+
+void main(){
+    gizmo.weight = 9;
+    print("W="); print(gizmo.weight); print("^");
+    if(rock.is(Hammer)) print("hammer^"); else print("notHammer^");
+}

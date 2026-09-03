@@ -36,6 +36,10 @@
 #endif
 
 #include <core/_random>       // bgl.util.random.get(...) / .seed(...); built on bgl.asm (@random), after platform core
+#include <core/_statusBar>    // bgl.ui.statusBar.height (get/set). superposed _bglStatus + a superposed
+                              // `auto {}` accessor class: a game that never touches the status bar pays
+                              // ZERO bytes (class + backing + object all evaporate). Part of every IF
+                              // game, so it's core, not opt-in.
 
 
 // Namespace objects derive from _bglObject (the base below `object`, defined further down),

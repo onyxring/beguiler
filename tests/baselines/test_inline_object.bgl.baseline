@@ -222,13 +222,13 @@ class point
     x,
     y
 ;
-array pts table _bglanon0 _bglanon1 2 $9084;
+array pts table _bglanon1 _bglanon2 2 $9084;
 point origin
   with x 0,
        y 0
 ;
-array path table origin _bglanon2 _bglanon3 3 $9084;
-array inferred table _bglanon4 _bglanon5 2 $9084;
+array path table origin _bglanon3 _bglanon4 3 $9084;
+array inferred table _bglanon5 _bglanon6 2 $9084;
 [main;
     print ( pts-->(1+1) ).x;
     print ( path-->(1+1) ).y;
@@ -238,27 +238,27 @@ array inferred table _bglanon4 _bglanon5 2 $9084;
     print pb.y;
     print pc.x;
 ];
-point _bglanon0
+point _bglanon1
   with x 1,
        y 2
 ;
-point _bglanon1
+point _bglanon2
   with x 3,
        y 4
 ;
-point _bglanon2
+point _bglanon3
   with x 5,
        y 5
 ;
-point _bglanon3
+point _bglanon4
   with x 9,
        y 9
 ;
-point _bglanon4
+point _bglanon5
   with x 7,
        y 8
 ;
-point _bglanon5
+point _bglanon6
   with x 9,
        y 10
 ;

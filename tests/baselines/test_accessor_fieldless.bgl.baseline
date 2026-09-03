@@ -1,4 +1,4 @@
-!% -G
+!% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
@@ -216,44 +216,22 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-class menu
-  class object
+class _bglaccessor1
   with
-    linkTo,
-    title,
-    words 
+    _opconv[;
+        return gadget.scale;
+    ],
+    _opeq[v;
+        gadget.scale=v;
+    ]
 ;
-menu root
-  with title "root"
-;
-class wrapper
-  class object
-  with
-    head
+_bglaccessor1 _gadget_level;
+object gadget
+  with scale 3,
+       level _gadget_level
 ;
 [main;
-    print (string)child.title;
-    if(child.words provides print) child.words.print(); else print (name)child.words;
-    print (string)_bglanon3.title;
+    gadget.level._opeq(5);
+    print gadget.level._opconv();
+    print gadget.scale;
 ];
-menu child
-  with linkto root,
-       title "a child",
-       words 'foo' 'bar' 'baz' 
-;
-menu _bglanon1
-  with linkto root,
-       title "text to display",
-       words 'type' 'kind' 
-;
-menu _bglanon2
-  with linkto "lonely"
-;
-wrapper w
-  with head _bglanon3
-;
-menu _bglanon3
-  with linkto root,
-       title "nested",
-       words 'x//' 
-;

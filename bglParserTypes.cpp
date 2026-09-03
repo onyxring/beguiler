@@ -2260,7 +2260,9 @@ token bglParser::consumeTypeToken(token first){
 // failure consumes nothing and returns false (caller falls through to normal handling).
 
 bool bglParser::tryConsumeNamespacedEnumValue(token first, string& outFlatEmission, string& outEnumType){
-    if(!first.is(eTokenType::identifier)) return false;
+    // Head is normally an identifier (a namespace object like `bgl`); a direct `EnumType.value` head
+    // is a type name, which lexes as dataType — accept both so qualified enum/bnum values resolve.
+    if(!first.is(eTokenType::identifier) && !first.is(eTokenType::dataType)) return false;
     if(!file.peekToken(1).is(token::period)) return false;  // must have at least one dot
 
     // Peek ahead to collect the full dotted path and its per-segment peek indices.
@@ -2273,6 +2275,26 @@ bool bglParser::tryConsumeNamespacedEnumValue(token first, string& outFlatEmissi
         if(!seg.is(eTokenType::identifier) && !seg.is(eTokenType::dataType)) break;
         segments.push_back(seg.value);
         peekIdx += 2;
+    }
+    // Direct `EnumType.value` (2 segments, no namespace prefix): scope the value lookup to the named
+    // enum/bnum so a value whose bare name collides with another enum's value still resolves. Without
+    // this, `bGlulxWindowScale.fixed` would fall through to the bare-identifier resolver and be reported
+    // ambiguous against, e.g., eGlulxStyleType.fixed.
+    if(segments.size() == 2){
+        auto* et = dynamic_cast<enumDef*>(&languageService.getType(segments[0]));
+        if(et == nullptr) return false;   // not a direct enum/bnum type — let normal handling proceed
+        string valLower = segments[1];
+        transform(valLower.begin(), valLower.end(), valLower.begin(), ::tolower);
+        int mv = 0; bool m = false;
+        for(enumValueDef* ev : et->namedValues)
+            if(ev->name == valLower){ m = true; mv = ev->value; break; }
+        if(!m)
+            parsingError(format("'{0}' is not a named value of enum/bnum '{1}'", segments[1], segments[0]));
+        file.getToken();  // consume '.'
+        file.getToken();  // consume value
+        outFlatEmission = et->isExternal ? valLower : to_string(mv);
+        outEnumType = et->name;
+        return true;
     }
     if(segments.size() < 3) return false;  // need at least A.B.value — namespace + type + value
 
