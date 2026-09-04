@@ -1,0 +1,12 @@
+# Compiled transpiler binary and debug symbols
+/beguiler
+*.dSYM/
+
+# Transpiler output (.inf / .z5 / .ulx / .blb)
+output/
+
+# Obsidian vault settings for the docs folder
+docs/.obsidian/
+
+# macOS
+.DS_Store
