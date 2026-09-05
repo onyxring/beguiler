@@ -285,7 +285,7 @@ object inventory
     lastSh= g_short->(7 + WORDSIZE);
     c=inventory.count;
 ];
-[_bgl_float_valueCompare a b;
+[_bgl_float__oplteqgt a b;
     
             if(_bglFloatLt(a, b)) return -1;
             if(_bglFloatGt(a, b)) return 1;

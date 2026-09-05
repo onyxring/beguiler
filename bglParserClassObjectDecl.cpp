@@ -339,7 +339,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 // (e.g. `?.`, `??`, `=>`), which asserting `oper` alone would let through.
                 static const string overloadableOps =
                     " = + - * / % == != =~ < > <= >= ?= && || & | ^ << >> "
-                    "+= -= *= /= %= &= |= ^= <<= >>= ++ -- ! ";
+                    "+= -= *= /= %= &= |= ^= <<= >>= ++ -- ! <=> ";
                 if(overloadableOps.find(" " + opTok.value + " ") == string::npos)
                     parsingError(format("'{0}' is not an overloadable operator. Overloadable operators are:"
                         "{1}and the special forms operator(), operator[], operator[]=, operator switch, "
@@ -400,6 +400,10 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             }
             if(isEmitter && !funcDef.params.empty() && (funcDef.name == "init" || funcDef.name == "deinit"))
                 parsingError(format("Emitter '{0}' cannot accept parameters", funcDef.name));
+            if(funcDef.name == "<=>" && !isMemberStatic)
+                parsingError("operator <=>() must be declared 'static' — it is a three-way "
+                             "comparison published to generic code (array<T>.sort()), taking both "
+                             "operands and returning -1/0/+1. It has no expression form.");
             if(isMemberStatic && q.isEmitter)
                 parsingError(format("'{0}': 'static' and 'emitter' cannot be combined — an emitter inlines at the call site and has no routine to make static", funcDef.name));
             if(!isEmitter && (funcDef.name == "switch" || funcDef.name == "?"))

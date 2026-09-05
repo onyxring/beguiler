@@ -383,7 +383,7 @@ runningavg avg;
     _bglFloatPrintDecimal(_bglFloatFloor(_bglFloatFdiv(_bglFloatNumtof(38), _bglFloatNumtof(10))));
     print (string)"^";
 ];
-[_bgl_float_valueCompare a b;
+[_bgl_float__oplteqgt a b;
     
             if(_bglFloatLt(a, b)) return -1;
             if(_bglFloatGt(a, b)) return 1;

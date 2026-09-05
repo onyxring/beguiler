@@ -89,7 +89,7 @@ class bglLanguageService{
         // `int priority = 10;`) without hardcoding the value in C++.
         int getClassFieldIntDefault(const string& className, const string& fieldName, int fallback);
 
-        vector<string> operators={"-=","+=","?=","==","!=","<=",">=","=~","&&","||","++","--","<<",">>","<<=",">>=","*=","/=","%=","&=","|=","^=","=>","?.","??"};
+        vector<string> operators={"-=","+=","?=","==","!=","<=",">=","=~","&&","||","++","--","<<",">>","<<=",">>=","<=>","*=","/=","%=","&=","|=","^=","=>","?.","??"};
 };
 
 extern bglLanguageService languageService;

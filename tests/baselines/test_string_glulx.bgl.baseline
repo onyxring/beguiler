@@ -1451,10 +1451,10 @@ class _bglstring(bglstringpoolreserve)
 [_bgl_string__opeqeq a b;
     return _bglstr.areequal(a, b, false);
 ];
-[_bgl_string_valueCompare a b;
+[_bgl_string__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
 ];
-[_bgl_float_valueCompare a b;
+[_bgl_float__oplteqgt a b;
     
             if(_bglFloatLt(a, b)) return -1;
             if(_bglFloatGt(a, b)) return 1;

@@ -2205,7 +2205,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         if(!hasPropParam)
                             b = replaceWord(b, "$prop", propValue);
                         b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(recvElemType, "=="));
-                        b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "valuecompare"));
+                        b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "<=>"));
                         b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(recvElemType, "=="));
                         callStmt.emitterBody = b;
                         for(paramDef* p : method->params)

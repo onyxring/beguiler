@@ -41,7 +41,7 @@ extern emitter class float : _bglObject {
     // Comparison published for generic containers (array<T>.sort()). Without it sort()
     // falls back to a signed-word compare, which is WRONG for IEEE 754: negatives are
     // sign-magnitude, so they order backwards as signed words.
-    static int valueCompare(var a, var b) {
+    static int operator <=> (var a, var b) {
         #i6 {
             if(_bglFloatLt(a, b)) return -1;
             if(_bglFloatGt(a, b)) return 1;

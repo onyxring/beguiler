@@ -387,6 +387,12 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         parsingError(format("Directive '{0}' is not valid in an expression.", rhs.value));
     }
 
+    // `<=>` is declare-only (a static routing target for generic code). Using it in an
+    // expression would fall through to raw emission and produce invalid I6, so reject it here.
+    if(opName == "<=>")
+        parsingError("operator '<=>' has no expression form — it is declared 'static' on a type "
+                     "so generic code (array<T>.sort()) can obtain an ordering. Use < / > to compare.");
+
     // Step 2: Find matching operator emitter
     // 'var' is the escape-hatch type — if either side is var, skip param-type checking
     // (treat the same as an empty/unknown rhsType: match by operator name alone).
@@ -1719,7 +1725,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 // $elemeq / $elemcmp — routine implementing the element type's
                                 // comparison, or "0" for word comparison.
                                 b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(recvElemType, "=="));
-                                b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "valuecompare"));
+                                b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "<=>"));
                                 b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(recvElemType, "=="));
                                 callText = b;
                                 expr->tokens.push_back(b);
@@ -2474,7 +2480,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         b = replaceWord(b, "$" + method->params[i]->name, callArgs[i]->text());
                     b = replaceWord(b, "$prop", chainProp);
                     b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(chainElem, "=="));
-                    b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(chainElem, "valuecompare"));
+                    b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(chainElem, "<=>"));
                     b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(chainElem, "=="));
                     callText = b;
                     expr->tokens.push_back(b);

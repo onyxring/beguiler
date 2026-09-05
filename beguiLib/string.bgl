@@ -1032,8 +1032,7 @@ extend class string {
     // to dispatch on. Taking both operands is what makes that possible. A static operator is
     // never selected at an ordinary `a == b` site; the instance operators above own those.
     static bool operator == (var a, var b) { return _bglStr.areEqual(a, b, false); }
-    // Ordering has no operator spelling that yields -1/0/+1, so it stays a named static.
-    static int  valueCompare(var a, var b) { return _bglStr.compareValues(a, b, false); }
+    static int  operator <=> (var a, var b) { return _bglStr.compareValues(a, b, false); }
 
     // Ordering — lexicographic by content, NOT by the packed address. Each
     // yields a bool, so `a < b` reads the way it does for numbers.
