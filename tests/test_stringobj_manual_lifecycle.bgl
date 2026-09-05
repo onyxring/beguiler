@@ -1,0 +1,32 @@
+/*  test_stringobj_manual_lifecycle.bgl — stringObj slots, developer-owned lifecycle.
+
+    `stringObj` is a slot that OWNS a pool buffer, as against `string`, a slot holding a
+    pointer to static text.
+
+    INTERIM CONTRACT: stringObj publishes no `static operator =`, so array<stringObj>
+    slot writes take core's inline word store and the caller owns allocation and release:
+
+        slots[9] = _bglStr.new("jim");     // caller allocates
+        ... _bglStr.free(slots[9]);        // and frees before dropping the slot
+
+    Publishing an assign hook would allocate on write, but removal would still need an
+    explicit free — auto-allocate with manual-free is asymmetric and invites leaks. Both
+    ends become automatic together, once element destruction exists.
+
+    Pins: the slot write stays `slots-->(i+1) = …` with no hook, and array<int> is
+    likewise untouched.  */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <array>
+#include <string>
+
+array<stringObj> slots[10];
+array<int>       counts = {3, 1, 2};
+
+void main(){
+    bglInit();
+    slots[9] = _bglStr.new("jim");    // explicit allocation
+    print(slots[9]);
+    print(slots[0]? "allocated" : "empty");   // never written -> empty
+    counts[0] = 9;
+    print(counts[0]);
+}

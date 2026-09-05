@@ -1350,8 +1350,7 @@ array slots table 12;
 array counts table 3 1 2 3 $9084;
 [main;
     bglinit();
-    _bglArray.setOwned(slots, 0, 9, "jim", _bgl_stringObj__opeq);
-    _bglArray.setOwned(slots, 0, 9, "bob", _bgl_stringObj__opeq);
+    slots-->(9+1) = _bglstr.new("jim");
     _bglStr.print( slots-->(9+1) );
     if ( slots-->(0+1) ) _bgl_temp3 = "allocated"; else _bgl_temp3 = "empty";
     print (string)_bgl_temp3;
@@ -1369,10 +1368,6 @@ array counts table 3 1 2 3 $9084;
 ];
 [_bgl_stringObj__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
-];
-[_bgl_stringObj__opeq slot v;
-     if(slot ofclass _bglString){ slot.set(v); return slot; } 
-    return _bglstr.new(v);
 ];
 [_bglCharToLower c;
     switch (c) {

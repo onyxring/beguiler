@@ -1216,14 +1216,13 @@ emitter class stringObj : _bglObject {
     emitter void    release()                             { $self.release() }
     emitter void    captureOutput(object obj, var prop)   { $self.captureOutput($obj, $prop) }
 
-    // Published to generic containers: how to assign INTO a slot of this type.
-    // The slot may be empty (0) on first write, so this both allocates and copies.
-    // array<stringObj> is lazily allocated — a declared-but-unwritten slot costs
-    // nothing, and `a[9] = "jim"` gives slot 9 its buffer at the point of write.
-    static var operator = (var slot, var v){
-        #i6 { if(slot ofclass _bglString){ slot.set(v); return slot; } }
-        return _bglStr.new(v);
-    }
+    // NOTE: no `static operator =` is published yet, so array<stringObj> slot writes
+    // take core's raw word store and the developer owns the lifecycle explicitly:
+    //     slots[9] = _bglStr.new("jim");   // caller allocates
+    //     ... _bglStr.free(slots[9]);      // and frees on removal
+    // Publishing one would allocate on write, but removal still requires an explicit
+    // free — auto-allocate with manual-free is asymmetric and invites leaks. Both ends
+    // become automatic together, once element destruction ($elemfree) exists.
 }
 
 extend class stringLiteral {
