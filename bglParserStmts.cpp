@@ -1380,6 +1380,27 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         callStmt.args.push_back(indexExpr);
         callStmt.args.push_back(valExpr);
 
+        // A slot whose element type OWNS storage (it has an `init` emitter, e.g. stringObj)
+        // must not be handed a bare text pointer: storing a literal there leaves the slot
+        // holding a representation it does not own, which is the fuzziness the string/stringObj
+        // split exists to remove. Until element construction is automatic, require the caller
+        // to allocate explicitly.
+        if(!elemType.empty()){
+            if(auto* ec = dynamic_cast<classDef*>(&languageService.getType(elemType))){
+                bool ownsStorage = findMemberInHierarchy(ec, [](typeMember* m){
+                    auto* fn = dynamic_cast<functionDef*>(m);
+                    return fn && fn->name == "init" && fn->isEmitter && fn->params.empty();
+                }) != nullptr;
+                string rhsT = valExpr != nullptr ? valExpr->resolvedType : "";
+                if(ownsStorage && (rhsT == "stringliteral" || rhsT == "string"))
+                    parsingError(format("cannot store a '{0}' in an element of 'array<{1}>': "
+                                        "'{1}' owns its storage, and a bare text pointer would leave the "
+                                        "slot holding a value it does not own. Allocate explicitly — "
+                                        "e.g. `{2}[i] = _bglStr.new(...)` — and free it before dropping the slot.",
+                                        typeDisplayName(rhsT), typeDisplayName(elemType), arrPath));
+            }
+        }
+
         // If the element type publishes a static `operator =` it OWNS its storage, so the slot
         // write must go through the type rather than being a raw word store. Prefer array<T>'s
         // `setOwnedAt` member in that case; every plain element type keeps core's inline

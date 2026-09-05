@@ -1348,23 +1348,16 @@ class _bglstring(bglstringpoolreserve)
     ]
 ;
 [exerciseAssign s1 s2 s3;
-    s1 = _bglStr.new();
-    s1.setFromLit("hello");
-    s2 = _bglStr.new();
-    s2.setFromStr(s1);
-    s3 = _bglStr.new();
-    s3.setFromLit("interp {s1} world");
-    s1.free();
-    s2.free();
-    s3.free();
+    s1 = "hello";
+    s2 = s1;
+    s3 = "interp {s1} world";
 ];
 [exerciseEquality s eq_lit o eq_str code;
     s = _bglStr.new();
     s.setFromLit("test");
     eq_lit=(_bglStr.areEqual(s, "test", false));
-    o = _bglStr.new();
-    o.setFromLit("test");
-    eq_str=(_bglStr.areEqual(s, o, false));
+    o = "test";
+    eq_str=(_bgl_stringObj__opeqeq(s, o));
     code = 0;
     _bgl_sw = s;
     if ((_bglStr.areEqual(_bgl_sw, "hello", false))) {
@@ -1377,33 +1370,24 @@ class _bglstring(bglstringpoolreserve)
         code = 99;
     }
     s.free();
-    o.free();
 ];
 [exerciseConcat s1 s2 c;
-    s1 = _bglStr.new();
-    s1.setFromLit("foo");
-    s2 = _bglStr.new();
-    s2.setFromLit("bar");
+    s1 = "foo";
+    s2 = "bar";
     c = _bglStr.new();
     c.setFromStr(_bglStr.append(s1, s2));
     c.setFromStr(_bglStr.append(s1, "literal"));
-    c.setFromStr(_bglStr.new("literal").append(s1));
-    c.setFromStr(_bglStr.new("literal").appendChar('X'));
-    s1.free();
-    s2.free();
+    c.setFromLit(_bglStr.new("literal").append(s1));
+    c.setFromLit(_bglStr.new("literal").appendChar('X'));
     c.free();
 ];
 [exerciseNullable s1 s2 c present;
-    s1 = _bglStr.new();
-    s1.setFromLit("hi");
-    s2 = _bglStr.new();
+    s1 = "hi";
     _bgl_temp4 = s2; if (~~(_bgl_temp4 ~= 0)) _bgl_temp4 = "fallback";
     _bgl_temp3 = s1; if (~~(_bgl_temp3 ~= 0)) _bgl_temp3 = _bgl_temp4;
     c = _bglStr.new();
     c.setFromLit(_bgl_temp3);
     present=s1 ~= 0;
-    s1.free();
-    s2.free();
     c.free();
 ];
 [exerciseMethods s t len pos sw ew has emp;
@@ -1443,15 +1427,13 @@ class _bglstring(bglstringpoolreserve)
     t.free();
 ];
 [exerciseForIn s c _bglfia1 _bglfi2;
-    s = _bglStr.new();
-    s.setFromLit("abc");
+    s = "abc";
     _bglfia1 = s;
     _bglfi2 = 0;
     for (: _bglfi2 < _bglfia1.getLength() : _bglfi2++) {
         c = _bglfia1.getChar(_bglfi2);
         print (char)c;
     }
-    s.free();
 ];
 [main;
     exerciseassign();

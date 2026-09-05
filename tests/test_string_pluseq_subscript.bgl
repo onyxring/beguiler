@@ -2,7 +2,7 @@
 #include <string>
 #beguilerSettings { target = z5; informName = "none"; }
 void main(){
-    string s = "Hello";
+    stringObj s = "Hello";
     s += ", World";          // operator += (in-place concat)
     char c = s[0];           // operator[] read
     if(c == 'H'){ print("ok^"); }

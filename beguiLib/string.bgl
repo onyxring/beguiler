@@ -988,27 +988,26 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 
 
 extend class string {
-    // Lifecycle
-    emitter void init()   { $self = _bglStr.new(); }
-    emitter void deinit() { $self.free(); }
+    // NO lifecycle. A `string` is a slot holding a pointer to static text: it allocates
+    // nothing and frees nothing. `stringObj` is the slot that owns a pool buffer.
 
     // Assignment — Phase B: type-discriminated dispatch eliminates isTracked()
     // false-positive risk that could surface when a packed-string address
     // numerically collided with a tracked-buffer user pointer.
-    replace emitter string operator = (stringLiteral v)         { $self.setFromLit($v); }
-    emitter string operator = (string v)                        { $self.setFromStr($v); }
-    emitter string operator = (interpolatedStringLiteral v)     { $self.capture(); $v; $self.release(); }
+    // Assignment REPOINTS the slot — a plain word write; there is no buffer to copy into.
+    // An interpolated literal must be built at runtime, so it needs a stringObj.
+    replace emitter string operator = (stringLiteral v)         { $target = $v }
+    emitter string operator = (string v)                        { $target = $v }
 
     // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
     // str3 = str1 + str2  =>  str3.set(str1.append(str2))
-    emitter string operator + (stringLiteral v) { _bglStr.append($val, $v) }
-    emitter string operator + (string v)        { _bglStr.append($val, $v) }
+    emitter stringObj operator + (stringLiteral v) { _bglStr.append($val, $v) }
+    emitter stringObj operator + (string v)        { _bglStr.append($val, $v) }
 
     // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
     // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
     // copies it back into self.
-    emitter string operator += (stringLiteral v) { $self.setFromStr($self.append($v)) }
-    emitter string operator += (string v)        { $self.setFromStr($self.append($v)) }
+    // No `+=` and no `[]=` — mutation needs a buffer this type does not own. Use stringObj.
 
     // Equality — Phase B typed dispatch
     // `replace` — core declares these as address equality; <string> upgrades them to
@@ -1050,7 +1049,6 @@ extend class string {
 
     // Indexed character access
     emitter char operator[](int pos)                  { _bglStr.getChar($val, $pos) }
-    emitter char operator[]=(int pos, char c)         { $self.setChar($pos,$c) }
     emitter char operator[]=(int pos, charLiteral c)  { $self.setChar($pos,$c) }
 
     // Query — enables ?., ??, and postfix ? for null (unallocated) checks
@@ -1059,25 +1057,25 @@ extend class string {
     // Methods
     replace emitter void  print()                          { _bglStr.print($val) }
 
-    emitter string  append(string v)                      { _bglStr.append($val, $v) }
-    emitter string  append(char v)                        { _bglStr.appendChar($val, $v) }
-    emitter string  prepend(var v)                        { _bglStr.prepend($val, $v) }
-    emitter string  toUpper()                             { _bglStr.toUpper($val) }
-    emitter string  toLower()                             { _bglStr.toLower($val) }
-    emitter string  trim()                                { _bglStr.trim($val) }
-    emitter string  trimLeft()                            { _bglStr.trimLeft($val) }
-    emitter string  trimRight()                           { _bglStr.trimRight($val) }
-    emitter string  reverse()                             { _bglStr.reverse($val) }
-    emitter string  mid(int start, int count)             { _bglStr.mid($val, $start, $count) }
-    emitter string  left(int count)                       { _bglStr.left($val, $count) }
-    emitter string  right(int count)                      { _bglStr.right($val, $count) }
-    emitter string  insert(int pos, var source)           { _bglStr.insert($val, $pos, $source) }
-    emitter string  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
-    emitter string  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
-    emitter string  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
-    emitter string  format(var pattern)                   { $self.format($pattern) }
-    emitter string  format(var pattern, var p1)           { $self.format($pattern, $p1) }
-    emitter string  format(var pattern, var p1, var p2)   { $self.format($pattern, $p1, $p2) }
+    emitter stringObj  append(string v)                      { _bglStr.append($val, $v) }
+    emitter stringObj  append(char v)                        { _bglStr.appendChar($val, $v) }
+    emitter stringObj  prepend(var v)                        { _bglStr.prepend($val, $v) }
+    emitter stringObj  toUpper()                             { _bglStr.toUpper($val) }
+    emitter stringObj  toLower()                             { _bglStr.toLower($val) }
+    emitter stringObj  trim()                                { _bglStr.trim($val) }
+    emitter stringObj  trimLeft()                            { _bglStr.trimLeft($val) }
+    emitter stringObj  trimRight()                           { _bglStr.trimRight($val) }
+    emitter stringObj  reverse()                             { _bglStr.reverse($val) }
+    emitter stringObj  mid(int start, int count)             { _bglStr.mid($val, $start, $count) }
+    emitter stringObj  left(int count)                       { _bglStr.left($val, $count) }
+    emitter stringObj  right(int count)                      { _bglStr.right($val, $count) }
+    emitter stringObj  insert(int pos, var source)           { _bglStr.insert($val, $pos, $source) }
+    emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
+    emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
+    emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
+    emitter stringObj  format(var pattern)                   { $self.format($pattern) }
+    emitter stringObj  format(var pattern, var p1)           { $self.format($pattern, $p1) }
+    emitter stringObj  format(var pattern, var p1, var p2)   { $self.format($pattern, $p1, $p2) }
     emitter int     getLength()                           { _bglStr.getLength($val) }
     emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
     emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
@@ -1086,9 +1084,7 @@ extend class string {
     emitter eBool   endsWith(var suffix)                  { _bglStr.endsWith($val, $suffix, false) }
     emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
     emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
-    emitter void    capture()                             { $self.capture() }
-    emitter void    release()                             { $self.release() }
-    emitter void    captureOutput(object obj, var prop)   { $self.captureOutput($obj, $prop) }
+    // capture/release/captureOutput redirect output INTO a buffer — stringObj only.
 }
 
 
@@ -1122,7 +1118,11 @@ emitter class stringObj : _bglObject {
     // false-positive risk that could surface when a packed-string address
     // numerically collided with a tracked-buffer user pointer.
     emitter stringObj operator = (stringLiteral v)         { $self.setFromLit($v); }
-    emitter stringObj operator = (stringObj v)                        { $self.setFromStr($v); }
+    emitter stringObj operator = (stringObj v)                  { $self.setFromStr($v); }
+    // Widening: a `string` is a pointer to static text, so copy that text INTO this
+    // object's own buffer. setFromLit handles a bare text pointer; setFromStr would
+    // assume an instance.
+    emitter stringObj operator = (string v)                     { $self.setFromLit($v); }
     emitter stringObj operator = (interpolatedStringLiteral v)     { $self.capture(); $v; $self.release(); }
 
     // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.

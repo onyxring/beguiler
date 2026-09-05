@@ -45,7 +45,7 @@ void exerciseAssign(){
 
 // ─── Equality + switch ───────────────────────────────────────────────────────
 void exerciseEquality(){
-    string s;
+    stringObj s;
     s = "test";
     bool eq_lit = (s == "test");       // operator == (stringLiteral)
     string o;
@@ -65,7 +65,7 @@ void exerciseEquality(){
 void exerciseConcat(){
     string s1;  s1 = "foo";
     string s2;  s2 = "bar";
-    string c;
+    stringObj c;
     c = s1 + s2;                        // string + string
     c = s1 + "literal";                 // string + stringLiteral
     c = "literal" + s1;                 // stringLiteral + string (extend stringLiteral)
@@ -77,17 +77,17 @@ void exerciseNullable(){
     string s1;
     s1 = "hi";
     string s2;
-    string c = s1 ?? s2 ?? "fallback";  // operator ? + ??
+    stringObj c = s1 ?? s2 ?? "fallback";  // operator ? + ??
     bool present = s1?;
 }
 
 // ─── Methods — exercise every name on the extend class ───────────────────────
 void exerciseMethods(){
-    string s;
+    stringObj s;
     s = "Hello, World";
     s.print();                          // replace emitter print()
 
-    string t;
+    stringObj t;
     t = s.append(" suffix");
     t = s.append('!');
     t = s.prepend("prefix ");
