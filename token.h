@@ -1,6 +1,8 @@
 #pragma once
 #include <string>
 #include <string_view>
+#include <format>
+#include <algorithm>
 #include <stack>
 #include <vector>
 #include "typeDef.h"

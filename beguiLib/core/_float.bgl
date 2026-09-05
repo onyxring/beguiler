@@ -19,6 +19,8 @@
 // returns a value; that lets the operator emitters be expression-form and compose
 // under nested expressions like `(int)(a + b * c)`.
 //=============================================================================
+
+
 extern emitter class float : _bglObject {
     emitter int operator = (float v){ $target = $v; }
 
@@ -35,6 +37,18 @@ extern emitter class float : _bglObject {
     // is correct for the common case of matching a known value.
     emitter bool operator == (float v){ $val == $v }
     emitter bool operator != (float v){ $val ~= $v }
+
+    // Comparison published for generic containers (array<T>.sort()). Without it sort()
+    // falls back to a signed-word compare, which is WRONG for IEEE 754: negatives are
+    // sign-magnitude, so they order backwards as signed words.
+    static int valueCompare(var a, var b) {
+        #i6 {
+            if(_bglFloatLt(a, b)) return -1;
+            if(_bglFloatGt(a, b)) return 1;
+            return 0;
+        }
+        return 0;   // unreachable; satisfies return-check
+    }
 
     // Ordering — Glulx @jflt/@jfle/@jfgt/@jfge are branch-form, so they live in
     // helper routines that return rtrue/rfalse.

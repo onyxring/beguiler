@@ -5,6 +5,9 @@
 # Transpiler output (.inf / .z5 / .ulx / .blb)
 output/
 
+# Test-runner artifacts (debug-bundle fixtures write here)
+tests/debug/out/
+
 # Obsidian vault settings for the docs folder
 docs/.obsidian/
 

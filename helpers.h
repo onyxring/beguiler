@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string_view>
+#include <format>
+#include <algorithm>
+#include <functional>
 
 using namespace std;
 

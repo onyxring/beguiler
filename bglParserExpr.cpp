@@ -273,6 +273,16 @@ static const vector<string> kPrecedenceOps = {
 // ===============================================================================
 // applyBinaryOperator - binary operator emitter resolution + RHS parsing
 // ===============================================================================
+// I6's `~~` (logical NOT) binds LOOSER than `&&` / `||`, so a bare `~~x && y` parses as
+// `~~(x && y)` — the negation swallows the whole conjunction and the test inverts silently.
+// Beguile emits `!x` as a bare `~~x`, so any operand text that begins with `~~` must be
+// parenthesised before it is joined to a binary operator.
+static string parenIfNegated(const string& text){
+    size_t i = text.find_first_not_of(" \t");
+    if(i != string::npos && text.compare(i, 2, "~~") == 0) return "(" + text + ")";
+    return text;
+}
+
 // Binary operator resolution: read RHS, find matching emitter, inline.
 // Returns true if handled; false if the operator should pass through as raw I6.
 bool bglParser::applyBinaryOperator(expression* expr, const string& opName, classDef* cls,
@@ -384,6 +394,10 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* m){
         auto* opFn = dynamic_cast<functionDef*>(m);
         if(!opFn || opFn->name != opName) return false;
+        // A `static` operator takes BOTH operands and exists to be handed to generic code
+        // (array<T> search/sort) as a routine address. It must never be selected for an
+        // ordinary `a == b` site, where it would be emitted as a receiver message send.
+        if(opFn->isStatic) return false;
         // Pre-scan stubs have no params — match by name only
         if(opFn->isPrePassStub) return true;
         return !opFn->params.empty() &&
@@ -483,9 +497,9 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         static const vector<string> comparisonOps = {"==","!=","<",">","<=",">=","?=","=~"};
         if(find(comparisonOps.begin(), comparisonOps.end(), opName) != comparisonOps.end())
             expr->resolvedType = "ebool";
-        string lhsText = expr->text();
+        string lhsText = parenIfNegated(expr->text());
         expr->tokens.clear();
-        expr->tokens.push_back(lhsText + opName + rhsText);
+        expr->tokens.push_back(lhsText + opName + parenIfNegated(rhsText));
     } else if(blk != nullptr){
         // For identifier RHS, check if it's a function call and collect full text.
         // Skip this when the RHS was already fully resolved by the precedence sub-parse
@@ -811,8 +825,17 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         if(parenDepth > 0) rhsTerminators.push_back(token::parenClose);
         rhsTerminators.push_back("?");
         expression* rhsExpr = parseExpression(getNext(), rhsTerminators, func, body);
+        // The LHS accumulated so far may be a bare `~~x`, and I6's `~~` binds looser than
+        // && / || — so `~~x && y` would parse as `~~(x && y)`. Parenthesise both sides.
+        // Collapsing is safe here: the wrap only applies when the text STARTS with `~~`,
+        // so there are no preceding structural parens to disturb.
+        {
+            string lhsText = expr->text();
+            string wrapped = parenIfNegated(lhsText);
+            if(wrapped != lhsText){ expr->tokens.clear(); expr->tokens.push_back(wrapped); }
+        }
         expr->tokens.push_back(opTok);
-        expr->tokens.push_back(rhsExpr->text());
+        expr->tokens.push_back(parenIfNegated(rhsExpr->text()));
         token terminatorTok;
         terminatorTok.value = rhsExpr->terminator;
         terminatorTok.tokenType = eTokenType::oper;
@@ -1693,6 +1716,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 // receiver-path value. Done after param sub so emitters with a
                                 // `prop` parameter (e.g. `provides(property prop)`) win.
                                 b = replaceWord(b, "$prop", exprPropValue);
+                                // $elemeq / $elemcmp — routine implementing the element type's
+                                // comparison, or "0" for word comparison.
+                                b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(recvElemType, "=="));
+                                b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "valuecompare"));
+                                b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(recvElemType, "=="));
                                 callText = b;
                                 expr->tokens.push_back(b);
                             }
@@ -2445,6 +2473,9 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
                         b = replaceWord(b, "$" + method->params[i]->name, callArgs[i]->text());
                     b = replaceWord(b, "$prop", chainProp);
+                    b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(chainElem, "=="));
+                    b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(chainElem, "valuecompare"));
+                    b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(chainElem, "=="));
                     callText = b;
                     expr->tokens.push_back(b);
                 }

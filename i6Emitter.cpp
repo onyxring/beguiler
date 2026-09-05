@@ -1205,6 +1205,12 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
         generateI6(node);
     }
 
+    // `static` class methods: free routines named `_bgl_<Class>_<method>`. Driven from the
+    // TYPE registry, not `globals` — extern classes never enter globals, and those are exactly
+    // the types (string, float) that need this. Emitted after the main walk so the routines
+    // they call are already declared.
+    emitAllStaticClassRoutines();
+
     // Any word evicted via `grammar -= {.w}` that NO native verb reclaimed is a pure removal
     // (disable a library command): emit an empty `Extend only 'w' replace;` after all verb grammar.
     emitEvictions();
@@ -1416,6 +1422,25 @@ void i6Emitter::emitEnum(enumDef* enumNode){
     // (e.g. true/false) resolved at use sites.
     (void)enumNode;
 }
+// Emit a class's `static` methods as free I6 routines named `_bgl_<Class>_<method>`.
+// Mirrors the mangling used for static member VARIABLES (`_bgl_<Class>_<name>` globals).
+void i6Emitter::emitAllStaticClassRoutines(){
+    for(typeDef* td : languageService.objectTypes)
+        if(auto* cd = dynamic_cast<classDef*>(td))
+            emitStaticClassRoutines(cd);
+}
+
+void i6Emitter::emitStaticClassRoutines(classDef* classNode){
+    for(typeMember* m : classNode->members){
+        auto* fd = dynamic_cast<functionDef*>(m);
+        if(fd == nullptr || !fd->isStatic || fd->isEmitter || fd->isExternal) continue;
+        string saved = fd->i6name;
+        fd->i6name = staticRoutineName(classNode, fd);
+        emitFunction(fd);
+        fd->i6name = saved;
+    }
+}
+
 void i6Emitter::emitClass(classDef* classNode){
     if(classNode->isExternal || classNode->isEmitterClass || classNode->isAlias) return;
 
@@ -1757,12 +1782,16 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         if(!arrLoc->isByteArray){
             if(auto* list = dynamic_cast<initializerList*>(arrLoc->declaredExpressionValue)){
                 string name = spillName(arrLoc->name);
-                int count = (int)list->elements.size();
+                int len = (int)list->elements.size();
+                // The length slot sits just past the *capacity*, which a declared `[N]`
+                // fixes independently of the seed length. _bglArrayLocalAlloc already
+                // zeroed the slice, so unseeded slots need no explicit write.
+                int cap = arrLoc->arraySize > 0 ? arrLoc->arraySize : len;
                 int i = 0;
                 for(expression* elem : list->elements)
                     out << format("{0}{1}-->{2} = {3};\n", indent, name, i++ + 1, exprText(elem));
-                if(languageService.arrayInUse && !arrLoc->isRaw)   // tracked layout has a length slot at N+1
-                    out << format("{0}{1}-->{2} = {3};\n", indent, name, count + 1, count);
+                if(languageService.arrayInUse && !arrLoc->isRaw)   // tracked layout has a length slot at cap+1
+                    out << format("{0}{1}-->{2} = {3};\n", indent, name, cap + 1, len);
                 return;
             }
         }
@@ -1858,6 +1887,11 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
         functionCallStatement* call = (functionCallStatement*)stmt;
         if(!call->emitterBody.empty()){
             string b = call->emitterBody;
+            // Safety net: an unsubstituted $elem* would reach I6 as a hex literal ($e...)
+            // and fail far from the cause. Degrade to word comparison instead.
+            b = replaceWord(b, "$elemeq", "0");
+            b = replaceWord(b, "$elemcmp", "0");
+            b = replaceWord(b, "$elemeqprop", "0");
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
             // Check if any argument is an interpolated string literal
@@ -2419,6 +2453,27 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
                 out << format("array {0} buffer {1};\n", arr->dName(), arr->stringInitializer);
                 return;
             }
+            auto* byteSeed = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
+            if(arr->arraySize > 0 && byteSeed != nullptr) {
+                // Seeded capacity (`array<char> name[N] = {…}`). A byte array carries no
+                // length/magic trailer, so capacity is all there is: emit the seed values
+                // followed by zeros out to N. The SizedBuffer layout has no room to bake
+                // literal bytes into its raw allocation, so it is rejected rather than
+                // silently dropping the seed.
+                if(bufTracked)
+                    throw ("i6Emitter: a seeded `array<char> name[N] = {...}` is not supported while <buf> "
+                           "is included (the SizedBuffer allocation is stamped at startup). Declare it as "
+                           "`array<char> name = {...}` to size it from the seed, or assign elements at runtime.");
+                out << format("array {0} buffer", arr->dName());
+                for(expression* elem : byteSeed->elements){
+                    string t = elem->text();
+                    if(!t.empty() && t.front() == '-') out << " (" << t << ")";
+                    else                                out << " " << t;
+                }
+                for(int pad = (int)byteSeed->elements.size(); pad < arr->arraySize; pad++) out << " 0";
+                out << ";\n";
+                return;
+            }
             if(arr->arraySize > 0) {
                 if(bufTracked){
                     // SizedBuffer: emit only the raw allocation here. The user-visible
@@ -2457,7 +2512,8 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         // `rawArray<T>` always opts out of tracking (plain I6 table) — for interop with bare
         // I6 array APIs (e.g. orArray's single-array form, which reads word0 as the count).
         bool tracked = languageService.arrayInUse && !arr->isRaw;
-        if(arr->arraySize > 0) {
+        auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
+        if(arr->arraySize > 0 && list == nullptr) {
             // Sized, uninitialized. Magic+length get stamped at startup by bglInit when
             // tracked (pre-pass collected the name into trackedArraysNeedingMagicInit).
             int slots = tracked ? arr->arraySize + 2 : arr->arraySize;
@@ -2465,10 +2521,16 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
             return;
         }
 
-        if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+        if(list != nullptr){
             // List-initialized. With tracking, bake the magic + length into the
             // initializer trailing slots. Without, just emit the data.
+            //
+            // A declared `[N]` fixes the capacity independently of the seed: the
+            // seed fills the leading slots, the remainder are zeroed out to N, and
+            // the baked length stays at the seed count so append/push carry on from
+            // there. Without `[N]`, capacity and length are both the seed count.
             int len = list->elements.size();
+            int cap = arr->arraySize > 0 ? arr->arraySize : len;
             out << format("array {0} table", arr->dName());
             for(expression* elem : list->elements){
                 string t = elem->text();
@@ -2478,8 +2540,9 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
                 if(!t.empty() && t.front() == '-') out << " (" << t << ")";
                 else                                out << " " << t;
             }
+            for(int pad = len; pad < cap; pad++) out << " 0";   // unused capacity
             if(tracked){
-                out << " " << len;     // length = N
+                out << " " << len;     // length = seeded count, not capacity
                 out << " $9084";       // magic
             }
             out << ";\n";

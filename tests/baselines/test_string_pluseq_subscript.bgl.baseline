@@ -4,6 +4,9 @@
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 Constant _BGL_WORLD_BUFSIZE = 128;
+global _bgl_temp0;
+global _bgl_temp1;
+global _bgl_temp2;
 
     Default bglStringDefaultSize 500;
 
@@ -103,12 +106,20 @@ object _bglArray
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [obj prop val sz t;
+       indexOf [obj prop val eq eqProp sz t e;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
-        if (self.get(obj,prop,t)==val) {
+        e = self.get(obj,prop,t);
+        if (e==val) {
             return t;
         }
+        if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
+            return t;
+        }
+        
+                if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
+                   && e provides eqProp && e.(eqProp)(val)) return t;
+            
     }
     return -1;
   ],
@@ -169,11 +180,27 @@ object _bglArray
     self.set(obj, prop, len - 1, 0);
     self.setLength(obj, prop, len - 1);
   ],
-       removeValue [obj prop val pos len;
+       removeValue [obj prop val eq eqProp pos len e hit;
     pos = 0;
     len=self.length(obj,prop);
     while (pos < len) {
-        if (self.get(obj,prop,pos)==val) {
+        e = self.get(obj,prop,pos);
+        hit=false;
+        if (e==val) {
+            hit = true;
+        }
+        if (~~hit) {
+            if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
+                hit = true;
+            }
+        }
+        if (~~hit) {
+            
+                    if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
+                       && e provides eqProp && e.(eqProp)(val)) hit = true;
+                
+        }
+        if (hit) {
             self.remove(obj, prop, pos);
             len = self.length(obj,prop);
         }
@@ -220,6 +247,14 @@ object _bglArray
     v = self.get(obj,prop,len - 1);
     self.remove(obj, prop, len - 1);
     return v;
+  ],
+       sortDefault [obj prop cmp;
+    if (cmp==0) {
+        self.sort(obj, prop, _bglarraycompareasc);
+    }
+    else {
+        self.sort(obj, prop, cmp);
+    }
   ],
        sort [obj prop compare len i key j;
     len=self.length(obj,prop);
@@ -383,6 +418,29 @@ object _bglBuf
         }
     }
     return true;
+  ],
+       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2;
+    len1=self.length(buf1);
+    len2=self.length(buf2);
+    if (len1 < len2) _bgl_temp0 = len1; else _bgl_temp0 = len2;
+    lim=_bgl_temp0;
+    for (t = 0 : t < lim : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchartolower(c1);
+            c2 = _bglchartolower(c2);
+        }
+        if (c1 ~= c2) {
+            if (c1 < c2) _bgl_temp1 = -1; else _bgl_temp1 = 1;
+            return _bgl_temp1;
+        }
+    }
+    if (len1 == len2) {
+        return 0;
+    }
+    if (len1 < len2) _bgl_temp2 = -1; else _bgl_temp2 = 1;
+    return _bgl_temp2;
   ],
        startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
     len2=self.length(buf2);
@@ -773,10 +831,131 @@ object _bglStr
             
     }
   ],
-       areEqual [buf1 buf2 caseInsensitive;
+       areEqual [buf1 buf2 caseInsensitive lck retval;
     buf1 = self.toambiguousbuffer(buf1);
+    lck=self.ambiguouslock(buf1);
     buf2 = self.toambiguousbuffer(buf2);
-    return _bglbuf.equals(buf1, buf2, caseinsensitive);
+    retval=_bglbuf.equals(buf1, buf2, caseinsensitive);
+    self.ambiguousfree(buf1, lck);
+    return retval;
+  ],
+       compareValues [buf1 buf2 caseInsensitive lck retval;
+    buf1 = self.toambiguousbuffer(buf1);
+    lck=self.ambiguouslock(buf1);
+    buf2 = self.toambiguousbuffer(buf2);
+    retval=_bglbuf.compare(buf1, buf2, caseinsensitive);
+    self.ambiguousfree(buf1, lck);
+    return retval;
+  ],
+       getLength [s str n;
+    str = self.new(s);
+     n = str.getLength(); str.free(); 
+    return n;
+  ],
+       getChar [s pos str r;
+    str = self.new(s);
+     r = str.getChar(pos); str.free(); 
+    return r;
+  ],
+       indexOf [s searchText startingIndex str r;
+    str = self.new(s);
+     r = str.indexOf(searchText, startingIndex); str.free(); 
+    return r;
+  ],
+       startsWith [s prefix caseInsensitive str r;
+    str = self.new(s);
+     r = str.startsWith(prefix, caseInsensitive); str.free(); 
+    return r;
+  ],
+       endsWith [s suffix caseInsensitive str r;
+    str = self.new(s);
+     r = str.endsWith(suffix, caseInsensitive); str.free(); 
+    return r;
+  ],
+       contains [s searchText str r;
+    str = self.new(s);
+     r = str.contains(searchText); str.free(); 
+    return r;
+  ],
+       isEmpty [s str r;
+    str = self.new(s);
+     r = str.isEmpty(); str.free(); 
+    return r;
+  ],
+       append [s text str tmp;
+    str = self.new(s);
+     tmp = str.append(text); str.free(); 
+    return tmp;
+  ],
+       appendChar [s c str tmp;
+    str = self.new(s);
+     tmp = str.appendChar(c); str.free(); 
+    return tmp;
+  ],
+       prepend [s text str tmp;
+    str = self.new(s);
+     tmp = str.prepend(text); str.free(); 
+    return tmp;
+  ],
+       toUpper [s str tmp;
+    str = self.new(s);
+     tmp = str.toUpper(); str.free(); 
+    return tmp;
+  ],
+       toLower [s str tmp;
+    str = self.new(s);
+     tmp = str.toLower(); str.free(); 
+    return tmp;
+  ],
+       trimLeft [s str tmp;
+    str = self.new(s);
+     tmp = str.trimLeft(); str.free(); 
+    return tmp;
+  ],
+       trimRight [s str tmp;
+    str = self.new(s);
+     tmp = str.trimRight(); str.free(); 
+    return tmp;
+  ],
+       reverse [s str tmp;
+    str = self.new(s);
+     tmp = str.reverse(); str.free(); 
+    return tmp;
+  ],
+       mid [s start count str tmp;
+    str = self.new(s);
+     tmp = str.mid(start, count); str.free(); 
+    return tmp;
+  ],
+       left [s count str tmp;
+    str = self.new(s);
+     tmp = str.left(count); str.free(); 
+    return tmp;
+  ],
+       right [s count str tmp;
+    str = self.new(s);
+     tmp = str.right(count); str.free(); 
+    return tmp;
+  ],
+       insert [s pos source str tmp;
+    str = self.new(s);
+     tmp = str.insert(pos, source); str.free(); 
+    return tmp;
+  ],
+       delete [s pos count str tmp;
+    str = self.new(s);
+     tmp = str.delete(pos, count); str.free(); 
+    return tmp;
+  ],
+       replace [s searchText replaceText str tmp;
+    str = self.new(s);
+     tmp = str.replace(searchText, replaceText); str.free(); 
+    return tmp;
+  ],
+       replaceAll [s searchText replaceText str tmp;
+    str = self.new(s);
+     tmp = str.replaceAll(searchText, replaceText); str.free(); 
+    return tmp;
   ],
        trim [buf str tmpStr;
     str = self.new(buf);
@@ -938,6 +1117,10 @@ class _bglstring(bglstringpoolreserve)
     ],
     equalsOneOfCaseInsensitive[buf1 buf2 buf3 buf4;
         return self.equalsoneof(buf1, buf2, buf3, buf4, true);
+    ],
+    compareTo[other caseInsensitive retval;
+         retval = _bglBuf.compare(self.getBuf(), _bglStr.toAmbiguousBuffer(other), caseInsensitive); 
+        return retval;
     ],
     indexOf[searchText startingIndex retval;
          retval = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex); 
@@ -1160,13 +1343,19 @@ class _bglstring(bglstringpoolreserve)
     s = _bglStr.new();
     s.setFromLit("Hello");
     s.setFromStr(s.append(", World"));
-    c= s.getChar(0);
+    c= _bglStr.getChar(s, 0);
     if (c=='H') {
         print (string)"ok^";
     }
     s.setChar(0,'J');
     _bglStr.print(s);
     s.free();
+];
+[_bgl_string__opeqeq a b;
+    return _bglstr.areequal(a, b, false);
+];
+[_bgl_string_valueCompare a b;
+    return _bglstr.comparevalues(a, b, false);
 ];
 [_bglCharToLower c;
     switch (c) {

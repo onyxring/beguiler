@@ -86,7 +86,7 @@ This results in a the following grammar...
 Notice that 'type' is ***not*** extended.  
 
 ### Splitting Verbs: a Consequence of `extend only` 
-A point worth noting here is that, following the `extend only` line, 'dial' and 'type' are ***no longer*** grouped together in the mind of I6.  In fact, I6 creates a copy of the defined grammar and duplicates it in a new `Verb` (trigger-word-grouping), ***removing*** 'dial' as a trigger word from the first (leaving only 'type') and making 'dial' the only trigger word in the new `Verb` group. to  Subsequent extensions to 'dial' will ***not*** also expand 'type' and vice versa.  
+A point worth noting here is that, following the `extend only` line, 'dial' and 'type' are ***no longer*** grouped together in the mind of I6.  In fact, I6 creates a copy of the defined grammar and duplicates it in a new `Verb` (trigger-word-grouping), ***removing*** 'dial' as a trigger word from the first (leaving only 'type') and making 'dial' the only trigger word in the new `Verb` group.   Subsequent extensions to 'dial' will ***not*** also expand 'type' and vice versa.  
 
 What this means is that our example so far:
 ```i6
@@ -140,7 +140,7 @@ We get the following...
 | ***input***  | ***3*** | ***NUMBER*** | ***into*** | ***NOUN*** | ***TypeNum***  |      |     |
 As expected, `dial` and `input` have been grouped into a new verb grouping which has their new grammar, and `dial`'s previous grammar; however, `input` has lost its original grammar and inherited `dial`'s. 
 
-This silent loss of all-but-the-last trigger word's grammar is almost certainly an I6 bug, but it needs to considered by the Beguile generation sequence.
+This silent loss of all-but-the-last trigger word's grammar is almost certainly an I6 bug, but it needs to be considered by the Beguile generation sequence.
 ### `replace`: wipe the split word's inherited grammar
 
 `replace` (with `only`) discards the grammar the split word would otherwise inherit, so only the new lines remain:
@@ -166,7 +166,7 @@ dial 5 into keypad
 
 ### Sequencing: `first` and `last`
 
-Grammar is matched top-to-bottom, first good match wins, so ORDER is a real lever. (DM4 §30.)
+Grammar is matched top-to-bottom, first good match wins.  I6 introduces the `first` and `last` qualifiers to help manage this:
 
 - default (no qualifier): new lines are APPENDED to the bottom of the verb's table.
 - `first`: new lines are moved to the TOP, so a narrow new rule is considered before the library's more general ones.
@@ -207,7 +207,7 @@ You alter a previously-defined verb by `extend`-ing it. In an `extend` body the 
 - `grammar -= { ... }` — **remove** matching grammar lines (see below).
 - `replace grammar = { ... }` — **replace** the verb's whole grammar (see below).
 
-A bare `grammar = { ... }` is only valid in the original `verb` declaration; inside an `extend` it is an error that points you to the three forms above. (This is the fix for the old hazard where a stray `=` could silently append — or read as replace.)
+A bare `grammar = { ... }` is only valid in the original `verb` declaration; inside an `extend` it is an error that points you to the three forms above.  
 
 Appending:
 
@@ -243,25 +243,25 @@ extend TypeNum {
 }
 ```
 
-Naming a pattern means "this rule"; naming just the word means "all rules for it." (A single bare word is the only "match-many" form — partial-pattern *prefix* matching is deliberately not supported, because `-= {.give, noun}` would then silently take a more-specific `{.give, noun, .to, noun}` line you never named.)
+Fully qualifying the pattern means "this rule"; specifying  just the first word means "all rules beginning with it." (A single bare word is the only "match-many" form; a partial-pattern *prefix* matching is deliberately not supported, because `-= {.give, noun}` would then silently take a more-specific `{.give, noun, .to, noun}` line you never named.)
 
 Removal is **source-order**: a `-=` only sees the lines declared *before* it (the base plus earlier extends), so a later `+=` of the same line is unaffected. A `-=` that matches nothing **warns** (almost always a typo or a mis-ordering against the matching `+=`).
 
-### On `extern`/library verbs: the two-layer model
-Beguile has only **partial sight** of a library verb, and the two grains behave differently because of it. Beguile knows three things about an extern verb: the **words it claims** (from the binding), the **grammar Beguile itself added** to it with `+=` (word *and* pattern), and nothing about the library's **original** grammar — those patterns are **opaque**.
+### On `extern` verbs: the two-layer model
+Beguile has only **partial sight** of a library verb, and the two grains behave differently because of it. Beguile knows three things about an extern verb: the **trigger words it claims** (from the binding), the **grammar Beguile itself added** to it with `+=` (word *and* pattern), and nothing about the library's **original** grammar — those patterns are **opaque**.
 
-- **Line-level `-=`** can only match Beguile's own additions. The library's original patterns are invisible, so a spec naming one can't match — and Beguile warns, pointing you at the word-level form.
-- **Word-level `-=` EVICTS the word.** It needs no patterns, so it *can* reach the opaque layer: it lowers to I6 `Extend only 'w' replace`, peeling the whole word off the library verb. This is how you reclaim a library word (the keypad case) — see [Beguile with I6 libraries](#beguile-with-i6-libraries) below.
+- **Fully Qualified Pattern `-=`** can only match Beguile's own additions. The library's original patterns are invisible, so an attempt to specify an exact pattern can't match.  Beguile warns you of this, points you at the single word form.
+- **Single Word Pattern `-=` EVICTS the entiere word.** It needs no patterns, so it *can* reach the opaque layer: it lowers to I6 `Extend only 'w' replace`, peeling the whole word off the library verb. This is how you reclaim a library word.
 
 Because Beguile can tell a *claimed* word from an unknown one, the "nothing matched" warning is precise rather than flat:
 
-| you write on an extern verb | outcome |
-| --- | --- |
-| `-= { {.w, pat} }` matches a Beguile-added line | remove that line |
+| you write on an extern verb                                 | outcome                                                                                     |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `-= { {.w, pat} }` matches a Beguile-added line             | remove that line                                                                            |
 | `-= { {.w, pat} }`, no match, but `w` **is** a claimed word | warn: the library's grammar for `w` is opaque — *use `-= { {.w} }` to evict the whole word* |
-| `-= { {.w, pat} }`, no match, `w` not claimed | warn: typo — `w` isn't a word this verb has |
-| `-= { {.w} }`, `w` is claimed (or Beguile added it) | **evict** — `Extend only 'w' replace` |
-| `-= { {.w} }`, `w` neither claimed nor added | warn: nothing to evict |
+| `-= { {.w, pat} }`, no match, `w` not claimed               | warn: typo — `w` isn't a word this verb has                                                 |
+| `-= { {.w} }`, `w` is claimed (or Beguile added it)         | **evict** — `Extend only 'w' replace`                                                       |
+| `-= { {.w} }`, `w` neither claimed nor added                | warn: nothing to evict                                                                      |
 
 ## Replacing grammar in Beguile
 To replace a verb's existing grammar wholesale rather than edit it, put the `replace` qualifier on the `grammar` assignment inside an `extend`. (`grammar += { ... }` appends and `grammar -= { ... }` removes, as above; `replace grammar = { ... }` wipes the whole verb first.)
@@ -294,7 +294,7 @@ Verb 'steal' 'grab' 'pilfer' = 'take';
 
 ```bgl
 extend Take {
-    synonyms = {.steal, .grab, .pilfer};   // emits: Verb 'steal' 'grab' 'pilfer' = 'take';
+    synonyms = {.steal, .grab, .pilfer};   
 }
 ```
 

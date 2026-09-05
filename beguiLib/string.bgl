@@ -290,10 +290,174 @@ object _bglStr {
     }
 
     // Equality check across any combination of string-shaped values.
+    // Both operands go through toAmbiguousBuffer, which hands back an ephemeral
+    // (already-freed) buffer for a literal. Converting the second operand allocates
+    // again and would otherwise be handed the very buffer the first one is using —
+    // making every literal-vs-literal comparison compare a value with itself. Lock
+    // the first result across the second conversion, per toAmbiguousBuffer's contract.
     bool areEqual(var buf1, var buf2, bool caseInsensitive = false) {
         buf1 = self.toAmbiguousBuffer(buf1);
+        bool lck = self.ambiguousLock(buf1);
         buf2 = self.toAmbiguousBuffer(buf2);
-        return _bglBuf.equals(buf1, buf2, caseInsensitive);
+        bool retval = _bglBuf.equals(buf1, buf2, caseInsensitive);
+        self.ambiguousFree(buf1, lck);
+        return retval;
+    }
+
+    // Ordering across any combination of string-shaped values. Returns -1/0/1 in
+    // the qsort tradition, so it can be handed straight to array<T>.sort().
+    int compareValues(var buf1, var buf2, bool caseInsensitive = false) {
+        buf1 = self.toAmbiguousBuffer(buf1);
+        bool lck = self.ambiguousLock(buf1);       // see areEqual — hold across the 2nd conversion
+        buf2 = self.toAmbiguousBuffer(buf2);
+        int retval = _bglBuf.compare(buf1, buf2, caseInsensitive);
+        self.ambiguousFree(buf1, lck);
+        return retval;
+    }
+
+    // Character count of any string-shaped value. Takes the value as a PARAMETER so
+    // new() can detect literal-vs-instance; a `$self.getLength()` message send would
+    // fault on an array element or object property, which hold packed literals.
+    // Allocate/use/free is net-zero on the pool (same shape as trim below).
+    int getLength(var s) {
+        var str = self.new(s);
+        int n;
+        #i6 { n = str.getLength(); str.free(); }
+        return n;
+    }
+
+    // ── Value-based surface ───────────────────────────────────────────────────
+    // Each takes the string as a PARAMETER so new() can detect literal-vs-instance.
+    // The emitter surface on `string` routes here rather than sending a message to
+    // the receiver, which would fault whenever the receiver is an array element or
+    // object property (both hold packed literals). allocate/use/free is net-zero on
+    // the pool. Mutating members (operator =, +=, []=, capture/release) are NOT here:
+    // they change the receiver in place and genuinely require a real instance.
+    int getChar(var s, int pos) {
+        var str = self.new(s);
+        int r;
+        #i6 { r = str.getChar(pos); str.free(); }
+        return r;
+    }
+    int indexOf(var s, var searchText, int startingIndex) {
+        var str = self.new(s);
+        int r;
+        #i6 { r = str.indexOf(searchText, startingIndex); str.free(); }
+        return r;
+    }
+    bool startsWith(var s, var prefix, bool caseInsensitive) {
+        var str = self.new(s);
+        bool r;
+        #i6 { r = str.startsWith(prefix, caseInsensitive); str.free(); }
+        return r;
+    }
+    bool endsWith(var s, var suffix, bool caseInsensitive) {
+        var str = self.new(s);
+        bool r;
+        #i6 { r = str.endsWith(suffix, caseInsensitive); str.free(); }
+        return r;
+    }
+    bool contains(var s, var searchText) {
+        var str = self.new(s);
+        bool r;
+        #i6 { r = str.contains(searchText); str.free(); }
+        return r;
+    }
+    bool isEmpty(var s) {
+        var str = self.new(s);
+        bool r;
+        #i6 { r = str.isEmpty(); str.free(); }
+        return r;
+    }
+    var append(var s, var text) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.append(text); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var appendChar(var s, int c) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.appendChar(c); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var prepend(var s, var text) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.prepend(text); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var toUpper(var s) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.toUpper(); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var toLower(var s) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.toLower(); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var trimLeft(var s) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.trimLeft(); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var trimRight(var s) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.trimRight(); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var reverse(var s) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.reverse(); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var mid(var s, int start, int count) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.mid(start, count); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var left(var s, int count) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.left(count); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var right(var s, int count) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.right(count); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var insert(var s, int pos, var source) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.insert(pos, source); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var delete(var s, int pos, int count) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.delete(pos, count); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var replace(var s, var searchText, var replaceText) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.replace(searchText, replaceText); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
+    }
+    var replaceAll(var s, var searchText, var replaceText) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.replaceAll(searchText, replaceText); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
     }
 
     // Trim leading/trailing whitespace, returning an ephemeral result.
@@ -529,6 +693,16 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 
     bool equalsOneOfCaseInsensitive(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0) {
         return self.equalsOneOf(buf1, buf2, buf3, buf4, true);
+    }
+
+    // ── Ordering ─────────────────────────────────────────────────────────────
+    // Negative when self sorts before `other`, 0 when equal, positive when after.
+    // Note the operand order: self is the LEFT side, so `a.compareTo(b) < 0`
+    // reads as "a before b" — the same sense the `<` operator gives you.
+    int compareTo(var other, bool caseInsensitive = false) {
+        int retval;
+        #i6 { retval = _bglBuf.compare(self.getBuf(), _bglStr.toAmbiguousBuffer(other), caseInsensitive); }
+        return retval;
     }
 
     // ── Search ───────────────────────────────────────────────────────────────
@@ -811,6 +985,8 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 // the _bglString class methods defined in the I6 island (one-line .X() calls).
 // Helpers that operate on bare literals/raw buffers route through _bglStr.
 //------------------------------------------------------------------------------
+
+
 extend class string {
     // Lifecycle
     emitter void init()   { $self = _bglStr.new(); }
@@ -825,8 +1001,8 @@ extend class string {
 
     // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
     // str3 = str1 + str2  =>  str3.set(str1.append(str2))
-    emitter string operator + (stringLiteral v) { $self.append($v) }
-    emitter string operator + (string v)        { $self.append($v) }
+    emitter string operator + (stringLiteral v) { _bglStr.append($val, $v) }
+    emitter string operator + (string v)        { _bglStr.append($val, $v) }
 
     // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
     // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
@@ -835,15 +1011,46 @@ extend class string {
     emitter string operator += (string v)        { $self.setFromStr($self.append($v)) }
 
     // Equality — Phase B typed dispatch
-    emitter eBool operator == (stringLiteral v) { $self.equalsLit($v) }
-    emitter eBool operator == (string v)        { $self.equalsStr($v) }
+    // `replace` — core declares these as address equality; <string> upgrades them to
+    // content comparison. `!=` must be replaced alongside `==`, or the two would
+    // disagree (content vs address) on the same pair of values.
+    replace emitter eBool operator == (stringLiteral v) { _bglStr.areEqual($val, $v, false) }
+    replace emitter eBool operator == (string v)        { _bglStr.areEqual($val, $v, false) }
+    replace emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
+    replace emitter eBool operator != (string v)        { (~~_bglStr.areEqual($val, $v, false)) }
 
     // Switch comparison — Phase B typed dispatch
-    emitter eBool operator switch(stringLiteral v) { $self.equalsLit($v) }
-    emitter eBool operator switch(string v)        { $self.equalsStr($v) }
+    emitter eBool operator switch(stringLiteral v) { _bglStr.areEqual($val, $v, false) }
+    emitter eBool operator switch(string v)        { _bglStr.areEqual($val, $v, false) }
+
+    // Comparison published for generic containers. `static` means no receiver, so these
+    // emit as free routines whose address array<T> can be handed — the only shape that can
+    // serve a PACKED LITERAL element, which has no properties to dispatch on. Both operands
+    // arrive as parameters, so toAmbiguousBuffer can sort out literal-vs-instance for each.
+    // `static` = no receiver, so this emits as a free routine whose address array<T> can be
+    // handed — the only shape that can serve a PACKED LITERAL element, which has no properties
+    // to dispatch on. Taking both operands is what makes that possible. A static operator is
+    // never selected at an ordinary `a == b` site; the instance operators above own those.
+    static bool operator == (var a, var b) { return _bglStr.areEqual(a, b, false); }
+    // Ordering has no operator spelling that yields -1/0/+1, so it stays a named static.
+    static int  valueCompare(var a, var b) { return _bglStr.compareValues(a, b, false); }
+
+    // Ordering — lexicographic by content, NOT by the packed address. Each
+    // yields a bool, so `a < b` reads the way it does for numbers.
+    //
+    // A sort comparator needs a signed -1/0/+1 ordering rather than a bool, so
+    // reach for compareTo() there:  arr.sort((string a, string b) => a.compareTo(b));
+    emitter eBool operator <  (stringLiteral v) { (_bglStr.compareValues($val, $v, false) < 0) }
+    emitter eBool operator <  (string v)        { (_bglStr.compareValues($val, $v, false) < 0) }
+    emitter eBool operator >  (stringLiteral v) { (_bglStr.compareValues($val, $v, false) > 0) }
+    emitter eBool operator >  (string v)        { (_bglStr.compareValues($val, $v, false) > 0) }
+    emitter eBool operator <= (stringLiteral v) { (_bglStr.compareValues($val, $v, false) <= 0) }
+    emitter eBool operator <= (string v)        { (_bglStr.compareValues($val, $v, false) <= 0) }
+    emitter eBool operator >= (stringLiteral v) { (_bglStr.compareValues($val, $v, false) >= 0) }
+    emitter eBool operator >= (string v)        { (_bglStr.compareValues($val, $v, false) >= 0) }
 
     // Indexed character access
-    emitter char operator[](int pos)                  { $self.getChar($pos) }
+    emitter char operator[](int pos)                  { _bglStr.getChar($val, $pos) }
     emitter char operator[]=(int pos, char c)         { $self.setChar($pos,$c) }
     emitter char operator[]=(int pos, charLiteral c)  { $self.setChar($pos,$c) }
 
@@ -851,33 +1058,35 @@ extend class string {
     replace emitter eBool operator ?() { $self ~= 0 }
 
     // Methods
-    replace emitter void  print()                          { $self.print() }
+    replace emitter void  print()                          { _bglStr.print($val) }
 
-    emitter string  append(string v)                      { $self.append($v) }
-    emitter string  append(char v)                        { $self.appendChar($v) }
-    emitter string  prepend(var v)                        { $self.prepend($v) }
-    emitter string  toUpper()                             { $self.toUpper() }
-    emitter string  toLower()                             { $self.toLower() }
-    emitter string  trim()                                { $self.trim() }
-    emitter string  trimLeft()                            { $self.trimLeft() }
-    emitter string  trimRight()                           { $self.trimRight() }
-    emitter string  reverse()                             { $self.reverse() }
-    emitter string  mid(int start, int count)             { $self.mid($start, $count) }
-    emitter string  left(int count)                       { $self.left($count) }
-    emitter string  right(int count)                      { $self.right($count) }
-    emitter string  insert(int pos, var source)           { $self.insert($pos, $source) }
-    emitter string  delete(int pos, int count)            { $self.delete($pos, $count) }
-    emitter string  replace(var searchText, var replaceText)    { $self.replace($searchText, $replaceText) }
-    emitter string  replaceAll(var searchText, var replaceText) { $self.replaceAll($searchText, $replaceText) }
+    emitter string  append(string v)                      { _bglStr.append($val, $v) }
+    emitter string  append(char v)                        { _bglStr.appendChar($val, $v) }
+    emitter string  prepend(var v)                        { _bglStr.prepend($val, $v) }
+    emitter string  toUpper()                             { _bglStr.toUpper($val) }
+    emitter string  toLower()                             { _bglStr.toLower($val) }
+    emitter string  trim()                                { _bglStr.trim($val) }
+    emitter string  trimLeft()                            { _bglStr.trimLeft($val) }
+    emitter string  trimRight()                           { _bglStr.trimRight($val) }
+    emitter string  reverse()                             { _bglStr.reverse($val) }
+    emitter string  mid(int start, int count)             { _bglStr.mid($val, $start, $count) }
+    emitter string  left(int count)                       { _bglStr.left($val, $count) }
+    emitter string  right(int count)                      { _bglStr.right($val, $count) }
+    emitter string  insert(int pos, var source)           { _bglStr.insert($val, $pos, $source) }
+    emitter string  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
+    emitter string  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
+    emitter string  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
     emitter string  format(var pattern)                   { $self.format($pattern) }
     emitter string  format(var pattern, var p1)           { $self.format($pattern, $p1) }
     emitter string  format(var pattern, var p1, var p2)   { $self.format($pattern, $p1, $p2) }
-    emitter int     getLength()                           { $self.getLength() }
-    emitter int     indexOf(var searchText)               { $self.indexOf($searchText, 0) }
-    emitter eBool   startsWith(var prefix)                { $self.startsWith($prefix, false) }
-    emitter eBool   endsWith(var suffix)                  { $self.endsWith($suffix, false) }
-    emitter eBool   contains(var searchText)              { $self.contains($searchText) }
-    emitter eBool   isEmpty()                             { $self.isEmpty() }
+    emitter int     getLength()                           { _bglStr.getLength($val) }
+    emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
+    emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
+    emitter int     indexOf(var searchText)               { _bglStr.indexOf($val, $searchText, 0) }
+    emitter eBool   startsWith(var prefix)                { _bglStr.startsWith($val, $prefix, false) }
+    emitter eBool   endsWith(var suffix)                  { _bglStr.endsWith($val, $suffix, false) }
+    emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
+    emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
     emitter void    capture()                             { $self.capture() }
     emitter void    release()                             { $self.release() }
     emitter void    captureOutput(object obj, var prop)   { $self.captureOutput($obj, $prop) }
@@ -886,6 +1095,15 @@ extend class string {
 extend class stringLiteral {
     emitter string operator + (string v)      { _bglStr.new($self).append($v) }
     emitter string operator + (charLiteral c) { _bglStr.new($self).appendChar($c) }
+
+    // Upgrade the literal's own comparison too. Core declares these as address
+    // equality; without replacing them here a literal-on-the-left comparison
+    // (`"a" == "a"`) would keep core semantics even with <string> included, while
+    // the same test with a string on the left compared by content.
+    replace emitter eBool operator == (stringLiteral v) { _bglStr.areEqual($val, $v, false) }
+    replace emitter eBool operator == (string v)        { _bglStr.areEqual($val, $v, false) }
+    replace emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
+    replace emitter eBool operator != (string v)        { (~~_bglStr.areEqual($val, $v, false)) }
 }
 
 replace emitter void print(string str) { _bglStr.print($str) }

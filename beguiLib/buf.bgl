@@ -391,6 +391,32 @@ object _bglBuf {
         return true;
     }
 
+    // compare: lexicographic (byte-order) ordering of two bufs' character data.
+    // Returns -1 when buf1 sorts before buf2, 0 when they are equal, 1 when after.
+    // Comparison runs to the shorter length; if neither differs there, the shorter
+    // buffer sorts first, so "car" < "cart". Optional case-insensitive compare via
+    // _bglCharToLower, matching equals() above.
+    //
+    // This is byte order, not locale collation: on a Z-machine that is ZSCII, so
+    // all uppercase letters sort ahead of all lowercase ones ("Zoo" before "apple").
+    // Pass caseInsensitive when you want dictionary-style ordering.
+    int compare(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
+        int len1 = length(buf1);
+        int len2 = length(buf2);
+        int lim  = len1 < len2 ? len1 : len2;
+        for(int t = 0; t < lim; t++){
+            int c1 = _bglGetByte(buf1, t + bgl.wordsize);
+            int c2 = _bglGetByte(buf2, t + bgl.wordsize);
+            if(caseInsensitive){
+                c1 = _bglCharToLower(c1);
+                c2 = _bglCharToLower(c2);
+            }
+            if(c1 != c2) return c1 < c2 ? -1 : 1;
+        }
+        if(len1 == len2) return 0;
+        return len1 < len2 ? -1 : 1;
+    }
+
     // startsWith: does buf1's prefix equal buf2's entire content?
     bool startsWith(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
         int len2 = length(buf2);

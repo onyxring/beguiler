@@ -98,12 +98,20 @@ object _bglArray
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [obj prop val sz t;
+       indexOf [obj prop val eq eqProp sz t e;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
-        if (self.get(obj,prop,t)==val) {
+        e = self.get(obj,prop,t);
+        if (e==val) {
             return t;
         }
+        if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
+            return t;
+        }
+        
+                if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
+                   && e provides eqProp && e.(eqProp)(val)) return t;
+            
     }
     return -1;
   ],
@@ -164,11 +172,27 @@ object _bglArray
     self.set(obj, prop, len - 1, 0);
     self.setLength(obj, prop, len - 1);
   ],
-       removeValue [obj prop val pos len;
+       removeValue [obj prop val eq eqProp pos len e hit;
     pos = 0;
     len=self.length(obj,prop);
     while (pos < len) {
-        if (self.get(obj,prop,pos)==val) {
+        e = self.get(obj,prop,pos);
+        hit=false;
+        if (e==val) {
+            hit = true;
+        }
+        if (~~hit) {
+            if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
+                hit = true;
+            }
+        }
+        if (~~hit) {
+            
+                    if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
+                       && e provides eqProp && e.(eqProp)(val)) hit = true;
+                
+        }
+        if (hit) {
             self.remove(obj, prop, pos);
             len = self.length(obj,prop);
         }
@@ -215,6 +239,14 @@ object _bglArray
     v = self.get(obj,prop,len - 1);
     self.remove(obj, prop, len - 1);
     return v;
+  ],
+       sortDefault [obj prop cmp;
+    if (cmp==0) {
+        self.sort(obj, prop, _bglarraycompareasc);
+    }
+    else {
+        self.sort(obj, prop, cmp);
+    }
   ],
        sort [obj prop compare len i key j;
     len=self.length(obj,prop);
@@ -271,30 +303,30 @@ array g_descending table 1 2 3 4 5 5 $9084;
     print _bglArray.size(g_nums, 0);
     print _bglArray.size(g_sparse, 0);
     print _bglArray.size(g_partial, 0);
-    print _bglArray.indexOf(g_nums, 0, 30);
-    print _bglArray.indexOf(g_nums, 0, 99);
-    print _bglArray.indexOf(g_partial, 0, 9);
-    print _bglArray.indexOf(g_nums, 0, 40);
-    if ((_bglArray.indexOf(g_nums, 0, 20) >= 0)) {
+    print _bglArray.indexOf(g_nums, 0, 30, 0, 0);
+    print _bglArray.indexOf(g_nums, 0, 99, 0, 0);
+    print _bglArray.indexOf(g_partial, 0, 9, 0, 0);
+    print _bglArray.indexOf(g_nums, 0, 40, 0, 0);
+    if ((_bglArray.indexOf(g_nums, 0, 20, 0, 0) >= 0)) {
         print 1;
     }
-    if (~~(_bglArray.indexOf(g_nums, 0, 99) >= 0)) {
+    if (~~(_bglArray.indexOf(g_nums, 0, 99, 0, 0) >= 0)) {
         print 1;
     }
-    if (~~(_bglArray.indexOf(g_nums, 0, 20) >= 0)) {
+    if (~~(_bglArray.indexOf(g_nums, 0, 20, 0, 0) >= 0)) {
         print 0;
     }
     else {
         print 1;
     }
-    if ((_bglArray.indexOf(g_nums, 0, 99) >= 0)) {
+    if ((_bglArray.indexOf(g_nums, 0, 99, 0, 0) >= 0)) {
         print 0;
     }
     else {
         print 1;
     }
-    print _bglArray.indexOf(g_rooms, 0, r2);
-    if ((_bglArray.indexOf(g_rooms, 0, r3) >= 0)) _bgl_temp0 = 1; else _bgl_temp0 = 0;
+    print _bglArray.indexOf(g_rooms, 0, r2, 0, 0);
+    if ((_bglArray.indexOf(g_rooms, 0, r3, 0, 0) >= 0)) _bgl_temp0 = 1; else _bgl_temp0 = 0;
     print _bgl_temp0;
     _bglArray.swap(g_sw, 0, 0, 4);
     print  g_sw-->(0+1) ;
@@ -317,7 +349,7 @@ array g_descending table 1 2 3 4 5 5 $9084;
     g_w-->(2+1) = 44;
     print _bglArray.length(g_w, 0);
     print _bglArray.size(g_w, 0);
-    print _bglArray.indexOf(g_w, 0, 43);
+    print _bglArray.indexOf(g_w, 0, 43, 0, 0);
     if (_bglArray.append(g_ap, 0, 10)) _bgl_temp1 = 1; else _bgl_temp1 = 0;
     print _bgl_temp1;
     if (_bglArray.append(g_ap, 0, 20)) _bgl_temp2 = 1; else _bgl_temp2 = 0;
@@ -352,7 +384,7 @@ array g_descending table 1 2 3 4 5 5 $9084;
     print  g_rm-->(3+1) ;
     _bglArray.remove(g_rm, 0, 99);
     print _bglArray.length(g_rm, 0);
-    _bglArray.removeValue(g_rv, 0, 7);
+    _bglArray.removeValue(g_rv, 0, 7, 0, 0);
     print _bglArray.length(g_rv, 0);
     print  g_rv-->(0+1) ;
     print  g_rv-->(1+1) ;
@@ -378,7 +410,7 @@ array g_descending table 1 2 3 4 5 5 $9084;
     print _bglArray.popEnd(g_back, 0);
     print _bglArray.length(g_back, 0);
     print _bglArray.peekEnd(g_back, 0);
-    _bglArray.sort(g_unsorted, 0, _bglArrayCompareAsc);
+    _bglArray.sortDefault(g_unsorted, 0, 0);
     print  g_unsorted-->(0+1) ;
     print  g_unsorted-->(1+1) ;
     print  g_unsorted-->(2+1) ;

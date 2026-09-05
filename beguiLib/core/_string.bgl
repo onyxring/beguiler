@@ -4,6 +4,15 @@
 extern emitter class stringLiteral:_bglObject{
     emitter string operator();
     replace emitter void print(){ print (string)$val; }
+
+    // Comparison in core is ADDRESS equality — the I6 semantic. Two identical
+    // literals are separate packed strings, so `"a" == "a"` is false here. This is
+    // deliberate: core keeps I6's model and costs nothing. `#include <string>`
+    // replaces these with content comparison.
+    emitter eBool operator == (stringLiteral v) { $val == $v }
+    emitter eBool operator == (string v)        { $val == $v }
+    emitter eBool operator != (stringLiteral v) { $val ~= $v }
+    emitter eBool operator != (string v)        { $val ~= $v }
 }       
 
 extern emitter class interpolatedStringLiteral:_bglObject{} //interpolatedStrings are smoke and mirrors.  All functionality is implemented by the compiler. NOTE: _bglObject no longer carries print(), so there's no inherited member to worry about here; add a `replace emitter void print()` only if `@"{actor} was here".print();` should become a thing (as it is for other literals).
@@ -14,6 +23,12 @@ extern emitter class string : _bglObject{
     }
     emitter eBool operator ?() { $val ~= 0 }
     replace emitter void print(){ print (string)$val; }
+
+    // Address equality — see the note on stringLiteral above.
+    emitter eBool operator == (string v)        { $val == $v }
+    emitter eBool operator == (stringLiteral v) { $val == $v }
+    emitter eBool operator != (string v)        { $val ~= $v }
+    emitter eBool operator != (stringLiteral v) { $val ~= $v }
 }
 
 emitter void print(string str){ print (string)$str; }

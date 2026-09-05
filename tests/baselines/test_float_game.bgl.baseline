@@ -84,12 +84,20 @@ object _bglArray
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [obj prop val sz t;
+       indexOf [obj prop val eq eqProp sz t e;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
-        if (self.get(obj,prop,t)==val) {
+        e = self.get(obj,prop,t);
+        if (e==val) {
             return t;
         }
+        if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
+            return t;
+        }
+        
+                if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
+                   && e provides eqProp && e.(eqProp)(val)) return t;
+            
     }
     return -1;
   ],
@@ -150,11 +158,27 @@ object _bglArray
     self.set(obj, prop, len - 1, 0);
     self.setLength(obj, prop, len - 1);
   ],
-       removeValue [obj prop val pos len;
+       removeValue [obj prop val eq eqProp pos len e hit;
     pos = 0;
     len=self.length(obj,prop);
     while (pos < len) {
-        if (self.get(obj,prop,pos)==val) {
+        e = self.get(obj,prop,pos);
+        hit=false;
+        if (e==val) {
+            hit = true;
+        }
+        if (~~hit) {
+            if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
+                hit = true;
+            }
+        }
+        if (~~hit) {
+            
+                    if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
+                       && e provides eqProp && e.(eqProp)(val)) hit = true;
+                
+        }
+        if (hit) {
             self.remove(obj, prop, pos);
             len = self.length(obj,prop);
         }
@@ -201,6 +225,14 @@ object _bglArray
     v = self.get(obj,prop,len - 1);
     self.remove(obj, prop, len - 1);
     return v;
+  ],
+       sortDefault [obj prop cmp;
+    if (cmp==0) {
+        self.sort(obj, prop, _bglarraycompareasc);
+    }
+    else {
+        self.sort(obj, prop, cmp);
+    }
   ],
        sort [obj prop compare len i key j;
     len=self.length(obj,prop);
@@ -353,6 +385,14 @@ runningavg avg;
     _bglFloatPrintDecimal(_bglFloatFloor(_bglFloatFdiv(_bglFloatNumtof(38), _bglFloatNumtof(10))));
     print (string)"^";
 ];
+[_bgl_float_valueCompare a b;
+    
+            if(_bglFloatLt(a, b)) return -1;
+            if(_bglFloatGt(a, b)) return 1;
+            return 0;
+        
+    return 0;
+];
 [_bglFloatAbs v;
     if (_bglfloatlt(v,_bglFloatNumtof(0))) {
         return _bglFloatFsub(_bglFloatNumtof(0), v);
@@ -394,6 +434,10 @@ runningavg avg;
 [_bglFloatFsub x y r;
      @fsub x y r; 
     return r;
+];
+[_bglFloatGt x y;
+     @jfgt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
 ];
 [_bglFloatLe x y;
      @jfle x y ?yes; rfalse; .yes; rtrue; 

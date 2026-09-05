@@ -49,6 +49,7 @@
 #include "helpers.h"
 #include "settings.h"
 #include "typeDef.h"
+#include "i6Emitter.h"
 #include "bglParser.h"
 #include "fileLexer.h"
 #include "token.h"
@@ -1017,6 +1018,56 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
 // ===============================================================================
 // Identifier qualification + small lookup utilities
 // ===============================================================================
+// `$elemeq` / `$elemcmp` — the routine implementing a comparison for an array's element
+// type, or "0" when a raw word comparison is correct (int, char, object identity — the
+// overwhelmingly common case, and today's behaviour).
+//
+// A type publishes its comparison by declaring a zero-arg emitter whose body is nothing but
+// the routine's name:
+//     extend class string { emitter var valueEquals() { _bglStr.areEqual } }
+// and the compiler splices that name in as a routine address.
+//
+// Why a routine and not the operator itself: an array element may be a PACKED LITERAL, which
+// has no dispatch surface at all — no properties, not an object. A property method, a
+// `provides` probe, or a class message can never reach one. Only a routine taking the value
+// as a parameter can. The emitter-body form is used because `string` is an extern class and
+// so cannot host a non-emitter member.
+//
+// Nothing type-specific lives here: the compiler looks up a member by name and emits whatever
+// routine that member names. A new type gains array-aware comparison purely in the BLR.
+string bglParser::arrayElementOpRoutine(const string& elemType, const string& memberName){
+    if(elemType.empty()) return "0";
+    auto* cd = dynamic_cast<classDef*>(&languageService.getType(elemType));
+    if(cd == nullptr) return "0";
+    // A `static` method on the type: emits as a free routine, so its name IS the address.
+    typeMember* m = findMemberInHierarchy(cd, [&](typeMember* mm){
+        auto* fn = dynamic_cast<functionDef*>(mm);
+        return fn && fn->name == memberName && fn->isStatic && !fn->isEmitter;
+    });
+    if(auto* fn = dynamic_cast<functionDef*>(m))
+        return i6Emitter::staticRoutineName(cd, fn);
+    return "0";
+}
+
+// Property name of a non-emitter operator on the element type, for elements that ARE
+// objects. `operator ==` is mangled to `_opeqeq` at declaration, becoming a real I6 property
+// method — so the array can send the message straight to the element (`e.(prop)(val)`),
+// with the element itself as the receiver. That is why this works where a routine address
+// was needed for strings: a user class element is always an object, so there IS a receiver.
+// Emitter operators are skipped: they inline and have no property to call.
+string bglParser::arrayElementOpProperty(const string& elemType, const string& opName){
+    if(elemType.empty()) return "0";
+    auto* cd = dynamic_cast<classDef*>(&languageService.getType(elemType));
+    if(cd == nullptr) return "0";
+    typeMember* m = findMemberInHierarchy(cd, [&](typeMember* mm){
+        auto* fn = dynamic_cast<functionDef*>(mm);
+        return fn && fn->name == opName && !fn->isEmitter && fn->params.size() == 1;
+    });
+    auto* fn = dynamic_cast<functionDef*>(m);
+    if(fn == nullptr || fn->i6name.empty()) return "0";
+    return fn->i6name;
+}
+
 bool bglParser::splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                      string& ownerOut, string& propOut){
     if(func == nullptr) return false;

@@ -236,7 +236,10 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         token returnType;
         token name;
         // emitter class: 'emitter' keyword is optional — all members are implicitly emitters
-        if(newClass.isEmitterClass && !isEmitter) isEmitter = true;
+        // Members of an emitter class are implicitly emitters — except a `static`, which is
+        // deliberately a real routine (no receiver, emitted free). That is how an emitter
+        // class can still publish something callable.
+        if(newClass.isEmitterClass && !isEmitter && !q.isStatic) isEmitter = true;
         // Context-specific validation
         if(q.isExtern && !isExtend)
             parsingError("'extern' is not valid inside a class body (use on the class declaration itself)");
@@ -397,13 +400,20 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             }
             if(isEmitter && !funcDef.params.empty() && (funcDef.name == "init" || funcDef.name == "deinit"))
                 parsingError(format("Emitter '{0}' cannot accept parameters", funcDef.name));
+            if(isMemberStatic && q.isEmitter)
+                parsingError(format("'{0}': 'static' and 'emitter' cannot be combined — an emitter inlines at the call site and has no routine to make static", funcDef.name));
             if(!isEmitter && (funcDef.name == "switch" || funcDef.name == "?"))
                 parsingError(format("operator {0}() must be declared as an emitter", funcDef.name));
             if(!isEmitter && (funcDef.name == "init" || funcDef.name == "deinit"))
                 parsingError(format("'{0}' must be declared as an emitter", funcDef.name));
-            if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter){
-                // extern/alias class non-emitter methods not allowed
-                parsingError(format("Non-emitter function '{0}' is not allowed in an extern or alias class", funcDef.name));
+            funcDef.isStatic = isMemberStatic;
+            if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter && !funcDef.isStatic){
+                // extern/alias class non-emitter INSTANCE methods not allowed: they would need to
+                // emit a property routine on a class Beguile does not own. A `static` method has no
+                // receiver, so it emits as a free routine and carries no such requirement — which is
+                // how a bare-word type (string, float) publishes a callable comparison.
+                parsingError(format("Non-emitter function '{0}' is not allowed in an extern or alias class "
+                                    "(a 'static' method is allowed — it needs no instance)", funcDef.name));
             } else if(funcDef.isEmitter && file.peekToken().is(token::endStatement)){
                 // Semicolon-terminated emitter: pass-through (value unchanged)
                 file.getToken(); // consume ';'

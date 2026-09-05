@@ -268,6 +268,10 @@ class functionDef:public typeMember, public typeDef{
                                    // referenced (called) somewhere in the final output; otherwise it evaporates.
                                    // The routine sits in superposition until a call "observes" it (see i6Emitter).
         bool isValueEmitter = false; // true for emitter values (no parens): expands inline as expression or statement
+        bool isStatic = false;     // `static` method: no receiver, so it emits as a FREE I6 routine with a
+                                   // mangled name rather than a property routine on the class. Permitted on
+                                   // extern/emitter classes precisely because it needs no instance backing —
+                                   // this is how a bare-word type (string, float) publishes a callable.
         typeDef returnType;
         vector<paramDef*> params;
         codeBlock* body = nullptr;

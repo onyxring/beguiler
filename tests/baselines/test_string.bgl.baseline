@@ -6,6 +6,9 @@ Constant beguiler = 1000;
 Constant _BGL_WORLD_BUFSIZE = 128;
 global _bgl_temp0;
 global _bgl_temp1;
+global _bgl_temp2;
+global _bgl_temp3;
+global _bgl_temp4;
 global _bgl_sw;
 
     Default bglStringDefaultSize 500;
@@ -106,12 +109,20 @@ object _bglArray
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [obj prop val sz t;
+       indexOf [obj prop val eq eqProp sz t e;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
-        if (self.get(obj,prop,t)==val) {
+        e = self.get(obj,prop,t);
+        if (e==val) {
             return t;
         }
+        if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
+            return t;
+        }
+        
+                if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
+                   && e provides eqProp && e.(eqProp)(val)) return t;
+            
     }
     return -1;
   ],
@@ -172,11 +183,27 @@ object _bglArray
     self.set(obj, prop, len - 1, 0);
     self.setLength(obj, prop, len - 1);
   ],
-       removeValue [obj prop val pos len;
+       removeValue [obj prop val eq eqProp pos len e hit;
     pos = 0;
     len=self.length(obj,prop);
     while (pos < len) {
-        if (self.get(obj,prop,pos)==val) {
+        e = self.get(obj,prop,pos);
+        hit=false;
+        if (e==val) {
+            hit = true;
+        }
+        if (~~hit) {
+            if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
+                hit = true;
+            }
+        }
+        if (~~hit) {
+            
+                    if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
+                       && e provides eqProp && e.(eqProp)(val)) hit = true;
+                
+        }
+        if (hit) {
             self.remove(obj, prop, pos);
             len = self.length(obj,prop);
         }
@@ -223,6 +250,14 @@ object _bglArray
     v = self.get(obj,prop,len - 1);
     self.remove(obj, prop, len - 1);
     return v;
+  ],
+       sortDefault [obj prop cmp;
+    if (cmp==0) {
+        self.sort(obj, prop, _bglarraycompareasc);
+    }
+    else {
+        self.sort(obj, prop, cmp);
+    }
   ],
        sort [obj prop compare len i key j;
     len=self.length(obj,prop);
@@ -386,6 +421,29 @@ object _bglBuf
         }
     }
     return true;
+  ],
+       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2;
+    len1=self.length(buf1);
+    len2=self.length(buf2);
+    if (len1 < len2) _bgl_temp0 = len1; else _bgl_temp0 = len2;
+    lim=_bgl_temp0;
+    for (t = 0 : t < lim : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchartolower(c1);
+            c2 = _bglchartolower(c2);
+        }
+        if (c1 ~= c2) {
+            if (c1 < c2) _bgl_temp1 = -1; else _bgl_temp1 = 1;
+            return _bgl_temp1;
+        }
+    }
+    if (len1 == len2) {
+        return 0;
+    }
+    if (len1 < len2) _bgl_temp2 = -1; else _bgl_temp2 = 1;
+    return _bgl_temp2;
   ],
        startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
     len2=self.length(buf2);
@@ -776,10 +834,131 @@ object _bglStr
             
     }
   ],
-       areEqual [buf1 buf2 caseInsensitive;
+       areEqual [buf1 buf2 caseInsensitive lck retval;
     buf1 = self.toambiguousbuffer(buf1);
+    lck=self.ambiguouslock(buf1);
     buf2 = self.toambiguousbuffer(buf2);
-    return _bglbuf.equals(buf1, buf2, caseinsensitive);
+    retval=_bglbuf.equals(buf1, buf2, caseinsensitive);
+    self.ambiguousfree(buf1, lck);
+    return retval;
+  ],
+       compareValues [buf1 buf2 caseInsensitive lck retval;
+    buf1 = self.toambiguousbuffer(buf1);
+    lck=self.ambiguouslock(buf1);
+    buf2 = self.toambiguousbuffer(buf2);
+    retval=_bglbuf.compare(buf1, buf2, caseinsensitive);
+    self.ambiguousfree(buf1, lck);
+    return retval;
+  ],
+       getLength [s str n;
+    str = self.new(s);
+     n = str.getLength(); str.free(); 
+    return n;
+  ],
+       getChar [s pos str r;
+    str = self.new(s);
+     r = str.getChar(pos); str.free(); 
+    return r;
+  ],
+       indexOf [s searchText startingIndex str r;
+    str = self.new(s);
+     r = str.indexOf(searchText, startingIndex); str.free(); 
+    return r;
+  ],
+       startsWith [s prefix caseInsensitive str r;
+    str = self.new(s);
+     r = str.startsWith(prefix, caseInsensitive); str.free(); 
+    return r;
+  ],
+       endsWith [s suffix caseInsensitive str r;
+    str = self.new(s);
+     r = str.endsWith(suffix, caseInsensitive); str.free(); 
+    return r;
+  ],
+       contains [s searchText str r;
+    str = self.new(s);
+     r = str.contains(searchText); str.free(); 
+    return r;
+  ],
+       isEmpty [s str r;
+    str = self.new(s);
+     r = str.isEmpty(); str.free(); 
+    return r;
+  ],
+       append [s text str tmp;
+    str = self.new(s);
+     tmp = str.append(text); str.free(); 
+    return tmp;
+  ],
+       appendChar [s c str tmp;
+    str = self.new(s);
+     tmp = str.appendChar(c); str.free(); 
+    return tmp;
+  ],
+       prepend [s text str tmp;
+    str = self.new(s);
+     tmp = str.prepend(text); str.free(); 
+    return tmp;
+  ],
+       toUpper [s str tmp;
+    str = self.new(s);
+     tmp = str.toUpper(); str.free(); 
+    return tmp;
+  ],
+       toLower [s str tmp;
+    str = self.new(s);
+     tmp = str.toLower(); str.free(); 
+    return tmp;
+  ],
+       trimLeft [s str tmp;
+    str = self.new(s);
+     tmp = str.trimLeft(); str.free(); 
+    return tmp;
+  ],
+       trimRight [s str tmp;
+    str = self.new(s);
+     tmp = str.trimRight(); str.free(); 
+    return tmp;
+  ],
+       reverse [s str tmp;
+    str = self.new(s);
+     tmp = str.reverse(); str.free(); 
+    return tmp;
+  ],
+       mid [s start count str tmp;
+    str = self.new(s);
+     tmp = str.mid(start, count); str.free(); 
+    return tmp;
+  ],
+       left [s count str tmp;
+    str = self.new(s);
+     tmp = str.left(count); str.free(); 
+    return tmp;
+  ],
+       right [s count str tmp;
+    str = self.new(s);
+     tmp = str.right(count); str.free(); 
+    return tmp;
+  ],
+       insert [s pos source str tmp;
+    str = self.new(s);
+     tmp = str.insert(pos, source); str.free(); 
+    return tmp;
+  ],
+       delete [s pos count str tmp;
+    str = self.new(s);
+     tmp = str.delete(pos, count); str.free(); 
+    return tmp;
+  ],
+       replace [s searchText replaceText str tmp;
+    str = self.new(s);
+     tmp = str.replace(searchText, replaceText); str.free(); 
+    return tmp;
+  ],
+       replaceAll [s searchText replaceText str tmp;
+    str = self.new(s);
+     tmp = str.replaceAll(searchText, replaceText); str.free(); 
+    return tmp;
   ],
        trim [buf str tmpStr;
     str = self.new(buf);
@@ -941,6 +1120,10 @@ class _bglstring(bglstringpoolreserve)
     ],
     equalsOneOfCaseInsensitive[buf1 buf2 buf3 buf4;
         return self.equalsoneof(buf1, buf2, buf3, buf4, true);
+    ],
+    compareTo[other caseInsensitive retval;
+         retval = _bglBuf.compare(self.getBuf(), _bglStr.toAmbiguousBuffer(other), caseInsensitive); 
+        return retval;
     ],
     indexOf[searchText startingIndex retval;
          retval = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex); 
@@ -1173,16 +1356,16 @@ class _bglstring(bglstringpoolreserve)
 [exerciseEquality s eq_lit o eq_str code;
     s = _bglStr.new();
     s.setFromLit("test");
-    eq_lit=(s.equalsLit("test"));
+    eq_lit=(_bglStr.areEqual(s, "test", false));
     o = _bglStr.new();
     o.setFromLit("test");
-    eq_str=(s.equalsStr(o));
+    eq_str=(_bglStr.areEqual(s, o, false));
     code = 0;
     _bgl_sw = s;
-    if ((_bgl_sw.equalsLit("hello"))) {
+    if ((_bglStr.areEqual(_bgl_sw, "hello", false))) {
         code = 1;
     }
-    else if ((_bgl_sw.equalsLit("test"))) {
+    else if ((_bglStr.areEqual(_bgl_sw, "test", false))) {
         code = 2;
     }
     else {
@@ -1197,8 +1380,8 @@ class _bglstring(bglstringpoolreserve)
     s2 = _bglStr.new();
     s2.setFromLit("bar");
     c = _bglStr.new();
-    c.setFromStr(s1.append(s2));
-    c.setFromStr(s1.append("literal"));
+    c.setFromStr(_bglStr.append(s1, s2));
+    c.setFromStr(_bglStr.append(s1, "literal"));
     c.setFromStr(_bglStr.new("literal").append(s1));
     c.setFromStr(_bglStr.new("literal").appendChar('X'));
     s1.free();
@@ -1209,10 +1392,10 @@ class _bglstring(bglstringpoolreserve)
     s1 = _bglStr.new();
     s1.setFromLit("hi");
     s2 = _bglStr.new();
-    _bgl_temp1 = s2; if (~~(_bgl_temp1 ~= 0)) _bgl_temp1 = "fallback";
-    _bgl_temp0 = s1; if (~~(_bgl_temp0 ~= 0)) _bgl_temp0 = _bgl_temp1;
+    _bgl_temp4 = s2; if (~~(_bgl_temp4 ~= 0)) _bgl_temp4 = "fallback";
+    _bgl_temp3 = s1; if (~~(_bgl_temp3 ~= 0)) _bgl_temp3 = _bgl_temp4;
     c = _bglStr.new();
-    c.setFromLit(_bgl_temp0);
+    c.setFromLit(_bgl_temp3);
     present=s1 ~= 0;
     s1.free();
     s2.free();
@@ -1221,33 +1404,33 @@ class _bglstring(bglstringpoolreserve)
 [exerciseMethods s t len pos sw ew has emp;
     s = _bglStr.new();
     s.setFromLit("Hello, World");
-    s.print();
+    _bglStr.print(s);
     t = _bglStr.new();
-    t.setFromStr(s.append(" suffix"));
-    t.setFromStr(s.appendChar('!'));
-    t.setFromStr(s.prepend("prefix "));
-    t.setFromStr(s.toUpper());
-    t.setFromStr(s.toLower());
-    t.setFromStr(s.trim());
-    t.setFromStr(s.trimLeft());
-    t.setFromStr(s.trimRight());
-    t.setFromStr(s.reverse());
-    t.setFromStr(s.mid(2, 5));
-    t.setFromStr(s.left(3));
-    t.setFromStr(s.right(4));
-    t.setFromStr(s.insert(1, "X"));
-    t.setFromStr(s.delete(0, 2));
-    t.setFromStr(s.replace("Hello", "Greetings"));
-    t.setFromStr(s.replaceAll("o", "0"));
+    t.setFromStr(_bglStr.append(s, " suffix"));
+    t.setFromStr(_bglStr.appendChar(s, '!'));
+    t.setFromStr(_bglStr.prepend(s, "prefix "));
+    t.setFromStr(_bglStr.toUpper(s));
+    t.setFromStr(_bglStr.toLower(s));
+    t.setFromStr(_bglStr.trim(s));
+    t.setFromStr(_bglStr.trimLeft(s));
+    t.setFromStr(_bglStr.trimRight(s));
+    t.setFromStr(_bglStr.reverse(s));
+    t.setFromStr(_bglStr.mid(s, 2, 5));
+    t.setFromStr(_bglStr.left(s, 3));
+    t.setFromStr(_bglStr.right(s, 4));
+    t.setFromStr(_bglStr.insert(s, 1, "X"));
+    t.setFromStr(_bglStr.delete(s, 0, 2));
+    t.setFromStr(_bglStr.replace(s, "Hello", "Greetings"));
+    t.setFromStr(_bglStr.replaceAll(s, "o", "0"));
     t.setFromStr(s.format("[$0]"));
     t.setFromStr(s.format("[$0:$1]", "extra"));
     t.setFromStr(s.format("[$0:$1:$2]", "a", "b"));
-    len=s.getLength();
-    pos=s.indexOf("World", 0);
-    sw=s.startsWith("Hello", false);
-    ew=s.endsWith("World", false);
-    has=s.contains(",");
-    emp=s.isEmpty();
+    len=_bglStr.getLength(s);
+    pos=_bglStr.indexOf(s, "World", 0);
+    sw=_bglStr.startsWith(s, "Hello", false);
+    ew=_bglStr.endsWith(s, "World", false);
+    has=_bglStr.contains(s, ",");
+    emp=_bglStr.isEmpty(s);
     s.capture();
     print (string)"captured-content";
     s.release();
@@ -1272,6 +1455,12 @@ class _bglstring(bglstringpoolreserve)
     exercisenullable();
     exercisemethods();
     exerciseforin();
+];
+[_bgl_string__opeqeq a b;
+    return _bglstr.areequal(a, b, false);
+];
+[_bgl_string_valueCompare a b;
+    return _bglstr.comparevalues(a, b, false);
 ];
 [_bglCharToLower c;
     switch (c) {

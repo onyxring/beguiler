@@ -124,13 +124,19 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
 
+    // `[N]` fixes the capacity; an `=` initializer may follow it to seed the
+    // leading slots (`array<T> name[N] = { v1, v2 }` — capacity N, length 2, the
+    // remaining N-2 slots zeroed). Without `[N]`, an initializer list sets both
+    // capacity and length. Both routes converge on the initializer parsing below.
+    bool hasInitializer = symbol.is(token::assignment);
     if(symbol.is(token::bracketOpen)) {
-        // array<T> name[N];
+        // array<T> name[N];   or   array<T> name[N] = <initializer>;
         token sizeTok = file.getToken(eTokenType::integer);
         arrDecl.arraySize = stoi(sizeTok.value);
         file.getToken(token::bracketClose);
-        file.getToken(token::endStatement);
-    } else if(symbol.is(token::assignment)) {
+        hasInitializer = file.getToken({token::endStatement, token::assignment}).is(token::assignment);
+    }
+    if(hasInitializer) {
         // Check for string initializer: array<char> name = "text";
         token firstVal = file.peekToken(1);
         if(firstVal.is(eTokenType::quote) || firstVal.is(eTokenType::rawQuote)){
@@ -190,6 +196,21 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         }
     }
     // else symbol is endStatement: extern/forward declaration — no size or initializer
+
+    // Seeded-capacity form (`array<T> name[N] = …`): the seed has to fit the
+    // declared capacity, and a string seed has no defined padding for the
+    // SizedBuffer layout, so only the brace form is accepted here.
+    if(arrDecl.arraySize > 0){
+        if(!arrDecl.stringInitializer.empty())
+            parsingError(format("Array '{0}': a string initializer cannot be combined with a declared size. "
+                                "Use `array<char> {0} = \"...\";` to size it from the literal, or "
+                                "`array<char> {0}[{1}];` and assign elements.",
+                                arrDecl.name, arrDecl.arraySize));
+        if(auto* seed = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue);
+           seed != nullptr && (int)seed->elements.size() > arrDecl.arraySize)
+            parsingError(format("Array '{0}' declares capacity {1} but its initializer supplies {2} elements.",
+                                arrDecl.name, arrDecl.arraySize, seed->elements.size()));
+    }
 
     // Local byte arrays draw hybrid-buffer backing from the framePool, but only the
     // sized form (array<char> buf[N]) is wired up. String/list initializers would

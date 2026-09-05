@@ -28,6 +28,16 @@ class i6Emitter{
         // into the capture branch. `superposedBlockMaps` holds each block's capture-relative sourceMap
         // entries; resolvedOutput() re-bases them onto the real output position at splice time so the
         // debug map anchors on the routine's actual `.inf` lines (not the splice-region line).
+        // `static` class methods emit as free routines under this name; the same mangling is
+        // used by the parser side so a lookup can name the routine without re-deriving it.
+        static std::string staticRoutineName(classDef* cls, functionDef* fd){
+            // Operators carry a mangled i6name ("==" → "_opeqeq"); a bare operator name is
+            // not a legal I6 identifier, so prefer i6name whenever one was assigned.
+            const std::string& n = fd->i6name.empty() ? fd->dName() : fd->i6name;
+            return "_bgl_" + cls->dName() + "_" + n;
+        }
+        void emitStaticClassRoutines(classDef* classNode);
+        void emitAllStaticClassRoutines();
         map<string,string> superposedBlocks;
         map<string,vector<tuple<int,string,int>>> superposedBlockMaps;
         // For superposed CLASS blocks (keyed like superposedBlocks): the I6 names of their superposed

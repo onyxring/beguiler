@@ -412,6 +412,13 @@ class bglParser {
         // Drives member-array access through the orLibrary property-array convention.
         bool splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                   string& ownerOut, string& propOut);
+        // `$elemeq` / `$elemcmp` — the routine implementing a comparison for an array's
+        // element type, or "0" when a raw word comparison is correct. A type publishes one
+        // by declaring a zero-arg emitter whose body is just the routine's name.
+        string arrayElementOpRoutine(const string& elemType, const string& memberName);
+        // Property name of a NON-EMITTER operator declared on the element type (e.g. `_opeqeq`
+        // for `operator ==`), or "0". Object-backed elements can be sent the message directly.
+        string arrayElementOpProperty(const string& elemType, const string& opName);
         bool isTypeCompatible(string argType, string paramType);
         // Element-type compatibility for array/list initializers: isTypeCompatible plus an
         // initializer-only relaxation letting a byte array (`array<char>`) accept integer literals.

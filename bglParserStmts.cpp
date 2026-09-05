@@ -1867,6 +1867,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(aType)));
                 auto* opFunc = dynamic_cast<functionDef*>(opm);
                 string opBody = replaceWord(processBglConditionals(dynamic_cast<i6Block*>(opFunc->body)->i6Body), "$prop", "0");
+                opBody = replaceWord(opBody, "$elemeq",
+                                     arrayElementOpRoutine(resolveArrayElementType(tok.value, func, body), "=="));
+                opBody = replaceWord(opBody, "$elemeqprop",
+                                     arrayElementOpProperty(resolveArrayElementType(tok.value, func, body), "=="));
                 file.getToken();  // consume '{'
                 token et = file.getToken();
                 while(!et.is(token::braceClose)){
@@ -1939,8 +1943,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 // value the method-call path computes for a non-member array receiver. Member
                 // arrays (obj.arr op= x) route through the dotted-path compound assignment, not
                 // here, so this bare-identifier path is always the non-member case.
-                if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray")
+                if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray"){
                     a.emitterBody = replaceWord(a.emitterBody, "$prop", "0");
+                    a.emitterBody = replaceWord(a.emitterBody, "$elemeq",
+                                                arrayElementOpRoutine(resolveArrayElementType(lhs, func, body), "=="));
+                    a.emitterBody = replaceWord(a.emitterBody, "$elemeqprop",
+                                                arrayElementOpProperty(resolveArrayElementType(lhs, func, body), "=="));
+                }
                 a.emitterParam = opFunc->params[0]->name;
                 a.emitterSelf = lhs;
                 if(body != nullptr) body->statements.push_back(&a);
@@ -2195,6 +2204,9 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         for(paramDef* p : method->params) if(p->name == "prop"){ hasPropParam = true; break; }
                         if(!hasPropParam)
                             b = replaceWord(b, "$prop", propValue);
+                        b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(recvElemType, "=="));
+                        b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "valuecompare"));
+                        b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(recvElemType, "=="));
                         callStmt.emitterBody = b;
                         for(paramDef* p : method->params)
                             callStmt.emitterParams.push_back(p->name);
