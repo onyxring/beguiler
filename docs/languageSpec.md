@@ -589,6 +589,7 @@ The meaning of each operator is detailed in later chapters. The following table 
 | `+` `-` `*` `/` `%` | Arithmetic | §10.3 |
 | `+=` `-=` `*=` `/=` `%=` | Compound arithmetic assignment | §10.3 |
 | `==` `!=` `<` `>` `<=` `>=` `?=` | Comparison (result `eBool`) | §10.3 |
+| `<=>` | Three-way comparison (result `int`: -1 / 0 / +1) | §5.6.5, §10.3 |
 | `=~` | Content / case-insensitive equality (`<char>`, `<string>`) | §16.2.2 |
 | `&&` `\|\|` `!` | Logical (result `eBool`) | §10.3 |
 | `&` `\|` `^` `<<` `>>` | Bitwise and shift (shift via `<int>`) | §5.6.6 |
@@ -605,7 +606,7 @@ The meaning of each operator is detailed in later chapters. The following table 
 
 The set of operators a class may overload is listed in §5.6.6; operator precedence is tabulated in §10.3.
 
-Two-character tokens take precedence: when the lexer encounters a character that could begin a two-character token, it peeks at the next character before deciding.
+Two-character tokens take precedence: when the lexer encounters a character that could begin a two-character token, it peeks at the next character before deciding. Three-character tokens (`<<=`, `>>=`, `<=>`) are found by extending a matched two-character token, so `<=>` is read as the spaceship operator rather than `<=` followed by `>`.
 
 A leading `::` immediately followed by an identifier is the **global-scope qualifier** (`::name`): the lexer glues it onto the following identifier as a single token. It forces file-scope resolution and is described in §12.3. (No other Beguile construct uses `::`.)
 
@@ -2278,6 +2279,7 @@ In addition to standard arithmetic and comparison operators, these special opera
 | `operator switch(type v)` | `switch(x){ case val: }` | Custom switch comparison. Called for each `case` value to test equality. Must be an emitter. See §9.11. |
 | `operator ?()` | `x?` | Postfix query / null test. Returns `eBool`. Used by optional chaining (`?.`) and null coalescing (`??`). Must be an emitter. See §10.5. |
 | `operator ?=` | `x ?= y` | Overloadable binary comparison at equality precedence, result `eBool`. No built-in type defines it; provide `operator ?=` on a class to give it a custom meaning. |
+| `static operator <=>` | `x <=> y` | Three-way comparison, result `int` (-1 / 0 / +1). **Must be `static`** — it takes both operands, so it has no receiver. Generic containers ask a type for it to obtain an ordering; see §5.6.8. |
 | `operator !()` | `!x` | Prefix logical NOT. Must be an emitter. |
 | `operator()` | `(Type)x` | Conversion operator. Covered in §5.6.4. |
 | `operator[]` / `operator[]=` | `x[i]` / `x[i]=v` | Subscript read/write. Covered in §5.6.3. |
@@ -2286,7 +2288,7 @@ In addition to standard arithmetic and comparison operators, these special opera
 
 The complete list of operators that may be overloaded (as either emitters or regular methods):
 
-**Binary:** `=` `+` `-` `*` `/` `%` `==` `!=` `=~` `<` `>` `<=` `>=` `?=` `&&` `||` `&` `|` `^` `<<` `>>`
+**Binary:** `=` `+` `-` `*` `/` `%` `==` `!=` `=~` `<` `>` `<=` `>=` `<=>` `?=` `&&` `||` `&` `|` `^` `<<` `>>`
 
 **Compound assignment:** `+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=` `<<=` `>>=`
 
@@ -2295,6 +2297,56 @@ The complete list of operators that may be overloaded (as either emitters or reg
 **Special:** `switch` `?` `()` `[]` `[]=`
 
 Declaring `operator` with any symbol outside this set is a compile error that names the overloadable operators. This includes valid operator tokens that are not overloadable, such as `?.`, `??`, and `=>`.
+
+### 5.6.8 `static` Operators and Three-Way Comparison (`<=>`)
+
+An operator declared `static` takes **both** operands rather than an implicit receiver:
+
+```bgl
+extend class string {
+    static bool operator ==  (var a, var b) { return _bglStr.areEqual(a, b, false); }
+    static int  operator <=> (var a, var b) { return _bglStr.compareValues(a, b, false); }
+}
+```
+
+Because a static has no receiver, it emits as a **free I6 routine** named `_bgl_<Class>_<mangledOp>` (so `string`'s `<=>` becomes `_bgl_string__oplteqgt`) rather than as a property routine on the class. That is what makes it declarable on an `extern`/`emitter` class, which otherwise permits no non-emitter members: a static needs no instance backing (§5.2).
+
+#### Why a type would declare one
+
+Generic containers cannot see their element type at runtime. `array<T>`'s search and sort members are single shared routines written over `var`, so without help they compare **words**, which is correct for `int`, `char`, and object identity but wrong for any type whose value is carried indirectly. The compiler resolves `T` at each call site, looks for `operator ==` and `operator <=>` on that type, and passes what it finds:
+
+```bgl
+array<string> names = {"cherry", "apple", "banana"};
+names.indexOf("apple");   // uses string's static ==   → 1
+names.sort();             // uses string's static <=>  → apple, banana, cherry
+```
+
+A type that declares neither keeps word comparison at zero cost. Nothing about any particular type is built into the compiler — a user-defined class gains the same behaviour by declaring the operators itself.
+
+Two channels exist because a value may or may not be an object:
+
+| Element at runtime | Mechanism |
+|---|---|
+| an object (user class instance) | a non-emitter `operator ==`, sent to the element as a message |
+| a bare word (string literal, `float`) | a `static` operator, called as a routine with both operands |
+
+A packed string literal has no properties, so only the routine form can serve it.
+
+#### `<=>` specifics
+
+`<=>` yields an `int`: negative when the left operand orders first, `0` when equivalent, positive when it orders after — the `qsort` convention, which is what a comparator wants.
+
+It **must** be declared `static`; a non-static `<=>` is a compile error, since two operands leave no receiver to bind. It is usable in ordinary expressions and in a comparator lambda:
+
+```bgl
+int r = a <=> b;                                   // -1, 0, or +1
+if((a <=> b) < 0) { ... }
+names.sort((string a, string b) => a <=> b);       // custom ordering
+```
+
+Deriving a three-way result from `<` instead would cost two comparisons per call and silently assume the ordering is total; `<=>` gives it in one.
+
+> ***Note**: where a type declares both an instance and a static form of the same operator, the **instance** form wins at ordinary call sites — it inlines, whereas a static costs a routine call. The static form is used when generic code needs the operator as an address.*
 
 ### 5.6.7 Property Accessors (Getters and Setters)
 
@@ -3961,7 +4013,7 @@ Binary operators join two operands. Resolution proceeds as follows:
 3. If not found, it checks if the RHS type has a conversion operator that maps to a type for which the LHS does have a matching operator.
 4. If no match is found and the LHS has a known type, a compile-time error is reported. Untyped (`var`) operands fall through to raw I6.
 
-Comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`, `?=`, `=~`) produce `eBool` as their resolved type. Logical operators (`&&`, `||`) also produce `eBool`. Assignment and arithmetic operators preserve the LHS type. See §5.6.6 for the full list of overloadable operators. The `?=` operator has no built-in definition; it exists as an overloadable comparison for a user type to give a custom meaning (§5.6.5).
+Comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`, `?=`, `=~`) produce `eBool` as their resolved type. The three-way comparison `<=>` is the exception: it produces an `int` (-1 / 0 / +1), and binds more tightly than the relational operators so `a <=> b < 0` parses as `(a <=> b) < 0`. Logical operators (`&&`, `||`) also produce `eBool`. Assignment and arithmetic operators preserve the LHS type. See §5.6.6 for the full list of overloadable operators. The `?=` operator has no built-in definition; it exists as an overloadable comparison for a user type to give a custom meaning (§5.6.5).
 
 Beguile follows standard C-style operator precedence. Operators at higher precedence levels bind more tightly. Within the same precedence level, operators associate left-to-right.
 
@@ -3969,7 +4021,7 @@ Beguile follows standard C-style operator precedence. Operators at higher preced
 |:----------:|-----------|----------|
 | 11 | `*`  `/`  `%` | Multiplicative |
 | 10 | `+`  `-` | Additive |
-| 9 | `<<`  `>>` | Shift |
+| 9 | `<<`  `>>`  `<=>` | Shift, three-way comparison |
 | 8 | `<`  `<=`  `>`  `>=` | Relational |
 | 7 | `==`  `!=`  `?=`  `=~` | Equality |
 | 6 | `&` | Bitwise AND |
