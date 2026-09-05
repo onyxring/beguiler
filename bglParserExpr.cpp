@@ -39,6 +39,7 @@
 #include "helpers.h"
 #include "settings.h"
 #include "typeDef.h"
+#include "i6Emitter.h"
 #include "bglParser.h"
 #include "fileLexer.h"
 #include "token.h"
@@ -254,6 +255,7 @@ static int operatorPrecedence(const string& op){
     if(op == "*" || op == "/" || op == "%")                                return 11;
     if(op == "+" || op == "-")                                             return 10;
     if(op == "<<" || op == ">>")                                           return  9;
+    if(op == "<=>")                                                        return  9;
     if(op == "<" || op == "<=" || op == ">" || op == ">=")                 return  8;
     if(op == "==" || op == "!=" || op == "?=" || op == "=~")               return  7;
     if(op == "&")                                                          return  6;
@@ -267,7 +269,7 @@ static int operatorPrecedence(const string& op){
 // All operators registered in operatorPrecedence() — used when building RHS terminator lists
 // so a sub-expression knows when to stop based on an encountered operator's level.
 static const vector<string> kPrecedenceOps = {
-    "*","/","%","+","-","<<",">>","<","<=",">",">=","==","!=","?=","=~","&","^","|","&&","||"
+    "*","/","%","+","-","<<",">>","<=>","<","<=",">",">=","==","!=","?=","=~","&","^","|","&&","||"
 };
 
 // ===============================================================================
@@ -387,28 +389,29 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         parsingError(format("Directive '{0}' is not valid in an expression.", rhs.value));
     }
 
-    // `<=>` is declare-only (a static routing target for generic code). Using it in an
-    // expression would fall through to raw emission and produce invalid I6, so reject it here.
-    if(opName == "<=>")
-        parsingError("operator '<=>' has no expression form — it is declared 'static' on a type "
-                     "so generic code (array<T>.sort()) can obtain an ordering. Use < / > to compare.");
-
     // Step 2: Find matching operator emitter
     // 'var' is the escape-hatch type — if either side is var, skip param-type checking
     // (treat the same as an empty/unknown rhsType: match by operator name alone).
     functionDef* matchedOp = nullptr;
-    if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* m){
+    // Two passes, non-static first. An instance operator INLINES at the call site; a static
+    // costs a routine call, so where a type declares both the instance form must win. The
+    // static form is the fallback — and the only form for `<=>`, which has no instance
+    // spelling (its two operands are both parameters).
+    auto opMatches = [&](typeMember* m, bool wantStatic){
         auto* opFn = dynamic_cast<functionDef*>(m);
         if(!opFn || opFn->name != opName) return false;
-        // A `static` operator takes BOTH operands and exists to be handed to generic code
-        // (array<T> search/sort) as a routine address. It must never be selected for an
-        // ordinary `a == b` site, where it would be emitted as a receiver message send.
-        if(opFn->isStatic) return false;
+        if(opFn->isStatic != wantStatic) return false;
         // Pre-scan stubs have no params — match by name only
         if(opFn->isPrePassStub) return true;
-        return !opFn->params.empty() &&
-               (rhsType.empty() || rhsType=="var" || opFn->params[0]->type.name==rhsType || opFn->params[0]->type.name=="var");
-    })) matchedOp = dynamic_cast<functionDef*>(m);
+        size_t rhsIdx = opFn->isStatic ? 1 : 0;   // static takes (lhs, rhs); instance takes (rhs)
+        return opFn->params.size() > rhsIdx &&
+               (rhsType.empty() || rhsType=="var" || opFn->params[rhsIdx]->type.name==rhsType || opFn->params[rhsIdx]->type.name=="var");
+    };
+    if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* m){ return opMatches(m, false); }))
+        matchedOp = dynamic_cast<functionDef*>(m);
+    if(matchedOp == nullptr)
+        if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* m){ return opMatches(m, true); }))
+            matchedOp = dynamic_cast<functionDef*>(m);
 
     // LHS conversion fallback: if LHS has operator() → convertedType, retry operator search on that type.
     // The "converted-to-converted" clause (param type == convertedType) used to accept ANY rhsType
@@ -550,7 +553,15 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         for(auto& p : prefix) expr->tokens.push_back(p);
         expr->tokens.push_back(b);
     } else if(matchedOp && !matchedOp->isEmitter && !matchedOp->isPrePassStub){
-        // Non-emitter operator: emit as a method call on the LHS using a mangled property name
+        // Non-emitter operator. A `static` one has no receiver — it emits as a FREE routine
+        // taking both operands, which is also what makes it usable when the LHS is a bare word
+        // (a packed literal has nothing to send a message to). An instance one is a message
+        // send on the LHS via its mangled property name.
+        // Separate leading structural parens from the operand, as the emitter branch does —
+        // otherwise `(a <=> b) < 0` folds the '(' into the LHS and emits `routine((a, b))`.
+        vector<string> prefix;
+        while(expr->tokens.size() > 1 && expr->tokens.front() == "(")
+            { prefix.push_back(expr->tokens.front()); expr->tokens.erase(expr->tokens.begin()); }
         string lhsText = expr->text();
         if(matchedOp->i6name.empty()) matchedOp->i6name = mangleOperatorName(matchedOp->name);
         if(matchedOp->returnType.name.empty() || matchedOp->returnType.name == "void")
@@ -558,7 +569,11 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         else
             expr->resolvedType = matchedOp->returnType.name;
         expr->tokens.clear();
-        expr->tokens.push_back(lhsText + "." + matchedOp->i6name + "(" + rhsText + ")");
+        for(auto& p : prefix) expr->tokens.push_back(p);
+        if(matchedOp->isStatic)
+            expr->tokens.push_back(i6Emitter::staticRoutineName(cls, matchedOp) + "(" + lhsText + ", " + rhsText + ")");
+        else
+            expr->tokens.push_back(lhsText + "." + matchedOp->i6name + "(" + rhsText + ")");
     } else {
         // No operator found on this type
         parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'",
