@@ -649,7 +649,11 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // init / deinit: if the variable's type is a class with init/deinit emitters, inject them
     // For local variables: inject init as an i6RawNode and register deinit in func->cleanups.
     // For global variables: record init in languageService.globalInits for the synthesised bglInit routine.
-    if(!isConst && body != nullptr && func != nullptr){
+    // A `ref` local OWNS NOTHING — it is a pointer alias to storage someone else holds
+    // (§ ref locals). Running the type's init would allocate an instance the initializer
+    // immediately overwrites (a leak), and running deinit would FREE THE REFERENT, handing
+    // another owner's instance back to the pool for the next allocation to reuse.
+    if(!isConst && body != nullptr && func != nullptr && !varDecl.isRefLocal){
         classDef* cls = dynamic_cast<classDef*>(&languageService.getType(varDecl.type.name));
         if(cls != nullptr){
             for(typeMember* m : cls->members){
