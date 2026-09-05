@@ -123,6 +123,13 @@ object _bglArray
     }
     return -1;
   ],
+       setOwned [obj prop n v assign;
+    if (assign==0) {
+        self.set(obj, prop, n, v);
+        return;
+    }
+    self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
+  ],
        clear [obj prop sz t;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
@@ -1354,6 +1361,16 @@ class _bglstring(bglstringpoolreserve)
 ];
 [_bgl_string__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
+];
+[_bgl_stringObj__opeqeq a b;
+    return _bglstr.areequal(a, b, false);
+];
+[_bgl_stringObj__oplteqgt a b;
+    return _bglstr.comparevalues(a, b, false);
+];
+[_bgl_stringObj__opeq slot v;
+     if(slot ofclass _bglString){ slot.set(v); return slot; } 
+    return _bglstr.new(v);
 ];
 [_bglCharToLower c;
     switch (c) {

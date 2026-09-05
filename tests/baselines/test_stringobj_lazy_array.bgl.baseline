@@ -1,4 +1,4 @@
-!% -G
+!% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
@@ -8,8 +8,6 @@ global _bgl_temp0;
 global _bgl_temp1;
 global _bgl_temp2;
 global _bgl_temp3;
-global _bgl_temp4;
-global _bgl_sw;
 
     Default bglStringDefaultSize 500;
 
@@ -30,15 +28,16 @@ global _bglInitDone = 0;
     _bglbufstreamstack-->(_bglbufstreamstack-->0) = $9084;
     _bglbufglulxstreams-->(_bglbufglulxstreams-->0) = $9084;
     _bgltrackedregistry-->(_bgltrackedregistry-->0) = $9084;
+    slots-->(slots-->0) = $9084;
 
     _bglInitializeStringBuffers();
 
 ];
  Constant NO_ATTRIBUTE 0; 
-object _glulx
+object _zcode
 ;
 object bgl
-  with glulx _glulx
+  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -374,23 +373,13 @@ object _bglBuf
     }
     frmPtr=frombuf + frompos + WORDSIZE;
     toPtr=tobuf + topos + WORDSIZE;
-    @mcopy numCharsToCopy frmPtr toPtr;
+    @copy_table frmPtr toPtr numCharsToCopy;
     self.setLength(toBuf, topos + numcharstocopy);
     return tobuf;
   ],
-       capture [buf maxBytes s;
+       capture [buf maxBytes;
     _bglbufstreamstack-->(self._stacktop+1) = buf;
-    if (maxbytes == 0) {
-        s=self.size(buf);
-        if ((s < 0)) {
-            maxBytes=bglstringdefaultsize;
-        }
-        else {
-            maxBytes=s;
-        }
-    }
-    _bglbufglulxstreams-->(self._stacktop+1) = __glkHook(72);
-    __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, filemode_write, 662));
+    @output_stream 3 buf;
     self._stacktop++;
   ],
        release [buf;
@@ -399,20 +388,24 @@ object _bglBuf
     }
     self._stacktop--;
     buf =  _bglbufstreamstack-->(self._stacktop+1) ;
-    __glkHook(68, __glkHook(72), gg_arguments);
-    buf->(0) =  gg_arguments-->(0+1) ;
-    __glkHook(71,  _bglbufglulxstreams-->(self._stacktop+1) );
+    @output_stream -1 * 3;
     self.setLength(buf, self.length(buf));
     return buf;
   ],
        stackLen [;
     return self._stacktop;
   ],
-       print [buf len;
+       print [buf len i c;
     if (len <= 0) {
         len=self.length(buf);
     }
-    __glkHook(132, buf + WORDSIZE, len);
+    for (i = 0 : i < len : i++) {
+        c=buf->(i + WORDSIZE);
+        if (c == 0) {
+            break;
+        }
+        @print_char c;
+    }
     return buf;
   ],
        equals [buf1 buf2 caseInsensitive len1 t c1 c2;
@@ -1353,121 +1346,23 @@ class _bglstring(bglstringpoolreserve)
         return retval;
     ]
 ;
-[exerciseAssign s1 s2 s3;
-    s1 = _bglStr.new();
-    s1.setFromLit("hello");
-    s2 = _bglStr.new();
-    s2.setFromStr(s1);
-    s3 = _bglStr.new();
-    s3.setFromLit("interp {s1} world");
-    s1.free();
-    s2.free();
-    s3.free();
-];
-[exerciseEquality s eq_lit o eq_str code;
-    s = _bglStr.new();
-    s.setFromLit("test");
-    eq_lit=(_bglStr.areEqual(s, "test", false));
-    o = _bglStr.new();
-    o.setFromLit("test");
-    eq_str=(_bglStr.areEqual(s, o, false));
-    code = 0;
-    _bgl_sw = s;
-    if ((_bglStr.areEqual(_bgl_sw, "hello", false))) {
-        code = 1;
-    }
-    else if ((_bglStr.areEqual(_bgl_sw, "test", false))) {
-        code = 2;
-    }
-    else {
-        code = 99;
-    }
-    s.free();
-    o.free();
-];
-[exerciseConcat s1 s2 c;
-    s1 = _bglStr.new();
-    s1.setFromLit("foo");
-    s2 = _bglStr.new();
-    s2.setFromLit("bar");
-    c = _bglStr.new();
-    c.setFromStr(_bglStr.append(s1, s2));
-    c.setFromStr(_bglStr.append(s1, "literal"));
-    c.setFromStr(_bglStr.new("literal").append(s1));
-    c.setFromStr(_bglStr.new("literal").appendChar('X'));
-    s1.free();
-    s2.free();
-    c.free();
-];
-[exerciseNullable s1 s2 c present;
-    s1 = _bglStr.new();
-    s1.setFromLit("hi");
-    s2 = _bglStr.new();
-    _bgl_temp4 = s2; if (~~(_bgl_temp4 ~= 0)) _bgl_temp4 = "fallback";
-    _bgl_temp3 = s1; if (~~(_bgl_temp3 ~= 0)) _bgl_temp3 = _bgl_temp4;
-    c = _bglStr.new();
-    c.setFromLit(_bgl_temp3);
-    present=s1 ~= 0;
-    s1.free();
-    s2.free();
-    c.free();
-];
-[exerciseMethods s t len pos sw ew has emp;
-    s = _bglStr.new();
-    s.setFromLit("Hello, World");
-    _bglStr.print(s);
-    t = _bglStr.new();
-    t.setFromStr(_bglStr.append(s, " suffix"));
-    t.setFromStr(_bglStr.appendChar(s, '!'));
-    t.setFromStr(_bglStr.prepend(s, "prefix "));
-    t.setFromStr(_bglStr.toUpper(s));
-    t.setFromStr(_bglStr.toLower(s));
-    t.setFromStr(_bglStr.trim(s));
-    t.setFromStr(_bglStr.trimLeft(s));
-    t.setFromStr(_bglStr.trimRight(s));
-    t.setFromStr(_bglStr.reverse(s));
-    t.setFromStr(_bglStr.mid(s, 2, 5));
-    t.setFromStr(_bglStr.left(s, 3));
-    t.setFromStr(_bglStr.right(s, 4));
-    t.setFromStr(_bglStr.insert(s, 1, "X"));
-    t.setFromStr(_bglStr.delete(s, 0, 2));
-    t.setFromStr(_bglStr.replace(s, "Hello", "Greetings"));
-    t.setFromStr(_bglStr.replaceAll(s, "o", "0"));
-    t.setFromStr(s.format("[$0]"));
-    t.setFromStr(s.format("[$0:$1]", "extra"));
-    t.setFromStr(s.format("[$0:$1:$2]", "a", "b"));
-    len=_bglStr.getLength(s);
-    pos=_bglStr.indexOf(s, "World", 0);
-    sw=_bglStr.startsWith(s, "Hello", false);
-    ew=_bglStr.endsWith(s, "World", false);
-    has=_bglStr.contains(s, ",");
-    emp=_bglStr.isEmpty(s);
-    s.capture();
-    print (string)"captured-content";
-    s.release();
-    s.free();
-    t.free();
-];
+array slots table 12;
+array counts table 3 1 2 3 $9084;
 [main;
-    exerciseassign();
-    exerciseequality();
-    exerciseconcat();
-    exercisenullable();
-    exercisemethods();
+    bglinit();
+    _bglArray.setOwned(slots, 0, 9, "jim", _bgl_stringObj__opeq);
+    _bglArray.setOwned(slots, 0, 9, "bob", _bgl_stringObj__opeq);
+    _bglStr.print( slots-->(9+1) );
+    if ( slots-->(0+1) ) _bgl_temp3 = "allocated"; else _bgl_temp3 = "empty";
+    print (string)_bgl_temp3;
+    counts-->(0+1) = 9;
+    print  counts-->(0+1) ;
 ];
 [_bgl_string__opeqeq a b;
     return _bglstr.areequal(a, b, false);
 ];
 [_bgl_string__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
-];
-[_bgl_float__oplteqgt a b;
-    
-            if(_bglFloatLt(a, b)) return -1;
-            if(_bglFloatGt(a, b)) return 1;
-            return 0;
-        
-    return 0;
 ];
 [_bgl_stringObj__opeqeq a b;
     return _bglstr.areequal(a, b, false);
@@ -1478,12 +1373,6 @@ class _bglstring(bglstringpoolreserve)
 [_bgl_stringObj__opeq slot v;
      if(slot ofclass _bglString){ slot.set(v); return slot; } 
     return _bglstr.new(v);
-];
-[__glkHook _vararg_count api args retval;
-    @copy sp api;
-    args=_vararg_count - 1;
-    @glk api args retval;
-    return retval;
 ];
 [_bglCharToLower c;
     switch (c) {
@@ -1518,12 +1407,4 @@ class _bglstring(bglstringpoolreserve)
             return c+6;
     }
     return c;
-];
-[_bglFloatGt x y;
-     @jfgt x y ?yes; rfalse; .yes; rtrue; 
-    return false;
-];
-[_bglFloatLt x y;
-     @jflt x y ?yes; rfalse; .yes; rtrue; 
-    return false;
 ];

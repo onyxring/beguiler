@@ -1091,6 +1091,141 @@ extend class string {
     emitter void    captureOutput(object obj, var prop)   { $self.captureOutput($obj, $prop) }
 }
 
+
+//-----------------------------------------------------------------------------
+// stringObj — a slot that OWNS a pool buffer.
+//
+// The counterpart to `string`, which is a slot holding a pointer to static text.
+// The distinction exists because one type covering both representations is what
+// let a slot silently change representation: assigning a pool instance into a
+// literal-holding slot aliased a buffer the slot did not own, and the referent
+// was freed out from under it by its real owner.
+//
+//   stringLiteral   the text itself; an rvalue
+//   string          a slot pointing at text
+//   stringObj       a slot owning a pool buffer   <- this
+//
+// Widening (stringLiteral/string -> stringObj) allocates and copies the text in.
+// Narrowing (stringObj -> string) is rejected: it would alias an owned buffer.
+// `stringObj a = b` copies b's VALUE into a's own buffer; `ref stringObj a = b`
+// copies the address and owns nothing.
+//
+// Members mirror `string`'s surface and delegate to the same var-taking _bglStr
+// utilities — the single implementation both types share.
+//-----------------------------------------------------------------------------
+emitter class stringObj : _bglObject {
+    // Lifecycle
+    emitter void init()   { $self = _bglStr.new(); }
+    emitter void deinit() { $self.free(); }
+
+    // Assignment — Phase B: type-discriminated dispatch eliminates isTracked()
+    // false-positive risk that could surface when a packed-string address
+    // numerically collided with a tracked-buffer user pointer.
+    emitter stringObj operator = (stringLiteral v)         { $self.setFromLit($v); }
+    emitter stringObj operator = (stringObj v)                        { $self.setFromStr($v); }
+    emitter stringObj operator = (interpolatedStringLiteral v)     { $self.capture(); $v; $self.release(); }
+
+    // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
+    // str3 = str1 + str2  =>  str3.set(str1.append(str2))
+    emitter stringObj operator + (stringLiteral v) { _bglStr.append($val, $v) }
+    emitter stringObj operator + (stringObj v)        { _bglStr.append($val, $v) }
+
+    // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
+    // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
+    // copies it back into self.
+    emitter stringObj operator += (stringLiteral v) { $self.setFromStr($self.append($v)) }
+    emitter stringObj operator += (stringObj v)        { $self.setFromStr($self.append($v)) }
+
+    // Equality — Phase B typed dispatch
+    // `replace` — core declares these as address equality; <string> upgrades them to
+    // content comparison. `!=` must be replaced alongside `==`, or the two would
+    // disagree (content vs address) on the same pair of values.
+    emitter eBool operator == (stringLiteral v) { _bglStr.areEqual($val, $v, false) }
+    emitter eBool operator == (stringObj v)        { _bglStr.areEqual($val, $v, false) }
+    emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
+    emitter eBool operator != (stringObj v)        { (~~_bglStr.areEqual($val, $v, false)) }
+
+    // Switch comparison — Phase B typed dispatch
+    emitter eBool operator switch(stringLiteral v) { _bglStr.areEqual($val, $v, false) }
+    emitter eBool operator switch(stringObj v)        { _bglStr.areEqual($val, $v, false) }
+
+    // Comparison published for generic containers. `static` means no receiver, so these
+    // emit as free routines whose address array<T> can be handed — the only shape that can
+    // serve a PACKED LITERAL element, which has no properties to dispatch on. Both operands
+    // arrive as parameters, so toAmbiguousBuffer can sort out literal-vs-instance for each.
+    // `static` = no receiver, so this emits as a free routine whose address array<T> can be
+    // handed — the only shape that can serve a PACKED LITERAL element, which has no properties
+    // to dispatch on. Taking both operands is what makes that possible. A static operator is
+    // never selected at an ordinary `a == b` site; the instance operators above own those.
+    static bool operator == (var a, var b) { return _bglStr.areEqual(a, b, false); }
+    static int  operator <=> (var a, var b) { return _bglStr.compareValues(a, b, false); }
+
+    // Ordering — lexicographic by content, NOT by the packed address. Each
+    // yields a bool, so `a < b` reads the way it does for numbers.
+    //
+    // A sort comparator needs a signed -1/0/+1 ordering rather than a bool, so
+    // reach for compareTo() there:  arr.sort((string a, string b) => a.compareTo(b));
+    emitter eBool operator <  (stringLiteral v) { (_bglStr.compareValues($val, $v, false) < 0) }
+    emitter eBool operator <  (stringObj v)        { (_bglStr.compareValues($val, $v, false) < 0) }
+    emitter eBool operator >  (stringLiteral v) { (_bglStr.compareValues($val, $v, false) > 0) }
+    emitter eBool operator >  (stringObj v)        { (_bglStr.compareValues($val, $v, false) > 0) }
+    emitter eBool operator <= (stringLiteral v) { (_bglStr.compareValues($val, $v, false) <= 0) }
+    emitter eBool operator <= (stringObj v)        { (_bglStr.compareValues($val, $v, false) <= 0) }
+    emitter eBool operator >= (stringLiteral v) { (_bglStr.compareValues($val, $v, false) >= 0) }
+    emitter eBool operator >= (stringObj v)        { (_bglStr.compareValues($val, $v, false) >= 0) }
+
+    // Indexed character access
+    emitter char operator[](int pos)                  { _bglStr.getChar($val, $pos) }
+    emitter char operator[]=(int pos, char c)         { $self.setChar($pos,$c) }
+    emitter char operator[]=(int pos, charLiteral c)  { $self.setChar($pos,$c) }
+
+    // Query — enables ?., ??, and postfix ? for null (unallocated) checks
+    emitter eBool operator ?() { $self ~= 0 }
+
+    // Methods
+    emitter void  print()                          { _bglStr.print($val) }
+
+    emitter stringObj  append(stringObj v)                      { _bglStr.append($val, $v) }
+    emitter stringObj  append(char v)                        { _bglStr.appendChar($val, $v) }
+    emitter stringObj  prepend(var v)                        { _bglStr.prepend($val, $v) }
+    emitter stringObj  toUpper()                             { _bglStr.toUpper($val) }
+    emitter stringObj  toLower()                             { _bglStr.toLower($val) }
+    emitter stringObj  trim()                                { _bglStr.trim($val) }
+    emitter stringObj  trimLeft()                            { _bglStr.trimLeft($val) }
+    emitter stringObj  trimRight()                           { _bglStr.trimRight($val) }
+    emitter stringObj  reverse()                             { _bglStr.reverse($val) }
+    emitter stringObj  mid(int start, int count)             { _bglStr.mid($val, $start, $count) }
+    emitter stringObj  left(int count)                       { _bglStr.left($val, $count) }
+    emitter stringObj  right(int count)                      { _bglStr.right($val, $count) }
+    emitter stringObj  insert(int pos, var source)           { _bglStr.insert($val, $pos, $source) }
+    emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
+    emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
+    emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
+    emitter stringObj  format(var pattern)                   { $self.format($pattern) }
+    emitter stringObj  format(var pattern, var p1)           { $self.format($pattern, $p1) }
+    emitter stringObj  format(var pattern, var p1, var p2)   { $self.format($pattern, $p1, $p2) }
+    emitter int     getLength()                           { _bglStr.getLength($val) }
+    emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
+    emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
+    emitter int     indexOf(var searchText)               { _bglStr.indexOf($val, $searchText, 0) }
+    emitter eBool   startsWith(var prefix)                { _bglStr.startsWith($val, $prefix, false) }
+    emitter eBool   endsWith(var suffix)                  { _bglStr.endsWith($val, $suffix, false) }
+    emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
+    emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
+    emitter void    capture()                             { $self.capture() }
+    emitter void    release()                             { $self.release() }
+    emitter void    captureOutput(object obj, var prop)   { $self.captureOutput($obj, $prop) }
+
+    // Published to generic containers: how to assign INTO a slot of this type.
+    // The slot may be empty (0) on first write, so this both allocates and copies.
+    // array<stringObj> is lazily allocated — a declared-but-unwritten slot costs
+    // nothing, and `a[9] = "jim"` gives slot 9 its buffer at the point of write.
+    static var operator = (var slot, var v){
+        #i6 { if(slot ofclass _bglString){ slot.set(v); return slot; } }
+        return _bglStr.new(v);
+    }
+}
+
 extend class stringLiteral {
     emitter string operator + (string v)      { _bglStr.new($self).append($v) }
     emitter string operator + (charLiteral c) { _bglStr.new($self).appendChar($c) }
@@ -1106,3 +1241,4 @@ extend class stringLiteral {
 }
 
 replace emitter void print(string str) { _bglStr.print($str) }
+emitter void print(stringObj str) { _bglStr.print($str) }

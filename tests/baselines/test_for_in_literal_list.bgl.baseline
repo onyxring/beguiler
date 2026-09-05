@@ -119,6 +119,13 @@ object _bglArray
     }
     return -1;
   ],
+       setOwned [obj prop n v assign;
+    if (assign==0) {
+        self.set(obj, prop, n, v);
+        return;
+    }
+    self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
+  ],
        clear [obj prop sz t;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {

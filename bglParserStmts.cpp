@@ -1380,6 +1380,18 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         callStmt.args.push_back(indexExpr);
         callStmt.args.push_back(valExpr);
 
+        // If the element type publishes a static `operator =` it OWNS its storage, so the slot
+        // write must go through the type rather than being a raw word store. Prefer array<T>'s
+        // `setOwnedAt` member in that case; every plain element type keeps core's inline
+        // `$val-->($i+1) = $v` and pays nothing. Both bodies live in the BLR — this only picks.
+        if(!isMemberWordArray && arrayElementOpRoutine(elemType, "=") != "0"){
+            if(auto* ac = dynamic_cast<classDef*>(&languageService.getType("array")))
+                if(auto* owned = dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
+                        auto* fn = dynamic_cast<functionDef*>(m);
+                        return fn && fn->name == "setownedat" && fn->isEmitter;
+                    })))
+                    setMethod = owned;
+        }
         if(isMemberWordArray)
             callStmt.emitterBody = memOwner + ".&" + memProp + "-->(" + indexExpr->text() + ") = " + valExpr->text();
         else if(setMethod->isEmitter)
@@ -1391,6 +1403,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 b = replaceWord(b, "$self", selfValue);
                 b = replaceWord(b, "$val",  arrPath);
                 b = replaceWord(b, "$prop", propValue);
+                // Subscript assignment takes this path, not the method-call one — so the
+                // element type's ownership hook has to be substituted here too, or a slot
+                // write silently degrades to a raw word store.
+                b = replaceWord(b, "$elemassign", arrayElementOpRoutine(elemType, "="));
                 callStmt.emitterBody = b;
             }
         if(body != nullptr) body->statements.push_back(&callStmt);
@@ -2207,6 +2223,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(recvElemType, "=="));
                         b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "<=>"));
                         b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(recvElemType, "=="));
+                        b = replaceWord(b, "$elemassign", arrayElementOpRoutine(recvElemType, "="));
                         callStmt.emitterBody = b;
                         for(paramDef* p : method->params)
                             callStmt.emitterParams.push_back(p->name);

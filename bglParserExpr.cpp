@@ -1742,6 +1742,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(recvElemType, "=="));
                                 b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "<=>"));
                                 b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(recvElemType, "=="));
+                                b = replaceWord(b, "$elemassign", arrayElementOpRoutine(recvElemType, "="));
                                 callText = b;
                                 expr->tokens.push_back(b);
                             }
@@ -2497,6 +2498,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(chainElem, "=="));
                     b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(chainElem, "<=>"));
                     b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(chainElem, "=="));
+                    b = replaceWord(b, "$elemassign", arrayElementOpRoutine(chainElem, "="));
                     callText = b;
                     expr->tokens.push_back(b);
                 }

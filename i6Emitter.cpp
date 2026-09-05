@@ -1892,6 +1892,7 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             b = replaceWord(b, "$elemeq", "0");
             b = replaceWord(b, "$elemcmp", "0");
             b = replaceWord(b, "$elemeqprop", "0");
+            b = replaceWord(b, "$elemassign", "0");
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
             // Check if any argument is an interpolated string literal

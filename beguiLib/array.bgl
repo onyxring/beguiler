@@ -73,6 +73,12 @@ extend extern class array {
     // ignores the operator's return value anyway, so `void` is correct here.
     emitter void operator = (array<T> v)  { _bglArray.copy($self, 0, $v, 0) }
 
+    // Ownership-aware slot write, used ONLY when the element type publishes a static
+    // `operator =` (stringObj). core's raw `$val-->($i+1) = $v` still handles every plain
+    // element type, so array<int> keeps its inline word write and pays nothing — the
+    // compiler picks between the two by asking the element type, not by replacing core's.
+    emitter void setOwnedAt(int i, T v) { _bglArray.setOwned($self, $prop, $i, $v, $elemassign) }
+
     // Search
     emitter int  indexOf(T item)          { _bglArray.indexOf($self, $prop, $item, $elemeq, $elemeqprop) }
     emitter int  find(T item)             { _bglArray.indexOf($self, $prop, $item, $elemeq, $elemeqprop) }       // alias — matches orLibrary terminology
@@ -251,6 +257,16 @@ object _bglArray {
             }
         }
         return -1;
+    }
+
+    // Slot write that respects element ownership. `assign` is the element type's static
+    // `operator =` (filled by the compiler via $elemassign), or 0 when the element is a plain
+    // word. It receives the slot's CURRENT value and the incoming one, and returns the word to
+    // store — which is how a type that owns storage can allocate on first write and copy into
+    // its own buffer thereafter, without _bglArray knowing anything about the type.
+    void setOwned(var obj, var prop, int n, var v, func<var, var, var> assign = 0){
+        if(assign == 0){ set(obj, prop, n, v); return; }
+        set(obj, prop, n, assign(get(obj, prop, n), v));
     }
 
     // Zero every slot up to size; length drops to 0.
