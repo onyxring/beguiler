@@ -331,14 +331,11 @@ object _bglArray {
         int len = length(obj, prop);
         while(pos < len){
             var e = get(obj, prop, pos);
-            // Deliberately NESTED ifs, not `!hit && ...`. I6's `~~` binds looser than `&&`,
-            // so `~~hit && x` parses as `~~(hit && x)` and fires when it must not. (Beguile
-            // emits an unparenthesised `~~` for `!` — a compiler bug, reported separately.)
+            // Same two comparison channels as indexOf, in the same order: identity, then the
+            // element type's routine, then its property operator for object elements.
             bool hit = false;
             if(e == val) hit = true;
-            if(!hit){
-                if(eq != 0 && e != 0 && val != 0 && eq(e, val)) hit = true;
-            }
+            if(!hit && eq != 0 && e != 0 && val != 0 && eq(e, val)) hit = true;
             if(!hit){
                 #i6 {
                     if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object

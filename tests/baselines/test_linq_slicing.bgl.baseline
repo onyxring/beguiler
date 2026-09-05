@@ -216,10 +216,8 @@ object _bglArray
         if (e==val) {
             hit = true;
         }
-        if (~~hit) {
-            if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
-                hit = true;
-            }
+        if ((~~hit)&&eq~=0&&e~=0&&val~=0&&eq(e,val)) {
+            hit = true;
         }
         if (~~hit) {
             
