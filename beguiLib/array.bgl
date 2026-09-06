@@ -245,8 +245,12 @@ object _bglArray {
     // apart by metaclass, the same obj-or-routine idiom orLibrary uses. 0 means the type
     // publishes neither, so word comparison stands and int/char/object pay nothing.
     int indexOf(var obj, var prop, var val, var op = 0){
-        int sz = size(obj, prop);
-        for(int t = 0; t < sz; t++){
+        // length(), not size(): a search covers the elements the array HOLDS, not its
+        // capacity. Unused slots are 0 and are not findable. This matches every other
+        // traversal here (removeValue, sort, first/last); clear() is the deliberate
+        // exception, since zeroing is a capacity operation.
+        int len = length(obj, prop);
+        for(int t = 0; t < len; t++){
             var e = get(obj, prop, t);
             if(e == val) return t;
             #i6 {

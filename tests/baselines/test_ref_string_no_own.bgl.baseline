@@ -107,9 +107,9 @@ object _bglArray
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [obj prop val op sz t e;
-    sz=self.size(obj,prop);
-    for (t = 0 : t < sz : t++) {
+       indexOf [obj prop val op len t e;
+    len=self.length(obj,prop);
+    for (t = 0 : t < len : t++) {
         e = self.get(obj,prop,t);
         if (e==val) {
             return t;

@@ -1555,6 +1555,8 @@ int n = scores.size();   // number of elements reserved for the array
 
 Beguile-declared standalone word arrays carry an explicit, runtime-tracked **length** (the count of "in use" entries), distinct from `size()`. Length is set at allocation time (list-initialized arrays start at length = N, sized arrays at length = 0) and is changed only by *explicit* operations: `setLength()`, `clear()`, and the mutators added by the `<array>` extension. Slot writes (`arr[i] = v`) do **not** change length; the array is treated as a buffer-with-cursor. Length is exposed via the `<array>` opt-in extension (§16.2.7) as `length()` / `setLength()`.
 
+Every traversal in the `<array>` extension is **length-scoped**, not capacity-scoped: `indexOf()`, `contains()`, `removeValue()`, `sort()`, `first()` and `last()` all walk the in-use range, so slots beyond `length()` are not searched, sorted or matched. `clear()` is the one deliberate exception — zeroing is a capacity operation. A sized array filled only by slot writes therefore still has `length() == 0` and reads as empty to all of them; use the mutators (`+=`, `insert()`) or `setLength()` to make those slots live.
+
 The same method surface works for both Beguile-declared arrays and I6-native extern arrays; `length()` on an untracked array falls back to reporting `size()`. The size-vs-length vocabulary matches the convention used across the Beguile runtime library for `<string>`, `<buf>`, and `<array>`.
 
 The element type is enforced at every subscript site. Reading an element produces a value of type `T`, and writing an element requires a value compatible with `T`. Cross-type assignments (e.g. assigning a `string` to an element of `array<int>`) are compile-time errors.
