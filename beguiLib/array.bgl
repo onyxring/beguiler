@@ -94,14 +94,14 @@ extend extern class array {
     //   arr -= item;   removes it by value
     // The braced-list forms `arr += {a, b}` / `arr -= {a, b}` bind to the
     // array<T> overloads below, which append/remove each element in turn.
-    emitter void operator += (var v)        { _bglArray.append($self, $prop, $v) }
+    emitter void operator += (var v)        { _bglArray.append($self, $prop, $v, $opref(=)) }
     emitter void operator -= (var v)        { _bglArray.removeValue($self, $prop, $v, $opref(==), $opref(deinit)) }
 
     // Length-changing mutators — each grows or shrinks the explicit length.
     // append / prepend / insert return false on a full array (no growth happened).
-    emitter bool append(T item)             { _bglArray.append($self, $prop, $item) }
-    emitter bool prepend(T item)            { _bglArray.prepend($self, $prop, $item) }
-    emitter bool insert(int pos, T item)    { _bglArray.insert($self, $prop, $pos, $item) }
+    emitter bool append(T item)             { _bglArray.append($self, $prop, $item, $opref(=)) }
+    emitter bool prepend(T item)            { _bglArray.prepend($self, $prop, $item, $opref(=)) }
+    emitter bool insert(int pos, T item)    { _bglArray.insert($self, $prop, $pos, $item, $opref(=)) }
     emitter void remove(int pos)            { _bglArray.remove($self, $prop, $pos, $opref(deinit)) }
     emitter void removeValue(T item)        { _bglArray.removeValue($self, $prop, $item, $opref(==), $opref(deinit)) }
 
@@ -275,11 +275,13 @@ object _bglArray {
 
     // Zero every slot up to size; length drops to 0.
     void clear(var obj, var prop, var dtor = 0){
-        // Destroy only the live range — slots past length() were never handed a value
-        // this array owns. Zeroing still covers full capacity (see indexOf's note).
-        int len = length(obj, prop);
-        for(int t = 0; t < len; t++) destroyValue(dtor, get(obj, prop, t));
+        // Destruction is SIZE-scoped, not length-scoped. Ownership is physical: a slot
+        // write (`a[i] = ...`) allocates without moving the length cursor, so an owned
+        // allocation can sit past length(). Iteration (indexOf, sort) stays length-scoped
+        // because that is a logical question; releasing storage is not. Empty slots hold 0
+        // and destroyValue ignores them, so the wider sweep costs nothing.
         int sz = size(obj, prop);
+        for(int t = 0; t < sz; t++) destroyValue(dtor, get(obj, prop, t));
         for(int t = 0; t < sz; t++) set(obj, prop, t, 0);
         setLength(obj, prop, 0);
     }
@@ -289,8 +291,10 @@ object _bglArray {
     // reclaimed, so only the owned allocations need releasing.
     void freeAll(var obj, var prop, var dtor = 0){
         if(dtor == 0) return;
-        int len = length(obj, prop);
-        for(int t = 0; t < len; t++) destroyValue(dtor, get(obj, prop, t));
+        // Size-scoped for the same reason as clear(): the frame is going away, so every
+        // owned allocation must be released regardless of where the length cursor sits.
+        int sz = size(obj, prop);
+        for(int t = 0; t < sz; t++) destroyValue(dtor, get(obj, prop, t));
     }
 
     // Exchange the values at the two given indices. Size-bounded; caller is
@@ -312,10 +316,14 @@ object _bglArray {
 
     // Append val at position length(), bumping length by 1.
     // Returns false if the array is full (length == size), true on success.
-    bool append(var obj, var prop, var val){
+    // `assign` is the element type's static `operator =` ($opref(=)), or 0 for a plain
+    // word. Routing the store through setOwned is what lets `a += "text"` allocate into an
+    // owning element type instead of parking a bare pointer in the slot — the same channel
+    // a subscript write uses, so both entry points behave alike.
+    bool append(var obj, var prop, var val, var assign = 0){
         int len = length(obj, prop);
         if(len >= size(obj, prop)) return false;
-        set(obj, prop, len, val);
+        setOwned(obj, prop, len, val, assign);
         setLength(obj, prop, len + 1);
         return true;
     }
@@ -323,21 +331,28 @@ object _bglArray {
     // Insert val at the given position, shifting positions pos..length-1 to
     // pos+1..length. Returns false if the array is full or pos is out of
     // range (pos may equal length() to append, but not exceed it).
-    bool insert(var obj, var prop, int pos, var val){
+    bool insert(var obj, var prop, int pos, var val, var assign = 0){
         int len = length(obj, prop);
         if(len >= size(obj, prop)) return false;
         if(pos < 0 || pos > len) return false;
-        // shift right from end down to pos
+        // shift right from end down to pos. The shift moves owned values between slots
+        // verbatim — a raw set, not setOwned, since ownership is being relocated rather
+        // than assigned; routing it through assign would copy into the destination's own
+        // buffer and orphan the source.
         for(int i = len; i > pos; i--) set(obj, prop, i, get(obj, prop, i-1));
-        set(obj, prop, pos, val);
+        // The shift left `pos` aliasing the value now living at pos+1. Clear it before the
+        // store, or setOwned would see an owned value there and mutate the buffer BOTH slots
+        // point at — writing the new element over the one just shifted out of the way.
+        set(obj, prop, pos, 0);
+        setOwned(obj, prop, pos, val, assign);
         setLength(obj, prop, len + 1);
         return true;
     }
 
     // Insert val at position 0, shifting existing items right.
     // Returns false if the array is full, true on success.
-    bool prepend(var obj, var prop, var val){
-        return insert(obj, prop, 0, val);
+    bool prepend(var obj, var prop, var val, var assign = 0){
+        return insert(obj, prop, 0, val, assign);
     }
 
     // Remove the element at pos, shifting later elements left.

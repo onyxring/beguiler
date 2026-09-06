@@ -132,23 +132,22 @@ object _bglArray
     }
     self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
   ],
-       clear [obj prop dtor len t sz;
-    len=self.length(obj,prop);
-    for (t = 0 : t < len : t++) {
+       clear [obj prop dtor sz t;
+    sz=self.size(obj,prop);
+    for (t = 0 : t < sz : t++) {
         self.destroyvalue(dtor, self.get(obj,prop,t));
     }
-    sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
         self.set(obj, prop, t, 0);
     }
     self.setLength(obj, prop, 0);
   ],
-       freeAll [obj prop dtor len t;
+       freeAll [obj prop dtor sz t;
     if (dtor==0) {
         return;
     }
-    len=self.length(obj,prop);
-    for (t = 0 : t < len : t++) {
+    sz=self.size(obj,prop);
+    for (t = 0 : t < sz : t++) {
         self.destroyvalue(dtor, self.get(obj,prop,t));
     }
   ],
@@ -164,16 +163,16 @@ object _bglArray
         self.swap(obj, prop, i, len - 1 - i);
     }
   ],
-       append [obj prop val len;
+       append [obj prop val assign len;
     len=self.length(obj,prop);
     if (len >= self.size(obj,prop)) {
         return false;
     }
-    self.set(obj, prop, len, val);
+    self.setOwned(obj, prop, len, val, assign);
     self.setLength(obj, prop, len + 1);
     return true;
   ],
-       insert [obj prop pos val len i;
+       insert [obj prop pos val assign len i;
     len=self.length(obj,prop);
     if (len >= self.size(obj,prop)) {
         return false;
@@ -184,12 +183,13 @@ object _bglArray
     for (i = len : i > pos : i--) {
         self.set(obj, prop, i, self.get(obj,prop,i - 1));
     }
-    self.set(obj, prop, pos, val);
+    self.set(obj, prop, pos, 0);
+    self.setOwned(obj, prop, pos, val, assign);
     self.setLength(obj, prop, len + 1);
     return true;
   ],
-       prepend [obj prop val;
-    return self.insert(obj,prop,0,val);
+       prepend [obj prop val assign;
+    return self.insert(obj,prop,0,val,assign);
   ],
        destroyValue [dtor v;
      if(dtor ~= 0 && v ~= 0 && metaclass(dtor) == Routine) dtor(v); 
@@ -233,7 +233,7 @@ object _bglArray
     }
   ],
        push [obj prop val;
-    self.insert(obj, prop, 0, val);
+    self.insert(obj, prop, 0, val, 0);
   ],
        pop [obj prop v;
     if (self.length(obj,prop) == 0) {
@@ -247,7 +247,7 @@ object _bglArray
     return self.pop(obj,prop);
   ],
        enqueue [obj prop val;
-    self.append(obj, prop, val);
+    self.append(obj, prop, val, 0);
   ],
        peek [obj prop;
     if (self.length(obj,prop) == 0) {
@@ -1424,7 +1424,7 @@ class _bglstring(bglstringpoolreserve)
     _bglStr.print(s);
     t = _bglStr.new();
     t.setFromStr(_bglStr.append(s, " suffix"));
-    t.setFromStr(_bglStr.appendChar(s, '!'));
+    t.setFromStr(_bglStr.append(s, '!'));
     t.setFromStr(_bglStr.prepend(s, "prefix "));
     t.setFromStr(_bglStr.toUpper(s));
     t.setFromStr(_bglStr.toLower(s));
@@ -1483,6 +1483,17 @@ class _bglstring(bglstringpoolreserve)
 ];
 [_bgl_stringObj_deinit s;
      if(s ~= 0 && s ofclass _bglString) s.free(); 
+];
+[_bgl_stringObj__opeq cur v;
+    
+            if(cur ~= 0 && cur ofclass _bglString) {
+                if(v == 0) { cur.free(); return 0; }
+                cur.set(v);                  ! reuse the allocation this slot already owns
+                return cur;
+            }
+            if(v == 0) return 0;
+        
+    return _bglstr.new(v);
 ];
 [__glkHook _vararg_count api args retval;
     @copy sp api;

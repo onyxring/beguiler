@@ -1,20 +1,21 @@
-/*  test_stringobj_manual_lifecycle.bgl — stringObj slots, developer-owned lifecycle.
+/*  test_stringobj_manual_lifecycle.bgl — stringObj slots, automatic lifecycle.
 
     `stringObj` is a slot that OWNS a pool buffer, as against `string`, a slot holding a
     pointer to static text.
 
-    INTERIM CONTRACT: stringObj publishes no `static operator =`, so array<stringObj>
-    slot writes take core's inline word store and the caller owns allocation and release:
+    CONTRACT: stringObj publishes both halves of the lifecycle to generic containers —
 
-        slots[9] = _bglStr.new("jim");     // caller allocates
-        ... _bglStr.free(slots[9]);        // and frees before dropping the slot
+        static var  operator = (var cur, var v)   // allocate on first write, copy after
+        static void deinit(var s)                 // release
 
-    Publishing an assign hook would allocate on write, but removal would still need an
-    explicit free — auto-allocate with manual-free is asymmetric and invites leaks. Both
-    ends become automatic together, once element destruction exists.
+    — which the compiler hands array<T> via $opref(=) and $opref(deinit). Every store
+    entry point (subscript, append, prepend, insert) routes through the assign hook, and
+    every drop (remove, removeValue, -=, clear, local scope exit) routes through the
+    destructor. The developer writes text, not allocations.
 
-    Pins: the slot write stays `slots-->(i+1) = …` with no hook, and array<int> is
-    likewise untouched.  */
+    Pins: the owning slot write goes through _bglArray.setOwned with the assign routine's
+    address; the drop paths carry the destructor's; and array<int>, which publishes
+    neither, keeps core's inline word store with 0 in both channels.  */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 #include <array>
 #include <string>
@@ -24,9 +25,18 @@ array<int>       counts = {3, 1, 2};
 
 void main(){
     bglInit();
-    slots[9] = _bglStr.new("jim");    // explicit allocation
+    slots[9] = "jim";                         // allocates — no _bglStr.new() needed
+    print(slots[9]);
+    slots[9] = "replaced";                    // reuses slot 9's buffer
     print(slots[9]);
     print(slots[0]? "allocated" : "empty");   // never written -> empty
-    counts[0] = 9;
+
+    slots += "appended";                      // append allocates too
+    slots.prepend("first");
+    slots.insert(1, "second");
+    slots.remove(0);                          // frees the dropped element
+    slots.clear();                            // frees the rest
+
+    counts[0] = 9;                            // plain element type — untouched
     print(counts[0]);
 }
