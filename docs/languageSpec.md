@@ -3608,6 +3608,24 @@ object holder { ref inventory pack; }        // no instance created
 if (!holder.pack) holder.pack := spare;
 ```
 
+**A `ref` slot is bound, never assigned.** `=` on one is a compile error, on the declaration as
+well as on later statements — a `ref` slot names an instance owned elsewhere and has no storage
+of its own to copy into. The converse is also an error: `:=` on a non-`ref` declaration, which
+would orphan the instance that slot owns.
+
+```bgl
+ref Box r := mkBox(10, 20);   // bind at declaration
+r := other;                   // rebind
+
+ref Box r = mkBox(10, 20);    // error — a 'ref' declaration binds; use ':='
+r = other;                    // error — 'r' is a 'ref' slot, which binds rather than copies
+Box v := mkBox(10, 20);       // error — ':=' is only valid on a 'ref' declaration
+```
+
+This is what makes a bind readable where it is written. Before it was enforced, a bare `=` on a
+`ref` slot pointer-copied silently, so nothing on the line distinguished it from a value copy —
+you had to find the declaration to know which one you were reading.
+
 `:=` is **not overloadable** — bypassing operator dispatch is its purpose — and both sides must
 be the same class, or the right side a subclass. Binding an unrelated class, or any non-instance
 value, is a compile-time error. This keeps it a reference binding rather than a reinterpreting

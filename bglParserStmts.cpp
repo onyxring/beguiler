@@ -1851,6 +1851,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             return false;
         }
 
+        // A `ref` slot is bound, never copied into: it names an instance owned elsewhere and has
+        // no storage of its own. Requiring `:=` here is what keeps the two readable apart at the
+        // call site — a bare `=` on a ref slot used to pointer-copy silently, so nothing in the
+        // line told you whether it copied or rebound.
+        if(lhsIsRefLocal && !isBindAssign)
+            parsingError(format("'{0}' is a 'ref' slot, which binds rather than copies. Use the "
+                                "reference binding operator: '{0} := …'.", lhsOriginal));
         // `:=` binds one instance to a slot of the same class, so both sides must BE that class.
         // Restricting it this way keeps it from becoming a general escape from the type system:
         // it is a reference binding, not a reinterpreting store.

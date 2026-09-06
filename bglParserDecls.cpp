@@ -371,10 +371,22 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     }
 
     bool isAuto = (dataType.value == "auto");
-    if(isAuto && symbol.value != token::assignment)
+    if(isAuto && symbol.value != token::assignment && symbol.value != token::bindAssignment)
         parsingError("'auto' requires an initializer to infer the type");
 
-    if(symbol.value==token::assignment){
+    // A `ref` slot is only ever populated by binding — it names an instance owned elsewhere and
+    // has no storage of its own to copy into. `=` on one reads as a copy and is rejected so the
+    // two never look alike; `:=` is required everywhere, declaration included.
+    if(isRef && symbol.value == token::assignment)
+        parsingError(format("'ref {0} {1} = …': a 'ref' declaration binds a reference, so it takes "
+                            "the reference binding operator. Write 'ref {0} {1} := …' instead.",
+                            (string)dataType, (string)variableName));
+    if(!isRef && symbol.value == token::bindAssignment)
+        parsingError(format("'{0} {1} := …': the reference binding operator is only valid on a 'ref' "
+                            "declaration. Write 'ref {0} {1} := …' to bind, or '=' to copy.",
+                            (string)dataType, (string)variableName));
+
+    if(symbol.value==token::assignment || symbol.value==token::bindAssignment){
         token first = file.getToken();
         // Inline-aggregate folding: for a FILE-SCOPE object-backed class variable, `Type name = {...}`
         // and `Type name = Type{...}` are the same declaration as `Type name {...}` — bake the fields

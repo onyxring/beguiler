@@ -50,7 +50,7 @@ void main(){
 
     if(tg.color == 5){ take(tg.color); }   // colliding name in a condition and an argument
 
-    tg.tint = cx;
+    tg.tint := cx;
     tg.tint.r = 2;             // write through a class-typed member (chain)
     int e = tg.tint.r;         // read through a class-typed member (chain)
 }

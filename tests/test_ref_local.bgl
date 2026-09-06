@@ -44,16 +44,16 @@ Window mkWin(int w, int h){ winSrc.w = w; winSrc.h = h; return winSrc; }
 void main(){
     // (1) ref local on a plain class with no operator=. Without `ref` this errors;
     // with `ref` it's plain pointer-alias.
-    ref Box br = mkBox(10, 20);
+    ref Box br := mkBox(10, 20);
     int bx = br.x;            // reads via the pointer (= boxSrc.x = 10)
     br.x = 99;                 // mutates boxSrc.x via the pointer
 
     // (2) reassignment of a ref local: still pointer-alias.
-    ref Box br2 = br;
+    ref Box br2 := br;
     br2.y = 7;                 // mutates boxSrc.y (br and br2 both alias it)
 
     // (3) ref local on a class WITH operator=. The `ref` override suppresses dispatch.
-    ref Window wr = mkWin(300, 400);
+    ref Window wr := mkWin(300, 400);
     int wH = wr.h;             // reads via the pointer (= winSrc.h = 400)
 
     // (4) same Window class used as a value local: backing synthesis happens,

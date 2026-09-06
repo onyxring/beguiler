@@ -32,6 +32,10 @@ void bglParser::initGrammarTable() {
         {"object declaration",       {TYPE_NAME, NEW_NAME, "{"},                                    &Self::processObject},
         {"inline object statement",  {TYPE_NAME, "{"},                                              &Self::processInlineObjectStatement},
         {"variable declaration",     {TYPE_NAME, NEW_NAME, "="},                                    &Self::processVariable},
+        // `ref T name := expr;` — a ref declaration binds rather than copies, so it carries the
+        // reference binding operator. processVariableDeclaration rejects the `=` form for `ref`
+        // and this `:=` form for non-ref, so the two spellings never overlap.
+        {"variable declaration",     {TYPE_NAME, NEW_NAME, ":="},                                   &Self::processVariable},
         {"variable declaration",     {TYPE_NAME, NEW_NAME, ";"},                                    &Self::processVariable},
 
         // Statements (code-block scope) ==========================================

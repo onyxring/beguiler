@@ -1,0 +1,15 @@
+/*
+    _test_ref_decl_requires_bind.bgl  (negative)
+    The rule holds on the declaration too: `ref T name = expr` is rejected in favour of
+    `:=`, so a ref slot is populated the same way everywhere it appears.
+*/
+#beguilerSettings { informName = "none"; }
+
+class Box { int x = 0; }
+object b1 : Box { x = 1; }
+
+void f() {
+    ref Box r = b1;
+}
+// EXPECT_ERROR: a 'ref' declaration binds a reference
+// EXPECT_ERROR: ref box r := 

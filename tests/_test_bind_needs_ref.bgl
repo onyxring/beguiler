@@ -1,0 +1,14 @@
+/*
+    _test_bind_needs_ref.bgl  (negative)
+    The converse: `:=` on a non-ref declaration is rejected. An owning slot holds its own
+    instance and is copied into; binding one would silently orphan that instance.
+*/
+#beguilerSettings { informName = "none"; }
+
+class Box { int x = 0; }
+object b1 : Box { x = 1; }
+
+void f() {
+    Box r := b1;
+}
+// EXPECT_ERROR: the reference binding operator is only valid on a 'ref' declaration

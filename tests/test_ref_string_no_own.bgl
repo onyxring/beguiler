@@ -17,7 +17,7 @@
 array<string> shelf[4];
 
 void aliasOnly(){
-    ref string h = shelf[0];     // pointer alias — owns nothing
+    ref string h := shelf[0];     // pointer alias — owns nothing
     print(h);
 }
 

@@ -77,6 +77,16 @@ holder.pack := spare;                   // bind: both names now refer to the sam
 
 `:=` is the **reference binding operator** — **rebinding** when the slot already holds one. It is a separate operator because a class can overload `=` for copying, which leaves no way to spell "point at this." `=` keeps its meaning exactly — it copies, through `operator =` when the type defines one — and `:=` binds the reference without dispatching it. Both sides must be the same class, so it stays a reference binding rather than a hole in the type system.
 
+A `ref` slot is bound, never assigned — `=` on one is an error, at the declaration and afterwards alike:
+
+```bgl
+ref Box r := mkBox(10, 20);   // bind
+r := other;                   // rebind
+r  = other;                   // error: 'r' is a 'ref' slot, which binds rather than copies
+```
+
+That is the point of a separate operator: the line tells you it rebinds, without your having to go and find the declaration.
+
 ---
 ## 3. `children` — place a room's contents in one line
 Prior to this update, objects needed to place themselves in the world model using the `parent` property. Now a container can name its contents with `children`, so you can populate a room in a single declaration:

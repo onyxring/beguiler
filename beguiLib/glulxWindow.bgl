@@ -63,7 +63,7 @@ class _glulxWindow{
         self.id=w.id; 
         self.winMethod=w.winMethod; 
         self.winType=w.winType; 
-        self.parentWin=w.parentWin; 
+        self.parentWin:=w.parentWin; 
         return self;
     }
 
@@ -76,7 +76,7 @@ class _glulxWindow{
         
         tmpWin.winMethod=(placement | scale | border);
         tmpWin.winType=type;
-        tmpWin.parentWin=self;
+        tmpWin.parentWin:=self;
         tmpWin.id=bgl.asm.windowOpen(self.id, type, size, tmpWin.winMethod, 0);
         return tmpWin;
     }
@@ -96,7 +96,7 @@ class _glulxWindow{
         // assignments to plain int locals.
         if(width == 0 && height == 0){ width = -1; height = -1; }
         if(width == 0 || height == 0 || width == -1 || height == -1){
-            ref _glulxWindowSize info = _getImageInfo(imgId);   // aliases the shared _tmpWindowSize (no copy)
+            ref _glulxWindowSize info := _getImageInfo(imgId);   // aliases the shared _tmpWindowSize (no copy)
             if(width==0)   width = (info.width * height) / info.height;
             if(height == 0)   height = (info.height * width) / info.width;
             if(width==-1)  width = info.width;

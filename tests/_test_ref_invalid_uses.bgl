@@ -20,6 +20,6 @@ class Box { int x; int y; }
 Box boxSrc;
 
 // File-scope `ref` — should error.
-ref Box bad = boxSrc;
+ref Box bad := boxSrc;
 
 void main(){}

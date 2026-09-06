@@ -1103,7 +1103,7 @@ extend class string {
 //
 // Widening (stringLiteral/string -> stringObj) allocates and copies the text in.
 // Narrowing (stringObj -> string) is rejected: it would alias an owned buffer.
-// `stringObj a = b` copies b's VALUE into a's own buffer; `ref stringObj a = b`
+// `stringObj a = b` copies b's VALUE into a's own buffer; `ref stringObj a := b`
 // copies the address and owns nothing.
 //
 // Members mirror `string`'s surface and delegate to the same var-taking _bglStr
