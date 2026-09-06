@@ -13,3 +13,6 @@ docs/.obsidian/
 
 # macOS
 .DS_Store
+
+# Per-object build artifacts and header depfiles
+/build/
