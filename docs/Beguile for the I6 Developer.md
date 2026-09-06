@@ -953,35 +953,56 @@ The moment you write...
 #include <string>
 ```
 
-...the `string` type grows up.  It's still the same type, you don't change any declarations, but a wealth of new methods and operators become available.  The most important shift for I6 devs to remember: `==` now compares content.  By `#include`-ing  the `<string>` language extension, the previous example now matches by value...
+...two things happen. `string` keeps its meaning but gains content comparison, and a **second type appears**: `stringObj`.
+
+The split is the part worth slowing down for, because it has no I6 equivalent:
+
+| Type | What the slot holds | Mutable? | Costs |
+|---|---|---|---|
+| `string` | a **pointer** to static text — exactly I6's address-of-literal | no | nothing |
+| `stringObj` | a **buffer it owns**, taken from the string pool | yes | a pool slot |
+
+An I6 dev already knows the first one: it is the packed literal address. `stringObj` is the thing I6 makes you hand-roll with buffers, given a type.
+
+The most important shift to remember: `==` now compares **content**, for both types. The earlier example now matches by value...
 
 ```bgl
 string a = "hello";
 string b = "hello";
-if(a == b) 
-     print("MATCHED."); 
-else 
-     print("Unmatched."); 
+if(a == b)
+     print("MATCHED.");
+else
+     print("Unmatched.");
 ```
 
 > MATCHED.
 
-That snippet now behaves as you'd expect, and it does so whether `a` and `b` are literals, runtime values, or one of each.
+That holds whether `a` and `b` are literals, runtime values, or one of each — and whether they are `string` or `stringObj`.
 
-Beguile also adds routine members and operators to `string` (e.g. `replace`, `toUpper`, etc...).  Generally, with only a few exceptions, these routines **return a new string and leave the original string untouched**. 
+##### Which one do I declare?
 
-I won't cover `string` exhaustively, but the following are examples of the expanded behavior:  
+Use `string` for text you only ever read: object descriptions, names, messages. It is the common case and it costs nothing.
 
-**Construction, copying, changing**
+Use `stringObj` the moment you want to *build* or *change* text. Anything that produces new text — concatenation, `toUpper`, `trim`, `mid` — yields a `stringObj`, so that is what has to receive it:
 
 ```bgl
-string name  = "Cloak";        // name is "Cloak" 
-string label = name;           // label is also "Cloak", but its own copy 
-name = name + " of Darkness";  // name is "Cloak of Darkness"; label, "Cloak" 
-name += "!";                   // name is "Cloak of Darkness!"; label unchanged
+string  title = "Cloak";        // a pointer to static text
+
+stringObj name;
+name = title;                   // copies the TEXT into name's own buffer
+name = name + " of Darkness";   // name is "Cloak of Darkness"; title unchanged
+name += "!";                    // name is "Cloak of Darkness!"
 ```
 
-**`switch` on string values** cases compare by content, exactly like `==`, mixing literals and runtime strings freely:
+`stringObj` allocates on declaration and frees itself when the routine returns, so there is no explicit lifecycle to manage in ordinary code. It does need `bglInit()` to have run once, to set up the pool.
+
+> ***Note for I6 authors**: assignment between `stringObj` values copies the text, not the address. `b = a` gives `b` its own buffer holding the same characters, so changing `b` later leaves `a` alone. That is the opposite of what a bare I6 pointer assignment does, and it is deliberate.*
+
+Beguile adds routine members and operators to both types (`replace`, `toUpper`, …). With few exceptions these **return a new value and leave the original untouched** — so the result is a `stringObj`, and reading it into a `string` will not compile.
+
+I won't cover the surface exhaustively, but the following are representative:
+
+**`switch` on string values** — cases compare by content, exactly like `==`, mixing literals and runtime values freely:
 
 ```bgl
 switch(command){
@@ -991,10 +1012,10 @@ switch(command){
 }
 ```
 
-**Slicing, search, replace** (all return new strings):
+**Slicing, search, replace** (all return a new `stringObj`):
 
 ```bgl
-string s = "Hello, World";
+stringObj s; s = "Hello, World";
 s.mid(3, 5)                      // "lo, W"  5 chars from index 3 (0-based)
 s.left(5)                        // "Hello"
 s.right(5)                       // "World"
@@ -1004,33 +1025,40 @@ s.replace("World", "Beguile")    // "Hello, Beguile"   first match only
 s.replaceAll("l", "L")           // "HeLLo, WorLd"     every match
 ```
 
-**Case conversion and trimming**
+**Case conversion and trimming** — these work directly on a literal, since a literal is a perfectly good `string`:
 
 ```bgl
-("Mixed").toUpper()              // "MIXED"
-("Mixed").toLower()              // "mixed"
-("  hi  ").trim()                // "hi"      (also trimLeft / trimRight)
+"Mixed".toUpper()                // "MIXED"
+"Mixed".toLower()                // "mixed"
+"  hi  ".trim()                  // "hi"      (also trimLeft / trimRight)
 ```
 
-**Direct Indexed character access** read or write a single `char` at a zero-based position:
+**Indexed character read** gets a single `char` at a zero-based position:
 
 ```bgl
-string s = "Hello";
+stringObj s; s = "Hello";
 char first = s[0];               // 'H'
-s[0] = 'J';                      // s is now "Jello"
 ```
 
-> ***Note:** unlike the routines discussed above, changing individual characters does indeed change the string.*
+> ***Known gap**: the reverse — `s[0] = 'J'` — does not currently work. Beguile's subscript-write dispatcher routes through `array<T>` only, so the `operator[]=` declared on the string types is unreachable from that syntax, and the emitted I6 will not assemble. Build the new value instead — `s = s.right(4).prepend("J")` — or use `replace`.*
 
-
-**Format strings** via `string.format(pattern, args...)`:
+**Format strings** via `format(pattern, args...)`:
 
 ``` bgl
-string who = "world";
-string greet = who.format("Hi $0, arg=$1", "extra")   // "Hi world, arg=extra"
+stringObj who; who = "world";
+who.format("Hi $0, arg=$1", "extra")   // "Hi world, arg=extra"
 ```
 
-`$0` is the value of the string object itself, in this case `who`; `$1`, `$2`, … are the extra arguments in order. Use `format` when interpolation (`$"..."`) won't do.
+`$0` is the value of the receiver itself, in this case `who`; `$1`, `$2`, … are the extra arguments in order. Use `format` when interpolation (`$"..."`) won't do.
+
+**In containers**, a `stringObj` element manages itself. The array allocates a slot's buffer on write and releases it when the element is dropped or the array leaves scope, so you write text rather than allocations:
+
+```bgl
+array<stringObj> names[3];
+names += "pear";
+names += "apple";
+names.sort();                    // ordered by content, not by address
+```
 
 > ***Note**: Including `<string>` does come with a runtime cost: a small string pool and the dispatch routines that make typed comparisons work.  If your game is content-string heavy, the cost is well-paid.  If you're only printing literals and never comparing them, you don't need the extension and shouldn't include it.*
 
@@ -1222,6 +1250,49 @@ array<int> desc = nums.orderBy((int a, int b) => b - a);
 ```
 
 The difference between the two is what they touch.  `sort()` reorders the receiver in place and returns nothing; `orderBy()` leaves the receiver alone and yields a sorted copy, which is what lets it sit in the middle of a chain.
+
+#### Arrays of your own classes
+
+An `array<T>` where `T` is a class you declared works out of the box for storing, reading, appending and removing. Two operations, though, ask the element type a question it may not have answered.
+
+`indexOf` / `contains` / `removeValue` compare with `==`. If your class doesn't define one, the comparison falls back to **identity** — it finds *that* instance, not an equal one:
+
+```bgl
+class Item { int weight; }
+object axe  : Item { weight = 30; }
+object twin : Item { weight = 30; }
+
+bag.indexOf(axe);       // found
+bag.indexOf(twin);      // -1 — same weight, different object
+```
+
+That is usually the sensible default for objects, so nothing warns.
+
+`sort()` is the one to watch. Without an `operator <=>`, ordering falls back to comparing the underlying words — and for a class instance the word is its **object address**, which is where I6 happened to place it in the story file. The result is deterministic and completely unrelated to any field, so a bare `sort()` looks like it worked. Beguile warns at compile time rather than letting that pass:
+
+```
+warning: 'Item' publishes no 'operator <=>', so 'sort()' falls back to word semantics
+— for a class that means comparing object addresses, not values.
+```
+
+Give the type an ordering and both go away:
+
+```bgl
+class Item {
+    int weight;
+    static int  operator <=> (Item a, Item b) { if(a.weight < b.weight) return -1;
+                                                if(a.weight > b.weight) return  1; return 0; }
+    static bool operator ==  (Item a, Item b) { return a.weight == b.weight; }   // only if you want value equality
+}
+```
+
+Or pass a comparator for a one-off ordering, which never warns:
+
+```bgl
+bag.sort((Item a, Item b) => { return a.weight - b.weight; });
+```
+
+None of this applies to `int`, `char`, `object` or the built-in types: for those the word *is* the value, so the default ordering is the right answer.
 
 #### Array Life cycle
 
