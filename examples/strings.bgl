@@ -1,8 +1,15 @@
-/*  strings.bgl - mutable strings (the <string> extension).
+/*  strings.bgl - text values and the <string> extension.
 
-    Beguile's auto-loaded `string` prints and compares by content. Adding
-    `#include <string>` upgrades it to a mutable, pool-backed string with a rich
-    method surface: concatenation, case conversion, search, slicing, and more.
+    Beguile splits text into two types, because they are two different things:
+
+      string     a slot holding a POINTER to static text. Immutable, costs nothing,
+                 needs no setup. String literals are of this type.
+      stringObj  a slot that OWNS a pool buffer. Mutable, with a rich method surface:
+                 concatenation, case conversion, search, slicing.
+
+    `#include <string>` brings in the pool and the method surface. Both types print
+    and compare by content, so `==` and `<` mean what you expect either way.
+
     Library-free, so it transpiles with beguiler alone (informName = "none");
     point informName at Inform 6 and add an IF library to build a playable story.  */
 
@@ -16,11 +23,31 @@
 void main() {
     bglInit();                                  // the string pool needs one-time init
 
-    string s = "cloak";
+    // A `string` names static text. No allocation, nothing to release.
+    string title = "cloak";
+    print(title); print("^");
+
+    // A `stringObj` owns a buffer, so it can be built up and changed in place.
+    stringObj s;
+    s = title;                                  // copies the text INTO s's own buffer
     s = s + " of darkness";                     // concatenation
     s = s.toUpper();                            // "CLOAK OF DARKNESS"
     print(s); print("^");
 
-    print(s.getLength()); print("^");           // 16
+    print(s.getLength()); print("^");           // 17
     print(s.contains("DARK") ? "found^" : "missing^");
+
+    // Comparison is by content across both types.
+    print(("cloak" == title) ? "literal == string^" : "mismatch^");
+
+    // In a container, stringObj slots allocate and release themselves: write text,
+    // not allocations. Dropping an element, or leaving this scope, frees the buffer.
+    array<stringObj> names[3];
+    names += "pear";
+    names += "apple";
+    names += "fig";
+    names.sort();                               // uses stringObj's <=> (by content)
+    for(int i = 0; i < 3; i++){ print(names[i]); print(" "); }
+    print("^");
+    print("indexOf(fig) = "); print(names.indexOf("fig")); print("^");
 }
