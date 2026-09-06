@@ -118,7 +118,7 @@ extend extern class array {
     // Sort — two overloads. The no-arg form uses the default ascending
     // comparator; the func-arg form lets the caller customize ordering
     // (e.g. descending, by field, locale-aware string compare).
-    emitter void sort()                            { _bglArray.sortDefault($self, $prop, $opref(<=>)) }
+    emitter void sort()                            { _bglArray.sortDefault($self, $prop, $oprefReq(<=>)) }
     emitter void sort(func<int, T, T> compare)     { _bglArray.sort($self, $prop, $compare) }
 
 }

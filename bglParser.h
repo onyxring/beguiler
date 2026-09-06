@@ -426,7 +426,8 @@ class bglParser {
         // Replace every `$elemop(<op>)` in an emitter body with that operator's callable form
         // for `elemType`. One substitution covers every operation, so a site cannot be
         // partially wired the way four separate tokens could.
-        string substituteElemOps(const string& body, const string& elemType);
+        string substituteElemOps(const string& body, const string& elemType,
+                                 const string& contextName = "");
         bool isTypeCompatible(string argType, string paramType);
         // Element-type compatibility for array/list initializers: isTypeCompatible plus an
         // initializer-only relaxation letting a byte array (`array<char>`) accept integer literals.

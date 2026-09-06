@@ -5390,6 +5390,27 @@ class Money {
 Publishing an operator is therefore **opt-in**: a type that declares none simply yields `0`, and
 the runtime falls back to its default (for `_bglArray`, a plain word comparison).
 
+#### `$oprefReq` — a reference the operation cannot do without
+
+`$oprefReq(<op>[, <operandType>])` resolves exactly as `$opref` does and substitutes `0` the
+same way; it differs only in reporting a **compile-time warning** when the lookup comes back
+empty. Which of the two a call site wants is the library's knowledge, not the compiler's:
+
+```bgl
+emitter int  indexOf(T item) { _bglArray.indexOf($self, $prop, $item, $opref(==)) }
+emitter void sort()          { _bglArray.sortDefault($self, $prop, $oprefReq(<=>)) }
+```
+
+Absence of `==` is a sound default — identity is a reasonable way to find an element. Absence
+of `<=>` is not: word ordering over a class means ordering by object *address*, which is
+deterministic but unrelated to any field, so `sort()` silently returns a plausible wrong
+answer. `$oprefReq` is how a library says which case it is.
+
+The warning is raised only for a type Beguile itself emits. The bare-word builtins (`int`,
+`char`, `object`, …) are `extern`, and for them the word *is* the value, so word semantics are
+the correct answer rather than a silent wrong one — those never warn, and neither does a call
+that supplies its own comparator.
+
 The same lookup is available in ordinary Beguile code as `Type::operator <op>` (§10.8.6).
 
 All emitter placeholders use the `$` prefix to distinguish them from raw I6 identifiers. This prevents substitution collisions. For example, if a parameter is named `c` and the emitter body also references a variable named `c`, using `$c` for the parameter ensures only the intended token is replaced.
@@ -6509,7 +6530,7 @@ plain word semantics and pays nothing — no extra call, no extra code.
 | `T` publishes | Used by | Absent → |
 |---|---|---|
 | `operator ==` — static or instance | `indexOf`, `find`, `contains`, `removeValue`, `-=` | Word comparison (identity) |
-| `operator <=>` — static or instance | `sort()` | Signed word ordering |
+| `operator <=>` — static or instance | `sort()` | Signed word ordering, **and a compile-time warning** — for a class that means ordering by object address (§14.4.3) |
 | `static operator =` | `[i] =`, `append`, `prepend`, `insert` | Raw word store |
 | `static deinit(T)` | `remove`, `removeValue`, `-=`, `clear`, local scope exit | Nothing is released |
 

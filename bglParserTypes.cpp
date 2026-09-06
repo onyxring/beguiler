@@ -1089,14 +1089,22 @@ string bglParser::operatorRef(const string& typeName, const string& opName,
     return f->i6name;                                 // instance: the mangled property name
 }
 
-string bglParser::substituteElemOps(const string& body, const string& elemType){
+string bglParser::substituteElemOps(const string& body, const string& elemType,
+                                    const string& contextName){
     string out = body;
-    const string tok = "$opref(";
     size_t at = 0;
-    while((at = out.find(tok, at)) != string::npos){
-        size_t close = out.find(')', at + tok.size());
+    while((at = out.find("$opref", at)) != string::npos){
+        // `$oprefReq(...)` is `$opref(...)` plus a diagnostic: the reference still resolves
+        // the same way and still substitutes 0 when absent, but the BLR is declaring that a
+        // missing one leaves the operation meaningless rather than merely defaulted. Which
+        // of the two a call wants is the BLR's knowledge, not the compiler's — sort() needs
+        // an ordering, indexOf() is content with identity.
+        bool required = out.compare(at + 6, 3, "Req") == 0;
+        size_t open = at + 6 + (required ? 3 : 0);
+        if(open >= out.size() || out[open] != '('){ at += 6; continue; }
+        size_t close = out.find(')', open + 1);
         if(close == string::npos) break;                       // unterminated; leave as-is
-        string args = out.substr(at + tok.size(), close - at - tok.size());
+        string args = out.substr(open + 1, close - open - 1);
         auto trim = [](string v){ size_t a = v.find_first_not_of(" \t");
                                   size_t b = v.find_last_not_of(" \t");
                                   return a == string::npos ? string() : v.substr(a, b - a + 1); };
@@ -1112,7 +1120,24 @@ string bglParser::substituteElemOps(const string& body, const string& elemType){
         // single-overload types are unaffected.
         if(operand.empty()) operand = elemType;
         string rep = operatorRef(elemType, op, operand);
-        if(rep.empty()) rep = "0";
+        if(rep.empty()){
+            // Only a type Beguile actually emits is worth warning about. The bare-word
+            // builtins (int, char, object, …) are `extern`, and for them the word IS the
+            // value, so the word-semantics default is the correct answer rather than a
+            // silent wrong one. Same predicate emitClass uses to decide what it owns.
+            if(required){
+                auto* cd = dynamic_cast<classDef*>(&languageService.getType(elemType));
+                if(cd != nullptr && !cd->isExternal && !cd->isEmitterClass && !cd->isAlias)
+                    parsingWarning(format(
+                        "'{0}' publishes no 'operator {1}', so {2}falls back to word semantics "
+                        "— for a class that means comparing object addresses, not values. "
+                        "Declare `static {3} operator {1} ({0} a, {0} b)` on '{0}' to give it one.",
+                        typeDisplayName(elemType), op,
+                        contextName.empty() ? "" : format("'{0}()' ", contextName),
+                        op == "<=>" ? "int" : "bool"));
+            }
+            rep = "0";
+        }
         out.replace(at, close - at + 1, rep);
         at += rep.size();
     }

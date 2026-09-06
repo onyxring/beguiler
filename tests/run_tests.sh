@@ -4,6 +4,10 @@
 # Two test categories live side-by-side, each available for both source extensions:
 #   • Positive baselines: test_*.bgl, test_*.inf  — must compile; .transpiled.inf must match
 #                                                    captured baseline at <baselineDir>/<basename>.baseline.
+#                                                    May also declare `// EXPECT_WARNING: <substring>`
+#                                                    lines, each of which must appear on stderr — a
+#                                                    warning never reaches the .inf, so a baseline
+#                                                    alone cannot tell if one stops firing.
 #   • Negative tests:    _test_*.bgl, _test_*.inf — must FAIL compilation; stderr must contain
 #                                                    a marker string declared inline at the top
 #                                                    of the file as `// EXPECT_ERROR: <substring>`
@@ -62,7 +66,7 @@ for src in "$SCRIPT_DIR"/test_*.bgl "$SCRIPT_DIR"/test_*.inf; do
     # #beguilerSettings outputPath) so the transpiled .inf lands at a path we can find,
     # now that the compiler writes intermediates into the output directory.
     cd "$SCRIPT_DIR"
-    "$BEGUILER" -o "$OUTPUT_DIR" "$src" 2>/dev/null
+    compile_stderr=$("$BEGUILER" -o "$OUTPUT_DIR" "$src" 2>&1 >/dev/null)
 
     if [ ! -f "$inf" ]; then
         echo "  ERROR: $name — compilation failed (no .inf produced)"
@@ -75,6 +79,24 @@ for src in "$SCRIPT_DIR"/test_*.bgl "$SCRIPT_DIR"/test_*.inf; do
         echo "  CAPTURED: $name"
         cleanup
     else
+        # Diagnostics a fixture expects on stderr. Warnings never reach the .inf, so a
+        # baseline cannot pin one — without this a warning could stop firing and every
+        # test would still pass.
+        want_warn=$(grep -E '^[[:space:]]*(//|!)[[:space:]]*EXPECT_WARNING:' "$src" \
+            | sed -E -e 's|^[[:space:]]*//[[:space:]]*EXPECT_WARNING:[[:space:]]*||' \
+                     -e 's|^[[:space:]]*![[:space:]]*EXPECT_WARNING:[[:space:]]*||')
+        if [ -n "$want_warn" ]; then
+            while IFS= read -r needle; do
+                [ -z "$needle" ] && continue
+                if ! echo "$compile_stderr" | grep -qF "$needle"; then
+                    echo "  FAIL: $name — expected warning not emitted: '$needle'"
+                    FAIL=$((FAIL + 1))
+                    cleanup
+                    continue 2
+                fi
+            done <<< "$want_warn"
+        fi
+
         baseline="$BASELINE_DIR/${name}.baseline"
         if [ ! -f "$baseline" ]; then
             echo "  SKIP: $name — no baseline (run with --capture first)"

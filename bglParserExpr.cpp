@@ -1810,7 +1810,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 // One substitution covers every $opref(<op>) in the body. Outside
                                 // array emitters there is no element type, so $opref resolves
                                 // against the receiver's own type instead.
-                                b = substituteElemOps(b, recvElemType.empty() ? objType : recvElemType);
+                                b = substituteElemOps(b, recvElemType.empty() ? objType : recvElemType, method->name);
                                 callText = b;
                                 expr->tokens.push_back(b);
                             }

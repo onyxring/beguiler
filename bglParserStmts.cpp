@@ -2220,7 +2220,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         if(!hasPropParam)
                             b = replaceWord(b, "$prop", propValue);
                         // One substitution covers every $elemop(<op>) in the body.
-                        b = substituteElemOps(b, recvElemType.empty() ? objectType : recvElemType);
+                        b = substituteElemOps(b, recvElemType.empty() ? objectType : recvElemType, methodName);
                         callStmt.emitterBody = b;
                         for(paramDef* p : method->params)
                             callStmt.emitterParams.push_back(p->name);

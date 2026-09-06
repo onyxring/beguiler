@@ -1,0 +1,41 @@
+/*  A no-arg sort() on a user class with no `operator <=>` warns.
+
+    Without an ordering the comparison falls back to word semantics, which for a
+    class means comparing OBJECT ADDRESSES — a deterministic order derived from
+    where instances sit in the story file, unrelated to any field. It does not
+    fail, so the developer sees a plausible-looking result; the compiler is the
+    only place this can be caught.
+
+    The requirement is declared in the BLR (`$oprefReq(<=>)` in array.bgl), not
+    hardcoded here: the knowledge that ordering without <=> is meaningless
+    belongs to sort(), and indexOf() deliberately keeps plain $opref because
+    identity IS a sound default for ==.
+
+    Silence is as much the contract as the warning, so the cases that must NOT
+    warn are exercised alongside.  */
+// EXPECT_WARNING: 'Bare' publishes no 'operator <=>'
+// EXPECT_WARNING: 'sort()' falls back to word semantics
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+#include <array>
+
+class Bare  { int v; }                                                    // warns
+class Ord   { int v; static int operator <=> (Ord a, Ord b){ if(a.v<b.v) return -1; if(a.v>b.v) return 1; return 0; } }
+class Inst  { int v; int operator <=> (Inst o){ if(v<o.v) return -1; if(v>o.v) return 1; return 0; } }
+object bare1 : Bare { v = 1; }
+object ord1  : Ord  { v = 1; }
+object inst1 : Inst { v = 1; }
+
+void main(){
+    bglInit();
+    array<Bare> w[2]; w += bare1; w.sort();          // the one warning
+
+    // none of these warn
+    array<int>       a[2]; a += 1; a.sort();         // word IS the value
+    array<char>      c[2]; c += 'a'; c.sort();
+    array<object>    o[2]; o += bare1; o.sort();     // extern builtin
+    array<stringObj> s[2]; s += "a"; s.sort();       // publishes <=>
+    array<Ord>       x[2]; x += ord1; x.sort();      // static <=>
+    array<Inst>      y[2]; y += inst1; y.sort();     // instance <=>
+    array<Bare>      z[2]; z += bare1; z.sort((Bare p, Bare q) => { return 0; });  // explicit comparator
+}
