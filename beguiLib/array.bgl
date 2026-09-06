@@ -239,12 +239,6 @@ object _bglArray {
     // `eq` is the element type's comparison routine, or 0 when a raw word compare is
     // correct (the compiler fills it via $elemeq). Consulted only after identity fails,
     // and never on an empty slot — unused capacity holds 0.
-    // Two comparison channels, both filled by the compiler from the element type:
-    //   eq     — a free ROUTINE (word-typed elements: string, float). A packed literal has
-    //            no dispatch surface, so it can only be passed as a parameter.
-    //   eqProp — a PROPERTY of a non-emitter operator (object-backed elements). Here the
-    //            element itself is the receiver, so the message goes straight to it.
-    // Both are 0 when word comparison is correct, which is the common case.
     // `op` is the element type's `==`, supplied by the compiler via $opref(==), in
     // whichever form the type has — a free ROUTINE (static; the only form that can serve a
     // bare-word element) or a PROPERTY (instance; sent to the element itself). They are told
@@ -440,12 +434,26 @@ object _bglArray {
         else         self.sort(obj, prop, cmp);
     }
 
+    // Invoke a comparator in whichever form the element type published it — the same
+    // obj-or-routine idiom indexOf uses. A ROUTINE (a static `operator <=>`, a lambda, or
+    // _bglArrayCompareAsc) takes both operands; a PROPERTY (an instance `operator <=>`) is
+    // sent to the left operand, which becomes its receiver. Calling a property number as
+    // though it were a routine address would run garbage, so the metaclass test is what
+    // lets an instance `<=>` be declared at all.
+    int invokeCompare(var cmp, var a, var b){
+        #i6 {
+            if(metaclass(cmp) == Routine) return cmp(a, b);
+            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
+        }
+        return 0;
+    }
+
     void sort(var obj, var prop, func<int, var, var> compare){
         int len = length(obj, prop);
         for(int i = 1; i < len; i++){
             var key = get(obj, prop, i);
             int j = i - 1;
-            while(j >= 0 && compare(get(obj, prop, j), key) > 0){
+            while(j >= 0 && invokeCompare(compare, get(obj, prop, j), key) > 0){
                 set(obj, prop, j + 1, get(obj, prop, j));
                 j--;
             }

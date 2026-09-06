@@ -2279,7 +2279,7 @@ In addition to standard arithmetic and comparison operators, these special opera
 | `operator switch(type v)` | `switch(x){ case val: }` | Custom switch comparison. Called for each `case` value to test equality. Must be an emitter. See §9.11. |
 | `operator ?()` | `x?` | Postfix query / null test. Returns `eBool`. Used by optional chaining (`?.`) and null coalescing (`??`). Must be an emitter. See §10.5. |
 | `operator ?=` | `x ?= y` | Overloadable binary comparison at equality precedence, result `eBool`. No built-in type defines it; provide `operator ?=` on a class to give it a custom meaning. |
-| `static operator <=>` | `x <=> y` | Three-way comparison, result `int` (-1 / 0 / +1). **Must be `static`** — it takes both operands, so it has no receiver. Generic containers ask a type for it to obtain an ordering; see §5.6.8. |
+| `operator <=>` | `x <=> y` | Three-way comparison, result `int` (-1 / 0 / +1). Declarable `static` (both operands as parameters) or as an instance operator (the left operand is the receiver). Generic containers ask a type for it to obtain an ordering; see §5.6.8. |
 | `operator !()` | `!x` | Prefix logical NOT. Must be an emitter. |
 | `operator()` | `(Type)x` | Conversion operator. Covered in §5.6.4. |
 | `operator[]` / `operator[]=` | `x[i]` / `x[i]=v` | Subscript read/write. Covered in §5.6.3. |
@@ -2336,7 +2336,7 @@ A packed string literal has no properties, so only the routine form can serve it
 
 `<=>` yields an `int`: negative when the left operand orders first, `0` when equivalent, positive when it orders after — the `qsort` convention, which is what a comparator wants.
 
-It **must** be declared `static`; a non-static `<=>` is a compile error, since two operands leave no receiver to bind. It is usable in ordinary expressions and in a comparator lambda:
+`<=>` has the same freedom as any other operator: declare it `static`, taking both operands, or as an instance operator, where the left operand is the receiver. Generic code reaches it through `$opref(<=>)` (§14.4.3), which yields a routine address for the static form and a property for the instance form; `_bglArray` tells them apart by `metaclass` and sends the property to the left operand. A `static` form costs a routine call but is the only form a bare-word type (`string`, `float`) can publish, having no object to receive a message. Either form is usable in ordinary expressions and in a comparator lambda:
 
 ```bgl
 int r = a <=> b;                                   // -1, 0, or +1

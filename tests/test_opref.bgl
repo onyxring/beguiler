@@ -26,12 +26,15 @@
 class Point {
     int x;
     static bool operator == (Point a, Point b) { return a.x == b.x; }
+    static int  operator <=> (Point a, Point b) { if(a.x < b.x) return -1; if(a.x > b.x) return 1; return 0; }
 }
 
-// instance operator → property name
+// instance operator → property name. `<=>` has the same freedom as any other
+// operator: _bglArray routes a property form to the element as its receiver.
 class Tagged {
     int v;
     bool operator == (Tagged o) { return v == o.v; }
+    int  operator <=> (Tagged o) { if(v < o.v) return -1; if(v > o.v) return 1; return 0; }
 }
 
 // overloaded statics — the two-argument form selects between them
@@ -63,6 +66,8 @@ void exerciseArrayIndexOf(){
     int viaNone     = ints.indexOf(20);        // int publishes nothing → word compare
     int viaUserStat = pts.indexOf(pc);
     int viaUserInst = tags.indexOf(tagc);
+    tags.sort();                               // instance <=> dispatched as a property
+    pts.sort();                                // static <=> dispatched as a routine
 }
 
 // ─── $opref off an array ─────────────────────────────────────────────────────

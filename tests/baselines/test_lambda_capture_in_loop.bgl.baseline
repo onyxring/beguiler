@@ -242,12 +242,19 @@ object _bglArray
         self.sort(obj, prop, cmp);
     }
   ],
+       invokeCompare [cmp a b;
+    
+            if(metaclass(cmp) == Routine) return cmp(a, b);
+            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
+        
+    return 0;
+  ],
        sort [obj prop compare len i key j;
     len=self.length(obj,prop);
     for (i = 1 : i < len : i++) {
         key = self.get(obj,prop,i);
         j=i - 1;
-        while (j >= 0 && compare(self.get(obj,prop,j),key) > 0) {
+        while (j >= 0 && self.invokecompare(compare,self.get(obj,prop,j),key) > 0) {
             self.set(obj, prop, j + 1, self.get(obj,prop,j));
              j-- ;
         }

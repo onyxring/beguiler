@@ -310,12 +310,19 @@ object _bglArray
         self.sort(obj, prop, cmp);
     }
   ],
+       invokeCompare [cmp a b;
+    
+            if(metaclass(cmp) == Routine) return cmp(a, b);
+            if(metaclass(a) == Object && a provides cmp) return a.(cmp)(b);
+        
+    return 0;
+  ],
        sort [obj prop compare len i key j;
     len=self.length(obj,prop);
     for (i = 1 : i < len : i++) {
         key = self.get(obj,prop,i);
         j=i - 1;
-        while (j >= 0 && compare(self.get(obj,prop,j),key) > 0) {
+        while (j >= 0 && self.invokecompare(compare,self.get(obj,prop,j),key) > 0) {
             self.set(obj, prop, j + 1, self.get(obj,prop,j));
              j-- ;
         }
@@ -1402,6 +1409,15 @@ class tagged
     v,
     _opeqeq[o;
         return self.v == o.v;
+    ],
+    _oplteqgt[o;
+        if (self.v < o.v) {
+            return -1;
+        }
+        if (self.v > o.v) {
+            return 1;
+        }
+        return 0;
     ]
 ;
 class money
@@ -1426,6 +1442,8 @@ class plain
     viaNone=_bglArray.indexOf(ints, 0, 20, 0);
     viaUserStat=_bglArray.indexOf(pts, 0, _bglLocal_exercisearrayindexof_pc, _bgl_Point__opeqeq);
     viaUserInst=_bglArray.indexOf(tags, 0, _bglLocal_exercisearrayindexof_tagc, _opeqeq);
+    _bglArray.sortDefault(tags, 0, _oplteqgt);
+    _bglArray.sortDefault(pts, 0, _bgl_Point__oplteqgt);
     _bglFrameFree(7);
     _bglFrameFree(7);
     _bglFrameFree(7);
@@ -1471,6 +1489,15 @@ plain _bglLocal_exercisebarerefs_p;
 ];
 [_bgl_Point__opeqeq a b;
     return a.x == b.x;
+];
+[_bgl_Point__oplteqgt a b;
+    if (a.x < b.x) {
+        return -1;
+    }
+    if (a.x > b.x) {
+        return 1;
+    }
+    return 0;
 ];
 [_bgl_Money__opeqeq_money_money a b;
     return a.cents == b.cents;
