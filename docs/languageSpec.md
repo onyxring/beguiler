@@ -1287,7 +1287,7 @@ All primitive types in this table are part of the auto-loaded runtime library (C
 | `float` |   | IEEE 754 single-precision floating-point. **Glulx only** (the Z-machine has no floats); available in core with no include when targeting Glulx. Constructed by cast. See §4.4. |
 | `bool` | ✓ | Boolean value (`true` / `false`). |
 | `char` | ✓ | A single ZSCII character value. The `<char>` extension (§16.2.2) adds case-conversion and inspection methods. |
-| `string` | ✓ | A string value. Auto-loaded `string` provides print, equality, and literal assignment. The `<string>` extension (§16.2.4) adds mutable string operations backed by a runtime pool. |
+| `string` | ✓ | A pointer to static text — the address of a packed literal. Auto-loaded `string` provides print, equality and literal assignment; the `<string>` extension (§16.2.4) upgrades equality to compare content and adds `stringObj`, a separate pool-backed type for text that is built or changed. |
 | `object` | ✓ | The base class for all world objects in the IF model. |
 | `verb` | ✓ | An alias class for declaring verb instances. See Chapter 13. |
 | `void` | ✓ | Not a value type. A return-type specifier indicating a function returns no value. |
@@ -6402,25 +6402,44 @@ Untracked I6-native `array<char>` declarations are not length-tracked; `isTracke
 
 Does not require `bglInit()`. With `<buf>` included, sized `array<char>` buffers (e.g. `array<char> b[N];`) are length-tracked.
 
-### 16.2.4 `<string>` - Mutable String Runtime
+### 16.2.4 `<string>` - Text Values and the Mutable String Runtime
 
 ```bgl
 #include <string>
 ```
 
-Provides a pool-based mutable string type. Requires `bglInit()` to initialize the string pool.
+Adds content comparison to `string`, and introduces a second type, `stringObj`, backed by a runtime pool. Requires `bglInit()` to initialize that pool.
 
-**Lifecycle:**
+**Two types, because they are two things.** The distinction is the whole design; nothing else in this section makes sense without it:
 
-Strings are automatically allocated on declaration (`init`) and freed on function exit (`deinit`). The pool size is configurable via the `framePoolSize` setting in `#beguilerSettings`.
+| Type | The slot holds | Mutable | Cost | Lifecycle |
+|---|---|---|---|---|
+| `string` | a **pointer** to static text — the packed literal address, exactly as in I6 | no | none | none; nothing is owned |
+| `stringObj` | a **buffer it owns**, taken from the string pool | yes | one pool slot | allocated on declaration (`init`), released on scope exit (`deinit`) |
+
+A string literal is a `string`. Use `string` for text that is only ever read — descriptions, names, messages — and `stringObj` for text that is built or changed. Both compare and print by content, so `==`, `<`, `switch` and `print` behave the same either way and mix freely.
+
+Anything that produces new text returns a `stringObj`, so that is what has to receive it:
+
+```bgl
+string  title = "Cloak";       // a pointer to static text
+stringObj name;
+name = title;                  // copies the TEXT into name's own buffer
+name = name + " of Darkness";  // concatenation yields a stringObj
+name += "!";
+```
+
+**Assignment copies.** `b = a` gives `b` its own buffer holding the same characters, so a later change to `b` leaves `a` alone. The number of pooled instances is configurable via `bglStringPoolReserve` (default 10); it is unrelated to `framePoolSize`, which sizes the Z-machine local-variable overflow pool (§9.2.2).
+
+Methods on `string` and `stringObj` are the same surface — a literal is a perfectly good receiver (`"Mixed".toUpper()`) — but a method that produces text returns `stringObj`.
 
 **Assignment and concatenation:**
 
 | Method / Operator | Description |
 |-------------------|-------------|
-| `s = "text"` | Assign from a string literal |
-| `s = other` | Copy from another string |
-| `s + "text"` | Concatenate (returns new string) |
+| `s = "text"` | Assign from a string literal — into a `stringObj`, copies the text into its buffer |
+| `s = other` | Copy from another string, by value |
+| `s + "text"` | Concatenate (returns a new `stringObj`) |
 
 **Comparison:**
 
@@ -6440,23 +6459,23 @@ Strings are automatically allocated on declaration (`init`) and freed on functio
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `s.print()` | `string` | Print the string |
-| `s.append(v)` | `string` | Append a string or character |
-| `s.prepend(v)` | `string` | Prepend a value |
-| `s.toUpper()` | `string` | Convert to uppercase |
-| `s.toLower()` | `string` | Convert to lowercase |
-| `s.trim()` | `string` | Trim whitespace from both ends |
-| `s.trimLeft()` | `string` | Trim leading whitespace |
-| `s.trimRight()` | `string` | Trim trailing whitespace |
-| `s.reverse()` | `string` | Reverse the string |
-| `s.mid(start, count)` | `string` | Extract substring |
-| `s.left(count)` | `string` | Extract left substring |
-| `s.right(count)` | `string` | Extract right substring |
-| `s.insert(pos, src)` | `string` | Insert at position |
-| `s.delete(pos, count)` | `string` | Delete characters |
-| `s.replace(search, repl)` | `string` | Replace first occurrence |
-| `s.replaceAll(search, repl)` | `string` | Replace all occurrences |
-| `s.format(pattern, ...)` | `string` | Formatted output (up to 2 additional args) |
+| `s.print()` | `void` | Print the string |
+| `s.append(v)` | `stringObj` | Append a string or character |
+| `s.prepend(v)` | `stringObj` | Prepend a value |
+| `s.toUpper()` | `stringObj` | Convert to uppercase |
+| `s.toLower()` | `stringObj` | Convert to lowercase |
+| `s.trim()` | `stringObj` | Trim whitespace from both ends |
+| `s.trimLeft()` | `stringObj` | Trim leading whitespace |
+| `s.trimRight()` | `stringObj` | Trim trailing whitespace |
+| `s.reverse()` | `stringObj` | Reverse the string |
+| `s.mid(start, count)` | `stringObj` | Extract substring |
+| `s.left(count)` | `stringObj` | Extract left substring |
+| `s.right(count)` | `stringObj` | Extract right substring |
+| `s.insert(pos, src)` | `stringObj` | Insert at position |
+| `s.delete(pos, count)` | `stringObj` | Delete characters |
+| `s.replace(search, repl)` | `stringObj` | Replace first occurrence |
+| `s.replaceAll(search, repl)` | `stringObj` | Replace all occurrences |
+| `s.format(pattern, ...)` | `stringObj` | Formatted output (up to 2 additional args) |
 | `s.getLength()` | `int` | String length |
 | `s.indexOf(search)` | `int` | Find first occurrence |
 | `s.startsWith(prefix)` | `eBool` | Prefix test |
