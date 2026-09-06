@@ -85,7 +85,7 @@ extend extern class array {
     emitter bool contains(T item)         { (_bglArray.indexOf($self, $prop, $item, $opref(==)) >= 0) }
 
     // In-place transforms (no resize)
-    emitter void clear()                  { _bglArray.clear($self, $prop) }
+    emitter void clear()                  { _bglArray.clear($self, $prop, $opref(deinit)) }
     emitter void swap(int pos1, int pos2) { _bglArray.swap($self, $prop, $pos1, $pos2) }
     emitter void reverse()                { _bglArray.reverse($self, $prop) }
 
@@ -95,15 +95,15 @@ extend extern class array {
     // The braced-list forms `arr += {a, b}` / `arr -= {a, b}` bind to the
     // array<T> overloads below, which append/remove each element in turn.
     emitter void operator += (var v)        { _bglArray.append($self, $prop, $v) }
-    emitter void operator -= (var v)        { _bglArray.removeValue($self, $prop, $v, $opref(==)) }
+    emitter void operator -= (var v)        { _bglArray.removeValue($self, $prop, $v, $opref(==), $opref(deinit)) }
 
     // Length-changing mutators — each grows or shrinks the explicit length.
     // append / prepend / insert return false on a full array (no growth happened).
     emitter bool append(T item)             { _bglArray.append($self, $prop, $item) }
     emitter bool prepend(T item)            { _bglArray.prepend($self, $prop, $item) }
     emitter bool insert(int pos, T item)    { _bglArray.insert($self, $prop, $pos, $item) }
-    emitter void remove(int pos)            { _bglArray.remove($self, $prop, $pos) }
-    emitter void removeValue(T item)        { _bglArray.removeValue($self, $prop, $item, $opref(==)) }
+    emitter void remove(int pos)            { _bglArray.remove($self, $prop, $pos, $opref(deinit)) }
+    emitter void removeValue(T item)        { _bglArray.removeValue($self, $prop, $item, $opref(==), $opref(deinit)) }
 
     // Deque view (orLibrary convention — push/peek/pop at the front;
     // enqueue/peekEnd/popEnd at the back).
@@ -274,10 +274,23 @@ object _bglArray {
     }
 
     // Zero every slot up to size; length drops to 0.
-    void clear(var obj, var prop){
+    void clear(var obj, var prop, var dtor = 0){
+        // Destroy only the live range — slots past length() were never handed a value
+        // this array owns. Zeroing still covers full capacity (see indexOf's note).
+        int len = length(obj, prop);
+        for(int t = 0; t < len; t++) destroyValue(dtor, get(obj, prop, t));
         int sz = size(obj, prop);
         for(int t = 0; t < sz; t++) set(obj, prop, t, 0);
         setLength(obj, prop, 0);
+    }
+
+    // Destroy every live element without disturbing length or contents — the scope-exit
+    // path for a local array<T> whose element type owns storage. The frame is about to be
+    // reclaimed, so only the owned allocations need releasing.
+    void freeAll(var obj, var prop, var dtor = 0){
+        if(dtor == 0) return;
+        int len = length(obj, prop);
+        for(int t = 0; t < len; t++) destroyValue(dtor, get(obj, prop, t));
     }
 
     // Exchange the values at the two given indices. Size-bounded; caller is
@@ -332,9 +345,18 @@ object _bglArray {
     // Note: object has a same-named no-arg `remove()` method (removes obj
     // from the I6 tree). This overload doesn't shadow it — the signatures
     // differ — so no `replace` qualifier is needed.
-    void remove(var obj, var prop, int pos){
+    // Destroy one slot value with the element type's `static deinit`, supplied by the
+    // compiler via $opref(deinit). 0 means the element type published none — it does not
+    // own storage — so nothing is freed and plain element types pay nothing. A slot may
+    // hold 0 (never written); the type's own deinit guards the rest.
+    void destroyValue(var dtor, var v){
+        #i6 { if(dtor ~= 0 && v ~= 0 && metaclass(dtor) == Routine) dtor(v); }
+    }
+
+    void remove(var obj, var prop, int pos, var dtor = 0){
         int len = length(obj, prop);
         if(pos < 0 || pos >= len) return;
+        destroyValue(dtor, get(obj, prop, pos));   // before the shift overwrites the slot
         // shift left from pos+1 to end
         for(int i = pos; i < len - 1; i++) set(obj, prop, i, get(obj, prop, i+1));
         // clear the now-unused tail slot so leftover data doesn't surface
@@ -346,7 +368,7 @@ object _bglArray {
     // Remove every occurrence of val within the used range (positions 0..length-1).
     // Each match shifts subsequent elements left; the scan continues from the
     // same position since the next element is now at that index.
-    void removeValue(var obj, var prop, var val, var op = 0){
+    void removeValue(var obj, var prop, var val, var op = 0, var dtor = 0){
         int pos = 0;
         int len = length(obj, prop);
         while(pos < len){
@@ -364,7 +386,7 @@ object _bglArray {
                 }
             }
             if(hit){
-                remove(obj, prop, pos);
+                remove(obj, prop, pos, dtor);
                 len = length(obj, prop);   // length dropped by 1; reload
                 // pos stays — next element shifted into this position
             } else {

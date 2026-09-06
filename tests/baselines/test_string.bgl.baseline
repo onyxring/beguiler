@@ -132,12 +132,25 @@ object _bglArray
     }
     self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
   ],
-       clear [obj prop sz t;
+       clear [obj prop dtor len t sz;
+    len=self.length(obj,prop);
+    for (t = 0 : t < len : t++) {
+        self.destroyvalue(dtor, self.get(obj,prop,t));
+    }
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
         self.set(obj, prop, t, 0);
     }
     self.setLength(obj, prop, 0);
+  ],
+       freeAll [obj prop dtor len t;
+    if (dtor==0) {
+        return;
+    }
+    len=self.length(obj,prop);
+    for (t = 0 : t < len : t++) {
+        self.destroyvalue(dtor, self.get(obj,prop,t));
+    }
   ],
        swap [obj prop pos1 pos2 tmp;
     tmp = self.get(obj,prop,pos1);
@@ -178,18 +191,22 @@ object _bglArray
        prepend [obj prop val;
     return self.insert(obj,prop,0,val);
   ],
-       remove [obj prop pos len i;
+       destroyValue [dtor v;
+     if(dtor ~= 0 && v ~= 0 && metaclass(dtor) == Routine) dtor(v); 
+  ],
+       remove [obj prop pos dtor len i;
     len=self.length(obj,prop);
     if (pos < 0 || pos >= len) {
         return;
     }
+    self.destroyValue(dtor, self.get(obj,prop,pos));
     for (i = pos : i < len - 1 : i++) {
         self.set(obj, prop, i, self.get(obj,prop,i + 1));
     }
     self.set(obj, prop, len - 1, 0);
     self.setLength(obj, prop, len - 1);
   ],
-       removeValue [obj prop val op pos len e hit;
+       removeValue [obj prop val op dtor pos len e hit;
     pos = 0;
     len=self.length(obj,prop);
     while (pos < len) {
@@ -207,7 +224,7 @@ object _bglArray
                 
         }
         if (hit) {
-            self.remove(obj, prop, pos);
+            self.remove(obj, prop, pos, dtor);
             len = self.length(obj,prop);
         }
         else {
@@ -223,7 +240,7 @@ object _bglArray
         return 0;
     }
     v = self.get(obj,prop,0);
-    self.remove(obj, prop, 0);
+    self.remove(obj, prop, 0, 0);
     return v;
   ],
        dequeue [obj prop;
@@ -251,7 +268,7 @@ object _bglArray
         return 0;
     }
     v = self.get(obj,prop,len - 1);
-    self.remove(obj, prop, len - 1);
+    self.remove(obj, prop, len - 1, 0);
     return v;
   ],
        sortDefault [obj prop cmp;
@@ -1459,6 +1476,9 @@ class _bglstring(bglstringpoolreserve)
 ];
 [_bgl_stringObj__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
+];
+[_bgl_stringObj_deinit s;
+     if(s ~= 0 && s ofclass _bglString) s.free(); 
 ];
 [_bglCharToLower c;
     switch (c) {

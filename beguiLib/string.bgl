@@ -1160,6 +1160,15 @@ emitter class stringObj : _bglObject {
     static bool operator == (var a, var b) { return _bglStr.areEqual(a, b, false); }
     static int  operator <=> (var a, var b) { return _bglStr.compareValues(a, b, false); }
 
+    // Destruction published for generic containers — the value form of deinit(). The
+    // emitter deinit() above frees a receiver at scope exit; this takes the value as a
+    // parameter, so it emits as a free routine whose address array<T> can hold and call
+    // on a slot it has no receiver for. Guarded: a slot may hold 0 (never written) or a
+    // packed literal (not pool-owned), and neither is ours to free.
+    static void deinit(var s) {
+        #i6 { if(s ~= 0 && s ofclass _bglString) s.free(); }
+    }
+
     // Ordering — lexicographic by content, NOT by the packed address. Each
     // yields a bool, so `a < b` reads the way it does for numbers.
     //
@@ -1220,9 +1229,12 @@ emitter class stringObj : _bglObject {
     // take core's raw word store and the developer owns the lifecycle explicitly:
     //     slots[9] = _bglStr.new("jim");   // caller allocates
     //     ... _bglStr.free(slots[9]);      // and frees on removal
-    // Publishing one would allocate on write, but removal still requires an explicit
-    // free — auto-allocate with manual-free is asymmetric and invites leaks. Both ends
-    // become automatic together, once element destruction ($elemfree) exists.
+    // Destruction IS now automatic: stringObj publishes a `static deinit`, which the
+    // compiler hands to array<T> via $opref(deinit), so remove(), clear(), -= and local
+    // scope exit all release owned elements. The remaining half is allocation on write —
+    // publishing `static operator =` would make `slots[i] = "jim"` allocate rather than
+    // requiring _bglStr.new(). That is now unblocked; it was held back only because
+    // auto-allocate with manual-free is the asymmetry that invites leaks.
 }
 
 extend class stringLiteral {

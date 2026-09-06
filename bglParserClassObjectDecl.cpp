@@ -404,8 +404,16 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 parsingError(format("'{0}': 'static' and 'emitter' cannot be combined — an emitter inlines at the call site and has no routine to make static", funcDef.name));
             if(!isEmitter && (funcDef.name == "switch" || funcDef.name == "?"))
                 parsingError(format("operator {0}() must be declared as an emitter", funcDef.name));
-            if(!isEmitter && (funcDef.name == "init" || funcDef.name == "deinit"))
+            // init/deinit are receiver lifecycle hooks and must inline — except a `static`
+            // deinit, which is the value form: it takes the element as a parameter and emits
+            // as a free routine, so generic code (array<T>) can hold its address and destroy
+            // a slot it has no receiver for. Same instance/static split as `operator ==`.
+            if(!isEmitter && !isMemberStatic && (funcDef.name == "init" || funcDef.name == "deinit"))
                 parsingError(format("'{0}' must be declared as an emitter", funcDef.name));
+            if(isMemberStatic && funcDef.name == "init")
+                parsingError("'init' cannot be 'static' — construction needs the receiver it is initialising");
+            if(isMemberStatic && funcDef.name == "deinit" && funcDef.params.size() != 1)
+                parsingError("a 'static deinit' takes exactly one parameter: the value to destroy");
             funcDef.isStatic = isMemberStatic;
             if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter && !funcDef.isStatic){
                 // extern/alias class non-emitter INSTANCE methods not allowed: they would need to

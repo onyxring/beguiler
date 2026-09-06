@@ -1441,6 +1441,23 @@ void i6Emitter::emitStaticClassRoutines(classDef* classNode){
     }
 }
 
+// The element type's `static deinit` routine name, or "" when the type publishes none.
+// Mirrors bglParser::operatorRef's static case; an array whose elements own storage needs
+// this at scope exit, where there is no receiver to send the emitter deinit() to.
+static std::string findStaticDeinit(classDef* cd){
+    if(cd == nullptr) return "";
+    for(typeMember* m : cd->members){
+        auto* f = dynamic_cast<functionDef*>(m);
+        if(f != nullptr && f->name == "deinit" && f->isStatic && !f->isEmitter)
+            return i6Emitter::staticRoutineName(cd, f);
+    }
+    for(classDef* b : cd->baseClasses){
+        std::string r = findStaticDeinit(b);
+        if(!r.empty()) return r;
+    }
+    return "";
+}
+
 void i6Emitter::emitClass(classDef* classNode){
     if(classNode->isExternal || classNode->isEmitterClass || classNode->isAlias) return;
 
@@ -1741,6 +1758,13 @@ void i6Emitter::emitFunction(functionDef* funcNode){
             // always takes the plain path (no tracking layer), matching the global gate.
             if(languageService.arrayInUse && !arr->isRaw){
                 out << format("    {0} = _bglArrayLocalAlloc({1});\n", name, count);
+                // Elements that own storage must be released before the frame slice is
+                // reclaimed — cleanups run in push order, so this precedes the frame free.
+                std::string dtor = findStaticDeinit(
+                    dynamic_cast<classDef*>(&languageService.getType(arr->elementType)));
+                if(!dtor.empty())
+                    funcNode->cleanups.push_back({arr->name,
+                        format("_bglArray.freeAll({0}, 0, {1});", name, dtor)});
                 funcNode->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count + 3)});
             } else {
                 out << format("    {0} = _bglArrayLocalAllocPlain({1});\n", name, count);
