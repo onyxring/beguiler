@@ -6,6 +6,7 @@
 #include <stack>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include "token.h"
 #include "typeDef.h"
 
@@ -75,6 +76,11 @@ class fileLexer{
         token getToken(std::vector<eTokenType>);
         token getToken(std::string);
         token getToken(std::vector<std::string>);
+        // Brace-list form, e.g. getToken({token::comma, ">"}). Needed as its own overload
+        // because the token constants are `const char*`: `{ptr, ptr}` also matches
+        // std::string's iterator-pair constructor, so without this the call is ambiguous.
+        // List-initialization prefers an initializer_list overload, which settles it.
+        token getToken(std::initializer_list<std::string>);
         token getToken();
         token peekToken();
         token peekToken(int);

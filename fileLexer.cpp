@@ -1176,4 +1176,8 @@ token fileLexer::getToken(std::vector<string> vals){
     token retval=getToken();
     return retval.assertOneOf(vals); 
 }
+token fileLexer::getToken(std::initializer_list<string> vals){
+    token retval=getToken();
+    return retval.assertOneOf(vector<string>(vals));
+}
 

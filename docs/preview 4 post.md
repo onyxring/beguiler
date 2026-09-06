@@ -200,6 +200,6 @@ Which property is read is decided at runtime by the value in `p`, so this is the
 ---
 ## Updated Documentation
 
-- Platform build instructions now spell out the **required compiler flags**, fixing a build failure some people hit compiling the Beguiler from source (notably on Windows/clang).
+- **Building from source is now one command line on every platform** — `make`, or a single `c++ -std=c++20 -O2 ... *.cpp` invocation. The three per-platform lines are gone, along with the `-D` renames they carried (`isnumber`, `strncasecmp`, `popen`/`pclose`), which are handled in the source where they belong. The stock `clang++` on macOS previously could not build Beguiler at all — a `constexpr std::string` needed a newer standard library than Xcode ships — so the requirement is now simply a C++20 toolchain with `<format>`.
 - The **language spec** documents `stringObj`, what `array<T>` asks of an element type, and the operator-reference forms.
 - **Beguile for the I6 Developer** covers the `string` / `stringObj` split and arrays of your own classes.

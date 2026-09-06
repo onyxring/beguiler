@@ -1,3 +1,4 @@
+#include "platform.h"
 // lspServer.cpp — Language Server Protocol implementation for Beguile
 // Standalone module. To remove: delete this file, lspServer.h, json.hpp,
 // and the --lsp check in beguiler.cpp.

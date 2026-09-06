@@ -39,25 +39,31 @@ Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are att
 
 ### Or build it from source...
 
-Beguile requires a C++20 compiler. Pick the line for your platform.
+Beguile needs a **C++20 compiler with `<format>`** — that header is the only thing that
+sets the bar, so a toolchain new enough to have it is new enough to build Beguile:
 
-macOS:
+| Toolchain | Minimum |
+|---|---|
+| Apple clang (bundled with Xcode) | 15 — *verified* |
+| Clang / LLVM | 17, or 14+ paired with libstdc++ 13 |
+| GCC | 13 |
+| MSVC | 2022 |
 
-```sh
-clang++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional *.cpp -o beguiler
-```
-
-Linux:
-
-```sh
-clang++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional -stdlib=libc++ -Disnumber=isdigit *.cpp -o beguiler
-```
-
-Windows (clang++):
+One command line builds it on every platform:
 
 ```sh
-clang++ -std=c++20 -O2 -Wno-deprecated-declarations -include format -include functional -Disnumber=isdigit -Dstrncasecmp=_strnicmp -Dpopen=_popen -Dpclose=_pclose *.cpp -o beguiler.exe
+make
 ```
+
+Or without `make`, which is the same thing:
+
+```sh
+c++ -std=c++20 -O2 -Wno-deprecated-declarations *.cpp -o beguiler
+```
+
+On Windows, name the output `beguiler.exe`. Substitute `g++` or `clang++` for `c++` if you want a specific toolchain; no other flags differ by platform.
+
+`make` builds each file separately and tracks header dependencies, so an edit rebuilds only what it affects — worth using if you plan to change the compiler itself. `make debug` produces an unoptimised build with symbols.
 
 ### Compile a Beguile program from the command line
 *(if you really **aren't** going to use the extension)*

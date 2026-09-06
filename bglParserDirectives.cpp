@@ -1,3 +1,4 @@
+#include "platform.h"
 // ===============================================================================
 // bglParserDirectives.cpp - directive + #beguilerSettings processing.
 //

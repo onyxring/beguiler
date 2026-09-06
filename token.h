@@ -36,23 +36,27 @@ class token {
         bool isPlural=false;       // true for ..word dictionary word literals
         sourceLocation src;        // file and line where this token was read
 
-        static constexpr std::string endStatement=";"; 
-        static constexpr std::string assignment ="="; 
-        static constexpr std::string parenOpen ="(";  
-        static constexpr std::string parenClose =")"; 
-        static constexpr std::string braceOpen ="{";  
-        static constexpr std::string braceClose ="}"; 
-        static constexpr std::string bracketOpen ="["; 
-        static constexpr std::string bracketClose ="]"; 
-        static constexpr std::string constantDeclararion="const"; 
-        static constexpr std::string classDeclaration="class"; 
-        static constexpr std::string enumDeclaration="enum"; 
-        static constexpr std::string bnumDeclaration="bnum"; 
-        static constexpr std::string comma  =","; 
-        static constexpr std::string period  ="."; 
-        static constexpr std::string external ="extern";
-        static constexpr std::string extend ="extend";
-        static constexpr std::string replace ="replace";
+        // `const char*`, not `std::string`: a constexpr std::string needs a standard library
+        // implementing P0980R1 (libc++ 15+, libstdc++ 12+), which Apple's bundled clang does
+        // not ship — so the plain `clang++` on a stock macOS could not build this at all.
+        // Every consumer takes `std::string` by value, so these convert implicitly.
+        static constexpr const char* endStatement=";"; 
+        static constexpr const char* assignment ="="; 
+        static constexpr const char* parenOpen ="(";  
+        static constexpr const char* parenClose =")"; 
+        static constexpr const char* braceOpen ="{";  
+        static constexpr const char* braceClose ="}"; 
+        static constexpr const char* bracketOpen ="["; 
+        static constexpr const char* bracketClose ="]"; 
+        static constexpr const char* constantDeclararion="const"; 
+        static constexpr const char* classDeclaration="class"; 
+        static constexpr const char* enumDeclaration="enum"; 
+        static constexpr const char* bnumDeclaration="bnum"; 
+        static constexpr const char* comma  =","; 
+        static constexpr const char* period  ="."; 
+        static constexpr const char* external ="extern";
+        static constexpr const char* extend ="extend";
+        static constexpr const char* replace ="replace";
 
         bool is(eTokenType);
         bool is(std::string);

@@ -1,3 +1,4 @@
+#include <cctype>
 #include <iostream>
 #include <vector>
 
@@ -53,7 +54,11 @@ const token _nullToken;
     }
     bool token::isNumeric(){
         for(char c:value){
-            if(isnumber(c)==false) return false;
+            // isdigit, not isnumber: the latter is a BSD extension present on macOS but not
+            // on glibc or the MS CRT, and was the reason those platforms needed
+            // -Disnumber=isdigit on the build line. Cast because the ctype functions are
+            // undefined for negative values other than EOF.
+            if(isdigit((unsigned char)c) == false) return false;
         }
         return true;
     }
