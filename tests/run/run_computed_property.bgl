@@ -1,0 +1,45 @@
+/*  Computed property access — `obj.p` where `p` HOLDS a property.
+
+    `(property) name` could produce a property value but nothing could dereference
+    one: `obj.p` looked for a member literally called "p" and `obj.(p)` did not
+    parse. The capability existed in I6 all along — _bglArray reaches it as
+    `e.(op)(val)` inside an #i6 block — it simply had no Beguile spelling.
+
+    Emits I6's parenthesised `obj.(p)`. The bare `obj.p` also works in I6, but the
+    emitter renames a local whose name matches a dotted-access name, which would
+    rename the very local being referenced out of the way.
+
+    The detection is narrow ON PURPOSE: only a LOCAL or PARAMETER declared
+    `property`/`var` qualifies. resolveIdentifierType reports "property" for any
+    name that is a member of any class, which would have made ordinary method names
+    look like property values and would have let a file-scope `property foo;` grant
+    `obj.foo` access — see _test_undeclared_property_member.  */
+// EXPECT_OUTPUT: read: 42
+// EXPECT_OUTPUT: send: 84
+// EXPECT_OUTPUT: real method: 126
+// EXPECT_OUTPUT: reassigned: 7
+// EXPECT_OUTPUT: param: 42
+#beguilerSettings { target = z5; informName = "none"; }
+
+object thing {
+    int val = 42;
+    int other = 7;
+    int twice(int n) { return val * n; }
+}
+
+int readVia(object o, property p){ return o.p; }   // property-typed PARAMETER
+
+void main(){
+    var o = thing;
+    var p = (property) val;
+    var m = (property) twice;
+
+    print("read: ");        print(o.p);        print("^");
+    print("send: ");        print(o.m(2));     print("^");
+    print("real method: "); print(thing.twice(3)); print("^");
+
+    p = (property) other;                       // the value drives the access
+    print("reassigned: ");  print(o.p);        print("^");
+
+    print("param: ");       print(readVia(thing, val)); print("^");
+}

@@ -1089,6 +1089,27 @@ string bglParser::operatorRef(const string& typeName, const string& opName,
     return f->i6name;                                 // instance: the mangled property name
 }
 
+
+// True when `name` is a LOCAL or PARAMETER in the current scope whose declared type is
+// `property` or `var` — i.e. a runtime value that names a property. This is deliberately
+// narrower than resolveIdentifierType, which reports "property" for any identifier that is
+// a member of ANY class (isKnownPropertyName). That breadth is right for `provides(foo)`
+// but useless here: it would make every ordinary method name look like a property value,
+// and it would let a file-scope `property foo;` grant `obj.foo` access, which it must not.
+bool bglParser::isPropertyValuedLocal(const string& name, functionDef* func, statementBlock* body){
+    auto typeQualifies = [](const string& t){ return t == "property" || t == "var"; };
+    if(func != nullptr)
+        for(paramDef* p : func->params)
+            if(p->name == name) return typeQualifies(p->type.name);
+    for(statementBlock* b : {body, func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr}){
+        if(b == nullptr) continue;
+        for(statement* st : b->statements)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(st))
+                if(vd->name == name) return typeQualifies(vd->type.name);
+    }
+    return false;
+}
+
 string bglParser::substituteElemOps(const string& body, const string& elemType,
                                     const string& contextName){
     string out = body;

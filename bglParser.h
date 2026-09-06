@@ -421,6 +421,9 @@ class bglParser {
         // `isStaticOut`, when given, reports whether the match was a `static` operator (a real
         // routine address) rather than an instance one (a property name). The user-facing
         // `Type::operator <op>` form requires an address and rejects the property form.
+        // Narrow scope test for computed property access — see the definition for why
+        // resolveIdentifierType is too broad to use here.
+        bool isPropertyValuedLocal(const string& name, functionDef* func, statementBlock* body);
         string operatorRef(const string& typeName, const string& opName,
                            const string& preferOperand = "", bool* isStaticOut = nullptr);
         // Replace every `$elemop(<op>)` in an emitter body with that operator's callable form

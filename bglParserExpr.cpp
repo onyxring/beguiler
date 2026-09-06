@@ -1705,6 +1705,29 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 if(dynamic_cast<classDef*>(&baseTd) != nullptr) opaqueRecv = false;
                             }
                         }
+                        // Computed message send: `obj.p(args)` where `p` is not a method but IS a
+                        // property-valued name in scope. Emits I6's `obj.(p)(args)`, which resolves
+                        // the property at runtime and binds self to the receiver — the same send the
+                        // BLR reaches for inside #i6 blocks. Only considered when the name is not a
+                        // real method, so it never shadows one.
+                        bool isRealMember = false;
+                        if(classDef* rc = getDispatchClass(objType))
+                            isRealMember = findMemberInHierarchy(rc, [&](typeMember* m){ return m->name == methName; }) != nullptr;
+                        if(!isRealMember)
+                            if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(objType)))
+                                for(typeMember* m : od->members)
+                                    if(m->name == methName){ isRealMember = true; break; }
+                        if(!isRealMember && isPropertyValuedLocal(methName, func, body)){
+                            string propExpr = qualifyIdentifier(methName, func, body);
+                            ParsedArgList cpal = parseCallArgList(func, body);
+                            string argText;
+                            for(size_t i = 0; i < cpal.args.size(); i++)
+                                argText += (i ? ", " : "") + cpal.args[i]->text();
+                            expr->tokens.push_back(objName + ".(" + propExpr + ")(" + argText + ")");
+                            expr->resolvedType = "var";   // the property's routine is untyped here
+                            cur = getNext();
+                            continue;
+                        }
                         if(opaqueRecv && !looseIdentifierMode)
                             parsingError(format("Type '{0}' has no methods", objType));
 
@@ -2052,6 +2075,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             // backing object's properties entirely.
                             string propType = resolvePathType(cur.value + "." + member.value, func, body);
                             string objText = func != nullptr ? qualifyIdentifier(cur.value, func, body, member.value) : cur.value;
+                            string computedProp;   // set when `obj.p` is a computed property access
                             if(objText.empty()){
                                 // Receiver didn't resolve. Outside loose mode, a dotted access on an
                                 // unknown object is an error, just like a bare undeclared identifier —
@@ -2072,12 +2096,32 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 // the property as a member of the object (or its extern class):
                                 // `extern class Thing { int foo; }`, or extend a base such as
                                 // `object` in a binding. Loose mode (#bgl islands) still passes through.
-                                string recvType = resolveIdentifierType(cur.value, func, body);
-                                parsingError(format("'{0}' is not a declared property of '{1}' (type '{2}'). "
-                                    "Declare it as a member so the access type-checks.",
-                                    member.value, cur.value, recvType));
+                                // Computed property access: `obj.p` where `p` is not a member of
+                                // obj's type but IS a property-valued name in scope (from
+                                // `(property)x`, or a `property`/`var` parameter). It names the
+                                // property to read rather than one called "p". I6's `.` already
+                                // resolves a local on its right-hand side exactly this way — the
+                                // mangled local emits straight through — and because locals carry a
+                                // mangled name it can never be captured by a real property of the
+                                // same spelling.
+                                if(isPropertyValuedLocal(member.value, func, body))
+                                    computedProp = qualifyIdentifier(member.value, func, body);
+                                else {
+                                    string recvType = resolveIdentifierType(cur.value, func, body);
+                                    parsingError(format("'{0}' is not a declared property of '{1}' (type '{2}'). "
+                                        "Declare it as a member so the access type-checks.",
+                                        member.value, cur.value, recvType));
+                                }
                             }
-                            string accessText = objText + "." + member.value;
+                            // A computed access emits I6's parenthesised form, `obj.(expr)`. The bare
+                            // `obj.p` would work in I6 too, but the emitter renames a local whose name
+                            // matches a dotted-access name (maybeRename, to keep locals from being
+                            // shadowed by properties) — so the bare spelling would rename the very
+                            // local being referenced out of the way. Inside parentheses the name is an
+                            // ordinary expression token, so it renames consistently or not at all.
+                            string accessText = computedProp.empty()
+                                ? objText + "." + member.value
+                                : objText + ".(" + computedProp + ")";
                             // Property-class read: if the member's declared type is a property-class
                             // (owner-based operator() read emitter, e.g. parentProp → parent($self)),
                             // dispatch the read through it instead of emitting a raw property read.

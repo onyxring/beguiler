@@ -3254,6 +3254,18 @@ void main(){
 
 Declarations of `property` are intentionally untyped: the same property name may appear as a member of two unrelated classes with different Beguile types, and a free-standing decl cannot honestly pick one. A `property` identifier has type `property` and is accepted anywhere the parameter type is `property`; it does not support direct `obj.someName` field access for free-standing decls. Use `provides()` to test, or declare the name as a class member when you want to read or write it.
 
+**Computed property access.** A `property`-valued local or parameter can be dereferenced against a receiver, which is what makes the `(property)` cast a complete feature rather than a value you can only carry:
+
+```bgl
+var p = (property) val;
+int v = obj.p;            // reads the property p names
+int r = obj.m(2);         // message send — binds self to obj, as I6 does
+```
+
+Both emit I6's computed form (`obj.(p)`, `obj.(m)(2)`), so the property is resolved at runtime and a routine property receives the receiver as `self`.
+
+The name after the dot is treated this way **only** when it is a local or parameter declared `property` or `var`, and only when it is not a real member of the receiver's type — a genuine member always wins. A file-scope `property foo;` does *not* qualify: it registers an identifier for passing as a value and still grants no `obj.foo` access.
+
 **`property` parameters treat a bare argument as a property identifier.** When a function or emitter parameter is typed `property`, a bare property-name argument emits as the **bare I6 property constant** (its slot number) rather than as a value read, an implicit `(property)` cast (§10.6). This holds even inside an object method body, where a bare known-property name would otherwise emit as `self.<name>`. Any known property name is accepted: a member of any class or object, or a free-standing `property`/`extern property` decl. This lets an engine that indexes objects by property number (e.g. a task/state tracker whose task IDs are members of a single instance) declare `property`-typed parameters and have callers pass the bare name; no file-scope `extern property` re-declaration of each member is required:
 
 ```bgl
