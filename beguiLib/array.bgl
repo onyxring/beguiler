@@ -270,6 +270,11 @@ object _bglArray {
     // its own buffer thereafter, without _bglArray knowing anything about the type.
     void setOwned(var obj, var prop, int n, var v, func<var, var, var> assign = 0){
         if(assign == 0){ set(obj, prop, n, v); return; }
+        // Unlike == and <=>, assignment has no usable instance form: on a first write the
+        // slot holds 0, so there is no receiver to send it to. $opref hands back a property
+        // number for an instance operator, which would be disastrous to call as a routine —
+        // so anything that is not a routine falls back to the plain word store.
+        #i6 { if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } }
         set(obj, prop, n, assign(get(obj, prop, n), v));
     }
 

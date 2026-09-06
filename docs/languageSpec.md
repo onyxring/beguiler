@@ -6470,10 +6470,10 @@ Adds higher-level methods to `array<T>` for searching, mutation, and counting be
 | `length()` | `int` | Current count of "in use" entries. Set at allocation (= N for list-init, 0 for sized uninit), changed only by explicit operations. Falls back to `size()` for untracked extern arrays |
 | `setLength(n)` | `void` | Write the explicit length. Range-checked: must fit in signed range (0..32767 on Z, 0..2^31-1 on Glulx). No-op on untracked extern arrays |
 | `isTracked()` | `bool` | True if the receiver is a Beguile-declared array with length tracking; false for I6-native extern arrays. Useful for defensive code |
-| `indexOf(item)` | `int` | First index where `item` appears in the array, or `-1` if not found. Scans the full `size()` (finds values past current length too) |
+| `indexOf(item)` | `int` | First index where `item` appears in the used range (0..`length()`-1), or `-1` if not found. Uses `T`'s `operator ==` when it publishes one; otherwise word comparison |
 | `find(item)` | `int` | Alias for `indexOf` (matches orLibrary terminology) |
-| `contains(item)` | `bool` | True if `item` appears anywhere in the array |
-| `clear()` | `void` | Zero every slot up to `size()` and reset `length()` to 0 |
+| `contains(item)` | `bool` | True if `item` appears in the used range. Same comparison rules as `indexOf` |
+| `clear()` | `void` | Zero every slot up to `size()` and reset `length()` to 0. Destroys owned elements first, if `T` publishes `static deinit` |
 | `swap(pos1, pos2)` | `void` | Exchange the values at the two given indices. Size-bounded; caller is responsible for in-range indices |
 | `reverse()` | `void` | Reverse the used range (positions 0..`length()`-1) in place. Slots past length are untouched |
 | `append(item)` | `bool` | Add `item` at position `length()`, bumping length by 1. Returns false if the array is full (length == size), true on success |
@@ -6488,7 +6488,7 @@ Adds higher-level methods to `array<T>` for searching, mutation, and counting be
 | `dequeue()` | `T` | Queue exit: remove and return the front element. Alias for `pop()` |
 | `peekEnd()` | `T` | Look at the back element without removing. Returns 0 on an empty array |
 | `popEnd()` | `T` | Remove and return the back element. Returns 0 on an empty array |
-| `sort()` | `void` | Sort the used range ascending in place, using the default comparator (signed word compare). Sound for ints, addresses, object IDs |
+| `sort()` | `void` | Sort the used range ascending in place using `T`'s `operator <=>` when it publishes one; otherwise signed word compare, which is sound for ints, addresses and object IDs |
 | `sort(compare)` | `void` | Sort with a user-supplied comparator `func<int, T, T>` returning -1 / 0 / +1. Lambdas work: `arr.sort((int a, int b) => { ... });` |
 
 **Sort algorithm**: insertion sort. O(N) best case for already-sorted or nearly-sorted input, O(N²) worst case for fully-reversed. Stable. Adaptive, well-suited to IF data where arrays often grow incrementally and sit mostly-sorted.
@@ -6498,6 +6498,68 @@ The element-search methods (`indexOf`/`find`/`contains`) and `swap` are type-che
 `length()` and `setLength()` surface the length tracking defined in §4.9, and `isTracked()` reports whether an array carries it (false for I6-native extern arrays).
 
 **Deque orientation note.** `push`/`peek`/`pop` operate at the front of the array; `enqueue`/`peekEnd`/`popEnd` operate at the back.
+
+#### What `array<T>` asks of `T`
+
+`array<T>`'s runtime is written once over `var`, so it cannot see the element type. It asks
+`T` for the four operations it cannot infer, and the compiler supplies each as an operator
+reference (`$opref`, §14.4.3). **Every one is optional.** A type that publishes nothing gets
+plain word semantics and pays nothing — no extra call, no extra code.
+
+| `T` publishes | Used by | Absent → |
+|---|---|---|
+| `operator ==` — static or instance | `indexOf`, `find`, `contains`, `removeValue`, `-=` | Word comparison (identity) |
+| `operator <=>` — static or instance | `sort()` | Signed word ordering |
+| `static operator =` | `[i] =`, `append`, `prepend`, `insert` | Raw word store |
+| `static deinit(T)` | `remove`, `removeValue`, `-=`, `clear`, local scope exit | Nothing is released |
+
+**When the defaults are right.** For `int`, `char`, `bool` and `object`, all four defaults are
+correct: equality is identity, ordering is signed word order, a slot write is a word write, and
+there is nothing to release. These types publish nothing and are unaffected by any of this.
+
+**When they are not.** The default is silently *wrong*, not diagnosed, for a type whose value
+semantics differ from its word:
+
+- A content-comparing type without `operator ==` matches on address, so two equal strings
+  do not compare equal. `string` and `stringObj` publish one for this reason.
+- `float` is IEEE sign-magnitude, so signed word ordering mis-sorts negatives. It publishes
+  `operator <=>` for that alone.
+- A type that owns storage without `static operator =` gets a raw word store, leaving the
+  slot holding a value the array does not own — the fuzziness the `string`/`stringObj` split
+  exists to remove.
+- A type that owns storage without `static deinit` leaks: every dropped element keeps its
+  allocation, and a local array leaks all of them at scope exit.
+
+**Static versus instance.** `==` and `<=>` accept either form — the runtime tells a routine
+address from a property number by `metaclass` and sends the property form to the left operand.
+A *bare-word* element type has no object to receive a message, so `string` and `float` must
+publish the static form; only an object-backed element type can use the instance form.
+
+`operator =` is the exception: it must be `static`. On a first write the slot holds 0, so there
+is no receiver to send an instance operator to. An instance `operator =` is ignored and the
+store falls back to a word write rather than calling a property number as code.
+
+`deinit` has both forms, and they do different jobs: the `emitter deinit()` releases a
+*receiver* at scope exit, while `static deinit(T v)` releases a *slot* the container has no
+receiver for. A type that owns storage generally wants both (§14.4.3).
+
+**Assignment copies.** Every store into an owning element type goes through `static operator =`,
+which copies the incoming value into the buffer the slot owns. Handing it a value you allocated
+yourself therefore allocates a *second* time and leaves your original for you to release:
+
+```bgl
+array<stringObj> slots[4];
+
+slots += "alpha";                    // correct — the slot allocates and owns
+slots[0] = "replaced";               // reuses slot 0's buffer, no new allocation
+
+var tmp = _bglStr.new("beta");
+slots += tmp;                        // copies into a NEW slot allocation …
+tmp.free();                          // … so tmp is still yours to release
+```
+
+Write text, not allocations. `_bglStr.new()` is only needed when you want an instance of your
+own for other reasons.
 
 ### 16.2.8 `<linq>` - LINQ-style Fluent Operations
 

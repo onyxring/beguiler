@@ -119,6 +119,7 @@ object _bglArray
         self.set(obj, prop, n, v);
         return;
     }
+     if(metaclass(assign) ~= Routine) { self.set(obj, prop, n, v); return; } 
     self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
   ],
        clear [obj prop dtor sz t;
