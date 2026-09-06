@@ -137,6 +137,7 @@
   - 9.2.1 Class-Typed Locals and Reference Semantics
   - 9.2.2 Bypassing the Z-Machine's Local Variable Limit
 - 9.3 Assignment
+  - 9.3.1 The Reference Binding Operator (`:=`)
 - 9.4 Compound Assignment
 - 9.5 Increment and Decrement
 - 9.6 Function and Method Calls
@@ -576,7 +577,7 @@ Apostrophes are likewise acceptable (`.monkey's` → `'monkey^s'`).
 
 The following two-character sequences are recognized as single operator tokens:
 
-`-=`  `+=`  `?=`  `==`  `!=`  `<=`  `>=`  `=~`  `&&`  `||`  `++`  `--`  `<<`  `>>`  `*=`  `/=`  `%=`  `&=`  `|=`  `^=`
+`-=`  `+=`  `?=`  `==`  `!=`  `<=`  `>=`  `=~`  `&&`  `||`  `++`  `--`  `<<`  `>>`  `*=`  `/=`  `%=`  `&=`  `|=`  `^=`  `:=`
 
 Single-character operator and punctuation symbols include:
 
@@ -596,6 +597,7 @@ The meaning of each operator is detailed in later chapters. The following table 
 | `&=` `\|=` `^=` | Compound bitwise assignment | §10.3 |
 | `++` `--` | Increment / decrement | §9.5 |
 | `=` | Assignment | §10.3 |
+| `:=` | Reference binding (rebinding) | §9.3.1 |
 | `? :` | Ternary conditional | §10.4 |
 | `?` (postfix) | Query / null test (result `eBool`) | §10.5 |
 | `?.` | Optional chaining | §10.5 |
@@ -2298,7 +2300,7 @@ The complete list of operators that may be overloaded (as either emitters or reg
 
 **Special:** `switch` `?` `()` `[]` `[]=`
 
-Declaring `operator` with any symbol outside this set is a compile error that names the overloadable operators. This includes valid operator tokens that are not overloadable, such as `?.`, `??`, and `=>`.
+Declaring `operator` with any symbol outside this set is a compile error that names the overloadable operators. This includes valid operator tokens that are not overloadable, such as `?.`, `??`, `=>`, and the reference binding operator `:=` — whose whole purpose is to bypass operator dispatch, so allowing a type to redefine it would defeat it (§9.3.1).
 
 ### 5.6.8 `static` Operators and Three-Way Comparison (`<=>`)
 
@@ -3579,7 +3581,10 @@ The left-hand side must be a previously declared variable or a dotted member pat
 3. Else if the types are identical or I6-compatible via the conversion operator, a plain assignment is emitted.
 4. Otherwise a compile-time type mismatch error is reported.
 
-### 9.3.1 Reference Binding — `:=`
+### 9.3.1 The Reference Binding Operator — `:=`
+
+`:=` is the **reference binding operator** (or **rebinding operator** when the slot already
+holds one). It binds a name to an existing instance rather than copying a value into it.
 
 A class-typed member is auto-instantiated and owns its instance, and `=` **copies into it**,
 through `operator =` when the type defines one. A type that overloads `=` has therefore spent

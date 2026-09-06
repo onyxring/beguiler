@@ -42,8 +42,8 @@ class token {
         // Every consumer takes `std::string` by value, so these convert implicitly.
         static constexpr const char* endStatement=";"; 
         static constexpr const char* assignment ="="; 
-        // Reference binding (`a := b`): stores the reference itself, never dispatching the
-        // type's `operator =`. Distinct from `=`, which copies.
+        // The reference binding (rebinding) operator, `a := b`: stores the reference itself,
+        // never dispatching the type's `operator =`. Distinct from `=`, which copies.
         static constexpr const char* bindAssignment =":="; 
         static constexpr const char* parenOpen ="(";  
         static constexpr const char* parenClose =")"; 

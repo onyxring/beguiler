@@ -15,4 +15,4 @@ void f() {
     holder.pack := od;
 }
 // EXPECT_ERROR: cannot bind 'other' to 'inventory'
-// EXPECT_ERROR: ':=' requires the same class
+// EXPECT_ERROR: the reference binding operator ':=' requires the same class

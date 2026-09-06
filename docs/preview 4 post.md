@@ -75,7 +75,7 @@ object holder { ref inventory pack; }   // no instance created
 holder.pack := spare;                   // bind: both names now refer to the same inventory
 ```
 
-The separate `:=` operator is needed because a class can overload `=` for copying, which leaves no way to spell "point at this." `=` keeps its meaning exactly — it copies, through `operator =` when the type defines one — and `:=` binds the reference without dispatching it. Both sides must be the same class, so it stays a reference binding rather than a hole in the type system.
+`:=` is the **reference binding operator** — **rebinding** when the slot already holds one. It is a separate operator because a class can overload `=` for copying, which leaves no way to spell "point at this." `=` keeps its meaning exactly — it copies, through `operator =` when the type defines one — and `:=` binds the reference without dispatching it. Both sides must be the same class, so it stays a reference binding rather than a hole in the type system.
 
 ---
 ## 3. `children` — place a room's contents in one line

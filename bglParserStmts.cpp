@@ -1439,10 +1439,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
     }
 
     if(symbol.is(token::assignment) || symbol.is(token::bindAssignment))  {
-        // `:=` binds a reference: it stores the right-hand instance itself and never dispatches
-        // the type's `operator =`. `=` keeps its meaning exactly — copy, through operator= when
-        // the type defines one. The two are separate spellings because a class that overloads
-        // `=` has spent it on copy semantics, leaving no way to say "point at this" otherwise.
+        // `:=` is the reference binding (rebinding) operator: it stores the right-hand instance
+        // itself and never dispatches the type's `operator =`. `=` keeps its meaning exactly —
+        // copy, through operator= when the type defines one. The two are separate spellings
+        // because a class that overloads `=` has spent it on copy semantics, leaving no way to
+        // say "point at this" otherwise.
         bool isBindAssign = symbol.is(token::bindAssignment);
         assignmentStatement& assignExpr=*(new assignmentStatement());
         assignExpr.src = stmtLoc;
@@ -1857,14 +1858,17 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             string rhsT = rhs != nullptr ? rhs->resolvedType : string();
             classDef* lhsCls = classType;
             if(lhsCls == nullptr)
-                parsingError(format("':=' needs a class-typed left side; '{0}' is not one. "
-                                    "Use '=' for ordinary assignment.", lhsOriginal));
+                parsingError(format("the reference binding operator ':=' needs a class-typed left "
+                                    "side; '{0}' is not one. Use '=' for ordinary assignment.",
+                                    lhsOriginal));
             if(rhsT.empty() || getDispatchClass(rhsT) == nullptr)
-                parsingError(format("':=' binds a reference, so the right side must be an instance "
-                                    "of a class; got '{0}'.", typeDisplayName(rhsT.empty() ? "unknown" : rhsT)));
+                parsingError(format("the reference binding operator ':=' binds a reference, so the "
+                                    "right side must be an instance of a class; got '{0}'.",
+                                    typeDisplayName(rhsT.empty() ? "unknown" : rhsT)));
             else if(!isTypeCompatible(rhsT, lhsCls->name))
-                parsingError(format("cannot bind '{0}' to '{1}': ':=' requires the same class "
-                                    "(or a subclass). Use '=' to copy values between types.",
+                parsingError(format("cannot bind '{0}' to '{1}': the reference binding operator ':=' "
+                                    "requires the same class (or a subclass). Use '=' to copy values "
+                                    "between types.",
                                     typeDisplayName(rhsT), typeDisplayName(lhsCls->name)));
         }
         assignExpr.assignedExpression = rhs;
