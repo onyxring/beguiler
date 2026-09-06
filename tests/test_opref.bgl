@@ -1,0 +1,81 @@
+/* test_opref.bgl — `$opref(<op>[, <operandType>])` operator references.
+ *
+ * $opref yields a callable reference to one of a type's operators: a free-routine
+ * name for a `static` operator, a property name for an instance operator, and 0
+ * when the type publishes nothing referenceable (emitters inline and have no
+ * address, so they never qualify). The BLR uses it to hand `_bglArray`'s shared
+ * `var`-typed routines a type-aware comparison without the compiler hardcoding
+ * any element type.
+ *
+ * Coverage:
+ *   - array<T>.indexOf across all four resolution outcomes
+ *   - $opref outside an array emitter — resolves against the receiver's own type
+ *   - the two-argument form disambiguating overloaded static operators
+ *   - overloaded statics mangle to distinct I6 routine names (no collision)
+ */
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <string>
+#include <array>
+
+// static operator → free-routine address
+class Point {
+    int x;
+    static bool operator == (Point a, Point b) { return a.x == b.x; }
+}
+
+// instance operator → property name
+class Tagged {
+    int v;
+    bool operator == (Tagged o) { return v == o.v; }
+}
+
+// overloaded statics — the two-argument form selects between them
+class Money {
+    int cents;
+    static bool operator == (Money a, Money b) { return a.cents == b.cents; }
+    static bool operator == (Money a, int b)   { return a.cents == b; }
+    emitter int refMoney() { $opref(==, Money) }
+    emitter int refCents() { $opref(==, int) }
+}
+
+// $opref with no element type in scope falls back to the receiver's type
+class Plain {
+    int v;
+    bool operator == (Plain o) { return v == o.v; }
+    emitter int refEq() { $opref(==) }
+}
+
+// ─── array<T>.indexOf — one emitter, four resolutions ────────────────────────
+void exerciseArrayIndexOf(){
+    array<string> strs[4];
+    array<int>    ints[4];
+    array<Point>  pts[4];
+    array<Tagged> tags[4];
+    Point pc;
+    Tagged tagc;
+
+    int viaStatic   = strs.indexOf("apple");   // string publishes a static ==
+    int viaNone     = ints.indexOf(20);        // int publishes nothing → word compare
+    int viaUserStat = pts.indexOf(pc);
+    int viaUserInst = tags.indexOf(tagc);
+}
+
+// ─── $opref off an array ─────────────────────────────────────────────────────
+void exerciseBareRefs(){
+    Money m;
+    Plain p;
+    int refM = m.refMoney();
+    int refC = m.refCents();
+    int refP = p.refEq();
+    bool eq  = (m == m);                       // same discriminated routine name
+}
+
+void main(){
+    exerciseArrayIndexOf();
+    exerciseBareRefs();
+}

@@ -77,12 +77,12 @@ extend extern class array {
     // `operator =` (stringObj). core's raw `$val-->($i+1) = $v` still handles every plain
     // element type, so array<int> keeps its inline word write and pays nothing — the
     // compiler picks between the two by asking the element type, not by replacing core's.
-    emitter void setOwnedAt(int i, T v) { _bglArray.setOwned($self, $prop, $i, $v, $elemassign) }
+    emitter void setOwnedAt(int i, T v) { _bglArray.setOwned($self, $prop, $i, $v, $opref(=)) }
 
     // Search
-    emitter int  indexOf(T item)          { _bglArray.indexOf($self, $prop, $item, $elemeq, $elemeqprop) }
-    emitter int  find(T item)             { _bglArray.indexOf($self, $prop, $item, $elemeq, $elemeqprop) }       // alias — matches orLibrary terminology
-    emitter bool contains(T item)         { (_bglArray.indexOf($self, $prop, $item, $elemeq, $elemeqprop) >= 0) }
+    emitter int  indexOf(T item)          { _bglArray.indexOf($self, $prop, $item, $opref(==)) }
+    emitter int  find(T item)             { _bglArray.indexOf($self, $prop, $item, $opref(==)) }       // alias — matches orLibrary terminology
+    emitter bool contains(T item)         { (_bglArray.indexOf($self, $prop, $item, $opref(==)) >= 0) }
 
     // In-place transforms (no resize)
     emitter void clear()                  { _bglArray.clear($self, $prop) }
@@ -95,7 +95,7 @@ extend extern class array {
     // The braced-list forms `arr += {a, b}` / `arr -= {a, b}` bind to the
     // array<T> overloads below, which append/remove each element in turn.
     emitter void operator += (var v)        { _bglArray.append($self, $prop, $v) }
-    emitter void operator -= (var v)        { _bglArray.removeValue($self, $prop, $v, $elemeq, $elemeqprop) }
+    emitter void operator -= (var v)        { _bglArray.removeValue($self, $prop, $v, $opref(==)) }
 
     // Length-changing mutators — each grows or shrinks the explicit length.
     // append / prepend / insert return false on a full array (no growth happened).
@@ -103,7 +103,7 @@ extend extern class array {
     emitter bool prepend(T item)            { _bglArray.prepend($self, $prop, $item) }
     emitter bool insert(int pos, T item)    { _bglArray.insert($self, $prop, $pos, $item) }
     emitter void remove(int pos)            { _bglArray.remove($self, $prop, $pos) }
-    emitter void removeValue(T item)        { _bglArray.removeValue($self, $prop, $item, $elemeq, $elemeqprop) }
+    emitter void removeValue(T item)        { _bglArray.removeValue($self, $prop, $item, $opref(==)) }
 
     // Deque view (orLibrary convention — push/peek/pop at the front;
     // enqueue/peekEnd/popEnd at the back).
@@ -118,7 +118,7 @@ extend extern class array {
     // Sort — two overloads. The no-arg form uses the default ascending
     // comparator; the func-arg form lets the caller customize ordering
     // (e.g. descending, by field, locale-aware string compare).
-    emitter void sort()                            { _bglArray.sortDefault($self, $prop, $elemcmp) }
+    emitter void sort()                            { _bglArray.sortDefault($self, $prop, $opref(<=>)) }
     emitter void sort(func<int, T, T> compare)     { _bglArray.sort($self, $prop, $compare) }
 
 }
@@ -245,15 +245,21 @@ object _bglArray {
     //   eqProp — a PROPERTY of a non-emitter operator (object-backed elements). Here the
     //            element itself is the receiver, so the message goes straight to it.
     // Both are 0 when word comparison is correct, which is the common case.
-    int indexOf(var obj, var prop, var val, func<bool, var, var> eq = 0, var eqProp = 0){
+    // `op` is the element type's `==`, supplied by the compiler via $opref(==), in
+    // whichever form the type has — a free ROUTINE (static; the only form that can serve a
+    // bare-word element) or a PROPERTY (instance; sent to the element itself). They are told
+    // apart by metaclass, the same obj-or-routine idiom orLibrary uses. 0 means the type
+    // publishes neither, so word comparison stands and int/char/object pay nothing.
+    int indexOf(var obj, var prop, var val, var op = 0){
         int sz = size(obj, prop);
         for(int t = 0; t < sz; t++){
             var e = get(obj, prop, t);
             if(e == val) return t;
-            if(eq != 0 && e != 0 && val != 0 && eq(e, val)) return t;
             #i6 {
-                if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                   && e provides eqProp && e.(eqProp)(val)) return t;
+                if(op ~= 0 && e ~= 0 && val ~= 0){
+                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
+                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
+                }
             }
         }
         return -1;
@@ -342,7 +348,7 @@ object _bglArray {
     // Remove every occurrence of val within the used range (positions 0..length-1).
     // Each match shifts subsequent elements left; the scan continues from the
     // same position since the next element is now at that index.
-    void removeValue(var obj, var prop, var val, func<bool, var, var> eq = 0, var eqProp = 0){
+    void removeValue(var obj, var prop, var val, var op = 0){
         int pos = 0;
         int len = length(obj, prop);
         while(pos < len){
@@ -351,11 +357,12 @@ object _bglArray {
             // element type's routine, then its property operator for object elements.
             bool hit = false;
             if(e == val) hit = true;
-            if(!hit && eq != 0 && e != 0 && val != 0 && eq(e, val)) hit = true;
             if(!hit){
                 #i6 {
-                    if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                       && e provides eqProp && e.(eqProp)(val)) hit = true;
+                    if(op ~= 0 && e ~= 0 && val ~= 0){
+                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
+                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
+                    }
                 }
             }
             if(hit){

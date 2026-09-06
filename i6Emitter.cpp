@@ -1889,10 +1889,10 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             string b = call->emitterBody;
             // Safety net: an unsubstituted $elem* would reach I6 as a hex literal ($e...)
             // and fail far from the cause. Degrade to word comparison instead.
-            b = replaceWord(b, "$elemeq", "0");
-            b = replaceWord(b, "$elemcmp", "0");
-            b = replaceWord(b, "$elemeqprop", "0");
-            b = replaceWord(b, "$elemassign", "0");
+            // Safety net: an unsubstituted $opref(...) would reach I6 as a hex literal.
+            while(true){ size_t a = b.find("$opref("); if(a==string::npos) break;
+                         size_t c = b.find(')', a); if(c==string::npos) break;
+                         b.replace(a, c-a+1, "0"); }
             size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
             size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
             // Check if any argument is an interpolated string literal

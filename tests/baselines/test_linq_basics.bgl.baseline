@@ -133,19 +133,18 @@ object _bglArray
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [obj prop val eq eqProp sz t e;
+       indexOf [obj prop val op sz t e;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
         e = self.get(obj,prop,t);
         if (e==val) {
             return t;
         }
-        if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
-            return t;
-        }
         
-                if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                   && e provides eqProp && e.(eqProp)(val)) return t;
+                if(op ~= 0 && e ~= 0 && val ~= 0){
+                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
+                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
+                }
             
     }
     return -1;
@@ -214,7 +213,7 @@ object _bglArray
     self.set(obj, prop, len - 1, 0);
     self.setLength(obj, prop, len - 1);
   ],
-       removeValue [obj prop val eq eqProp pos len e hit;
+       removeValue [obj prop val op pos len e hit;
     pos = 0;
     len=self.length(obj,prop);
     while (pos < len) {
@@ -223,13 +222,12 @@ object _bglArray
         if (e==val) {
             hit = true;
         }
-        if ((~~hit)&&eq~=0&&e~=0&&val~=0&&eq(e,val)) {
-            hit = true;
-        }
         if (~~hit) {
             
-                    if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                       && e provides eqProp && e.(eqProp)(val)) hit = true;
+                    if(op ~= 0 && e ~= 0 && val ~= 0){
+                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
+                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
+                    }
                 
         }
         if (hit) {
@@ -314,7 +312,7 @@ object _bglArray
                         quit;
                     
             }
-            dst-->(writecount+1) = elem;
+            _bglArray.setOwned(dst, 0, writecount, elem, 0);
              writecount++ ;
         }
     }
@@ -364,7 +362,7 @@ object _bglArray
             
     }
     for (i = 0 : i < srclen : i++) {
-        dst-->(i+1) = f(self.get(obj,prop,i));
+        _bglArray.setOwned(dst, 0, i, f(self.get(obj,prop,i)), 0);
     }
     _bglArray.setLength(dst, 0, srcLen);
     _bgllinqleave();
@@ -388,7 +386,7 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) = self.get(obj,prop,i);
+        _bglArray.setOwned(dst, 0, i, self.get(obj,prop,i), 0);
     }
     _bglArray.setLength(dst, 0, outLen);
     _bgllinqleave();
@@ -413,7 +411,7 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) = self.get(obj,prop,start + i);
+        _bglArray.setOwned(dst, 0, i, self.get(obj,prop,start + i), 0);
     }
     _bglArray.setLength(dst, 0, outLen);
     _bgllinqleave();
@@ -434,7 +432,7 @@ object _bglArray
                     quit;
                 
         }
-        dst-->(outlen+1) = self.get(obj,prop,i);
+        _bglArray.setOwned(dst, 0, outlen, self.get(obj,prop,i), 0);
          outlen++ ;
     }
     _bglArray.setLength(dst, 0, outLen);
@@ -457,7 +455,7 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        dst-->(i+1) = self.get(obj,prop,start + i);
+        _bglArray.setOwned(dst, 0, i, self.get(obj,prop,start + i), 0);
     }
     _bglArray.setLength(dst, 0, outLen);
     _bgllinqleave();
@@ -484,7 +482,7 @@ object _bglArray
                         quit;
                     
             }
-            dst-->(outlen+1) = elem;
+            _bglArray.setOwned(dst, 0, outlen, elem, 0);
              outlen++ ;
         }
     }
@@ -503,7 +501,7 @@ object _bglArray
             
     }
     for (i = 0 : i < srclen : i++) {
-        dst-->(i+1) = self.get(obj,prop,i);
+        _bglArray.setOwned(dst, 0, i, self.get(obj,prop,i), 0);
     }
     _bglArray.setLength(dst, 0, srcLen);
     self.sort(dst, 0, compare);

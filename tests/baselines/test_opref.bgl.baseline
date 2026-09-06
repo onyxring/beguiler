@@ -7,7 +7,57 @@ Constant _BGL_WORLD_BUFSIZE = 128;
 global _bgl_temp0;
 global _bgl_temp1;
 global _bgl_temp2;
-global _bgl_temp3;
+Array _bglFramePool --> 64;
+Global _bglFrameTop = 0;
+ [ _bglFrameAlloc size r;
+    if (_bglFrameTop + size > 64) {
+        print "^[Beguile runtime error: frame pool exhausted]^";
+        quit;
+    }
+    r = _bglFrameTop;
+    _bglFrameTop = _bglFrameTop + size;
+    return _bglFramePool + (r * WORDSIZE);
+ ];
+ [ _bglFrameFree size;
+    _bglFrameTop = _bglFrameTop - size;
+ ];
+ ! Allocate + initialize a local Beguile-declared word array of user-size `size`.
+ ! Layout matches static tracked arrays: [header, data×size, length, magic].
+ ! Returns a pointer at the header slot. Caller must free with _bglFrameFree(size+3)
+ ! on every return path (driven by the function's cleanups list).
+ ! Emitted only when the program includes <array>.
+ [ _bglArrayLocalAlloc size r i;
+    r = _bglFrameAlloc(size + 3);
+    r-->0 = size + 2;
+    for (i = 1: i <= size: i++) r-->i = 0;
+    r-->(size + 1) = 0;
+    r-->(size + 2) = $9084;
+    return r;
+ ];
+ ! Plain variant for programs that don't include <array>: untracked layout
+ ! [header=size, data×size]. Matches the global-array emission gated on the
+ ! same arrayInUse flag. Caller frees with _bglFrameFree(size+1).
+ [ _bglArrayLocalAllocPlain size r i;
+    r = _bglFrameAlloc(size + 1);
+    r-->0 = size;
+    for (i = 1: i <= size: i++) r-->i = 0;
+    return r;
+ ];
+ ! Allocate a local Beguile-declared BYTE array (array<char>) of `nbytes` data
+ ! bytes. Layout matches the standalone hybrid buffer (`Array X buffer N`): the
+ ! capacity/length WORD lives at -->0, the data bytes start at ->WORDSIZE. The
+ ! frame slice is sized in words: one length word plus ceil(nbytes/WORDSIZE)
+ ! data words. Caller frees the same word count via _bglByteArrayLocalFree(nbytes).
+ [ _bglByteArrayLocalAlloc nbytes words r i;
+    words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+    r = _bglFrameAlloc(words);
+    for (i = 0: i < words: i++) r-->i = 0;
+    r-->0 = nbytes;   ! capacity, mirroring `buffer N`'s length word
+    return r;
+ ];
+ [ _bglByteArrayLocalFree nbytes;
+    _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+ ];
 
     Default bglStringDefaultSize 500;
 
@@ -28,7 +78,6 @@ global _bglInitDone = 0;
     _bglbufstreamstack-->(_bglbufstreamstack-->0) = $9084;
     _bglbufglulxstreams-->(_bglbufglulxstreams-->0) = $9084;
     _bgltrackedregistry-->(_bgltrackedregistry-->0) = $9084;
-    slots-->(slots-->0) = $9084;
 
     _bglInitializeStringBuffers();
 
@@ -1344,17 +1393,71 @@ class _bglstring(bglstringpoolreserve)
         return retval;
     ]
 ;
-array slots table 12;
-array counts table 3 1 2 3 $9084;
-[main;
-    bglinit();
-    _bglArray.setOwned(slots, 0, 9, _bglstr.new("jim"), 0);
-    _bglStr.print( slots-->(9+1) );
-    if ( slots-->(0+1) ) _bgl_temp3 = "allocated"; else _bgl_temp3 = "empty";
-    print (string)_bgl_temp3;
-    _bglArray.setOwned(counts, 0, 0, 9, 0);
-    print  counts-->(0+1) ;
+global _bgl_Point_operator;
+class point
+  with
+    x,
+    _opeqeq[a b;
+        return a.x == b.x;
+    ]
+;
+class tagged
+  with
+    v,
+    _opeqeq[o;
+        return self.v == o.v;
+    ]
+;
+global _bgl_Money_operator;
+class money
+  with
+    cents,
+    _opeqeq[a b;
+        return a.cents == b.cents;
+    ],
+    _opeqeq[a b;
+        return a.cents == b;
+    ]
+;
+class plain
+  with
+    v,
+    _opeqeq[o;
+        return self.v == o.v;
+    ]
+;
+[exerciseArrayIndexOf strs ints pts tags viaStatic viaNone viaUserStat viaUserInst;
+    _bglLocal_exercisearrayindexof_pc.x = 0;
+    _bglLocal_exercisearrayindexof_tagc.v = 0;
+    strs = _bglArrayLocalAlloc(4);
+    ints = _bglArrayLocalAlloc(4);
+    pts = _bglArrayLocalAlloc(4);
+    tags = _bglArrayLocalAlloc(4);
+    viaStatic=_bglArray.indexOf(strs, 0, "apple", _bgl_string__opeqeq);
+    viaNone=_bglArray.indexOf(ints, 0, 20, 0);
+    viaUserStat=_bglArray.indexOf(pts, 0, _bglLocal_exercisearrayindexof_pc, _bgl_Point__opeqeq);
+    viaUserInst=_bglArray.indexOf(tags, 0, _bglLocal_exercisearrayindexof_tagc, _opeqeq);
+    _bglFrameFree(7);
+    _bglFrameFree(7);
+    _bglFrameFree(7);
+    _bglFrameFree(7);
 ];
+[exerciseBareRefs refM refC refP eq;
+    _bglLocal_exercisebarerefs_m.cents = 0;
+    _bglLocal_exercisebarerefs_p.v = 0;
+    refM=_bgl_Money__opeqeq_money_money;
+    refC=_bgl_Money__opeqeq_money_int;
+    refP=_opeqeq;
+    eq=(_bgl_Money__opeqeq_money_money(_bglLocal_exercisebarerefs_m, _bglLocal_exercisebarerefs_m));
+];
+[main;
+    exercisearrayindexof();
+    exercisebarerefs();
+];
+point _bglLocal_exercisearrayindexof_pc;
+tagged _bglLocal_exercisearrayindexof_tagc;
+money _bglLocal_exercisebarerefs_m;
+plain _bglLocal_exercisebarerefs_p;
 [_bgl_string__opeqeq a b;
     return _bglstr.areequal(a, b, false);
 ];
@@ -1366,6 +1469,15 @@ array counts table 3 1 2 3 $9084;
 ];
 [_bgl_stringObj__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
+];
+[_bgl_Point__opeqeq a b;
+    return a.x == b.x;
+];
+[_bgl_Money__opeqeq_money_money a b;
+    return a.cents == b.cents;
+];
+[_bgl_Money__opeqeq_money_int a b;
+    return a.cents == b;
 ];
 [_bglCharToLower c;
     switch (c) {

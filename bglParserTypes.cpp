@@ -1018,54 +1018,98 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
 // ===============================================================================
 // Identifier qualification + small lookup utilities
 // ===============================================================================
-// `$elemeq` / `$elemcmp` — the routine implementing a comparison for an array's element
-// type, or "0" when a raw word comparison is correct (int, char, object identity — the
-// overwhelmingly common case, and today's behaviour).
+// `$opref(<op>[, <operandType>])` — a callable REFERENCE to one of a type's operators,
+// for generic code that must dispatch through the type it was handed.
 //
-// A type publishes its comparison by declaring a zero-arg emitter whose body is nothing but
-// the routine's name:
-//     extend class string { emitter var valueEquals() { _bglStr.areEqual } }
-// and the compiler splices that name in as a routine address.
+// An operator is referenceable only if it is NOT an emitter: an emitter is inlined text
+// and has no address or property to point at. Of the referenceable forms:
 //
-// Why a routine and not the operator itself: an array element may be a PACKED LITERAL, which
-// has no dispatch surface at all — no properties, not an object. A property method, a
-// `provides` probe, or a class message can never reach one. Only a routine taking the value
-// as a parameter can. The emitter-body form is used because `string` is an extern class and
-// so cannot host a non-emitter member.
+//   static operator    -> a FREE ROUTINE name; its address is the value. The only form
+//                         that can serve a bare-word element (a packed string literal,
+//                         float bits), which has nothing to dispatch on.
+//   instance operator  -> a PROPERTY name (`operator ==` is mangled to `_opeqeq` at
+//                         declaration), sent to the element itself.
 //
-// Nothing type-specific lives here: the compiler looks up a member by name and emits whatever
-// routine that member names. A new type gains array-aware comparison purely in the BLR.
-string bglParser::arrayElementOpRoutine(const string& elemType, const string& memberName){
-    if(elemType.empty()) return "0";
-    auto* cd = dynamic_cast<classDef*>(&languageService.getType(elemType));
-    if(cd == nullptr) return "0";
-    // A `static` method on the type: emits as a free routine, so its name IS the address.
-    typeMember* m = findMemberInHierarchy(cd, [&](typeMember* mm){
-        auto* fn = dynamic_cast<functionDef*>(mm);
-        return fn && fn->name == memberName && fn->isStatic && !fn->isEmitter;
+// Consumers tell them apart with metaclass(op)==Routine — the obj-or-routine idiom
+// orLibrary uses — so one value carries either.
+//
+// Overloads: emitters are filtered out first, which in practice leaves one candidate.
+// Where several remain, an operand type matching `preferOperand` wins; if that is still
+// ambiguous it is a compile error naming the candidates, since silently taking the first
+// is the kind of quiet wrong answer this mechanism exists to avoid.
+//
+// "" (empty) when the type publishes no referenceable form — the caller emits "0" and the
+// container falls back to word comparison, so int/char/object pay nothing.
+string bglParser::operatorRef(const string& typeName, const string& opName,
+                              const string& preferOperand){
+    if(typeName.empty()) return "";
+    auto* cd = dynamic_cast<classDef*>(&languageService.getType(typeName));
+    if(cd == nullptr) return "";
+
+    // findMemberInHierarchy walks until the predicate returns true; never returning true
+    // makes it visit every member, which is how the candidate list is gathered.
+    vector<functionDef*> cands;
+    findMemberInHierarchy(cd, [&](typeMember* mm){
+        auto* f = dynamic_cast<functionDef*>(mm);
+        if(!f || f->name != opName || f->isEmitter) return false;   // emitters are not referenceable
+        cands.push_back(f);
+        return false;
     });
-    if(auto* fn = dynamic_cast<functionDef*>(m))
-        return i6Emitter::staticRoutineName(cd, fn);
-    return "0";
+    if(cands.empty()) return "";
+
+    if(cands.size() > 1 && !preferOperand.empty()){
+        // Type names are stored folded (typeDisplayName restores the declared casing), so the
+        // operand named in $opref(op, <type>) is matched case-insensitively.
+        auto fold = [](string v){ transform(v.begin(), v.end(), v.begin(), ::tolower); return v; };
+        const string want = fold(preferOperand);
+        vector<functionDef*> narrowed;
+        for(functionDef* f : cands){
+            size_t idx = f->isStatic ? 1 : 0;        // static takes (lhs, rhs); instance takes (rhs)
+            if(f->params.size() > idx && fold(f->params[idx]->type.name) == want)
+                narrowed.push_back(f);
+        }
+        if(narrowed.size() == 1) cands = narrowed;
+    }
+    if(cands.size() > 1){
+        string list;
+        for(functionDef* f : cands){
+            string ops;
+            for(size_t i = 0; i < f->params.size(); i++)
+                ops += (i ? ", " : "") + typeDisplayName(f->params[i]->type.name);
+            list += format("\n    {0}operator {1}({2})", f->isStatic ? "static " : "", opName, ops);
+        }
+        parsingError(format("ambiguous operator reference: '{0}' has {1} referenceable "
+                            "'operator {2}' overloads:{3}\n  Disambiguate by naming the operand "
+                            "type, e.g. $opref({2}, <type>).",
+                            typeDisplayName(typeName), cands.size(), opName, list));
+    }
+    functionDef* f = cands.front();
+    if(f->isStatic) return i6Emitter::staticRoutineName(cd, f);
+    return f->i6name;                                 // instance: the mangled property name
 }
 
-// Property name of a non-emitter operator on the element type, for elements that ARE
-// objects. `operator ==` is mangled to `_opeqeq` at declaration, becoming a real I6 property
-// method — so the array can send the message straight to the element (`e.(prop)(val)`),
-// with the element itself as the receiver. That is why this works where a routine address
-// was needed for strings: a user class element is always an object, so there IS a receiver.
-// Emitter operators are skipped: they inline and have no property to call.
-string bglParser::arrayElementOpProperty(const string& elemType, const string& opName){
-    if(elemType.empty()) return "0";
-    auto* cd = dynamic_cast<classDef*>(&languageService.getType(elemType));
-    if(cd == nullptr) return "0";
-    typeMember* m = findMemberInHierarchy(cd, [&](typeMember* mm){
-        auto* fn = dynamic_cast<functionDef*>(mm);
-        return fn && fn->name == opName && !fn->isEmitter && fn->params.size() == 1;
-    });
-    auto* fn = dynamic_cast<functionDef*>(m);
-    if(fn == nullptr || fn->i6name.empty()) return "0";
-    return fn->i6name;
+string bglParser::substituteElemOps(const string& body, const string& elemType){
+    string out = body;
+    const string tok = "$opref(";
+    size_t at = 0;
+    while((at = out.find(tok, at)) != string::npos){
+        size_t close = out.find(')', at + tok.size());
+        if(close == string::npos) break;                       // unterminated; leave as-is
+        string args = out.substr(at + tok.size(), close - at - tok.size());
+        auto trim = [](string v){ size_t a = v.find_first_not_of(" \t");
+                                  size_t b = v.find_last_not_of(" \t");
+                                  return a == string::npos ? string() : v.substr(a, b - a + 1); };
+        string op = args, operand;
+        if(size_t comma = args.rfind(','); comma != string::npos){
+            op = trim(args.substr(0, comma));
+            operand = trim(args.substr(comma + 1));   // matched verbatim; type names are case-sensitive
+        } else op = trim(args);
+        string rep = operatorRef(elemType, op, operand);
+        if(rep.empty()) rep = "0";
+        out.replace(at, close - at + 1, rep);
+        at += rep.size();
+    }
+    return out;
 }
 
 bool bglParser::splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,

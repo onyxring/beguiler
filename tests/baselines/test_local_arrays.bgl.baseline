@@ -135,19 +135,18 @@ object _bglArray
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [obj prop val eq eqProp sz t e;
+       indexOf [obj prop val op sz t e;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
         e = self.get(obj,prop,t);
         if (e==val) {
             return t;
         }
-        if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
-            return t;
-        }
         
-                if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                   && e provides eqProp && e.(eqProp)(val)) return t;
+                if(op ~= 0 && e ~= 0 && val ~= 0){
+                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
+                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
+                }
             
     }
     return -1;
@@ -216,7 +215,7 @@ object _bglArray
     self.set(obj, prop, len - 1, 0);
     self.setLength(obj, prop, len - 1);
   ],
-       removeValue [obj prop val eq eqProp pos len e hit;
+       removeValue [obj prop val op pos len e hit;
     pos = 0;
     len=self.length(obj,prop);
     while (pos < len) {
@@ -225,13 +224,12 @@ object _bglArray
         if (e==val) {
             hit = true;
         }
-        if ((~~hit)&&eq~=0&&e~=0&&val~=0&&eq(e,val)) {
-            hit = true;
-        }
         if (~~hit) {
             
-                    if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                       && e provides eqProp && e.(eqProp)(val)) hit = true;
+                    if(op ~= 0 && e ~= 0 && val ~= 0){
+                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
+                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
+                    }
                 
         }
         if (hit) {
@@ -361,8 +359,8 @@ global _bglWorldBufIdx = -1;
 ];
 [localByteArray buf c0 c1;
     buf = _bglByteArrayLocalAlloc(8);
-    buf->(0 + WORDSIZE) = 'X';
-    buf->(1 + WORDSIZE) = 'Y';
+    _bglArray.setOwned(buf, <$prop undefined>, 0, 'X', 0);
+    _bglArray.setOwned(buf, <$prop undefined>, 1, 'Y', 0);
     c0= buf->(0 + WORDSIZE);
     c1= buf->(1 + WORDSIZE);
     if (c0=='X' && c1=='Y') {

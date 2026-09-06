@@ -118,19 +118,18 @@ object _bglArray
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [obj prop val eq eqProp sz t e;
+       indexOf [obj prop val op sz t e;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
         e = self.get(obj,prop,t);
         if (e==val) {
             return t;
         }
-        if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
-            return t;
-        }
         
-                if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                   && e provides eqProp && e.(eqProp)(val)) return t;
+                if(op ~= 0 && e ~= 0 && val ~= 0){
+                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
+                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
+                }
             
     }
     return -1;
@@ -199,7 +198,7 @@ object _bglArray
     self.set(obj, prop, len - 1, 0);
     self.setLength(obj, prop, len - 1);
   ],
-       removeValue [obj prop val eq eqProp pos len e hit;
+       removeValue [obj prop val op pos len e hit;
     pos = 0;
     len=self.length(obj,prop);
     while (pos < len) {
@@ -208,13 +207,12 @@ object _bglArray
         if (e==val) {
             hit = true;
         }
-        if ((~~hit)&&eq~=0&&e~=0&&val~=0&&eq(e,val)) {
-            hit = true;
-        }
         if (~~hit) {
             
-                    if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                       && e provides eqProp && e.(eqProp)(val)) hit = true;
+                    if(op ~= 0 && e ~= 0 && val ~= 0){
+                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
+                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
+                    }
                 
         }
         if (hit) {
@@ -310,7 +308,7 @@ object _bglBuf
          print "^[Beguile runtime: tracked buffer registry full]^"; 
         return;
     }
-    _bgltrackedregistry-->(self._trackedcount+1) = buf;
+    _bglArray.setOwned(_bgltrackedregistry, 0, self._trackedcount, buf, 0);
     self._trackedcount++;
   ],
        size [buf;
@@ -388,7 +386,7 @@ object _bglBuf
     return tobuf;
   ],
        capture [buf maxBytes s;
-    _bglbufstreamstack-->(self._stacktop+1) = buf;
+    _bglArray.setOwned(_bglbufstreamstack, 0, self._stacktop, buf, 0);
     if (maxbytes == 0) {
         s=self.size(buf);
         if ((s < 0)) {
@@ -398,7 +396,7 @@ object _bglBuf
             maxBytes=s;
         }
     }
-    _bglbufglulxstreams-->(self._stacktop+1) = __glkHook(72);
+    _bglArray.setOwned(_bglbufglulxstreams, 0, self._stacktop, __glkHook(72), 0);
     __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, filemode_write, 662));
     self._stacktop++;
   ],
@@ -663,9 +661,9 @@ array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
     tr=_bglBuf.isTracked(bufa);
 ];
 [exerciseChars c0 c1 c2;
-    bufa->(0 + WORDSIZE) = 'A';
-    bufa->(1 + WORDSIZE) = 'B';
-    bufa->(31 + WORDSIZE) = 'Z';
+    _bglArray.setOwned(bufa, <$prop undefined>, 0, 'A', 0);
+    _bglArray.setOwned(bufa, <$prop undefined>, 1, 'B', 0);
+    _bglArray.setOwned(bufa, <$prop undefined>, 31, 'Z', 0);
     c0=_bglbuf.getchar(bufa, 0);
     c1=_bglbuf.getchar(bufa, 1);
     c2= bufa->(0 + WORDSIZE);

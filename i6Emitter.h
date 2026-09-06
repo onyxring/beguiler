@@ -34,7 +34,24 @@ class i6Emitter{
             // Operators carry a mangled i6name ("==" → "_opeqeq"); a bare operator name is
             // not a legal I6 identifier, so prefer i6name whenever one was assigned.
             const std::string& n = fd->i6name.empty() ? fd->dName() : fd->i6name;
-            return "_bgl_" + cls->dName() + "_" + n;
+            std::string base = "_bgl_" + cls->dName() + "_" + n;
+            // Overloaded statics would otherwise all collapse onto `base` and emit duplicate
+            // I6 routines. Only when the class declares more than one static under that name
+            // is a parameter-type discriminator appended, so single statics keep the short
+            // name (and their existing emission) unchanged.
+            int sameName = 0;
+            for(typeMember* m : cls->members){
+                auto* o = dynamic_cast<functionDef*>(m);
+                if(o == nullptr || !o->isStatic) continue;
+                if((o->i6name.empty() ? o->dName() : o->i6name) == n) sameName++;
+            }
+            if(sameName < 2) return base;
+            for(paramDef* p : fd->params){
+                std::string t = p->type.name;
+                for(char& c : t) c = isalnum((unsigned char)c) ? tolower((unsigned char)c) : '_';
+                base += "_" + t;
+            }
+            return base;
         }
         void emitStaticClassRoutines(classDef* classNode);
         void emitAllStaticClassRoutines();

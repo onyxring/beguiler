@@ -1737,12 +1737,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 // receiver-path value. Done after param sub so emitters with a
                                 // `prop` parameter (e.g. `provides(property prop)`) win.
                                 b = replaceWord(b, "$prop", exprPropValue);
-                                // $elemeq / $elemcmp — routine implementing the element type's
-                                // comparison, or "0" for word comparison.
-                                b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(recvElemType, "=="));
-                                b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "<=>"));
-                                b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(recvElemType, "=="));
-                                b = replaceWord(b, "$elemassign", arrayElementOpRoutine(recvElemType, "="));
+                                // One substitution covers every $opref(<op>) in the body. Outside
+                                // array emitters there is no element type, so $opref resolves
+                                // against the receiver's own type instead.
+                                b = substituteElemOps(b, recvElemType.empty() ? objType : recvElemType);
                                 callText = b;
                                 expr->tokens.push_back(b);
                             }
@@ -2495,10 +2493,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     for(size_t i = 0; i < method->params.size() && i < callArgs.size(); i++)
                         b = replaceWord(b, "$" + method->params[i]->name, callArgs[i]->text());
                     b = replaceWord(b, "$prop", chainProp);
-                    b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(chainElem, "=="));
-                    b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(chainElem, "<=>"));
-                    b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(chainElem, "=="));
-                    b = replaceWord(b, "$elemassign", arrayElementOpRoutine(chainElem, "="));
+                    // One substitution covers every $elemop(<op>) in the body.
+                    b = substituteElemOps(b, chainElem);
                     callText = b;
                     expr->tokens.push_back(b);
                 }

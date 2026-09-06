@@ -5308,6 +5308,49 @@ When an emitter is called, the compiler performs textual substitution on the bod
 | `$prop` | (For array emitters) The property name when the array is an object property; `0` for global arrays. |
 | `$target` | The assignment target, the **full lvalue path** (e.g. `obj.prop` for a dotted assignment, just `x` for a bare assignment). Used by primitive `operator=` emitters that perform a literal store, and by emitters that need to store a result directly (e.g. assembly opcodes). When assigned (`int r = foo();`), `$target` is the LHS variable. When called as a statement without assignment (`foo();`), `$target` is a compiler-generated temporary. When `$target` appears in the body, the normal `LHS = RHS` assignment is suppressed; the emitter body handles the store itself. |
 
+#### `$opref` — referencing a type's operator
+
+`$opref(<operator>)` is not a value substitution but a *lookup*. It resolves to a callable
+reference to one of a type's operators, so an emitter can hand a shared runtime routine a
+type-aware operation without the compiler hardcoding any particular type:
+
+| The operator is | `$opref` yields |
+|---|---|
+| `static` | The free routine's I6 name — call it as `op(a, b)` |
+| An instance member | The mangled property name — call it as `a.(op)(b)` |
+| An emitter, or absent | `0` — emitters inline and have no address, so they are never referenceable |
+
+Because the two forms differ, the receiving routine must distinguish them. This is the same
+obj-or-routine idiom the orLibrary uses: test the reference with `metaclass()` and dispatch
+accordingly.
+
+```bgl
+emitter int indexOf(T item){ _bglArray.indexOf($self, $prop, $item, $opref(==)) }
+```
+
+```bgl
+if(op ~= 0 && e ~= 0 && val ~= 0){
+    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
+    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
+}
+```
+
+The type searched is the receiver's **element type** inside an `array<T>` emitter, and the
+receiver's own type everywhere else. When a type publishes more than one referenceable overload
+of the operator, the reference is ambiguous and the compiler reports it; name the operand type
+to select one:
+
+```bgl
+class Money {
+    static bool operator == (Money a, Money b) { return a.cents == b.cents; }
+    static bool operator == (Money a, int b)   { return a.cents == b; }
+    emitter int refMoney(){ $opref(==, Money) }   // without the operand type: ambiguous
+}
+```
+
+Publishing an operator is therefore **opt-in**: a type that declares none simply yields `0`, and
+the runtime falls back to its default (for `_bglArray`, a plain word comparison).
+
 All emitter placeholders use the `$` prefix to distinguish them from raw I6 identifiers. This prevents substitution collisions. For example, if a parameter is named `c` and the emitter body also references a variable named `c`, using `$c` for the parameter ensures only the intended token is replaced.
 
 A few features add their own feature-local substitution tokens, documented with the feature rather than here; for example, `_bglGlobalDeclaration` bodies provide `$selfsub` (§5.10).

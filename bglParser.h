@@ -412,13 +412,18 @@ class bglParser {
         // Drives member-array access through the orLibrary property-array convention.
         bool splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                   string& ownerOut, string& propOut);
-        // `$elemeq` / `$elemcmp` — the routine implementing a comparison for an array's
-        // element type, or "0" when a raw word comparison is correct. A type publishes one
-        // by declaring a zero-arg emitter whose body is just the routine's name.
-        string arrayElementOpRoutine(const string& elemType, const string& memberName);
-        // Property name of a NON-EMITTER operator declared on the element type (e.g. `_opeqeq`
-        // for `operator ==`), or "0". Object-backed elements can be sent the message directly.
-        string arrayElementOpProperty(const string& elemType, const string& opName);
+        // `$elemop(<op>)` — the element type's implementation of one operator, as either a
+        // free-routine name (static) or a property name (instance), or "0". Callers tell the
+        // two apart at runtime via metaclass()==Routine.
+        // `$opref(<op>[, <operandType>])` — a callable reference to one of a type's operators:
+        // a free-routine name (static), a property name (instance), or "" when none is
+        // referenceable. Emitters are never referenceable — they inline and have no address.
+        string operatorRef(const string& typeName, const string& opName,
+                           const string& preferOperand = "");
+        // Replace every `$elemop(<op>)` in an emitter body with that operator's callable form
+        // for `elemType`. One substitution covers every operation, so a site cannot be
+        // partially wired the way four separate tokens could.
+        string substituteElemOps(const string& body, const string& elemType);
         bool isTypeCompatible(string argType, string paramType);
         // Element-type compatibility for array/list initializers: isTypeCompatible plus an
         // initializer-only relaxation letting a byte array (`array<char>`) accept integer literals.

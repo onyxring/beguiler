@@ -1405,7 +1405,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         // write must go through the type rather than being a raw word store. Prefer array<T>'s
         // `setOwnedAt` member in that case; every plain element type keeps core's inline
         // `$val-->($i+1) = $v` and pays nothing. Both bodies live in the BLR — this only picks.
-        if(!isMemberWordArray && arrayElementOpRoutine(elemType, "=") != "0"){
+        if(!isMemberWordArray && operatorRef(elemType, "=") != "0"){
             if(auto* ac = dynamic_cast<classDef*>(&languageService.getType("array")))
                 if(auto* owned = dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
                         auto* fn = dynamic_cast<functionDef*>(m);
@@ -1424,10 +1424,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 b = replaceWord(b, "$self", selfValue);
                 b = replaceWord(b, "$val",  arrPath);
                 b = replaceWord(b, "$prop", propValue);
-                // Subscript assignment takes this path, not the method-call one — so the
-                // element type's ownership hook has to be substituted here too, or a slot
-                // write silently degrades to a raw word store.
-                b = replaceWord(b, "$elemassign", arrayElementOpRoutine(elemType, "="));
+                // One substitution covers every $elemop(<op>) in the body.
+                b = substituteElemOps(b, elemType);
                 callStmt.emitterBody = b;
             }
         if(body != nullptr) body->statements.push_back(&callStmt);
@@ -1904,10 +1902,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(aType)));
                 auto* opFunc = dynamic_cast<functionDef*>(opm);
                 string opBody = replaceWord(processBglConditionals(dynamic_cast<i6Block*>(opFunc->body)->i6Body), "$prop", "0");
-                opBody = replaceWord(opBody, "$elemeq",
-                                     arrayElementOpRoutine(resolveArrayElementType(tok.value, func, body), "=="));
-                opBody = replaceWord(opBody, "$elemeqprop",
-                                     arrayElementOpProperty(resolveArrayElementType(tok.value, func, body), "=="));
+                opBody = substituteElemOps(opBody, resolveArrayElementType(tok.value, func, body));
                 file.getToken();  // consume '{'
                 token et = file.getToken();
                 while(!et.is(token::braceClose)){
@@ -1982,10 +1977,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 // here, so this bare-identifier path is always the non-member case.
                 if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray"){
                     a.emitterBody = replaceWord(a.emitterBody, "$prop", "0");
-                    a.emitterBody = replaceWord(a.emitterBody, "$elemeq",
-                                                arrayElementOpRoutine(resolveArrayElementType(lhs, func, body), "=="));
-                    a.emitterBody = replaceWord(a.emitterBody, "$elemeqprop",
-                                                arrayElementOpProperty(resolveArrayElementType(lhs, func, body), "=="));
+                    a.emitterBody = substituteElemOps(a.emitterBody, resolveArrayElementType(lhs, func, body));
                 }
                 a.emitterParam = opFunc->params[0]->name;
                 a.emitterSelf = lhs;
@@ -2241,10 +2233,8 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         for(paramDef* p : method->params) if(p->name == "prop"){ hasPropParam = true; break; }
                         if(!hasPropParam)
                             b = replaceWord(b, "$prop", propValue);
-                        b = replaceWord(b, "$elemeq",  arrayElementOpRoutine(recvElemType, "=="));
-                        b = replaceWord(b, "$elemcmp", arrayElementOpRoutine(recvElemType, "<=>"));
-                        b = replaceWord(b, "$elemeqprop", arrayElementOpProperty(recvElemType, "=="));
-                        b = replaceWord(b, "$elemassign", arrayElementOpRoutine(recvElemType, "="));
+                        // One substitution covers every $elemop(<op>) in the body.
+                        b = substituteElemOps(b, recvElemType.empty() ? objectType : recvElemType);
                         callStmt.emitterBody = b;
                         for(paramDef* p : method->params)
                             callStmt.emitterParams.push_back(p->name);

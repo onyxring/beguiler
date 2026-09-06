@@ -84,19 +84,18 @@ object _bglArray
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
-       indexOf [obj prop val eq eqProp sz t e;
+       indexOf [obj prop val op sz t e;
     sz=self.size(obj,prop);
     for (t = 0 : t < sz : t++) {
         e = self.get(obj,prop,t);
         if (e==val) {
             return t;
         }
-        if (eq~=0&&e~=0&&val~=0&&eq(e,val)) {
-            return t;
-        }
         
-                if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                   && e provides eqProp && e.(eqProp)(val)) return t;
+                if(op ~= 0 && e ~= 0 && val ~= 0){
+                    if(metaclass(op) == Routine) { if(op(e, val)) return t; }
+                    else if(metaclass(e) == Object && e provides op && e.(op)(val)) return t;
+                }
             
     }
     return -1;
@@ -165,7 +164,7 @@ object _bglArray
     self.set(obj, prop, len - 1, 0);
     self.setLength(obj, prop, len - 1);
   ],
-       removeValue [obj prop val eq eqProp pos len e hit;
+       removeValue [obj prop val op pos len e hit;
     pos = 0;
     len=self.length(obj,prop);
     while (pos < len) {
@@ -174,13 +173,12 @@ object _bglArray
         if (e==val) {
             hit = true;
         }
-        if ((~~hit)&&eq~=0&&e~=0&&val~=0&&eq(e,val)) {
-            hit = true;
-        }
         if (~~hit) {
             
-                    if(eqProp ~= 0 && e ~= 0 && metaclass(e) == Object
-                       && e provides eqProp && e.(eqProp)(val)) hit = true;
+                    if(op ~= 0 && e ~= 0 && val ~= 0){
+                        if(metaclass(op) == Routine) { if(op(e, val)) hit = true; }
+                        else if(metaclass(e) == Object && e provides op && e.(op)(val)) hit = true;
+                    }
                 
         }
         if (hit) {
@@ -270,10 +268,10 @@ array rooms table kitchen hall studio 3 $9084;
     b= flags-->(1+1);
     s =  names-->(0+1) ;
     r =  rooms-->(2+1) ;
-    nums-->(0+1) = 42;
-    flags-->(1+1) = false;
-    names-->(0+1) = "gamma";
-    rooms-->(0+1) = hall;
+    _bglArray.setOwned(nums, 0, 0, 42, 0);
+    _bglArray.setOwned(flags, 0, 1, false, 0);
+    _bglArray.setOwned(names, 0, 0, "gamma", 0);
+    _bglArray.setOwned(rooms, 0, 0, hall, 0);
     n1=_bglArray.size(nums, 0);
     n2=_bglArray.size(rooms, 0);
 ];
