@@ -1,0 +1,14 @@
+/*
+    _test_bind_non_instance.bgl  (negative)
+    The right side of `:=` must be a class instance — binding a plain value has no
+    reference to store.
+*/
+#beguilerSettings { informName = "none"; }
+
+class inventory { int gold = 0; }
+object holder { ref inventory pack; }
+
+void f() {
+    holder.pack := 5;
+}
+// EXPECT_ERROR: cannot bind 'intLiteral' to 'inventory'

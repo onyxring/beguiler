@@ -2720,6 +2720,11 @@ void i6Emitter::emitObject(objectDef* obj){
             if(!vd || vd->isExternal || vd->name == "parent" || vd->type.name.empty()) return;
             if(ownedInstanceNames.count(vd->name)) return;         // already baked (own beats inherited)
             if(overriddenWithInit(vd->name)) return;               // instance points it elsewhere
+            // `ref` members are bare pointer slots: they name something owned elsewhere, so they
+            // start empty and are filled with `:=`. Baking a backing here would allocate an object
+            // that the first bind throws away, and would make an unbound slot indistinguishable
+            // from a bound one. Matches synthesizeFieldBackings, which already skips them.
+            if(vd->isRefLocal) return;
             auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
             if(!cls || cls->name == "object" || cls->name == "_bglobject") return;
             if(inheritsObj(cls)) return;                            // world-tree reference, not owned

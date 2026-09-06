@@ -3,7 +3,7 @@ This build adds a handful of bug fixes and language features.
 
 ---
 ## 1. Inline, automatically typed objects
-An expansion of the last update, which brought inline declaration of objects with a known type, this release now allows those objects to be be _untyped_.  That is, you can declare an object instance *inline*, and the compiler will synthesizes the type for you via the `auto` pseudo type:
+An expansion of the last update, which brought inline declaration of objects with known types, ***this release*** now allows those objects to be be _untyped_.  That is, you can declare an object instance *inline*, and the compiler synthesizes the type for you via the `auto` pseudo type:
 
 ```bgl
 object player {
@@ -13,29 +13,36 @@ object player {
         void sayStatTot(){ print(strength + agility);}
     }
 }
+```
+The above is equivilant to...
 
-void main() {
-    print(player.stats.strength);   // 10
-    player.stats.agility = 12;      // read/write to members, as normal
-    player.sayStatTot();            // 22
+```
+object statsObj {          // no named class, beguiler creates the type
+    int strength = 10;
+    int agility  = 7;
+    void sayStatTot(){ print(strength + agility);}
+}
+    
+object player {
+    object stats = statsObj;
 }
 ```
 
-## Made easier : Getters and setters
-If you are familiar with C#, you've probably heard of getters and setters.  Beguile’s support for these is as wrapped objects with overloaded operators.  The new inline, automatically typed object syntax makes these easier to implement:
+### Made easier : Getters and setters
+If you are familiar with C#, you've probably heard of getters and setters.  Since Beguile's support for this pattern is built on overloaded operators, adding getters/setters to objects can seem like more trouble than its worth.  This new inline, automatically-typed syntax simplifies things:
 
 ```bgl
 object gadget {
     int scale = 3;
-    auto level = {
+    auto level = {  //getter and setter
         int _raw = 0;
         int  operator()        { return _raw; }
-        void operator = (int v){ _raw = v * outer.scale; }
+        void operator = (int v){ _raw = v * outer.scale; } 
     }
 }
 ```
 
-The above creates a `level` property object with getters and setters implemented with normal cast and assignment operators.  This let's you run arbitrary code when accessing or writing to the property:
+The above creates a `level` property object with getters and setters implemented using the normal cast and assignment operators.  This let's you run arbitrary code when accessing or writing to the property:
 
 ```bgl
 gadget.level = 4;        // setter: _raw = 4 * 3
@@ -59,6 +66,16 @@ object player { inventory pack; }       // `pack` is automatically created
 player.pack.add(50);
 player.pack.arrows = player.pack.arrows - 3;
 ```
+
+If you'd rather the member point at an instance owned somewhere else, declare it `ref` — the slot is then left empty for you to fill:
+
+```bgl
+object holder { ref inventory pack; }   // no instance created
+
+holder.pack := spare;                   // bind: both names now refer to the same inventory
+```
+
+The separate `:=` operator is needed because a class can overload `=` for copying, which leaves no way to spell "point at this." `=` keeps its meaning exactly — it copies, through `operator =` when the type defines one — and `:=` binds the reference without dispatching it. Both sides must be the same class, so it stays a reference binding rather than a hole in the type system.
 
 ---
 ## 3. `children` — place a room's contents in one line
@@ -94,7 +111,7 @@ Declaration conflicts between `parent` and `children` properties will throw a co
 
 ---
 ## 4. `#declare` — persistent, order-independent `#define`
-This release provides a new directive, `#declare`, which is similar to `#define`.  _Like_ `#define`, you can create compile time symbols with values and test those values using `#if`.  _Unlike_ `#define`, `#declare`d symbols are scoped to the entire compilation.  They can be tested even before their declarations appear in code.  Additionally, once `#define`d they are permanent and cannot subsequently be changed; attempting to `#undef` or  `#redef` a `#declare`d symbol will raise a compile time error.
+This release provides a new directive, `#declare`, which is similar to `#define`.  _Like_ `#define`, you can create compile time symbols and test them using `#if`.  _Unlike_ `#define`, `#declare`d symbols are scoped to the entire compilation.  That is, they can be tested even before their declarations appear in code.  Additionally, once `#define`d they are permanent and cannot subsequently be changed; attempting to `#undef` or  `#redef` a `#declare`d symbol will raise a compile time error.
 
 ```bgl
 // a core file, parsed early:

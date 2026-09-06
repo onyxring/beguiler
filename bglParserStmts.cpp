@@ -1016,8 +1016,18 @@ bool bglParser::processDelete(vector<token>& t, Qualifiers& q, abstractObject& c
     // Caller consumed "delete" — read identifier (the variable holding the pool reference) and ;
     token nameTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
     string varName = (string)nameTok;
-    // Resolve the variable's type — must be a pooled class.
-    string varTypeName = resolveIdentifierType(varName, func, body);
+    // A dotted path (`delete holder.pack`) names a member, not a variable. Consume the rest of
+    // the path so the type comes from the MEMBER rather than the head of the path — otherwise
+    // `delete holder.pack` reported that `holder` is not a pooled class, which it never is.
+    while(file.peekToken().is(token::period)){
+        file.getToken(token::period);
+        token seg = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        varName += "." + (string)seg;
+    }
+    // Resolve the type — must be a pooled class.
+    string varTypeName = varName.find('.') == string::npos
+                       ? resolveIdentifierType(varName, func, body)
+                       : resolvePathType(varName, func, body);
     if(varTypeName.empty())
         parsingError(format("'delete {0}': unknown variable", nameTok.originalValue.empty() ? varName : nameTok.originalValue));
     classDef* cls = dynamic_cast<classDef*>(&languageService.getType(varTypeName));
@@ -1026,8 +1036,11 @@ bool bglParser::processDelete(vector<token>& t, Qualifiers& q, abstractObject& c
             nameTok.originalValue.empty() ? varName : nameTok.originalValue, varTypeName));
     file.getToken(token::endStatement);
     // Emit as `ClassName.destroy(varName);`
-    string qualifiedVar = func != nullptr ? qualifyIdentifier(varName, func, body) : varName;
-    if(qualifiedVar.empty()) qualifiedVar = varName;
+    string qualifiedVar = varName;
+    if(func != nullptr && varName.find('.') == string::npos){
+        qualifiedVar = qualifyIdentifier(varName, func, body);
+        if(qualifiedVar.empty()) qualifiedVar = varName;
+    }
     i6RawNode& node = *(new i6RawNode());
     node.text = cls->i6Name() + ".destroy(" + qualifiedVar + ");";
     node.src = stmtLoc;
@@ -1425,7 +1438,12 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         return false;
     }
 
-    if(symbol.is(token::assignment))  {
+    if(symbol.is(token::assignment) || symbol.is(token::bindAssignment))  {
+        // `:=` binds a reference: it stores the right-hand instance itself and never dispatches
+        // the type's `operator =`. `=` keeps its meaning exactly — copy, through operator= when
+        // the type defines one. The two are separate spellings because a class that overloads
+        // `=` has spent it on copy semantics, leaving no way to say "point at this" otherwise.
+        bool isBindAssign = symbol.is(token::bindAssignment);
         assignmentStatement& assignExpr=*(new assignmentStatement());
         assignExpr.src = stmtLoc;
         string lhsOriginal = (string)tok;
@@ -1563,7 +1581,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             // `ref` locals opt out of operator= dispatch entirely: every assignment is
             // plain pointer-alias. Skip the dispatch lookups + the silent-emission error,
             // and skip the type-compatibility fallback so the plain assignment emits as-is.
-            if(classType != nullptr && val != nullptr && !lhsIsRefLocal){
+            if(classType != nullptr && val != nullptr && !lhsIsRefLocal && !isBindAssign){
                 string valueTypeName = val->resolvedType;
                 if(!valueTypeName.empty()){
                     // Two-pass emitter lookup first — explicit operator= emitters always beat raw type compatibility
@@ -1832,6 +1850,23 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             return false;
         }
 
+        // `:=` binds one instance to a slot of the same class, so both sides must BE that class.
+        // Restricting it this way keeps it from becoming a general escape from the type system:
+        // it is a reference binding, not a reinterpreting store.
+        if(isBindAssign){
+            string rhsT = rhs != nullptr ? rhs->resolvedType : string();
+            classDef* lhsCls = classType;
+            if(lhsCls == nullptr)
+                parsingError(format("':=' needs a class-typed left side; '{0}' is not one. "
+                                    "Use '=' for ordinary assignment.", lhsOriginal));
+            if(rhsT.empty() || getDispatchClass(rhsT) == nullptr)
+                parsingError(format("':=' binds a reference, so the right side must be an instance "
+                                    "of a class; got '{0}'.", typeDisplayName(rhsT.empty() ? "unknown" : rhsT)));
+            else if(!isTypeCompatible(rhsT, lhsCls->name))
+                parsingError(format("cannot bind '{0}' to '{1}': ':=' requires the same class "
+                                    "(or a subclass). Use '=' to copy values between types.",
+                                    typeDisplayName(rhsT), typeDisplayName(lhsCls->name)));
+        }
         assignExpr.assignedExpression = rhs;
         // Skip operator= emitter if RHS contains $target — the opcode handles its own store
         if(rhs->text().find("$target") == string::npos)

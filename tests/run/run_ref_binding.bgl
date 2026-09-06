@@ -1,0 +1,61 @@
+/*  `ref` declares an empty slot; `:=` binds a reference into it.
+
+    Class-typed members are auto-instantiated. A developer who wants the member to
+    point at an instance owned ELSEWHERE had no way to say so: `ref` still baked a
+    backing instance, and plain `=` is claimed by the type's own `operator =`, which
+    copies values rather than repointing the slot. The only thing that worked was
+    dropping into a raw #i6 block.
+
+    Now `ref` leaves the slot empty (so "unbound" is testable) and `:=` stores the
+    reference without dispatching `operator =`. `=` is unchanged.
+
+    Only running this shows the difference: `=` and `:=` emit similar-looking I6, and
+    the distinction is whether the two names still track each other afterwards.  */
+// EXPECT_OUTPUT: unbound: empty
+// EXPECT_OUTPUT: bound: 99
+// EXPECT_OUTPUT: aliased: 1
+// EXPECT_OUTPUT: copy is independent: 99
+// EXPECT_OUTPUT: rebound: 42
+// EXPECT_OUTPUT: pooled: 7
+#beguilerSettings { target = z5; informName = "none"; }
+
+class inventory {
+    int gold = 0;
+    int arrows = 12;
+    void operator = (inventory o) { gold = o.gold; arrows = o.arrows; }   // claims `=` for copying
+}
+class pooled[4] : bglAllocated { int v = 0; }
+
+object spare  : inventory { arrows = 99; }
+object second : inventory { arrows = 42; }
+object holder { ref inventory pack; ref pooled slot; }   // both empty
+object owner  { inventory pack; }          // owns an instance
+
+void main(){
+    bglInit();
+    print("unbound: "); print(holder.pack ? "set" : "empty"); print("^");
+
+    holder.pack := spare;
+    print("bound: "); print(holder.pack.arrows); print("^");
+
+    // a bound slot tracks the instance it points at
+    spare.arrows = 1;
+    print("aliased: "); print(holder.pack.arrows); print("^");
+
+    // `=` still copies through operator=, so owner is unaffected by later changes
+    spare.arrows = 99;
+    owner.pack = spare;
+    spare.arrows = 3;
+    print("copy is independent: "); print(owner.pack.arrows); print("^");
+
+    // rebinding repoints
+    holder.pack := second;
+    print("rebound: "); print(holder.pack.arrows); print("^");
+
+    // pooled allocation bound into a ref slot, then deleted through the member path —
+    // `delete obj.member` used to type the path from its head and reject it.
+    holder.slot := new pooled();
+    holder.slot.v = 7;
+    print("pooled: "); print(holder.slot.v); print("^");
+    delete holder.slot;
+}

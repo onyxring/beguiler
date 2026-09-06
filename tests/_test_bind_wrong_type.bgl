@@ -1,0 +1,18 @@
+/*
+    _test_bind_wrong_type.bgl  (negative)
+    `:=` binds a reference, so both sides must be the same class (or the right side a
+    subclass). Without the restriction it would be a general reinterpreting store — a
+    way to put any word into a typed slot with no dispatch and no check.
+*/
+#beguilerSettings { informName = "none"; }
+
+class inventory { int gold = 0; }
+class other     { int x = 0; }
+object od : other {}
+object holder { ref inventory pack; }
+
+void f() {
+    holder.pack := od;
+}
+// EXPECT_ERROR: cannot bind 'other' to 'inventory'
+// EXPECT_ERROR: ':=' requires the same class

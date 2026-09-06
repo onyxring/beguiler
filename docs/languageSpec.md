@@ -3579,6 +3579,42 @@ The left-hand side must be a previously declared variable or a dotted member pat
 3. Else if the types are identical or I6-compatible via the conversion operator, a plain assignment is emitted.
 4. Otherwise a compile-time type mismatch error is reported.
 
+### 9.3.1 Reference Binding — `:=`
+
+A class-typed member is auto-instantiated and owns its instance, and `=` **copies into it**,
+through `operator =` when the type defines one. A type that overloads `=` has therefore spent
+that spelling on copy semantics, leaving no way to say "point this slot at that instance."
+`:=` is that way:
+
+```bgl
+holder.pack := spare;      // bind — stores the reference; `operator =` is never dispatched
+holder.pack  = spare;      // copy — dispatches `operator =` as usual
+```
+
+After a bind the two names refer to the same instance, so a change through one is visible
+through the other. After a copy they are independent.
+
+Declare the slot `ref` to opt out of auto-instantiation, so it starts empty and can be tested
+before it is bound:
+
+```bgl
+object holder { ref inventory pack; }        // no instance created
+
+if (!holder.pack) holder.pack := spare;
+```
+
+`:=` is **not overloadable** — bypassing operator dispatch is its purpose — and both sides must
+be the same class, or the right side a subclass. Binding an unrelated class, or any non-instance
+value, is a compile-time error. This keeps it a reference binding rather than a reinterpreting
+store.
+
+`ref` slots pair naturally with pooled classes (§10.7), where the instance is created at runtime:
+
+```bgl
+holder.slot := new pooled();
+delete holder.slot;
+```
+
 ## 9.4 Compound Assignment
 
 The compound assignment operators modify a variable in-place:
