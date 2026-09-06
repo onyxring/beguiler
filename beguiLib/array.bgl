@@ -237,7 +237,7 @@ object _bglArray {
     // So a value written via raw `arr[i] = v` (without extending length) is
     // still findable.
     // `eq` is the element type's comparison routine, or 0 when a raw word compare is
-    // correct (the compiler fills it via $elemeq). Consulted only after identity fails,
+    // correct (the compiler fills it via $opref(==)). Consulted only after identity fails,
     // and never on an empty slot — unused capacity holds 0.
     // `op` is the element type's `==`, supplied by the compiler via $opref(==), in
     // whichever form the type has — a free ROUTINE (static; the only form that can serve a
@@ -264,7 +264,7 @@ object _bglArray {
     }
 
     // Slot write that respects element ownership. `assign` is the element type's static
-    // `operator =` (filled by the compiler via $elemassign), or 0 when the element is a plain
+    // `operator =` (filled by the compiler via $opref(=)), or 0 when the element is a plain
     // word. It receives the slot's CURRENT value and the incoming one, and returns the word to
     // store — which is how a type that owns storage can allocate on first write and copy into
     // its own buffer thereafter, without _bglArray knowing anything about the type.
@@ -430,7 +430,7 @@ object _bglArray {
     // (e.g. inserting one new element into an already-sorted list).
     // Stable; well-suited to IF-scale arrays where simplicity beats the
     // constant-factor wins of more elaborate algorithms.
-    // No-arg sort(): the compiler passes the element type's comparator via $elemcmp, or 0
+    // No-arg sort(): the compiler passes the element type's comparator via $opref(<=>), or 0
     // when signed-word ordering is correct. _bglArrayCompareAsc is now only the fallback,
     // not an assumption — it is wrong for float (IEEE sign-magnitude) and for string.
     void sortDefault(var obj, var prop, func<int, var, var> cmp = 0){
