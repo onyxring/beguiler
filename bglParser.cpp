@@ -1,3 +1,4 @@
+#include "platform.h"
 // ═══════════════════════════════════════════════════════════════════════════════
 // bglParser.cpp — Beguile language parser
 //

@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <initializer_list>
 #include <string_view>
 #include <algorithm>
 #include <stack>
@@ -73,6 +74,10 @@ class token {
         token assert(std::string, std::string="");
         token assertOneOf(std::vector<eTokenType>, std::string="");
         token assertOneOf(std::vector<std::string>, std::string="");
+        // Brace-list form. With `const char*` token constants, `{a, b}` is convertible to
+        // BOTH vector overloads on some standard libraries (GCC flags it as ambiguous where
+        // Clang does not), so the exact-match initializer_list overload settles it.
+        token assertOneOf(std::initializer_list<std::string>, std::string="");
         token assertDataType();
         
         operator std::string(); 

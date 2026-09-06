@@ -1,3 +1,4 @@
+#include "platform.h"
 // ===============================================================================
 // bglParserTypes.cpp - type/name resolution + method/call binding.
 //

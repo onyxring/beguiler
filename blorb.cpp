@@ -1,3 +1,4 @@
+#include "platform.h"
 #include "blorb.h"
 #include "settings.h"
 

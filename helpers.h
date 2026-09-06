@@ -70,7 +70,12 @@ constexpr size_t chk(string_view str) {
     const long long m = 4294967291; // 2^32 - 5, largest 32 bit prime
     long long total = 0;
     long long current_multiplier = 1;
-    for (int i = 0; str[i] != '\0'; ++i){
+    // Bound by size(), not by a '\0' sentinel: a string_view is not null-terminated, so
+    // reading str[str.size()] is out of bounds. libc++ happened to tolerate it; libstdc++
+    // has a bounds assert in operator[] that is not constexpr-callable, which turned this
+    // into ~28 compile errors on GCC. The hash value is unchanged — the terminator was
+    // never folded in.
+    for (size_t i = 0; i < str.size(); ++i){
         total = (total + current_multiplier * str[i]) % m;
         current_multiplier = (current_multiplier * p) % m;
     }

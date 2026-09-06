@@ -1,3 +1,4 @@
+#include "platform.h"
 // ===============================================================================
 // bglParserClassObjectDecl.cpp - class and object declaration processing.
 //

@@ -1,3 +1,4 @@
+#include "platform.h"
 // ===============================================================================
 // bglParserDecls.cpp - non-class/object declarations: enum, variable, array,
 // routine, grammar.

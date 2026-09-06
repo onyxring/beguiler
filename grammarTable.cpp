@@ -1,3 +1,4 @@
+#include "platform.h"
 // grammarTable.cpp — Grammar rule table for the V2 pattern-matching parser dispatcher.
 // Each rule is: { name, pattern, handler }
 // Table order determines priority — first match wins when multiple rules complete.

@@ -1,3 +1,4 @@
+#include "platform.h"
 // ═══════════════════════════════════════════════════════════════════════════════
 // bglParserHelpers.cpp — free-function helpers shared across bglParser*.cpp.
 // See bglParserHelpers.h for usage notes.

@@ -1,3 +1,4 @@
+#include "platform.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>

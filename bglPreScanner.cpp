@@ -1,3 +1,4 @@
+#include "platform.h"
 // bglPreScanner.cpp — Pre-scanner (Pass 1) for the Beguile compiler.
 // Registers type/object/function stubs so forward references resolve in Pass 2.
 // These are bglParser methods extracted for code organization.

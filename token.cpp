@@ -1,3 +1,4 @@
+#include "platform.h"
 #include <cctype>
 #include <iostream>
 #include <vector>
@@ -101,6 +102,10 @@ const token _nullToken;
         }
         return *this;
     }
+
+token token::assertOneOf(std::initializer_list<string> vals, string context){
+    return assertOneOf(vector<string>(vals), context);
+}
     token token::assertDataType(){
         if(!isDataType()) parser.parsingError("Expected data type.");
         return *this;

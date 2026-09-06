@@ -48,8 +48,9 @@ Beguile needs a **C++17 compiler**. Nothing newer is required:
 | Apple clang (bundled with Xcode) | 10 |
 | MSVC | 2017 (19.14) |
 
-*Verified locally on Apple clang 15 and LLVM 23; the rest are the versions that first
-shipped complete C++17 support.* Building as `-std=c++20` also works if you prefer.
+*Built and tested here on Apple clang 15, LLVM 23 and GCC 16 — against both libc++ and
+libstdc++, at `-std=c++17` and `-std=c++20`. The minimums above are the versions that
+first shipped complete C++17 support.*
 
 One command line builds it on every platform:
 

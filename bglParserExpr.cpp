@@ -1,3 +1,4 @@
+#include "platform.h"
 // ═══════════════════════════════════════════════════════════════════════════════
 // bglParserExpr.cpp — expression-level parsing for the Beguile compiler.
 //

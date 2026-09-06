@@ -1,3 +1,4 @@
+#include "platform.h"
 #include "typeDef.h"
 
 abstractObject emptyContainer;

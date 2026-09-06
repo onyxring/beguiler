@@ -1,3 +1,4 @@
+#include "platform.h"
 // ===============================================================================
 // bglParserStmts.cpp - statement-level parsing.
 //
