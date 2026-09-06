@@ -4359,6 +4359,43 @@ Capture works when the lambda appears inside any control-flow body (`for`, `whil
 - **No immediate invocation.** The syntax `((int n) => { print(n); })(42)` is not supported. Assign to a variable or pass as an argument first.
 - **Capture lifetime.** Captured values are stored in globals and may be overwritten if another closure captures from the same scope. Closures are designed for immediate callback use (e.g. `getFiltered`, `applyToAll`), not long-lived storage.
 
+### 10.8.6 Operator References
+
+Where a lambda wraps behaviour a type already defines, `Type::operator <op>` names that
+operator directly. It yields the operator's address, so it is usable anywhere a `func<>` is
+expected — no wrapper lambda, and no routine call to get at one:
+
+```bgl
+array<string> names[4];
+names.sort(string::operator <=>);                 // by reference, not a lambda
+
+func<int, string, string> cmp = string::operator <=>;
+```
+
+This is the ordinary-code form of the `$opref` lookup emitters use (§14.4.3), and it obeys the
+same rule: **only a `static` operator is referenceable.** An instance operator either inlines or
+dispatches through a property, so it has no address to name, and referencing one is an error
+that names the fix — declare a `static` form alongside it. A type with both keeps the instance
+form at ordinary call sites, where it inlines; the static form exists for generic code that
+needs the address (§5.6.6).
+
+When a type publishes more than one referenceable overload, name the operand type in
+parentheses to select one:
+
+```bgl
+class Money {
+    int cents;
+    static bool operator == (Money a, Money b) { return a.cents == b.cents; }
+    static bool operator == (Money a, int b)   { return a.cents == b; }
+}
+
+func<bool, Money, Money> byMoney = Money::operator ==(Money);
+func<bool, Money, int>   byCents = Money::operator ==(int);
+```
+
+Overloaded statics are emitted under distinct I6 routine names, so both references stay
+callable; a type with a single static operator keeps the short unsuffixed name.
+
 ---
 
 # Chapter 11 - Type Compatibility and Conversion
@@ -5350,6 +5387,8 @@ class Money {
 
 Publishing an operator is therefore **opt-in**: a type that declares none simply yields `0`, and
 the runtime falls back to its default (for `_bglArray`, a plain word comparison).
+
+The same lookup is available in ordinary Beguile code as `Type::operator <op>` (§10.8.6).
 
 All emitter placeholders use the `$` prefix to distinguish them from raw I6 identifiers. This prevents substitution collisions. For example, if a parameter is named `c` and the emitter body also references a variable named `c`, using `$c` for the parameter ensures only the intended token is replaced.
 

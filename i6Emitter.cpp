@@ -1506,11 +1506,17 @@ void i6Emitter::emitClass(classDef* classNode){
         out << "\n";
     }
 
-    // collect emittable members (skip emitter-only functions, static variables, and attributeList members)
+    // collect emittable members (skip emitter-only functions, static members, and attributeList members)
     vector<typeMember*> emittable;
     for(typeMember* m : classNode->members){
-        if(auto* fd = dynamic_cast<functionDef*>(m))
+        if(auto* fd = dynamic_cast<functionDef*>(m)){
             if(fd->isEmitter) continue;
+            // `static` methods have no receiver and emit as free routines
+            // (emitStaticClassRoutines). Listing them in `with` as well produced a
+            // meaningless two-argument property, and two static overloads of one
+            // operator collided as the same property name twice in one `with` list.
+            if(fd->isStatic) continue;
+        }
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
             if(vd->isStatic) continue;
             if(vd->type.name == "attributelist") continue; // emitted separately as 'has' line

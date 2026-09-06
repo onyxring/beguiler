@@ -984,6 +984,54 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             parsingError("Unexpected end of file inside expression");
         }
 
+        // ─── `Type::operator <op>` — a user-facing operator reference ────
+        // Yields a callable address for one of a type's operators, the same lookup
+        // `$opref` performs inside emitter bodies (§14.4.3). Only a `static` operator
+        // has an address; an instance operator inlines or dispatches through a
+        // property, so it is not referenceable and is reported as such. An optional
+        // parenthesized operand type selects among overloads:
+        //     arr.sort(string::operator <=>)
+        //     Money::operator ==(int)
+        // The lexer glues "::" onto the following identifier, so the qualifier arrives
+        // as one "::operator" token rather than two.
+        if((cur.is(eTokenType::identifier) || cur.is(eTokenType::dataType))
+           && file.peekToken(1).value == "::operator"){
+            string refType = cur.value;
+            file.getToken();                                  // consume "::operator"
+            token opTok = file.getToken();
+            string opName = opTok.value;
+            // Multi-token operators the lexer splits (e.g. "[" "]") are not referenceable
+            // here; the named binary/comparison operators are what generic code wants.
+            if(find(languageService.operators.begin(), languageService.operators.end(), opName)
+               == languageService.operators.end())
+                parsingError(format("'{0}' is not an operator name in "
+                                    "'{1}::operator {0}'", opName, refType));
+            string operand;
+            if(file.peekToken(1).is(token::parenOpen)){
+                file.getToken();                              // consume "("
+                operand = file.getToken().value;
+                token close = file.getToken();
+                if(close.isNot(token::parenClose))
+                    parsingError(format("expected ')' after the operand type in "
+                                        "'{0}::operator {1}({2}'", refType, opName, operand));
+            }
+            bool isStatic = false;
+            string ref = operatorRef(refType, opName, operand, &isStatic);
+            if(ref.empty())
+                parsingError(format("'{0}' publishes no referenceable 'operator {1}'. Only a "
+                                    "'static' operator has an address a reference can name.",
+                                    typeDisplayName(refType), opName));
+            if(!isStatic)
+                parsingError(format("'{0}::operator {1}' is an instance operator, which dispatches "
+                                    "through a property and has no address. Declare a 'static' "
+                                    "form of the operator to make it referenceable.",
+                                    typeDisplayName(refType), opName));
+            expr->tokens.push_back(ref);
+            if(expr->resolvedType.empty()) expr->resolvedType = "func";
+            cur = getNext();
+            continue;
+        }
+
         // ─── PARENS: open paren, lambda detection, cast prefix ───────────
         if(cur.is(token::parenOpen)){
             // Lambda detection: () => ... OR (type name, ...) => ...

@@ -1041,7 +1041,7 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
 // "" (empty) when the type publishes no referenceable form — the caller emits "0" and the
 // container falls back to word comparison, so int/char/object pay nothing.
 string bglParser::operatorRef(const string& typeName, const string& opName,
-                              const string& preferOperand){
+                              const string& preferOperand, bool* isStaticOut){
     if(typeName.empty()) return "";
     auto* cd = dynamic_cast<classDef*>(&languageService.getType(typeName));
     if(cd == nullptr) return "";
@@ -1084,6 +1084,7 @@ string bglParser::operatorRef(const string& typeName, const string& opName,
                             typeDisplayName(typeName), cands.size(), opName, list));
     }
     functionDef* f = cands.front();
+    if(isStaticOut != nullptr) *isStaticOut = f->isStatic;
     if(f->isStatic) return i6Emitter::staticRoutineName(cd, f);
     return f->i6name;                                 // instance: the mangled property name
 }

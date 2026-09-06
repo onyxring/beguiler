@@ -1393,13 +1393,9 @@ class _bglstring(bglstringpoolreserve)
         return retval;
     ]
 ;
-global _bgl_Point_operator;
 class point
   with
-    x,
-    _opeqeq[a b;
-        return a.x == b.x;
-    ]
+    x
 ;
 class tagged
   with
@@ -1408,16 +1404,9 @@ class tagged
         return self.v == o.v;
     ]
 ;
-global _bgl_Money_operator;
 class money
   with
-    cents,
-    _opeqeq[a b;
-        return a.cents == b.cents;
-    ],
-    _opeqeq[a b;
-        return a.cents == b;
-    ]
+    cents
 ;
 class plain
   with
@@ -1450,9 +1439,19 @@ class plain
     refP=_opeqeq;
     eq=(_bgl_Money__opeqeq_money_money(_bglLocal_exercisebarerefs_m, _bglLocal_exercisebarerefs_m));
 ];
+[exerciseUserFacing names cmp pe me mi;
+    names = _bglArrayLocalAlloc(4);
+    _bglArray.sort(names, 0, _bgl_string__oplteqgt);
+    cmp = _bgl_string__oplteqgt;
+    pe = _bgl_Point__opeqeq;
+    me = _bgl_Money__opeqeq_money_money;
+    mi = _bgl_Money__opeqeq_money_int;
+    _bglFrameFree(7);
+];
 [main;
     exercisearrayindexof();
     exercisebarerefs();
+    exerciseuserfacing();
 ];
 point _bglLocal_exercisearrayindexof_pc;
 tagged _bglLocal_exercisearrayindexof_tagc;

@@ -418,8 +418,11 @@ class bglParser {
         // `$opref(<op>[, <operandType>])` — a callable reference to one of a type's operators:
         // a free-routine name (static), a property name (instance), or "" when none is
         // referenceable. Emitters are never referenceable — they inline and have no address.
+        // `isStaticOut`, when given, reports whether the match was a `static` operator (a real
+        // routine address) rather than an instance one (a property name). The user-facing
+        // `Type::operator <op>` form requires an address and rejects the property form.
         string operatorRef(const string& typeName, const string& opName,
-                           const string& preferOperand = "");
+                           const string& preferOperand = "", bool* isStaticOut = nullptr);
         // Replace every `$elemop(<op>)` in an emitter body with that operator's callable form
         // for `elemType`. One substitution covers every operation, so a site cannot be
         // partially wired the way four separate tokens could.

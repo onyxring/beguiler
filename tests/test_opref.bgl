@@ -75,7 +75,23 @@ void exerciseBareRefs(){
     bool eq  = (m == m);                       // same discriminated routine name
 }
 
+// ─── `Type::operator <op>` — the user-facing reference ───────────────────────
+// Resolves to the same address $opref yields, so it can be passed anywhere a
+// func<> is expected. Only `static` operators are referenceable.
+void exerciseUserFacing(){
+    array<string> names[4];
+    names.sort(string::operator <=>);              // static comparator by reference
+
+    func<int, string, string> cmp = string::operator <=>;
+    func<bool, Point, Point>  pe  = Point::operator ==;
+
+    // parenthesized operand type selects among overloads
+    func<bool, Money, Money> me = Money::operator ==(Money);
+    func<bool, Money, int>   mi = Money::operator ==(int);
+}
+
 void main(){
     exerciseArrayIndexOf();
     exerciseBareRefs();
+    exerciseUserFacing();
 }

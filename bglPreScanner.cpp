@@ -653,7 +653,17 @@ void bglParser::preScanGlobalLoop(){
                           // static TYPE NAME [= expr] ;
                           token typeTok = file.getToken();
                           token memberName = file.getToken();
-                          if(typeTok.isDataType() && memberName.is(eTokenType::identifier)){
+                          // Only a real static VARIABLE gets a stub. `static int helper(int v)`
+                          // and `static bool operator ==(...)` are methods — they emit as free
+                          // routines, and stubbing them as variables produced a `global` that
+                          // collided with the routine's own name.
+                          token afterName = file.peekToken();
+                          bool isStaticVar = typeTok.isDataType()
+                                          && memberName.is(eTokenType::identifier)
+                                          && !memberName.is("operator")
+                                          && (afterName.is(token::assignment)
+                                              || afterName.is(token::endStatement));
+                          if(isStaticVar){
                               bool exists = false;
                               for(typeMember* m : cls->members)
                                   if(m->name == memberName.value){ exists = true; break; }
