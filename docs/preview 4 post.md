@@ -77,15 +77,17 @@ holder.pack := spare;                   // bind: both names now refer to the sam
 
 `:=` is the **reference binding operator** — **rebinding** when the slot already holds one. It is a separate operator because a class can overload `=` for copying, which leaves no way to spell "point at this." `=` keeps its meaning exactly — it copies, through `operator =` when the type defines one — and `:=` binds the reference without dispatching it. Both sides must be the same class, so it stays a reference binding rather than a hole in the type system.
 
-A `ref` slot is bound, never assigned — `=` on one is an error, at the declaration and afterwards alike:
+A reference does two different things, so they read differently. `:=` rebinds; `=` assigns *through* the reference into whatever it points at:
 
 ```bgl
-ref Box r := mkBox(10, 20);   // bind
-r := other;                   // rebind
-r  = other;                   // error: 'r' is a 'ref' slot, which binds rather than copies
+stringObj first;  first = "original";
+ref stringObj r := first;
+
+r = "value";       // assigns through — `first` is now "value"
+r := other;        // rebinds — `first` keeps its value
 ```
 
-That is the point of a separate operator: the line tells you it rebinds, without your having to go and find the declaration.
+That means a `ref` slot otherwise behaves exactly like the thing it points at; only rebinding is spelled differently, because only rebinding is a different operation. Binding uses `:=` everywhere, declaration included — `ref Box r = …` is an error, and so is `:=` on a slot that owns its instance.
 
 ---
 ## 3. `children` — place a room's contents in one line

@@ -591,7 +591,10 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                     // operator= on a stored-field, non-tree-citizen class would emit silent
                     // pointer-assign and surprise the user expecting value-semantics.
                     if(found && assignOp == nullptr && classHasStoredFields(classType) && !inheritsFromObject(classType))
-                        parsingError(format("Type '{0}' has no operator=. Declare 'operator =' on the class to define copy semantics for its fields, mark the local as 'ref' to opt into pointer-reference semantics, or inherit from 'object' for tree-citizen reference semantics.",
+                        parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to initialise with. "
+                                            "Declare 'operator =' on the class to define them; bind a reference instead "
+                                            "(`ref {0} x := …`); or inherit from 'object' for tree-citizen reference "
+                                            "semantics.",
                             typeDisplayName((string)dataType)));
                     if(!found){
                         // Fallback: check if RHS type has emitter DeclaredType operator(){}

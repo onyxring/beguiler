@@ -17,7 +17,11 @@
 // EXPECT_OUTPUT: copy is independent: 99
 // EXPECT_OUTPUT: rebound: 42
 // EXPECT_OUTPUT: pooled: 7
+// EXPECT_OUTPUT: through ref: value
+// EXPECT_OUTPUT: referent saw it: value
+// EXPECT_OUTPUT: after rebind, old referent: value
 #beguilerSettings { target = z5; informName = "none"; }
+#include <string>
 
 class inventory {
     int gold = 0;
@@ -58,4 +62,19 @@ void main(){
     holder.slot.v = 7;
     print("pooled: "); print(holder.slot.v); print("^");
     delete holder.slot;
+
+    // `=` through a reference assigns INTO the referent — the same operator= dispatch a
+    // slot that owned its instance would get. Only `:=` rebinds. This is the half that
+    // makes a ref slot behave like the thing it points at rather than a special case.
+    stringObj first;  first = "original";
+    stringObj latter; latter = "second";
+    ref stringObj r := first;
+    r = "value";
+    print("through ref: ");     print(r); print("^");
+    print("referent saw it: "); print(first); print("^");
+
+    // rebinding moves the reference; it does not disturb what it used to point at
+    r := latter;
+    r = "changed";
+    print("after rebind, old referent: "); print(first); print("^");
 }

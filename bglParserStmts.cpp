@@ -1579,10 +1579,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         // helper: apply operator= emitter lookup to an assignment node for a given rhs expression
         auto resolveEmitter = [&](assignmentStatement& a, expression* val){
             a.emitterSelf = emitterSelfForLhs;  // always record $self for this assignment
-            // `ref` locals opt out of operator= dispatch entirely: every assignment is
-            // plain pointer-alias. Skip the dispatch lookups + the silent-emission error,
-            // and skip the type-compatibility fallback so the plain assignment emits as-is.
-            if(classType != nullptr && val != nullptr && !lhsIsRefLocal && !isBindAssign){
+            // Only `:=` skips operator= dispatch — that is what rebinding means. A plain `=`
+            // on a `ref` slot assigns THROUGH the reference: it dispatches the type's
+            // operator= into whatever the slot currently points at, exactly as it would on a
+            // slot that owned its instance. Before `:=` existed, `=` on a ref slot had to
+            // double as the rebind, so dispatch was suppressed for every ref assignment;
+            // with a dedicated rebind operator that is no longer necessary.
+            if(classType != nullptr && val != nullptr && !isBindAssign){
                 string valueTypeName = val->resolvedType;
                 if(!valueTypeName.empty()){
                     // Two-pass emitter lookup first — explicit operator= emitters always beat raw type compatibility
@@ -1752,7 +1755,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     // reference semantics by convention). Force the user to declare
                     // operator= so copy semantics aren't a surprise.
                     if(found && !foundViaOperatorEq && classHasStoredFields(classType) && !inheritsFromObject(classType))
-                        parsingError(format("Type '{0}' has no operator=. Declare 'operator =' on the class to define copy semantics for its fields, mark the local as 'ref' to opt into pointer-reference semantics, or inherit from 'object' for tree-citizen reference semantics.",
+                        parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to assign with. "
+                                            "Declare 'operator =' on the class to define them; bind a reference instead "
+                                            "(`ref {0} x := …`, then `:=` to rebind); or inherit from 'object' for "
+                                            "tree-citizen reference semantics.",
                             typeDisplayName(leftType->name)));
                     if(!found){
                         // Fallback: check if RHS type has emitter LhsType operator(){}
@@ -1851,13 +1857,6 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             return false;
         }
 
-        // A `ref` slot is bound, never copied into: it names an instance owned elsewhere and has
-        // no storage of its own. Requiring `:=` here is what keeps the two readable apart at the
-        // call site — a bare `=` on a ref slot used to pointer-copy silently, so nothing in the
-        // line told you whether it copied or rebound.
-        if(lhsIsRefLocal && !isBindAssign)
-            parsingError(format("'{0}' is a 'ref' slot, which binds rather than copies. Use the "
-                                "reference binding operator: '{0} := …'.", lhsOriginal));
         // `:=` binds one instance to a slot of the same class, so both sides must BE that class.
         // Restricting it this way keeps it from becoming a general escape from the type system:
         // it is a reference binding, not a reinterpreting store.

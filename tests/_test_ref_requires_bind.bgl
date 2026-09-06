@@ -1,8 +1,12 @@
 /*
     _test_ref_requires_bind.bgl  (negative)
-    A `ref` slot names an instance owned elsewhere and has no storage of its own, so it
-    is bound, never copied into. `=` on one is rejected — that is what keeps a bind
-    readable at the call site, rather than depending on a declaration elsewhere.
+    `=` through a reference assigns INTO the referent, so it needs the type to define
+    copy semantics. `Box` declares no `operator =`, so there is nothing to assign with
+    and the write is rejected — pointing at the two ways forward: define `operator =`,
+    or use `:=` to rebind rather than copy.
+
+    (A type that DOES define `operator =` assigns through a ref slot normally — see
+    run_ref_binding.)
 */
 #beguilerSettings { informName = "none"; }
 
@@ -13,5 +17,5 @@ object holder { ref Box slot; }
 void f() {
     holder.slot = b1;
 }
-// EXPECT_ERROR: 'holder.slot' is a 'ref' slot, which binds rather than copies
-// EXPECT_ERROR: holder.slot := 
+// EXPECT_ERROR: Type 'Box' has no operator=, so there are no copy semantics to assign with
+// EXPECT_ERROR: bind a reference instead
