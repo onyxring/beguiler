@@ -1105,6 +1105,12 @@ string bglParser::substituteElemOps(const string& body, const string& elemType){
             op = trim(args.substr(0, comma));
             operand = trim(args.substr(comma + 1));   // matched verbatim; type names are case-sensitive
         } else op = trim(args);
+        // With no operand named, prefer the overload taking the type itself. array<T> asks
+        // for `==` in order to compare a T against a T, so a type with several overloads
+        // (`==(Money, Money)` and `==(Money, int)`) resolves to the same-type one instead of
+        // being reported ambiguous. Only consulted when more than one candidate exists, so
+        // single-overload types are unaffected.
+        if(operand.empty()) operand = elemType;
         string rep = operatorRef(elemType, op, operand);
         if(rep.empty()) rep = "0";
         out.replace(at, close - at + 1, rep);

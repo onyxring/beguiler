@@ -397,21 +397,43 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     // costs a routine call, so where a type declares both the instance form must win. The
     // static form is the fallback — and the only form for `<=>`, which has no instance
     // spelling (its two operands are both parameters).
-    auto opMatches = [&](typeMember* m, bool wantStatic){
+    // The declared type a literal DENOTES. `100` resolves as intLiteral, but an operator
+    // declared `(Money, int)` plainly accepts it; without this, `m == 100` reported no
+    // matching operator while `m == someInt` matched. Consulted only in the widened pass
+    // below — isTypeCompatible deliberately carries no global literal rule, because one
+    // perturbs overload resolution everywhere (see isArrayElementCompatible's note).
+    auto literalBase = [](const string& t) -> string {
+        if(t == "intliteral" || t == "negativeintliteral") return "int";
+        if(t == "charliteral") return "char";
+        return "";
+    };
+    auto opMatches = [&](typeMember* m, bool wantStatic, bool allowWiden){
         auto* opFn = dynamic_cast<functionDef*>(m);
         if(!opFn || opFn->name != opName) return false;
         if(opFn->isStatic != wantStatic) return false;
         // Pre-scan stubs have no params — match by name only
         if(opFn->isPrePassStub) return true;
         size_t rhsIdx = opFn->isStatic ? 1 : 0;   // static takes (lhs, rhs); instance takes (rhs)
-        return opFn->params.size() > rhsIdx &&
-               (rhsType.empty() || rhsType=="var" || opFn->params[rhsIdx]->type.name==rhsType || opFn->params[rhsIdx]->type.name=="var");
+        if(opFn->params.size() <= rhsIdx) return false;
+        const string& paramT = opFn->params[rhsIdx]->type.name;
+        if(rhsType.empty() || rhsType == "var" || paramT == rhsType || paramT == "var") return true;
+        if(!allowWiden) return false;
+        string base = literalBase(rhsType);
+        return !base.empty() && (paramT == base || isTypeCompatible(base, paramT));
     };
-    if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* m){ return opMatches(m, false); }))
-        matchedOp = dynamic_cast<functionDef*>(m);
-    if(matchedOp == nullptr)
-        if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* m){ return opMatches(m, true); }))
-            matchedOp = dynamic_cast<functionDef*>(m);
+    // Exact passes first, and both of them, before any widening is considered — so every
+    // resolution that already worked resolves identically. Widening is a fallback for the
+    // case that previously produced "No operator ... accepting 'intLiteral'", never a
+    // competitor to an exact match. Within each phase, non-static wins: an instance operator
+    // inlines, a static costs a routine call.
+    for(bool widen : {false, true}){
+        if(matchedOp != nullptr) break;
+        for(bool wantStatic : {false, true}){
+            if(matchedOp != nullptr) break;
+            if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* mm){ return opMatches(mm, wantStatic, widen); }))
+                matchedOp = dynamic_cast<functionDef*>(m);
+        }
+    }
 
     // LHS conversion fallback: if LHS has operator() → convertedType, retry operator search on that type.
     // The "converted-to-converted" clause (param type == convertedType) used to accept ANY rhsType

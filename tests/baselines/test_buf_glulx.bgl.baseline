@@ -655,13 +655,13 @@ object _bglBuf
     return buf;
   ],
        trimLeft [buf;
-    while (self.length(buf) > 0 && self.getchar(buf,0)==' ') {
+    while (self.length(buf) > 0 && self.getchar(buf,0) == ' ') {
         self.delete(buf, 0, 1);
     }
     return buf;
   ],
        trimRight [buf;
-    while (self.length(buf) > 0 && self.getchar(buf,self.length(buf) - 1)==' ') {
+    while (self.length(buf) > 0 && self.getchar(buf,self.length(buf) - 1) == ' ') {
         self.delete(buf, self.length(buf) - 1, 1);
     }
     return buf;
