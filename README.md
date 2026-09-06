@@ -39,15 +39,17 @@ Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are att
 
 ### Or build it from source...
 
-Beguile needs a **C++20 compiler with `<format>`** — that header is the only thing that
-sets the bar, so a toolchain new enough to have it is new enough to build Beguile:
+Beguile needs a **C++17 compiler**. Nothing newer is required:
 
 | Toolchain | Minimum |
 |---|---|
-| Apple clang (bundled with Xcode) | 15 — *verified* |
-| Clang / LLVM | 17, or 14+ paired with libstdc++ 13 |
-| GCC | 13 |
-| MSVC | 2022 |
+| GCC | 7 |
+| Clang / LLVM | 5 |
+| Apple clang (bundled with Xcode) | 10 |
+| MSVC | 2017 (19.14) |
+
+*Verified locally on Apple clang 15 and LLVM 23; the rest are the versions that first
+shipped complete C++17 support.* Building as `-std=c++20` also works if you prefer.
 
 One command line builds it on every platform:
 
@@ -58,7 +60,7 @@ make
 Or without `make`, which is the same thing:
 
 ```sh
-c++ -std=c++20 -O2 -Wno-deprecated-declarations *.cpp -o beguiler
+c++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler
 ```
 
 On Windows, name the output `beguiler.exe`. Substitute `g++` or `clang++` for `c++` if you want a specific toolchain; no other flags differ by platform.

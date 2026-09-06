@@ -7,7 +7,7 @@
 # listing the headers it actually included, and those are pulled in below.
 
 CXX      ?= c++
-CXXFLAGS ?= -std=c++20 -O2 -Wno-deprecated-declarations
+CXXFLAGS ?= -std=c++17 -O2 -Wno-deprecated-declarations
 TARGET    = beguiler
 SOURCES   = $(wildcard *.cpp)
 BUILDDIR  = build
@@ -33,7 +33,7 @@ $(BUILDDIR):
 # otherwise objects compiled -O2 would be linked into a -O0 binary.
 debug:
 	$(MAKE) clean
-	$(MAKE) CXXFLAGS="-std=c++20 -g -O0" $(TARGET)
+	$(MAKE) CXXFLAGS="-std=c++17 -g -O0" $(TARGET)
 
 clean:
 	rm -f $(TARGET) $(TARGET).exe

@@ -1508,7 +1508,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     }
                 }
             }
-            if(!emitterSelfForLhs.starts_with("_bgl_"))  // don't override if already set by static member resolution
+            if(emitterSelfForLhs.rfind("_bgl_", 0) != 0)   // don't override if already set by static member resolution
                 emitterSelfForLhs = ownerPath;  // $self = the owner object, not the full obj.prop path
         } else {
             if(func != nullptr){
