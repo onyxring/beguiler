@@ -10,6 +10,19 @@
 #                                                    (`! EXPECT_ERROR:` for .inf since `//` isn't
 #                                                    an I6 comment). Multiple lines may be supplied;
 #                                                    every substring must appear in stderr.
+#   • Execution tests:   run/run_*.bgl                — must compile, pass Inform 6, AND produce the
+#                                                    output declared inline as `// EXPECT_OUTPUT:
+#                                                    <substring>`. Baselines compare emitted TEXT, so
+#                                                    they cannot see invalid I6 or wrong behaviour;
+#                                                    this tier is the only one that runs the program.
+#                                                    Skipped with a notice when the I6 compiler or a
+#                                                    Z-machine interpreter is unavailable.
+#   • Example smoke:     ../examples/*.bgl            — must compile. Examples are shipped docs and
+#                                                    used to rot unnoticed.
+#
+# The execution tier needs two external tools, discovered in this order:
+#   Inform 6:     $INFORM6, then `inform6` on PATH, then ../../inform6/inform6
+#   Interpreter:  $ZVM,     then `zvm` on PATH,     then ../../beguilex/node_modules/.bin/zvm
 #
 # Usage:
 #   ./run_tests.sh              — run all tests
@@ -134,6 +147,109 @@ for src in "$SCRIPT_DIR"/_test_*.bgl "$SCRIPT_DIR"/_test_*.inf; do
     fi
 done
 shopt -u nullglob
+
+# ─── Example smoke: ../examples/*.bgl ─────────────────────────────────────────
+# Examples are shipped documentation. They are not baselined (their emission is
+# free to drift), but they must always compile.
+if [ "$CAPTURE" != true ]; then
+    shopt -s nullglob
+    for src in "$SCRIPT_DIR"/../examples/*.bgl; do
+        name=$(basename "$src")
+        cd "$SCRIPT_DIR"
+        if err=$("$BEGUILER" -o "$OUTPUT_DIR" "$src" 2>&1 >/dev/null); then
+            echo "  PASS: $name (example)"
+            PASS=$((PASS + 1))
+        else
+            echo "  FAIL: $name — example no longer compiles"
+            echo "    $(echo "$err" | grep -iE 'ERROR' | head -1)"
+            FAIL=$((FAIL + 1))
+        fi
+        rm -f "$OUTPUT_DIR/${name}.transpiled.inf" "$OUTPUT_DIR/${name}.bgldbg" \
+              "$OUTPUT_DIR/${name}.transpiled.inf.dbg" "$OUTPUT_DIR/${name}.transpiled.inf.map" \
+              "$OUTPUT_DIR/${name}.transpiled.inf.bgldbg"
+    done
+    shopt -u nullglob
+fi
+
+# ─── Execution tests: run/run_*.bgl ───────────────────────────────────────────
+# The only tier that RUNS the program. Baselines compare emitted text, so they
+# pass happily on I6 that will not assemble and on logic that is simply wrong.
+if [ "$CAPTURE" != true ]; then
+    RUN_DIR="$SCRIPT_DIR/run"
+    INFORM6="${INFORM6:-$(command -v inform6 || echo "$SCRIPT_DIR/../../inform6/inform6")}"
+    ZVM="${ZVM:-$(command -v zvm || echo "$SCRIPT_DIR/../../beguilex/node_modules/.bin/zvm")}"
+
+    shopt -s nullglob
+    run_tests=("$RUN_DIR"/run_*.bgl)
+    shopt -u nullglob
+
+    if [ ${#run_tests[@]} -gt 0 ]; then
+        echo ""
+        if [ ! -x "$INFORM6" ]; then
+            echo "Execution tests SKIPPED — no Inform 6 compiler (set \$INFORM6)."
+        elif [ ! -x "$ZVM" ] && [ ! -f "$ZVM" ]; then
+            echo "Execution tests SKIPPED — no Z-machine interpreter (set \$ZVM)."
+        else
+            echo "Running execution tests..."
+            RUN_OUT="$OUTPUT_DIR/run"
+            mkdir -p "$RUN_OUT"
+            for src in "${run_tests[@]}"; do
+                name=$(basename "$src")
+                expected=$(grep -E '^[[:space:]]*//[[:space:]]*EXPECT_OUTPUT:' "$src" \
+                    | sed -E 's|^[[:space:]]*//[[:space:]]*EXPECT_OUTPUT:[[:space:]]*||')
+                if [ -z "$expected" ]; then
+                    echo "  ERROR: $name — execution test missing 'EXPECT_OUTPUT:' marker"
+                    ERRORS=$((ERRORS + 1)); continue
+                fi
+
+                rm -rf "${RUN_OUT:?}"/*
+                cd "$SCRIPT_DIR"
+                if ! err=$("$BEGUILER" -o "$RUN_OUT" "$src" 2>&1 >/dev/null); then
+                    echo "  ERROR: $name — transpile failed"
+                    echo "    $(echo "$err" | grep -iE 'ERROR' | head -1)"
+                    ERRORS=$((ERRORS + 1)); continue
+                fi
+                inf="$RUN_OUT/${name}.transpiled.inf"
+                story="$RUN_OUT/${name}.z5"
+                # Inform 6 reports errors on stdout and still exits 0 in some builds,
+                # so the story file's existence is what decides success.
+                i6out=$("$INFORM6" -v5 "$inf" "$story" 2>&1)
+                if [ ! -f "$story" ]; then
+                    echo "  FAIL: $name — Inform 6 rejected the emitted code"
+                    echo "    $(echo "$i6out" | grep -iE 'error' | head -2)"
+                    FAIL=$((FAIL + 1)); continue
+                fi
+
+                actual=$(echo "" | "$ZVM" "$story" 2>&1)
+                all_matched=true
+                while IFS= read -r needle; do
+                    [ -z "$needle" ] && continue
+                    if ! echo "$actual" | grep -qF "$needle"; then
+                        echo "  FAIL: $name — output did not contain '$needle'"
+                        echo "    got: $(echo "$actual" | grep -vE '^$' | head -3 | tr '\n' '|')"
+                        all_matched=false; break
+                    fi
+                done <<< "$expected"
+
+                # A Z-machine trap prints a diagnostic and keeps going, so matching the
+                # expected text is not on its own proof the run was clean.
+                if [ "$all_matched" = true ] && echo "$actual" | grep -q "Programming error"; then
+                    echo "  FAIL: $name — run produced a Z-machine programming error"
+                    echo "    $(echo "$actual" | grep 'Programming error' | head -1)"
+                    all_matched=false
+                fi
+
+                if [ "$all_matched" = true ]; then
+                    echo "  PASS: $name (execution)"
+                    PASS=$((PASS + 1))
+                else
+                    FAIL=$((FAIL + 1))
+                fi
+            done
+            rm -rf "$RUN_OUT"
+        fi
+    fi
+fi
 
 echo ""
 if [ "$CAPTURE" = true ]; then

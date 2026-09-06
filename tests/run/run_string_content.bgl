@@ -1,0 +1,24 @@
+/*  string and stringObj compare and order by CONTENT, not address.
+
+    Without their published static == / <=>, array<T> would fall back to word
+    comparison and match on address — silently wrong, and invisible in the .inf.  */
+// EXPECT_OUTPUT: sorted: apple fig pear
+// EXPECT_OUTPUT: indexOf(fig): 1
+// EXPECT_OUTPUT: literal equals string: yes
+// EXPECT_OUTPUT: ordering: yes
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+#include <array>
+
+void main(){
+    bglInit();
+    array<stringObj> s[3];
+    s += "pear"; s += "apple"; s += "fig";
+    s.sort();
+    print("sorted: "); for(int i=0;i<3;i++){ print(s[i]); print(" "); } print("^");
+    print("indexOf(fig): "); print(s.indexOf("fig")); print("^");
+
+    string lit = "apple";
+    print("literal equals string: "); print(("apple" == lit) ? "yes" : "no"); print("^");
+    print("ordering: "); print(("apple" < "pear") ? "yes" : "no"); print("^");
+}

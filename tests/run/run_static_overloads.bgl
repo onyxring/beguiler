@@ -1,0 +1,29 @@
+/*  Overloaded `static` operators emit as distinct, VALID I6.
+
+    Two static overloads of one operator once mangled to the same routine name,
+    emitting the same name twice — invalid I6 that emission diffing passed clean
+    because tests never hand output to Inform 6. Reaching the run stage at all is
+    the proof; the printed values confirm each overload is separately reachable.  */
+// EXPECT_OUTPUT: same-type: yes
+// EXPECT_OUTPUT: by-cents: yes
+// EXPECT_OUTPUT: reference: yes
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+class Money {
+    int cents;
+    static bool operator == (Money a, Money b) { return a.cents == b.cents; }
+    static bool operator == (Money a, int b)   { return a.cents == b; }
+    static int  operator <=> (Money a, Money b){ if(a.cents < b.cents) return -1; if(a.cents > b.cents) return 1; return 0; }
+    static int helper(int v) { return v; }        // a plain static — must not collide with a global
+}
+object m1 : Money { cents = 100; } object m2 : Money { cents = 100; }
+
+void main(){
+    bglInit();
+    print("same-type: "); print((m1 == m2) ? "yes" : "no"); print("^");
+    int hundred = 100;
+    print("by-cents: "); print((m1 == hundred) ? "yes" : "no"); print("^");
+    func<bool, Money, Money> byMoney = Money::operator ==(Money);
+    print("reference: "); print(byMoney(m1, m2) ? "yes" : "no"); print("^");
+}

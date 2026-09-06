@@ -1,0 +1,40 @@
+/*  Owned array elements allocate and release themselves.
+
+    Emission diffing cannot catch this: the .inf looked correct while the pool
+    leaked. Only running it on a 10-instance pool exposes exhaustion, so this
+    test loops far enough to run dry if any drop path stops releasing.
+
+    Guards: automatic allocation on every store entry point, destruction on
+    every drop path, and scope-exit release of a local array's elements.  */
+// EXPECT_OUTPUT: zero one mid sub
+// EXPECT_OUTPUT: 8 store/drop rounds survived
+// EXPECT_OUTPUT: scope-exit rounds survived
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+#include <array>
+
+void storeAndDrop(){
+    array<stringObj> t[4];
+    t += "one";                 // append allocates
+    t.prepend("zero");          // prepend allocates
+    t.insert(2, "mid");         // insert allocates, must not alias the shifted value
+    t[3] = "sub";               // subscript allocates
+    print(t[0]);print(" ");print(t[1]);print(" ");print(t[2]);print(" ");print(t[3]);print("^");
+    t.remove(0);                // frees
+    t.clear();                  // frees the rest
+}
+
+void scopeExit(){
+    array<stringObj> t[3];
+    t += "delta";
+    t += "epsilon";
+    // no explicit free — leaving scope must release both
+}
+
+void main(){
+    bglInit();
+    for(int i = 0; i < 8; i++){ storeAndDrop(); }
+    print("8 store/drop rounds survived^");
+    for(int i = 0; i < 8; i++){ scopeExit(); }
+    print("scope-exit rounds survived^");
+}

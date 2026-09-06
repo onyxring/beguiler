@@ -1,0 +1,44 @@
+/*  array<T> reaches an element type's operators in BOTH published forms.
+
+    $opref yields a routine address for a `static` operator and a property number
+    for an instance one. The runtime tells them apart by metaclass. Calling a
+    property number as though it were code produces garbage rather than a crash,
+    so only executing this proves the dispatch is right.  */
+// EXPECT_OUTPUT: instance ==: 2
+// EXPECT_OUTPUT: instance <=>: 10 20 30
+// EXPECT_OUTPUT: static ==: 2
+// EXPECT_OUTPUT: static <=>: 100 200 300
+// EXPECT_OUTPUT: no operators: 10 20 30
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+class Tagged {                                    // instance forms
+    int v;
+    bool operator ==  (Tagged o) { return v == o.v; }
+    int  operator <=> (Tagged o) { if(v < o.v) return -1; if(v > o.v) return 1; return 0; }
+}
+object t1 : Tagged { v = 30; } object t2 : Tagged { v = 10; } object t3 : Tagged { v = 20; }
+
+class Money {                                     // static forms
+    int cents;
+    static bool operator ==  (Money a, Money b) { return a.cents == b.cents; }
+    static int  operator <=> (Money a, Money b) { if(a.cents < b.cents) return -1; if(a.cents > b.cents) return 1; return 0; }
+}
+object m1 : Money { cents = 300; } object m2 : Money { cents = 100; } object m3 : Money { cents = 200; }
+
+void main(){
+    bglInit();
+    array<Tagged> a[3];  a += t1; a += t2; a += t3;
+    print("instance ==: "); print(a.indexOf(t3)); print("^");
+    a.sort();
+    print("instance <=>: "); for(int i=0;i<3;i++){ print(a[i].v); print(" "); } print("^");
+
+    array<Money> b[3];  b += m1; b += m2; b += m3;
+    print("static ==: "); print(b.indexOf(m3)); print("^");
+    b.sort();
+    print("static <=>: "); for(int i=0;i<3;i++){ print(b[i].cents); print(" "); } print("^");
+
+    array<int> c[3];  c += 30; c += 10; c += 20;   // publishes nothing — word semantics
+    c.sort();
+    print("no operators: "); for(int i=0;i<3;i++){ print(c[i]); print(" "); } print("^");
+}
