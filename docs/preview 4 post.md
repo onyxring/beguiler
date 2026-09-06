@@ -111,6 +111,95 @@ This release provides a new directive, `#declare`, which is similar to `#define`
 The `#if` above sees `I6_STANDARD_LIBRARY` even though it is `#declare`d afterward.  It would _not_ see it if instead it were `#define`d.  So `#define` for ordinary constants and toggles; use `#declare` when one file needs to detect a feature or binding that may (or may not) be pulled in elsewhere.
 
 ---
+## 5. `string` and `stringObj` — two types, because they are two things
+I6 gives you one thing when you write `"hello"`: an address. You can print it, but comparing two of them compares addresses, and changing one isn't possible at all. Beguile used to blur that by letting `string` mean both the literal and a mutable buffer. It no longer does.
+
+- **`string`** is a pointer to static text — the packed literal address, exactly what an I6 dev expects. Free, immutable, nothing owned.
+- **`stringObj`** is a slot that *owns* a buffer. Mutable, and it allocates and frees itself.
+
+Both print and compare by **content**, so `==`, `<` and `switch` behave the way you'd want regardless of which you're holding, and the two mix freely. The rule is simply: anything that *produces* text hands you a `stringObj`.
+
+```bgl
+string  title = "Cloak";        // a pointer to static text
+stringObj name;
+name = title;                   // copies the TEXT into name's own buffer
+name = name + " of Darkness";
+name += "!";                    // name is "Cloak of Darkness!"; title unchanged
+```
+
+Assignment copies, so `b = a` gives `b` its own buffer — changing `b` later leaves `a` alone. That's the opposite of a bare pointer assignment in I6, and it's deliberate.
+
+---
+## 6. Containers that manage their own elements
+An `array<stringObj>` now allocates and releases the text in its slots for you. Write text, not allocations — dropping an element or leaving scope frees the buffer:
+
+```bgl
+array<stringObj> names[3];
+names += "pear";
+names += "apple";
+names += "fig";
+names.sort();                   // apple fig pear — ordered by content, not address
+```
+
+Every way in goes through the same door — `names[0] = "plum"`, `append`, `prepend`, `insert` — and every way out (`remove`, `removeValue`, `-=`, `clear`, and simply leaving the routine) releases what it held.
+
+---
+## 7. Sorting your own types: `operator <=>`
+The three-way comparison operator tells generic code how to order your type. Give a class one and `sort()` just works:
+
+```bgl
+class Item {
+    int weight;
+    int operator <=> (Item o) { if(weight < o.weight) return -1;
+                                if(weight > o.weight) return  1; return 0; }
+}
+
+bag.sort();                     // ordered by weight
+```
+
+`<=>` is no longer required to be `static` — it has the same freedom as `<` or `>`, and can take the left operand as its receiver like any other instance operator.
+
+**If you don't define one, Beguile now tells you.** Without an ordering, sorting a class falls back to comparing the underlying words — which for an object means its *address*, i.e. wherever I6 happened to place it. That's deterministic, unrelated to any field, and looks like it worked. So it's a compile-time warning rather than a silent surprise:
+
+```
+warning: 'Item' publishes no 'operator <=>', so 'sort()' falls back to word semantics
+— for a class that means comparing object addresses, not values.
+```
+
+Nothing warns for `int`, `char` or `object`, where the word *is* the value and the default ordering is correct. Passing your own comparator never warns either.
+
+The same idea covers searching: `indexOf`, `contains` and `removeValue` use your `operator ==` when you define one, and fall back to identity when you don't — which is usually what you want for objects, so that one stays quiet.
+
+---
+## 8. Referring to an operator directly
+An operator you've already defined can be named and passed around, instead of being re-wrapped in a lambda:
+
+```bgl
+array<string> words[3];
+words.sort(string::operator <=>);           // no wrapper lambda
+
+func<int, string, string> cmp = string::operator <=>;
+```
+
+If a type has several overloads, name the operand type to pick one: `Money::operator ==(int)`.
+
+---
+## 9. Properties as values you can actually use
+Beguile could already give you a property as a value with `(property) name`, but there was nothing you could do with it. Now you can dereference one against a receiver — reads and method calls both:
+
+```bgl
+var p = (property) weight;
+int w = axe.p;                  // reads the property p names
+
+var m = (property) describe;
+axe.m();                        // message send — binds self, as I6 does
+```
+
+Which property is read is decided at runtime by the value in `p`, so this is the I6 `obj.(prop)` idiom, expressible in Beguile at last.
+
+---
 ## Updated Documentation
 
 - Platform build instructions now spell out the **required compiler flags**, fixing a build failure some people hit compiling the Beguiler from source (notably on Windows/clang).
+- The **language spec** documents `stringObj`, what `array<T>` asks of an element type, and the operator-reference forms.
+- **Beguile for the I6 Developer** covers the `string` / `stringObj` split and arrays of your own classes.

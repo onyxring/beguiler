@@ -19,12 +19,14 @@
 // EXPECT_OUTPUT: real method: 126
 // EXPECT_OUTPUT: reassigned: 7
 // EXPECT_OUTPUT: param: 42
+// EXPECT_OUTPUT: statement send ran
 #beguilerSettings { target = z5; informName = "none"; }
 
 object thing {
     int val = 42;
     int other = 7;
     int twice(int n) { return val * n; }
+    void announce() { print("statement send ran^"); }
 }
 
 int readVia(object o, property p){ return o.p; }   // property-typed PARAMETER
@@ -42,4 +44,9 @@ void main(){
     print("reassigned: ");  print(o.p);        print("^");
 
     print("param: ");       print(readVia(thing, val)); print("^");
+
+    // statement form — the result is discarded, which reaches a different path
+    // than the expression form above and needs its own handling.
+    var st = (property) announce;
+    thing.st();
 }

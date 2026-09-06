@@ -2182,6 +2182,29 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     else recvElemType = resolveArrayElementTypeDotted(objectPath.substr(0, ed), objectPath.substr(ed + 1), func, body);
                 }
                 if(isMemberArr){ selfValue = memOwner; propValue = memProp; }
+                // Computed message send as a STATEMENT — `obj.m();` where `m` holds a property.
+                // The expression path handles the value form; this is the discard-result form,
+                // which reaches bindMethodCall and would be rejected as an unknown method.
+                {
+                    bool realMember = false;
+                    if(classDef* rc = getDispatchClass(objectType))
+                        realMember = findMemberInHierarchy(rc, [&](typeMember* m){ return m->name == methodName; }) != nullptr;
+                    if(!realMember)
+                        if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(objectType)))
+                            for(typeMember* m : od->members)
+                                if(m->name == methodName){ realMember = true; break; }
+                    if(!realMember && isPropertyValuedLocal(methodName, func, body)){
+                        string argText;
+                        for(size_t i = 0; i < callStmt.args.size(); i++)
+                            argText += (i ? ", " : "") + callStmt.args[i]->text();
+                        i6RawNode& raw = *(new i6RawNode());
+                        raw.src = stmtLoc;
+                        raw.text = emitObjectPath + ".(" + qualifyIdentifier(methodName, func, body)
+                                 + ")(" + argText + ");";
+                        if(body != nullptr) body->statements.push_back(&raw);
+                        return false;
+                    }
+                }
                 functionDef* method = bindMethodCall(objectType, objectPath, methodName,
                                                        callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
                                                        recvElemType);
