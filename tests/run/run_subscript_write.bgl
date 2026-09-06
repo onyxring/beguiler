@@ -1,0 +1,41 @@
+/*  Subscript writes reach the right store for each receiver.
+
+    A regression made every `a[i] = v` take _bglArray.setOwned instead of the
+    inline word store — a routine call where core promises none, and on a
+    non-array receiver (stringObj) an emitted `<$prop undefined>` that Inform 6
+    will not assemble. The cause was a sentinel mismatch: operatorRef returns ""
+    when a type publishes no assign, and the selection tested it against "0".
+
+    Pins all four receivers, since the selection has to distinguish them:
+      array<int> / array<char>  → inline word store, no routine call
+      stringObj                 → the string's own operator[]= (setChar)
+      array<stringObj>          → setOwnedAt, so the slot allocates and owns  */
+// EXPECT_OUTPUT: string:  Jello J
+// EXPECT_OUTPUT: ints:    5 7
+// EXPECT_OUTPUT: char:    x
+// EXPECT_OUTPUT: owned:   beta
+// EXPECT_OUTPUT: append:  one two
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+#include <array>
+
+void main(){
+    bglInit();
+    stringObj s; s = "Hello";
+    s[0] = 'J';
+    print("string:  "); print(s); print(" "); print(s[0]); print("^");
+
+    array<int> a[3]; a[0] = 5; a[1] = 7;
+    print("ints:    "); print(a[0]); print(" "); print(a[1]); print("^");
+
+    array<char> c[4]; c[0] = 'x';
+    print("char:    "); print(c[0]); print("^");
+
+    array<stringObj> t[3];
+    t[0] = "alpha"; t[0] = "beta";     // reuses slot 0's buffer rather than leaking it
+    print("owned:   "); print(t[0]); print("^");
+
+    array<stringObj> u[3];
+    u += "one"; u += "two";
+    print("append:  "); print(u[0]); print(" "); print(u[1]); print("^");
+}

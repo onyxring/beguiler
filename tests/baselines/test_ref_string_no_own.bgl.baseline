@@ -322,7 +322,7 @@ object _bglBuf
          print "^[Beguile runtime: tracked buffer registry full]^"; 
         return;
     }
-    _bglArray.setOwned(_bgltrackedregistry, 0, self._trackedcount, buf, 0);
+    _bgltrackedregistry-->(self._trackedcount+1) = buf;
     self._trackedcount++;
   ],
        size [buf;
@@ -400,7 +400,7 @@ object _bglBuf
     return tobuf;
   ],
        capture [buf maxBytes;
-    _bglArray.setOwned(_bglbufstreamstack, 0, self._stacktop, buf, 0);
+    _bglbufstreamstack-->(self._stacktop+1) = buf;
     @output_stream 3 buf;
     self._stacktop++;
   ],

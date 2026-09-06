@@ -333,7 +333,7 @@ object _bglBuf
          print "^[Beguile runtime: tracked buffer registry full]^"; 
         return;
     }
-    _bglArray.setOwned(_bgltrackedregistry, 0, self._trackedcount, buf, 0);
+    _bgltrackedregistry-->(self._trackedcount+1) = buf;
     self._trackedcount++;
   ],
        size [buf;
@@ -411,7 +411,7 @@ object _bglBuf
     return tobuf;
   ],
        capture [buf maxBytes s;
-    _bglArray.setOwned(_bglbufstreamstack, 0, self._stacktop, buf, 0);
+    _bglbufstreamstack-->(self._stacktop+1) = buf;
     if (maxbytes == 0) {
         s=self.size(buf);
         if ((s < 0)) {
@@ -421,7 +421,7 @@ object _bglBuf
             maxBytes=s;
         }
     }
-    _bglArray.setOwned(_bglbufglulxstreams, 0, self._stacktop, __glkHook(72), 0);
+    _bglbufglulxstreams-->(self._stacktop+1) = __glkHook(72);
     __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, filemode_write, 662));
     self._stacktop++;
   ],
@@ -686,9 +686,9 @@ array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
     tr=_bglBuf.isTracked(bufa);
 ];
 [exerciseChars c0 c1 c2;
-    _bglArray.setOwned(bufa, <$prop undefined>, 0, 'A', 0);
-    _bglArray.setOwned(bufa, <$prop undefined>, 1, 'B', 0);
-    _bglArray.setOwned(bufa, <$prop undefined>, 31, 'Z', 0);
+    bufa->(0 + WORDSIZE) = 'A';
+    bufa->(1 + WORDSIZE) = 'B';
+    bufa->(31 + WORDSIZE) = 'Z';
     c0=_bglbuf.getchar(bufa, 0);
     c1=_bglbuf.getchar(bufa, 1);
     c2= bufa->(0 + WORDSIZE);

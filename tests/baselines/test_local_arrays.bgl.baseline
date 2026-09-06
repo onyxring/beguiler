@@ -384,8 +384,8 @@ global _bglWorldBufIdx = -1;
 ];
 [localByteArray buf c0 c1;
     buf = _bglByteArrayLocalAlloc(8);
-    _bglArray.setOwned(buf, <$prop undefined>, 0, 'X', 0);
-    _bglArray.setOwned(buf, <$prop undefined>, 1, 'Y', 0);
+    buf->(0 + WORDSIZE) = 'X';
+    buf->(1 + WORDSIZE) = 'Y';
     c0= buf->(0 + WORDSIZE);
     c1= buf->(1 + WORDSIZE);
     if (c0=='X' && c1=='Y') {

@@ -282,7 +282,7 @@ array greeting buffer 'H' 'i';
     return  task_scores->(0 + WORDSIZE) + task_scores->(1 + WORDSIZE) + task_scores->(2 + WORDSIZE) ;
 ];
 [writeAndRead v;
-    _bglArray.setOwned(task_scores, <$prop undefined>, 0, 99, 0);
+    task_scores->(0 + WORDSIZE) = 99;
     v =  task_scores->(0 + WORDSIZE) ;
     print v;
     print (string)"^";

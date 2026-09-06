@@ -1391,7 +1391,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         // write must go through the type rather than being a raw word store. Prefer array<T>'s
         // `setOwnedAt` member in that case; every plain element type keeps core's inline
         // `$val-->($i+1) = $v` and pays nothing. Both bodies live in the BLR — this only picks.
-        if(!isMemberWordArray && operatorRef(elemType, "=") != "0"){
+        // operatorRef returns "" when the type publishes no assign — the "0" substitution
+        // happens later, in substituteElemOps. Comparing against "0" here made this true for
+        // EVERY element type, so every subscript write took the setOwnedAt routine instead of
+        // the inline store, and a non-array receiver (stringObj) got "<$prop undefined>".
+        if(!isMemberWordArray && !operatorRef(elemType, "=").empty()){
             if(auto* ac = dynamic_cast<classDef*>(&languageService.getType("array")))
                 if(auto* owned = dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
                         auto* fn = dynamic_cast<functionDef*>(m);

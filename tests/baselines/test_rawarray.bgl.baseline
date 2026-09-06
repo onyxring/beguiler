@@ -280,7 +280,7 @@ global _bglWorldBufIdx = -1;
     return  results-->0 ;
 ];
 [setSecond results v;
-    _bglArray.setOwned(results, <$prop undefined>, 1, v, 0);
+    results-->1 = v;
 ];
 [isPutOrInsert results;
     return  results-->0  == ##puton|| results-->0  == ##insert;

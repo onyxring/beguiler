@@ -337,7 +337,7 @@ object _bglArray
                         quit;
                     
             }
-            _bglArray.setOwned(dst, 0, writecount, elem, 0);
+            dst-->(writecount+1) = elem;
              writecount++ ;
         }
     }
@@ -387,7 +387,7 @@ object _bglArray
             
     }
     for (i = 0 : i < srclen : i++) {
-        _bglArray.setOwned(dst, 0, i, f(self.get(obj,prop,i)), 0);
+        dst-->(i+1) = f(self.get(obj,prop,i));
     }
     _bglArray.setLength(dst, 0, srcLen);
     _bgllinqleave();
@@ -411,7 +411,7 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        _bglArray.setOwned(dst, 0, i, self.get(obj,prop,i), 0);
+        dst-->(i+1) = self.get(obj,prop,i);
     }
     _bglArray.setLength(dst, 0, outLen);
     _bgllinqleave();
@@ -436,7 +436,7 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        _bglArray.setOwned(dst, 0, i, self.get(obj,prop,start + i), 0);
+        dst-->(i+1) = self.get(obj,prop,start + i);
     }
     _bglArray.setLength(dst, 0, outLen);
     _bgllinqleave();
@@ -457,7 +457,7 @@ object _bglArray
                     quit;
                 
         }
-        _bglArray.setOwned(dst, 0, outlen, self.get(obj,prop,i), 0);
+        dst-->(outlen+1) = self.get(obj,prop,i);
          outlen++ ;
     }
     _bglArray.setLength(dst, 0, outLen);
@@ -480,7 +480,7 @@ object _bglArray
             
     }
     for (i = 0 : i < outlen : i++) {
-        _bglArray.setOwned(dst, 0, i, self.get(obj,prop,start + i), 0);
+        dst-->(i+1) = self.get(obj,prop,start + i);
     }
     _bglArray.setLength(dst, 0, outLen);
     _bgllinqleave();
@@ -507,7 +507,7 @@ object _bglArray
                         quit;
                     
             }
-            _bglArray.setOwned(dst, 0, outlen, elem, 0);
+            dst-->(outlen+1) = elem;
              outlen++ ;
         }
     }
@@ -526,7 +526,7 @@ object _bglArray
             
     }
     for (i = 0 : i < srclen : i++) {
-        _bglArray.setOwned(dst, 0, i, self.get(obj,prop,i), 0);
+        dst-->(i+1) = self.get(obj,prop,i);
     }
     _bglArray.setLength(dst, 0, srcLen);
     self.sort(dst, 0, compare);

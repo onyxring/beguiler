@@ -301,10 +301,10 @@ object inventory
     b= g_flags-->(1+1);
     r =  g_rooms-->(0+1) ;
     o =  g_objs-->(0+1);
-    _bglArray.setOwned(g_nums, 0, 0, 42, 0);
-    _bglArray.setOwned(g_flags, 0, 0, false, 0);
-    _bglArray.setOwned(g_rooms, 0, 0, r2, 0);
-    _bglArray.setOwned(g_objs, 0, 0, r1, 0);
+    g_nums-->(0+1) = 42;
+    g_flags-->(0+1) = false;
+    g_rooms-->(0+1) = r2;
+    g_objs-->(0+1) = r1;
     c=inventory.count;
     ch= g_buf->(0 + WORDSIZE);
 ];

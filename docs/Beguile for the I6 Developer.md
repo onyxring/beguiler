@@ -1033,14 +1033,15 @@ s.replaceAll("l", "L")           // "HeLLo, WorLd"     every match
 "  hi  ".trim()                  // "hi"      (also trimLeft / trimRight)
 ```
 
-**Indexed character read** gets a single `char` at a zero-based position:
+**Direct indexed character access** reads or writes a single `char` at a zero-based position:
 
 ```bgl
 stringObj s; s = "Hello";
 char first = s[0];               // 'H'
+s[0] = 'J';                      // s is now "Jello"
 ```
 
-> ***Known gap**: the reverse — `s[0] = 'J'` — does not currently work. Beguile's subscript-write dispatcher routes through `array<T>` only, so the `operator[]=` declared on the string types is unreachable from that syntax, and the emitted I6 will not assemble. Build the new value instead — `s = s.right(4).prepend("J")` — or use `replace`.*
+> ***Note**: unlike the routines above, which return a new value, writing a character changes the string in place. It needs a `stringObj` — a `string` points at static text and has nothing to write into.*
 
 **Format strings** via `format(pattern, args...)`:
 
