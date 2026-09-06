@@ -1,0 +1,23 @@
+/*  trim / trimLeft / trimRight each strip the end they name.
+
+    trimRight called _bglBuf.trimLeft — a defect carried over verbatim from
+    orLibrary's orString.h, where the same line is one word wrong. It returned a
+    left-trimmed string. trim() was unaffected because it calls _bglBuf.trim,
+    which composes the two primitives correctly, so the failure only showed on a
+    direct trimRight() call — and never in emission, only in output.  */
+// EXPECT_OUTPUT: trim      [padded]
+// EXPECT_OUTPUT: trimLeft  [padded   ]
+// EXPECT_OUTPUT: trimRight [   padded]
+// EXPECT_OUTPUT: nopad     [noPadding]
+// EXPECT_OUTPUT: allspace  []
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+void main(){
+    bglInit();
+    stringObj a; a = "   padded   "; print("trim      ["); print(a.trim());      print("]^");
+    stringObj b; b = "   padded   "; print("trimLeft  ["); print(b.trimLeft());  print("]^");
+    stringObj c; c = "   padded   "; print("trimRight ["); print(c.trimRight()); print("]^");
+    stringObj d; d = "noPadding";    print("nopad     ["); print(d.trimRight()); print("]^");
+    stringObj e; e = "     ";        print("allspace  ["); print(e.trimRight()); print("]^");
+}

@@ -914,7 +914,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         var retval;
         #i6 {
             retval = self.clone();
-            _bglBuf.trimLeft(retval.getBuf());   ! NB: orLib bug copy — original also called trimLeft here; preserved verbatim.
+            _bglBuf.trimRight(retval.getBuf());
             retval = retval.free();
         }
         return retval;
