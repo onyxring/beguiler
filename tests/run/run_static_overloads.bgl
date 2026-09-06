@@ -1,4 +1,4 @@
-/*  Overloaded `static` operators emit as distinct, VALID I6.
+/*  Overloaded operators emit as distinct, VALID I6 — both forms.
 
     Two static overloads of one operator once mangled to the same routine name,
     emitting the same name twice — invalid I6 that emission diffing passed clean
@@ -7,6 +7,9 @@
 // EXPECT_OUTPUT: same-type: yes
 // EXPECT_OUTPUT: by-cents: yes
 // EXPECT_OUTPUT: reference: yes
+// EXPECT_OUTPUT: inst same: yes
+// EXPECT_OUTPUT: inst int:  yes
+// EXPECT_OUTPUT: inst sort: 100 200 300
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
 
@@ -19,6 +22,17 @@ class Money {
 }
 object m1 : Money { cents = 100; } object m2 : Money { cents = 100; }
 
+// The same collision exists for INSTANCE overloads, which share one mangled property
+// name. Two `_opeqeq` entries in one `with` list is "Property given twice in the same
+// declaration" — accepted by Beguile, rejected by Inform 6.
+class Tag {
+    int v;
+    bool operator ==  (Tag o) { return v == o.v; }
+    bool operator ==  (int o) { return v == o; }
+    int  operator <=> (Tag o) { if(v < o.v) return -1; if(v > o.v) return 1; return 0; }
+}
+object t1 : Tag { v = 100; } object t2 : Tag { v = 300; } object t3 : Tag { v = 200; }
+
 void main(){
     bglInit();
     print("same-type: "); print((m1 == m2) ? "yes" : "no"); print("^");
@@ -26,4 +40,10 @@ void main(){
     print("by-cents: "); print((m1 == hundred) ? "yes" : "no"); print("^");
     func<bool, Money, Money> byMoney = Money::operator ==(Money);
     print("reference: "); print(byMoney(m1, m2) ? "yes" : "no"); print("^");
+
+    print("inst same: "); print((t1 == t1)      ? "yes" : "no"); print("^");
+    print("inst int:  "); print((t1 == hundred) ? "yes" : "no"); print("^");
+    array<Tag> a[3]; a += t2; a += t1; a += t3;
+    a.sort();
+    print("inst sort: "); for(int i = 0; i < 3; i++){ print(a[i].v); print(" "); } print("^");
 }

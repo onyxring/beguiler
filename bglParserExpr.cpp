@@ -585,6 +585,12 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         while(expr->tokens.size() > 1 && expr->tokens.front() == "(")
             { prefix.push_back(expr->tokens.front()); expr->tokens.erase(expr->tokens.begin()); }
         string lhsText = expr->text();
+        // Settle the overload set's names BEFORE reading i6name. An operator carries a
+        // parse-time name (`==` → `_opeqeq`) shared by every overload; mangleOverloadSet
+        // appends parameter types when there is more than one, and this call site would
+        // otherwise bake in the undiscriminated name. Method calls do the same via
+        // mangleOverloadSetForReceiver in bindMethodCall.
+        if(cls != nullptr) mangleOverloadSetForReceiver(cls->name, matchedOp->name);
         if(matchedOp->i6name.empty()) matchedOp->i6name = mangleOperatorName(matchedOp->name);
         if(matchedOp->returnType.name.empty() || matchedOp->returnType.name == "void")
             expr->resolvedType = cls->name;

@@ -350,8 +350,9 @@ static string mangleObjectMethodName(functionDef* fd){
 }
 
 // Helper: mangle the i6name of every non-emitter member of an overload set on `members`.
-// Members already carrying an i6name (e.g. operator overloads, which were mangled at parse
-// time) are preserved. Returns whether any member was newly mangled.
+// A single member keeps its plain name; a set of two or more needs each entry distinguished,
+// or the class emits the same I6 property twice ("Property given twice in the same
+// declaration") and will not assemble.
 static void mangleOverloadSet(vector<typeMember*>& members, const string& methodName){
     vector<functionDef*> group;
     for(typeMember* m : members)
@@ -359,9 +360,28 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
             if(fd->name == methodName && !fd->isEmitter && !fd->isPrePassStub)
                 group.push_back(fd);
     if(group.size() < 2) return;
-    for(functionDef* fd : group)
-        if(fd->i6name.empty())
+    for(functionDef* fd : group){
+        // Operators are mangled at parse time (`==` → `_opeqeq`), which is what makes a
+        // declared-but-never-called operator emit a legal I6 identifier. That name is shared
+        // by every overload, so an overload SET needs the parameter types appended too.
+        // Recomputed from the operator name rather than appended to the current i6name, so
+        // running this pass more than once (the call-site path mangles eagerly, and
+        // assignObjectMethodOverloadMangling sweeps afterwards) is idempotent.
+        bool isOperator = !fd->name.empty() && !isalpha((unsigned char)fd->name[0])
+                          && fd->name[0] != '_';
+        if(isOperator || fd->name == "operator()"){
+            string disc;
+            for(paramDef* p : fd->params){
+                string t = p->type.name;
+                size_t lt = t.find('<');
+                if(lt != string::npos) t = t.substr(0, lt);
+                disc += "_" + (t.empty() ? string("var") : t);
+            }
+            fd->i6name = mangleOperatorName(fd->name) + disc;
+        }
+        else if(fd->i6name.empty())
             fd->i6name = mangleObjectMethodName(fd);
+    }
 }
 
 void bglParser::assignObjectMethodOverloadMangling(){
