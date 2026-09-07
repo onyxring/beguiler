@@ -300,5 +300,5 @@ object gameState
     gamestate.gamescore = 10;
     gamestate.gamemoves = 1;
     inventory.count = 3;
-    first =  inventory-->(0+1) ;
+    first = inventory.&items-->(0);
 ];

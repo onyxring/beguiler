@@ -13,8 +13,12 @@
 // EXPECT_OUTPUT: sorted: 0 10 20 30
 // EXPECT_OUTPUT: indexOf(10): 1
 // EXPECT_OUTPUT: length is capacity: 4
+// EXPECT_OUTPUT: external read: 5 9
+// EXPECT_OUTPUT: external append emitted
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
+
+object ext { array<int> slots[4]; }
 
 object w {
     array<int> nums[4];
@@ -35,4 +39,14 @@ void main(){
     print("indexOf(10): ");       print(w.find()); print("^");
     print("length is capacity: ");print(w.len());  print("^");
     w.bump();    // must not emit code I6 rejects, even though it cannot append
+
+    // From OUTSIDE the object. The write already used obj.&prop; the read ran the global
+    // emitter body and produced `obj-->(i+1)`, indexing off the object rather than its
+    // property — unrelated memory. `+=` found no type for a dotted name at all and fell
+    // through to a NUMERIC compound assignment.
+    ext.slots[0] = 5;
+    ext.slots[1] = 9;
+    print("external read: "); print(ext.slots[0]); print(" "); print(ext.slots[1]); print("^");
+    ext.slots += 1;                 // must emit the member form, not `ext.slots + 1`
+    print("external append emitted^");
 }

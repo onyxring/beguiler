@@ -1263,7 +1263,14 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             // ── name[i]: subscript access ──
             if(next.is(token::bracketOpen)){
                 string arrName = cur.value;
-                string arrType = resolveIdentifierType(arrName, func, body);
+                // A dotted receiver names a member; resolveIdentifierType does not resolve one,
+                // so `shelf.items[0]` found no array type, missed the member-array branch below,
+                // and emitted the global form `shelf-->(i+1)` — indexing off the object rather
+                // than its property. Writes already used resolvePathType and were correct, so
+                // only reads were wrong.
+                string arrType = arrName.find('.') == string::npos
+                               ? resolveIdentifierType(arrName, func, body)
+                               : resolvePathType(arrName, func, body);
                 classDef* arrCls = getDispatchClass(arrType);
                 expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
                 // Element-type-aware lookup: find operator[] whose return type matches the
@@ -1910,15 +1917,22 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             parsingError(format("No operator[] returning '{0}' on type '{1}'", typeDisplayName(elemType), typeDisplayName(propType)));
                         }
                         if(expr->resolvedType.empty()) expr->resolvedType = getMethod->returnType.name;
-                        if(getMethod->isEmitter)
+                        // A word-array member is INLINE property data: it is read as
+                        // `obj.&prop-->(i)`, with no count slot, exactly as the write path and
+                        // the bare-name read already do. Running the global emitter body here
+                        // instead produced `obj-->(i+1)` — indexing off the OBJECT, which
+                        // returns unrelated memory rather than the element.
+                        if(isWordArrayType(propType)){
+                            string owner = func != nullptr ? qualifyIdentifier(objName, func, body) : objName;
+                            if(owner.empty()) owner = objName;
+                            expr->tokens.push_back(owner + ".&" + propName + "-->(" + indexExpr->text() + ")");
+                        }
+                        else if(getMethod->isEmitter)
                             if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)) {
                                 // Byte-array members are stored as a separate backing array
                                 // with the property holding the pointer, so the subscript
                                 // receiver must be the property read `obj.prop` (binding to
-                                // bare `obj` would index the object). Word-array members are
-                                // INLINE property data, a separate access pattern that needs
-                                // `obj.&prop` with no header offset — a distinct latent issue
-                                // not handled here, so leave those on the prior `obj` binding.
+                                // bare `obj` would index the object).
                                 string recv = (propType == "bytearray") ? (objName + "." + propName) : objName;
                                 string b = processBglConditionals(blk->i6Body);
                                 b = replaceWord(b, "$self", recv);

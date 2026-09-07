@@ -1968,8 +1968,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         }
         expression* rhs = parseExpression(file.getToken(), {token::endStatement}, func, body);
 
-        // Try emitter lookup for this compound operator on the LHS type
-        string lhsTypeName = resolveIdentifierType(tok.value, func, body);
+        // Try emitter lookup for this compound operator on the LHS type. A dotted path names
+        // a member, which resolveIdentifierType does not resolve — so `shelf.items += x` found
+        // no type, no operator, and fell through to a NUMERIC compound assignment
+        // (`shelf.items = shelf.items + x`) rather than the array's `+=`.
+        string lhsTypeName = tok.value.find('.') == string::npos
+                           ? resolveIdentifierType(tok.value, func, body)
+                           : resolvePathType(tok.value, func, body);
         classDef* lhsClass = dynamic_cast<classDef*>(&languageService.getType(lhsTypeName));
         bool emitterFound = false;
         if(lhsClass != nullptr && rhs != nullptr && !rhs->resolvedType.empty()){
