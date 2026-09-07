@@ -17,5 +17,8 @@ docs/.obsidian/
 # Per-object build artifacts and header depfiles
 /build/
 
-# Release announcement drafts — posted to the forum; kept here only as a local copy
-/docs/preview 4 post.md
+# Release announcement drafts. These are posted to the forum and kept elsewhere; a copy
+# left in docs/ gets bundled into every release archive, since release.yml copies the
+# whole directory. Nothing here is matched by the four real documents.
+/docs/*preview*post*.md
+/docs/*release*post*.md
