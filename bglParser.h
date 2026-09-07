@@ -414,6 +414,9 @@ class bglParser {
         // Drives member-array access through the orLibrary property-array convention.
         // Emitted I6 property name for a member, honouring `Type member as <i6name>;`.
         std::string memberI6Name(const std::string& recvTypeName, const std::string& memberName);
+        // Is a member array declared `ref`? It then holds a pointer, addressed as a value.
+        bool memberArrayIsRef(const std::string& ownerName, const std::string& propName,
+                              functionDef* func, statementBlock* body);
         // Does a member array carry the trailing length slot? Must match the emitter's rule.
         bool memberArrayIsTracked(const std::string& ownerName, const std::string& propName,
                                   functionDef* func, statementBlock* body);

@@ -1020,6 +1020,9 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     arrDecl.name = (string)propName;
     if(q) arrDecl.isInline = q->isInline;   // an `inline array<T>` member is a positional slot (§6.2.1)
     arrDecl.isRaw = declIsRaw;             // `rawArray<T>` member: no tracking layer
+    // `ref array<T> name;` — the slot holds a POINTER to an array owned elsewhere rather than
+    // inline property data, so it is addressed as a value: (obj.prop, 0), not (obj, prop).
+    if(q) arrDecl.isRefLocal = q->isRef;
     arrDecl.type = languageService.getType("array");
     arrDecl.elementType = elemType;
     if(sym.is(token::bracketOpen)){

@@ -1301,6 +1301,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 string memberOwner, memberProp;
                 bool isMemberWordArray = isWordArrayType(arrType) &&
                     splitQualifiedMember(arrName, func, body, memberOwner, memberProp);
+                if(isMemberWordArray && memberArrayIsRef(memberOwner, memberProp, func, body)){
+                    arrName = memberOwner + "." + memberProp;   // read the pointer, not the slot
+                    isMemberWordArray = false;
+                }
                 if(isMemberWordArray){
                     subscriptText = memberOwner + ".&" + memberProp + "-->(" + indexExpr->text() + ")";
                     expr->tokens.push_back(subscriptText);
@@ -1786,6 +1790,18 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             size_t d = objName.rfind('.');
                             if(d != string::npos){ mOwner = objName.substr(0, d); mProp = objName.substr(d + 1); isMemberArr = true; }
                             else isMemberArr = splitQualifiedMember(rawObjName, func, body, mOwner, mProp);
+                            // A `ref` member holds a POINTER to an array owned elsewhere, so every
+                            // operation addresses it as a value — (obj.prop, 0) — not as inline
+                            // property data. Without this, `length()` on a bound ref member read
+                            // the slot the pointer lives in.
+                            if(isMemberArr && memberArrayIsRef(mOwner, mProp, func, body)){
+                                // Retarget at the property READ, which is where the pointer lives.
+                                // splitQualifiedMember already yields `self` for a bare member
+                                // inside a body, so joining gives `self.nums` rather than the raw
+                                // `nums`, which would name nothing at all.
+                                objName = mOwner + "." + mProp;
+                                isMemberArr = false;
+                            }
                         }
 
                         string callText;
@@ -1931,18 +1947,20 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // the bare-name read already do. Running the global emitter body here
                         // instead produced `obj-->(i+1)` — indexing off the OBJECT, which
                         // returns unrelated memory rather than the element.
-                        if(isWordArrayType(propType)){
+                        if(isWordArrayType(propType) && !memberArrayIsRef(objName, propName, func, body)){
                             string owner = func != nullptr ? qualifyIdentifier(objName, func, body) : objName;
                             if(owner.empty()) owner = objName;
                             expr->tokens.push_back(owner + ".&" + propName + "-->(" + indexExpr->text() + ")");
                         }
                         else if(getMethod->isEmitter)
                             if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)) {
-                                // Byte-array members are stored as a separate backing array
-                                // with the property holding the pointer, so the subscript
-                                // receiver must be the property read `obj.prop` (binding to
-                                // bare `obj` would index the object).
-                                string recv = (propType == "bytearray") ? (objName + "." + propName) : objName;
+                                // The receiver is the property READ `obj.prop` whenever the
+                                // property holds a POINTER rather than inline data: a byte-array
+                                // member (separate backing array), and a `ref` member (an array
+                                // owned elsewhere). Binding to bare `obj` would index the object.
+                                bool holdsPointer = (propType == "bytearray")
+                                                 || memberArrayIsRef(objName, propName, func, body);
+                                string recv = holdsPointer ? (objName + "." + propName) : objName;
                                 string b = processBglConditionals(blk->i6Body);
                                 b = replaceWord(b, "$self", recv);
                                 b = replaceWord(b, "$val",  recv);
@@ -2605,6 +2623,14 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             bool chainIsMember = isWordArrayType(chainTypeName)
                                  && selfText.find('.') != string::npos
                                  && selfText.find('(') == string::npos;
+            // A `ref` member holds a POINTER to an array owned elsewhere, so a chained call on
+            // it — `obj.slot.length()` — addresses the pointed-at array as a value, (obj.slot, 0),
+            // not the property slot as inline data.
+            if(chainIsMember){
+                size_t rd = selfText.rfind('.');
+                if(memberArrayIsRef(selfText.substr(0, rd), selfText.substr(rd + 1), func, body))
+                    chainIsMember = false;
+            }
             string chainSelf = selfText;
             string chainProp = isWordArrayType(chainTypeName) ? "0" : "<$prop undefined>";
             if(chainIsMember){

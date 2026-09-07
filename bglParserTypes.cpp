@@ -1212,6 +1212,37 @@ std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::
 // `array<dictionaryWord>` stays bare because I6 reads it as parser data. Consulted by the
 // inline size()/length() fast path, which cannot route through _bglArray when <array> is
 // absent and so has to know the layout itself.
+// Whether a member array is declared `ref` — it then holds a POINTER to an array owned
+// elsewhere, so every operation addresses it as a value (obj.prop, 0) rather than as inline
+// property data (obj, prop). Addressing it the member way indexes the slot the pointer lives
+// in. Same resolution shape as memberArrayIsTracked, including `self` inside a body.
+bool bglParser::memberArrayIsRef(const std::string& ownerName, const std::string& propName,
+                                 functionDef* func, statementBlock* body){
+    auto check = [&](vector<typeMember*>& members) -> int {   // -1 unknown, 0 no, 1 yes
+        for(typeMember* m : members)
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(m))
+                if(ad->name == propName) return ad->isRefLocal ? 1 : 0;
+        return -1;
+    };
+    string owner = ownerName == "self" ? (currentObject ? currentObject->name
+                                        : (currentClass ? currentClass->name : string()))
+                                      : ownerName;
+    if(owner.empty()) return false;
+    string rt = resolveIdentifierType(owner, func, body);
+    typeDef& td = languageService.getType(rt.empty() ? owner : rt);
+    if(auto* od = dynamic_cast<objectDef*>(&td)){
+        int r = check(od->members); if(r >= 0) return r == 1;
+        for(classDef* c = od->objectClass; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0]){
+            int rc = check(c->members); if(rc >= 0) return rc == 1;
+        }
+    }
+    if(auto* cd = dynamic_cast<classDef*>(&td))
+        for(classDef* c = cd; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0]){
+            int rc = check(c->members); if(rc >= 0) return rc == 1;
+        }
+    return false;
+}
+
 bool bglParser::memberArrayIsTracked(const std::string& ownerName, const std::string& propName,
                                      functionDef* func, statementBlock* body){
     if(!languageService.arrayInUse) return false;

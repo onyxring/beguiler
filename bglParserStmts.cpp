@@ -1386,6 +1386,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         if(isWordArrayType(arrType)){
             if(innerDot != string::npos){ memOwner = selfValue; memProp = propValue; isMemberWordArray = true; }
             else isMemberWordArray = splitQualifiedMember(arrPath, func, body, memOwner, memProp);
+        if(isMemberWordArray && memberArrayIsRef(memOwner, memProp, func, body)){
+            arrPath = memOwner + "." + memProp;   // the pointer the member holds
+            isMemberWordArray = false;
+        }
         }
 
         functionCallStatement& callStmt = *(new functionCallStatement());
@@ -2058,6 +2062,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 // property where a pointer belongs. I6 then refuses to read it with `.`.
                 string cOwner, cProp;
                 bool cIsMember = splitQualifiedMember(lhs, func, body, cOwner, cProp);
+                if(cIsMember && memberArrayIsRef(cOwner, cProp, func, body)) cIsMember = false;
                 if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray"){
                     a.emitterBody = replaceWord(a.emitterBody, "$prop", cIsMember ? cProp : "0");
                     a.emitterBody = substituteElemOps(a.emitterBody, resolveArrayElementType(lhs, func, body));
@@ -2235,6 +2240,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 // (selfValue now defaults to the full path, so split the owner off explicitly.)
                 if(innerDot != string::npos){ memOwner = objectPath.substr(0, innerDot); memProp = propValue; isMemberArr = true; }
                 else isMemberArr = splitQualifiedMember(objectPath, func, body, memOwner, memProp);
+                // A `ref` member holds a POINTER to an array owned elsewhere, so it is addressed
+                // as a value — (obj.prop, 0) — not as inline property data. Checked against the
+                // resolved owner/property rather than the path text, which varies by call site.
+                if(isMemberArr && memberArrayIsRef(memOwner, memProp, func, body)){
+                    selfValue = memOwner + "." + memProp;   // the pointer the member holds
+                    isMemberArr = false;
+                }
             }
             // Receiver type can be a classDef OR an objectDef (each unclassed objectDef has its
             // own type identity); both have addressable methods.

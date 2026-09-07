@@ -1,0 +1,50 @@
+/*  A `ref array<T>` member points at an array owned elsewhere.
+
+    Binding worked — `w.nums := poolA` stored the pointer — but every operation then
+    addressed the member as INLINE property data, (w, nums), which indexes the slot the
+    pointer lives in rather than the array it points at. Six dispatch sites had to learn
+    the distinction, and each had to retarget the receiver at the property READ:
+    splitQualifiedMember yields `self` for a bare member inside a body, so joining gives
+    `self.nums`, where using the raw `nums` named nothing.
+
+    This is what lets a member reach a growable array without owning one, and it is the
+    prerequisite for auto-promotion, where a member too large for a property becomes a
+    pointer to a synthesized global.  */
+// EXPECT_OUTPUT: inside len 2 -> 30 10
+// EXPECT_OUTPUT: sorted 10 30
+// EXPECT_OUTPUT: outside len 2 first 10
+// EXPECT_OUTPUT: backing sees it 2
+// EXPECT_OUTPUT: rebound len 1, old target still 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+array<int> poolA[6];
+array<int> poolB[6];
+
+object w {
+    ref array<int> nums;
+    void fill(){ nums += 30; nums += 10; }   // bare name inside a method
+    int  len(){ return nums.length(); }
+    void sortIt(){ nums.sort(); }
+    int  at(int i){ return nums[i]; }
+}
+
+void main(){
+    bglInit();
+    w.nums := poolA;
+    w.fill();
+    print("inside len "); print(w.len()); print(" -> ");
+    print(w.at(0)); print(" "); print(w.at(1)); print("^");
+    w.sortIt();
+    print("sorted "); print(w.at(0)); print(" "); print(w.at(1)); print("^");
+
+    // and from outside the object
+    print("outside len "); print(w.nums.length()); print(" first "); print(w.nums[0]); print("^");
+    print("backing sees it "); print(poolA.length()); print("^");
+
+    // rebinding moves the reference; the old target keeps its contents
+    w.nums := poolB;
+    w.nums += 99;
+    print("rebound len "); print(w.nums.length());
+    print(", old target still "); print(poolA.length()); print("^");
+}
