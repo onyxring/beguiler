@@ -250,8 +250,11 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             parsingError("'alias' is not valid inside a class body");
         // array<T> member: same handler as object bodies (refactored to take members vector).
         // Class is never verb-derived, so no grammarRule downcast applies.
-        if(tok.is("array") && file.peekToken().is("<")){
-            processArrayMember(newClass.members, newClass.dName(), nullptr, &newClass, &q);
+        // `rawArray<T>` declares the same storage as `array<T>` but without Beguile's
+        // tracking layer — the plain I6 property array an I6 library expects to read as
+        // `obj.&prop-->n`. Both route through processArrayMember, which records which.
+        if((tok.is("array") || tok.is("rawarray")) && file.peekToken().is("<")){
+            processArrayMember(newClass.members, newClass.dName(), nullptr, &newClass, &q, tok.is("rawarray"));
             tok = file.getToken();
             continue;
         }
@@ -917,7 +920,10 @@ void bglParser::processI6InlineMember(objectDef& obj){
 }
 
 bool bglParser::processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
-                                   abstractObject* ctx, Qualifiers* q){
+                                   abstractObject* ctx, Qualifiers* q, bool declIsRaw){
+    // `declIsRaw` distinguishes the keyword the caller consumed. `rawArray<T>` opts out of the
+    // tracking layer, giving the bare I6 property array (`obj.&prop-->n`, no header) that an I6
+    // library reads directly; `array<T>` keeps Beguile's semantics.
     file.getToken("<");
     string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
     if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
@@ -1013,6 +1019,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
     arrDecl.name = (string)propName;
     if(q) arrDecl.isInline = q->isInline;   // an `inline array<T>` member is a positional slot (§6.2.1)
+    arrDecl.isRaw = declIsRaw;             // `rawArray<T>` member: no tracking layer
     arrDecl.type = languageService.getType("array");
     arrDecl.elementType = elemType;
     if(sym.is(token::bracketOpen)){
@@ -1964,8 +1971,8 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
             // emitter branch below would try to consume `<` as the propName identifier
             // and fail. Mirrors the same routing done for non-emitter `array<T>` at the
             // bottom of this loop.
-            if(tok.value == "array" && file.peekToken().is("<")){
-                processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q);
+            if((tok.value == "array" || tok.value == "rawarray") && file.peekToken().is("<")){
+                processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray");
                 tok = file.getToken();
                 continue;
             }
@@ -2025,8 +2032,8 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
             funcDef.body = &rawblock;
             if(!replaceStubMember(newObj.members, funcDef))
                 newObj.members.push_back((typeMember*)&funcDef);
-        } else if(tok.value == "array")
-            processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q);
+        } else if(tok.value == "array" || tok.value == "rawarray")
+            processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray");
         else if(tok.isDataType())
             processTypedMember(newObj, tok, memberIsReplace, q.isRef);
         else if(tok.is(eTokenType::identifier))
@@ -2328,8 +2335,8 @@ bool bglParser::processObjectExtension(token nameTok){
                 }
                 if(!replaced) obj->members.push_back((typeMember*)&funcDef);
             }
-        } else if(tok.value == "array")
-            processArrayMember(obj->members, obj->dName(), dynamic_cast<verbObjectDef*>(obj), obj, &q);
+        } else if(tok.value == "array" || tok.value == "rawarray")
+            processArrayMember(obj->members, obj->dName(), dynamic_cast<verbObjectDef*>(obj), obj, &q, tok.value == "rawarray");
         else if(tok.isDataType()){
             // Check for += / -= compound assignment on a typed member
             token peekName = file.peekToken();

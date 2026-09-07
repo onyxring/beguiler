@@ -277,11 +277,11 @@ object _bglArray
 ;
 global _bglWorldBufIdx = -1;
 array trk table "a" "b" "c" 3 $9084;
+array raw table "a" "b" "c";
+array rs table 4;
 [main;
     print (string) raw-->(0+1) ;
     print _bglArray.size(raw, 0);
     print (string) trk-->(0+1) ;
     rs-->(0+1) = 7;
 ];
-array raw table "a" "b" "c";
-array rs table 4;

@@ -167,7 +167,9 @@ void bglParser::preScanConsumeGenericSuffix(const token& typeTok){
     // array<...> and func<...> can nest arbitrarily (e.g. array<func<eVerdict>>),
     // so consume the whole <...> by matching angle-bracket depth rather than a
     // fixed number of tokens.
-    if(typeTok.value == "array" || typeTok.value == "func"){
+    // rawArray<T> takes a type parameter exactly as array<T> does; without it here the
+    // pre-scan left the '<' unconsumed and a stray member named "<" was registered.
+    if(typeTok.value == "array" || typeTok.value == "rawarray" || typeTok.value == "func"){
         file.getToken(); // '<'
         int depth = 1;
         while(depth > 0){

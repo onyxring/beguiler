@@ -1,0 +1,39 @@
+/*  `rawArray<T>` is declarable as an object/class member, not only as a parameter.
+
+    It was accepted at file scope, as an extern, and as a parameter type, but a member
+    declaration was a parse error — `Unexpected token '<'`. That is fine while `array<T>`
+    members ARE the bare I6 property array, but it leaves no way to ask for the I6 layout
+    once `array<T>` members gain Beguile semantics (a length slot). This is the escape
+    hatch that makes that change safe: `array<T>` for Beguile semantics, `rawArray<T>` for
+    the plain `with prop a b c` an I6 library reads as `obj.&prop-->n`.
+
+    The pre-scanner needed teaching too — it consumed the `<…>` for `array` and `func` but
+    not `rawArray`, leaving the '<' to register as a member literally named "<".  */
+// EXPECT_OUTPUT: sized raw: 7
+// EXPECT_OUTPUT: sized tracked: 9
+// EXPECT_OUTPUT: list raw: 1 2 3
+// EXPECT_OUTPUT: list tracked: 4 5 6
+// EXPECT_OUTPUT: class member raw: 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+object obj {
+    rawArray<int> rawSized[4];
+    array<int>    trkSized[4];
+    rawArray<int> rawList = {1, 2, 3};
+    array<int>    trkList = {4, 5, 6};
+}
+
+class Holder { rawArray<int> vals = {2, 4}; }    // and in a class body
+object h : Holder {}
+
+void main(){
+    bglInit();
+    obj.rawSized[0] = 7;
+    obj.trkSized[0] = 9;
+    print("sized raw: ");    print(obj.rawSized[0]); print("^");
+    print("sized tracked: ");print(obj.trkSized[0]); print("^");
+    print("list raw: ");     for(int i=0;i<3;i++){ print(obj.rawList[i]); print(" "); } print("^");
+    print("list tracked: "); for(int i=0;i<3;i++){ print(obj.trkList[i]); print(" "); } print("^");
+    print("class member raw: "); print(h.vals[0]); print("^");
+}

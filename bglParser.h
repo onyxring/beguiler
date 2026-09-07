@@ -325,7 +325,7 @@ class bglParser {
         // (the caller should NOT continue member processing). Otherwise parses a variable
         // declaration into `members` and returns false.
         bool processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
-                                abstractObject* ctx = nullptr, Qualifiers* q = nullptr);
+                                abstractObject* ctx = nullptr, Qualifiers* q = nullptr, bool declIsRaw = false);
         void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false, bool isRef = false);
         void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false, string i6alias = "");
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "", bool isRef = false);
