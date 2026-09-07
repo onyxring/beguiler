@@ -67,6 +67,11 @@ class i6Emitter{
         // globals whose value is applied in bglInit through operator=); pass 3 must not
         // re-declare them.
         set<string> earlyDeclaredGlobals;
+        // Storage name for a member array promoted out of its property (see
+        // promoteMemberArrayIfOversized). One per owning instance.
+        static std::string promotedArrayName(const std::string& owner, const std::string& prop){
+            return "_bglPromoted_" + owner + "_" + prop;
+        }
         void emitDeferredBackingClass(classDef*);  // emit a superposed accessor class before its baked backing instance (once)
         set<string> declaredVerbWords;             // tracks which I6 trigger words have been Verb-declared
         set<string> evictedEmitted;                // evicted library words already emitted as `Extend only 'w' replace`

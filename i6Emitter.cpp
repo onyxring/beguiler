@@ -1564,12 +1564,21 @@ void i6Emitter::emitClass(classDef* classNode){
                 // instance gets its declared storage. Mirrors emitObject's array path.
                 out << format("    {0} ", arr->dName());
                 auto extIt = externalArrayNames.find(arr->name);
-                if(extIt != externalArrayNames.end()){
+                if(arr->isPromoted){
+                    // Storage lives in a per-instance global, so the class declares the
+                    // property and nothing else; each instance overrides it with a pointer
+                    // to its own. Emitting the data here would exceed the I6 property limit,
+                    // which is the very thing promotion exists to avoid.
+                } else if(extIt != externalArrayNames.end()){
                     out << extIt->second;
                 } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
                     for(expression* elem : list->elements) out << elem->text() << " ";
                 } else {
+                    // capacity + the trailing length slot (see the member length-slot rule)
+                    bool trackedMember = languageService.arrayInUse && !arr->isRaw
+                                      && arr->elementType != "dictionaryword";
                     for(int k = 0; k < arr->arraySize; k++) out << "0 ";
+                    if(trackedMember) out << "0 ";
                 }
                 out << sep << "\n";
             }
@@ -2670,6 +2679,34 @@ void i6Emitter::emitObject(objectDef* obj){
     // `extern object Name { ... }` now lives in `globals` (so it's referenceable), so the emit loop
     // reaches it here — this guard keeps it emission-free.
     if(obj->isExternal) return;
+
+    // Storage for member arrays promoted out of their property (see
+    // promoteMemberArrayIfOversized). Emitted BEFORE the object so the `with prop <name>`
+    // pointer has a declared target. One global per owning instance, using the tracked
+    // layout — header, data, length, magic — so the promoted member behaves exactly like
+    // any other array through the `ref` addressing its declaration was marked with.
+    {
+        std::function<void(vector<typeMember*>&)> emitPromoted = [&](vector<typeMember*>& members){
+            for(typeMember* m : members)
+                if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
+                    if(arr->isPromoted && arr->arraySize > 0){
+                        string nm = promotedArrayName(obj->dName(), arr->dName());
+                        out << format("array {0} table", nm);
+                        for(int k = 0; k < arr->arraySize; k++) out << " 0";
+                        out << " 0";        // length: starts empty, grows through append
+                        out << " $9084";    // tracked marker
+                        out << ";\n";
+                    }
+        };
+        emitPromoted(obj->members);
+        std::function<void(classDef*)> scan = [&](classDef* c){
+            if(c == nullptr) return;
+            emitPromoted(c->members);
+            for(classDef* b : c->baseClasses) scan(b);
+        };
+        scan(obj->objectClass);
+    }
+
     // find initial parent member, if set
     string parentValue;
     for(typeMember* m : obj->members)
@@ -2783,6 +2820,25 @@ void i6Emitter::emitObject(objectDef* obj){
     // need their property wired to the baked backing; the obj->members property loop won't see them,
     // so emit `with <member> <backing>` for them explicitly (overriding the class-level default).
     vector<pair<string,string>> inheritedOwned;   // (property short-name, backing object name)
+    // A promoted array declared on the CLASS still needs each instance's property pointed at
+    // that instance's own global — the class declares the property but no data, since the
+    // storage is per-instance.
+    {
+        set<string> ownArrNames;
+        for(typeMember* m : obj->members)
+            if(auto* a = dynamic_cast<arrayDeclaration*>(m)) ownArrNames.insert(a->name);
+        std::function<void(classDef*)> scanPromoted = [&](classDef* c){
+            if(c == nullptr) return;
+            for(typeMember* m : c->members)
+                if(auto* a = dynamic_cast<arrayDeclaration*>(m))
+                    if(a->isPromoted && !ownArrNames.count(a->name)){
+                        ownArrNames.insert(a->name);
+                        inheritedOwned.push_back({a->dName(), promotedArrayName(obj->dName(), a->dName())});
+                    }
+            for(classDef* b : c->baseClasses) scanPromoted(b);
+        };
+        scanPromoted(obj->objectClass);
+    }
     {
         set<string> ownMemberNames;
         for(typeMember* m : obj->members)
@@ -2834,7 +2890,12 @@ void i6Emitter::emitObject(objectDef* obj){
                 out << (first ? "  with " : ",\n       ");
                 out << arr->dName() << " ";
                 auto extIt = externalArrayNames.find(arr->name);
-                if(extIt != externalArrayNames.end()){
+                if(arr->isPromoted){
+                    // Too large for an I6 property: the storage is a synthesized global emitted
+                    // just above, and the property holds a pointer to it. One global PER OWNING
+                    // INSTANCE, so each object keeps independent state.
+                    out << promotedArrayName(obj->dName(), arr->dName());
+                } else if(extIt != externalArrayNames.end()){
                     // String-initialized array: emit pointer to external global array
                     out << extIt->second;
                 } else {

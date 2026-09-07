@@ -324,6 +324,8 @@ class bglParser {
         // `array<T> name(...)`, this dispatches to processRoutineDeclaration and returns true
         // (the caller should NOT continue member processing). Otherwise parses a variable
         // declaration into `members` and returns false.
+        // Promote a member array too large for an I6 property into a synthesized global.
+        void promoteMemberArrayIfOversized(arrayDeclaration& arrDecl);
         bool processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
                                 abstractObject* ctx = nullptr, Qualifiers* q = nullptr, bool declIsRaw = false);
         void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false, bool isRef = false);

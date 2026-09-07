@@ -423,7 +423,12 @@ class arrayDeclaration : public variableDeclaration {
         string elementType;          // the T in array<T>
         int arraySize = 0;           // N in array<T> name[N]; 0 if list-initialized
         bool isByteArray = false;    // true for array<char> — emit with -> instead of -->
-        bool isRaw = false;          // true for `rawArray<T>` — a raw I6 array with NO Beguile
+        bool isRaw = false;
+        // A member array too large for an I6 property (32 words on Z, including the trailing
+        // length slot) is PROMOTED: the compiler synthesizes a global tracked array per owning
+        // instance and the property holds a pointer to it. Addressing is then identical to a
+        // `ref` member, which is why isRefLocal is set alongside this.
+        bool isPromoted = false;          // true for `rawArray<T>` — a raw I6 array with NO Beguile
                                      // tracking layer: always emits a plain `table` (word0=count,
                                      // data at 1..N), never the <len>+<magic> trailer, even when
                                      // `<array>` is included. Matches bare I6 array APIs (orArray).

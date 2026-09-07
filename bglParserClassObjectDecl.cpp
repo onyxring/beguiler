@@ -919,6 +919,25 @@ void bglParser::processI6InlineMember(objectDef& obj){
     obj.members.push_back((typeMember*)&node);
 }
 
+// An I6 property holds at most 32 words on the Z-machine; Glulx has no practical limit.
+// A member array that does not fit — counting the trailing length slot — is PROMOTED: the
+// emitter synthesizes a global tracked array per owning instance and the property holds a
+// pointer to it. Marking it `ref` is what routes every access through the pointer form, so
+// promotion reuses that addressing wholesale rather than adding a third representation.
+// A rawArray is never promoted: it exists to BE an I6 property array, so exceeding the limit
+// is a real error the developer needs to see rather than have silently rewritten.
+void bglParser::promoteMemberArrayIfOversized(arrayDeclaration& arrDecl){
+    if(arrDecl.isRaw || arrDecl.isRefLocal) return;
+    if(arrDecl.elementType == "dictionaryword") return;   // I6 parser data; never rewritten
+    const string& t = beguilerSettings.target;
+    bool isZ = !t.empty() && (t[0] == 'z' || t[0] == 'Z');
+    if(!isZ) return;                                       // Glulx properties are effectively unbounded
+    const int I6_PROPERTY_WORD_LIMIT = 32;                 // hard I6 limit; length slot counts toward it
+    if(arrDecl.arraySize + 1 <= I6_PROPERTY_WORD_LIMIT) return;
+    arrDecl.isPromoted = true;
+    arrDecl.isRefLocal = true;   // addressed as a pointer from here on
+}
+
 bool bglParser::processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
                                    abstractObject* ctx, Qualifiers* q, bool declIsRaw){
     // `declIsRaw` distinguishes the keyword the caller consumed. `rawArray<T>` opts out of the
@@ -1028,6 +1047,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     if(sym.is(token::bracketOpen)){
         token sizeTok = file.getToken(eTokenType::integer);
         arrDecl.arraySize = stoi(sizeTok.value);
+        promoteMemberArrayIfOversized(arrDecl);
         file.getToken(token::bracketClose);
         file.getToken(token::endStatement);
     } else if(sym.is(token::assignment)){

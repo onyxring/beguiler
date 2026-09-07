@@ -1,0 +1,54 @@
+/*  A member array too large for an I6 property is promoted to a global, invisibly.
+
+    An I6 property holds at most 32 words on the Z-machine — counting the trailing length
+    slot — and exceeding it is a hard Inform 6 error naming a property the developer never
+    wrote: "Limit (of 32 values) exceeded for property". Glulx has no practical limit, so
+    the SAME declaration compiled there and failed on Z.
+
+    The compiler now picks the representation: small members stay inline property data,
+    oversized ones become a synthesized global that the property points at. The declaration
+    is marked `ref`, so all the pointer addressing applies unchanged — promotion adds no
+    third representation.
+
+    Storage is PER INSTANCE, so a class with an oversized member costs one global per
+    object. That is expected: the alternative is instances sharing state.
+
+    Never promoted: `rawArray<T>`, which exists to BE an I6 property array, so the limit is
+    a real error there; and `array<dictionaryWord>`, which is I6 parser data.  */
+// EXPECT_OUTPUT: small cap 4 len 1
+// EXPECT_OUTPUT: big cap 35 len 2 -> 7 9
+// EXPECT_OUTPUT: class r1 len 2 first 11
+// EXPECT_OUTPUT: class r2 len 1 first 99
+// EXPECT_OUTPUT: class-declared small cap 4 len 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+object obj {
+    array<int> small[4];      // fits — stays inline property data
+    array<int> big[35];       // too large — promoted
+}
+
+class Room { array<int> log[35]; }     // promoted, one global per instance
+object r1 : Room {}
+object r2 : Room {}
+
+class Bag { array<int> items[4]; }     // fits; class-declared members get the length slot too
+object b1 : Bag {}
+
+void main(){
+    bglInit();
+    obj.small += 1;
+    obj.big += 7; obj.big += 9;
+    print("small cap "); print(obj.small.size()); print(" len "); print(obj.small.length()); print("^");
+    print("big cap ");   print(obj.big.size());   print(" len "); print(obj.big.length());
+    print(" -> "); print(obj.big[0]); print(" "); print(obj.big[1]); print("^");
+
+    r1.log += 11; r1.log += 12;
+    r2.log += 99;
+    print("class r1 len "); print(r1.log.length()); print(" first "); print(r1.log[0]); print("^");
+    print("class r2 len "); print(r2.log.length()); print(" first "); print(r2.log[0]); print("^");
+
+    b1.items += 3; b1.items += 4;
+    print("class-declared small cap "); print(b1.items.size());
+    print(" len "); print(b1.items.length()); print("^");
+}
