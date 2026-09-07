@@ -1567,9 +1567,43 @@ The element type is enforced at every subscript site. Reading an element produce
 
 A byte array holds character *or* small-integer data, matching the dual use of I6's `->` byte arrays. Its initializer and element writes accept both character literals and integer values (`array<char> letters = {'H', 'i'}` or `array<char> scores = {5, 10, 15}`, and `scores[i] = 99`). An integer literal outside a byte's range (0..255) is a compile-time error; a non-literal `int` value that exceeds a byte wraps to its low byte at runtime, as any byte assignment would. Reading an element yields a `char`, which widens to `int` freely (a byte is a byte-sized non-negative integer): `int a = scores[i]` and arithmetic or comparison such as `scores[i] + scores[j]` and `scores[i] > threshold` all work, so a byte array is usable numerically without casts. When accumulating many byte values, sum into an `int` (`total += scores[i]`) rather than a `char`, since a `char` result is byte-wide. Printing a `char` prints it as a character; to print its numeric value, read it into an `int` (or cast) first.
 
+#### Member arrays
+
+An `array<T>` declared as an object or class member has the same semantics as any other
+array — `length()`, `append()`, `pop()` and the rest behave identically — even though its
+storage differs. The compiler picks the representation and hides it:
+
+| Declared capacity | Representation |
+|---|---|
+| fits an I6 property | inline property data, with the length in a **trailing** slot (so subscripts keep their 0-based `obj.&prop-->n` form). Capacity is `obj.#prop/WORDSIZE - 1` |
+| too large for one | a **synthesized global** with the tracked layout; the property holds a pointer to it |
+
+An I6 property holds at most **32 words** on the Z-machine, counting the length slot; Glulx
+has no practical limit, so promotion only occurs on Z targets. Storage is **per instance**, so
+a class with a promoted member costs one global per object — the alternative would be
+instances sharing state.
+
+Two kinds keep the bare I6 layout and are never promoted, because I6 owns them:
+
+- **`rawArray<T>`** (§4.9.1), which exists precisely to be an I6 property array. Exceeding the
+  property limit is a real error there, not something to rewrite around.
+- **`array<dictionaryWord>`**, which is parser data — the `name` property and its kin, read
+  word by word by I6. A trailing length would be matched as a dictionary word.
+
+A member may also be declared `ref`, in which case it holds a pointer to an array owned
+elsewhere and is bound with `:=` (§9.3.1) rather than owning storage of its own:
+
+```bgl
+array<int> shared[8];
+object w { ref array<int> log; }
+
+w.log := shared;      // bind
+w.log += 5;           // appends to `shared`
+```
+
 ### 4.9.1 `rawArray<T>` - raw I6 word arrays
 
-`rawArray<T>` is a typed view over a **bare I6 word array**, one with *no* length header and *no* tracking marker. Where `array<T>` reserves a count slot at index 0 (so `arr[i]` emits `arr-->(i+1)`), a `rawArray<T>` subscript emits the raw form `arr-->i`, indexing directly from word 0.
+`rawArray<T>` is a typed view over a **bare I6 word array**, one with *no* length header and *no* tracking marker. It is declarable at file scope, as an `extern`, as a parameter type, and as an object or class **member** — the member form being the escape hatch that keeps a Beguile member array from having to be I6-shaped. Where `array<T>` reserves a count slot at index 0 (so `arr[i]` emits `arr-->(i+1)`), a `rawArray<T>` subscript emits the raw form `arr-->i`, indexing directly from word 0.
 
 ```bgl
 bool ext_parsererror(int etype, rawArray<var> results) {
