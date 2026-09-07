@@ -2757,7 +2757,14 @@ void i6Emitter::emitObject(objectDef* obj){
             // One backing PER OBJECT (per class instance), so every instance owns independent state.
             string backing = "_" + obj->name + "_" + vd->name;
             emitDeferredBackingClass(cls);   // materialize a withheld superposed accessor class first
-            out << format("{0} {1};\n", cls->i6Name(), backing);
+            // The member's own class-typed fields need instances too, or `host.slot.inner` is
+            // 0 and anything reached through it writes to nothing. File-scope variables already
+            // got this; object members were emitted bare, so nesting stopped after one level.
+            set<classDef*> nestedVisited;
+            string nestedClause = synthesizeFieldBackings(cls, backing, nestedVisited);
+            out << format("{0} {1}", cls->i6Name(), backing);
+            if(!nestedClause.empty()) out << " " << nestedClause;
+            out << ";\n";
             ownedInstanceNames[vd->name] = backing;
             ownedMemberDecl[vd->name] = vd;
         };

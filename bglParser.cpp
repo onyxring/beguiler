@@ -425,13 +425,12 @@ void bglParser::recordObjectMemberInits(){
         // A class-typed member may itself hold class-typed members needing init — an object
         // whose field is a class with a stringObj in it. Walk down as the backing synthesis
         // does, tracking the path, and guarding against a type that contains its own type.
-        // Depth is capped at one level of nesting because that is how far backing synthesis
-        // goes for an object member: `object host { A slot; }` emits `a _host_slot;` with no
-        // `with partner …` clause, so a field of A that is itself class-typed has no instance.
-        // Recursing further would emit init for a path whose intermediate is 0 — a write to
-        // nothing. Raising this cap means teaching the emitter to nest backings first.
-        std::function<void(vector<variableDeclaration*>&, const string&, set<classDef*>&, int)> sweep =
-        [&](vector<variableDeclaration*>& members, const string& basePath, set<classDef*>& onPath, int depth){
+        // Descends as far as backing synthesis does. `onPath` stops a type that contains its
+        // own type from recursing forever — the same guard synthesizeFieldBackings uses, and
+        // the reason both stop at the same place, so an init is never emitted for a path whose
+        // intermediate instance was not created.
+        std::function<void(vector<variableDeclaration*>&, const string&, set<classDef*>&)> sweep =
+        [&](vector<variableDeclaration*>& members, const string& basePath, set<classDef*>& onPath){
         for(variableDeclaration* vd : members){
             if(vd == nullptr || vd->isStatic || vd->isConst || vd->isExternal) continue;
             if(vd->isRefLocal) continue;                  // a ref member owns nothing to initialise
@@ -446,7 +445,7 @@ void bglParser::recordObjectMemberInits(){
                })) initFn = dynamic_cast<functionDef*>(im);
             // No init of its own — but it may CONTAIN something that needs one.
             if(initFn == nullptr){
-                if(depth < 1 && onPath.insert(cls).second){
+                if(onPath.insert(cls).second){
                     vector<variableDeclaration*> nested;
                     set<string> nseen;
                     std::function<void(classDef*)> collect = [&](classDef* c){
@@ -457,7 +456,7 @@ void bglParser::recordObjectMemberInits(){
                         for(classDef* b : c->baseClasses) collect(b);
                     };
                     collect(cls);
-                    sweep(nested, path, onPath, depth + 1);
+                    sweep(nested, path, onPath);
                     onPath.erase(cls);
                 }
                 continue;
@@ -504,7 +503,7 @@ void bglParser::recordObjectMemberInits(){
         }
         };
         set<classDef*> onPath;
-        sweep(candidates, obj->dName(), onPath, 0);
+        sweep(candidates, obj->dName(), onPath);
     }
 }
 

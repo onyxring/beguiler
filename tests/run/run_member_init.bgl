@@ -24,7 +24,13 @@
 // EXPECT_OUTPUT: nested read: hero
 // EXPECT_OUTPUT: nested write: villain
 // EXPECT_OUTPUT: auto-typed: brave
+// EXPECT_OUTPUT: deep read: 4
+// EXPECT_OUTPUT: deep write: deep!
+// EXPECT_OUTPUT: self-containing ok: n
 #beguilerSettings { target = z5; informName = "none"; }
+// Every live stringObj takes a pool slot, and a class field costs one PER INSTANCE, so a
+// fixture with this many of them needs more than the default 10 (§16.2.4).
+#i6 { Constant bglStringPoolReserve 40; }
 #include <string>
 
 stringObj g = "worldwide";           // file scope, with initializer
@@ -50,6 +56,17 @@ object player { Inner info; }
 
 // The same shape reached through an inline auto-typed object.
 object hero { auto card = { stringObj motto = "brave"; } }
+
+// Several levels down. Backings nest as far as the init sweep descends, so the two stop at
+// the same place and an init is never emitted for a path whose instance was not created.
+class L3 { stringObj tag = "4"; }
+class L2 { stringObj tag = "3"; L3 next; }
+class L1 { stringObj tag = "2"; L2 next; }
+object deep { L1 top; }
+
+// A class holding its own type must not recurse forever in either pass.
+class Cycle { stringObj tag = "n"; Cycle child; }
+object cyc { Cycle top; }
 
 void main(){
     bglInit();
@@ -79,4 +96,9 @@ void main(){
     player.info.title = "villain";
     print("nested write: "); print(player.info.title);       print("^");
     print("auto-typed: ");   print(hero.card.motto);         print("^");
+
+    print("deep read: ");    print(deep.top.next.next.tag);  print("^");
+    deep.top.next.next.tag = "deep!";
+    print("deep write: ");   print(deep.top.next.next.tag);  print("^");
+    print("self-containing ok: "); print(cyc.top.tag);       print("^");
 }
