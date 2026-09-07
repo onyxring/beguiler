@@ -1207,6 +1207,40 @@ std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::
     return memberName;
 }
 
+// Whether a member array carries Beguile's trailing length slot. Mirrors the emitter's rule
+// exactly, since the two must agree on the layout: `rawArray<T>` opts out, and
+// `array<dictionaryWord>` stays bare because I6 reads it as parser data. Consulted by the
+// inline size()/length() fast path, which cannot route through _bglArray when <array> is
+// absent and so has to know the layout itself.
+bool bglParser::memberArrayIsTracked(const std::string& ownerName, const std::string& propName,
+                                     functionDef* func, statementBlock* body){
+    if(!languageService.arrayInUse) return false;
+    auto check = [&](vector<typeMember*>& members) -> int {   // -1 unknown, 0 raw, 1 tracked
+        for(typeMember* m : members)
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(m))
+                if(ad->name == propName)
+                    return (ad->isRaw || ad->elementType == "dictionaryword") ? 0 : 1;
+        return -1;
+    };
+    string owner = ownerName == "self" ? (currentObject ? currentObject->name
+                                        : (currentClass ? currentClass->name : string()))
+                                      : ownerName;
+    if(owner.empty()) return false;
+    typeDef& td = languageService.getType(resolveIdentifierType(owner, func, body).empty()
+                                         ? owner : resolveIdentifierType(owner, func, body));
+    if(auto* od = dynamic_cast<objectDef*>(&td)){
+        int r = check(od->members); if(r >= 0) return r == 1;
+        for(classDef* c = od->objectClass; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0]){
+            int rc = check(c->members); if(rc >= 0) return rc == 1;
+        }
+    }
+    if(auto* cd = dynamic_cast<classDef*>(&td))
+        for(classDef* c = cd; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0]){
+            int rc = check(c->members); if(rc >= 0) return rc == 1;
+        }
+    return false;
+}
+
 bool bglParser::splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                      string& ownerOut, string& propOut){
     if(func == nullptr) return false;

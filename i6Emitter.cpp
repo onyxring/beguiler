@@ -2837,11 +2837,28 @@ void i6Emitter::emitObject(objectDef* obj){
                 if(extIt != externalArrayNames.end()){
                     // String-initialized array: emit pointer to external global array
                     out << extIt->second;
-                } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-                    for(expression* elem : list->elements) out << elem->text() << " ";
                 } else {
-                    // N zero slots (size is encoded via obj.#prop, not in element 0)
-                    for(int k = 0; k < arr->arraySize; k++) out << "0 ";
+                    // A tracked `array<T>` member carries its length in a TRAILING slot, so the
+                    // data keeps its 0-based `obj.&prop-->n` indexing and only size()/length()
+                    // change. Capacity is therefore obj.#prop/WORDSIZE - 1. `rawArray<T>` opts
+                    // out and stays the bare I6 property array an I6 library can read.
+                    // `array<dictionaryWord>` is I6 PARSER data — the `name` property and its
+                    // kin, which I6 reads word by word. A trailing length would be read as a
+                    // dictionary word and corrupt matching, so those keep the bare layout no
+                    // matter what. Same reasoning as rawArray, applied by element type.
+                    bool trackedMember = languageService.arrayInUse && !arr->isRaw
+                                      && arr->elementType != "dictionaryword";
+                    int seeded = 0;
+                    if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
+                        for(expression* elem : list->elements){ out << elem->text() << " "; seeded++; }
+                        for(int k = seeded; k < arr->arraySize; k++) out << "0 ";
+                    } else {
+                        // N zero slots (capacity is encoded via obj.#prop, not in element 0)
+                        for(int k = 0; k < arr->arraySize; k++) out << "0 ";
+                    }
+                    // Length starts at the seeded count: a list-initialised member is full,
+                    // a sized-but-unseeded one is empty and grows through append.
+                    if(trackedMember) out << seeded << " ";
                 }
                 first = false;
             } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){

@@ -200,20 +200,24 @@ object _bglArray {
     }
 
     int size(var obj, var prop){
-        #i6 { if(metaclass(obj)==object) return obj.#prop/WORDSIZE; }
+        // A member array reserves its LAST word for the length, so capacity is one less than
+        // the property holds. The data keeps 0-based `obj.&prop-->n` indexing — putting the
+        // length first would have shifted every subscript. `rawArray<T>` members opt out of
+        // the slot entirely and reject the operations that would read it.
+        #i6 { if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; }
         if(isTracked(obj, prop)) return rawGet(obj, 0) - 2;
         return rawGet(obj, 0);
     }
 
     int length(var obj, var prop){
-        #i6 { if(metaclass(obj)==object) return obj.#prop/WORDSIZE; }   // members: length == size
+        #i6 { if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); }
         if(isTracked(obj, prop)) return rawGet(obj, rawGet(obj, 0) - 1);
         // Untracked fallback: report size so length() never lies bigger than truth.
         return rawGet(obj, 0);
     }
 
     void setLength(var obj, var prop, int n){
-        #i6 { if(metaclass(obj)==object) return; }   // members: fixed-size property array, no-op
+        #i6 { if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } }
         if(isTracked(obj, prop)){
             if(n < 0){
                 print("^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^");

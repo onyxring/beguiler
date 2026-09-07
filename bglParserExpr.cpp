@@ -1789,11 +1789,20 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         }
 
                         string callText;
-                        // size()/length() on a member array: (obj.#prop)/WORDSIZE — bypass the
-                        // (possibly <array>-replaced) emitter body. Members are never tracked, so
-                        // length()==size(). Stage 2 routes the algorithm methods through the utility.
+                        // size()/length() on a member array inline here rather than routing
+                        // through _bglArray, which may not exist when <array> is absent — so this
+                        // has to know the layout itself and agree with the emitter. A tracked
+                        // member spends its LAST word on the length: capacity is one less than the
+                        // property holds, and the length is read from that slot. A rawArray or a
+                        // dictionaryWord array keeps the bare layout, where length == size.
                         if(isMemberArr && (methName == "size" || methName == "length")){
-                            callText = "((" + mOwner + ".#" + mProp + ")/WORDSIZE)";
+                            string words = "((" + mOwner + ".#" + mProp + ")/WORDSIZE)";
+                            if(memberArrayIsTracked(mOwner, mProp, func, body))
+                                callText = (methName == "size")
+                                         ? "(" + words + " - 1)"
+                                         : "(" + mOwner + ".&" + mProp + "-->(" + words + " - 1))";
+                            else
+                                callText = words;
                             expr->tokens.push_back(callText);
                         }
                         else if(method->isEmitter){

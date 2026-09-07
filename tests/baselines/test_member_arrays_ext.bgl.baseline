@@ -109,21 +109,21 @@ object _bglArray
     return self.rawget(obj,hdr)==36996&&self.rawget(obj,hdr-1)>=0;
   ],
        size [obj prop;
-     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     if (self.istracked(obj,prop)) {
         return self.rawget(obj,0)-2;
     }
     return self.rawget(obj,0);
   ],
        length [obj prop;
-     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+     if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     if (self.istracked(obj,prop)) {
         return self.rawget(obj,self.rawget(obj,0)-1);
     }
     return self.rawget(obj,0);
   ],
        setLength [obj prop n;
-     if(metaclass(obj)==object) return; 
+     if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     if (self.istracked(obj,prop)) {
         if (n < 0) {
             print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
@@ -535,7 +535,7 @@ object _bglArray
 ;
 global _bglWorldBufIdx = -1;
 object widget
-  with nums 30 10 20 ,
+  with nums 30 10 20 3 ,
        findIt [;
     return _bglArray.indexOf(self, nums, 20, 0);
   ],
@@ -543,7 +543,7 @@ object widget
     return (_bglArray.indexOf(self, nums, 10, 0) >= 0);
   ],
        lenOf [;
-    return ((self.#nums)/WORDSIZE);
+    return (self.&nums-->(((self.#nums)/WORDSIZE) - 1));
   ],
        sortIt [;
     _bglArray.sortDefault(self, nums, 0);

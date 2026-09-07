@@ -62,21 +62,21 @@ object _bglArray
     return self.rawget(obj,hdr)==36996&&self.rawget(obj,hdr-1)>=0;
   ],
        size [obj prop;
-     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+     if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     if (self.istracked(obj,prop)) {
         return self.rawget(obj,0)-2;
     }
     return self.rawget(obj,0);
   ],
        length [obj prop;
-     if(metaclass(obj)==object) return obj.#prop/WORDSIZE; 
+     if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     if (self.istracked(obj,prop)) {
         return self.rawget(obj,self.rawget(obj,0)-1);
     }
     return self.rawget(obj,0);
   ],
        setLength [obj prop n;
-     if(metaclass(obj)==object) return; 
+     if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     if (self.istracked(obj,prop)) {
         if (n < 0) {
             print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
@@ -293,7 +293,7 @@ array g_objs table plainobj1 plainobj2 2 $9084;
 array g_rooms table r1 r2 2 $9084;
 array g_buf buffer 32;
 object inventory
-  with slots 0 0 0 0 0 0 ,
+  with slots 0 0 0 0 0 0 0 ,
        count 0
 ;
 [main i b r o c ch;

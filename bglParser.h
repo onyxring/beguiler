@@ -414,6 +414,9 @@ class bglParser {
         // Drives member-array access through the orLibrary property-array convention.
         // Emitted I6 property name for a member, honouring `Type member as <i6name>;`.
         std::string memberI6Name(const std::string& recvTypeName, const std::string& memberName);
+        // Does a member array carry the trailing length slot? Must match the emitter's rule.
+        bool memberArrayIsTracked(const std::string& ownerName, const std::string& propName,
+                                  functionDef* func, statementBlock* body);
         bool splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                   string& ownerOut, string& propOut);
         // `$elemop(<op>)` — the element type's implementation of one operator, as either a
