@@ -412,6 +412,8 @@ class bglParser {
         // If `name` resolves to an object-property (member), split its qualified form
         // ("owner.prop") into owner + prop and return true; globals/locals return false.
         // Drives member-array access through the orLibrary property-array convention.
+        // Emitted I6 property name for a member, honouring `Type member as <i6name>;`.
+        std::string memberI6Name(const std::string& recvTypeName, const std::string& memberName);
         bool splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                   string& ownerOut, string& propOut);
         // `$elemop(<op>)` — the element type's implementation of one operator, as either a

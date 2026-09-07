@@ -1,0 +1,39 @@
+/*  `Type member as <i6name>;` — the member emits under the alias everywhere.
+
+    The declaration honoured it and nothing else did, so `r1.score = 9` on a member
+    declared `int score as pts` emitted `r1.score = 9` against a property emitted as
+    `pts` — "No such constant as score", invalid I6 from a documented feature that no
+    test exercised.
+
+    Four paths had to agree: an external read, an external write (including the
+    operator= dispatch for a type like stringObj), a compound assignment, and a bare
+    reference from inside the object's own body.
+
+    The alias exists to dodge an I6 symbol clash. Note it does NOT rescue a member
+    named after one of I6's reserved ADDITIVE properties (`name`), because `as` is not
+    accepted in a class body, and that failure needs a class default plus an instance
+    override.  */
+// EXPECT_OUTPUT: read: 7
+// EXPECT_OUTPUT: compound: 10
+// EXPECT_OUTPUT: method: 11
+// EXPECT_OUTPUT: strmethod: HELLO
+// EXPECT_OUTPUT: strwrite: plum
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+object r1 {
+    int score as pts = 7;
+    stringObj title as caption = "hello";
+    int bump(){ score = score + 1; return score; }   // bare reference inside the body
+}
+
+void main(){
+    bglInit();
+    print("read: ");      print(r1.score);           print("^");
+    r1.score += 3;
+    print("compound: ");  print(r1.score);           print("^");
+    print("method: ");    print(r1.bump());          print("^");
+    print("strmethod: "); print(r1.title.toUpper()); print("^");
+    r1.title = "plum";                                // operator= into an aliased member
+    print("strwrite: ");  print(r1.title);           print("^");
+}

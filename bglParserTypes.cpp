@@ -1182,6 +1182,31 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
     return out;
 }
 
+// The I6 property name a member is emitted under. `Type member as <i6name>;` lets a member's
+// emitted identifier differ from its Beguile name, which is how a member dodges an I6 symbol
+// clash — including one of the compiler's reserved additive properties such as `name`. The
+// declaration honoured the alias but access sites did not, emitting `obj.<beguileName>` for a
+// property declared under another name, which I6 rejects outright.
+std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::string& memberName){
+    if(recvTypeName.empty() || memberName.empty()) return memberName;
+    typeDef& td = languageService.getType(recvTypeName);
+    auto pick = [&](vector<typeMember*>& members) -> string {
+        for(typeMember* m : members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(vd->name == memberName && !vd->i6name.empty()) return vd->i6name;
+        return "";
+    };
+    if(auto* od = dynamic_cast<objectDef*>(&td)){
+        if(string a = pick(od->members); !a.empty()) return a;
+        for(classDef* c = od->objectClass; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0])
+            if(string a = pick(c->members); !a.empty()) return a;
+    }
+    if(auto* cd = dynamic_cast<classDef*>(&td))
+        for(classDef* c = cd; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0])
+            if(string a = pick(c->members); !a.empty()) return a;
+    return memberName;
+}
+
 bool bglParser::splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                      string& ownerOut, string& propOut){
     if(func == nullptr) return false;
@@ -1307,9 +1332,14 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     // Uses the member's displayName (via dName()) so user case is preserved in I6 emission.
     if(!forceGlobalScope && currentObject != nullptr)
         for(typeMember* m : currentObject->members)
-            if(m->name == name)
-                if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
-                    return "self." + m->dName();
+            if(m->name == name){
+                // `as <i6name>` — a member emits under its alias, so a bare reference from
+                // inside the object's own body must resolve to the same property.
+                if(auto* avd = dynamic_cast<variableDeclaration*>(m))
+                    return "self." + (avd->i6name.empty() ? avd->dName() : avd->i6name);
+                if(auto* afd = dynamic_cast<functionDef*>(m))
+                    return "self." + (afd->i6name.empty() ? afd->dName() : afd->i6name);
+            }
     if(!forceGlobalScope && currentClass != nullptr){
         // Direct members: match both variables and functions (same as before).
         // Static variables resolve to their mangled global name, not `self.name` — they
@@ -1318,7 +1348,9 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             if(m->name == name)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                     if(vd->isStatic) return "_bgl_" + currentClass->dName() + "_" + vd->dName();
-                    return "self." + vd->dName();
+                    // `as <i6name>` — the member emits under the alias, so a bare reference
+                    // inside the object's own body has to resolve to it too.
+                    return "self." + (vd->i6name.empty() ? vd->dName() : vd->i6name);
                 }
                 else if(dynamic_cast<functionDef*>(m))
                     return "self." + m->dName();

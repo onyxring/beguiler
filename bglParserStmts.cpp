@@ -1458,6 +1458,15 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             string qualified = qualifyIdentifier(lhsOriginal, func, body);
             if(qualified.empty())
                 parsingError(format("Undeclared variable '{0}'", lhsOriginal));
+            // Honour a member's `as <i6name>` alias on the assignment target, as the read
+            // path does — the declaration emits under the alias, so writing to the Beguile
+            // name would target a property that does not exist.
+            if(size_t d = qualified.rfind('.'); d != string::npos){
+                string recvPath = lhsOriginal.substr(0, lhsOriginal.rfind('.'));
+                string mem      = qualified.substr(d + 1);
+                string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
+                if(aliased != mem) qualified = qualified.substr(0, d + 1) + aliased;
+            }
             assignExpr.variableLeft = qualified;
         } else {
             assignExpr.variableLeft = lhsOriginal;
@@ -1467,7 +1476,18 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         typeDef* leftType = nullptr;
         bool lhsIsRefLocal = false;     // set true if the bare LHS resolves to a `ref` local
         bool lhsIsByteArray = false;    // set true if the LHS is an array<char> (byteArray) — value-copy unsupported
-        string emitterSelfForLhs = lhsOriginal;  // $self value for emitter substitution
+        // $self for emitter substitution. A member declared `as <i6name>` emits under that
+        // name, so the emitter body has to address it the same way the declaration did —
+        // otherwise `r1.name = "x"` sent the message to a property that does not exist.
+        string emitterSelfForLhs = lhsOriginal;
+        if(func != nullptr){
+            if(size_t ed = lhsOriginal.rfind('.'); ed != string::npos){
+                string recvPath = lhsOriginal.substr(0, ed);
+                string mem      = lhsOriginal.substr(ed + 1);
+                string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
+                if(aliased != mem) emitterSelfForLhs = recvPath + "." + aliased;
+            }
+        }
 
         size_t lhsDot = lhsOriginal.rfind('.');
         if(lhsDot != string::npos){
@@ -1900,6 +1920,18 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
     if(symbol.is(eTokenType::oper) && find(compoundOps.begin(), compoundOps.end(), symbol.value) != compoundOps.end()){
         string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
         if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
+        // Honour a member's `as <i6name>` alias, as the plain-assignment and read paths do:
+        // the member emits under the alias, so a compound write to its Beguile name targeted
+        // a property that does not exist ("No such constant as score").
+        if(func != nullptr){
+            if(size_t cd2 = tok.value.rfind('.'); cd2 != string::npos){
+                string recvPath = tok.value.substr(0, cd2);
+                string mem      = tok.value.substr(cd2 + 1);
+                string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
+                size_t ld = lhs.rfind('.');
+                if(aliased != mem && ld != string::npos) lhs = lhs.substr(0, ld + 1) + aliased;
+            }
+        }
         if(isConstVariable(tok.value, func, body))
             parsingError(format("Cannot assign to const variable '{0}'", tok.value));
 

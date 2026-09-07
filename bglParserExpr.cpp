@@ -2141,7 +2141,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             // local being referenced out of the way. Inside parentheses the name is an
                             // ordinary expression token, so it renames consistently or not at all.
                             string accessText = computedProp.empty()
-                                ? objText + "." + member.value
+                                ? objText + "." + memberI6Name(resolveIdentifierType(cur.value, func, body), member.value)
                                 : objText + ".(" + computedProp + ")";
                             // Property-class read: if the member's declared type is a property-class
                             // (owner-based operator() read emitter, e.g. parentProp → parent($self)),
