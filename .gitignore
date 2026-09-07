@@ -16,3 +16,6 @@ docs/.obsidian/
 
 # Per-object build artifacts and header depfiles
 /build/
+
+# Release announcement drafts — posted to the forum; kept here only as a local copy
+/docs/preview 4 post.md
