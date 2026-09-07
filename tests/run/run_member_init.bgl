@@ -21,6 +21,9 @@
 // EXPECT_OUTPUT: inherited written: changed
 // EXPECT_OUTPUT: sibling untouched: a room
 // EXPECT_OUTPUT: instance override: special
+// EXPECT_OUTPUT: nested read: hero
+// EXPECT_OUTPUT: nested write: villain
+// EXPECT_OUTPUT: auto-typed: brave
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
 
@@ -38,6 +41,15 @@ class Room { stringObj desc = "a room"; }
 object r1 : Room {}
 object r2 : Room {}
 object r3 : Room { desc = "special"; }        // instance overrides the class default
+
+// A class-typed member that itself holds one needing init. Backing synthesis reaches one
+// level for an object member, so the sweep matches that depth: `player.info.title` has an
+// instance to initialise, and going deeper would write through a slot that is still 0.
+class Inner { stringObj title = "hero"; }
+object player { Inner info; }
+
+// The same shape reached through an inline auto-typed object.
+object hero { auto card = { stringObj motto = "brave"; } }
 
 void main(){
     bglInit();
@@ -62,4 +74,9 @@ void main(){
     print("inherited written: "); print(r1.desc);           print("^");
     print("sibling untouched: "); print(r2.desc);           print("^");
     print("instance override: "); print(r3.desc);           print("^");
+
+    print("nested read: ");  print(player.info.title);       print("^");
+    player.info.title = "villain";
+    print("nested write: "); print(player.info.title);       print("^");
+    print("auto-typed: ");   print(hero.card.motto);         print("^");
 }

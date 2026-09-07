@@ -422,22 +422,49 @@ void bglParser::recordObjectMemberInits(){
         };
         scanClass(obj->objectClass);
 
-        for(variableDeclaration* vd : candidates){
+        // A class-typed member may itself hold class-typed members needing init — an object
+        // whose field is a class with a stringObj in it. Walk down as the backing synthesis
+        // does, tracking the path, and guarding against a type that contains its own type.
+        // Depth is capped at one level of nesting because that is how far backing synthesis
+        // goes for an object member: `object host { A slot; }` emits `a _host_slot;` with no
+        // `with partner …` clause, so a field of A that is itself class-typed has no instance.
+        // Recursing further would emit init for a path whose intermediate is 0 — a write to
+        // nothing. Raising this cap means teaching the emitter to nest backings first.
+        std::function<void(vector<variableDeclaration*>&, const string&, set<classDef*>&, int)> sweep =
+        [&](vector<variableDeclaration*>& members, const string& basePath, set<classDef*>& onPath, int depth){
+        for(variableDeclaration* vd : members){
             if(vd == nullptr || vd->isStatic || vd->isConst || vd->isExternal) continue;
             if(vd->isRefLocal) continue;                  // a ref member owns nothing to initialise
             auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
             if(cls == nullptr) continue;
+            string path = basePath + "." + (vd->i6name.empty() ? vd->dName() : vd->i6name);
             functionDef* initFn = nullptr;
             if(typeMember* im = findMemberInHierarchy(cls, [&](typeMember* mm){
                     auto* f = dynamic_cast<functionDef*>(mm);
                     return f && f->name == "init" && f->isEmitter && f->params.empty()
                            && dynamic_cast<i6Block*>(f->body) != nullptr;
                })) initFn = dynamic_cast<functionDef*>(im);
-            if(initFn == nullptr) continue;
+            // No init of its own — but it may CONTAIN something that needs one.
+            if(initFn == nullptr){
+                if(depth < 1 && onPath.insert(cls).second){
+                    vector<variableDeclaration*> nested;
+                    set<string> nseen;
+                    std::function<void(classDef*)> collect = [&](classDef* c){
+                        if(c == nullptr) return;
+                        for(typeMember* nm : c->members)
+                            if(auto* nvd = dynamic_cast<variableDeclaration*>(nm))
+                                if(nseen.insert(nvd->name).second) nested.push_back(nvd);
+                        for(classDef* b : c->baseClasses) collect(b);
+                    };
+                    collect(cls);
+                    sweep(nested, path, onPath, depth + 1);
+                    onPath.erase(cls);
+                }
+                continue;
+            }
 
-            string path = obj->dName() + "." + (vd->i6name.empty() ? vd->dName() : vd->i6name);
-            string body = trim(processBglConditionals(dynamic_cast<i6Block*>(initFn->body)->i6Body));
-            if(body.empty()) continue;
+            string body = initFn == nullptr ? string()
+                        : trim(processBglConditionals(dynamic_cast<i6Block*>(initFn->body)->i6Body));
             body = replaceWord(body, "$self", path);
             body = replaceWord(body, "$val",  path);
             languageService.globalInits.push_back({path, body});
@@ -475,6 +502,9 @@ void bglParser::recordObjectMemberInits(){
                 }
             }
         }
+        };
+        set<classDef*> onPath;
+        sweep(candidates, obj->dName(), onPath, 0);
     }
 }
 
