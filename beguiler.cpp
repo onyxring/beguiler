@@ -324,6 +324,7 @@ bool beguiler::go(int argc, char* argv[]) {
     // any overload of the set). Call-site mangling and this pass agree on the mangled name,
     // so re-applying is idempotent.
     parser.assignObjectMethodOverloadMangling();
+    parser.recordObjectMemberInits();
 
     // Apply defaults declared on beguilerSettingsType schema members for any unset fields
     parser.applySchemaDefaults();

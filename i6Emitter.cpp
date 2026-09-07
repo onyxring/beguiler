@@ -1011,6 +1011,16 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
                 out << format("global {0} = 0;\n", arr->dName());
             }
         }
+        // Same reason, for a class-typed global whose value is applied in bglInit through
+        // its type's operator= (see processVariableDeclaration): the directive has to exist
+        // before the routine that writes to it.
+        for(typeDef* g : languageService.globals){
+            auto* vd = dynamic_cast<variableDeclaration*>(g);
+            if(vd != nullptr && vd->needsEarlyGlobalDecl && !vd->isExternal){
+                out << format("global {0};\n", vd->dName());
+                earlyDeclaredGlobals.insert(vd->name);
+            }
+        }
     }
 
     // Synthesise bglInit — always emitted, even if empty; guarded against double-call.
@@ -2644,8 +2654,12 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         out<<format("{0} {1}", typeName, varI6Name);
         if(!backingClause.empty()) out << " " << backingClause;
     }
-    else
+    else {
+        // Already declared ahead of bglInit so the routine had a valid lvalue to assign to
+        // (see the early-declaration pass). Re-declaring here would collide.
+        if(earlyDeclaredGlobals.count(varNode->name)) return;
         out<<format("global {0}", varI6Name);
+    }
     if(varNode->declaredExpressionValue != nullptr)
         out<<format(" = {0}", varNode->declaredExpressionValue->text());
     out<<";\n";

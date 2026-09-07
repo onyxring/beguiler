@@ -1528,7 +1528,13 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     }
                 }
             }
-            if(emitterSelfForLhs.rfind("_bgl_", 0) != 0)   // don't override if already set by static member resolution
+            // $self = the OWNER for a property-class member, whose emitters are written against
+            // the host (parentProp's `parent($self)`). For a member that simply stores a class
+            // instance, $self is the member itself — its operator= acts on the stored value, so
+            // pointing $self at the owner sent the message to the wrong object entirely
+            // (`j.setFromLit(...)` instead of `j.name.setFromLit(...)`).
+            if(emitterSelfForLhs.rfind("_bgl_", 0) != 0
+               && (leftType == nullptr || isPropertyClassType(leftType->name)))
                 emitterSelfForLhs = ownerPath;  // $self = the owner object, not the full obj.prop path
         } else {
             if(func != nullptr){

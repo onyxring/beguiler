@@ -63,6 +63,10 @@ class i6Emitter{
         map<string,vector<string>> superposedClassBaseNames;
         bool emittingSuperposedBody = false;
         set<classDef*> emittedClasses;             // classes whose I6 `Class` directive has been written (shared by Pass-3 + create+populate)
+        // Globals already declared ahead of bglInit (byte-array pointers, and class-typed
+        // globals whose value is applied in bglInit through operator=); pass 3 must not
+        // re-declare them.
+        set<string> earlyDeclaredGlobals;
         void emitDeferredBackingClass(classDef*);  // emit a superposed accessor class before its baked backing instance (once)
         set<string> declaredVerbWords;             // tracks which I6 trigger words have been Verb-declared
         set<string> evictedEmitted;                // evicted library words already emitted as `Extend only 'w' replace`

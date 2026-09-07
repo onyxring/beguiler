@@ -236,6 +236,10 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         // derived locals, but available for plain (non-tree-citizen) classes without
         // forcing the user to write `operator =` or inherit from `object`.
         bool isRefLocal = false;
+        // File-scope class-typed var whose value is applied in bglInit (via operator=) rather
+        // than in the I6 `global` directive: the directive must be emitted BEFORE bglInit, or
+        // I6 rejects the assignment with "'=' applied to undeclared variable".
+        bool needsEarlyGlobalDecl = false;
         expression* declaredExpressionValue = nullptr;
         string initEmitterBody;  // raw i6 body if operator= is an emitter, else ""
         string initEmitterParam; // parameter name to substitute in the body

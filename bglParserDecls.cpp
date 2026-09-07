@@ -713,6 +713,40 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                 string subbed = replaceWord(bodyText, "$self", varDecl.name);
                 subbed = replaceWord(subbed, "$val", varDecl.name);
                 languageService.globalInits.push_back({varDecl.name, subbed});
+                // The declared value has to be applied through the type's operator= AFTER
+                // init has run, not baked into the I6 `global` directive. For a type whose
+                // init allocates (stringObj), the slot holds that allocation — writing the
+                // literal into the directive both overwrites it and emits a global whose
+                // initializer bglInit has already assigned over.
+                if(varDecl.declaredExpressionValue != nullptr){
+                    string rhsText = varDecl.declaredExpressionValue->text();
+                    string rhsType = varDecl.declaredExpressionValue->resolvedType;
+                    typeMember* opm = findMemberInHierarchy(cls, [&](typeMember* mm){
+                        auto* f = dynamic_cast<functionDef*>(mm);
+                        return f && f->name == "=" && f->isEmitter && f->params.size() == 1
+                               && f->params[0]->type.name == rhsType
+                               && dynamic_cast<i6Block*>(f->body) != nullptr;
+                    });
+                    if(opm == nullptr)
+                        opm = findMemberInHierarchy(cls, [&](typeMember* mm){
+                            auto* f = dynamic_cast<functionDef*>(mm);
+                            return f && f->name == "=" && f->isEmitter && f->params.size() == 1
+                                   && f->params[0]->type.name == "var"
+                                   && dynamic_cast<i6Block*>(f->body) != nullptr;
+                        });
+                    if(opm != nullptr){
+                        auto* opFn = dynamic_cast<functionDef*>(opm);
+                        string ab = processBglConditionals(dynamic_cast<i6Block*>(opFn->body)->i6Body);
+                        size_t a0=ab.find_first_not_of(" \t\n\r"); if(a0!=string::npos) ab=ab.substr(a0);
+                        size_t a1=ab.find_last_not_of(" \t\n\r");  if(a1!=string::npos) ab=ab.substr(0,a1+1);
+                        ab = replaceWord(ab, "$" + opFn->params[0]->name, rhsText);
+                        ab = replaceWord(ab, "$self", varDecl.name);
+                        ab = replaceWord(ab, "$val",  varDecl.name);
+                        languageService.globalInits.push_back({varDecl.name, ab});
+                        varDecl.declaredExpressionValue = nullptr;   // no longer baked into the directive
+                        varDecl.needsEarlyGlobalDecl = true;         // declare before bglInit writes to it
+                    }
+                }
             }
         }
     }

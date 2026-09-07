@@ -385,6 +385,72 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
     }
 }
 
+// A class-typed OBJECT MEMBER whose type has an `init` emitter needs that init run, exactly as
+// a local or a file-scope variable does. Locals inject it at the declaration and file-scope vars
+// record it in globalInits; object members had no path at all, so `object j { stringObj name =
+// "fish"; }` left the raw literal in the property and every method call dispatched against `j`.
+//
+// Recorded here rather than at the member's parse site because a member's declared value is
+// attached after the member itself, and because inherited members have to be swept too.
+void bglParser::recordObjectMemberInits(){
+    auto trim = [](string v){
+        size_t a = v.find_first_not_of(" \t\n\r"); if(a == string::npos) return string();
+        size_t b = v.find_last_not_of(" \t\n\r");
+        return v.substr(a, b - a + 1);
+    };
+    for(typeDef* g : languageService.globals){
+        auto* obj = dynamic_cast<objectDef*>(g);
+        if(obj == nullptr || obj->isExternal) continue;
+        for(typeMember* m : obj->members){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd == nullptr || vd->isStatic || vd->isConst || vd->isExternal) continue;
+            if(vd->isRefLocal) continue;                  // a ref member owns nothing to initialise
+            auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+            if(cls == nullptr) continue;
+            functionDef* initFn = nullptr;
+            if(typeMember* im = findMemberInHierarchy(cls, [&](typeMember* mm){
+                    auto* f = dynamic_cast<functionDef*>(mm);
+                    return f && f->name == "init" && f->isEmitter && f->params.empty()
+                           && dynamic_cast<i6Block*>(f->body) != nullptr;
+               })) initFn = dynamic_cast<functionDef*>(im);
+            if(initFn == nullptr) continue;
+
+            string path = obj->dName() + "." + (vd->i6name.empty() ? vd->dName() : vd->i6name);
+            string body = trim(processBglConditionals(dynamic_cast<i6Block*>(initFn->body)->i6Body));
+            if(body.empty()) continue;
+            body = replaceWord(body, "$self", path);
+            body = replaceWord(body, "$val",  path);
+            languageService.globalInits.push_back({path, body});
+
+            // The declared value goes through the type's operator= after init, for the same
+            // reason it does at file scope: the slot holds what init put there.
+            if(vd->declaredExpressionValue != nullptr){
+                string rhsText = vd->declaredExpressionValue->text();
+                string rhsType = vd->declaredExpressionValue->resolvedType;
+                auto findAssign = [&](const string& want) -> functionDef* {
+                    typeMember* am = findMemberInHierarchy(cls, [&](typeMember* mm){
+                        auto* f = dynamic_cast<functionDef*>(mm);
+                        return f && f->name == "=" && f->isEmitter && f->params.size() == 1
+                               && f->params[0]->type.name == want
+                               && dynamic_cast<i6Block*>(f->body) != nullptr;
+                    });
+                    return am ? dynamic_cast<functionDef*>(am) : nullptr;
+                };
+                functionDef* opFn = findAssign(rhsType);
+                if(opFn == nullptr) opFn = findAssign("var");
+                if(opFn != nullptr){
+                    string ab = trim(processBglConditionals(dynamic_cast<i6Block*>(opFn->body)->i6Body));
+                    ab = replaceWord(ab, "$" + opFn->params[0]->name, rhsText);
+                    ab = replaceWord(ab, "$self", path);
+                    ab = replaceWord(ab, "$val",  path);
+                    languageService.globalInits.push_back({path, ab});
+                    vd->declaredExpressionValue = nullptr;   // not baked into the `with` clause
+                }
+            }
+        }
+    }
+}
+
 void bglParser::assignObjectMethodOverloadMangling(){
     // Walk every object and class; mangle every same-name non-emitter method group.
     // Emitters are inlined at call sites — they don't emit as I6 properties, so they can't
