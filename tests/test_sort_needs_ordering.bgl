@@ -15,6 +15,7 @@
     warn are exercised alongside.  */
 // EXPECT_WARNING: 'Bare' publishes no 'operator <=>'
 // EXPECT_WARNING: 'sort()' falls back to word semantics
+// EXPECT_WARNING: Declare `int operator <=> (Bare o)` on 'Bare'
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 #include <string>
 #include <array>

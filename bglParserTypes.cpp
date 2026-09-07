@@ -1153,7 +1153,9 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
                     parsingWarning(format(
                         "'{0}' publishes no 'operator {1}', so {2}falls back to word semantics "
                         "— for a class that means comparing object addresses, not values. "
-                        "Declare `static {3} operator {1} ({0} a, {0} b)` on '{0}' to give it one.",
+                        "Declare `{3} operator {1} ({0} o)` on '{0}' to give it one, or the "
+                        "`static {3} operator {1} ({0} a, {0} b)` form if the operator needs "
+                        "both operands as parameters.",
                         typeDisplayName(elemType), op,
                         contextName.empty() ? "" : format("'{0}()' ", contextName),
                         op == "<=>" ? "int" : "bool"));
