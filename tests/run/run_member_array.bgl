@@ -1,0 +1,38 @@
+/*  A member array is addressed as (owner, property), from every entry point.
+
+    `nums += x` inside the object's own method took the bare-identifier path, which
+    assumed a bare name could not be a member — inside a method it always can. It
+    emitted `_bglArray.append(self.nums, 0, …)`, passing a multi-word property where a
+    pointer belongs, and I6 refuses to read that with `.` at runtime.
+
+    Member arrays are FIXED SIZE: they are I6 property arrays with no length word, so
+    length() reports capacity and the growth operations cannot grow them. Subscript
+    assignment is how you fill one. That is pinned here too, so the distinction stays
+    visible.  */
+// EXPECT_OUTPUT: filled: 30 10 20 0
+// EXPECT_OUTPUT: sorted: 0 10 20 30
+// EXPECT_OUTPUT: indexOf(10): 1
+// EXPECT_OUTPUT: length is capacity: 4
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+object w {
+    array<int> nums[4];
+    void fill(){ nums[0] = 30; nums[1] = 10; nums[2] = 20; }
+    void sortIt(){ nums.sort(); }
+    int  find(){ return nums.indexOf(10); }
+    int  len(){ return nums.length(); }
+    void bump(){ nums += 99; }        // emits the member form; cannot grow a fixed-size array
+    void show(string label){
+        print(label); for(int i = 0; i < 4; i++){ print(nums[i]); print(" "); } print("^");
+    }
+}
+
+void main(){
+    bglInit();
+    w.fill();    w.show("filled: ");
+    w.sortIt();  w.show("sorted: ");
+    print("indexOf(10): ");       print(w.find()); print("^");
+    print("length is capacity: ");print(w.len());  print("^");
+    w.bump();    // must not emit code I6 rejects, even though it cannot append
+}

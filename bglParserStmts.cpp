@@ -2013,16 +2013,20 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 a.variableLeft = lhs;
                 a.assignedExpression = rhs;
                 a.emitterBody = processBglConditionals(blk->i6Body);
-                // $prop: a bare (non-member) word/byte array uses the 0 sentinel — the same
-                // value the method-call path computes for a non-member array receiver. Member
-                // arrays (obj.arr op= x) route through the dotted-path compound assignment, not
-                // here, so this bare-identifier path is always the non-member case.
+                // $self/$prop: a member array is addressed as (owner, property); a bare
+                // global or local array uses the 0 sentinel, the same pair the method-call
+                // path computes. A BARE IDENTIFIER is not proof of the non-member case —
+                // inside an object's own method `nums += x` names a member — and assuming
+                // so emitted `_bglArray.append(self.nums, 0, …)`, passing a multi-word
+                // property where a pointer belongs. I6 then refuses to read it with `.`.
+                string cOwner, cProp;
+                bool cIsMember = splitQualifiedMember(lhs, func, body, cOwner, cProp);
                 if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray"){
-                    a.emitterBody = replaceWord(a.emitterBody, "$prop", "0");
+                    a.emitterBody = replaceWord(a.emitterBody, "$prop", cIsMember ? cProp : "0");
                     a.emitterBody = substituteElemOps(a.emitterBody, resolveArrayElementType(lhs, func, body));
                 }
                 a.emitterParam = opFunc->params[0]->name;
-                a.emitterSelf = lhs;
+                a.emitterSelf = cIsMember ? cOwner : lhs;
                 if(body != nullptr) body->statements.push_back(&a);
                 emitterFound = true;
             }
