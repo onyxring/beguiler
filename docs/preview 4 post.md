@@ -3,7 +3,7 @@ This preview release of Beguiler includes a handful of language features and bug
 
 ---
 ## 1. Inline, automatically typed objects
-An expansion of the last update, which brought inline declaration of objects with known types, ***this release*** now allows those objects to be *anonomously* typed.  That is, you can declare an object instance inline, and let the compiler synthesize the type for you via the `auto` pseudo type:
+An expansion of the last update, which brought inline declaration of objects with known types, ***this release*** now allows those objects to be *anonymously* typed.  That is, you can declare an object instance inline, and let the compiler synthesize the type for you via the `auto` pseudo type:
 
 ```bgl
 object player {
@@ -43,7 +43,7 @@ object gadget {
 }
 ```
 
-The above creates a `level` property object with getters and setters implemented using the normal cast and assignment operators.  This let's you run arbitrary code when accessing or writing to the property:
+The above creates a `level` property object with getters and setters implemented using the normal cast and assignment operators.  This lets you run arbitrary code when accessing or writing to the property:
 
 ```bgl
 gadget.level = 4;        // setter: _raw = 4 * 3
@@ -52,7 +52,7 @@ int a = gadget.level;    // getter: a = 12
 
 ---
 ## 2.  New operator: `:=`   (The reference-binding operator)  
-This release introduces a new operator which allows you to change the objecttime instance a `ref` member actually references at runtime:
+This release introduces a new operator which allows you to change the object instance a `ref` member actually references at runtime:
 
 ```
 object holder { ref inventory pack; }   // no instance created
@@ -79,7 +79,7 @@ class Item {
 This convention is commonly used for sorting.  In fact, if you are defining a class that needs to be sortable in an `array`, you'll want to define the spaceship.  Without it, `sort()` falls back to comparing addresses. 
 
 ---
-## 4. `children`  let's you place a room's contents in one line
+## 4. `children` lets you place a room's contents in one line
 Prior to this update, objects needed to place themselves in the world model using their `parent` property. Now a container can alternatively declare its contents in the `children` property, so you can populate a room in a single declaration:
 
 ```bgl
@@ -110,7 +110,7 @@ This new directive, `#declare`, is similar to `#define`.  _Like_ `#define`, you 
     // use something the standard library provides
 #endif
 #if SNAP_VAL
-	// won't be compiled because defined later
+    // won't be compiled because defined later
 #endif
 
 // the standard-library binding, even if #included later, sets the symbol...
@@ -123,8 +123,8 @@ This new directive, `#declare`, is similar to `#define`.  _Like_ `#define`, you 
 The `#if` above sees `I6_STANDARD_LIBRARY` even though it is `#declare`d afterward.  It would _not_ see `SNAP_VAL` unless referenced later.
 
 ---
-## 6.  Magic strings are dead.  Long live and string objects 
-Beguile Preview 1 gave you basic I6 strings by default, then silently translated them into mutable string objects when the `<string>` language extension was included.  Although nifty, this practice hid technical realities which rightly should be visible to the developer.  With this release,`strings` no longer ***magically*** transform into buffer-backed objects.  Instead, `string` introduces mutable strings as a new `stringObj` type, which you can choose intentionally.  
+## 6.  Magic strings are dead.  Long live string objects 
+Beguile Preview 1 gave you basic I6 strings by default, then silently translated them into mutable string objects when the `<string>` language extension was included.  Although nifty, this practice hid technical realities which rightly should be visible to the developer.  With this release,`strings` no longer ***magically*** transform into buffer-backed objects.  Instead, the `<string>` extension introduces mutable strings as a separate `stringObj` type, which you choose intentionally.  
 
 Although complementary, and designed to work together, `string` and `stringObj` are different:
 
