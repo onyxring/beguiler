@@ -6504,7 +6504,18 @@ name = name + " of Darkness";  // concatenation yields a stringObj
 name += "!";
 ```
 
-**Assignment copies.** `b = a` gives `b` its own buffer holding the same characters, so a later change to `b` leaves `a` alone. The number of pooled instances is configurable via `bglStringPoolReserve` (default 10); it is unrelated to `framePoolSize`, which sizes the Z-machine local-variable overflow pool (§9.2.2).
+**Assignment copies.** `b = a` gives `b` its own buffer holding the same characters, so a later change to `b` leaves `a` alone. The pool holds `bglStringPoolReserve` instances (default 10) and every live `stringObj`
+occupies one — including each object member, so a class with a `stringObj` field costs one
+per instance. Exhausting it is a runtime failure (`[ERROR: Unable to allocate a new
+instance.]`), so raise it before including `<string>`:
+
+```bgl
+#i6 { Constant bglStringPoolReserve 64; }
+#include <string>
+```
+
+It is unrelated to `framePoolSize`, which sizes the Z-machine local-variable overflow pool
+(§9.2.2).
 
 Methods on `string` and `stringObj` are the same surface — a literal is a perfectly good receiver (`"Mixed".toUpper()`) — but a method that produces text returns `stringObj`.
 

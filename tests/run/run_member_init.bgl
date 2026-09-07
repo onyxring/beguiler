@@ -17,6 +17,10 @@
 // EXPECT_OUTPUT: bare member: set
 // EXPECT_OUTPUT: global: worldwide
 // EXPECT_OUTPUT: local: nearby
+// EXPECT_OUTPUT: inherited: a room
+// EXPECT_OUTPUT: inherited written: changed
+// EXPECT_OUTPUT: sibling untouched: a room
+// EXPECT_OUTPUT: instance override: special
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
 
@@ -26,6 +30,14 @@ object j {
     stringObj name = "fish";         // object member, with initializer
     stringObj bare;                  // object member, no initializer — still allocated
 }
+
+// Declared on a CLASS, not the instance — the common shape, and the one that was missed:
+// the class-level default bakes the literal into the I6 Class, so reads looked correct
+// while writes failed. Each instance must get its OWN allocation.
+class Room { stringObj desc = "a room"; }
+object r1 : Room {}
+object r2 : Room {}
+object r3 : Room { desc = "special"; }        // instance overrides the class default
 
 void main(){
     bglInit();
@@ -44,4 +56,10 @@ void main(){
 
     stringObj l = "nearby";
     print("local: ");           print(l);                   print("^");
+
+    print("inherited: ");       print(r1.desc);             print("^");
+    r1.desc = "changed";
+    print("inherited written: "); print(r1.desc);           print("^");
+    print("sibling untouched: "); print(r2.desc);           print("^");
+    print("instance override: "); print(r3.desc);           print("^");
 }

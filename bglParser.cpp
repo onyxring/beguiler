@@ -401,8 +401,28 @@ void bglParser::recordObjectMemberInits(){
     for(typeDef* g : languageService.globals){
         auto* obj = dynamic_cast<objectDef*>(g);
         if(obj == nullptr || obj->isExternal) continue;
-        for(typeMember* m : obj->members){
-            auto* vd = dynamic_cast<variableDeclaration*>(m);
+
+        // Members declared on the object itself, then those inherited from its class chain.
+        // The class case is the common one — `class Room { stringObj desc; }` with many room
+        // instances — and sweeping only obj->members missed it entirely: the class-level
+        // default baked the literal into the I6 Class, so reads looked right and only writes
+        // failed. An own member of the same name wins, matching how the emitter bakes
+        // backings. Each INSTANCE gets its own init; the members are shared declarations.
+        vector<variableDeclaration*> candidates;
+        set<string> seen;
+        for(typeMember* m : obj->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(seen.insert(vd->name).second) candidates.push_back(vd);
+        std::function<void(classDef*)> scanClass = [&](classDef* c){
+            if(c == nullptr) return;
+            for(typeMember* m : c->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                    if(seen.insert(vd->name).second) candidates.push_back(vd);
+            for(classDef* b : c->baseClasses) scanClass(b);
+        };
+        scanClass(obj->objectClass);
+
+        for(variableDeclaration* vd : candidates){
             if(vd == nullptr || vd->isStatic || vd->isConst || vd->isExternal) continue;
             if(vd->isRefLocal) continue;                  // a ref member owns nothing to initialise
             auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
@@ -444,7 +464,14 @@ void bglParser::recordObjectMemberInits(){
                     ab = replaceWord(ab, "$self", path);
                     ab = replaceWord(ab, "$val",  path);
                     languageService.globalInits.push_back({path, ab});
-                    vd->declaredExpressionValue = nullptr;   // not baked into the `with` clause
+                    // Only clear the value when it is declared ON THIS OBJECT. An inherited
+                    // member's value belongs to the class and is shared by every instance —
+                    // clearing it would strip the default from all of them. Leaving it emits
+                    // a literal default in the Class directive that bglInit then overwrites
+                    // per instance, which is harmless.
+                    bool ownMember = false;
+                    for(typeMember* om : obj->members) if(om == vd){ ownMember = true; break; }
+                    if(ownMember) vd->declaredExpressionValue = nullptr;
                 }
             }
         }
