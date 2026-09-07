@@ -1086,7 +1086,21 @@ string bglParser::operatorRef(const string& typeName, const string& opName,
     }
     functionDef* f = cands.front();
     if(isStaticOut != nullptr) *isStaticOut = f->isStatic;
-    if(f->isStatic) return i6Emitter::staticRoutineName(cd, f);
+    if(f->isStatic){
+        // Name the routine after the class that DECLARES the operator, not the one asked
+        // about. A static emits once, under its declaring class, so an inherited operator
+        // referenced through a subclass produced `_bgl_Derived__oplteqgt` for a routine
+        // emitted as `_bgl_Base__oplteqgt` — a name I6 rejects outright. This bit both
+        // `Type::operator` and $opref, so a sort over a subclass was broken too.
+        std::function<classDef*(classDef*)> owner = [&](classDef* c) -> classDef* {
+            if(c == nullptr) return nullptr;
+            for(typeMember* mm : c->members) if(mm == f) return c;
+            for(classDef* b : c->baseClasses) if(classDef* r = owner(b)) return r;
+            return nullptr;
+        };
+        classDef* declaring = owner(cd);
+        return i6Emitter::staticRoutineName(declaring ? declaring : cd, f);
+    }
     return f->i6name;                                 // instance: the mangled property name
 }
 

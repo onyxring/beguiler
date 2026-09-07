@@ -9,6 +9,8 @@
 // EXPECT_OUTPUT: static ==: 2
 // EXPECT_OUTPUT: static <=>: 100 200 300
 // EXPECT_OUTPUT: no operators: 10 20 30
+// EXPECT_OUTPUT: inherited ref: 1
+// EXPECT_OUTPUT: inherited sort: 1 3
 // EXPECT_OUTPUT: int literal: yes
 // EXPECT_OUTPUT: char literal: yes
 #beguilerSettings { target = z5; informName = "none"; }
@@ -28,6 +30,15 @@ class Money {                                     // static forms
     static int  operator <=> (Money a, Money b) { if(a.cents < b.cents) return -1; if(a.cents > b.cents) return 1; return 0; }
 }
 object m1 : Money { cents = 300; } object m2 : Money { cents = 100; } object m3 : Money { cents = 200; }
+
+// An operator INHERITED from a base. A static emits ONCE, under the class that declares it,
+// so a reference through the subclass has to name that class — naming the subclass produced
+// `_bgl_Derived__oplteqgt` for a routine emitted as `_bgl_Base__oplteqgt`, which I6 rejects.
+// Hit both `Type::operator` and $opref, so sorting a subclass array was broken too.
+class Base { int v = 0; static int operator <=> (Base p, Base q){ if(p.v<q.v) return -1; if(p.v>q.v) return 1; return 0; } }
+class Derived : Base { int extra = 0; }
+object d1 : Derived { v = 3; }
+object d2 : Derived { v = 1; }
 
 void main(){
     bglInit();
@@ -49,4 +60,9 @@ void main(){
     // Exact matches still win: m1 == m2 above takes the (Money, Money) overload.
     print("int literal: "); print((m2 == 100) ? "yes" : "no"); print("^");
     print("char literal: "); print(('A' == 'A') ? "yes" : "no"); print("^");
+
+    func<int, Derived, Derived> inh = Derived::operator <=>;
+    print("inherited ref: "); print(inh(d1, d2)); print("^");
+    array<Derived> e[2]; e += d1; e += d2; e.sort();
+    print("inherited sort: "); for(int i=0;i<2;i++){ print(e[i].v); print(" "); } print("^");
 }
