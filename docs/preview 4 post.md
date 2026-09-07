@@ -227,8 +227,18 @@ axe.m();                        // message send — binds self, as I6 does
 Which property is read is decided at runtime by the value in `p`, so this is the I6 `obj.(prop)` idiom, expressible in Beguile at last.
 
 ---
+## Fixes
+
+- **`trimRight()` trimmed the left.** It called the buffer's `trimLeft` — a defect carried over verbatim from orLibrary's `orString.h`, where the same line is one word wrong. `trim()` was unaffected, so it only showed on a direct `trimRight()` call. Fixed in both Beguile and orLibrary.
+- **`indexOf` / `contains` now search the elements an array *holds*.** They scanned the full allocated capacity, so a value sitting in an unused slot past `length()` could be "found". They now cover `0 .. length()-1`, matching `removeValue`, `sort` and `first`/`last`. `clear()` still zeroes the whole capacity.
+- **`sort()` uses your type's ordering.** It previously always compared underlying words; it now routes through `operator <=>` when the element type publishes one — which is what makes sorting `<string>` and `<float>` arrays correct rather than address- or bit-ordered.
+- **Overloaded operators emitted invalid I6.** Two overloads of one operator mangled to the same name, so the generated code named the same routine or property twice and Inform 6 rejected it. Both the `static` and instance forms are now distinguished by parameter type.
+- **Comparing against a numeric literal missed an overload.** `money == 100` reported no matching operator while `money == someInt` matched, because an `intLiteral` was not widened to `int` during overload resolution.
+
+---
 ## Updated Documentation
 
-- **Building from source is now one command line on every platform** — `make`, or a single `c++ -std=c++20 -O2 ... *.cpp` invocation. The three per-platform lines are gone, along with the `-D` renames they carried (`isnumber`, `strncasecmp`, `popen`/`pclose`), which are handled in the source where they belong. The stock `clang++` on macOS previously could not build Beguiler at all — a `constexpr std::string` needed a newer standard library than Xcode ships. **The requirement is now C++17**, down from C++20: `std::format` was the only thing needing the newer standard, and since not one call site used a format specifier, the positional substitution it was doing is now a few lines in `helpers.h`. That takes the floor from GCC 13 / LLVM 17 to GCC 7 / LLVM 5.
+- **Building from source is now one command line on every platform** — `make`, or a single `c++ -std=c++17 -O2 ... *.cpp` invocation. The three per-platform lines are gone, along with the `-D` renames they carried (`isnumber`, `strncasecmp`, `popen`/`pclose`), which are handled in the source where they belong. The stock `clang++` on macOS previously could not build Beguiler at all — a `constexpr std::string` needed a newer standard library than Xcode ships. **The requirement is now C++17**, down from C++20: `std::format` was the only thing needing the newer standard, and since not one call site used a format specifier, the positional substitution it was doing is now a few lines in `helpers.h`. That takes the floor from GCC 13 / LLVM 17 to GCC 7 / LLVM 5.
 - The **language spec** documents `stringObj`, what `array<T>` asks of an element type, and the operator-reference forms.
 - **Beguile for the I6 Developer** covers the `string` / `stringObj` split and arrays of your own classes.
+- The **`ref` sections** of the spec are rewritten: a `ref` slot is now bound with `:=`, is not auto-instantiated, and assigns through with `=`.

@@ -3522,40 +3522,42 @@ If a class has stored fields, does NOT inherit from `object`, and does NOT decla
 
 #### `ref` locals - pointer-alias semantics for a single declaration
 
-The `ref` qualifier on a local variable opts that local into pointer-alias (reference) semantics. Assignment skips `operator=` dispatch and the no-`operator=` error; the local holds a reference to whatever the RHS produces, and subsequent reads and writes go through that reference.
+The `ref` qualifier on a local variable makes it a **reference**: it names an instance owned elsewhere instead of owning one of its own. It is bound with the reference binding operator `:=` (§9.3.1), and reads and writes then go through whatever it is bound to.
 
 ```bgl
 class Vec2 { int x; int y; }   // no operator=
 
 void aliasExample() {
-    ref Vec2 alias = someInstance;   // alias and someInstance share storage
+    ref Vec2 alias := someInstance;  // alias and someInstance share storage
     alias.x = 99;                    // someInstance.x is now 99
 }
 ```
 
 Rules:
 - `ref` is valid on **local variable declarations** and on **class/object member declarations** (see below). Parameters and `extern`/`const` decls reject the qualifier with a targeted error.
-- `ref` overrides any `operator=` the class might define for that one local.
-- The opt-in is per-declaration; only this local has reference semantics; other locals of the same class follow the default value-semantic rule.
+- Binding uses `:=`, at the declaration and afterwards alike; `=` on a `ref` declaration is an error, as is `:=` on one that is not `ref` (§9.3.1).
+- A plain `=` on a bound reference assigns **through** it, dispatching the type's `operator =` into the referent — a reference otherwise behaves exactly like the thing it names. Only rebinding is spelled differently.
+- Because a reference owns nothing, `ref` also sidesteps the no-`operator=` error that a value local of a class without copy semantics would raise: there is nothing to copy at the point of binding. Assigning *through* it still needs `operator =`.
+- The opt-in is per-declaration; other locals of the same class follow the default value-semantic rule.
 
 Class parameters use the same model: default reference-semantic, with `byVal class` opting in to value semantics for the whole class (§5.2.6). The `byVal` marker is **class-level**, not parameter-level; there's no per-parameter `byVal` qualifier; mark the class and every parameter of that class type gets the value-semantic copy-in.
 
 #### `ref` members - pointer-alias member fields
 
-A member field may also be declared `ref`, giving it pointer-alias semantics: the field holds a reference to another instance rather than owning a copy. Assignment to a `ref` member is a plain pointer-copy (no `operator=` dispatch), and it defaults to `nothing` until assigned.
+A member field may also be declared `ref`, making it a reference to another instance rather than an owned sub-object. A class-typed member is normally **auto-instantiated** (§16.2.7); a `ref` member is not, so it starts empty and can be tested before it is bound.
 
 ```bgl
 class Node {
     int id;
     ref Node next;      // a REFERENCE to another Node - not an owned sub-object
-    void link(Node n){ self.next = n; }   // pointer-copy, no operator=
+    void link(Node n){ self.next := n; }   // bind
 }
 ```
 
 `ref` is the correct (and required) model for a **self-referential** member (a class with a field of its own type). A value member would need `operator=` to copy it, and copying a self-referential field recurses infinitely; a `ref` member sidesteps both. Without `ref`, a stored class-typed member that lacks `operator=` and does not inherit from `object` triggers the same no-`operator=` error as a value local.
 
 Notes:
-- A `ref` member's default value is `nothing` until assigned.
+- A `ref` member is empty (`nothing`) until bound, so `if (!self.next)` distinguishes an unbound slot from a bound one. A non-`ref` class-typed member is created for you and is never empty.
 - Reading a field *through* a class-typed member chains normally (`self.next.id`, `node.next.next.id`), both self-based and off an external instance.
 
 ### 9.2.2 Bypassing the Z-Machine's Local Variable Limit
