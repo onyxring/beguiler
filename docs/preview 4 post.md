@@ -7,7 +7,7 @@ An expansion of the last update, which brought inline declaration of objects wit
 
 ```bgl
 object player {
-    auto stats = {          // no named class, beguiler creates the type
+    auto stats = {          // no named, beguiler creates the type
         int strength = 10;
         int agility  = 7;
         void sayStatTot(){ print(strength + agility);}
@@ -18,7 +18,7 @@ object player {
 The above is equivalent to...
 
 ``` bgl
-object statsObj {          // named class
+object statsObj {          // named object
     int strength = 10;
     int agility  = 7;
     void sayStatTot(){ print(strength + agility);}
