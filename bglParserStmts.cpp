@@ -2247,6 +2247,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     selfValue = memOwner + "." + memProp;   // the pointer the member holds
                     isMemberArr = false;
                 }
+                if(isMemberArr) rejectRawMemberLengthOp(memOwner, memProp, methodName, func, body);
             }
             // Receiver type can be a classDef OR an objectDef (each unclassed objectDef has its
             // own type identity); both have addressable methods.

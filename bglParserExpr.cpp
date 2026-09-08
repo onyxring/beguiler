@@ -1811,6 +1811,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // member spends its LAST word on the length: capacity is one less than the
                         // property holds, and the length is read from that slot. A rawArray or a
                         // dictionaryWord array keeps the bare layout, where length == size.
+                        if(isMemberArr) rejectRawMemberLengthOp(mOwner, mProp, methName, func, body);
                         if(isMemberArr && (methName == "size" || methName == "length")){
                             string words = "((" + mOwner + ".#" + mProp + ")/WORDSIZE)";
                             if(memberArrayIsTracked(mOwner, mProp, func, body))
@@ -2642,6 +2643,19 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 if(chainElem.empty())
                     chainElem = resolveArrayElementTypeDotted(chainSelf, chainProp, func, body);
             }
+            // size()/length() on a RAW member array (rawArray<T>, or array<dictionaryWord>, which
+            // I6 owns) cannot route through _bglArray: the runtime's member branch assumes the
+            // tracked layout and reads the trailing word as the length, which on a raw member is
+            // the last ELEMENT. A raw member has no length word — its extent is the property's
+            // own size, so both methods answer `obj.#prop/WORDSIZE`. I6 computes `#prop` after
+            // an additive property has accumulated, so this is also correct across inheritance
+            // layers. Mirrors the non-chained fast path above.
+            string rawExtent;
+            if(chainIsMember && (methName == "size" || methName == "length")
+               && !memberArrayIsTracked(chainSelf, chainProp, func, body))
+                rawExtent = "((" + chainSelf + ".#" + chainProp + ")/WORDSIZE)";
+            if(chainIsMember) rejectRawMemberLengthOp(chainSelf, chainProp, methName, func, body);
+
             functionDef* method = bindMethodCall(chainTypeName, selfText, methName,
                                                    callArgs, emptyNamed, emptyInterp, chainElem);
 
@@ -2649,7 +2663,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             expr->resolvedType = method->returnType.name;
 
             string callText;
-            if(method->isEmitter){
+            if(!rawExtent.empty()){
+                callText = rawExtent;
+                expr->tokens.push_back(rawExtent);
+            }
+            else if(method->isEmitter){
                 if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                     string b = processBglConditionals(blk->i6Body);
                     size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);

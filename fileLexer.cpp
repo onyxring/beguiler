@@ -1015,7 +1015,22 @@ token fileLexer::getToken(){
             charVal += c;
         }
         // consume closing '
-        if(peekChar() == '\'') readChar();
+        // A char literal holds exactly ONE character, so the closing quote must be here. If it
+        // is not, the source is I6's dictionary-word form (`'sword'`), which Beguile does not
+        // share: the lexer would otherwise take `'s'` as the literal and leave `word'` to be read
+        // as an identifier, emitting `'s'word` — text I6 rejects. Beguile spells a dictionary
+        // word `.sword` (`..swords` for the plural form).
+        if(peekChar() != '\''){
+            string rest;
+            while(peekChar() != '\'' && peekChar() != '\n' && peekChar() != 0 && rest.size() < 32)
+                rest += readChar();
+            if(peekChar() == '\'') readChar();
+            parser.parsingError(format("'{0}{1}' is not a valid character literal — a character literal "
+                "holds a single character (e.g. 'a'). Inform 6's dictionary-word form is not Beguile "
+                "syntax: write the dictionary word as .{0}{1} (or ..{0}{1} for the plural form).",
+                charVal, rest));
+        }
+        else readChar();
         retval.value = charVal;
         retval.tokenType = eTokenType::charLiteral;
         prevTokenType = eTokenType::charLiteral;

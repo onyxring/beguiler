@@ -1,0 +1,11 @@
+/* Negative test: a RAW member array has no length word, so the operations that need one are
+   rejected rather than emitted. `pop()` on one used to walk off the end at run time
+   ("tried to write outside memory using -->"); `setLength()` overwrote the last ELEMENT. */
+// EXPECT_ERROR: needs an array's length word
+// EXPECT_ERROR: RAW member array
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <array>
+
+object w { rawArray<int> r = {11,22,99}; }
+
+void main(){ bglInit(); w.r.pop(); }

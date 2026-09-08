@@ -549,6 +549,8 @@ A single character enclosed in single quotes.
 
 Character literals accept the same standard, numeric, and diacritical escapes as string literals (§2.5.2), as well as raw Unicode diacriticals typed directly (UTF-8 or Latin-1 source).
 
+A single-quoted literal holding **more than one character** is rejected. Inform 6 spells a dictionary word that way (`'sword'`), but Beguile does not share the form — it writes dictionary words `.sword` (`..swords` for the plural, §2.5.6). Without the check the lexer took `'s'` as the character literal and left `word'` to be read as an identifier, emitting `name 's'word` — text Inform 6 rejects.
+
 Because I6's `@`-accent notation (e.g. `@:a`) is only valid inside string literals, diacritical and numeric escapes in character literals are converted to their numeric ZSCII codes for use in I6 expressions. For example, `'\:a'` and `'ä'` both emit as `155`, and `c >= 'ä'` compiles to `c >= 155`.
 
 **Acute accent ambiguity**: `\'` followed by a vowel is treated as an acute accent (`'\'e'` = é). A bare `\'` not followed by a vowel is a literal escaped quote.
@@ -3287,6 +3289,14 @@ extern additive property name;   // states a fact about I6's declaration; emits 
 `name` is a special case: it is additive in the **I6 compiler itself**, not in any library. It is therefore declared by the core BLR (`beguiLib/core/_property.bgl`), which is always loaded, so the diagnostic below fires for `name` even in a program that includes nothing at all. Because the core owns that declaration, user code does not repeat it — `extern property name;` in a program is a redeclaration error.
 
 Every other additive property is library-specific and is declared by its binding. `beguiLib/bindings/i6StandardLibrary.bgl` declares the standard library's: `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn`.
+
+#### Additive properties are raw arrays
+
+An additive property accumulates its contributions into one contiguous property with **no length word** — which is exactly Beguile's `rawArray<T>` layout. A member bound to one is therefore raw: `rawArray<T>`, or `array<dictionaryWord>`, whose layout Inform 6 owns.
+
+Its extent is fixed by the property, and `size()` and `length()` both answer `obj.#prop/WORDSIZE`. Inform 6 computes `#prop` *after* accumulation, so this reads correctly across inheritance layers with no bookkeeping — a class contributing two words and an instance contributing one give an extent of three.
+
+Everything that needs a length word is rejected at compile time, because a raw member has none: `setLength`, `clear`, `freeAll`, `append`, `insert`, `prepend`, `remove`, `removeValue`, `push`, `pop`, `dequeue`, `enqueue`, `popEnd`, `peek`, `peekEnd`, `indexOf`, `reverse`, `sort` and `sortDefault`. `size()`, `length()` and subscripting do work. Declare the member `array<T>` if you need the rest — but note that a tracked member's trailing length slot cannot survive accumulation, so `array<T>` and an additive property are incompatible by construction.
 
 #### Additive properties and single-word members
 

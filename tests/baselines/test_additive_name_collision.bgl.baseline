@@ -1398,10 +1398,10 @@ bare okOverride
 ;
 class words
   with
-    name 'b'ox 
+    name 'box' 
 ;
 words okAccumulating
-  with name 'w'ooden 
+  with name 'wooden' 
 ;
 class hooked
   with

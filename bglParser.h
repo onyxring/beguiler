@@ -195,6 +195,11 @@ class bglParser {
         // Warn when a single-word member is bound to an I6 additive property and both a class
         // default and an instance override supply a value.
         void warnOnAdditivePropertyMisuse();
+        // Reject a length-changing array operation on a RAW member array (rawArray<T> or
+        // array<dictionaryWord>), whose extent is fixed by the property that holds it.
+        bool rejectRawMemberLengthOp(const std::string& owner, const std::string& prop,
+                                     const std::string& methName, functionDef* func,
+                                     statementBlock* body);
         // Lazy version: when a call site has just resolved a method, mangle the entire
         // overload set on the receiver's containing type so call text and emission agree
         // on the property name. Called from resolution paths (bindMethodCall + optional

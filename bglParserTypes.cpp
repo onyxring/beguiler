@@ -1243,6 +1243,33 @@ bool bglParser::memberArrayIsRef(const std::string& ownerName, const std::string
     return false;
 }
 
+// A RAW member array — `rawArray<T>`, or `array<dictionaryWord>`, whose layout I6 owns — is
+// inline property data with no length word, so its extent is fixed by the property and nothing
+// can grow or shrink it. The _bglArray helpers all assume the tracked layout and maintain a
+// trailing length slot that is not there: setLength overwrites the last ELEMENT, and pop/clear
+// walk past the end ("tried to write outside memory using -->"). Reject at compile time instead,
+// mirroring the rawArray-pointer guard in bindMethodCall.
+bool bglParser::rejectRawMemberLengthOp(const std::string& owner, const std::string& prop,
+                                        const std::string& methName, functionDef* func,
+                                        statementBlock* body){
+    // Every operation whose body reads or writes the length word, plus the wrappers that
+    // delegate to one. size()/length() are absent deliberately: the compiler lowers those to
+    // `obj.#prop/WORDSIZE` at the call site, so they need no length word and stay available.
+    static const std::set<std::string> needsLengthWord = {
+        "setlength", "clear", "freeall", "append", "insert", "prepend", "remove", "removevalue",
+        "push", "pop", "dequeue", "enqueue", "popend", "peek", "peekend",
+        "indexof", "reverse", "sort", "sortdefault"
+    };
+    if(needsLengthWord.count(methName) == 0) return false;
+    if(memberArrayIsTracked(owner, prop, func, body)) return false;
+    parsingError(format("'{0}()' needs an array's length word, but '{1}.{2}' is a RAW member array "
+        "(rawArray<T>, or array<dictionaryWord>, whose layout I6 owns). It is inline property data "
+        "with no length word — its extent is fixed at {1}.#{2}/WORDSIZE — so the operation would "
+        "read the last ELEMENT as a length and walk off the end. size(), length() and subscripting "
+        "do work on it; declare the member `array<T>` if you need the rest.", methName, owner, prop));
+    return true;
+}
+
 bool bglParser::memberArrayIsTracked(const std::string& ownerName, const std::string& propName,
                                      functionDef* func, statementBlock* body){
     if(!languageService.arrayInUse) return false;
@@ -1257,8 +1284,18 @@ bool bglParser::memberArrayIsTracked(const std::string& ownerName, const std::st
                                         : (currentClass ? currentClass->name : string()))
                                       : ownerName;
     if(owner.empty()) return false;
-    typeDef& td = languageService.getType(resolveIdentifierType(owner, func, body).empty()
-                                         ? owner : resolveIdentifierType(owner, func, body));
+    // An object that has a base class resolves through resolveIdentifierType to its CLASS, whose
+    // members do not include the ones declared on the instance — so `object w : Base { array<int>
+    // t[4]; }` looked up `t` on Base, missed it, and fell through to the "not tracked" default.
+    // Look the owner up as an object FIRST so instance-declared members are found; the resolved
+    // type is the fallback for locals, parameters, and anything that is not a named object.
+    typeDef* ownerObj = nullptr;
+    { typeDef& t = languageService.getType(owner);
+      if(dynamic_cast<objectDef*>(&t) != nullptr) ownerObj = &t; }
+    string resolvedOwner = resolveIdentifierType(owner, func, body);
+    typeDef& td = ownerObj != nullptr
+                ? *ownerObj
+                : languageService.getType(resolvedOwner.empty() ? owner : resolvedOwner);
     if(auto* od = dynamic_cast<objectDef*>(&td)){
         int r = check(od->members); if(r >= 0) return r == 1;
         for(classDef* c = od->objectClass; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0]){

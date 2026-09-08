@@ -1,0 +1,57 @@
+/*  size() and length() on a RAW member array.
+
+    A raw member — `rawArray<T>`, or `array<dictionaryWord>`, whose layout Inform 6 owns — is
+    inline property data with no length word. The _bglArray runtime cannot tell it from a tracked
+    member (isTracked() returns false for every object receiver), so its member branch read the
+    trailing word as the length: on a raw member that is the last ELEMENT. `rawArray<int> r =
+    {11,22,99}` reported `size 2 len 99`, and `array<dictionaryWord>` reported a dictionary
+    address as its length.
+
+    The compiler now lowers both calls to `obj.#prop/WORDSIZE` at the call site, so a raw member
+    answers its fixed extent for both. Because Inform 6 computes `#prop` AFTER an additive
+    property has accumulated, this is also correct across inheritance layers — `base` below
+    contributes 2 words and the instance 1, and the extent reads 3.
+
+    Tracked members and every global/local array are untouched; they still report capacity and a
+    moving length, which the tail of this test pins.  */
+// EXPECT_OUTPUT: raw seeded: size 3 len 3
+// EXPECT_OUTPUT: raw sized: size 4 len 4
+// EXPECT_OUTPUT: dict: size 3 len 3
+// EXPECT_OUTPUT: additive across layers: size 3 len 3
+// EXPECT_OUTPUT: subscript: 99 22 33
+// EXPECT_OUTPUT: tracked member: size 4 len 2
+// EXPECT_OUTPUT: tracked global: size 3 len 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+
+additive property myHook;      // ours: emits `Property additive`, so I6 accumulates
+
+array<int> gTracked = {1,2,3};
+
+class Base { rawArray<int> myHook = {7,8}; }
+
+object w : Base {
+    rawArray<int>         r = {11,22,33};
+    rawArray<int>         sized[4];
+    array<dictionaryWord> name = {.aa,.bb,.cc};
+    array<int>            trk[4];
+    rawArray<int>         myHook = {9};      // accumulates with Base's two words
+}
+
+void row(int sz, int ln){ print("size "); print(sz); print(" len "); print(ln); print("^"); }
+
+void main(){
+    bglInit();
+    print("raw seeded: ");  row(w.r.size(),     w.r.length());
+    print("raw sized: ");   row(w.sized.size(), w.sized.length());
+    print("dict: ");        row(w.name.size(),  w.name.length());
+    print("additive across layers: "); row(w.myHook.size(), w.myHook.length());
+
+    w.r[0] = 99;
+    print("subscript: "); for(int i = 0; i < 3; i++){ print(w.r[i]); print(" "); } print("^");
+
+    w.trk.append(4); w.trk.append(5);
+    print("tracked member: "); row(w.trk.size(), w.trk.length());
+    print("tracked global: "); row(gTracked.size(), gTracked.length());
+}

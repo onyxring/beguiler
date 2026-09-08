@@ -28,8 +28,8 @@ object okDefaultOnly:Quiet { }
 class Bare { int label = 1; }
 object okOverride:Bare { int label = 2; }
 
-class Words { array<dictionaryWord> name = {'box'}; }
-object okAccumulating:Words { array<dictionaryWord> name = {'wooden'}; }
+class Words { array<dictionaryWord> name = {.box}; }
+object okAccumulating:Words { array<dictionaryWord> name = {.wooden}; }
 
 class Hooked { int myLibHook = 1; }
 object bad3:Hooked { int myLibHook = 2; }

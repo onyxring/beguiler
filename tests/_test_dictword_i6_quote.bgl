@@ -1,0 +1,11 @@
+/* Negative test: I6's dictionary-word form `'word'` is not Beguile syntax. A single-quoted
+   literal is a CHAR literal and holds exactly one character; Beguile spells a dictionary word
+   `.word`. Without the check the lexer took `'s'` as the literal and left `word'` to be read as
+   an identifier, emitting `name 's'word` — text Inform 6 rejects. */
+// EXPECT_ERROR: is not a valid character literal
+// EXPECT_ERROR: write the dictionary word as .sword
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object leaf { array<dictionaryWord> name = {'sword'}; }
+
+void main(){ bglInit(); }
