@@ -3284,7 +3284,7 @@ On an `extern property` it is a *declaration of fact* rather than a directive: I
 extern additive property name;   // states a fact about I6's declaration; emits nothing
 ```
 
-`beguiLib/bindings/i6StandardLibrary.bgl` carries these declarations for the properties that are already additive in the I6 world: `name` (additive in the compiler itself, so it holds even with no library) plus `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn` from the standard library.
+`name` is a special case: it is additive in the **I6 compiler itself**, not in any library, so the compiler knows it unconditionally — the diagnostic below fires for `name` even in a program that includes no bindings at all. Every other additive property is library-specific and must be declared. `beguiLib/bindings/i6StandardLibrary.bgl` declares the standard library's: `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn`.
 
 #### Additive properties and single-word members
 

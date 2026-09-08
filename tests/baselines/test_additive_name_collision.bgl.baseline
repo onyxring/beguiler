@@ -1403,6 +1403,13 @@ class words
 words okAccumulating
   with name 'w'ooden 
 ;
+class hooked
+  with
+    myLibHook 1
+;
+hooked bad3
+  with mylibhook 2
+;
 [main;
     bglinit();
 ];

@@ -2,14 +2,19 @@
     override become a multi-word property that `.` can no longer read. `bad1` and `bad2` hit
     that; the rest are the shapes that must stay silent — a default with no override, an
     override with no default, a non-additive property, and array<dictionaryWord>, which is the
-    accumulating form the developer actually wants.  */
+    accumulating form the developer actually wants.
+
+    `name` is deliberately NOT declared here: it is additive in the I6 compiler itself, so the
+    warning must fire with no binding included and no local declaration. `myLibHook` covers the
+    other half — an additive property learned from an `extern additive property` declaration.  */
 // EXPECT_WARNING: 'bad1.name' overrides a default on 'Room'
 // EXPECT_WARNING: 'bad2.name' overrides a default on 'Container'
+// EXPECT_WARNING: 'bad3.mylibhook' overrides a default on 'Hooked'
 // EXPECT_WARNING: is an ADDITIVE I6 property
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 #include <string>
 
-extern additive property name;
+extern additive property myLibHook;
 
 class Room { int name = 1; }
 object bad1:Room { int name = 2; }
@@ -25,5 +30,8 @@ object okOverride:Bare { int label = 2; }
 
 class Words { array<dictionaryWord> name = {'box'}; }
 object okAccumulating:Words { array<dictionaryWord> name = {'wooden'}; }
+
+class Hooked { int myLibHook = 1; }
+object bad3:Hooked { int myLibHook = 2; }
 
 void main(){ bglInit(); }

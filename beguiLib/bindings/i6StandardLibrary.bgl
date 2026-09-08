@@ -26,7 +26,6 @@ extern attribute transparent;   // see through even when closed
 extern attribute animate;       // is an NPC or animate object
 extern attribute talkable;      // can be addressed directly
 extern attribute proper;        // name needs no "the" prefix
-extern additive property name;
 extern additive property before;
 extern additive property after;
 extern additive property life;
