@@ -1044,6 +1044,33 @@ void bglParser::preScanGlobalLoop(){
             preScanSkipBody();
             continue;
         }
+        if(tok.is("property")){
+            // Same reservation the `attribute` branch makes below, and for the same reason: without
+            // a stub at this source position the declaration is appended to globals at main-parse
+            // time, landing AFTER the pre-scanned classes. I6 then sees the class create the
+            // property as an individual property and rejects the later `Property` directive
+            // ("is a name already in use"). The untyped form `property foo;` came through the
+            // generic TYPE NAME path above; the typed forms (`property var foo;`,
+            // `property rawArray<T> foo;`) do not, because the token after `property` is a type.
+            // The property NAME is the last token before the ';' in every form.
+            token last, t = file.getToken();
+            while(t.isNot(token::endStatement) && t.isNot(eTokenType::eof)){ last = t; t = file.getToken(); }
+            string nameStr = last.value;
+            transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+            bool alreadyReg = false;
+            for(typeDef* g : languageService.globals)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                    if(vd->name == nameStr && vd->type.name == "property"){ alreadyReg = true; break; }
+            if(!alreadyReg && !nameStr.empty()){
+                variableDeclaration& stub = *(new variableDeclaration());
+                stub.name = nameStr;
+                stub.type.name = "property";
+                stub.isPrePassStub = true;
+                stub.isExternal = isExtern;
+                languageService.globals.push_back(&stub);
+            }
+            continue;
+        }
         if(tok.is("attribute")){
             // Register a stub at this source position so the main-parse emitter can see the
             // attribute's declaration index. Without this, `extern attribute light;` gets

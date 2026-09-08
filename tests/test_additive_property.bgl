@@ -13,6 +13,6 @@
     non-extern form still emits its directive.  */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-additive property myHooks;          // ours; emits `Property additive myHooks;`
+additive property rawArray<var> myHooks;          // ours; emits `Property additive myHooks;`
 
 void main(){ bglInit(); }

@@ -25,7 +25,7 @@
 #include <array>
 
 
-additive property myHook;      // ours: emits `Property additive`, so I6 accumulates
+additive property rawArray<int> myHook;      // ours: emits `Property additive`, so I6 accumulates
 
 array<int> gTracked = {1,2,3};
 

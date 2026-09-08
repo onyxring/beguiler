@@ -11,14 +11,14 @@
 }
 
 /// Set on objects that should be hidden from the room listing.
-property hidden_flag;
+property var hidden_flag;
 
 /// Provided by a hypothetical I6 library; we never define it.
 extern property var libDefinedProp;
 
 /// Accumulating hook — emits `Property additive my_hooks;` so the slot gathers values
 /// across the class hierarchy instead of the descendant overriding.
-additive property my_hooks;
+additive property rawArray<var> my_hooks;
 
 class Box : object {
     int weight;

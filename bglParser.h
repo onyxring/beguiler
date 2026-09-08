@@ -192,9 +192,6 @@ class bglParser {
         void assignObjectMethodOverloadMangling();
         // Run the `init` emitter (and apply the declared value) for class-typed object members.
         void recordObjectMemberInits();
-        // Warn when a single-word member is bound to an I6 additive property and both a class
-        // default and an instance override supply a value.
-        void warnOnAdditivePropertyMisuse();
         // Check every member bound to a property declared in the typed form
         // (`additive property rawArray<T> p;`) against that declared type.
         void checkTypedPropertyMemberTypes();

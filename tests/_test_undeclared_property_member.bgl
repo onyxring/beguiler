@@ -8,7 +8,7 @@
 #beguilerSettings { informName = "none"; }
 
 extern object dehydratedBananas;   // receiver IS known
-property weight;                    // registered as a property identifier, NOT a member
+property var weight;                    // registered as a property identifier, NOT a member
 
 bool f() {
     return dehydratedBananas.weight != 0;   // weight is not a member of object

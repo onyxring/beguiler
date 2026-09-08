@@ -276,6 +276,8 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+property additive hook;
+property plain;
 class base
   with
     hook 1 2 
@@ -286,5 +288,3 @@ base leaf
 [main;
     bglinit();
 ];
-property additive hook;
-property plain;

@@ -276,29 +276,47 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-property additive hook;
-property additive quietHook;
-property plainHook;
-class room
+property additive myHook;
+array gtracked table 1 2 3 3 $9084;
+class base
   with
-    hook 1
+    myhook 7 8 
 ;
-room bad1
-  with hook 2
+base w
+  with r 11 22 33 ,
+       sized 0 0 0 0 ,
+       name 'aa' 'bb' 'cc' ,
+       trk 0 0 0 0 0 ,
+       myhook 9 
 ;
-class quiet
-  with
-    quietHook 1
-;
-quiet okDefaultOnly
-;
-class bare
-  with
-    plainHook 1
-;
-bare okOverride
-  with plainhook 2
-;
-[main;
+[row sz ln;
+    print (string)"size ";
+    print sz;
+    print (string)" len ";
+    print ln;
+    print (string)"^";
+];
+[main i;
     bglinit();
+    print (string)"raw seeded: ";
+    row(((w.#r)/WORDSIZE), ((w.#r)/WORDSIZE));
+    print (string)"raw sized: ";
+    row(((w.#sized)/WORDSIZE), ((w.#sized)/WORDSIZE));
+    print (string)"dict: ";
+    row(((w.#name)/WORDSIZE), ((w.#name)/WORDSIZE));
+    print (string)"additive across layers: ";
+    row(((w.#myhook)/WORDSIZE), ((w.#myhook)/WORDSIZE));
+    w.&r-->(0) = 99;
+    print (string)"subscript: ";
+    for (i = 0 : i < 3 : i++) {
+        print w.&r-->(i);
+        print (string)" ";
+    }
+    print (string)"^";
+    _bglArray.append(w, trk, 4, 0);
+    _bglArray.append(w, trk, 5, 0);
+    print (string)"tracked member: ";
+    row(_bglArray.size(w, trk), _bglArray.length(w, trk));
+    print (string)"tracked global: ";
+    row(_bglArray.size(gtracked, 0), _bglArray.length(gtracked, 0));
 ];
