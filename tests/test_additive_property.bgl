@@ -8,11 +8,11 @@
     needs to know which properties accumulate. `additive` on a non-extern property emits
     `Property additive`; on an extern one it emits nothing, because I6 already declared it.
 
-    Pins: the extern form produces no `Property additive name;` line, and the non-extern
-    form still does.  */
+    Pins: `name` — declared `extern additive` by the core BLR, since it is additive in the I6
+    compiler rather than in any library — produces no `Property additive name;` line, and the
+    non-extern form still emits its directive.  */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-extern additive property name;      // I6 declares this one; no directive of ours
 additive property myHooks;          // ours; emits `Property additive myHooks;`
 
 void main(){ bglInit(); }

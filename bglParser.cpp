@@ -407,14 +407,14 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
 // additive comes from `extern additive property` declarations in the bindings, since the set is
 // library-specific.
 void bglParser::warnOnAdditivePropertyMisuse(){
-    // `name` is additive in the I6 COMPILER, not in any library, so it holds for a program that
-    // includes no bindings at all. It is seeded here rather than left to a binding for that reason;
-    // the rest of the additive set is library-specific and does come from `extern additive property`
-    // declarations. (Re-declaring `name` in a binding is harmless — the set is a set.)
-    set<string> additiveProps{"name"};
+    // The additive set is entirely declarative: `extern additive property` in the BLR or a binding.
+    // `name` is additive in the I6 COMPILER rather than in any library, so core/_property.bgl
+    // declares it — the core BLR is always loaded, so it holds for a program that includes nothing.
+    set<string> additiveProps;
     for(typeDef* g : languageService.globals)
         if(auto* vd = dynamic_cast<variableDeclaration*>(g))
             if(vd->isAdditive && vd->type.name == "property") additiveProps.insert(vd->name);
+    if(additiveProps.empty()) return;
 
     for(typeDef* g : languageService.globals){
         auto* obj = dynamic_cast<objectDef*>(g);
