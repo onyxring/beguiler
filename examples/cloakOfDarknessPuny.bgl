@@ -76,7 +76,7 @@ object cloak {
     string description = "A handsome cloak, of velvet trimmed with satin, and 
         slightly spattered with raindrops. Its blackness is so deep that it 
         almost seems to suck light from the room.";
-    array<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
+    rawArray<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
     bool before() {
         switch(action){
             case Drop, PutOn:
@@ -104,7 +104,7 @@ object cloak {
 object hook { 
     string short_name = "small brass hook";
     object parent = cloakroom;
-    array<dictionaryWord> name = {.small, .brass, .hook, .peg};
+    rawArray<dictionaryWord> name = {.small, .brass, .hook, .peg};
     bool description() {
         rtrue($"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}");       
     }
@@ -113,7 +113,7 @@ object hook {
 object message {
     string short_name = "scrawled message";
     object parent = bar;
-    array<dictionaryWord> name = {.message, .sawdust, .floor};
+    rawArray<dictionaryWord> name = {.message, .sawdust, .floor};
     bool description() {
         if (number < 2) {
             score++; 

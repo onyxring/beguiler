@@ -19,7 +19,7 @@
 #include <bindings/i6StandardLibrary>
 
 emitter class thing {
-    array<dictionaryWord> name;
+    rawArray<dictionaryWord> name;
     array<dictionaryWord> adjective;
 }
 

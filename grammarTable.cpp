@@ -35,6 +35,7 @@ void bglParser::initGrammarTable() {
         // members must use. Must precede the generic variable-declaration rules, whose TYPE_NAME
         // NEW_NAME shape would otherwise not match (the second token here is a type, not a name).
         {"typed property declaration", {"property", P::anyOf({"rawarray","array"}), "<"},           &Self::processTypedProperty},
+        {"typed property declaration", {"property", TYPE_NAME, NEW_NAME},                           &Self::processTypedProperty},
         {"variable declaration",     {TYPE_NAME, NEW_NAME, "="},                                    &Self::processVariable},
         // `ref T name := expr;` — a ref declaration binds rather than copies, so it carries the
         // reference binding operator. processVariableDeclaration rejects the `=` form for `ref`

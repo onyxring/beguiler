@@ -72,7 +72,7 @@ extern int    verb_wordnum;         // verb position in input
 extern int    wn;                   // word number currently being parsed
 extern int    num_words;            // number of words typed
 extern int    keep_silent;          // suppress action output
-extern property selected_direction; // direction chosen for Go action — holds the
+extern property var selected_direction; // direction chosen for Go action — holds the
                                     // property slot ID (n_to, s_to, ...). Compare with
                                     // `(property)n_to` to bypass the bare-name lookup
                                     // that would otherwise yield `self.n_to`'s value.
@@ -85,18 +85,18 @@ extern int    selected_direction_index; // 1-based: 1=N, 2=S, 3=E, 4=W, 5=NE, 6=
 // `Directions` placeholder. The idiomatic check is:
 //   if (selected_direction == n_to) { ... }
 // rather than the stdlib `if (noun == n_obj)`.
-extern property n_to;
-extern property s_to;
-extern property e_to;
-extern property w_to;
-extern property ne_to;
-extern property nw_to;
-extern property se_to;
-extern property sw_to;
-extern property u_to;
-extern property d_to;
-extern property in_to;
-extern property out_to;
+extern property var n_to;
+extern property var s_to;
+extern property var e_to;
+extern property var w_to;
+extern property var ne_to;
+extern property var nw_to;
+extern property var se_to;
+extern property var sw_to;
+extern property var u_to;
+extern property var d_to;
+extern property var in_to;
+extern property var out_to;
 
 //-- Fake direction-object constants ------------------------------------------
 // Sentinel values used internally by the puny parser to represent

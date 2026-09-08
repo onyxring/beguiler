@@ -1,0 +1,29 @@
+/*  Printing a dictionary word uses I6's `print (address) w;` rule.
+
+    `print(x)` fell through to the generic `print(_bglObject)` overload, which emits a runtime
+    probe — `if(x provides print) x.print(); else print (name)x;`. A dictionary word is not an
+    object, so `provides` on one is invalid I6 ("Evaluating this has no effect: word array
+    operator '-->'") and `(name)` is the wrong print rule besides. The word never reached the
+    `print (address)` emitter the type already carried.
+
+    Two overloads on print() now route dictionaryWord and dictionaryWordLiteral to that rule, so
+    a literal, a variable, and an element read out of a member array all print their text.  */
+// EXPECT_OUTPUT: literal: rock
+// EXPECT_OUTPUT: variable: blade
+// EXPECT_OUTPUT: element: sword
+// EXPECT_OUTPUT: all: blade sword
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+object w { rawArray<dictionaryWord> name = {.blade, .sword}; }
+
+void main(){
+    bglInit();
+    print("literal: ");  print(.rock);          print("^");
+    dictionaryWord d = w.name[0];
+    print("variable: "); print(d);              print("^");
+    print("element: ");  print(w.name[1]);      print("^");
+    print("all: ");
+    for(int i = 0; i < w.name.length(); i++){ print(w.name[i]); if(i == 0) print(" "); }
+    print("^");
+}

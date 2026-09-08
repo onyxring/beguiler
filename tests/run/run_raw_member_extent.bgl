@@ -34,7 +34,7 @@ class Base { rawArray<int> myHook = {7,8}; }
 object w : Base {
     rawArray<int>         r = {11,22,33};
     rawArray<int>         sized[4];
-    array<dictionaryWord> name = {.aa,.bb,.cc};
+    rawArray<dictionaryWord> name = {.aa,.bb,.cc};
     array<int>            trk[4];
     rawArray<int>         myHook = {9};      // accumulates with Base's two words
 }

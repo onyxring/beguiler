@@ -1,37 +1,28 @@
-/*  Diagnostic test: I6 ACCUMULATES an additive property, so a class default plus an instance
-    override become a multi-word property that `.` can no longer read. `bad1` and `bad2` hit
-    that; the rest are the shapes that must stay silent — a default with no override, an
-    override with no default, a non-additive property, and array<dictionaryWord>, which is the
-    accumulating form the developer actually wants.
+/*  The scalar-on-additive WARNING, which applies to a property declared in the untyped form.
 
-    `name` is deliberately NOT declared here: it is additive in the I6 compiler itself, so the
-    warning must fire with no binding included and no local declaration. `myLibHook` covers the
-    other half — an additive property learned from an `extern additive property` declaration.  */
-// EXPECT_WARNING: 'bad1.name' overrides a default on 'Room'
-// EXPECT_WARNING: 'bad2.name' overrides a default on 'Container'
-// EXPECT_WARNING: 'bad3.mylibhook' overrides a default on 'Hooked'
+    I6 accumulates an additive property, so a class default plus an instance override become a
+    multi-word property that `.` can no longer read. `bad1` hits that. The others are the shapes
+    that must stay silent: a default with no override, an override with no default, and a
+    non-additive property.
+
+    A property declared in the TYPED form (`additive property rawArray<T> p;`) rejects a scalar
+    member outright — see _test_additive_scalar_member — so this warning is what remains for the
+    untyped form, where nothing says what the property holds.  */
+// EXPECT_WARNING: 'bad1.hook' overrides a default on 'Room'
 // EXPECT_WARNING: is an ADDITIVE I6 property
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
-#include <string>
 
-extern additive property myLibHook;
+additive property hook;          // untyped: unchecked, so a scalar member only warns
+additive property quietHook;
+property plainHook;              // not additive
 
-class Room { int name = 1; }
-object bad1:Room { int name = 2; }
+class Room { int hook = 1; }
+object bad1 : Room { int hook = 2; }
 
-class Container { stringObj name = "box"; }
-object bad2:Container { stringObj name = "wooden"; }
+class Quiet { int quietHook = 1; }
+object okDefaultOnly : Quiet { }
 
-class Quiet { int name = 1; }
-object okDefaultOnly:Quiet { }
-
-class Bare { int label = 1; }
-object okOverride:Bare { int label = 2; }
-
-class Words { array<dictionaryWord> name = {.box}; }
-object okAccumulating:Words { array<dictionaryWord> name = {.wooden}; }
-
-class Hooked { int myLibHook = 1; }
-object bad3:Hooked { int myLibHook = 2; }
+class Bare { int plainHook = 1; }
+object okOverride : Bare { int plainHook = 2; }
 
 void main(){ bglInit(); }

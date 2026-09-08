@@ -1,11 +1,10 @@
 /* Negative test: every layer contributing to a typed property must use the declared type.
-   The contributions of an additive property accumulate into one run of words, so a class
-   holding rawArray<int> and an instance holding array<int> would emit a single property whose
-   data has a tracked length slot buried inside it. */
+   Uses a NON-additive property, so the failure is the type disagreement itself rather than the
+   separate rule that an additive property's members must be raw (_test_additive_must_be_raw). */
 // EXPECT_ERROR: is declared 'array<int>', but the property 'hook' is declared 'rawArray<int>'
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-additive property rawArray<int> hook;
+property rawArray<int> hook;
 
 class Base { rawArray<int> hook = {1,2}; }
 object leaf : Base { array<int> hook = {3}; }

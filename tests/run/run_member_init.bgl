@@ -1,7 +1,7 @@
 /*  A class-typed member whose type has an `init` emitter is actually initialised.
 
     Locals had this from the start; object members and file-scope variables never did.
-    `object j { stringObj name = "fish"; }` emitted the packed literal straight into the
+    `object j { stringObj label = "fish"; }` emitted the packed literal straight into the
     property, so the slot held a text pointer rather than a pooled string: reads printed
     garbage, and every method call dispatched against the OWNER (`j.setFromLit(...)`)
     rather than the member.
@@ -36,7 +36,7 @@
 stringObj g = "worldwide";           // file scope, with initializer
 
 object j {
-    stringObj name = "fish";         // object member, with initializer
+    stringObj label = "fish";         // object member, with initializer
     stringObj bare;                  // object member, no initializer — still allocated
 }
 
@@ -70,12 +70,12 @@ object cyc { Cycle top; }
 
 void main(){
     bglInit();
-    print("member: ");          print(j.name);              print("^");
-    print("member length: ");   print(j.name.getLength());  print("^");
+    print("member: ");          print(j.label);              print("^");
+    print("member length: ");   print(j.label.getLength());  print("^");
 
-    j.name = "trout";                                       // operator= into the MEMBER
-    print("member assigned: "); print(j.name);              print("^");
-    print("member method: ");   print(j.name.toUpper());    print("^");
+    j.label = "trout";                                       // operator= into the MEMBER
+    print("member assigned: "); print(j.label);              print("^");
+    print("member method: ");   print(j.label.toUpper());    print("^");
 
     // an initializer-less member is still a live instance, not an empty slot
     j.bare = "x";

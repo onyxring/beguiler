@@ -3,7 +3,7 @@
      • implicit (class member name auto-registers in I6 property table)
      • cross-class (member of a different class still resolves)
      • explicit `property foo;` (emits `Property foo;` to I6)
-     • `extern property foo;` (registers name only, no emission)                */
+     • `extern property var foo;` (registers name only, no emission)                */
 #beguilerSettings {
     target = z5;
     informName = "none";
@@ -14,7 +14,7 @@
 property hidden_flag;
 
 /// Provided by a hypothetical I6 library; we never define it.
-extern property libDefinedProp;
+extern property var libDefinedProp;
 
 /// Accumulating hook — emits `Property additive my_hooks;` so the slot gathers values
 /// across the class hierarchy instead of the descendant overriding.

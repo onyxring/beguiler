@@ -1,0 +1,10 @@
+/* Negative test: `name` is declared `rawArray<dictionaryWord>` by the core BLR, so a scalar
+   member bound to it is rejected rather than merely warned about. This is the shape that used to
+   fail at run time with I6's "has a property name, but it is longer than 2 bytes". */
+// EXPECT_ERROR: is declared 'stringObj', but the property 'name' is declared 'rawArray<dictionaryWord>'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+
+object sword { stringObj name = "blade"; }
+
+void main(){ bglInit(); }

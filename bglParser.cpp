@@ -417,14 +417,33 @@ void bglParser::checkTypedPropertyMemberTypes(){
         if(auto* vd = dynamic_cast<variableDeclaration*>(g))
             if(vd->type.name == "property" && !vd->declaredMemberType.empty())
                 declared[vd->name] = vd->declaredMemberType;
-    if(declared.empty()) return;
+    // No early return on an empty `declared`: the additive-property check below applies to every
+    // member bound to an additive property, whether or not that property was declared in the
+    // typed form.
 
     auto check = [&](vector<typeMember*>& members, const string& ownerLabel){
         for(typeMember* m : members){
             auto* vd = dynamic_cast<variableDeclaration*>(m);
             if(vd == nullptr || vd->type.name.empty()) continue;   // untyped: inherits the class's
-            auto it = declared.find(vd->i6name.empty() ? vd->name : vd->i6name);
-            if(it == declared.end()) continue;
+            string propName = vd->i6name.empty() ? vd->name : vd->i6name;
+            // An ADDITIVE property accumulates its contributions into one run of words, so a
+            // member bound to one must be a raw array: a tracked `array<T>` keeps its length in a
+            // trailing slot, and accumulation would bury that slot inside the data. Rejected here
+            // rather than silently demoted to raw, so the source says what the layout is.
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(m))
+                if(!ad->isRaw && !ad->elementType.empty() && languageService.isAdditiveProperty(propName)){
+                    string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
+                    parsingError(where + format("'{0}.{1}' is declared 'array<{2}>', but '{3}' is an "
+                        "ADDITIVE property: its contributions accumulate into a single run of words, "
+                        "and a tracked array's trailing length slot would land inside that data. "
+                        "Declare it `rawArray<{2}>`.", ownerLabel, vd->dName(),
+                        typeDisplayName(ad->elementType), propName));
+                }
+            auto it = declared.find(propName);
+            // `var` is the unconstrained declaration — it records that the property's type is
+            // deliberately open (required on `extern property`, where nothing else says what the
+            // slot holds), so it constrains no member.
+            if(it == declared.end() || it->second == "var") continue;
             // A member array records its base in type.name ("array"), its rawness in isRaw and its
             // element in elementType — never the "rawarray<int>" spelling the declaration uses — so
             // the shapes are compared piecewise rather than as strings.
@@ -1407,31 +1426,49 @@ bool bglParser::processInlineObjectStatement(vector<token>& t, Qualifiers&, abst
         return false;
     }
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
-    { t[0] = consumeTypeToken(t[0]); return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef, q.isSuperposed, q.isAdditive); }
+    {
+        t[0] = consumeTypeToken(t[0]);
+        // An `extern property` names a slot that external I6 code owns, and nothing else in the
+        // program says what it holds — so the declaration has to. `var` is the escape hatch when
+        // the type really is unconstrained; it still records the intent explicitly.
+        if(q.isExtern && (string)t[0].value == "property")
+            parsingError(format("'extern property {0};' does not say what the property holds. Declare "
+                "its type — `extern property var {0};` if it is unconstrained, or the concrete type "
+                "(e.g. `extern property rawArray<dictionaryWord> {0};`).", (string)t[1].value));
+        return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef, q.isSuperposed, q.isAdditive);
+    }
 // `additive property rawArray<T> name;` — the property declaration carries the type its members
 // must use, so every layer contributing to the property agrees on one element type. Entered after
 // "property" <base> "<" have been consumed by the matcher.
 bool bglParser::processTypedProperty(vector<token>& t, Qualifiers& q, abstractObject& c)
     {
         string base = (string)t[1].value;
-        string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
-        file.getToken(">");
-        token nameTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        // Two shapes reach here: the generic `property rawArray<T> name;`, where the matcher has
+        // consumed the '<', and the plain `property var name;`, where it has consumed the name.
+        bool isGeneric = ((string)t[2].value == "<");
+        string elemType, declType = base;
+        token nameTok = t[2];
+        if(isGeneric){
+            elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+            file.getToken(">");
+            declType = base + "<" + elemType + ">";
+            nameTok  = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        }
         token symbol  = file.getToken(token::endStatement);
         string propName = (string)nameTok.value;
         // An additive property accumulates its contributions into one property with no length
         // word, so a tracked `array<T>` member — whose length lives in a trailing slot — would
         // put that slot inside the accumulated data. Only the raw form can hold one.
         if(q.isAdditive && base != "rawarray")
-            parsingError(format("'additive property {0}<{1}> {2}': an additive property accumulates "
-                "its contributions into a single property with no length word, so its members are "
-                "raw arrays. Declare it `rawArray<{1}>`.", base, elemType, propName));
+            parsingError(format("'additive property {0} {1}': an additive property accumulates its "
+                "contributions into a single property with no length word, so its members are raw "
+                "arrays. Declare it `rawArray<T>`.", typeDisplayName(declType), propName));
         processVariableDeclaration(t[0], nameTok, symbol, c, q.isExtern, q.isConst, "",
                                    q.isRef, q.isSuperposed, q.isAdditive);
         for(typeDef* g : languageService.globals)
             if(auto* vd = dynamic_cast<variableDeclaration*>(g))
                 if(vd->type.name == "property" && vd->name == propName)
-                    { vd->declaredMemberType = base + "<" + elemType + ">"; break; }
+                    { vd->declaredMemberType = declType; break; }
         return false;
     }
 bool bglParser::processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c)

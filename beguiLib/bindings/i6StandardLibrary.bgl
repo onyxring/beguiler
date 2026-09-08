@@ -26,15 +26,15 @@ extern attribute transparent;   // see through even when closed
 extern attribute animate;       // is an NPC or animate object
 extern attribute talkable;      // can be addressed directly
 extern attribute proper;        // name needs no "the" prefix
-extern additive property before;
-extern additive property after;
-extern additive property life;
-extern additive property orders;
-extern additive property describe;
-extern additive property time_out;
-extern additive property each_turn;
+extern additive property rawArray<var> before;
+extern additive property rawArray<var> after;
+extern additive property rawArray<var> life;
+extern additive property rawArray<var> orders;
+extern additive property rawArray<var> describe;
+extern additive property rawArray<var> time_out;
+extern additive property rawArray<var> each_turn;
 
-extern property plural;         // the plural print-name of an object (I6 library property, linklpa.h — NOT an attribute; `pluralname` is the attribute)
+extern property var plural;         // the plural print-name of an object (I6 library property, linklpa.h — NOT an attribute; `pluralname` is the attribute)
 extern attribute pluralname;    // object is referred to in the plural ("some keys")
 extern attribute female;        // animate: use she/her pronouns
 extern attribute male;          // animate: use he/him pronouns

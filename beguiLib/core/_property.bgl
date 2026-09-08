@@ -13,7 +13,7 @@
     /// any other word-sized value; division/arithmetic operators are
     /// intentionally not provided because they don't have a meaning on
     /// property identifiers.
-    extern additive property name;
+    extern additive property rawArray<dictionaryWord> name;
 
     extern emitter class property : _bglObject{
         emitter property operator = (property v) { $target = $v; }

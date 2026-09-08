@@ -2,7 +2,7 @@
    length in a trailing slot; an additive property accumulates, so that slot would land inside
    the accumulated data. Only the raw form can hold one. */
 // EXPECT_ERROR: an additive property accumulates
-// EXPECT_ERROR: Declare it `rawArray<int>`
+// EXPECT_ERROR: Declare it `rawArray<T>`
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
 additive property array<int> hook;

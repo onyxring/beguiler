@@ -3302,7 +3302,14 @@ property rawArray<int> plain;                                  // typed, not add
 
 The declaration is then the single place that type is written down, and **every layer that contributes to the property is checked against it** — a class holding `rawArray<int>` and an instance holding `rawArray<dictionaryWord>` would otherwise emit one property with mixed element types and no diagnostic. A disagreement in element type, in raw-vs-tracked, or a scalar member where an array is declared, is an error. The untyped form (`additive property hook;`) remains legal and is unchecked.
 
-An **additive** property must be declared `rawArray<T>`; `array<T>` is rejected, because a tracked array keeps its length in a trailing slot and an additive property accumulates, which would bury that slot inside the accumulated data.
+An **additive** property must be declared `rawArray<T>`; `array<T>` is rejected, because a tracked array keeps its length in a trailing slot and an additive property accumulates, which would bury that slot inside the accumulated data. The same rule applies to the members: a member bound to an additive property must be declared `rawArray<T>`, whether or not the property itself was declared in the typed form.
+
+An `extern property` **must** declare a type. External I6 code owns the slot, so nothing else in the program says what it holds; `var` is the escape hatch when the type is genuinely unconstrained, and a `var` declaration constrains no member:
+
+```bgl
+extern property var plural;                                    // unconstrained, but explicit
+extern additive property rawArray<dictionaryWord> name;        // declared by the core BLR
+```
 
 #### Additive properties are raw arrays
 

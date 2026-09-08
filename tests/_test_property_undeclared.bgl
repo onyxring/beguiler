@@ -1,6 +1,6 @@
 /* Negative test: passing an unknown name to `provides()` in strict mode must error.
    No class/object declares a member of this name, and there is no `property foo;` or
-   `extern property foo;` at file scope, so the `provides` argument is genuinely
+   `extern property var foo;` at file scope, so the `provides` argument is genuinely
    undeclared. */
 // EXPECT_ERROR: Undeclared identifier 'wieght'
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
