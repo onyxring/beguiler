@@ -195,6 +195,9 @@ class bglParser {
         // Warn when a single-word member is bound to an I6 additive property and both a class
         // default and an instance override supply a value.
         void warnOnAdditivePropertyMisuse();
+        // Check every member bound to a property declared in the typed form
+        // (`additive property rawArray<T> p;`) against that declared type.
+        void checkTypedPropertyMemberTypes();
         // Reject a length-changing array operation on a RAW member array (rawArray<T> or
         // array<dictionaryWord>), whose extent is fixed by the property that holds it.
         bool rejectRawMemberLengthOp(const std::string& owner, const std::string& prop,
@@ -235,6 +238,7 @@ class bglParser {
         bool processObject(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processInlineObjectStatement(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processVariable(vector<token>& t, Qualifiers& q, abstractObject& c);
+        bool processTypedProperty(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processAliased(vector<token>& t, Qualifiers& q, abstractObject& c);
         // Statements

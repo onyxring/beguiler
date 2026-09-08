@@ -1,0 +1,22 @@
+/*  A `property` declaration may carry the type its members must use:
+
+        additive property rawArray<int> hook;
+
+    An additive property accumulates its contributions into ONE run of words with no length
+    word, so the members that bind to it are raw arrays. The declaration is the single place
+    that type is written down, and every layer that contributes is checked against it — without
+    that, a class holding rawArray<int> and an instance holding rawArray<dictionaryWord> produce
+    one property with mixed element types and no diagnostic at all.
+
+    Pins: the typed form parses, `extern` emits no directive, the non-extern form still emits
+    `Property additive`, and agreeing layers compile.  */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+additive property rawArray<int> hook;         // ours: emits `Property additive hook;`
+property rawArray<int> plain;                 // typed, not additive — legal
+extern additive property rawArray<dictionaryWord> extraName;   // extern: no directive
+
+class Base { rawArray<int> hook = {1,2}; }
+object leaf : Base { rawArray<int> hook = {3}; }
+
+void main(){ bglInit(); }

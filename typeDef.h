@@ -203,6 +203,10 @@ class returnStatement:public statement{
 //the declaration of a variable.  This may be a global variable, an object member, or a local variable within a function.
 class variableDeclaration:public typeMember, public statement, public typeDef, public typeInstance{
     public:
+        // On a `property` declaration written in the typed form (`additive property rawArray<T> p;`):
+        // the type every member bound to this property must use. Empty for the untyped form.
+        std::string declaredMemberType;
+    public:
         typeDef type;
         bool isConst = false;
         // isConst: for globals, emits as I6 Constant; for class members, prevents reassignment (property still has runtime storage)

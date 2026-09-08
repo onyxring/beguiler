@@ -58,6 +58,10 @@ class bglLanguageService{
     bglLanguageService();
         void reset();  // clear all state and re-register base types (for LSP re-parse)
         typeDef& getType(string);
+        // True when `name` is a property Inform 6 treats as ADDITIVE, so its contributions
+        // accumulate instead of replacing. Declared by `additive property` / `extern additive
+        // property` (the core BLR declares `name`, which the I6 compiler itself makes additive).
+        bool isAdditiveProperty(const std::string& name) const;
         bool isObjectType(string);
         bool isClassType(string);  // true for classes/enums/types only, not object instances
         

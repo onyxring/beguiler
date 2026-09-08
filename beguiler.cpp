@@ -327,6 +327,7 @@ bool beguiler::go(int argc, char* argv[]) {
     // BEFORE recordObjectMemberInits: that pass clears declaredExpressionValue on members whose
     // value it moves into bglInit, and this check reads exactly that field to spot a second
     // contribution.
+    parser.checkTypedPropertyMemberTypes();
     parser.warnOnAdditivePropertyMisuse();
     parser.recordObjectMemberInits();
 

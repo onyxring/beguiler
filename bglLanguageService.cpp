@@ -116,6 +116,14 @@ static string fmtSrc(const sourceLocation& src){
     return format("{0}:{1}", src.file, src.line);
 }
 
+bool bglLanguageService::isAdditiveProperty(const string& name) const {
+    if(name.empty()) return false;
+    for(typeDef* g : globals)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+            if(vd->isAdditive && vd->type.name == "property" && vd->name == name) return true;
+    return false;
+}
+
 bool bglLanguageService::isKnownPropertyName(const string& name) const {
     if(name.empty()) return false;
     // Free-standing `property foo;` / `extern property foo;` — registered as a global

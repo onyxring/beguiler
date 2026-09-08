@@ -1277,7 +1277,13 @@ bool bglParser::memberArrayIsTracked(const std::string& ownerName, const std::st
         for(typeMember* m : members)
             if(auto* ad = dynamic_cast<arrayDeclaration*>(m))
                 if(ad->name == propName)
-                    return (ad->isRaw || ad->elementType == "dictionaryword") ? 0 : 1;
+                    // Raw when the slot cannot hold a trailing length word: an explicit
+                    // `rawArray<T>`, or a member bound to an ADDITIVE property, whose values
+                    // accumulate across the hierarchy so a length slot would land inside the
+                    // data. (Keyed on additivity rather than on `dictionaryword`, which was only
+                    // ever a proxy for it — `name` and its kin are the additive ones.)
+                    return (ad->isRaw || languageService.isAdditiveProperty(
+                                             ad->i6name.empty() ? ad->name : ad->i6name)) ? 0 : 1;
         return -1;
     };
     string owner = ownerName == "self" ? (currentObject ? currentObject->name

@@ -1,4 +1,4 @@
-!% -G
+!% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
@@ -276,44 +276,15 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-class menu
-  class object
+class base
   with
-    linkTo,
-    title,
-    words 0 
+    hook 1 2 
 ;
-menu root
-  with title "root"
-;
-class wrapper
-  class object
-  with
-    head
+base leaf
+  with hook 3 
 ;
 [main;
-    print (string)child.title;
-    if(child.words provides print) child.words.print(); else print (name)child.words;
-    print (string)_bglanon3.title;
+    bglinit();
 ];
-menu child
-  with linkto root,
-       title "a child",
-       words 'foo' 'bar' 'baz' 3 
-;
-menu _bglanon1
-  with linkto root,
-       title "text to display",
-       words 'type' 'kind' 2 
-;
-menu _bglanon2
-  with linkto "lonely"
-;
-wrapper w
-  with head _bglanon3
-;
-menu _bglanon3
-  with linkto root,
-       title "nested",
-       words 'x//' 1 
-;
+property additive hook;
+property plain;

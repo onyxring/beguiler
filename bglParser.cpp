@@ -406,6 +406,60 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
 // treats as additive, with both a class default and an instance override. Which properties are
 // additive comes from `extern additive property` declarations in the bindings, since the set is
 // library-specific.
+// A property written in the typed form declares the type its members must use. Every layer that
+// contributes to the property has to agree: for an ADDITIVE property the contributions accumulate
+// into one run of words, so a class holding rawArray<int> and an instance holding
+// rawArray<dictionaryWord> produce a single property with mixed element types and no diagnostic.
+// The declaration is the one place that type is written down, so it is checked against here.
+void bglParser::checkTypedPropertyMemberTypes(){
+    std::map<string, string> declared;      // property name -> declared member type
+    for(typeDef* g : languageService.globals)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+            if(vd->type.name == "property" && !vd->declaredMemberType.empty())
+                declared[vd->name] = vd->declaredMemberType;
+    if(declared.empty()) return;
+
+    auto check = [&](vector<typeMember*>& members, const string& ownerLabel){
+        for(typeMember* m : members){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd == nullptr || vd->type.name.empty()) continue;   // untyped: inherits the class's
+            auto it = declared.find(vd->i6name.empty() ? vd->name : vd->i6name);
+            if(it == declared.end()) continue;
+            // A member array records its base in type.name ("array"), its rawness in isRaw and its
+            // element in elementType — never the "rawarray<int>" spelling the declaration uses — so
+            // the shapes are compared piecewise rather than as strings.
+            size_t lt = it->second.find('<');
+            string wantBase = it->second.substr(0, lt);
+            string wantElem = it->second.substr(lt + 1, it->second.size() - lt - 2);
+            string gotBase, gotElem, gotShown;
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(m)){
+                gotBase  = ad->isRaw ? "rawarray" : "array";
+                gotElem  = ad->elementType;
+                gotShown = typeDisplayName(gotBase) + "<" + typeDisplayName(gotElem) + ">";
+                if(gotElem.empty()) continue;          // element inherited from the class decl
+            } else {
+                gotBase  = vd->type.name;
+                gotShown = typeDisplayName(vd->type.name);
+            }
+            if(gotBase == wantBase && gotElem == wantElem) continue;
+            // Runs after every file is closed, so parsingError has no location to attach; carry
+            // the member's own, as warnOnAdditivePropertyMisuse does.
+            string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
+            parsingError(where + format("'{0}.{1}' is declared '{2}', but the property '{3}' is declared "
+                "'{4}'. Every layer that contributes to a property must use the type from its "
+                "declaration — for an additive property the contributions accumulate into a single "
+                "run of words, so a disagreement produces one property holding mixed element types.",
+                ownerLabel, vd->dName(), gotShown,
+                it->first, typeDisplayName(wantBase) + "<" + typeDisplayName(wantElem) + ">"));
+        }
+    };
+    for(typeDef* g : languageService.objectTypes)
+        if(auto* cd = dynamic_cast<classDef*>(g)) check(cd->members, cd->dName());
+    for(typeDef* g : languageService.globals)
+        if(auto* od = dynamic_cast<objectDef*>(g))
+            if(!od->isExternal) check(od->members, od->dName());
+}
+
 void bglParser::warnOnAdditivePropertyMisuse(){
     // The additive set is entirely declarative: `extern additive property` in the BLR or a binding.
     // `name` is additive in the I6 COMPILER rather than in any library, so core/_property.bgl
@@ -1354,6 +1408,32 @@ bool bglParser::processInlineObjectStatement(vector<token>& t, Qualifiers&, abst
     }
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
     { t[0] = consumeTypeToken(t[0]); return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef, q.isSuperposed, q.isAdditive); }
+// `additive property rawArray<T> name;` — the property declaration carries the type its members
+// must use, so every layer contributing to the property agrees on one element type. Entered after
+// "property" <base> "<" have been consumed by the matcher.
+bool bglParser::processTypedProperty(vector<token>& t, Qualifiers& q, abstractObject& c)
+    {
+        string base = (string)t[1].value;
+        string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+        file.getToken(">");
+        token nameTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        token symbol  = file.getToken(token::endStatement);
+        string propName = (string)nameTok.value;
+        // An additive property accumulates its contributions into one property with no length
+        // word, so a tracked `array<T>` member — whose length lives in a trailing slot — would
+        // put that slot inside the accumulated data. Only the raw form can hold one.
+        if(q.isAdditive && base != "rawarray")
+            parsingError(format("'additive property {0}<{1}> {2}': an additive property accumulates "
+                "its contributions into a single property with no length word, so its members are "
+                "raw arrays. Declare it `rawArray<{1}>`.", base, elemType, propName));
+        processVariableDeclaration(t[0], nameTok, symbol, c, q.isExtern, q.isConst, "",
+                                   q.isRef, q.isSuperposed, q.isAdditive);
+        for(typeDef* g : languageService.globals)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                if(vd->type.name == "property" && vd->name == propName)
+                    { vd->declaredMemberType = base + "<" + elemType + ">"; break; }
+        return false;
+    }
 bool bglParser::processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c)
     { t[0] = consumeTypeToken(t[0]); return processTypedObjectDeclaration(t[0], t[1], t[3], q, c); }
 bool bglParser::processAliased(vector<token>& t, Qualifiers& q, abstractObject& c)

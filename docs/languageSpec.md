@@ -3290,6 +3290,20 @@ extern additive property name;   // states a fact about I6's declaration; emits 
 
 Every other additive property is library-specific and is declared by its binding. `beguiLib/bindings/i6StandardLibrary.bgl` declares the standard library's: `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn`.
 
+#### Typed property declarations
+
+A `property` declaration may carry the type its members must use:
+
+```bgl
+additive property rawArray<int> hook;                          // emits `Property additive hook;`
+extern additive property rawArray<dictionaryWord> extraName;   // extern: emits nothing
+property rawArray<int> plain;                                  // typed, not additive
+```
+
+The declaration is then the single place that type is written down, and **every layer that contributes to the property is checked against it** — a class holding `rawArray<int>` and an instance holding `rawArray<dictionaryWord>` would otherwise emit one property with mixed element types and no diagnostic. A disagreement in element type, in raw-vs-tracked, or a scalar member where an array is declared, is an error. The untyped form (`additive property hook;`) remains legal and is unchecked.
+
+An **additive** property must be declared `rawArray<T>`; `array<T>` is rejected, because a tracked array keeps its length in a trailing slot and an additive property accumulates, which would bury that slot inside the accumulated data.
+
 #### Additive properties are raw arrays
 
 An additive property accumulates its contributions into one contiguous property with **no length word** — which is exactly Beguile's `rawArray<T>` layout. A member bound to one is therefore raw: `rawArray<T>`, or `array<dictionaryWord>`, whose layout Inform 6 owns.

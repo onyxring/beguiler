@@ -1,0 +1,13 @@
+/* Negative test: every layer contributing to a typed property must use the declared type.
+   The contributions of an additive property accumulate into one run of words, so a class
+   holding rawArray<int> and an instance holding array<int> would emit a single property whose
+   data has a tracked length slot buried inside it. */
+// EXPECT_ERROR: is declared 'array<int>', but the property 'hook' is declared 'rawArray<int>'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+additive property rawArray<int> hook;
+
+class Base { rawArray<int> hook = {1,2}; }
+object leaf : Base { array<int> hook = {3}; }
+
+void main(){ bglInit(); }

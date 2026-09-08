@@ -1576,7 +1576,8 @@ void i6Emitter::emitClass(classDef* classNode){
                 } else {
                     // capacity + the trailing length slot (see the member length-slot rule)
                     bool trackedMember = languageService.arrayInUse && !arr->isRaw
-                                      && arr->elementType != "dictionaryword";
+                                      && !languageService.isAdditiveProperty(
+                                             arr->i6name.empty() ? arr->name : arr->i6name);
                     for(int k = 0; k < arr->arraySize; k++) out << "0 ";
                     if(trackedMember) out << "0 ";
                 }
@@ -2908,7 +2909,8 @@ void i6Emitter::emitObject(objectDef* obj){
                     // dictionary word and corrupt matching, so those keep the bare layout no
                     // matter what. Same reasoning as rawArray, applied by element type.
                     bool trackedMember = languageService.arrayInUse && !arr->isRaw
-                                      && arr->elementType != "dictionaryword";
+                                      && !languageService.isAdditiveProperty(
+                                             arr->i6name.empty() ? arr->name : arr->i6name);
                     int seeded = 0;
                     if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
                         for(expression* elem : list->elements){ out << elem->text() << " "; seeded++; }
