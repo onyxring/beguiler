@@ -121,6 +121,9 @@
 - 7.5 Extern Variables
 - 7.6 Attributes
 - 7.7 Properties
+  - 7.7.1 Every property declaration carries a type
+  - 7.7.2 `additive` properties
+  - 7.7.3 Additive properties are raw arrays
 - 7.8 Class Tests
 - 7.9 I6 Name Aliasing - the `as` Clause
 
@@ -562,7 +565,7 @@ Dictionary word literals represent I6 dictionary entries, the tokens the parser 
 - A **plural** dictionary word is written with a leading `..`: `..cloaks`
 
 ```bgl
-array<dictionaryWord> name = { .small, .brass, ..bells };
+rawArray<dictionaryWord> name = { .small, .brass, ..bells };
 ```
 
 Both forms resolve to type `dictionaryWord`.
@@ -1589,8 +1592,10 @@ Two kinds keep the bare I6 layout and are never promoted, because I6 owns them:
 
 - **`rawArray<T>`** (§4.9.1), which exists precisely to be an I6 property array. Exceeding the
   property limit is a real error there, not something to rewrite around.
-- **`array<dictionaryWord>`**, which is parser data — the `name` property and its kin, read
-  word by word by I6. A trailing length would be matched as a dictionary word.
+- **a member bound to an `additive` property** (§7.7.3) — `name` and its kin. I6 accumulates
+  the contributions of every layer into one run of words, so a trailing length slot would land
+  inside that data. Such members must be declared `rawArray<T>`, which is why they are covered
+  by the case above; `array<T>` on an additive property is rejected outright.
 
 A member may also be declared `ref`, in which case it holds a pointer to an array owned
 elsewhere and is bound with `:=` (§9.3.1) rather than owning storage of its own:
@@ -3098,7 +3103,7 @@ object cloak {
     object parent = selfobj;
     string short_name = "velvet cloak";
     string description = "A handsome cloak, of velvet trimmed with satin.";
-    array<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .cloak};
+    rawArray<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .cloak};
     attributes = {clothing, general, worn};
 
     bool before() {
@@ -3266,73 +3271,68 @@ Inform 6 maintains a single global property table, populated implicitly by every
 For names that are not members of any Beguile class, typically because they live in I6 code that Beguile interoperates with, or because they are runtime-attached flags with no compile-time owner, Beguile provides a `property` declaration that operates analogously to `attribute`:
 
 ```bgl
-property hidden_flag;          
-extern property libDefinedProp; // defined externally (e.g. by an I6 library)
+property var hidden_flag;                    // emits `Property hidden_flag;`
+extern property var libDefinedProp;          // defined externally (e.g. by an I6 library)
 ```
 
 Both forms register the name with the compiler so `obj.provides(name)` resolves in strict mode. The non-`extern` form additionally emits an I6 `Property` directive so I6 itself knows about the name even when no class declares a member of that name. The `extern` form trusts that the I6 stream will declare it elsewhere.
 
-A non-`extern` `property` declaration may be marked **`additive`**, which emits I6's `Property additive name;` directive:
+### 7.7.1 Every property declaration carries a type
+
+The type is **required**. Nothing else in the program says what a property holds: an `extern` slot is owned by external I6 code, and a property's members can be spread across a class hierarchy with no one place naming the type. The declaration is that place, and **every layer that contributes to the property is checked against it** — a disagreement in element type, in raw-vs-tracked, or a scalar member where an array is declared, is an error.
+
+`var` is the escape hatch when the type is genuinely unconstrained. It constrains no member, but it records that the openness is deliberate:
 
 ```bgl
-additive property my_hooks;    // emits 'Property additive my_hooks;'
+extern property var plural;                  // holds whatever the I6 library puts there
+property rawArray<int> hook;                 // every contributing layer must match
 ```
 
-By default an I6 property is overriding: when an object and one of its ancestor classes both supply the property, the object's value replaces the class's. Marking the *slot* `additive` makes I6 instead *accumulate* the values into an array gathered from the object plus all its ancestors (the same mechanism the standard library uses for the `before`/`after`/`life` hooks). `additive` is meaningful only on a `property` declaration — not on a class/object member and not on a value type.
+Without the requirement a class contributing `rawArray<int>` alongside an instance contributing `rawArray<dictionaryWord>` would accumulate into one property holding both, with no diagnostic.
 
-On an `extern property` it is a *declaration of fact* rather than a directive: I6 has already declared the property additive, so nothing is emitted, and the marker exists only so the compiler knows the property accumulates:
+### 7.7.2 `additive` properties
+
+By default an I6 property is overriding: when an object and one of its ancestor classes both supply the property, the object's value replaces the class's. Marking the *slot* **`additive`** makes I6 instead *accumulate* the values, gathering the object's contribution and all its ancestors' into one contiguous run of words — the mechanism the standard library uses for the `before`/`after`/`life` hooks:
 
 ```bgl
-extern additive property name;   // states a fact about I6's declaration; emits nothing
+additive property rawArray<int> myHooks;     // emits `Property additive myHooks;`
 ```
 
-`name` is a special case: it is additive in the **I6 compiler itself**, not in any library. It is therefore declared by the core BLR (`beguiLib/core/_property.bgl`), which is always loaded, so the diagnostic below fires for `name` even in a program that includes nothing at all. Because the core owns that declaration, user code does not repeat it — `extern property name;` in a program is a redeclaration error.
+`additive` is meaningful only on a `property` declaration — not on a class/object member and not on a value type. On an `extern property` it is a *declaration of fact* rather than a directive: I6 has already declared the property additive, so nothing is emitted, and the marker exists only so the compiler knows the property accumulates.
+
+`name` is a special case: it is additive in the **I6 compiler itself**, not in any library. The core BLR (`beguiLib/core/_property.bgl`) therefore declares it, and the core is always loaded, so the rules below apply to `name` even in a program that includes nothing at all. Because the core owns that declaration, user code does not repeat it — `extern property name;` in a program is a redeclaration error.
 
 Every other additive property is library-specific and is declared by its binding. `beguiLib/bindings/i6StandardLibrary.bgl` declares the standard library's: `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn`.
 
-#### Typed property declarations
+### 7.7.3 Additive properties are raw arrays
 
-A `property` declaration may carry the type its members must use:
-
-```bgl
-additive property rawArray<int> hook;                          // emits `Property additive hook;`
-extern additive property rawArray<dictionaryWord> extraName;   // extern: emits nothing
-property rawArray<int> plain;                                  // typed, not additive
-```
-
-The declaration is the single place that type is written down, and **every layer that contributes to the property is checked against it**. A disagreement in element type, in raw-vs-tracked, or a scalar member where an array is declared, is an error.
-
-An **additive** property must be declared `rawArray<T>`; `array<T>` is rejected, because a tracked array keeps its length in a trailing slot and an additive property accumulates, which would bury that slot inside the accumulated data. The same rule applies to the members: a member bound to an additive property must be declared `rawArray<T>`, whether or not the property itself was declared in the typed form.
-
-**Every** property declaration must carry a type. Nothing else in the program says what a property holds — an `extern` slot is owned by external I6 code, and any property's members can be spread across a class hierarchy with no one place naming the type. Without it the layers cannot be checked against one another, and a class contributing `rawArray<int>` alongside an instance contributing `rawArray<dictionaryWord>` accumulates into a single property holding both. `var` is the escape hatch when the type is genuinely unconstrained; it constrains no member, but records that the openness is deliberate:
+An additive property accumulates into one contiguous run of words with **no length word** — which is exactly Beguile's `rawArray<T>` layout. So an additive property **must** be declared `rawArray<T>`, and so must every member bound to it:
 
 ```bgl
-extern property var plural;                                    // unconstrained, but explicit
-extern additive property rawArray<dictionaryWord> name;        // declared by the core BLR
+extern additive property rawArray<dictionaryWord> name;   // the core BLR's declaration
+
+class Room      { rawArray<dictionaryWord> name = {.box, .crate}; }
+object r1: Room { rawArray<dictionaryWord> name = {.wooden};      }   // matches all three words
 ```
 
-#### Additive properties are raw arrays
+`array<T>` is rejected in both places. A tracked array keeps its length in a trailing slot, and accumulation would bury that slot inside the data:
 
-An additive property accumulates its contributions into one contiguous property with **no length word** — which is exactly Beguile's `rawArray<T>` layout. A member bound to one is therefore raw: `rawArray<T>`, or `array<dictionaryWord>`, whose layout Inform 6 owns.
+```bgl
+class Room { array<dictionaryWord> name = {.box}; }
+  error: 'name' is an ADDITIVE property … Declare it `rawArray<dictionaryWord>`.
+```
 
-Its extent is fixed by the property, and `size()` and `length()` both answer `obj.#prop/WORDSIZE`. Inform 6 computes `#prop` *after* accumulation, so this reads correctly across inheritance layers with no bookkeeping — a class contributing two words and an instance contributing one give an extent of three.
-
-Everything that needs a length word is rejected at compile time, because a raw member has none: `setLength`, `clear`, `freeAll`, `append`, `insert`, `prepend`, `remove`, `removeValue`, `push`, `pop`, `dequeue`, `enqueue`, `popEnd`, `peek`, `peekEnd`, `indexOf`, `reverse`, `sort` and `sortDefault`. `size()`, `length()` and subscripting do work. Declare the member `array<T>` if you need the rest — but note that a tracked member's trailing length slot cannot survive accumulation, so `array<T>` and an additive property are incompatible by construction.
-
-#### Additive properties and single-word members
-
-Accumulation is the *point* of an additive property, and `array<dictionaryWord>` is how Beguile expresses it — a class default and an instance override both survive, which is exactly why `Class Container with name 'box' 'crate'` plus an instance's `'wooden'` matches all three words.
-
-It goes wrong only when the member's type expects a **single** word. A `stringObj` or `int` member bound to an additive property, given a class default *and* an instance override, silently becomes a multi-word property, and every read then fails at run time with I6's *"has a property `name`, but it is longer than 2 bytes so you cannot use `.` to read it"* — a message that names neither the class nor the override. This is I6 semantics surfacing through a Beguile member, not something the emission causes; Beguile emits the same I6 for an additive property name as for any other.
-
-The compiler warns on exactly that combination — a scalar-typed member, on a property known to be additive, with both a class default and an instance override:
+A **scalar** member is rejected for the same reason. `stringObj name` or `int name` with a class default *and* an instance override silently became a multi-word property, and every read then failed at run time with I6's *"has a property `name`, but it is longer than 2 bytes so you cannot use `.` to read it"* — a message naming neither the class nor the override:
 
 ```bgl
 class Room      { stringObj name = "box";    }
-object r1: Room { stringObj name = "wooden"; }   // warning: values accumulate rather than replace
+object r1: Room { stringObj name = "wooden"; }
+  error: 'r1.name' is declared 'stringObj', but the property 'name' is declared 'rawArray<dictionaryWord>'.
 ```
 
-The fixes are to give the default only on the instances, rename the member, or switch to `array<dictionaryWord>` if the accumulating behaviour is what was wanted. A default with no override, an override with no default, and `array<dictionaryWord>` on both are all silent. 
+**Extent.** A raw member's extent is fixed by the property, and `size()` and `length()` both answer `obj.#prop/WORDSIZE`. Inform 6 computes `#prop` *after* accumulation, so this reads correctly across inheritance layers with no bookkeeping — a class contributing two words and an instance contributing one give an extent of three.
+
+**Operations.** Everything that needs a length word is rejected at compile time, because a raw member has none: `setLength`, `clear`, `freeAll`, `append`, `insert`, `prepend`, `remove`, `removeValue`, `push`, `pop`, `dequeue`, `enqueue`, `popEnd`, `peek`, `peekEnd`, `indexOf`, `reverse`, `sort` and `sortDefault`. `size()`, `length()` and subscripting do work. Declare the member `array<T>` if you need the rest — but a tracked member's trailing length slot cannot survive accumulation, so `array<T>` and an additive property are incompatible by construction.
 
 ```bgl
 class Box : object { int weight; }
@@ -3356,7 +3356,7 @@ int r = obj.m(2);         // message send — binds self to obj, as I6 does
 
 Both emit I6's computed form (`obj.(p)`, `obj.(m)(2)`), so the property is resolved at runtime and a routine property receives the receiver as `self`.
 
-The name after the dot is treated this way **only** when it is a local or parameter declared `property` or `var`, and only when it is not a real member of the receiver's type — a genuine member always wins. A file-scope `property foo;` does *not* qualify: it registers an identifier for passing as a value and still grants no `obj.foo` access.
+The name after the dot is treated this way **only** when it is a local or parameter declared `property` or `var`, and only when it is not a real member of the receiver's type — a genuine member always wins. A file-scope `property var foo;` does *not* qualify: it registers an identifier for passing as a value and still grants no `obj.foo` access.
 
 **`property` parameters treat a bare argument as a property identifier.** When a function or emitter parameter is typed `property`, a bare property-name argument emits as the **bare I6 property constant** (its slot number) rather than as a value read, an implicit `(property)` cast (§10.6). This holds even inside an object method body, where a bare known-property name would otherwise emit as `self.<name>`. Any known property name is accepted: a member of any class or object, or a free-standing `property`/`extern property` decl. This lets an engine that indexes objects by property number (e.g. a task/state tracker whose task IDs are members of a single instance) declare `property`-typed parameters and have callers pass the bare name; no file-scope `extern property` re-declaration of each member is required:
 
@@ -3371,7 +3371,7 @@ achieved(taskGetBanana);   // emits `achieved(taskgetbanana)` - the bare propert
 
 `object.provides(property name)` is the canonical built-in that consumes a `property` parameter; the same rule now applies to any user- or library-declared `property` parameter.
 
-In strict mode, `obj.provides(unknownName)` is a compile error: declare the name as a class member, or with `property unknownName;` / `extern property unknownName;` at file scope. In loose mode (`#bgl` islands and `.inf` precompiler mode; see §14.6), the check is skipped and the name passes through verbatim, matching the loose-identifier policy applied to all other identifiers in those contexts.
+In strict mode, `obj.provides(unknownName)` is a compile error: declare the name as a class member, or with `property var unknownName;` / `extern property var unknownName;` at file scope. In loose mode (`#bgl` islands and `.inf` precompiler mode; see §14.6), the check is skipped and the name passes through verbatim, matching the loose-identifier policy applied to all other identifiers in those contexts.
 
 ## 7.8 Class Tests
 
@@ -6350,6 +6350,13 @@ dictionaryWord pl = ..marbles;
 ```
 
 Dictionary words participate in grammar patterns (Chapter 13) and can be compared with `==`.
+
+`print()` on a dictionary word emits I6's `print (address) w;` rule, which prints the word's text. This applies to a literal, a `dictionaryWord` variable, and an element read out of a `rawArray<dictionaryWord>` member alike:
+
+```bgl
+object sword { rawArray<dictionaryWord> name = {.blade, .sword}; }
+print(sword.name[1]);      // sword
+```
 
 ### 15.3.4 `verb`
 
