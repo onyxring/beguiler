@@ -3276,7 +3276,30 @@ A non-`extern` `property` declaration may be marked **`additive`**, which emits 
 additive property my_hooks;    // emits 'Property additive my_hooks;'
 ```
 
-By default an I6 property is overriding: when an object and one of its ancestor classes both supply the property, the object's value replaces the class's. Marking the *slot* `additive` makes I6 instead *accumulate* the values into an array gathered from the object plus all its ancestors (the same mechanism the standard library uses for the `before`/`after`/`life` hooks). `additive` is a directive-only qualifier in I6, so it is valid only on a non-`extern`, file-scope `property` declaration — not on a class/object member, not on a value type, and not on an `extern property` (whose additivity is owned by the external I6 declaration). 
+By default an I6 property is overriding: when an object and one of its ancestor classes both supply the property, the object's value replaces the class's. Marking the *slot* `additive` makes I6 instead *accumulate* the values into an array gathered from the object plus all its ancestors (the same mechanism the standard library uses for the `before`/`after`/`life` hooks). `additive` is meaningful only on a `property` declaration — not on a class/object member and not on a value type.
+
+On an `extern property` it is a *declaration of fact* rather than a directive: I6 has already declared the property additive, so nothing is emitted, and the marker exists only so the compiler knows the property accumulates:
+
+```bgl
+extern additive property name;   // states a fact about I6's declaration; emits nothing
+```
+
+`beguiLib/bindings/i6StandardLibrary.bgl` carries these declarations for the properties that are already additive in the I6 world: `name` (additive in the compiler itself, so it holds even with no library) plus `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn` from the standard library.
+
+#### Additive properties and single-word members
+
+Accumulation is the *point* of an additive property, and `array<dictionaryWord>` is how Beguile expresses it — a class default and an instance override both survive, which is exactly why `Class Container with name 'box' 'crate'` plus an instance's `'wooden'` matches all three words.
+
+It goes wrong only when the member's type expects a **single** word. A `stringObj` or `int` member bound to an additive property, given a class default *and* an instance override, silently becomes a multi-word property, and every read then fails at run time with I6's *"has a property `name`, but it is longer than 2 bytes so you cannot use `.` to read it"* — a message that names neither the class nor the override. This is I6 semantics surfacing through a Beguile member, not something the emission causes; Beguile emits the same I6 for an additive property name as for any other.
+
+The compiler warns on exactly that combination — a scalar-typed member, on a property known to be additive, with both a class default and an instance override:
+
+```bgl
+class Room      { stringObj name = "box";    }
+object r1: Room { stringObj name = "wooden"; }   // warning: values accumulate rather than replace
+```
+
+The fixes are to give the default only on the instances, rename the member, or switch to `array<dictionaryWord>` if the accumulating behaviour is what was wanted. A default with no override, an override with no default, and `array<dictionaryWord>` on both are all silent. 
 
 ```bgl
 class Box : object { int weight; }

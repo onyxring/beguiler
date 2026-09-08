@@ -324,6 +324,10 @@ bool beguiler::go(int argc, char* argv[]) {
     // any overload of the set). Call-site mangling and this pass agree on the mangled name,
     // so re-applying is idempotent.
     parser.assignObjectMethodOverloadMangling();
+    // BEFORE recordObjectMemberInits: that pass clears declaredExpressionValue on members whose
+    // value it moves into bglInit, and this check reads exactly that field to spot a second
+    // contribution.
+    parser.warnOnAdditivePropertyMisuse();
     parser.recordObjectMemberInits();
 
     // Apply defaults declared on beguilerSettingsType schema members for any unset fields

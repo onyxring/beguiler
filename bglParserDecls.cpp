@@ -273,16 +273,16 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     varDecl.isRefLocal=isRef;
     varDecl.isSuperposed=isSuperposed;
     varDecl.isAdditive=isAdditive;
-    // `additive` marks an I6 property slot as accumulating across the class hierarchy. In I6 this is
-    // a directive-only qualifier (`Property additive foo;`), so it is valid only on a non-extern,
-    // file-scope `property` declaration — never on a member, a value type, or an extern property
-    // (whose additivity is owned by the external I6 declaration).
-    if(isAdditive){
-        if(varDecl.type.name != "property")
-            parsingError("'additive' is only valid on a property declaration (e.g. `additive property foo;`)");
-        if(isExternal)
-            parsingError("'additive' cannot be combined with 'extern' — an extern property's additivity is owned by its external I6 declaration");
-    }
+    // `additive` marks an I6 property slot as accumulating across the class hierarchy, so it is
+    // meaningful only on a `property` declaration — never on a member or a value type.
+    //
+    // On an OWNED property it is a directive (`Property additive foo;`). On an `extern` one it is a
+    // declaration of fact: I6 already declared the property additive, so nothing is emitted, and the
+    // marker exists only so the compiler can warn when a single-word member is bound to one. Which
+    // properties are additive is library-specific — `name` from the compiler itself, `before`/`after`
+    // /`life` and kin from the standard library — so that knowledge lives in the bindings.
+    if(isAdditive && varDecl.type.name != "property")
+        parsingError("'additive' is only valid on a property declaration (e.g. `additive property foo;`)");
     // For func<...> types, getType returns the base "func" type. Set the full parameterized name.
     {
         string dtLower = (string)dataType;

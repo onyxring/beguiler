@@ -1,6 +1,7 @@
-/* Negative test: an extern property's additivity is owned by its external I6 declaration, so
-   `additive` cannot be combined with `extern`. */
-// EXPECT_ERROR: 'additive' cannot be combined with 'extern'
+/* Negative test: `additive` marks a PROPERTY slot as accumulating, so it is meaningless on a
+   value type. (`extern additive property` is legal — it states a fact about an I6-declared
+   property rather than emitting a directive; see test_additive_property.) */
+// EXPECT_ERROR: 'additive' is only valid on a property declaration
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-additive extern property libHook;
+additive int notAProperty;

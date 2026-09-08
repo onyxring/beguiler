@@ -1,0 +1,18 @@
+/*  `extern additive property` states a fact; it emits no directive.
+
+    I6 ACCUMULATES an additive property: a class default and an instance override are both
+    kept. That is the point of `name` — a wooden box should match "wooden", "box" and
+    "crate" — and Beguile expresses it with array<dictionaryWord>.
+
+    It breaks only when the member's type expects a SINGLE word, which is why the compiler
+    needs to know which properties accumulate. `additive` on a non-extern property emits
+    `Property additive`; on an extern one it emits nothing, because I6 already declared it.
+
+    Pins: the extern form produces no `Property additive name;` line, and the non-extern
+    form still does.  */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+extern additive property name;      // I6 declares this one; no directive of ours
+additive property myHooks;          // ours; emits `Property additive myHooks;`
+
+void main(){ bglInit(); }

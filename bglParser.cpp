@@ -392,6 +392,63 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
 //
 // Recorded here rather than at the member's parse site because a member's declared value is
 // attached after the member itself, and because inherited members have to be swept too.
+// I6 ACCUMULATES an additive property: a class default and an instance override are both
+// kept, and the property becomes as many words as there are contributions. That is the point
+// of `name` — `Class Container with name 'box' 'crate'` plus `Container c1 with name 'wooden'`
+// makes a wooden box match all three — and Beguile expresses it with array<dictionaryWord>.
+//
+// It breaks only when the member's type expects a SINGLE word. `stringObj name` or `int name`
+// on a class, overridden on an instance, silently becomes a 2-word property, and every read
+// fails at runtime with "has a property name, but it is longer than 2 bytes so you cannot use
+// '.' to read it" — a message that names neither the class nor the override.
+//
+// So the warning fires on exactly that combination: a scalar-typed member, on a property I6
+// treats as additive, with both a class default and an instance override. Which properties are
+// additive comes from `extern additive property` declarations in the bindings, since the set is
+// library-specific.
+void bglParser::warnOnAdditivePropertyMisuse(){
+    set<string> additiveProps;
+    for(typeDef* g : languageService.globals)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+            if(vd->isAdditive && vd->type.name == "property") additiveProps.insert(vd->name);
+    if(additiveProps.empty()) return;
+
+    for(typeDef* g : languageService.globals){
+        auto* obj = dynamic_cast<objectDef*>(g);
+        if(obj == nullptr || obj->isExternal || obj->objectClass == nullptr) continue;
+        for(typeMember* m : obj->members){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd == nullptr || vd->declaredExpressionValue == nullptr) continue;
+            string emitted = vd->i6name.empty() ? vd->name : vd->i6name;
+            if(!additiveProps.count(emitted)) continue;
+            // An array member is the accumulating form — that is the correct use, not a misuse.
+            if(dynamic_cast<arrayDeclaration*>(m) != nullptr) continue;
+            // Does an ancestor also supply a value? Only then do two contributions accumulate.
+            variableDeclaration* inherited = nullptr;
+            std::function<void(classDef*)> findDefault = [&](classDef* c){
+                if(c == nullptr || inherited != nullptr) return;
+                for(typeMember* cm : c->members)
+                    if(auto* cvd = dynamic_cast<variableDeclaration*>(cm))
+                        if(cvd->name == vd->name && cvd->declaredExpressionValue != nullptr
+                           && dynamic_cast<arrayDeclaration*>(cm) == nullptr){ inherited = cvd; return; }
+                for(classDef* b : c->baseClasses) findDefault(b);
+            };
+            findDefault(obj->objectClass);
+            if(inherited == nullptr) continue;
+            // This pass runs after every source file is closed, so parsingWarning has no current
+            // location to attach and passes the text through verbatim. Carry the member's own
+            // recorded location instead, so the warning points at the override rather than nowhere.
+            string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
+            parsingWarning(format(
+                "{0}warning: '{1}.{2}' overrides a default on '{3}', but '{4}' is an ADDITIVE I6 property: "
+                "the two values accumulate rather than replace, making it a multi-word property that "
+                "cannot be read back. Give the default only on the instances, rename the member, or "
+                "use array<dictionaryWord> if you do want I6's accumulating behaviour.",
+                where, obj->dName(), vd->dName(), obj->objectClass->dName(), emitted));
+        }
+    }
+}
+
 void bglParser::recordObjectMemberInits(){
     auto trim = [](string v){
         size_t a = v.find_first_not_of(" \t\n\r"); if(a == string::npos) return string();
