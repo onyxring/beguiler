@@ -39,25 +39,21 @@ Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are att
 
 ### Or build it from source...
 
-Beguile needs a **C++17 compiler**. Nothing newer is required:
+Compiling Beguile requires a **C++17 compiler**. The flags are identical on every platform (`-std=c++17 -O2 -Wno-deprecated-declarations`) and no per-OS switches are required, so run the line for your platform.
 
-| Toolchain | Minimum |
-|---|---|
-| GCC | 7 |
-| Clang / LLVM | 5 |
-| Apple clang (bundled with Xcode) | 10 |
-| MSVC | 2017 (19.14) |
+On macOS or Linux:
 
-The flags are identical everywhere (`-std=c++17 -O2 -Wno-deprecated-declarations`); only the compiler and output name change. Run the line for your platform from its standard terminal:
+```
+c++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler
+```
 
-| Platform | Build command |
-|---|---|
-| macOS | `c++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler` |
-| Linux | `c++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler` |
-| Windows | `clang++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler.exe` |
+On Windows, from the plain Command Prompt (`cmd.exe`):
 
-The Windows line runs in the plain Command Prompt (`cmd.exe`); the compiler expands `*.cpp`, so no PowerShell is needed. On macOS, add `-arch arm64` or `-arch x86_64` for a specific slice. On any Unix-like system, `make` does the same thing (`make debug` builds with symbols).
+```
+clang++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler.exe
+```
 
+`c++` is your system's default C++ compiler (clang on macOS, g++ on Linux); substitute `clang++` or `g++` if you prefer a specific one that's installed. The compiler expands `*.cpp` itself, so no PowerShell is needed on Windows. On any Unix-like system, `make` does the same thing (`make debug` builds with symbols).
 ### Compile a Beguile program from the command line
 *(if you really **aren't** going to use the extension)*
 
