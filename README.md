@@ -48,35 +48,15 @@ Beguile needs a **C++17 compiler**. Nothing newer is required:
 | Apple clang (bundled with Xcode) | 10 |
 | MSVC | 2017 (19.14) |
 
-*Built and tested here on Apple clang 15, LLVM 23 and GCC 16 — against both libc++ and
-libstdc++, at `-std=c++17` and `-std=c++20`. The minimums above are the versions that
-first shipped complete C++17 support.*
+The flags are identical everywhere (`-std=c++17 -O2 -Wno-deprecated-declarations`); only the compiler and output name change. Run the line for your platform from its standard terminal:
 
-The compiler flags are the same on every platform (`-std=c++17 -O2 -Wno-deprecated-declarations`); only the compiler name and the output name change. Run the line for your platform from its standard terminal:
+| Platform | Build command |
+|---|---|
+| macOS | `c++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler` |
+| Linux | `c++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler` |
+| Windows | `clang++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler.exe` |
 
-**macOS** (Terminal, Apple clang):
-
-```sh
-c++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler
-```
-
-Append `-arch arm64` (Apple Silicon) or `-arch x86_64` (Intel) to force a specific slice; omit it to build for the host.
-
-**Linux** (any shell, GCC or Clang):
-
-```sh
-c++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler
-```
-
-**Windows** (Command Prompt, LLVM Clang):
-
-```bat
-clang++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler.exe
-```
-
-The compiler expands `*.cpp` itself, so this runs as-is in the basic Command Prompt (`cmd.exe`); no PowerShell is required. `g++` (MinGW) works the same way, or with MSVC use `cl /std:c++17 /O2 /EHsc *.cpp /Fe:beguiler.exe`.
-
-On any Unix-like system you can instead just run `make`, which does the same thing but builds each file separately and tracks header dependencies, so an edit rebuilds only what it affects. That is worth using if you plan to change the compiler itself; `make debug` produces an unoptimised build with symbols.
+The Windows line runs in the plain Command Prompt (`cmd.exe`); the compiler expands `*.cpp`, so no PowerShell is needed. On macOS, add `-arch arm64` or `-arch x86_64` for a specific slice. On any Unix-like system, `make` does the same thing (`make debug` builds with symbols).
 
 ### Compile a Beguile program from the command line
 *(if you really **aren't** going to use the extension)*
