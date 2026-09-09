@@ -5,6 +5,15 @@
 # Transpiler output (.inf / .z5 / .ulx / .blb)
 output/
 
+# Transpiler output emitted next to sources (test corpora, bindings, ad-hoc runs).
+# Already-tracked fixtures are unaffected (e.g. tests/run/out/*.transpiled.inf stays tracked).
+*.transpiled.inf
+*.transpiled.inf.map
+
+# Bindings scratch-build output + debug bundle written into the tests tree
+/beguiLib/bindings/out/
+/tests/gameinfo.dbg
+
 # Test-runner artifacts (debug-bundle fixtures write here)
 tests/debug/out/
 
