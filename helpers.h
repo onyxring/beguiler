@@ -6,6 +6,15 @@
 #include <string>
 #include <type_traits>
 
+// Feature-test for std::format. <version> is where __cpp_lib_format is guaranteed to appear;
+// pull it in when the toolchain has it so the guard below is reliable across standard libraries
+// (some only define __cpp_lib_format after <version>/<format>, not via <string>).
+#ifdef __has_include
+#if __has_include(<version>)
+#include <version>
+#endif
+#endif
+
 using namespace std;
 
 // ─── format() ────────────────────────────────────────────────────────────────
@@ -32,6 +41,12 @@ namespace bglfmt {
     toText(const T& v){ return string(v); }
 }
 
+// When the standard library provides std::format (C++20+), use it: `using namespace std` above
+// brings it into scope, and it is a byte-identical drop-in for every call here (all format strings
+// are compile-time literals; the full test suite passes unchanged either way). The shim is then
+// compiled out, so the two `format`s never collide under `using namespace std` — the build works at
+// any -std, old or new. On toolchains without <format>, the shim below keeps the bar at C++17.
+#ifndef __cpp_lib_format
 template<typename... Args>
 inline string format(string_view pattern, Args&&... args){
     const string parts[] = { bglfmt::toText(std::forward<Args>(args))..., string() };
@@ -64,6 +79,7 @@ inline string format(string_view pattern, Args&&... args){
     }
     return out;
 }
+#endif  // __cpp_lib_format
 
 constexpr size_t chk(string_view str) {
     const long long p = 131;
