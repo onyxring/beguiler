@@ -39,7 +39,7 @@ Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are att
 
 ### Or build it from source...
 
-Compiling Beguile requires a **C++17 compiler**. The flags are identical on every platform (`-std=c++17 -O2 -Wno-deprecated-declarations`) and no per-OS switches are required, so run the line for your platform.
+Compiling Beguile requires a **C++17 compiler**. The flags are identical on every platform, so run the line for your platform.
 
 On macOS or Linux:
 
@@ -53,7 +53,8 @@ On Windows, from the plain Command Prompt (`cmd.exe`):
 clang++ -std=c++17 -O2 -Wno-deprecated-declarations *.cpp -o beguiler.exe
 ```
 
-`c++` is your system's default C++ compiler (clang on macOS, g++ on Linux); substitute `clang++` or `g++` if you prefer a specific one that's installed. The compiler expands `*.cpp` itself, so no PowerShell is needed on Windows. On any Unix-like system, `make` does the same thing (`make debug` builds with symbols).
+Depending on which C++ compiler you have installed, you may need to substitute the name (`clang++`, `g++`, and Apple's `c++` all work).
+
 ### Compile a Beguile program from the command line
 *(if you really **aren't** going to use the extension)*
 
