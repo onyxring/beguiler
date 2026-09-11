@@ -105,6 +105,78 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
 // ===============================================================================
 // Array / variable / routine declarations
 // ===============================================================================
+
+// Parse a `{ v1, v2, ... }` array initializer (the '{' already consumed) for the given
+// elementType, reading through the matching '}'. A `{...}` element is baked as a nested
+// aggregate: an inline object for an object-backed element type, or an anonymous inner array
+// for an array-of-arrays element type (elementType == "array<...>" / "rawarray<...>"). The
+// recursion carries through both, so array<array<array<T>>> nests naturally.
+initializerList* bglParser::parseArrayInitializerList(const string& elementType, functionDef* func, statementBlock* body){
+    initializerList* list = new initializerList();
+    classDef* elemCls = getDispatchClass(elementType);
+    bool inferInlineObjects = elemCls != nullptr && inheritsFromObject(elemCls);
+    bool inferInlineArrays  = isArrayOfArraysElement(elementType);
+    string nestedElem       = inferInlineArrays ? arrayInnerType(elementType) : "";
+    token t = file.getToken();
+    while(!t.is(token::braceClose) && !t.is(eTokenType::eof)) {
+        if(inferInlineArrays && t.is(token::braceOpen)){
+            // Array-of-arrays element: bake `{...}` as an anonymous inner array and store its address.
+            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            bakeInlineArrayAggregate(nestedElem, anonName, func, body);
+            expression* elem = new expression();
+            elem->tokens.push_back(anonName);
+            elem->resolvedType = elementType;
+            list->elements.push_back(elem);
+            token sep = file.getToken({",", token::braceClose});
+            if(sep.is(token::braceClose)) break;
+            t = file.getToken();
+            continue;
+        }
+        if(inferInlineObjects && t.is(token::braceOpen)){
+            // Inferred inline object: a bare `{...}` element of an object-backed array takes the
+            // array's element type (§6.2.1). The '{' is already consumed (it is `t`).
+            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            bakeInlineObjectAggregate(elemCls, elementType, anonName, func, body);
+            expression* elem = new expression();
+            elem->tokens.push_back(anonName);
+            elem->resolvedType = elementType;
+            list->elements.push_back(elem);
+            token sep = file.getToken({",", token::braceClose});
+            if(sep.is(token::braceClose)) break;
+            t = file.getToken();
+            continue;
+        }
+        expression* elem = parseExpression(t, {",", token::braceClose}, func, body);
+        list->elements.push_back(elem);
+        if(elem->terminator == token::braceClose) break;
+        t = file.getToken();
+    }
+    return list;
+}
+
+// Bake an anonymous inner array from a `{...}` literal (the '{' already consumed by the caller)
+// whose element type is innerElemType. It becomes a file-scope tracked array named anonName; the
+// caller stores a reference to anonName as the outer element (I6 uses the bare array name as its
+// address). Inner elements are type-checked against innerElemType, mirroring the outer check.
+void bglParser::bakeInlineArrayAggregate(const string& innerElemType, const string& anonName, functionDef* func, statementBlock* body){
+    arrayDeclaration& inner = *(new arrayDeclaration());
+    inner.src = file.currentLocation();
+    inner.name = anonName;
+    inner.type = languageService.getType(innerElemType == "char" ? "bytearray" : "array");
+    inner.elementType = innerElemType;
+    if(innerElemType == "char") inner.isByteArray = true;
+    initializerList* il = parseArrayInitializerList(innerElemType, func, body);
+    if(!innerElemType.empty() && innerElemType != "var")
+        for(size_t i = 0; i < il->elements.size(); i++){
+            expression* e = il->elements[i];
+            if(!e->resolvedType.empty() && !isArrayElementCompatible(e->resolvedType, innerElemType))
+                parsingError(format("Inner array element {0} has type '{1}', expected '{2}'", i, e->resolvedType, innerElemType));
+            checkByteElementRange(e, innerElemType);
+        }
+    inner.declaredExpressionValue = il;
+    languageService.registerInstance(inner);   // file-scope global; emitted as its own `array` directive
+}
+
 bool bglParser::processArrayDeclaration(token dataType, token name, string elementType, token symbol, abstractObject& contextObj, bool isExternal, bool isSuperposed) {
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
     arrDecl.src = file.currentLocation();
@@ -147,34 +219,10 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             arrDecl.stringInitializer = strTok.value;
             file.getToken(token::endStatement);
         } else if(firstVal.is(token::braceOpen)){
-            // array<T> name = { v1, v2, ... };
+            // array<T> name = { v1, v2, ... };  (nested `{...}` elements bake as inline objects or,
+            // for an array-of-arrays element type, anonymous inner arrays — see parseArrayInitializerList)
             file.getToken(token::braceOpen);
-            initializerList* list = new initializerList();
-            classDef* elemCls = getDispatchClass(elementType);
-            bool inferInlineObjects = elemCls != nullptr && inheritsFromObject(elemCls);
-            token t = file.getToken();
-            while(!t.is(token::braceClose) && !t.is(eTokenType::eof)) {
-                if(inferInlineObjects && t.is(token::braceOpen)){
-                    // Inferred inline object: a bare `{...}` element of an object-backed array takes the
-                    // array's element type — `array<rule> b = { {a,b}, ... }` ≡ `{ rule{a,b}, ... }`.
-                    // Bake an anonymous object (§6.2.1) and store a reference to it. The '{' is already
-                    // consumed (it is `t`), which is exactly what bakeInlineObjectAggregate expects.
-                    string anonName = format("_bglanon{0}", anonObjectCounter++);
-                    bakeInlineObjectAggregate(elemCls, elementType, anonName, func, body);
-                    expression* elem = new expression();
-                    elem->tokens.push_back(anonName);
-                    elem->resolvedType = elementType;
-                    list->elements.push_back(elem);
-                    token sep = file.getToken({",", token::braceClose});
-                    if(sep.is(token::braceClose)) break;
-                    t = file.getToken();
-                    continue;
-                }
-                expression* elem = parseExpression(t, {",", token::braceClose}, func, body);
-                list->elements.push_back(elem);
-                if(elem->terminator == token::braceClose) break;
-                t = file.getToken();
-            }
+            initializerList* list = parseArrayInitializerList(elementType, func, body);
             file.getToken(token::endStatement);
             // type-check each element against the declared element type
             if(!elementType.empty() && elementType != "var"){
@@ -187,13 +235,54 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             }
             arrDecl.declaredExpressionValue = list;
         } else {
-            // array<T> name = expression; — pointer-aliasing init. The RHS is an arbitrary
-            // expression evaluating to an array pointer (typically a function return or another
-            // array global). No storage is allocated for this local; the slot just holds the
-            // pointer. arraySize stays 0 so the emitter's local-array allocation path skips it.
+            // Bare (brace-less) RHS. Two meanings, disambiguated by the RHS's resolved type:
+            //
+            //   (a) One-element shorthand — `array<T> name = 3;` ≡ `array<T> name = {3};`.
+            //       When the RHS resolves to a value compatible with the element type T, it is a
+            //       single initializer element, wrapped into a one-element list so it flows through
+            //       the identical seed/type-check/emit path as the braced form. (You may drop the
+            //       braces when declaring a list of one — mirrors the grammar single-line shorthand.)
+            //
+            //   (b) Pointer-aliasing init — `array<T> name = makeArr();` / `= otherArray`. The RHS is
+            //       an arbitrary expression evaluating to an array pointer (typically a function return,
+            //       another array global, or a `var`/subscript holding a buffer handle), which is NOT a
+            //       concrete element value. No storage is allocated; the slot just holds the pointer,
+            //       and arraySize stays 0 so the emitter's local-array allocation path skips it.
+            //
+            // Disambiguation is by the RHS's resolved type, and is deliberately CONSERVATIVE so it
+            // never reinterprets an existing alias:
+            //   - an untyped element (`array<var>`) can't be type-matched, so it keeps aliasing;
+            //   - a `var`-typed RHS is opaque (it usually holds a pointer/handle, e.g. a subscript of
+            //     `array<var>`), and `var` is compatible with every element type, so it would wrap
+            //     everything — exclude it and keep aliasing;
+            //   - anything else that is element-compatible (a literal, an object of the element class,
+            //     an int for `array<char>`) is the one-element shorthand.
+            // The caller can always write explicit braces to force a one-element list in the excluded
+            // cases.
             token first = file.getToken();
             expression* expr = parseExpression(first, {token::endStatement}, func, body);
-            arrDecl.declaredExpressionValue = expr;
+            bool elementLike = !elementType.empty() && elementType != "var"
+                               && !expr->resolvedType.empty() && expr->resolvedType != "var"
+                               && isArrayElementCompatible(expr->resolvedType, elementType);
+            if(elementLike){
+                checkByteElementRange(expr, elementType);
+                initializerList* list = new initializerList();
+                list->elements.push_back(expr);
+                arrDecl.declaredExpressionValue = list;
+            } else if(body == nullptr){
+                // Pointer-aliasing / expression init on a STATICALLY-allocated array (a file-scope
+                // global or a class/object member). Aliasing only makes sense for a LOCAL, whose slot
+                // can hold a runtime pointer; a static array is an I6 `Array` directive with no
+                // runtime step to copy or alias another array into it. Emitting one is impossible, so
+                // reject it here with guidance instead of crashing the emitter ("unable to emit array")
+                // or, when the name is later used, failing with a confusing operator[] type error.
+                parsingError(format("Array '{0}': a statically-allocated array (file-scope or class/object "
+                                    "member) can't be initialized from another array or a runtime expression. "
+                                    "Use a '{{ ... }}' element list here, or assign it inside a routine.",
+                                    arrDecl.name));
+            } else {
+                arrDecl.declaredExpressionValue = expr;
+            }
         }
     }
     // else symbol is endStatement: extern/forward declaration — no size or initializer

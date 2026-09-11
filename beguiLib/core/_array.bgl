@@ -56,4 +56,10 @@ extern emitter class byteArray : array {
     replace emitter char operator[](int i)          { $val->($i + WORDSIZE) }
     replace emitter char operator[]=(int i, char v) { $val->($i + WORDSIZE) = $v }
     replace emitter int  size()                     { $val-->0 }
+    // A byte array uses I6's `buffer` layout (length WORD at offset 0, bytes from
+    // WORDSIZE on) — NOT the tracked word-array layout (data, then length+magic
+    // trailer). So it reads its length the same way as size(), from WORD 0, and must
+    // NOT inherit the `<array>` extension's tracked `length()` (which dispatches through
+    // `_bglArray` with a `$prop` this layout can't supply — emitting `<$prop undefined>`).
+    replace emitter int  length()                   { $val-->0 }
 }

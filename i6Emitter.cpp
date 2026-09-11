@@ -2513,7 +2513,7 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
                 // literal bytes into its raw allocation, so it is rejected rather than
                 // silently dropping the seed.
                 if(bufTracked)
-                    throw ("i6Emitter: a seeded `array<char> name[N] = {...}` is not supported while <buf> "
+                    throw runtime_error("i6Emitter: a seeded `array<char> name[N] = {...}` is not supported while <buf> "
                            "is included (the SizedBuffer allocation is stamped at startup). Declare it as "
                            "`array<char> name = {...}` to size it from the seed, or assign elements at runtime.");
                 out << format("array {0} buffer", arr->dName());
@@ -2553,7 +2553,7 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
                 out << ";\n";
                 return;
             }
-            throw ("i6Emitter: unable to emit byte array.");
+            throw runtime_error("i6Emitter: unable to emit byte array.");
         }
 
         // ── Word-array paths.
@@ -2601,7 +2601,7 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
             return;
         }
 
-        throw ("i6Emitter: unable to emit array.");
+        throw runtime_error("i6Emitter: unable to emit array.");
         return;
     }
 

@@ -1321,6 +1321,35 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         subscriptText = b;
                         expr->tokens.push_back(b);
                     }
+                // Continuation: chained subscript on an array-of-arrays — `grid[i][j]`. Each step
+                // applies operator[] to the PRIOR subscript VALUE (a pointer to an inner array),
+                // which I6's `-->` needs as an explicit, parenthesized address operand. The inner
+                // element type comes from the current array<...> result type, and the same emitter
+                // body is re-substituted with $val = the pointer expression.
+                while(!subscriptText.empty() && file.peekToken().is(token::bracketOpen)
+                      && (isArrayOfArraysElement(expr->resolvedType) || expr->resolvedType == "bytearray")){
+                    file.getToken(); // consume '['
+                    string curType   = expr->resolvedType;
+                    string innerElem = curType == "bytearray" ? "char" : arrayInnerType(curType);
+                    expression* idx  = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+                    classDef* curCls = getDispatchClass(curType);
+                    functionDef* getM = (curCls != nullptr && !innerElem.empty())
+                                      ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/false) : nullptr;
+                    i6Block* blk = getM != nullptr ? dynamic_cast<i6Block*>(getM->body) : nullptr;
+                    if(getM == nullptr || !getM->isEmitter || blk == nullptr)
+                        parsingError(format("No operator[] returning '{0}' on type '{1}' for chained subscript.",
+                                            typeDisplayName(innerElem), typeDisplayName(curType)));
+                    string recv = "(" + subscriptText + ")";
+                    string b = processBglConditionals(blk->i6Body);
+                    b = replaceWord(b, "$self", recv);
+                    b = replaceWord(b, "$val",  recv);
+                    b = replaceWord(b, "$prop", "0");   // recv is a pointer to a tracked/byte array
+                    if(!getM->params.empty()) b = replaceWord(b, "$" + getM->params[0]->name, idx->text());
+                    subscriptText = b;
+                    if(!expr->tokens.empty()) expr->tokens.pop_back();
+                    expr->tokens.push_back(b);
+                    expr->resolvedType = innerElem;
+                }
                 // Continuation: if next token is '.', handle dot-access on the subscript result
                 // (e.g. arr[0].field or arr[0].method()). Resolve against the element type's class.
                 if(!subscriptText.empty() && file.peekToken().is(token::period)){
@@ -1347,6 +1376,12 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                     b = replaceWord(b, "$" + method->params[pi]->name, pal.args[pi]->text());
                                 b = replaceWord(b, "$self", recv);
                                 b = replaceWord(b, "$val",  recv);
+                                // When the element is itself an array (array-of-arrays), a method like
+                                // `grid[i].length()` dispatches through `_bglArray.X($self, $prop, …)`.
+                                // `recv` is a pointer to a tracked inner array, i.e. the global-array
+                                // dispatch form, so $prop is the 0 sentinel. No-op when $prop is absent.
+                                if(isArrayOfArraysElement(elemType) || elemType == "bytearray")
+                                    b = replaceWord(b, "$prop", "0");
                                 size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                                 size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                                 expr->tokens.push_back(b);

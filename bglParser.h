@@ -22,6 +22,16 @@ struct exitFileSignal {};   // thrown by #exit to unwind to the enclosing parseF
 // keep the template parameter; array $self/$prop lowering must treat both the same.
 inline bool isWordArrayType(const std::string& t){ return t == "array" || t.rfind("array<", 0) == 0; }
 
+// True when a type is itself a templated array — the element type of an array-of-arrays.
+inline bool isArrayOfArraysElement(const std::string& t){ return t.rfind("array<", 0) == 0 || t.rfind("rawarray<", 0) == 0; }
+// Extract T from "array<T>" / "rawarray<T>" (the outermost <...>). "" if not templated.
+// "array<int>" -> "int";  "array<array<int>>" -> "array<int>".
+inline std::string arrayInnerType(const std::string& t){
+    size_t lt = t.find('<');
+    if(lt == std::string::npos || t.empty() || t.back() != '>') return "";
+    return t.substr(lt + 1, t.size() - lt - 2);
+}
+
 // Extract the element type T from a parametric array type name — "array<T>" or "rawarray<T>".
 // Returns "" if `t` is neither form. Used everywhere the compiler needs an array's element type
 // (subscript dispatch, for-in, type compatibility), so `rawArray<T>` shares array<T>'s machinery.
@@ -272,6 +282,18 @@ class bglParser {
         // (array-literal elements, object-backed variable initializers), and `inject Type{…}`.
         void bakeInlineObjectAggregate(class classDef* cls, const string& typeDisplay, const string& objName,
                                        class functionDef* func, class statementBlock* body);
+        // Parse a `{ v1, v2, ... }` array initializer (the '{' already consumed) for the given
+        // elementType, reading through the matching '}'. Bakes nested aggregates: a `{...}` element
+        // of an object-backed array becomes an inline object, and a `{...}` element of an
+        // array-of-arrays (elementType == "array<...>") becomes an anonymous inner array. Returns the
+        // element list; the caller stores it as the array's declaredExpressionValue.
+        class initializerList* parseArrayInitializerList(const std::string& elementType,
+                                                         class functionDef* func, class statementBlock* body);
+        // Bake an anonymous inner array from a `{...}` literal (the '{' already consumed) whose element
+        // type is innerElemType. Registers a file-scope arrayDeclaration named anonName; the caller
+        // stores a reference to anonName as the outer element (its I6 address).
+        void bakeInlineArrayAggregate(const std::string& innerElemType, const std::string& anonName,
+                                      class functionDef* func, class statementBlock* body);
         // Parse an alias member (the `alias` qualifier is already consumed; `aliasName` is the member
         // name). Handles both `alias name for Type;` (type alias) and `alias name = Target;` (compile-
         // time value alias — no runtime property). Shared by object-body and extend-body member loops.
@@ -346,6 +368,7 @@ class bglParser {
         grammarLine parseGrammarLineContent();  // parses single grammar line (trigger + pattern tokens); assumes '{' consumed
 
         string parseFuncType();             // reads <ReturnType,ParamType,...> from stream; returns "func<...>"
+        string parseArrayTypeTail(const std::string& base);  // base ("array"/"rawarray") read; consumes <Elem>, returns "array<Elem>" (nests + splits ">>")
         string parseLambdaExpr(functionDef* func, statementBlock* body);  // parses lambda, lifts to global, returns lifted name
 
         bool processStatement(token, abstractObject& = emptyContainer);

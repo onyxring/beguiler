@@ -1,0 +1,47 @@
+/*  Arrays of arrays — `array<array<T>>`.
+
+    A nested array is stored as an outer tracked array whose elements are pointers to
+    anonymous inner tracked arrays (baked from each `{...}` literal). `grid[i]` yields the
+    inner-array pointer (typed array<T>); `grid[i][j]` chains a second subscript; `.length()`
+    works on both the outer and any inner; and `grid[i][j] = v` writes through the pointer.  */
+// EXPECT_OUTPUT: read 2 9
+// EXPECT_OUTPUT: outer len 2
+// EXPECT_OUTPUT: inner len 3 2
+// EXPECT_OUTPUT: write 99 then 5
+// EXPECT_OUTPUT: rowsum 6 9
+// EXPECT_OUTPUT: forin 6 9
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+array<array<int>> grid = { {1,2,3}, {4,5} };
+array<array<int>> mut  = { {1,2,3}, {4,5,6} };
+
+void main(){
+    // Reads
+    print("read "); print(grid[0][1]); print(" "); print(grid[1][1] + grid[1][0]); print("^");
+
+    // Length on outer and inner
+    print("outer len "); print(grid.length()); print("^");
+    print("inner len "); print(grid[0].length()); print(" "); print(grid[1].length()); print("^");
+
+    // Write through the nested subscript, then read back; the other element is untouched.
+    mut[0][1] = 99;
+    print("write "); print(mut[0][1]); print(" then "); print(mut[1][1]); print("^");
+
+    // Iterate an inner row by index and sum it.
+    int sum0 = 0;
+    for(int i = 0; i < grid[0].length(); i++) sum0 = sum0 + grid[0][i];   // 1+2+3 = 6
+    int sum1 = 0;
+    for(int i = 0; i < grid[1].length(); i++) sum1 = sum1 + grid[1][i];   // 4+5 = 9
+    print("rowsum "); print(sum0); print(" "); print(sum1); print("^");
+
+    // Iterate the outer array directly: each `row` is an array<int> (a pointer to an inner array).
+    int r0 = 0; int r1 = 0; int ri = 0;
+    for(array<int> row in grid){
+        int s = 0;
+        for(int i = 0; i < row.length(); i++){ s = s + row[i]; }
+        if(ri == 0){ r0 = s; } else { r1 = s; }
+        ri = ri + 1;
+    }
+    print("forin "); print(r0); print(" "); print(r1); print("^");   // 6 9
+}

@@ -303,6 +303,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     if(peek.isDataType()){
         token typeTok = file.getToken(eTokenType::dataType);
         if(typeTok.value == "func") typeTok.value = parseFuncType();  // func<...> loop var type
+        else if(typeTok.value == "array" || typeTok.value == "rawarray") typeTok.value = parseArrayTypeTail(typeTok.value);  // array<...> / array<array<T>> loop var
 
         // Accept both identifier and dataType for the loop variable name. A dataType here means
         // the user chose a name that collides with a registered class (e.g. 'Counter'); the
@@ -358,9 +359,11 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                 variableDeclaration& elemDecl = *(new variableDeclaration());
                 elemDecl.name = elemVarName;
                 elemDecl.type = languageService.getType(elemVarType);
-                // getType returns the base "func" type for func<...>; keep the full
-                // parameterized name so the loop var is recognized as callable (rfind "func<").
-                if(elemDecl.type.name.empty() || elemVarType.rfind("func<", 0) == 0)
+                // getType returns the base type for templated names (func<…>/array<…>); keep the
+                // full parameterized name so the loop var is recognized as callable (func) or as a
+                // typed array (subscript/length/element-type resolution).
+                if(elemDecl.type.name.empty() || elemVarType.rfind("func<", 0) == 0
+                   || elemVarType.rfind("array<", 0) == 0 || elemVarType.rfind("rawarray<", 0) == 0)
                     elemDecl.type.name = elemVarType;
                 if(body != nullptr) body->statements.push_back(&elemDecl);
             }
@@ -785,9 +788,12 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     paramDef& elemParam = *(new paramDef());
     elemParam.name = elemVarName;
     elemParam.type = languageService.getType(elemVarType);
-    // getType returns the base "func" type for func<...>; keep the full parameterized
-    // name so a func-typed loop var is recognized as callable (e.g. `for(func<E> r ...) r()`).
-    if(elemVarType.rfind("func<", 0) == 0) elemParam.type.name = elemVarType;
+    // getType returns the base type for templated names; keep the full parameterized name so a
+    // func-typed loop var is recognized as callable (`for(func<E> r ...) r()`) and an array-typed
+    // one (iterating an array-of-arrays) resolves its element type for subscript/length.
+    if(elemVarType.rfind("func<", 0) == 0
+       || elemVarType.rfind("array<", 0) == 0 || elemVarType.rfind("rawarray<", 0) == 0)
+        elemParam.type.name = elemVarType;
     forCtx.params.push_back(&elemParam);
     forCtx.body = fi.body;
     token next = file.getToken();
@@ -1329,6 +1335,144 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             } else {
                 parsingError(format("Expected '(' or '=' after '{0}[...].{1}', got '{2}'",
                     arrPath, memberName, afterMember.value));
+            }
+        }
+
+        // Chained subscript write into an array-of-arrays: grid[i][j]...[k] = v. Every subscript
+        // but the last is a READ producing a pointer to an inner array; the final one is the
+        // element write. Build the read pointer through the leading subscripts, then emit the
+        // final operator[]= against it. (`grid[0]` was already parsed above as arrPath+indexExpr.)
+        if(afterBracket.is(token::bracketOpen)){
+            string arrType = resolvePathType(arrPath, func, body);
+            size_t dotPos  = arrPath.find('.');
+            string elemType = (dotPos == string::npos)
+                ? resolveArrayElementType(arrPath, func, body)
+                : resolveArrayElementTypeDotted(arrPath.substr(0, dotPos), arrPath.substr(dotPos + 1), func, body);
+            if(elemType.empty() && arrType == "bytearray") elemType = "char";
+            classDef* arrCls = getDispatchClass(arrType);
+            functionDef* getM = (arrCls != nullptr && !elemType.empty())
+                              ? findArraySubscriptOp(arrCls, elemType, /*isWrite=*/false) : nullptr;
+            i6Block* gblk = getM != nullptr ? dynamic_cast<i6Block*>(getM->body) : nullptr;
+            if(gblk == nullptr)
+                parsingError(format("Chained subscript on '{0}': element type '{1}' has no readable operator[].",
+                                    arrPath, typeDisplayName(elemType)));
+            // First read step: name-based $self/$prop (handles member-array `obj.prop` too).
+            string readText;
+            {
+                string b = processBglConditionals(gblk->i6Body);
+                size_t innerDot = arrPath.rfind('.');
+                string selfV = (innerDot == string::npos) ? arrPath : arrPath.substr(0, innerDot);
+                string pv    = (innerDot != string::npos) ? arrPath.substr(innerDot + 1)
+                             : (isWordArrayType(arrType) || arrType == "bytearray" ? "0" : "<$prop undefined>");
+                b = replaceWord(b, "$self", selfV);
+                b = replaceWord(b, "$val",  arrPath);
+                b = replaceWord(b, "$prop", pv);
+                if(!getM->params.empty()) b = replaceWord(b, "$" + getM->params[0]->name, indexExpr->text());
+                readText = b;
+            }
+            string curType = elemType;   // type of grid[0] — an array<...>
+            while(true){
+                file.getToken(); // consume '['
+                expression* idx = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+                string innerElem = curType == "bytearray" ? "char" : arrayInnerType(curType);
+                classDef* curCls = getDispatchClass(curType);
+                token after = file.peekToken();
+                if(after.is(token::bracketOpen)){
+                    // Intermediate read: extend the pointer expression.
+                    functionDef* gm = (curCls != nullptr && !innerElem.empty())
+                                    ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/false) : nullptr;
+                    i6Block* blk = gm != nullptr ? dynamic_cast<i6Block*>(gm->body) : nullptr;
+                    if(blk == nullptr)
+                        parsingError(format("Chained subscript: '{0}' has no readable operator[].", typeDisplayName(curType)));
+                    string recv = "(" + readText + ")";
+                    string b = processBglConditionals(blk->i6Body);
+                    b = replaceWord(b, "$self", recv);
+                    b = replaceWord(b, "$val",  recv);
+                    b = replaceWord(b, "$prop", "0");
+                    if(!gm->params.empty()) b = replaceWord(b, "$" + gm->params[0]->name, idx->text());
+                    readText = b;
+                    curType  = innerElem;
+                    continue;
+                }
+                if(after.is(token::period)){
+                    // Element member write/call: grid[i]..[j].member = v  or  .method(args). Fold this
+                    // final subscript into a READ (yielding the element value), then dispatch on it.
+                    functionDef* gm = (curCls != nullptr && !innerElem.empty())
+                                    ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/false) : nullptr;
+                    i6Block* rblk = gm != nullptr ? dynamic_cast<i6Block*>(gm->body) : nullptr;
+                    if(rblk == nullptr)
+                        parsingError(format("Chained subscript: '{0}' has no readable operator[].", typeDisplayName(curType)));
+                    string recv0 = "(" + readText + ")";
+                    string eb = processBglConditionals(rblk->i6Body);
+                    eb = replaceWord(eb, "$self", recv0);
+                    eb = replaceWord(eb, "$val",  recv0);
+                    eb = replaceWord(eb, "$prop", "0");
+                    if(!gm->params.empty()) eb = replaceWord(eb, "$" + gm->params[0]->name, idx->text());
+                    string recv = "(" + eb + ")";     // the element value (type innerElem)
+                    file.getToken(); // consume '.'
+                    token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+                    string memberName = memberTok.value;
+                    token afterMember = file.getToken();
+                    if(afterMember.is(token::assignment)){
+                        expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
+                        assignmentStatement& assign = *(new assignmentStatement());
+                        assign.src = stmtLoc;
+                        assign.variableLeft = recv + "." + memberName;
+                        assign.assignedExpression = valExpr;
+                        if(body != nullptr) body->statements.push_back(&assign);
+                        return false;
+                    } else if(afterMember.is(token::parenOpen)){
+                        ParsedArgList pal = parseCallArgList(func, body);
+                        functionDef* method = bindMethodCall(innerElem, recv, memberName,
+                            pal.args, pal.namedArgNames, pal.interpSegmentsPerArg);
+                        functionCallStatement& cs = *(new functionCallStatement());
+                        cs.src = stmtLoc;
+                        cs.functionName = recv + "." + (method->i6name.empty() ? memberName : method->i6name);
+                        cs.args = pal.args; cs.namedArgNames = pal.namedArgNames; cs.interpSegmentsPerArg = pal.interpSegmentsPerArg;
+                        if(method->isEmitter && !method->isPrePassStub)
+                            if(auto* mblk = dynamic_cast<i6Block*>(method->body)){
+                                string mb = processBglConditionals(mblk->i6Body);
+                                for(size_t i = 0; i < method->params.size() && i < pal.args.size(); i++)
+                                    mb = replaceWord(mb, "$" + method->params[i]->name, pal.args[i]->text());
+                                mb = replaceWord(mb, "$self", recv);
+                                mb = replaceWord(mb, "$val",  recv);
+                                cs.emitterBody = mb;
+                            }
+                        file.getToken(token::endStatement);
+                        if(body != nullptr) body->statements.push_back(&cs);
+                        return false;
+                    } else {
+                        parsingError(format("Expected '=' or '(' after '{0}[...].{1}', got '{2}'",
+                                            arrPath, memberName, afterMember.value));
+                    }
+                }
+                // Final subscript — the write target.
+                file.getToken(token::assignment);
+                expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
+                if(valExpr != nullptr && !valExpr->resolvedType.empty()
+                   && !isArrayElementCompatible(valExpr->resolvedType, innerElem))
+                    parsingError(format("Cannot assign value of type '{0}' to element of array<{1}>",
+                                        typeDisplayName(valExpr->resolvedType), typeDisplayName(innerElem)));
+                checkByteElementRange(valExpr, innerElem);
+                functionDef* setM = (curCls != nullptr && !innerElem.empty())
+                                  ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/true) : nullptr;
+                i6Block* sblk = setM != nullptr ? dynamic_cast<i6Block*>(setM->body) : nullptr;
+                if(sblk == nullptr)
+                    parsingError(format("No operator[]= for element type '{0}' on type '{1}'.",
+                                        typeDisplayName(innerElem), typeDisplayName(curType)));
+                string recv = "(" + readText + ")";
+                string b = processBglConditionals(sblk->i6Body);
+                if(setM->params.size() > 0) b = replaceWord(b, "$" + setM->params[0]->name, idx->text());
+                if(setM->params.size() > 1) b = replaceWord(b, "$" + setM->params[1]->name, valExpr->text());
+                b = replaceWord(b, "$self", recv);
+                b = replaceWord(b, "$val",  recv);
+                b = replaceWord(b, "$prop", "0");
+                b = substituteElemOps(b, innerElem);
+                functionCallStatement& cs = *(new functionCallStatement());
+                cs.src = stmtLoc;
+                cs.emitterBody = b;
+                if(body != nullptr) body->statements.push_back(&cs);
+                return false;
             }
         }
 

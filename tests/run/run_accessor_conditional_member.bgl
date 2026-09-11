@@ -1,0 +1,37 @@
+/*  Conditional compilation inside an inline accessor object's body.
+
+    An `auto name = { … }` accessor is parsed as a nested class body, so a target guard
+    (`#if TARGET_ZCODE` / `#if TARGET_GLULX`) sitting AMONG the member declarations must be
+    honored — the guarded field is declared only when its branch is live. This mirrors the
+    core `_statusBar.bgl` accessor, whose Glulx-only window handle is guarded this way.
+
+    Compiled for Z (z5): TARGET_ZCODE is true, so `_zbonus` exists and the getter adds it;
+    the TARGET_GLULX member `_gonly` is absent and must not be emitted or referenced.  */
+// EXPECT_OUTPUT: 12
+#beguilerSettings { target = z5; informName = "none"; }
+
+object gadget {
+    auto level = {
+        int _raw = 0;
+        #if TARGET_ZCODE
+            int _zbonus = 5;        // present only on Z
+        #endif
+        #if TARGET_GLULX
+            int _gonly = 0;         // absent on Z — must not leak into emission
+        #endif
+
+        int operator() {
+            #if TARGET_ZCODE
+                return _raw + _zbonus;
+            #else
+                return _raw;
+            #endif
+        }
+        void operator = (int v){ _raw = v; }
+    }
+}
+
+void main(){
+    gadget.level = 7;      // setter: _raw = 7
+    print(gadget.level);   // getter (Z): 7 + _zbonus(5) = 12
+}

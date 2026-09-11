@@ -97,6 +97,24 @@ string resolveIncludePath(const string& filename, const string& extension,
     vector<filesystem::path> roots;
     roots.push_back(sourceDir);
     for(const string& sp : searchPaths) roots.push_back(filesystem::path(sp));
+    // Virtual overlay takes precedence over disk (LSP mode only; the map is empty during
+    // normal compiles). A live-scanned `_blorbAssets.bgl` thus resolves even when no file
+    // exists on disk, and wins over any stale on-disk copy. The returned path need not
+    // exist — parseFile/preScanFile fall back to the raw string when canonical() fails,
+    // and fileLexer::open serves the overlay content for it.
+    if(!g_virtualBglFiles.empty()){
+        string dummy;
+        for(const auto& root : roots){
+            filesystem::path cand = root / filesystem::path(normalized + extension);
+            if(lookupVirtualFile(cand.string(), dummy))
+                return cand.lexically_normal().string();
+            if(!extension.empty()){
+                cand = root / filesystem::path(normalized);
+                if(lookupVirtualFile(cand.string(), dummy))
+                    return cand.lexically_normal().string();
+            }
+        }
+    }
     for(const auto& root : roots){
         filesystem::path r = resolveCaseInsensitive(root, filesystem::path(normalized + extension));
         if(!r.empty()) return filesystem::canonical(r).string();
@@ -1394,6 +1412,8 @@ bool bglParser::processTypedProperty(vector<token>& t, Qualifiers& q, abstractOb
         token nameTok = t[2];
         if(isGeneric){
             elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+            if(elemType == "func") elemType = parseFuncType();
+            else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
             file.getToken(">");
             declType = base + "<" + elemType + ">";
             nameTok  = file.getToken({eTokenType::identifier, eTokenType::dataType});
@@ -1637,6 +1657,23 @@ string bglParser::parseFuncType(){
 }
 
 
+// Consume the `<ElementType>` clause of an array type whose base keyword ("array" or
+// "rawarray") the caller has already read, and return the full templated name — e.g.
+// "array<int>" or the nested "array<array<int>>". Mirrors parseFuncType, including the
+// `>>` split: the lexer merges two adjacent closing angles into one `>>` token, so at a
+// nested close we deliver one `>` here and stash the other for the enclosing level.
+string bglParser::parseArrayTypeTail(const string& base){
+    file.getToken("<");
+    string elem = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
+    if(elem == "func")                             elem = parseFuncType();
+    else if(elem == "array" || elem == "rawarray") elem = parseArrayTypeTail(elem);   // nested array-of-arrays
+    token sep = file.getToken();
+    if(sep.value == ">>") file.pushBackCloseAngle(sep);   // closes this level + an outer one
+    else if(!sep.is(">")) parsingError("Expected '>' to close 'array<...>'");
+    return base + "<" + elem + ">";
+}
+
+
 bool bglParser::processParameterList(functionDef& funcDef){
     token tok=file.getToken(); // first type, or ")" for empty list
     while(tok.isNot(token::parenClose)){
@@ -1654,6 +1691,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
             file.getToken("<");
             string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
             if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
+            else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
             file.getToken(">");
             // array<char> maps to bytearray (byte-access operators); others keep the <T> format.
             // rawarray<char> stays word-indexed (raw I6 arrays are the caller's own layout).

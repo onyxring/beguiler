@@ -1,0 +1,18 @@
+/*  `.length()` (and `.size()`) on a byte array (`array<char>`).
+
+    A byte array uses I6's `buffer` layout — length WORD at offset 0 — not the tracked
+    word-array layout. Before the fix, `array<char>` inherited the `<array>` extension's
+    tracked `length()`, which dispatched through `_bglArray` with a `$prop` the buffer
+    layout can't supply, emitting the malformed I6 `_bglArray.length(x, <$prop undefined>)`
+    that Inform 6 rejected. `byteArray` now overrides `length()` to read WORD 0, like size().  */
+// EXPECT_OUTPUT: len 3
+// EXPECT_OUTPUT: size 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+array<char> letters = {65, 66, 67};
+
+void main(){
+    print("len ");  print(letters.length()); print("^");
+    print("size "); print(letters.size());   print("^");
+}

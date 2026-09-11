@@ -227,6 +227,23 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     while(tok.isNot(token::braceClose)){
         if(tok.is(eTokenType::eof))
             parsingError(format("Unexpected end of file inside class '{0}' — missing closing '}}'", newClass.dName()));
+        // Conditional compilation between members. Needed for inline accessor objects — an
+        // `auto name = { … }` accessor is parsed as a nested class body, so a target guard like
+        //   #if TARGET_GLULX
+        //       int _win = 0;
+        //   #endif
+        // sitting among the member declarations must be honored here, not treated as a member.
+        // Route the #if/#elif/#else/#endif family through the shared directive handler, which
+        // evaluates the condition and skips dead branches against this class context; any other
+        // directive isn't a member form in a class body.
+        if(tok.is(eTokenType::directive)){
+            if(tok.is("#if") || tok.is("#elif") || tok.is("#else") || tok.is("#endif"))
+                processDirective(tok, newClass);
+            else
+                parsingError(format("Unsupported directive in class body: '{0}'", tok.value));
+            tok = file.getToken();
+            continue;
+        }
         Qualifiers q = parseQualifiers(tok);
         bool isEmitter = q.isEmitter;
         bool isReplace = q.isReplace;
@@ -946,6 +963,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     file.getToken("<");
     string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
     if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
+    else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
     file.getToken(">");
     token propName = file.getToken(eTokenType::identifier);
 
@@ -1537,6 +1555,7 @@ bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q
     // Entered after "array" "<" have been consumed. Reads: elementType > name symbol
     string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
     if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
+    else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
     file.getToken(">");
     // Build the full generic type token (e.g. "array<int>" or "rawarray<int>") so downstream sees it.
     // arrayTok is the base-name token ("array" or "rawarray"), routed here by the grammar table.
