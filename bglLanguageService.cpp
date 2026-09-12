@@ -5,6 +5,8 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
+#include <map>
+#include <filesystem>
 
 #include "helpers.h"
 #include "bglParser.h"
@@ -12,6 +14,33 @@
 #include "typeDef.h"
 
 using namespace std;
+
+// Virtual in-memory file overlay — see bglLanguageService.h. Populated only by the LSP.
+map<string, string> g_virtualBglFiles;
+
+string virtualFileKey(const string& path){
+    error_code ec;
+    filesystem::path p = filesystem::absolute(path, ec);
+    if(ec) p = filesystem::path(path);
+    // Canonicalize the PARENT dir (which exists even when the virtual file itself does not),
+    // then re-attach the filename. This makes the key agree whether the caller passes a raw
+    // path or one that parseFile ran through canonical() — the latter resolves symlinks such
+    // as macOS /tmp -> /private/tmp, which would otherwise miss the overlay when a stale
+    // on-disk copy exists.
+    filesystem::path parent = filesystem::canonical(p.parent_path(), ec);
+    if(ec) parent = p.parent_path().lexically_normal();
+    string s = (parent / p.filename()).lexically_normal().generic_string();
+    transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s;
+}
+
+bool lookupVirtualFile(const string& path, string& out){
+    if(g_virtualBglFiles.empty()) return false;   // fast path: never populated outside the LSP
+    auto it = g_virtualBglFiles.find(virtualFileKey(path));
+    if(it == g_virtualBglFiles.end()) return false;
+    out = it->second;
+    return true;
+}
 
 // Re-push a stub being filled in (registerClass/registerObject/registerEnum/...) to
 // `globals` if it has been removed since pre-scan time. Background: .inf-mode pre-scan

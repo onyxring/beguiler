@@ -11,6 +11,7 @@
 #once
 
 #include<core/_glulxOpCodes>
+#include<core/_float>     
 //=============================================================================
 // _glulx — backing object for the bgl.glulx namespace.
 extend bgl{ auto glulx=_glulx; } //extend the bgl namespace object to include glulx-specific things
@@ -42,3 +43,16 @@ enum eGlulxStyleType{
 // Glulx-target alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>().
 // Symmetric with core/_zcode.bgl's Z-target alias.
 extend bgl { emitter auto asm = bglOpCodes; }
+
+// Image print-rules need the `eAssets` enum, which the blorbifier generates into the
+// author's `_blorbAssets.bgl` (the author includes it manually). Gate on `generateBlorb`
+// so a non-blorb Glulx build neither requires the enum nor fails to resolve `eAssets`.
+// A regular (non-emitter) print-rule: used in an interpolated string `$"…{img(eAssets.x)}…"`,
+// the segment is CALLED (it draws the image), not printed — interpolation now permits a void call.
+#if (generateBlorb == true)
+extend _bglPrintRules {
+    void img(eAssets image){
+        bgl.asm.imageDrawScaled(gg_mainwin, image, eGlulxImageAlign.inlineCenter, 0, 100, 100);
+    }
+}
+#endif

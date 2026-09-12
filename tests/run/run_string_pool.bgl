@@ -1,0 +1,47 @@
+/*  Allocator lifecycle: fill within the pool reserve (default 10), then verify a
+    later allocation reuses a recycled slot after the first batch's locals free,
+    and that chained ephemerals (clone-mutate-free) read correctly inline.
+    This allocator stress has no emission signature at all — the retired
+    WIP/stringRuntime harness carried it precisely because baselines can't see it.
+    Ported by Joe (<string> substrate). */
+// EXPECT_OUTPUT: pool-first: 1
+// EXPECT_OUTPUT: pool-last: 8
+// EXPECT_OUTPUT: pool-recycle: recycled
+// EXPECT_OUTPUT: ephemeral-inline: abcX
+// EXPECT_OUTPUT: ephemeral-chain: abcXY
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+// Allocate 8 (within the reserve of 10) so we exercise a full batch without
+// hitting the graceful-failure path; these free when the function returns.
+void pool() {
+    string s1; s1 = "1";
+    string s2; s2 = "2";
+    string s3; s3 = "3";
+    string s4; s4 = "4";
+    string s5; s5 = "5";
+    string s6; s6 = "6";
+    string s7; s7 = "7";
+    string s8; s8 = "8";
+    print("pool-first: "); print(s1); print("^");
+    print("pool-last: ");  print(s8); print("^");
+}
+
+// Re-allocate after pool() returns: only succeeds if the slots recycled.
+void poolRecycle() {
+    string r; r = "recycled";
+    print("pool-recycle: "); print(r); print("^");
+}
+
+void ephemerals() {
+    string base; base = "abc";
+    print("ephemeral-inline: "); print(base.append("X"));            print("^");
+    print("ephemeral-chain: ");  print(base.append("X").append("Y")); print("^");
+}
+
+void main() {
+    bglInit();
+    pool();
+    poolRecycle();
+    ephemerals();
+}

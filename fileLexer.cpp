@@ -120,6 +120,14 @@ using namespace std;
 //----------------------------------------------------------------------------------------
 //--Opening and closing files, and managing which of these is the "current file"
 void fileLexer::open(string filename){
+    // Virtual-file overlay (LSP mode only; g_virtualBglFiles is empty during compiles):
+    // serve in-memory content (e.g. a live-scanned _blorbAssets.bgl) instead of touching disk.
+    string virtualContent;
+    if(lookupVirtualFile(filename, virtualContent)){
+        istringstream* stream = new istringstream(virtualContent);
+        files.push(make_tuple(static_cast<istream*>(stream), filename, 1, 0));
+        return;
+    }
     ifstream* inputFileStream = new ifstream(filename);
     if (!inputFileStream->is_open()) {
         delete inputFileStream;

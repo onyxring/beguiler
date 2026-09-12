@@ -232,15 +232,16 @@ object _bglStr {
         return retval;
     }
 
-    // Apply a $0/$1/$2/$3 format pattern, returning a freed (ephemeral) result.
-    var format(var pattern, var p1 = 0, var p2 = 0, var p3 = 0) {
-        var retval;
-        #i6 {
-            retval = _bglStringPool.allocateString();
-            retval.set(retval.format(pattern, p1, p2, p3));
-            retval = retval.free();
-        }
-        return retval;
+    // Apply a $0/$1/$2/$3 format pattern to source string `s` (which becomes $0),
+    // returning a freed (ephemeral) result. Mirrors appendChar/trim's contract:
+    // the receiver-facing emitters route here as `_bglStr.format($val, …)` so the
+    // bare `string` value type works, not just `stringObj`. `s` may be a literal,
+    // a `string`, or a `_bglString` — `self.new` canonicalizes it.
+    var format(var s, var pattern, var p1 = 0, var p2 = 0, var p3 = 0) {
+        var str = self.new(s);
+        var tmp;
+        #i6 { tmp = str.format(pattern, p1, p2, p3); str.free(); }
+        return tmp;   // ephemeral, same contract as trim()
     }
 
     // Cast any string-shaped value into a buffer suitable for _bglBuf operations.
@@ -1073,9 +1074,9 @@ extend class string {
     emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
     emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
-    emitter stringObj  format(var pattern)                   { $self.format($pattern) }
-    emitter stringObj  format(var pattern, var p1)           { $self.format($pattern, $p1) }
-    emitter stringObj  format(var pattern, var p1, var p2)   { $self.format($pattern, $p1, $p2) }
+    emitter stringObj  format(var pattern)                   { _bglStr.format($val, $pattern) }
+    emitter stringObj  format(var pattern, var p1)           { _bglStr.format($val, $pattern, $p1) }
+    emitter stringObj  format(var pattern, var p1, var p2)   { _bglStr.format($val, $pattern, $p1, $p2) }
     emitter int     getLength()                           { _bglStr.getLength($val) }
     emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
     emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
@@ -1227,9 +1228,9 @@ emitter class stringObj : _bglObject {
     emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
     emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
-    emitter stringObj  format(var pattern)                   { $self.format($pattern) }
-    emitter stringObj  format(var pattern, var p1)           { $self.format($pattern, $p1) }
-    emitter stringObj  format(var pattern, var p1, var p2)   { $self.format($pattern, $p1, $p2) }
+    emitter stringObj  format(var pattern)                   { _bglStr.format($val, $pattern) }
+    emitter stringObj  format(var pattern, var p1)           { _bglStr.format($val, $pattern, $p1) }
+    emitter stringObj  format(var pattern, var p1, var p2)   { _bglStr.format($val, $pattern, $p1, $p2) }
     emitter int     getLength()                           { _bglStr.getLength($val) }
     emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
     emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }

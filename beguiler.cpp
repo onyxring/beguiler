@@ -250,6 +250,14 @@ void beguiler::extractBlorbSettings(const string& filename) {
     // steps aside. (processBeguilerSettings re-affirms it for the with-settings path; the reset()
     // that would wipe it runs only in LSP mode.)
     if(beguilerSettings.autoInitialize) parser.defineSymbol("bglautoinitialize", "1");
+
+    // Surface generateBlorb as a compile-time #if symbol so library/core code can gate blorb-only
+    // constructs (e.g. an `eAssets`-typed routine). Declared immutable (#declare): compiler-owned,
+    // user can't redefine. ALWAYS declared, carrying its boolean VALUE — so it must be tested by
+    // value, `#if (generateBlorb == true)`, NOT bare `#if generateBlorb` (which only tests that the
+    // symbol is declared, and would be true even when blorb is off). Set in the early settings
+    // pre-read so it holds for BOTH passes.
+    parser.declareSymbol("generateblorb", beguilerSettings.blorbEnabled ? "true" : "false");
 }
 
 bool beguiler::go(int argc, char* argv[]) {

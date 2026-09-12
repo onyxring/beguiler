@@ -1,0 +1,17 @@
+/*  bgl.printRules — declarative text-style emitter VALUES (core/_printRules.bgl)
+    used bare inside an interpolated string. `{italics}`/`{roman}` inline their raw
+    I6 style directive into the print stream with no parens; `#using bgl.printRules`
+    makes them unqualified, and the qualified `{bgl.printRules.bold}` form needs no
+    import. The style changes are invisible in plain zvm capture, so we assert the
+    surrounding text survives intact — and, crucially, that the values RESOLVE and
+    RUN (a missing/misrouted emitter value would fail to compile or trap here). */
+// EXPECT_OUTPUT: The troll hit the table.
+// EXPECT_OUTPUT: bold and qualified text
+#beguilerSettings { target = z5; informName = "none"; }
+#using bgl.printRules;
+
+void main() {
+    bglInit();
+    print($"The troll {italics}hit{roman} the table.^");            // bare, via #using
+    print($"{bgl.printRules.bold}bold and qualified text{roman}^");  // qualified, no #using
+}

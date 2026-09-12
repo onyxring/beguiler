@@ -1,0 +1,16 @@
+/*
+    _test_emitter_value_not_callable.bgl  (negative)
+    An emitter VALUE (declared without parentheses, §14.4.5) is not a function:
+    `bold` and `bold()` are distinct declarations, so calling a value with `()`
+    is a compile error rather than a tolerated no-op. Guards all resolution paths
+    (bare, #using-imported, qualified) — this case exercises the bare #using form;
+    the qualified form is guarded by the same check in the dotted/method-call path.
+*/
+// EXPECT_ERROR: is an emitter value, not a function
+#beguilerSettings { target = z5; informName = "none"; }
+#using bgl.printRules;
+
+void main() {
+    bglInit();
+    print($"The troll {italics()}hit the table.");   // '()' on a value emitter — rejected
+}

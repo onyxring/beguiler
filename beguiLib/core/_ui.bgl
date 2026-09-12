@@ -2,32 +2,8 @@
 /*-----------------------------------------------------------------------------
     _ui.bgl - User Interface elements
  -----------------------------------------------------------------------------*/
-
 superposed _bglObject _bglUi{
-    //styles
-    emitter void bold()      { style bold }
-    emitter void roman()     { style roman }
-    emitter void italics()   { style underline }
-    emitter void underline() { style underline }
-    emitter void reverse()   { style reverse }
-    emitter void fixed()     { style fixed }
+
 }
 
 extend bgl { alias ui = _bglUi; }
-
-
-/*
-[ StatusLineHeight height;
-    if (gg_statuswin_cursize ~= height)
-        @split_window height;
-    gg_statuswin_cursize = height;
-];
-
-[ StatusLineHeight hgt parwin;
-    if (gg_statuswin == 0) return;
-    if (hgt == gg_statuswin_cursize) return;
-    parwin = glk_window_get_parent(gg_statuswin);
-    glk_window_set_arrangement(parwin, $12, hgt, 0);
-    gg_statuswin_cursize = hgt;
-];
-*/

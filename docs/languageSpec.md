@@ -5669,6 +5669,8 @@ The distinction from an emitter function is the absence of parentheses in both t
 | `emitter int foo() { body }` | `foo()` | Emitter function |
 | `emitter int foo { body }` | `foo` | Emitter value |
 
+The two are **distinct declarations with distinct use**. An emitter value is not a function: calling one with parentheses — `foo()` where `foo` is a value — is a compile error ("`foo` is an emitter value, not a function"), not a tolerated no-op. This holds for every form the name can take: bare (`italics()`), `#using`-imported, and qualified (`ns.italics()`). Conversely, an emitter function is used only with `()`. Keeping them separate is what lets a type expose a parenless value and a same-named zero-argument function as different members (subject to the usual no-duplicate-signature rule).
+
 Emitter values can be declared at global scope, in class bodies, and in object bodies. On class or object members, `$self` substitution works the same as for emitter functions.
 
 ```bgl

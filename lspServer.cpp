@@ -12,6 +12,7 @@
 #include "lspServer.h"
 #include "bglParser.h"
 #include "bglLanguageService.h"
+#include "blorb.h"
 #include "settings.h"
 #include "typeDef.h"
 #include <iostream>
@@ -515,6 +516,61 @@ void LspServer::parseDocument(const string& uri) {
                 }
             }
             tagPos = cur;
+        }
+    }
+
+    // Register a virtual `_blorbAssets.bgl` from a live scan of the asset directory, so that
+    // `#include "_blorbAssets.bgl"` resolves — and `eAssets` members autocomplete/color —
+    // WITHOUT a compile and WITHOUT writing anything to disk. The scan re-runs on every
+    // reparse (so a freshly dropped image appears on the next parse), and the live result
+    // wins over any stale on-disk copy (see resolveIncludePath). Mirrors the compile-mode
+    // asset scan in beguiler.cpp. If the asset dir is absent we register nothing, leaving a
+    // previously-compiled on-disk _blorbAssets.bgl to resolve normally.
+    g_virtualBglFiles.clear();
+    {
+        // Extract blorbAssetPath = "…" from any #beguilerSettings block (default: "assets").
+        string assetPathSetting;
+        if(docIt != openDocuments.end()){
+            const string& text = docIt->second;
+            size_t tagPos = 0;
+            while((tagPos = text.find("#beguilerSettings", tagPos)) != string::npos){
+                size_t open = text.find('{', tagPos);
+                if(open == string::npos) break;
+                int depth = 1; size_t cur = open + 1;
+                while(cur < text.size() && depth > 0){
+                    if(text[cur] == '{') depth++;
+                    else if(text[cur] == '}') depth--;
+                    cur++;
+                }
+                string block = text.substr(open + 1, cur - open - 2);
+                string lower = block;
+                transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                size_t k = lower.find("blorbassetpath");
+                if(k != string::npos){
+                    size_t eq = lower.find('=', k + 14);
+                    if(eq != string::npos){
+                        size_t q1 = block.find('"', eq);
+                        if(q1 != string::npos){
+                            size_t q2 = block.find('"', q1 + 1);
+                            if(q2 != string::npos) assetPathSetting = block.substr(q1 + 1, q2 - q1 - 1);
+                        }
+                    }
+                }
+                tagPos = cur;
+            }
+        }
+        filesystem::path srcDir = filesystem::path(path).parent_path();
+        string assetDir = assetPathSetting.empty()
+            ? (srcDir / "assets").string()
+            : (filesystem::path(assetPathSetting).is_absolute()
+                ? assetPathSetting
+                : (srcDir / assetPathSetting).string());
+        error_code ec;
+        if(filesystem::is_directory(assetDir, ec)){
+            Blorb blorb;
+            vector<BlorbAsset> assets = blorb.scanAssets(assetDir);
+            string enumSrc = blorb.buildEnumSource(assets, filesystem::path(path).filename().string());
+            g_virtualBglFiles[virtualFileKey((srcDir / "_blorbAssets.bgl").string())] = enumSrc;
         }
     }
 

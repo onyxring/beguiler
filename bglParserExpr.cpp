@@ -693,6 +693,8 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
         // splices the raw I6 expression instead of dispatching through self.X(...).
         // Without this, sibling emitters become I6 property calls and lose their
         // inline-substitution semantics.
+        if(selfMethod && selfMethod->isEmitter && selfMethod->isValueEmitter)
+            parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", callName));
         if(selfMethod && selfMethod->isEmitter){
             if(auto* blk = dynamic_cast<i6Block*>(selfMethod->body)){
                 string b = processBglConditionals(blk->i6Body);
@@ -718,6 +720,10 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
         if(!gcb.funcVarReturnType.empty())      retType = gcb.funcVarReturnType;
         else if(gcb.method != nullptr)          retType = gcb.method->returnType.name;
         else                                    retType = "var"; // loose mode: unresolved → opaque
+        // A value emitter is NOT callable: `bold` (value, §14.4.5) and `bold()` (zero-arg function)
+        // are distinct declarations, so parentheses on a value are an error, not a tolerated no-op.
+        if(gcb.method && gcb.method->isEmitter && gcb.method->isValueEmitter)
+            parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", callName));
         // Emitter inlining: substitute params and push as single token
         if(gcb.method && gcb.method->isEmitter){
             if(auto* blk = dynamic_cast<i6Block*>(gcb.method->body)){
@@ -741,8 +747,17 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
     if(retType == "void" && !allowVoidReturnExpr)
         parsingError(format("Cannot use void function '{0}' in an expression", callName));
     if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
-    // Flatten parsed args back to tokens for the enclosing expression
-    expr->tokens.push_back(isSelfCall ? "self." + callName : callName);
+    // Flatten parsed args back to tokens for the enclosing expression. Qualify the callee: a bare
+    // name only resolves in I6 for a global routine, but an object-member call (e.g. a method reached
+    // through `#using bgl.printRules`) must emit as `Owner.method(…)`. qualifyIdentifier returns the
+    // bare name for a global and the owner-qualified path for a member, so it's correct either way —
+    // matching the statement-call path, which qualifies via emitObjectPath.
+    string callEmit = callName;
+    if(!isSelfCall){
+        string q = qualifyIdentifier(callName, func, body);
+        if(!q.empty()) callEmit = q;
+    }
+    expr->tokens.push_back(isSelfCall ? "self." + callName : callEmit);
     expr->tokens.push_back(token::parenOpen);
     for(size_t i = 0; i < pal.args.size(); i++){
         if(i > 0) expr->tokens.push_back(",");
@@ -1810,6 +1825,12 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         method = bindMethodCall(objType, objName, methName,
                                                                callArgs, pal.namedArgNames, pal.interpSegmentsPerArg,
                                                                recvElemType);
+
+                        // A value emitter is NOT callable: `obj.bold` (value, §14.4.5) and `obj.bold()`
+                        // (zero-arg function) are distinct; parens on a value are an error here too,
+                        // matching the bare/global-call path.
+                        if(method->isEmitter && method->isValueEmitter)
+                            parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", methName));
 
                         expr->resolvedType = method->returnType.name;
 

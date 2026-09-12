@@ -40,17 +40,32 @@ using namespace std;
 // ===============================================================================
 // processEnumDeclaration
 // ===============================================================================
-bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOverride){
+bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOverride, bool isExtend){
     if(getCurrentCompileContext()!=eCompileContext::global) parsingError(format("Enumerations are only allowed in global context:'{0}'", (string) tok));
     bool isBnum=false;
-    if(tok.is(token::bnumDeclaration)) isBnum=true;
+    if(tok.is(token::bnumDeclaration) || tok.value == "bnum") isBnum=true;
     token name = nameOverride.tokenType != eTokenType::unknown ? nameOverride : file.getToken({eTokenType::identifier, eTokenType::dataType}); //enum name
-    enumDef& newEnum=languageService.registerEnum((string)name, isExternal, name.originalValue);
+    // `extend enum X { ... }` appends members to an existing enum rather than declaring a new one.
+    // The pre-scanner already appended the members (so forward references resolve), so the main
+    // pass finds a populated enum and drains the body below — same two-pass shape as a fresh enum.
+    enumDef* enumPtr;
+    if(isExtend){
+        enumPtr = dynamic_cast<enumDef*>(&languageService.getType(name.value));
+        if(enumPtr == nullptr)
+            parsingError(format("extend enum '{0}': no previously declared enum with that name", (string)name));
+        if(enumPtr->isBnum != isBnum)
+            parsingError(format("extend enum '{0}': {1} extension does not match the original {2} declaration",
+                                (string)name, isBnum ? "bnum" : "enum", enumPtr->isBnum ? "bnum" : "enum"));
+    } else {
+        enumPtr = &languageService.registerEnum((string)name, isExternal, name.originalValue);
+    }
+    enumDef& newEnum = *enumPtr;
     newEnum.isBnum = isBnum;
     if(!tok.docComment.empty())          newEnum.docComment = tok.docComment;
     else if(!name.docComment.empty())    newEnum.docComment = name.docComment;
     // Optional shared-base clause (mirrors pre-scanner); see bglPreScanner.cpp for semantics.
-    if(file.peekToken().is(":")){
+    // Not valid on `extend` — the base is part of the original declaration.
+    if(!isExtend && file.peekToken().is(":")){
         file.getToken();
         token baseTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
         if(!isBnum)

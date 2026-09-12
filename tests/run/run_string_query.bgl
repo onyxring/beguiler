@@ -1,0 +1,81 @@
+/*  Non-mutating introspection: assignment, length, isEmpty, search
+    (indexOf/startsWith/endsWith/contains), equality against literal and against
+    another string, and switch dispatch on a string. Runtime-only truths.
+    Ported from the retired WIP/stringRuntime harness (Joe, <string> substrate). */
+// EXPECT_OUTPUT: assign-literal: hello
+// EXPECT_OUTPUT: assign-string: hello
+// EXPECT_OUTPUT: assign-empty: yes
+// EXPECT_OUTPUT: getLength: 5
+// EXPECT_OUTPUT: getLength-empty: 0
+// EXPECT_OUTPUT: isEmpty-false: no
+// EXPECT_OUTPUT: indexOf-found: 7
+// EXPECT_OUTPUT: indexOf-notfound: -1
+// EXPECT_OUTPUT: startsWith-true: yes
+// EXPECT_OUTPUT: startsWith-false: no
+// EXPECT_OUTPUT: endsWith-true: yes
+// EXPECT_OUTPUT: endsWith-false: no
+// EXPECT_OUTPUT: contains-true: yes
+// EXPECT_OUTPUT: contains-false: no
+// EXPECT_OUTPUT: eq-literal-true: yes
+// EXPECT_OUTPUT: eq-literal-false: no
+// EXPECT_OUTPUT: eq-string-true: yes
+// EXPECT_OUTPUT: eq-string-false: no
+// EXPECT_OUTPUT: switch-case: 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+void assignment() {
+    string s; s = "hello";
+    print("assign-literal: "); print(s); print("^");
+    string t; t = s;
+    print("assign-string: "); print(t); print("^");
+    string u; u = "";
+    print("assign-empty: "); print(u.isEmpty() ? "yes" : "no"); print("^");
+}
+
+void introspection() {
+    string s; s = "hello";
+    print("getLength: "); print(s.getLength()); print("^");
+    print("isEmpty-false: "); print(s.isEmpty() ? "yes" : "no"); print("^");
+    string e; e = "";
+    print("getLength-empty: "); print(e.getLength()); print("^");
+}
+
+void search() {
+    string s; s = "Hello, World";
+    print("indexOf-found: ");    print(s.indexOf("World")); print("^");
+    print("indexOf-notfound: "); print(s.indexOf("XYZ"));   print("^");
+    print("startsWith-true: ");  print(s.startsWith("Hello") ? "yes" : "no"); print("^");
+    print("startsWith-false: "); print(s.startsWith("World") ? "yes" : "no"); print("^");
+    print("endsWith-true: ");    print(s.endsWith("World") ? "yes" : "no");   print("^");
+    print("endsWith-false: ");   print(s.endsWith("Hello") ? "yes" : "no");   print("^");
+    print("contains-true: ");    print(s.contains(",") ? "yes" : "no");       print("^");
+    print("contains-false: ");   print(s.contains("xyz") ? "yes" : "no");     print("^");
+}
+
+void equality() {
+    string s; s = "test";
+    print("eq-literal-true: ");  print((s == "test")  ? "yes" : "no"); print("^");
+    print("eq-literal-false: "); print((s == "other") ? "yes" : "no"); print("^");
+    string o; o = "test";
+    print("eq-string-true: ");   print((s == o) ? "yes" : "no"); print("^");
+    o = "different";
+    print("eq-string-false: ");  print((s == o) ? "yes" : "no"); print("^");
+
+    int code = 0;
+    switch(s) {
+        case "first": code = 1;
+        case "test":  code = 2;
+        case "third": code = 3;
+        default:      code = 99;
+    }
+    print("switch-case: "); print(code); print("^");
+}
+
+void main() {
+    bglInit();
+    assignment();
+    introspection();
+    search();
+    equality();
+}

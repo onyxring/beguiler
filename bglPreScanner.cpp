@@ -434,6 +434,40 @@ void bglParser::preScanGlobalLoop(){
         // extend class/object — register new members on the existing type during pre-scan
         // Note: 'extend' was consumed by parseQualifiers; tok is now 'class', 'verb', identifier, or 'extern'
         if(q.isExtend){
+            // extend enum X { ... } — append members to an existing enum during pre-scan, so the
+            // main pass finds a populated enum and drains (mirrors a fresh enum's two-pass shape).
+            if(tok.is(token::enumDeclaration) || tok.is(token::bnumDeclaration) || tok.value == "enum" || tok.value == "bnum"){
+                bool isBnum = tok.is(token::bnumDeclaration) || tok.value == "bnum";
+                token nameTok = file.getToken();
+                string nameStr = nameTok.value;
+                enumDef* ex = dynamic_cast<enumDef*>(&languageService.getType(nameStr));
+                if(ex != nullptr){   // a pre-scan stub is fine — it just means forward-declared
+                    // Continue auto-numbering from the current max; explicit `= N` overrides.
+                    int val = 1;
+                    for(enumValueDef* v : ex->namedValues) if(v->value >= val) val = v->value + 1;
+                    file.getToken(); // consume '{'
+                    token t = file.getToken();
+                    while(t.isNot(token::braceClose) && t.isNot(eTokenType::eof)){
+                        enumValueDef& ev = *(new enumValueDef());
+                        ev.name = t.value; ev.displayName = t.originalValue; ev.docComment = t.docComment;
+                        t = file.getToken({token::braceClose, token::comma, token::assignment});
+                        if(t.is(token::assignment)){
+                            bool negate = false;
+                            if(file.peekToken().is("-")){ file.getToken(); negate = true; }
+                            token numTok = file.getToken(eTokenType::integer);
+                            val = stoi(numTok.value); if(negate) val = -val;
+                            t = file.getToken({token::braceClose, token::comma});
+                        }
+                        ev.value = val;
+                        if(isBnum) val <<= 1; else val++;
+                        ex->namedValues.push_back(&ev);
+                        if(t.is(token::comma)) t = file.getToken();
+                    }
+                } else {
+                    preScanSkipBody(); // base not yet declared at this point — main pass will error
+                }
+                continue;
+            }
             // extend object by name — register added members on the existing objectDef.
             // Without this pre-pass, sibling-method calls inside the extended body fail
             // to resolve in the full pass when the caller is declared above the callee.

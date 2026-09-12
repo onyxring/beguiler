@@ -98,3 +98,16 @@ class bglLanguageService{
 
 extern bglLanguageService languageService;
 extern beguilerSettingsDef beguilerSettings;
+
+// Virtual in-memory file overlay: maps a normalized absolute path to source text.
+// Populated only in LSP mode (see LspServer::parseDocument) so that a live-scanned
+// `_blorbAssets.bgl` asset enum resolves and opens from memory — no compile, no disk
+// write. Empty during normal compiles, so include resolution is unchanged there.
+extern map<string, string> g_virtualBglFiles;
+
+// Normalized lookup key for the overlay (absolute, lexically-normal, forward slashes,
+// lowercased — Beguile is case-insensitive). Used by the LSP registrar, resolveIncludePath,
+// and fileLexer::open so they agree on the same key.
+string virtualFileKey(const string& path);
+// If `path` names a registered virtual file, copies its content into `out` and returns true.
+bool lookupVirtualFile(const string& path, string& out);

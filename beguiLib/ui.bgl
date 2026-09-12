@@ -16,12 +16,12 @@ extend _bglUi {
     void waitForKey(){
         bgl.asm.read_char();
     }
-    void setStatusHeight(int height){
-        #if TARGET_ZCODE;
-            bgl.asm.split_window(height);
-        #else;
-            int parwin = glk_window_get_parent(gg_statuswin); //TODO: gg_statuswin is a standard library variable.  It needs to be removed from the BLRT
-            bgl.asm.glk.window_set_arrangement(parwin, $12, height, 0);
-        #endif;
-    }
+    // void setStatusHeight(int height){
+    //     #if TARGET_ZCODE;
+    //         bgl.asm.split_window(height);
+    //     #else;
+    //         int parwin = glk_window_get_parent(gg_statuswin); //TODO: gg_statuswin is a standard library variable.  It needs to be removed from the BLRT
+    //         bgl.asm.glk.window_set_arrangement(parwin, $12, height, 0);
+    //     #endif;
+    // }
 }

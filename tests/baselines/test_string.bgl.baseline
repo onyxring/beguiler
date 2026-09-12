@@ -821,13 +821,10 @@ object _bglStr
         
     return retval;
   ],
-       format [pattern p1 p2 p3 retval;
-    
-            retval = _bglStringPool.allocateString();
-            retval.set(retval.format(pattern, p1, p2, p3));
-            retval = retval.free();
-        
-    return retval;
+       format [s pattern p1 p2 p3 str tmp;
+    str = self.new(s);
+     tmp = str.format(pattern, p1, p2, p3); str.free(); 
+    return tmp;
   ],
        toAmbiguousBuffer [unkStr retval;
     
@@ -1419,7 +1416,7 @@ class _bglstring(bglstringpoolreserve)
     _bglStr.print(s);
     t = _bglStr.new();
     t.setFromStr(_bglStr.append(s, " suffix"));
-    t.setFromStr(_bglStr.append(s, '!'));
+    t.setFromStr(_bglStr.appendChar(s, '!'));
     t.setFromStr(_bglStr.prepend(s, "prefix "));
     t.setFromStr(_bglStr.toUpper(s));
     t.setFromStr(_bglStr.toLower(s));
@@ -1434,9 +1431,9 @@ class _bglstring(bglstringpoolreserve)
     t.setFromStr(_bglStr.delete(s, 0, 2));
     t.setFromStr(_bglStr.replace(s, "Hello", "Greetings"));
     t.setFromStr(_bglStr.replaceAll(s, "o", "0"));
-    t.setFromStr(s.format("[$0]"));
-    t.setFromStr(s.format("[$0:$1]", "extra"));
-    t.setFromStr(s.format("[$0:$1:$2]", "a", "b"));
+    t.setFromStr(_bglStr.format(s, "[$0]"));
+    t.setFromStr(_bglStr.format(s, "[$0:$1]", "extra"));
+    t.setFromStr(_bglStr.format(s, "[$0:$1:$2]", "a", "b"));
     len=_bglStr.getLength(s);
     pos=_bglStr.indexOf(s, "World", 0);
     sw=_bglStr.startsWith(s, "Hello", false);

@@ -818,13 +818,10 @@ object _bglStr
         
     return retval;
   ],
-       format [pattern p1 p2 p3 retval;
-    
-            retval = _bglStringPool.allocateString();
-            retval.set(retval.format(pattern, p1, p2, p3));
-            retval = retval.free();
-        
-    return retval;
+       format [s pattern p1 p2 p3 str tmp;
+    str = self.new(s);
+     tmp = str.format(pattern, p1, p2, p3); str.free(); 
+    return tmp;
   ],
        toAmbiguousBuffer [unkStr retval;
     

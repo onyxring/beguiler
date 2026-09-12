@@ -1533,6 +1533,11 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
     if(q.isEmitter && (tok.is(eTokenType::identifier) || tok.is(eTokenType::dataType)) && file.peekToken().is(token::braceOpen))
         return processClassDeclaration(tok, false, q.isExtend, true, false, tok);
 
+    // extend enum X { ... } — append members to an existing enum/bnum. Must precede the object
+    // extension catch below (after `extend`, `enum`/`bnum` arrives as a bare identifier).
+    if(q.isExtend && !q.isExtern && (tok.is(token::enumDeclaration) || tok.is(token::bnumDeclaration) || tok.value == "enum" || tok.value == "bnum"))
+        return processEnumDeclaration(tok, false, token(), /*isExtend*/true);
+
     if(q.isExtend && !q.isExtern && (tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration))
         return processObjectExtension(tok);
 
@@ -1904,7 +1909,13 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
                 currentStr = "";
             }
             token exprFirst = file.getToken();
+            // An interpolation segment prints a value but CALLS a routine: a void call is valid here
+            // (emitInterpolatedSegments lowers a void-typed segment to a bare `expr;` statement — the
+            // routine runs, nothing is printed). So permit void in segment position.
+            bool savedAllowVoid = allowVoidReturnExpr;
+            allowVoidReturnExpr = true;
             expression* exprNode = parseExpression(exprFirst, {"}"}, func, body);
+            allowVoidReturnExpr = savedAllowVoid;
             interpolatedSegment seg;
             seg.isExpr = true;
             seg.expr = exprNode;

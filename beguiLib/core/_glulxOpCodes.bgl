@@ -575,7 +575,12 @@ Constant wintype_TextGrid = 4;
         __glkHook(225, $a, $b, $c, $d)
     }
 
-    emitter int imageDrawScaled(int a, int b, int c, int d, int e, int f){
+    // Raw glk image_draw_scaled(win, image, val1, val2, width, height). `image` is a resource id
+    // and `val1` is polymorphic — x for a graphics window, an alignment (eGlulxImageAlign) for a
+    // text-buffer window — so both are `var`: this keeps the low-level opcode from depending on the
+    // blorb-gated `eAssets`/`eGlulxImageAlign` types (which would break a non-blorb Glulx build) and
+    // lets every caller pass its own type. Semantics live in the facades (printRules.img, window draw).
+    emitter int imageDrawScaled(int a, var b, var c, int d, int e, int f){
         __glkHook(226, $a, $b, $c, $d, $e, $f)
     }
 

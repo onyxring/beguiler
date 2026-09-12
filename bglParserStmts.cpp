@@ -2458,6 +2458,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 functionDef* method = bindMethodCall(objectType, objectPath, methodName,
                                                        callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
                                                        recvElemType);
+                // A value emitter is NOT callable: `obj.bold` (value, §14.4.5) and `obj.bold()`
+                // (zero-arg function) are distinct; parens on a value are an error here too.
+                if(method->isEmitter && method->isValueEmitter)
+                    parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", methodName));
                 cls = dynamic_cast<classDef*>(&languageService.getType(objectType));
                 // Rebuild the call statement's functionName from the (possibly namespace-resolved)
                 // objectPath so emission targets the backing object — e.g. `bgl.ui.pressAnyKey()`

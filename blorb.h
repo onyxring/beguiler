@@ -18,6 +18,12 @@ public:
     // Returns assets sorted by type (pictures first) then name, IDs 1-based.
     std::vector<BlorbAsset> scanAssets(const std::string& assetDir);
 
+    // Build the source text of the `_blorbAssets.bgl` file (a single eAssets enum)
+    // in memory. Shared by writeEnumFile (compile mode) and the LSP's virtual-file
+    // overlay (editor mode), so both produce identical enums.
+    std::string buildEnumSource(const std::vector<BlorbAsset>& assets,
+                                const std::string& sourceFileName);
+
     // Write _blorbAssets.bgl containing a single eAssets enum.
     // outputBglPath: full path to the file to write.
     // sourceFileName: shown in the header comment.

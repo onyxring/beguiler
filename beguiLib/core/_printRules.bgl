@@ -1,0 +1,23 @@
+#once
+/*-----------------------------------------------------------------------------
+    bgl.printRules - declarative text-style print helpers, used with
+    interpolated text.
+
+        #using bgl.printRules;
+        print($"The troll {italics}hit{roman} the table.");
+
+    or, without the import, fully qualified:
+
+        print($"The troll {bgl.printRules.italics}hit{bgl.printRules.roman}...");
+ -----------------------------------------------------------------------------*/
+
+superposed _bglObject _bglPrintRules {
+    emitter void bold      { style bold; }
+    emitter void roman     { style roman; }
+    emitter void italics   { style underline; }
+    emitter void underline { style underline; }
+    emitter void reverse   { style reverse; }
+    emitter void fixed     { style fixed; }
+}
+
+extend bgl { alias printRules = _bglPrintRules; }

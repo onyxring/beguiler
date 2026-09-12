@@ -1,0 +1,77 @@
+/*  Mutating string operations: concat (+), append/prepend (string + char),
+    insert, delete, replace, replaceAll. These are clone-mutate-free ephemerals
+    whose CONTENT is invisible in emitted I6 — only a real run proves them.
+    Ported from the retired WIP/stringRuntime harness (Joe, <string> substrate). */
+// EXPECT_OUTPUT: concat-str-str: foobar
+// EXPECT_OUTPUT: concat-str-lit: foolit
+// EXPECT_OUTPUT: concat-lit-str: litfoo
+// EXPECT_OUTPUT: append-string: abcXYZ
+// EXPECT_OUTPUT: prepend-string: XYZabc
+// EXPECT_OUTPUT: append-char: abc!
+// EXPECT_OUTPUT: obj-append-char: abc!
+// EXPECT_OUTPUT: obj-append-str: abcXYZ
+// EXPECT_OUTPUT: insert-mid: abXcdef
+// EXPECT_OUTPUT: insert-start: Yabcdef
+// EXPECT_OUTPUT: delete-mid: abef
+// EXPECT_OUTPUT: delete-start: cdef
+// EXPECT_OUTPUT: replace-one: the slow brown fox
+// EXPECT_OUTPUT: replace-noop: the quick brown fox
+// EXPECT_OUTPUT: replaceAll: XXX
+// EXPECT_OUTPUT: replaceAll-longer: ZZZbbbZZZ
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+// Each group is its own function so its string locals free (and the pool of 10
+// recycles) before the next group allocates — the harness's grouping preserved.
+void concat() {
+    string sa; sa = "foo";
+    string sb; sb = "bar";
+    print("concat-str-str: "); print(sa + sb);   print("^");
+    print("concat-str-lit: "); print(sa + "lit"); print("^");
+    print("concat-lit-str: "); print("lit" + sa); print("^");
+}
+
+void appendPrepend() {
+    string s; s = "abc";
+    print("append-string: ");  print(s.append("XYZ"));  print("^");
+    print("prepend-string: "); print(s.prepend("XYZ")); print("^");
+    print("append-char: ");    print(s.append('!'));    print("^");
+}
+
+// On a stringObj receiver, a char arg must select append(char) — not append(stringObj),
+// which a published `var operator =` makes compatible. Getting that wrong routes the char
+// code into the string path and traps at runtime; guards the overload-resolution fix.
+void appendStringObj() {
+    stringObj o; o = "abc";
+    print("obj-append-char: "); print(o.append('!'));   print("^");
+    print("obj-append-str: ");  print(o.append("XYZ")); print("^");
+}
+
+void insertDelete() {
+    string s; s = "abcdef";
+    print("insert-mid: ");   print(s.insert(2, "X")); print("^");
+    print("insert-start: "); print(s.insert(0, "Y")); print("^");
+    print("delete-mid: ");   print(s.delete(2, 2));   print("^");
+    print("delete-start: "); print(s.delete(0, 2));   print("^");
+}
+
+// 'replace' is a reserved modifier keyword, so the group function can't take
+// that bare name.
+void replaceOps() {
+    string s; s = "the quick brown fox";
+    print("replace-one: ");  print(s.replace("quick", "slow"));   print("^");
+    print("replace-noop: "); print(s.replace("missing", "X"));    print("^");
+    string r; r = "ababab";
+    print("replaceAll: ");   print(r.replaceAll("ab", "X"));      print("^");
+    string longer; longer = "aaabbbaaa";
+    print("replaceAll-longer: "); print(longer.replaceAll("a", "Z")); print("^");
+}
+
+void main() {
+    bglInit();
+    concat();
+    appendPrepend();
+    appendStringObj();
+    insertDelete();
+    replaceOps();
+}

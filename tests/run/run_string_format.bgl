@@ -1,0 +1,31 @@
+/*  format — positional $0..$N substitution, where $0 is the receiver and $1..
+    are the trailing args. Purely a runtime transform, invisible in emitted I6.
+
+    Covers BOTH receiver types. The bare `string` value type routes through
+    `_bglStr.format($val, …)` exactly like its sibling emitters (append/mid/left);
+    a `stringObj` routes the same way. (Earlier the `string` emitters mis-routed to
+    `$self.format`, which trapped because a `string` is a packed literal, not a
+    _bglString — fixed by giving `_bglStr.format` a source-string first arg.)
+    Ported from the retired WIP/stringRuntime harness (Joe, <string> substrate). */
+// EXPECT_OUTPUT: str-format-0arg: Hello [world]!
+// EXPECT_OUTPUT: str-format-1arg: world+x
+// EXPECT_OUTPUT: str-format-2arg: world+a+b
+// EXPECT_OUTPUT: obj-format-0arg: Hello [world]!
+// EXPECT_OUTPUT: obj-format-1arg: world+x
+// EXPECT_OUTPUT: obj-format-2arg: world+a+b
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+void main() {
+    bglInit();
+
+    string s; s = "world";
+    print("str-format-0arg: "); print(s.format("Hello [$0]!"));      print("^");
+    print("str-format-1arg: "); print(s.format("$0+$1", "x"));       print("^");
+    print("str-format-2arg: "); print(s.format("$0+$1+$2", "a", "b")); print("^");
+
+    stringObj o; o = "world";
+    print("obj-format-0arg: "); print(o.format("Hello [$0]!"));      print("^");
+    print("obj-format-1arg: "); print(o.format("$0+$1", "x"));       print("^");
+    print("obj-format-2arg: "); print(o.format("$0+$1+$2", "a", "b")); print("^");
+}

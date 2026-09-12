@@ -1,0 +1,37 @@
+/*  Substring extraction (mid/left/right, incl. degenerate left(0) and a length
+    that spans the whole string) plus the case/reverse transforms. Content-only
+    behavior, invisible in emitted I6 — verified by running.
+    Ported from the retired WIP/stringRuntime harness (Joe, <string> substrate).
+    NB: trim/trimLeft/trimRight live in run_string_trim.bgl. */
+// EXPECT_OUTPUT: mid: lo, W
+// EXPECT_OUTPUT: left: Hello
+// EXPECT_OUTPUT: right: World
+// EXPECT_OUTPUT: left0: []
+// EXPECT_OUTPUT: right-all: Hello, World
+// EXPECT_OUTPUT: toUpper: HELLO
+// EXPECT_OUTPUT: toLower: hello
+// EXPECT_OUTPUT: reverse: olleH
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+void slice() {
+    string s; s = "Hello, World";
+    print("mid: ");       print(s.mid(3, 5)); print("^");
+    print("left: ");      print(s.left(5));   print("^");
+    print("right: ");     print(s.right(5));  print("^");
+    print("left0: [");    print(s.left(0));   print("]^");   // empty substring
+    print("right-all: "); print(s.right(12)); print("^");
+}
+
+void transforms() {
+    string s; s = "Hello";
+    print("toUpper: "); print(s.toUpper()); print("^");
+    print("toLower: "); print(s.toLower()); print("^");
+    print("reverse: "); print(s.reverse()); print("^");
+}
+
+void main() {
+    bglInit();
+    slice();
+    transforms();
+}

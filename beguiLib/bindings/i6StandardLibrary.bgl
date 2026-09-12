@@ -449,6 +449,8 @@ extend _bglStatus {
         void operator = (int v){ StatusLineHeight(v); }
     }
 }
+//TODO: tie the window id to gg_statuswin here
+//TODO: tie the main window id to gg_mainwin here
 
 
 //-- Standard library entry points (`Stub` defaults) --------------------------

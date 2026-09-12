@@ -226,6 +226,9 @@ class bglParser {
         void parsingWarning(string); //like parsingError but continues parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
         void defineSymbol(const string& name, const string& value = ""){ definedSymbols[name] = value; }
+        // Like defineSymbol but immutable (the `#declare` path): user code cannot #define/#redef it.
+        // Used to surface compile-time #beguilerSettings (e.g. generateBlorb) as #if-testable symbols.
+        void declareSymbol(const string& name, const string& value = ""){ declaredSymbols[name] = value; definedSymbols[name] = value; }
 
         string contextToString(eCompileContext);
 
@@ -271,7 +274,7 @@ class bglParser {
 
         // Parser handler methods — called from grammar handlers and processNextStatement.
         bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool isByVal=false, bool allowNested=false, bool isSuperposed=false);
-        bool processEnumDeclaration(token, bool, token nameOverride=token());
+        bool processEnumDeclaration(token, bool, token nameOverride=token(), bool isExtend=false);
         bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false, bool isSuperposed = false);
         // Bake an object of `cls` from an inline-aggregate body `{ ... }`, registered under `objName`.
         // ASSUMES the opening '{' has already been consumed; parses fields up to the matching '}'.

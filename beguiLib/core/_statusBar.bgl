@@ -1,36 +1,33 @@
 #once
 /*-----------------------------------------------------------------------------
-    core/_statusBar.bgl — bgl.ui.statusBar: status-window control.
+    bgl.ui.statusBar - core implementation.
 
-    `bgl.ui.statusBar.height` is a get/set property (in lines):
-      - reading  `bgl.ui.statusBar.height`      -> the current height
-      - assigning `bgl.ui.statusBar.height = n` -> resizes the status window to n
-
-    `height` is an inline accessor object (a one-off, so it's declared inline rather than as a named
-    class with a single instance). It is SELF-CONTAINED and library-ignorant: it tracks the height in
-    `_h` and does the resize itself (`@split_window` on Z, a BLR-owned window on Glulx). Core stays
-    unaware of which IF library, if any, is in play.
+    This is overridden by the i6 Standard Library and puny libraries to map to their
+    implementations.
  -----------------------------------------------------------------------------*/
-extend _bglUi { alias statusBar = _bglStatus; }
+extend _bglUi { alias statusBar = _bglStatus; } //bgl.ui.statusBar
 
 superposed _bglObject _bglStatus {
-    auto height = {
-        int _h   = 0;                 // tracked height
-        int _win = 0;                 // Glulx: BLR-owned status-window handle (0 = not yet opened); unused on Z
+    
+    auto height = {   // height  getter/setter 
+        int _h   = 0;                 
+        #if TARGET_GLULX
+            int _win = 0;           
+        #endif
 
         int operator() { return _h; }
 
         void operator = (int v){
             _h = v;
-            #if TARGET_GLULX;
+            #if TARGET_GLULX
                 bGlulxWindowMethodFlags winMethod = bGlulxWindowPlacement.above | bGlulxWindowScale.fixed | bGlulxWindowBorder.noBorder;
                 if(_win == 0)
                     _win = bgl.asm.windowOpen(bgl.asm.windowGetRoot(), eGlulxWindowType.textGrid, v, winMethod, 0);
                 else
                     bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(_win), winMethod, v, _win);
-            #else;
+            #else
                 bgl.asm.split_window(v);
-            #endif;
+            #endif
         }
     }
 }

@@ -210,6 +210,14 @@ static bool reorderNamedArgsImpl(vector<expression*>& args, vector<string>& name
 bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const string& objPath, const string& methodNameIn, const vector<expression*>& args, const string& elementType){
     MethodMatch result;
     functionDef* varFallback = nullptr;
+    // An overload whose parameters match the arg types EXACTLY (not merely via an
+    // isTypeCompatible conversion) is preferred over a compatible-but-inexact one, so a
+    // concrete overload always beats a catch-all that a published `var operator =` would
+    // otherwise make compatible. Without this, `stringObj.append('X')` binds a char to
+    // `append(stringObj v)` (compatible, because stringObj has `operator =(var)`) instead of
+    // the exact `append(char v)`. First-compatible-in-declaration-order still decides ties
+    // among equally-inexact matches; exact just wins outright.
+    functionDef* exactMatch = nullptr;
     // Beguile is case-insensitive: stored names are canonical (lowercased), but the
     // methodName arriving here may be a display name (split from a qualified path like
     // "self.doStuff"). Normalize to canonical so direct string compares against fdIn->name
@@ -247,16 +255,31 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
         if(!result.arityMatch) result.arityMatch = fd;
 
         // Check arg types
-        bool argsOk = true, usesVar = false;
+        bool argsOk = true, usesVar = false, allExact = true;
         for(size_t i = 0; i < args.size() && argsOk; i++){
             string argType = args[i]->resolvedType;
             string paramType = fd->params[i]->type.name;
-            if(paramType == "var") usesVar = true;
+            if(paramType == "var"){ usesVar = true; allExact = false; }
             else if(!argType.empty() && !isTypeCompatible(argType, paramType)) argsOk = false;
+            else {
+                // Exactness for the preference tiebreak normalizes a literal to the primitive it
+                // denotes (charliteral→char, intliteral→int): `'X'` is an exact match for a `char`
+                // param, not a widening — so `append('X')` prefers `append(char)` over an
+                // `append(stringObj)` made compatible only by a published `var operator =`. This
+                // normalization is deliberately kept out of isTypeCompatible (which stays literal-
+                // agnostic to avoid perturbing plain compatibility); it only ranks matches here.
+                string argBase = argType;
+                if(argBase == "charliteral") argBase = "char";
+                else if(argBase == "intliteral" || argBase == "negativeintliteral") argBase = "int";
+                if(argBase != paramType) allExact = false;  // compatible but not an exact type match
+            }
         }
         if(!argsOk) return;
         if(usesVar){ if(!varFallback) varFallback = fd; }
-        else if(!result.method) result.method = fd;
+        else {
+            if(allExact && !exactMatch) exactMatch = fd;
+            if(!result.method) result.method = fd;
+        }
     };
 
     // Step 1: search class hierarchy
@@ -318,6 +341,8 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
         }
     }
 
+    // An exact-type overload wins over a merely-compatible one found first in declaration order.
+    if(exactMatch) result.method = exactMatch;
     return result;
 }
 
@@ -930,8 +955,17 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
                 for(size_t i = 0; i < args.size() && argsOk; i++){
                     string argType = args[i]->resolvedType;
                     string paramType = fd->params[i]->type.name;
-                    if(paramType == "var") usesVar = true;
-                    else if(argType.empty() || argType == paramType) {} // exact or unknown
+                    // An arg whose type is `var` or UNKNOWN (empty — e.g. a computed-property read
+                    // `obj.(p)`) can only be matched SAFELY by the `var`-param overload; assuming it's
+                    // any concrete type is an order-dependent guess (whichever compatible concrete
+                    // overload — print(bool)/print(string)/… — happens to be first in the globals list).
+                    // So: var/unknown arg + `var` param = EXACT (the right, deterministic match);
+                    // var/unknown arg + concrete param = a conversion (ranked below exact), so the var
+                    // overload wins. A concrete arg against a `var` param stays the catch-all fallback.
+                    bool argUnknown = argType.empty() || argType == "var";
+                    if(paramType == "var"){ if(!argUnknown) usesVar = true; }
+                    else if(argUnknown) needsConversion = true;
+                    else if(argType == paramType) {} // exact
                     else if(isTypeCompatible(argType, paramType)) needsConversion = true;
                     else argsOk = false;
                 }

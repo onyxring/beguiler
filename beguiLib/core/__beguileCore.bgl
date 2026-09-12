@@ -1,46 +1,56 @@
 /*-----------------------------------------------------------------------------
-    _beguilerCore.bgl - the standard language extensions for the Beguile 
-        language, included automatically by the compiler.
+    __beguileCore.bgl
+    Entry point for the Beguile Language Runtime.  Included automatically by
+    the compiler.
  -----------------------------------------------------------------------------*/
 #once
-//-- Pull in all the core features.
-//
-// Order matters: primitive types (_int, _bool, _char) need to be loaded
-// before higher-level types (_array, _string, _grammar) that use them in
-// helper-method bodies. The previous order placed _array first which broke
-// once _bglArray gained a setLength helper using `int < int` (the operator
-// was declared later in _int.bgl).
+
+//--core language types...
 #include <core/_beguilerSettings>
-#include <core/_int>
 #include <core/_bool>
 #include <core/_char>
+#include <core/_int>
+#include <core/_uint>
+#include <core/_string>
 #include <core/_dictionaryWord>
 #include <core/_attribute>
 #include <core/_property>
-#include <core/_class>
-#include <core/_bglAllocated>
-#include <core/_math>
-#include <core/_uint>
-#include <core/_array>
-#include <core/_charExtended>
-#include <core/_string>
-#include <core/_grammar>
 #include <core/_verb>
-#include <core/_ui>          // bgl.ui namespace + emitter-based text styles (bgl.ui.style.*); runtime routines are opt-in via <ui>
+#include <core/_grammar>
+#include <core/_array>
 
+//helpers
+#include <core/_math>
+#include <core/_ui>         
+#include <core/_printRules>  
+#include <core/_bglAllocated>
+
+//platform specific...
 #if TARGET_GLULX
-    #include<core/_glulxCore> //also includes _glulxOpCodes
-    #include<core/_float>     //IEEE 754 float — Glulx-only (needs the float opcodes)
+    #include<core/_glulxCore>
 #else
     #include<core/_zcodeCore>
 #endif
 
-#include <core/_random>       // bgl.util.random.get(...) / .seed(...); built on bgl.asm (@random), after platform core
-#include <core/_statusBar>    // bgl.ui.statusBar.height (get/set). superposed _bglStatus + a superposed
-                              // `auto {}` accessor class: a game that never touches the status bar pays
-                              // ZERO bytes (class + backing + object all evaporate). Part of every IF
-                              // game, so it's core, not opt-in.
+// _random and _statusBar use bgl.asm, which the platform core (above) provides — so they must
+// follow it. bgl.asm is an alias/auto namespace member, and that resolution is NOT order-
+// independent (unlike the method-body type refs the pre-scan forward pass handles).
+#include <core/_random>
+#include <core/_statusBar>
 
+//-----------------------------------------------------------
+//Core declarations
+emitter class _bglObject{}                      //the base type of all Beguile objects. Intentionally empty.
+extern emitter class bglClass : _bglObject{ }   //the base type of all class references, used in cases where the type is checked (e.g. .is(bglClass))
+
+//-----------------------------------------------------------
+enum eAssets { }   // A place to land asset ids.  Beguile extends this when blorbification is enabled.
+
+//bgl is the root namespace for this 
+_bglObject bgl{
+    emitter int wordsize {WORDSIZE} //bgl.wordsize
+    alias util = _bglUtil;
+}
 
 // Namespace objects derive from _bglObject (the base below `object`, defined further down),
 // not from `object` itself — so completion/type-checking see only their own members and not
@@ -50,18 +60,7 @@
 // as a value and is withheld from emission entirely. A game that only calls
 // bgl.util.math.* / bgl.util.random.* pays zero bytes for the namespace object.
 superposed _bglObject _bglUtil{}
-_bglObject bgl{
-    emitter int wordsize {WORDSIZE} //just a passthrough, I6 defines WORDSIZE natively
-    // `bgl.util` is a member-bearing namespace (math, random, …), so it must be attached with
-    // `alias` (§5.11.1 compile-time indirection), NOT `auto`. `auto` widens the member to its
-    // declared base (_bglObject) and drops the surface in *statement* position — `bgl.util.math.X()`
-    // limps along in expression position but `bgl.util.random.seed(…)` (a void statement) fails with
-    // "Unknown variable 'bgl.util'". `alias` keeps the full member surface in every position. It also
-    // emits NO runtime property (it resolves to _bglUtil at compile time), so the old `as bglUtil`
-    // I6-name remap — added to dodge a collision with orLibrary's `object util` — is now moot:
-    // nothing named `util`/`bglUtil` is emitted at all. (Same form as `bgl.ui` / `bgl.world`.)
-    alias util = _bglUtil;
-}
+
 // Target-specific platform code is selected automatically above (see the
 // TARGET_GLULX branch): _zcodeCore or _glulxCore is pulled in per the active
 // target, each providing bgl.asm (+ bglOpCodes, and on Glulx the _glulx
@@ -106,13 +105,6 @@ _bglObject bgl{
         _bglScratchTop = 0;
         return _bglScratchStack;
     ];
-}
-
-//=============================================================================
-// _bglObject - the base class for all Beguile objects. Intentionally empty: it is
-// the shared type-tree root for both objects (via `object`) and the primitive/type
-// wrappers (int/bool/string/…)
-emitter class _bglObject{
 }
 
 //=============================================================================
