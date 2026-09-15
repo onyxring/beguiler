@@ -3,18 +3,12 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _glulx
-;
-object bgl
-  with glulx _glulx
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -276,6 +270,21 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _glulx
+;
+class bglsize
+  with
+    width 0,
+    height 0,
+    _opeq[s;
+        self.width=s.width;
+        self.height=s.height;
+        return self;
+    ]
+;
+object bgl
+  with glulx _glulx
+;
 class combatant
   class object
   with

@@ -591,6 +591,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
             }
         }
 
+        languageService.forInScratchInUse = true;   // gates the _BGL_FORIN_SCRATCH_CAP constant + scratchSupport block
         forInStatement& fi = *(new forInStatement());
         fi.src = stmtLoc;
         fi.elementVar = elemVarName;
@@ -1299,7 +1300,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             if(afterMember.is(token::parenOpen)){
                 // Method call: arr[i].method(args)
                 classDef* elemCls = dynamic_cast<classDef*>(&languageService.getType(elemType));
-                ParsedArgList pal = parseCallArgList(func, body);
+                ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(elemType, memberName)));
                 vector<string> namedArgNames = pal.namedArgNames;
                 vector<vector<interpolatedSegment>> interpSegs = pal.interpSegmentsPerArg;
                 functionDef* method = bindMethodCall(elemType, subscriptText, memberName,
@@ -1422,7 +1423,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         if(body != nullptr) body->statements.push_back(&assign);
                         return false;
                     } else if(afterMember.is(token::parenOpen)){
-                        ParsedArgList pal = parseCallArgList(func, body);
+                        ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(innerElem, memberName)));
                         functionDef* method = bindMethodCall(innerElem, recv, memberName,
                             pal.args, pal.namedArgNames, pal.interpSegmentsPerArg);
                         functionCallStatement& cs = *(new functionCallStatement());
@@ -2313,9 +2314,23 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             }
         }
 
-        // parse argument list
+        // parse argument list. Compute brace-argument hints so a bare `{ … }` arg infers its object
+        // type from the callee's parameter (§6.2.1): a bare name → global candidates; a dotted path →
+        // method candidates on the receiver's type.
         {
-            ParsedArgList pal = parseCallArgList(func, body);
+            BraceArgHints braceHints;
+            size_t dp = callStmt.functionName.rfind('.');
+            if(dp == string::npos){
+                braceHints = braceArgHints(collectGlobalCandidates(callStmt.functionName));
+            } else {
+                string objectPath = callStmt.functionName.substr(0, dp);
+                string methodName = callStmt.functionName.substr(dp + 1);
+                string recvType = (objectPath == "self")
+                    ? (currentObject ? currentObject->name : (currentClass ? currentClass->name : string()))
+                    : resolveIdentifierType(objectPath, func, body);
+                if(!recvType.empty()) braceHints = braceArgHints(collectMethodCandidates(recvType, methodName));
+            }
+            ParsedArgList pal = parseCallArgList(func, body, braceHints);
             callStmt.args = pal.args;
             callStmt.namedArgNames = pal.namedArgNames;
             callStmt.interpSegmentsPerArg = pal.interpSegmentsPerArg;

@@ -13,8 +13,31 @@
 #once
 
 extend _bglUi {
-    void waitForKey(){
-        bgl.asm.read_char();
+    char waitForKey(){
+    
+    #if TARGET_GLULX
+
+        rawArray<int> eventPayload[3];  //allocate space for the glk events.
+
+        bgl.asm.requestCharEvent(bgl.ui.mainWin.id); // let glk know we care about the next key press in main
+        
+        while (true) { 
+            bgl.asm.select(&eventPayload); //get the next event in the queue
+
+            if(eventPayload[0]==(int)eGlulxEventType.charInput && eventPayload[1] == bgl.ui.mainWin.id)  //if its a keypress from the main window, return it; otherwise discard it. 
+                return (char)eventPayload[2]; 
+            else{
+                ; //no-op; TODO: add some generic processor to handle background events
+            }
+        }
+    #else
+        //char key;
+        //if(win) @set_window win;
+        //bgl.asm.set_window(bgl.main);
+        //@read_char 1 -> key;
+        return bgl.asm.read_char(1);
+        //return key;
+    #endif
     }
     // void setStatusHeight(int height){
     //     #if TARGET_ZCODE;

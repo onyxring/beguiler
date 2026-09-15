@@ -5,7 +5,6 @@ Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 Serial "260330";
 Release 42;
-Constant _BGL_WORLD_BUFSIZE = 128;
 
     Constant BGL_TEST_EARLY = 100;
 
@@ -18,11 +17,6 @@ global _bglInitDone = 0;
 
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -284,6 +278,11 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 constant story = "Directive Test";
 constant author = "Tester";
 constant gameRelease = 42;

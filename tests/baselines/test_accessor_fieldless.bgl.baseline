@@ -3,18 +3,12 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -276,7 +270,12 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-class _bglaccessor1
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
+class _bglaccessor3
   with
     _opconv[;
         return gadget.scale;
@@ -285,7 +284,7 @@ class _bglaccessor1
         gadget.scale=v;
     ]
 ;
-_bglaccessor1 _gadget_level;
+_bglaccessor3 _gadget_level;
 object gadget
   with scale 3,
        level _gadget_level

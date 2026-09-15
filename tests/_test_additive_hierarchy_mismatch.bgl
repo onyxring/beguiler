@@ -1,0 +1,15 @@
+/* Negative test: within ONE class hierarchy, every contribution to an ADDITIVE property must use
+   the same element type — fixed by the highest ancestor that declares it. Here `Base` fixes the
+   additive `hook` as rawArray<int>; an instance that contributes rawArray<dictionaryWord> to the
+   same hierarchy is rejected. (Unrelated hierarchies may each fix their own type — see the
+   positive test test_property_typeless.bgl.) */
+// EXPECT_ERROR: contributes 'rawArray<dictionaryWord>' to the ADDITIVE property 'hook'
+// EXPECT_ERROR: match the element type its class
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+additive property hook;
+
+class Base { rawArray<int> hook = {1,2}; }
+object leaf : Base { rawArray<dictionaryWord> hook = {.aa}; }
+
+void main(){ bglInit(); }

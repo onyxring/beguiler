@@ -1,0 +1,27 @@
+/*  Inline aggregate arguments with RUNTIME field values (§6.2.1). A `{ … }` whose fields are
+    runtime expressions can't bake into a static object's properties; the compiler hoists the
+    field-inits to the call site (a fresh per-call population of a per-site instance). Works for a
+    value class (inline members) inferred from the parameter, and stays correct across calls. */
+// EXPECT_OUTPUT: sum: 30
+// EXPECT_OUTPUT: c1: 3 4
+// EXPECT_OUTPUT: c2: 5 6
+#beguilerSettings { target = z5; }
+
+class vec { inline int x = 0; inline int y = 0; vec operator=(vec v){ self.x=v.x; self.y=v.y; return self; } }
+
+int addUp(vec v){ return v.x + v.y; }
+
+// mutate the (runtime) argument and return it — proves each call gets a FRESH instance.
+vec bump(vec v, int by){ v.x = v.x + by; return v; }
+
+void run(int a, int b){
+    vec r = bump({a, b}, 0);          // bare {runtime,runtime} inferred as vec, fresh each call
+    print("c"); print(a==3 ? 1 : 2); print(": "); print(r.x); print(" "); print(r.y); print("^");
+}
+
+void main() {
+    int a = 10; int b = 20;
+    print("sum: "); print(addUp({a + 0, b})); print("^");   // runtime fields via arithmetic
+    run(3, 4);
+    run(5, 6);
+}

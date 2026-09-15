@@ -1,20 +1,57 @@
-!% -v5
+!% -G
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
+Array _bglFramePool --> 64;
+Global _bglFrameTop = 0;
+ [ _bglFrameAlloc size r;
+    if (_bglFrameTop + size > 64) {
+        print "^[Beguile runtime error: frame pool exhausted]^";
+        quit;
+    }
+    r = _bglFrameTop;
+    _bglFrameTop = _bglFrameTop + size;
+    return _bglFramePool + (r * WORDSIZE);
+ ];
+ [ _bglFrameFree size;
+    _bglFrameTop = _bglFrameTop - size;
+ ];
+ [ _bglArrayLocalAlloc size r i;
+    r = _bglFrameAlloc(size + 3);
+    r-->0 = size + 2;
+    for (i = 1: i <= size: i++) r-->i = 0;
+    r-->(size + 1) = 0;
+    r-->(size + 2) = $9084;
+    return r;
+ ];
+ [ _bglArrayLocalAllocPlain size r i;
+    r = _bglFrameAlloc(size + 1);
+    r-->0 = size;
+    for (i = 1: i <= size: i++) r-->i = 0;
+    return r;
+ ];
+ [ _bglRawArrayLocalAlloc size r i;
+    r = _bglFrameAlloc(size);
+    for (i = 0: i < size: i++) r-->i = 0;
+    return r;
+ ];
+ [ _bglByteArrayLocalAlloc nbytes words r i;
+    words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+    r = _bglFrameAlloc(words);
+    for (i = 0: i < words: i++) r-->i = 0;
+    r-->0 = nbytes;
+    return r;
+ ];
+ [ _bglByteArrayLocalFree nbytes;
+    _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+ ];
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -276,15 +313,61 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
-property additive hook;
-property plain;
-class base
+object _glulx
+;
+class bglsize
   with
-    hook 1 2 
+    width 0,
+    height 0,
+    _opeq[s;
+        self.width=s.width;
+        self.height=s.height;
+        return self;
+    ]
 ;
-base leaf
-  with hook 3 
+object bgl
+  with glulx _glulx
 ;
-[main;
-    bglinit();
+class widget
+  with
+    viaClassMethod[buf;
+        buf = _bglRawArrayLocalAlloc(3);
+        buf-->0 = 5;
+        _bglFrameFree(3);
+        return  buf-->0 ;
+        _bglFrameFree(3);
+    ]
+;
+widget w;
+object gadget
+  with viaObjectMethod [buf;
+    buf = _bglRawArrayLocalAlloc(3);
+    buf-->0 = 9;
+    _bglFrameFree(3);
+    return  buf-->0 ;
+    _bglFrameFree(3);
+  ],
+       viaTracked [nums;
+    nums = _bglArrayLocalAlloc(4);
+    nums-->(0+1) = 1;
+    _bglFrameFree(7);
+    return nums;
+    _bglFrameFree(7);
+  ]
+;
+[_bgl_float__oplteqgt a b;
+    
+            if(_bglFloatLt(a, b)) return -1;
+            if(_bglFloatGt(a, b)) return 1;
+            return 0;
+        
+    return 0;
+];
+[_bglFloatGt x y;
+     @jfgt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
+];
+[_bglFloatLt x y;
+     @jflt x y ?yes; rfalse; .yes; rtrue; 
+    return false;
 ];

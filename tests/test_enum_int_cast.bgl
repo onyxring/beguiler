@@ -1,0 +1,40 @@
+/*
+    test_enum_int_cast.bgl — an explicit `(int)` cast on a dotted enum VALUE retypes it to int
+    (spec §4.9.1: enum→int requires an explicit cast; enum values inline as integer literals).
+    Regression: the dotted enum-value path (tryConsumeNamespacedEnumValue) previously dropped the
+    pending cast, so `x == (int)E.member` failed with "No operator '==' on type 'int' accepting 'E'"
+    even though the author cast correctly. Casting an enum VARIABLE already worked; this covers the
+    dotted-value form (and the rawArray<int>-element receiver, as in globalWaitForKey).
+*/
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <array>
+
+enum eTestEvt { none = 0, charInput = 2, arrange = 5 }
+
+int fromValue(){
+    int x = 2;
+    if (x == (int)eTestEvt.charInput) return 1;   // dotted enum value cast → x == 2
+    return 0;
+}
+
+int fromAssign(){
+    int y = (int)eTestEvt.arrange;                 // assignment RHS cast → y = 5
+    return y;
+}
+
+int fromRawArray(){
+    rawArray<int> ev[3];                           // flat buffer, subscript ev-->i
+    ev[0] = 2;
+    if (ev[0] == (int)eTestEvt.charInput) return 1; // ev-->0 == 2
+    return 0;
+}
+
+int fromVariable(){
+    eTestEvt e = eTestEvt.charInput;
+    int z = (int)e;                                // enum variable cast (already worked)
+    return z;
+}

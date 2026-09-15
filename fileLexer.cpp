@@ -182,6 +182,14 @@ void fileLexer::bleedSpaces(){ // ignore all spaces before the next token
 char fileLexer::peekChar(){ //look at what the next character is, without actually pulling it off the stream
     return currentStream()->peek();
 }
+char fileLexer::peekChar2(){ //look at the character AFTER next (two ahead), without consuming either
+    istream* s = currentStream();
+    int c1 = s->get();
+    if(c1 == EOF) return (char)EOF;
+    int c2 = s->peek();
+    s->putback((char)c1);   // symmetric get/putback → stream + line/col tracking unchanged
+    return (char)c2;
+}
 char fileLexer::readChar(){ //actually get the next character, removing it from the stream
     int retval;
     auto&[inputFileStream, fileName, curLine, curCol]=files.top(); 
@@ -295,6 +303,22 @@ token fileLexer::getBasicToken(bool suppressBleed){
                     retval.tokenType = eTokenType::symbol;
                     break;
                 }
+            }
+            else if(isdigit((unsigned char)c) || (c == '.' && isdigit((unsigned char)nc))){
+                // Numeric literal: integer (123) or decimal float (1.0, .3). `c` (the first
+                // digit, or the leading '.') is already in retval.value. A '.' is absorbed only
+                // when a digit follows it, so `1.method()` / `1..5` (member access / range) keep
+                // the '.' as its own token. A float literal keeps its decimal text as the value;
+                // the parser emits it as an I6 `$+`/`$-` Glulx float constant.
+                bool isFloat = (c == '.');
+                while(isdigit((unsigned char)peekChar())) retval.value += readChar();
+                if(!isFloat && peekChar() == '.' && isdigit((unsigned char)peekChar2())){
+                    retval.value += readChar();                                   // consume '.'
+                    while(isdigit((unsigned char)peekChar())) retval.value += readChar();
+                    isFloat = true;
+                }
+                retval.tokenType = isFloat ? eTokenType::floatLiteral : eTokenType::integer;
+                break;
             }
             else if(isValidIdentifierChar(c))
                 retval.tokenType=eTokenType::unclassifiedText;

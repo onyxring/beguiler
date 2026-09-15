@@ -3,7 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 Replace GameEpilogue;
 Replace DrawStatusLine _oldStatus;
 Replace Sing;
@@ -13,11 +12,6 @@ global _bglInitDone = 0;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -279,6 +273,11 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 constant SOME_CONST = 3;
 global afterNoSemi = 7;
 [main;

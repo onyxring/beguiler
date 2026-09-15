@@ -1,0 +1,29 @@
+/*  Inline objects passed as function/method arguments (§6.2.1, 4th inference slot).
+    Both the explicit `Type{…}` form and the bare `{…}` form (type inferred from the
+    parameter) bake a static object and pass a reference. A real run proves the baked
+    fields carry the right values (the reference alone is invisible in emitted I6). */
+// EXPECT_OUTPUT: pos: 3 4
+// EXPECT_OUTPUT: named: 5 6
+// EXPECT_OUTPUT: namedarg: 7 8
+// EXPECT_OUTPUT: explicit: 9 10
+// EXPECT_OUTPUT: method: 11 12
+#beguilerSettings { target = z5; }
+
+class point : object { inline int x = 0; inline int y = 0; }
+
+void show(string tag, point p) {
+    print(tag); print(": "); print(p.x); print(" "); print(p.y); print("^");
+}
+
+class drawer : object {
+    void at(point p) { print("method: "); print(p.x); print(" "); print(p.y); print("^"); }
+}
+drawer theDrawer;   // file-scope instance (a local object-class var would be a bare reference)
+
+void main() {
+    show("pos", {3, 4});             // bare positional  -> point
+    show("named", { x=5; y=6; });    // bare named fields
+    show("namedarg", p: {7, 8});     // bare as a named argument
+    show("explicit", point{9, 10});  // explicit form
+    theDrawer.at({11, 12});          // bare on a method call
+}

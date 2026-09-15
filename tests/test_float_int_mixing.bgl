@@ -1,0 +1,44 @@
+/*
+    test_float_int_mixing.bgl
+    Seamless int/float arithmetic (Glulx). int↔float promote to float; the conversions live in
+    the BLR (_float.bgl publishes an operator per operand type, using I6 @numtof/@ftonumz via the
+    _bglFloat* helpers). The ONLY compiler support is an overload-resolution refinement: among two
+    widen candidates, the one whose parameter EXACTLY equals the literal's base type wins — so for
+    `s * 5`, float's `operator*(int)` (promotes) beats `operator*(float)` (which would raw-substitute
+    the int as denormal). The baseline pins that every mixed op promotes via _bglFloatNumtof and never
+    raw-substitutes an int into a float slot.
+*/
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void main() {
+    float s = 2.5;
+    int   w = 4;
+
+    // float ⊙ int  (var and literal): promote the int operand.
+    float a = s * 5;      // _bglFloatFmul(s, _bglFloatNumtof(5))
+    float b = s * w;      // _bglFloatFmul(s, _bglFloatNumtof(w))
+    float c = s + w;      // _bglFloatFadd(s, _bglFloatNumtof(w))
+    float d = s - 1;      // _bglFloatFsub(s, _bglFloatNumtof(1))
+
+    // int ⊙ float  (var and float-literal): promote self.
+    float e = w * s;      // _bglFloatFmul(_bglFloatNumtof(w), s)
+    float f = w * 0.5;    // _bglFloatFmul(_bglFloatNumtof(w), $+0.5)
+    float g = w / s;      // _bglFloatFdiv(_bglFloatNumtof(w), s)
+
+    // Assignment both directions.
+    float h = 5;          // _bglFloatNumtof(5)
+    float i = w;          // _bglFloatNumtof(w)
+    int   j = (int)s;     // _bglFloatFtonumz(s)  (explicit narrowing)
+
+    // Comparisons mix.
+    bool  k = w < s;      // _bglFloatLt(_bglFloatNumtof(w), s)
+    bool  l = s >= 3;     // _bglFloatGe(s, _bglFloatNumtof(3))
+
+    print(a); print(e); print(h); print(j);
+    if (k) { print(1); }
+    if (l) { print(2); }
+}

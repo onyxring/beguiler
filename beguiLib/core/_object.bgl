@@ -1,0 +1,84 @@
+#once
+extern class object:_bglObject{ //--the base I6 object, declared as external because it is defined in the I6 compiler
+    typesealed parentProp parent;//--initial parent object; emitted as I6 third positional argument.
+                                    //  `typesealed`: writing `object parent = <room>` keeps parent as
+                                    //  parentProp (with a warning) so `.parent = X` always emits `move`.
+                                    //  Idiomatic form is the bare `parent = <room>` (no type keyword).
+    childrenProp children;       //--the world-tree child collection (inverse of `parent`). Iterable
+                                    //  (`for(o in c.children)`) with `.length()`/`.size()` = count;
+                                    //  `children = {a,b}` in a body places those objects, `.children += {x}`
+                                    //  adds at runtime. Compiler-tracked, like `parent`; not a stored property.
+    attributeList attributes;  //--initial attribute set; emitted as I6 'has' clause
+    string short_name;           //--object's short name (string or routine). Backs the `(name)` print rule
+                                    //  used by print() below; the compiler auto-declares it, so it's core, not
+                                    //  library. Library-defined variants (short_name_indef, parse_name) and the
+                                    //  rest of the property surface live in the i6StandardLibrary binding.
+
+    emitter eBool operator ?() { $val ~= nothing }
+    emitter object operator = (object v){
+        $target = $v
+    }
+    emitter eBool operator == (var v){
+        $val == $v
+    }
+    emitter eBool operator != (var v){
+        $val ~= $v
+    }
+    emitter void give(attribute attr){
+        give $val $attr
+    }
+    emitter void ungive(attribute attr){
+        give $val ~$attr
+    }
+    emitter bool has(attribute attr){
+        ($val has $attr)
+    }
+    emitter bool hasnt(attribute attr){
+        ($val hasnt $attr)
+    }
+    emitter void remove(){
+        remove $val
+    }
+    emitter object child{
+        child($val)
+    }
+    emitter object sibling{
+        sibling($val)
+    }
+    emitter bool provides(property prop){
+        $val provides $prop
+    }
+    emitter bool is(bglClass cls){
+        ($val ofclass $cls)
+    }
+    replace emitter void print(){
+        print (name)$val;
+    }
+}
+
+//--setters
+extern emitter class parentProp{   //obj.parent=loc; -> move obj to loc;
+    emitter parentProp operator = (object v){
+        move $self to $v
+    }
+    emitter eBool operator == (object v){
+        parent($self) == $v
+    }
+    emitter eBool operator != (object v){
+        parent($self) ~= $v
+    }
+    emitter object operator(){
+        parent($self)
+    }
+}
+
+//--the world-tree child collection. `obj.children` is iterable (the compiler lowers
+//  `for(o in obj.children)` to an I6 objectloop); placement (`children = {a,b}` in a body,
+//  `.children += {x}` at runtime) is compiler-tracked. `length()`/`size()` report the child
+//  count — routines like `<array>`'s, using `$host` (the object the proxy member is read on,
+//  i.e. `obj` in `obj.children`) since the proxy has no storage of its own. size()==length()
+//  here: a world-tree collection has no capacity-vs-in-use distinction.
+extern emitter class childrenProp{
+    emitter int length(){ children($host) }
+    emitter int size()  { children($host) }
+}

@@ -14,9 +14,9 @@
 */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-extern property var selected_direction;  // holds a property slot ID at runtime
-extern property var n_to;            // free-standing prop decl
-property var hidden_flag;            // user-side prop decl
+extern property selected_direction;  // holds a property slot ID at runtime
+extern property n_to;            // free-standing prop decl
+property hidden_flag;            // user-side prop decl
 
 alias class room for object {
     room n_to;                   // value-typed member — bare `n_to` resolves here

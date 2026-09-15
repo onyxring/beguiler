@@ -11,3 +11,6 @@
         emitter dictionaryWord operator = (dictionaryWord v){ $target = $v; }
         replace emitter void print(){ print (address) $val }
     }
+
+    emitter void print(dictionaryWord val){ print (address) $val; }
+    emitter void print(dictionaryWordLiteral val){ print (address) $val; }

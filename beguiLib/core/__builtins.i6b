@@ -1,22 +1,27 @@
-// Built-in I6 code templates for the Beguile transpiler.
-// These are NOT part of the user-facing Beguile language.
-//
-// Format: [templateName $param1 $param2 ...]  followed by template lines.
-// Parameters use $name substitution, consistent with emitter syntax.
-// Lines starting with // are comments and are ignored.
-//
-// Edit this file to change how Beguile generates I6 for built-in constructs.
+// __builtins.i6b — built-in I6 templates the compiler splices for special-case codegen
+// (frame pool, for-in variants, literal-list scratch). Loaded once; NOT #included.
+// Format ({{{ }}} fence, $param substitution, `triggers`, comment rules): languageSpec.md §14.11.
+// ===========================================================================
 
 // ---------------------------------------------------------------------------
-// Z-machine frame pool: emitted once when any function overflows 14 locals.
-//
-//   $size  — pool slot count (configurable via beguilerSettings framePoolSize)
-//
-// Routines use _bglFrameAlloc(n) to claim n slots from the pool and
-// _bglFrameFree(n) to release them.  Pool exhaustion prints an error and quits.
-// ---------------------------------------------------------------------------
-
-[framePool $size]
+// framePool — Z-machine frame pool, emitted once when any function overflows 14
+// locals. Also carries the frame-based local-array allocators (they share the pool):
+//   _bglFrameAlloc / _bglFrameFree      — raw pool slice alloc/free (words).
+//   _bglArrayLocalAlloc(size)           — local tracked word array
+//                                         [header, data×size, length, magic];
+//                                         returns the header slot; free size+3.
+//                                         Emitted only when the program includes <array>.
+//   _bglArrayLocalAllocPlain(size)      — untracked variant [header=size, data×size]
+//                                         (arrayInUse off); free size+1.
+//   _bglRawArrayLocalAlloc(size)        — rawArray<T>: a bare flat block [data×size], NO
+//                                         header/length/magic; subscript indexes from -->0.
+//                                         Free size.
+//   _bglByteArrayLocalAlloc(nbytes)     — local byte array (array<char>), hybrid
+//                                         `buffer N` layout: capacity/length WORD at
+//                                         -->0, data bytes from ->WORDSIZE. Sized in
+//                                         words (1 + ceil(nbytes/WORDSIZE)).
+//   _bglByteArrayLocalFree(nbytes)      — frees that same word count.
+template framePool($size) {{{
 Array _bglFramePool --> $size;
 Global _bglFrameTop = 0;
  [ _bglFrameAlloc size r;
@@ -31,11 +36,6 @@ Global _bglFrameTop = 0;
  [ _bglFrameFree size;
     _bglFrameTop = _bglFrameTop - size;
  ];
- ! Allocate + initialize a local Beguile-declared word array of user-size `size`.
- ! Layout matches static tracked arrays: [header, data×size, length, magic].
- ! Returns a pointer at the header slot. Caller must free with _bglFrameFree(size+3)
- ! on every return path (driven by the function's cleanups list).
- ! Emitted only when the program includes <array>.
  [ _bglArrayLocalAlloc size r i;
     r = _bglFrameAlloc(size + 3);
     r-->0 = size + 2;
@@ -44,110 +44,88 @@ Global _bglFrameTop = 0;
     r-->(size + 2) = $9084;
     return r;
  ];
- ! Plain variant for programs that don't include <array>: untracked layout
- ! [header=size, data×size]. Matches the global-array emission gated on the
- ! same arrayInUse flag. Caller frees with _bglFrameFree(size+1).
  [ _bglArrayLocalAllocPlain size r i;
     r = _bglFrameAlloc(size + 1);
     r-->0 = size;
     for (i = 1: i <= size: i++) r-->i = 0;
     return r;
  ];
- ! Allocate a local Beguile-declared BYTE array (array<char>) of `nbytes` data
- ! bytes. Layout matches the standalone hybrid buffer (`Array X buffer N`): the
- ! capacity/length WORD lives at -->0, the data bytes start at ->WORDSIZE. The
- ! frame slice is sized in words: one length word plus ceil(nbytes/WORDSIZE)
- ! data words. Caller frees the same word count via _bglByteArrayLocalFree(nbytes).
+ [ _bglRawArrayLocalAlloc size r i;
+    r = _bglFrameAlloc(size);
+    for (i = 0: i < size: i++) r-->i = 0;
+    return r;
+ ];
  [ _bglByteArrayLocalAlloc nbytes words r i;
     words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
     r = _bglFrameAlloc(words);
     for (i = 0: i < words: i++) r-->i = 0;
-    r-->0 = nbytes;   ! capacity, mirroring `buffer N`'s length word
+    r-->0 = nbytes;
     return r;
  ];
  [ _bglByteArrayLocalFree nbytes;
     _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
  ];
+}}}
 
 // ---------------------------------------------------------------------------
 // for-in loop:  for(TYPE item in array) { }
-//
-//   $counter  — unique loop index variable (e.g. _bglfi0)
-//   $array    — name of the array being iterated
-//   $element  — iteration variable receiving each element
-//
-// forIn.open  is emitted before the body statements.
-// forIn.close is emitted after  the body statements.
-//
-// Iteration is length-bounded via _bglArrayLength, which probes the magic
-// marker and:
-//   - tracked Beguile-decl arrays → returns the explicit length
-//   - untracked extern arrays    → falls back to size (walks every slot)
-//
-// 0 is no longer a sentinel — it's just data, and the loop visits every slot
-// up to the appropriate length.
-// ---------------------------------------------------------------------------
-
-[forIn.open $counter $array $element $lengthExpr]
+//   $counter    — unique loop index variable (e.g. _bglfi0)
+//   $array      — name of the array being iterated
+//   $element    — iteration variable receiving each element
+//   $lengthExpr — precomputed length bound
+// forIn.open is emitted before the body statements; forIn.close after. The bodies
+// are intentionally unbalanced (open leaves a `{`, close is the `}`) — the fence is
+// what makes that safe to parse.
+template forIn.open($counter, $array, $element, $lengthExpr) {{{
 $counter = 0;
 for (: $counter < $lengthExpr : $counter++) {
     $element = $array-->($counter+1);
+}}}
 
-[forIn.close]
+template forIn.close() {{{
 }
+}}}
 
 // ---------------------------------------------------------------------------
 // for-in loop (member / property WORD array):  for(T x in obj.prop) { }
-//
-// Property arrays follow the orLibrary convention: a plain `with prop a b c`
-// property whose element n lives at obj.&prop-->n (0-indexed, NO count slot),
-// length via (obj.#prop)/WORDSIZE. The emitter passes $array as the property
-// address expression ("obj.&prop") and precomputes $lengthExpr. forIn.close
-// (above) closes the loop for this variant too.
-// ---------------------------------------------------------------------------
-[forIn.openMember $counter $array $element $lengthExpr]
+// Property arrays follow the orLibrary convention: element n at obj.&prop-->n
+// (0-indexed, no count slot), length (obj.#prop)/WORDSIZE. The emitter passes
+// $array as the property address expression ("obj.&prop") and precomputes
+// $lengthExpr. forIn.close (above) closes this variant too.
+template forIn.openMember($counter, $array, $element, $lengthExpr) {{{
 $counter = 0;
 for (: $counter < $lengthExpr : $counter++) {
     $element = $array-->($counter);
-
+}}}
 
 // ---------------------------------------------------------------------------
 // for-in loop (byte array):  for(char c in byteArray) { }
-//
-// Byte buffers use the hybrid layout shared by array<char>, <buf>, and
-// <string>: the length is a WORD at -->0 and the data bytes start at
-// ->WORDSIZE (matching the byteArray/string [] operators). Used automatically
-// when iterating array<char> or a string.
-// ---------------------------------------------------------------------------
-
-[forIn.openByte $counter $array $element]
+// Byte buffers use the hybrid layout shared by array<char>, <buf>, and <string>:
+// length is a WORD at -->0, data bytes start at ->WORDSIZE (matching the
+// byteArray/string [] operators). Used automatically for array<char> or a string.
+template forIn.openByte($counter, $array, $element) {{{
 $counter = 0;
 for (: $counter < $array-->0 : $counter++) {
     $element = $array->($counter + WORDSIZE);
+}}}
 
-[forIn.closeByte]
+template forIn.closeByte() {{{
 }
+}}}
 
 // ---------------------------------------------------------------------------
 // for-in with inline initializer list:  for(TYPE item in {a, b, c}) { }
-//
-// The compiler emits forInList.push once per element, then forInList.make
-// to produce an array reference, then uses forIn.open/close for the loop.
-//
+// The compiler emits forInList.push once per element, then forInList.make to
+// produce an array reference, then uses forIn.open/close for the loop.
 //   $element  — one element value to push
 //   $target   — variable to receive the array reference
 //   $count    — number of elements pushed
-//
-// Backing array + push/make routines are declared as raw I6 in
-// `__beguileCore.bgl`'s #emitfirst block (always present, ~64-byte overhead).
-// The scratch is a single shared buffer; nested literal-list for-in loops
-// clobber each other and are not supported.
-// ---------------------------------------------------------------------------
+// `triggers scratchSupport` pulls in the shared scratch buffer (the
+// #storedEmitFirst block in _array.bgl) — only when this syntax is used.
+template forInList.push($element) triggers scratchSupport {{{
+   _bglScratchPush($element);
+}}}
 
-[forInList.push $element]
-##triggerEmitter scratchSupport
-_bglScratchPush($element);
-
-[forInList.make $target $count]
-##triggerEmitter scratchSupport
-$target = _bglScratchMake($count);
+template forInList.make($target, $count) triggers scratchSupport {{{
+   $target = _bglScratchMake($count);
+}}}

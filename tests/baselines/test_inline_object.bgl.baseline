@@ -3,18 +3,12 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -276,19 +270,24 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 class point
   class object
   with
     x,
     y
 ;
-array pts table _bglanon1 _bglanon2 2 $9084;
+array pts table _bglanon3 _bglanon4 2 $9084;
 point origin
   with x 0,
        y 0
 ;
-array path table origin _bglanon3 _bglanon4 3 $9084;
-array inferred table _bglanon5 _bglanon6 2 $9084;
+array path table origin _bglanon5 _bglanon6 3 $9084;
+array inferred table _bglanon7 _bglanon8 2 $9084;
 [main;
     print ( pts-->(1+1) ).x;
     print ( path-->(1+1) ).y;
@@ -298,27 +297,27 @@ array inferred table _bglanon5 _bglanon6 2 $9084;
     print pb.y;
     print pc.x;
 ];
-point _bglanon1
+point _bglanon3
   with x 1,
        y 2
 ;
-point _bglanon2
+point _bglanon4
   with x 3,
        y 4
 ;
-point _bglanon3
+point _bglanon5
   with x 5,
        y 5
 ;
-point _bglanon4
+point _bglanon6
   with x 9,
        y 9
 ;
-point _bglanon5
+point _bglanon7
   with x 7,
        y 8
 ;
-point _bglanon6
+point _bglanon8
   with x 9,
        y 10
 ;

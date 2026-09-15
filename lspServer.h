@@ -56,6 +56,15 @@ private:
     // LSP methods
     json handleInitialize(const json& params);
     void handleShutdown(const json& id);
+    // Custom `beguile/setEntryPoint` notification from the extension: designates the project's
+    // entry-point .bgl (the file with `#beguilerSettings`, the one F5/Debug compiles). When set,
+    // an opened *included* file is parsed in the entry point's whole-program context (so `#if`
+    // gating, symbols, hover, and completion resolve as they do in a real build) instead of being
+    // parsed standalone. Empty path clears the designation.
+    void handleSetEntryPoint(const json& params);
+    // Custom `beguile/setConfig` notification from the extension: pushes editor settings that the
+    // server honors (currently just `syntaxHints`, toggling the keyword syntax-snippet completions).
+    void handleSetConfig(const json& params);
     void handleDidOpen(const json& params);
     void handleDidChange(const json& params);
     void handleDidClose(const json& params);
@@ -78,6 +87,21 @@ private:
     functionDef* findEnclosingFunction(const std::string& uri, int cursorLine);
     LspSymbolRef resolveSymbol(const std::string& uri, int cursorLine, const std::string& loweredName);
 
+    // Resolve every active `#using <path>` directive above `line` to the namespace object
+    // it names (if any). Used by completion to surface #using-imported members (e.g. the
+    // print-rule `img` brought in by `#using bgl.printRules`). Empty when none resolve.
+    std::vector<objectDef*> activeUsingNamespaces(const std::string& docText, int line);
+
+    // Resolve a call site to the parameter list of its (first) matching callee. `funcName` is
+    // the called identifier; `objName` is the receiver for a `recv.method(` member call (empty
+    // for a bare call). Checks, in order: member methods (when objName is set), global functions,
+    // then #using-imported namespace members. Returns the first candidate's params, or empty when
+    // nothing resolves. Backs enum-argument completion (offer an enum param's members).
+    std::vector<paramDef*> resolveCalleeParams(const std::string& uri, int line,
+                                               const std::string& funcName,
+                                               const std::string& objName,
+                                               const std::string& docText);
+
     // Returns true if the cursor at (line, col) is inside an open '#beguilerSettings { ... }'
     // block. Used by completion, hover, and definition so identifiers in the block can be
     // resolved against the beguilerSettingsType schema even though the block isn't a real
@@ -92,6 +116,21 @@ private:
     // array is a valid "clear overlay" signal for the client).
     void publishInactiveRegions(const std::string& uri);
     void resetAndReparse(const std::string& uri);
+
+    // Canonical filesystem path of the designated entry-point .bgl (empty = none). Set via the
+    // `beguile/setEntryPoint` notification. Drives whole-program context parsing for included files.
+    std::string entryPointPath;
+
+    // Editor-pushed settings (via `beguile/setConfig`). `syntaxHints` toggles the keyword
+    // syntax-snippet completions (e.g. the `enum` declaration popup). Default on.
+    bool syntaxHintsEnabled = true;
+
+    // Parse `uri` in the entry point's context: root the parse at the entry point (which #includes
+    // `uri`), overlaying every open buffer so unsaved edits in any file are honored, and attribute
+    // diagnostics/inactive-regions/symbols to `uri`. Falls back to a standalone parse when no entry
+    // point is set, when `uri` IS the entry point, or when the entry point doesn't include `uri`.
+    // Returns true if the context parse covered `uri` (so the caller skips the standalone parse).
+    bool parseDocumentInEntryContext(const std::string& uri);
 
     // Document store
     std::map<std::string, std::string> openDocuments;  // uri → text content

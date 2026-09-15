@@ -1,7 +1,9 @@
 /* object property whose type is INHERITED from an extern base (not declared on the instance):
-   `name = {.a,.b}` inherits array<dictionaryWord> from bigThing, so it must still reach the
-   .bgldbg [types] with its type or the debugger renders it as a raw number. */
+   `name = {.a,.b}` inherits rawArray<dictionaryWord> from bigThing, so it must still reach the
+   .bgldbg [types] with its type or the debugger renders it as a raw number.
+   (`name` is an I6 ADDITIVE property, so it must be rawArray — a tracked array's trailing length
+   slot would land inside the accumulated word run; see the additive diagnostic.) */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "out"; }
-extern class bigThing : object { array<dictionaryWord> name; }
+extern class bigThing : object { rawArray<dictionaryWord> name; }
 bigThing widget { name = {.small, .brass, .hook}; string description = "a hook"; }
 void main(){ print(widget.description); }

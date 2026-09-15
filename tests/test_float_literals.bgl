@@ -1,0 +1,40 @@
+/*
+    test_float_literals.bgl
+    Covers two float ergonomics (Glulx-only):
+      1. FLOAT LITERALS — `1.0`, `.3`, `-1.2` lex as a single float token and lower to I6's
+         Glulx float constant `$+`/`$-` (the I6 compiler computes the IEEE-754 bits).
+      2. int → float ASSIGNMENT — `float x = 5;` / `x = n;` route through @numtof (value 5 → 5.0),
+         NOT a raw bit-copy. This is done in the LIBRARY (float's `operator=(int/intLiteral/
+         negativeIntLiteral)` in _float.bgl), no compiler change. The `(float)i` CONVERSION stays
+         explicit, so a bare int is never silently bit-reinterpreted as a float.
+    The baseline pins `$+`/`$-` for literals and `_bglFloatNumtof(...)` for every int→float assign.
+*/
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void main() {
+    // Float literals.
+    float a = 1.0;      // → $+1.0
+    float b = .3;       // → $+.3
+    float c = -1.2;     // → $-1.2
+    float d = a + b;    // float arithmetic still dispatches through the float operators
+
+    // int → float assignment (value-preserving via @numtof).
+    float x = 5;        // int literal          → _bglFloatNumtof(5)
+    float y = -3;       // negative int literal  → _bglFloatNumtof(-3)
+    int   n = 7;
+    float z = n;        // int variable          → _bglFloatNumtof(n)
+    z = n;              // reassignment, same path
+
+    // Explicit cast still works and composes with literals.
+    float e = (float)314 / (float)100;   // 3.14
+
+    print(a);
+    print(x);
+    print(z);
+    print(d);
+    print(e);
+}

@@ -1,0 +1,10 @@
+/*
+    _test_include_quote_unterminated.bgl  (negative)
+    A quoted `#include "..."` missing its closing `"` must error clearly (the string lexer would
+    otherwise swallow across lines into a bogus filename).
+*/
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "somefile
+#include "other"
+int probe(){ return 0; }
+// EXPECT_ERROR: missing closing

@@ -34,25 +34,43 @@ enum eGlulxStyleType{
    ,    user2
 }
 
-//=============================================================================
-// Pull in the full Glulx opcode class. Extends _glulx (above) with additional
-// aliases, and defines `emitter class bglOpCodes` + the __glkHook dispatch
-// routine that backs glk operations.
-#include<core/_glulxOpCodes>
-
-// Glulx-target alias: bgl.asm.<opcode>() → bglOpCodes.<opcode>().
-// Symmetric with core/_zcode.bgl's Z-target alias.
-extend bgl { emitter auto asm = bglOpCodes; }
-
-// Image print-rules need the `eAssets` enum, which the blorbifier generates into the
-// author's `_blorbAssets.bgl` (the author includes it manually). Gate on `generateBlorb`
-// so a non-blorb Glulx build neither requires the enum nor fails to resolve `eAssets`.
-// A regular (non-emitter) print-rule: used in an interpolated string `$"…{img(eAssets.x)}…"`,
-// the segment is CALLED (it draws the image), not printed — interpolation now permits a void call.
-#if (generateBlorb == true)
-extend _bglPrintRules {
-    void img(eAssets image){
-        bgl.asm.imageDrawScaled(gg_mainwin, image, eGlulxImageAlign.inlineCenter, 0, 100, 100);
+class bglSize{
+    inline int width=0;
+    inline int height=0;
+    bglSize operator = (bglSize s){
+        self.width=s.width;
+        self.height=s.height;
+        return self;
     }
+}
+
+#include<core/_glulxOpCodes>
+extend bgl { emitter auto asm = bglOpCodes; } //attach the opcodes to the namespace
+
+#if (generateBlorb == true) //no blorb, no images; so don't bother including the code
+bglSize scaleVectors(bglSize imgSize, bglSize specified){
+    float scaleX=1.0;
+    float scaleY=1.0;
+
+    if(specified.width==0 || specified.height==0){
+        if(specified.width!=0){
+            scaleX=(float)specified.width/imgSize.width;
+        }
+        else if(specified.height!=0){
+            scaleY=(float)specified.height/imgSize.height;
+        }
+            
+        specified.width=(int)(imgSize.width * scaleX);
+        specified.height=(int)(imgSize.height * scaleY);
+    }
+    return specified;
+}
+extend _bglPrintRules {
+    void img(eAssets image, eGlulxImageAlign align=inlineCenter, int width=0, int height=0){
+        bglSize scaledSize = scaleVectors({width, height}, _bglGetImageInfo(image));  
+        bgl.asm.imageDrawScaled(bgl.ui.mainWin.id, image, align, 0, scaledSize.width, scaledSize.height);
+    }
+}
+extend _bglUi{
 }
 #endif

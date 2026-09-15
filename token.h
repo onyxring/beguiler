@@ -17,6 +17,7 @@ enum class eTokenType{
     dataType,
     name,       // matches either identifier or dataType; use isDataType() to disambiguate
     integer,
+    floatLiteral,          // 1.0, .3  — a decimal float literal (Glulx-only); value keeps the decimal text (no sign)
     symbol,
     quote,
     rawQuote,              // @"..."  raw string literal — no Beguile escape processing

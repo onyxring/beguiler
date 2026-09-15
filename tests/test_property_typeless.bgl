@@ -1,0 +1,25 @@
+/*  A property declaration is TYPE-LESS: `[extern] [additive] property name;`. The type lives at
+    each USE site (each contributing member's own declaration), never on the property.
+
+    For an ADDITIVE property, every contribution across a class hierarchy must be a `rawArray<T>`
+    with a CONSISTENT element type — fixed by the highest ancestor that declares it. Unrelated
+    hierarchies may each fix their OWN element type for the same additive property. Routine
+    contributions (I6's before/after/…) and non-additive properties are unconstrained.
+
+    Pins: the type-less form parses; `extern` emits no directive; the non-extern additive form
+    still emits `Property additive`; agreeing layers of one hierarchy compile; and a second,
+    unrelated hierarchy may fix a DIFFERENT element type for the same additive property.  */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+additive property hook;                 // ours: emits `Property additive hook;`
+property plain;                         // non-additive — unconstrained, emits `Property plain;`
+extern additive property extraName;     // extern: registers the name only, no directive
+
+class Base { rawArray<int> hook = {1,2}; }
+object leaf : Base { rawArray<int> hook = {3}; }        // agrees with Base — int
+
+// A second, unrelated hierarchy fixes the SAME additive property to a DIFFERENT element type.
+class Other { rawArray<dictionaryWord> hook = {.aa,.bb}; }
+Other otherInst;
+
+void main(){ bglInit(); }

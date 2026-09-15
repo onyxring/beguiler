@@ -158,6 +158,10 @@ void LspServer::handleMessage(const json& msg) {
             handleDidChange(params);
         else if(method == "textDocument/didClose")
             handleDidClose(params);
+        else if(method == "beguile/setEntryPoint")
+            handleSetEntryPoint(params);
+        else if(method == "beguile/setConfig")
+            handleSetConfig(params);
         else if(method == "exit") {
             shutdownRequested = true;
         }
@@ -187,8 +191,11 @@ json LspServer::handleInitialize(const json& params) {
             //   '"' — `#include "…"` project-file completion (Phase 0b)
             //   '/' — next path segment inside `#include "sub/…"` (Phase 0b)
             //   ':' — class inheritance position after `class Foo :` (Phase 0.5)
-            //   ',' — multi-inheritance continuation `class Foo : object,` (Phase 0.5)
-            {"triggerCharacters", {".", "=", "<", "\"", "/", ":", ","}}
+            //   ',' — multi-inheritance continuation, and the next arg of an enum-param call
+            //   '(' — first arg of a call whose parameter is an enum (enum-argument completion)
+            //   '{' — an attributeList initializer literal (`attributes = { … }`)
+            // A trigger that doesn't match its phase simply returns nothing — no dropdown pops.
+            {"triggerCharacters", {".", "=", "<", "\"", "/", ":", ",", "(", "{"}}
         }},
         {"definitionProvider", true},
         {"documentSymbolProvider", true},
@@ -439,7 +446,216 @@ bool LspServer::requestAllowedAt(const std::string& uri, int line, int col) {
 // Compilation & Diagnostics
 //=============================================================================
 
+// Canonicalize a filesystem path for equality comparison (resolves symlinks/.. when the file
+// exists; falls back to the raw string otherwise).
+static string canonPath(const string& p) {
+    try { return filesystem::canonical(filesystem::absolute(p)).string(); }
+    catch(...) { return p; }
+}
+
+// Designate (or clear) the project entry point. `params.uri` (a file URI) or `params.path`
+// names the entry-point .bgl; an empty/absent value clears it. On change, invalidate the
+// last-parsed marker so the next feature request reparses in the (new) context.
+void LspServer::handleSetEntryPoint(const json& params) {
+    string p;
+    if(params.contains("uri") && params["uri"].is_string())
+        p = uriToPath(params["uri"].get<string>());
+    else if(params.contains("path") && params["path"].is_string())
+        p = params["path"].get<string>();
+    string newEntry = p.empty() ? string() : canonPath(p);
+    if(newEntry == entryPointPath) return;  // no change → nothing to re-publish
+    entryPointPath = newEntry;
+    lastParsedUri.clear();  // force a fresh context parse on the next request
+
+    // Re-parse and re-publish EVERY open document under the new entry-point context.
+    // Without this, a document opened BEFORE this notification arrived keeps its stale
+    // decorations. The concrete case: on window reload VS Code restores the focused editor
+    // and the client's textDocument/didOpen races ahead of the entry-point re-assert. If the
+    // focused file is an *included* core file (e.g. _glulxCore.bgl), it gets parsed standalone
+    // first — so a `#if generateBlorb` region grays out and its members vanish from completion —
+    // and clearing lastParsedUri alone never refreshes it (nothing re-requests until the user
+    // edits). Proactively refreshing here makes an entry-point change take effect immediately
+    // for all open files, whether it arrives on reload or from a mid-session Set Entry Point.
+    vector<string> openUris;
+    openUris.reserve(openDocuments.size());
+    for(auto& kv : openDocuments) openUris.push_back(kv.first);
+    for(const string& u : openUris) {
+        parseDocument(u);
+        publishDiagnostics(u);
+        publishInactiveRegions(u);
+    }
+}
+
+// Editor settings pushed from the extension. Currently just `syntaxHints` (default on): toggles the
+// keyword syntax-snippet completions (e.g. the `enum` declaration popup). Completion is pulled per
+// keystroke, so the next request honors the new value — no reparse needed.
+void LspServer::handleSetConfig(const json& params) {
+    if(params.contains("syntaxHints") && params["syntaxHints"].is_boolean())
+        syntaxHintsEnabled = params["syntaxHints"].get<bool>();
+}
+
+// Parse `uri` rooted at the entry point so an opened *included* file resolves with whole-program
+// context (settings symbols, `#if` gating, cross-file symbols). Returns true when the entry point
+// actually includes `uri` (caller then skips the standalone parse); false to fall back.
+bool LspServer::parseDocumentInEntryContext(const string& uri) {
+    if(entryPointPath.empty()) return false;
+    string openedCanon = canonPath(uriToPath(uri));
+    string entryCanon  = canonPath(entryPointPath);
+    if(openedCanon == entryCanon) return false;  // the entry point itself → parse standalone
+
+    // Fresh state (mirrors parseDocument's reset + include-path reseed).
+    parser.reset();
+    languageService.reset();
+    beguilerSettings = beguilerSettingsDef();
+    beguilerSettings.includePaths = cliIncludePaths;
+    parser.lspMode = true;
+    parser.lspErrors.clear();
+    parser.inactiveRegions.clear();
+
+    // Resolve the entry point's source text: its live editor buffer if open, else disk.
+    string entryContent;
+    bool haveEntry = false;
+    for(auto& [u, text] : openDocuments)
+        if(canonPath(uriToPath(u)) == entryCanon) { entryContent = text; haveEntry = true; break; }
+    if(!haveEntry) {
+        ifstream f(entryPointPath, ios::binary);
+        if(!f) return false;  // entry point unreadable → fall back to standalone
+        stringstream ss; ss << f.rdbuf(); entryContent = ss.str();
+    }
+
+    // Overlay EVERY open buffer so unsaved edits in any file (the opened include, the entry
+    // point, sibling includes) are honored during the whole-program parse.
+    g_virtualBglFiles.clear();
+    for(auto& [u, text] : openDocuments)
+        g_virtualBglFiles[virtualFileKey(uriToPath(u))] = text;
+
+    // Seed settings symbols from the ENTRY POINT (not the opened include, which has no
+    // #beguilerSettings): target_* must be defined before preScanFile walks the core library,
+    // and generateblorb gates blorb-only members. Mirrors parseDocument's standalone pre-scan.
+    bool genBlorb = false;
+    {
+        const string& text = entryContent;
+        size_t tagPos = 0;
+        while((tagPos = text.find("#beguilerSettings", tagPos)) != string::npos) {
+            size_t open = text.find('{', tagPos);
+            if(open == string::npos) break;
+            int depth = 1; size_t cur = open + 1;
+            while(cur < text.size() && depth > 0) { if(text[cur]=='{') depth++; else if(text[cur]=='}') depth--; cur++; }
+            string block = text.substr(open + 1, cur - open - 2);
+            string lower = block;
+            transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            size_t k = lower.find("target");
+            if(k != string::npos) {
+                size_t eq = lower.find('=', k + 6);
+                if(eq != string::npos) {
+                    size_t vs = lower.find_first_not_of(" \t\r\n", eq + 1);
+                    if(vs != string::npos) {
+                        size_t ve = lower.find_first_of(" \t\r\n;}", vs);
+                        string val = lower.substr(vs, ve - vs);
+                        if(val == "glulx") parser.defineSymbol("target_glulx");
+                        else if(val.size() == 2 && val[0] == 'z' && isdigit(val[1]))
+                            parser.defineSymbol("target_zcode", string(1, val[1]));
+                    }
+                }
+            }
+            size_t gb = lower.find("generateblorb");
+            if(gb != string::npos) {
+                size_t eq = lower.find('=', gb + 13);
+                if(eq != string::npos) {
+                    size_t vs = lower.find_first_not_of(" \t\r\n", eq + 1);
+                    if(vs != string::npos) {
+                        size_t ve = lower.find_first_of(" \t\r\n;}", vs);
+                        if(lower.substr(vs, ve - vs) == "true") genBlorb = true;
+                    }
+                }
+            }
+            tagPos = cur;
+        }
+        parser.declareSymbol("generateblorb", genBlorb ? "true" : "false");
+    }
+
+    // Register the virtual `_blorbAssets.bgl` from the ENTRY POINT's asset dir (mirrors the
+    // standalone scan, but anchored at the entry point so `eAssets` matches the real build).
+    {
+        string assetPathSetting;
+        const string& text = entryContent;
+        size_t tagPos = 0;
+        while((tagPos = text.find("#beguilerSettings", tagPos)) != string::npos) {
+            size_t open = text.find('{', tagPos);
+            if(open == string::npos) break;
+            int depth = 1; size_t cur = open + 1;
+            while(cur < text.size() && depth > 0) { if(text[cur]=='{') depth++; else if(text[cur]=='}') depth--; cur++; }
+            string block = text.substr(open + 1, cur - open - 2);
+            string lower = block;
+            transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            size_t k = lower.find("blorbassetpath");
+            if(k != string::npos) {
+                size_t eq = lower.find('=', k + 14);
+                if(eq != string::npos) {
+                    size_t q1 = block.find('"', eq);
+                    if(q1 != string::npos) { size_t q2 = block.find('"', q1 + 1);
+                        if(q2 != string::npos) assetPathSetting = block.substr(q1 + 1, q2 - q1 - 1); }
+                }
+            }
+            tagPos = cur;
+        }
+        filesystem::path srcDir = filesystem::path(entryPointPath).parent_path();
+        string assetDir = assetPathSetting.empty()
+            ? (srcDir / "assets").string()
+            : (filesystem::path(assetPathSetting).is_absolute()
+                ? assetPathSetting : (srcDir / assetPathSetting).string());
+        error_code ec;
+        if(filesystem::is_directory(assetDir, ec)) {
+            Blorb blorb;
+            vector<BlorbAsset> assets = blorb.scanAssets(assetDir);
+            string enumSrc = blorb.buildEnumSource(assets, filesystem::path(entryPointPath).filename().string());
+            g_virtualBglFiles[virtualFileKey((srcDir / "_blorbAssets.bgl").string())] = enumSrc;
+        }
+    }
+
+    documentParsePaths[uri] = openedCanon;  // attribute symbols/regions to the OPENED file
+
+    streambuf* oldCout = cout.rdbuf();
+    ostringstream nullStream;
+    cout.rdbuf(nullStream.rdbuf());
+    vector<string> errors;
+    try {
+        parser.preScanFile(entryPointPath, &entryContent);
+        parser.parseFile(entryPointPath, &entryContent);
+    } catch(exception& e) { errors.push_back(e.what()); }
+      catch(...) { errors.push_back("Unknown compilation error"); }
+    cout.rdbuf(oldCout);
+
+    // Coverage: did the entry point's include tree actually reach the opened file? If not, this
+    // file is an orphan relative to the entry point — let the caller parse it standalone.
+    if(!parser.includedFilePaths.count(openedCanon)) {
+        parser.lspMode = false;
+        return false;
+    }
+
+    // Keep only diagnostics that belong to the opened file (the whole-program parse surfaces
+    // errors across every included file; the client asked about this one).
+    vector<string> ownErrors;
+    for(const string& e : errors) ownErrors.push_back(e);  // exceptions aren't file-tagged; keep them
+    for(const string& e : parser.lspErrors) {
+        size_t firstColon = e.find(':');
+        string filePart = (firstColon == string::npos) ? string() : e.substr(0, firstColon);
+        if(canonPath(filePart) == openedCanon) ownErrors.push_back(e);
+    }
+    parser.lspMode = false;
+
+    documentDiagnostics[uri] = ownErrors;
+    lastParsedUri = uri;
+    return true;
+}
+
 void LspServer::parseDocument(const string& uri) {
+    // Entry-point context parse: when an included file is opened and an entry point is set, parse
+    // the whole program so #if gating, settings symbols, and cross-file symbols resolve correctly.
+    // Falls through to the standalone parse below when there's no entry point, this IS the entry
+    // point, or the entry point doesn't include this file.
+    if(parseDocumentInEntryContext(uri)) return;
+
     string path = uriToPath(uri);
     documentDiagnostics.clear();
 
@@ -485,9 +701,13 @@ void LspServer::parseDocument(const string& uri) {
 
     // Pre-scan the document text for #beguilerSettings target so TARGET_ZCODE/TARGET_GLULX are
     // defined BEFORE preScanFile walks the core library (which uses them to pick a backend).
-    // This mirrors beguiler::extractBlorbSettings used in normal compile mode.
+    // Also declare `generateblorb` (with its bool value) so `#if (generateBlorb == true)` gates —
+    // e.g. the `extend _bglPrintRules { void img(eAssets …) }` in _glulxCore.bgl — resolve the same
+    // way they do in a real compile; otherwise blorb-gated members are invisible to hover/completion.
+    // This mirrors beguiler::extractBlorbSettings + the declareSymbol at beguiler.cpp (compile mode).
     if(docIt != openDocuments.end()) {
         const string& text = docIt->second;
+        bool genBlorb = false;
         size_t tagPos = 0;
         while((tagPos = text.find("#beguilerSettings", tagPos)) != string::npos) {
             size_t open = text.find('{', tagPos);
@@ -515,8 +735,22 @@ void LspServer::parseDocument(const string& uri) {
                     }
                 }
             }
+            size_t gb = lower.find("generateblorb");
+            if(gb != string::npos) {
+                size_t eq = lower.find('=', gb + 13);
+                if(eq != string::npos) {
+                    size_t vs = lower.find_first_not_of(" \t\r\n", eq + 1);
+                    if(vs != string::npos) {
+                        size_t ve = lower.find_first_of(" \t\r\n;}", vs);
+                        if(lower.substr(vs, ve - vs) == "true") genBlorb = true;
+                    }
+                }
+            }
             tagPos = cur;
         }
+        // Always declare (matches compile mode: declared true|false, never absent) so both
+        // `#if (generateBlorb == true)` and bare `#if generateBlorb` presence-tests behave.
+        parser.declareSymbol("generateblorb", genBlorb ? "true" : "false");
     }
 
     // Register a virtual `_blorbAssets.bgl` from a live scan of the asset directory, so that
@@ -1204,6 +1438,7 @@ json LspServer::handleHover(const json& params) {
         if(typeInfo.empty()) {
             // Walk dotted owner path to find the target object
             objectDef* nsObj = nullptr;
+            classDef*  nsCls = nullptr;
             size_t ownerDot = ownerLower.find('.');
             if(ownerDot != string::npos){
                 // Multi-level: walk the chain
@@ -1217,6 +1452,7 @@ json LspServer::handleHover(const json& params) {
                     string seg = (ownerDot == string::npos) ? rest : rest.substr(0, ownerDot);
                     rest = (ownerDot == string::npos) ? "" : rest.substr(ownerDot + 1);
                     objectDef* next = nullptr;
+                    classDef*  nextCls = nullptr;
                     for(typeMember* m : nsObj->members){
                         auto* vd = dynamic_cast<variableDeclaration*>(m);
                         if(!vd || vd->name != seg) continue;
@@ -1229,8 +1465,17 @@ json LspServer::handleHover(const json& params) {
                             for(typeDef* g : languageService.globals)
                                 if(auto* od = dynamic_cast<objectDef*>(g))
                                     if(od->name == vd->type.name){ next = od; break; }
+                        // Alias may target a CLASS (e.g. `emitter auto asm = bglOpCodes`) — capture it.
+                        if(!next)
+                            for(string cand : { initName, vd->type.name }){
+                                if(cand.empty()) continue;
+                                transform(cand.begin(), cand.end(), cand.begin(), ::tolower);
+                                typeDef& td = languageService.getType(cand);
+                                if(auto* cd = dynamic_cast<classDef*>(&td)){ nextCls = cd; break; }
+                            }
                         break;
                     }
+                    if(nextCls){ nsCls = nextCls; nsObj = nullptr; break; }
                     nsObj = next;
                 }
             } else {
@@ -1253,6 +1498,27 @@ json LspServer::handleHover(const json& params) {
                         break;
                     }
                 }
+            }
+            // Owner resolved to a class (e.g. bgl.asm → bglOpCodes emitter class) — hover its member.
+            if(typeInfo.empty() && nsCls){
+                function<bool(classDef*)> findInCls = [&](classDef* c) -> bool {
+                    if(!c) return false;
+                    for(typeMember* m : c->members){
+                        if(m->name != lower) continue;
+                        if(auto* fd = dynamic_cast<functionDef*>(m)){
+                            if(fd->isPrePassStub) continue;
+                            typeInfo = typeDisplay(fd->returnType.name) + " " + (fd->displayName.empty() ? fd->name : fd->displayName) + "(...)";
+                            if(fd->isEmitter) typeInfo = "emitter " + typeInfo;
+                            return true;
+                        } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+                            typeInfo = typeDisplay(vd->type.name) + " " + (vd->displayName.empty() ? vd->name : vd->displayName);
+                            return true;
+                        }
+                    }
+                    for(classDef* base : c->baseClasses) if(findInCls(base)) return true;
+                    return false;
+                };
+                findInCls(nsCls);
             }
         }
     }
@@ -1348,6 +1614,127 @@ json LspServer::handleHover(const json& params) {
 //     built-in word-based suggestions. Use this for bare-identifier completion, keywords, and
 //     any position that isn't a member-access or a known structured-completion context.
 //=============================================================================
+
+// Resolve every active `#using <path>` above `line` to the namespace object it names.
+// Mirrors Phase 4's path-collection + object walk, factored out so the enum-argument
+// completion phase (which runs before Phase 4) can reuse it.
+vector<objectDef*> LspServer::activeUsingNamespaces(const string& docText, int line) {
+    vector<string> usingPaths;
+    {
+        istringstream ds(docText);
+        string dl;
+        int lineIdx = 0;
+        while(getline(ds, dl)){
+            if(lineIdx > line) break;
+            size_t p = dl.find_first_not_of(" \t");
+            if(p != string::npos && dl.compare(p, 7, "#using ") == 0){
+                size_t s = p + 7;
+                while(s < dl.size() && (dl[s] == ' ' || dl[s] == '\t')) s++;
+                size_t e = s;
+                while(e < dl.size() && (isalnum((unsigned char)dl[e]) || dl[e] == '_' || dl[e] == '.')) e++;
+                if(e > s){
+                    string path = dl.substr(s, e - s);
+                    transform(path.begin(), path.end(), path.begin(), ::tolower);
+                    usingPaths.push_back(path);
+                }
+            }
+            lineIdx++;
+        }
+    }
+
+    // Walk a dotted namespace path (e.g. "bgl.printrules") to its objectDef, following
+    // alias/typed member links (mirrors Phase 4's walkObjectPath).
+    auto walkObjectPath = [&](const string& path) -> objectDef* {
+        size_t dot = path.find('.');
+        string head = (dot == string::npos) ? path : path.substr(0, dot);
+        string rest = (dot == string::npos) ? "" : path.substr(dot + 1);
+        objectDef* curObj = nullptr;
+        for(typeDef* g : languageService.globals)
+            if(auto* od = dynamic_cast<objectDef*>(g))
+                if(od->name == head){ curObj = od; break; }
+        while(curObj && !rest.empty()){
+            dot = rest.find('.');
+            string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
+            rest = (dot == string::npos) ? "" : rest.substr(dot + 1);
+            objectDef* next = nullptr;
+            for(typeMember* m : curObj->members){
+                auto* vd = dynamic_cast<variableDeclaration*>(m);
+                if(!vd || vd->name != seg) continue;
+                string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+                if(!initName.empty())
+                    for(typeDef* g : languageService.globals)
+                        if(auto* od = dynamic_cast<objectDef*>(g))
+                            if(od->name == initName){ next = od; break; }
+                if(!next)
+                    for(typeDef* g : languageService.globals)
+                        if(auto* od = dynamic_cast<objectDef*>(g))
+                            if(od->name == vd->type.name){ next = od; break; }
+                break;
+            }
+            curObj = next;
+        }
+        return curObj;
+    };
+
+    vector<objectDef*> out;
+    for(const string& path : usingPaths)
+        if(objectDef* ns = walkObjectPath(path)) out.push_back(ns);
+    return out;
+}
+
+// Resolve a call site to the parameter list of its (first) matching callee. See header.
+vector<paramDef*> LspServer::resolveCalleeParams(const string& uri, int line,
+                                                 const string& funcName, const string& objName,
+                                                 const string& docText) {
+    string lower = funcName;
+    transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+    vector<functionDef*> candidates;
+
+    if(!objName.empty()) {
+        // Member call `recv.method(` — resolve the receiver's class (mirrors handleSignatureHelp).
+        string objLower = objName;
+        transform(objLower.begin(), objLower.end(), objLower.begin(), ::tolower);
+        classDef* cls = nullptr;
+        LspSymbolRef ownerRef = resolveSymbol(uri, line, objLower);
+        if(ownerRef.kind == LspSymbolRef::Local || ownerRef.kind == LspSymbolRef::Parameter)
+            cls = dynamic_cast<classDef*>(&languageService.getType(ownerRef.typeName));
+        if(!cls) {
+            typeDef& td = languageService.getType(objLower);
+            if(auto* cd = dynamic_cast<classDef*>(&td)) cls = cd;
+        }
+        if(!cls)
+            for(typeDef* g : languageService.globals)
+                if(auto* od = dynamic_cast<objectDef*>(g))
+                    if(od->name == objLower) { cls = od->objectClass; break; }
+        if(!cls)
+            for(typeDef* g : languageService.globals)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                    if(vd->name == objLower) { cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name)); break; }
+
+        function<void(classDef*)> findMethods = [&](classDef* c) {
+            if(!c) return;
+            for(typeMember* m : c->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->name == lower && !fd->isPrePassStub) candidates.push_back(fd);
+            for(classDef* base : c->baseClasses) findMethods(base);
+        };
+        if(cls) findMethods(cls);
+    } else {
+        // Bare call: global functions first, then #using-imported namespace members.
+        for(typeDef* g : languageService.globals)
+            if(auto* fd = dynamic_cast<functionDef*>(g))
+                if(fd->name == lower && !fd->isPrePassStub) candidates.push_back(fd);
+        if(candidates.empty())
+            for(objectDef* ns : activeUsingNamespaces(docText, line))
+                for(typeMember* m : ns->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m))
+                        if(fd->name == lower && !fd->isPrePassStub) candidates.push_back(fd);
+    }
+
+    if(candidates.empty()) return {};
+    return candidates[0]->params;
+}
 
 json LspServer::handleCompletion(const json& params) {
     string uri = params["textDocument"]["uri"];
@@ -1637,6 +2024,58 @@ json LspServer::handleCompletion(const json& params) {
         }
     }
 
+    // ── Enum-argument completion ─────────────────────────────────────────
+    // At a call argument whose parameter type is an enum, offer that enum's members.
+    // Fires in ordinary code — `foo(bar, ▮)` — AND inside an interpolated string —
+    // `$"…{img(▮)}…"` — so it MUST run before the in-string suppression below (that
+    // guard would otherwise treat the interpolation `{…}` as prose and bail). Detection is
+    // specific enough to be safe in prose: it only produces items when the enclosing `(`
+    // has a resolvable callee whose active parameter is an enum, so an incidental `(` in
+    // narrative text yields nothing and falls through to the normal phases.
+    {
+        int scanLimit = col; if(scanLimit > (int)lineText.size()) scanLimit = (int)lineText.size();
+        int parenDepth = 0, commaCount = 0, funcEnd = -1;
+        for(int i = scanLimit - 1; i >= 0; i--) {
+            char c = lineText[i];
+            if(c == ')') parenDepth++;
+            else if(c == '(') { if(parenDepth == 0) { funcEnd = i; break; } parenDepth--; }
+            else if(c == ',' && parenDepth == 0) commaCount++;
+        }
+        if(funcEnd >= 0) {
+            int nameEnd = funcEnd, nameStart = nameEnd - 1;
+            while(nameStart >= 0 && (isalnum((unsigned char)lineText[nameStart]) || lineText[nameStart] == '_')) nameStart--;
+            nameStart++;
+            string funcName = lineText.substr(nameStart, nameEnd - nameStart);
+            if(!funcName.empty()) {
+                string objName;
+                if(nameStart > 0 && lineText[nameStart - 1] == '.') {
+                    int objEnd = nameStart - 1, objStart = objEnd - 1;
+                    while(objStart >= 0 && (isalnum((unsigned char)lineText[objStart]) || lineText[objStart] == '_')) objStart--;
+                    objStart++;
+                    objName = lineText.substr(objStart, objEnd - objStart);
+                }
+                vector<paramDef*> params = resolveCalleeParams(uri, line, funcName, objName, docText);
+                if(commaCount >= 0 && commaCount < (int)params.size()) {
+                    string ptype = params[commaCount]->type.name;  // lowercased type name
+                    for(typeDef* t : languageService.objectTypes) {
+                        auto* ed = dynamic_cast<enumDef*>(t);
+                        if(!ed || ed->name != ptype) continue;
+                        json items = json::array();
+                        for(enumValueDef* ev : ed->namedValues) {
+                            json item = {{"label", ev->name}, {"kind", 13},  // CompletionItemKind.EnumMember
+                                         {"detail", ed->displayName.empty() ? ed->name : ed->displayName}};
+                            if(!ev->docComment.empty())
+                                item["documentation"] = {{"kind", "markdown"}, {"value", ev->docComment}};
+                            items.push_back(item);
+                        }
+                        if(!items.empty()) return items;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     // Suppress completion inside string literals — the user is typing prose.
     auto isInsideStringLiteral = [&]() -> bool {
         int limit = col;
@@ -1869,6 +2308,7 @@ json LspServer::handleCompletion(const json& params) {
                     string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
                     rest = (dot == string::npos) ? "" : rest.substr(dot + 1);
                     objectDef* next = nullptr;
+                    classDef*  nextCls = nullptr;
                     for(typeMember* m : nsObj->members){
                         auto* vd = dynamic_cast<variableDeclaration*>(m);
                         if(!vd || vd->name != seg) continue;
@@ -1881,8 +2321,21 @@ json LspServer::handleCompletion(const json& params) {
                             for(typeDef* g : languageService.globals)
                                 if(auto* od = dynamic_cast<objectDef*>(g))
                                     if(od->name == vd->type.name){ next = od; break; }
+                        // The alias may resolve to a CLASS rather than an object — e.g.
+                        // `extend bgl { emitter auto asm = bglOpCodes; }`, where bglOpCodes is an
+                        // emitter class. The object-only search above misses it, so completing
+                        // `bgl.asm.` would list nothing. Capture the class target and let the
+                        // terminal segment fall through to the class-member collector below.
+                        if(!next)
+                            for(string cand : { initName, vd->type.name }){
+                                if(cand.empty()) continue;
+                                transform(cand.begin(), cand.end(), cand.begin(), ::tolower);
+                                typeDef& td = languageService.getType(cand);
+                                if(auto* cd = dynamic_cast<classDef*>(&td)){ nextCls = cd; break; }
+                            }
                         break;
                     }
+                    if(nextCls){ cls = nextCls; nsObj = nullptr; break; }  // alias → class; complete its members
                     nsObj = next;
                 }
             } else {
@@ -2051,6 +2504,85 @@ json LspServer::handleCompletion(const json& params) {
                 break;
             }
             return items;
+        }
+    }
+
+    // ── attributeList initializer completion ─────────────────────────────
+    // Cursor inside an `attributeList`-typed member initializer literal —
+    //   attributes = { ▮ }     // e.g. { light, !scenery }
+    // offer every instance of class `attribute` (light, scenery, container, …). Detection:
+    // find the immediately-enclosing `{`; read the `IDENT =` immediately before it; if that
+    // member name is declared anywhere with type `attributeList`, we're in such a literal.
+    // Generalizes to any attributeList member, not just the built-in `attributes`.
+    {
+        size_t cursorOffset = 0;
+        {
+            int curLine = 0; size_t i = 0;
+            while(i < docText.size() && curLine < line) { if(docText[i] == '\n') curLine++; i++; }
+            cursorOffset = i + (size_t)col;
+            if(cursorOffset > docText.size()) cursorOffset = docText.size();
+        }
+
+        // Immediately-enclosing `{`.
+        ptrdiff_t openerPos = -1; int depth = 0;
+        for(ptrdiff_t i = (ptrdiff_t)cursorOffset - 1; i >= 0; i--) {
+            char c = docText[(size_t)i];
+            if(c == '}') depth++;
+            else if(c == '{') { depth--; if(depth < 0) { openerPos = i; break; } }
+        }
+
+        string memberName;
+        if(openerPos >= 0) {
+            ptrdiff_t i = openerPos - 1;
+            while(i >= 0 && isspace((unsigned char)docText[(size_t)i])) i--;   // skip ws before '{'
+            if(i >= 0 && docText[(size_t)i] == '=' &&
+               !(i > 0 && (docText[(size_t)i-1] == '=' || docText[(size_t)i-1] == '!' ||
+                           docText[(size_t)i-1] == '<' || docText[(size_t)i-1] == '>'))) {  // a plain '=', not ==/!=/<=/>=
+                i--;
+                while(i >= 0 && isspace((unsigned char)docText[(size_t)i])) i--;   // skip ws before '='
+                ptrdiff_t nameEnd = i + 1;
+                while(i >= 0 && (isalnum((unsigned char)docText[(size_t)i]) || docText[(size_t)i] == '_')) i--;
+                memberName = docText.substr((size_t)(i + 1), (size_t)(nameEnd - (i + 1)));
+                transform(memberName.begin(), memberName.end(), memberName.begin(), ::tolower);
+            }
+        }
+
+        // Is `memberName` declared (on any class/object) with type `attributeList`?
+        bool isAttrListMember = false;
+        if(!memberName.empty()) {
+            auto memberIsAttrList = [&](const vector<typeMember*>& members) {
+                for(typeMember* m : members)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                        if(vd->name == memberName && vd->type.name == "attributelist") return true;
+                return false;
+            };
+            for(typeDef* t : languageService.objectTypes) {
+                if(auto* cd = dynamic_cast<classDef*>(t)) { if(memberIsAttrList(cd->members)) { isAttrListMember = true; break; } }
+            }
+            if(!isAttrListMember)
+                for(typeDef* t : languageService.objectInstances)
+                    if(auto* od = dynamic_cast<objectDef*>(t)) { if(memberIsAttrList(od->members)) { isAttrListMember = true; break; } }
+        }
+
+        if(isAttrListMember) {
+            json items = json::array();
+            auto addAttrInstance = [&](abstractObject* o, const string& typeName) {
+                if(typeName != "attribute") return;
+                json item = {{"label", o->dName()}, {"kind", 6},  // CompletionItemKind.Variable
+                             {"detail", "attribute"}};
+                if(!o->docComment.empty())
+                    item["documentation"] = {{"kind", "markdown"}, {"value", o->docComment}};
+                items.push_back(item);
+            };
+            for(typeDef* g : languageService.globals)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
+                    if(vd->isConst) continue;  // skip the NO_ATTRIBUTE sentinel (attribute-valued 0, not a set member)
+                    addAttrInstance(vd, vd->type.name);
+                }
+            for(typeDef* t : languageService.objectInstances)
+                if(auto* od = dynamic_cast<objectDef*>(t))
+                    addAttrInstance(od, od->objectClass ? od->objectClass->name : string());
+            if(!items.empty()) return items;
         }
     }
 
@@ -2282,6 +2814,43 @@ json LspServer::handleCompletion(const json& params) {
         return items;
     }
 
+    // ── Phase 3.9 (EXPERIMENTAL, enum-only): keyword syntax snippet + doc popup ──────────────
+    // As you type a prefix of `enum` at a bare-identifier position (dotted/string/member-body/
+    // bs-block contexts have all returned above), offer an `enum` completion whose documentation
+    // shows the syntax and whose snippet body scaffolds a skeleton. Self-contained POC — delete
+    // this whole block to back it out. If it proves useful, generalize to class/object/verb/…
+    {
+        int i = col - 1;
+        if(i >= (int)lineText.size()) i = (int)lineText.size() - 1;
+        int wEnd = i + 1;
+        while(i >= 0 && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i--;
+        int wStart = i + 1;
+        bool afterDot = (wStart - 1 >= 0 && lineText[wStart - 1] == '.');   // skip member access `x.en…`
+        string partial = (wStart < wEnd) ? lineText.substr(wStart, wEnd - wStart) : "";
+        string plow = partial; transform(plow.begin(), plow.end(), plow.begin(), ::tolower);
+        if(syntaxHintsEnabled && !afterDot && !plow.empty() && string("enum").rfind(plow, 0) == 0){   // plow is a prefix of "enum"
+            json item = {
+                {"label", "enum"},
+                {"kind", 14},                        // CompletionItemKind.Keyword
+                {"detail", "enum declaration"},
+                {"insertText", "enum ${1:Name} {\n\t${2:first} = 0,\n\t$0\n}"},
+                {"insertTextFormat", 2},             // 2 = Snippet
+                {"documentation", {{"kind", "markdown"}, {"value",
+                    "**enum** — a named set of integer constants.\n\n"
+                    "```beguile\n"
+                    "enum Name {\n"
+                    "    first = 0,   // explicit start value optional\n"
+                    "    second,      // auto-increments (1)\n"
+                    "    third,       // (2)\n"
+                    "}\n"
+                    "```\n\n"
+                    "The first value defaults to `0`; each later member auto-increments unless given an "
+                    "explicit `= N`. Reference members as `Name.member`."}}}
+            };
+            return json{{"isIncomplete", true}, {"items", json::array({item})}};
+        }
+    }
+
     // ── Phase 4: bare-identifier position — offer #using-imported type aliases ──
     // Scan the doc above the cursor for active `#using <path>` directives and surface
     // their bare alias members as completions. Runs alongside VS Code's word-based
@@ -2479,6 +3048,7 @@ json LspServer::handleDefinition(const json& params) {
         // namespace objects to locate the target object, then search its members.
         if(src.file.empty()) {
             objectDef* nsObj = nullptr;
+            classDef*  nsCls = nullptr;
             size_t dot = ownerLower.find('.');
             if(dot != string::npos){
                 string head = ownerLower.substr(0, dot);
@@ -2491,6 +3061,7 @@ json LspServer::handleDefinition(const json& params) {
                     string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
                     rest = (dot == string::npos) ? "" : rest.substr(dot + 1);
                     objectDef* next = nullptr;
+                    classDef*  nextCls = nullptr;
                     for(typeMember* m : nsObj->members){
                         auto* vd = dynamic_cast<variableDeclaration*>(m);
                         if(!vd || vd->name != seg) continue;
@@ -2503,8 +3074,17 @@ json LspServer::handleDefinition(const json& params) {
                             for(typeDef* g : languageService.globals)
                                 if(auto* od = dynamic_cast<objectDef*>(g))
                                     if(od->name == vd->type.name){ next = od; break; }
+                        // Alias may target a CLASS (e.g. `emitter auto asm = bglOpCodes`) — capture it.
+                        if(!next)
+                            for(string cand : { initName, vd->type.name }){
+                                if(cand.empty()) continue;
+                                transform(cand.begin(), cand.end(), cand.begin(), ::tolower);
+                                typeDef& td = languageService.getType(cand);
+                                if(auto* cd = dynamic_cast<classDef*>(&td)){ nextCls = cd; break; }
+                            }
                         break;
                     }
+                    if(nextCls){ nsCls = nextCls; nsObj = nullptr; break; }
                     nsObj = next;
                 }
             } else {
@@ -2529,6 +3109,21 @@ json LspServer::handleDefinition(const json& params) {
                     }
                     break;
                 }
+            }
+            // Owner resolved to a class (e.g. bgl.asm → bglOpCodes emitter class) — jump to the
+            // member's definition in the class hierarchy.
+            if(src.file.empty() && nsCls){
+                function<bool(classDef*)> findInCls = [&](classDef* c) -> bool {
+                    if(!c) return false;
+                    for(typeMember* m : c->members){
+                        if(m->name != lower) continue;
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m)){ src = vd->src; return true; }
+                        if(auto* fd = dynamic_cast<functionDef*>(m)){ src = fd->src; return true; }
+                    }
+                    for(classDef* base : c->baseClasses) if(findInCls(base)) return true;
+                    return false;
+                };
+                findInCls(nsCls);
             }
         }
     } else {

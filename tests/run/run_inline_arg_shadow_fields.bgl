@@ -1,0 +1,25 @@
+/*  Regression: an inline value aggregate `{ … }` passed to a routine whose PARAMS shadow the
+    aggregate class's field names. The runtime-field hoist emits `_bglanon.width = width`; before the
+    fix, that raw injection (a) poisoned the property-shadow rename guard and (b) went un-renamed, so
+    the local `width`/`height` were used AS the property number (`obj.(0)` / `obj.(100)`) → I6 "no
+    property" crash — which also broke the routine's own `scaled.width` reads. The hoist node is now
+    `cooked`: excluded from the rename-block scan and spillWord'd at emit (RHS local → `_l_width`,
+    `.width` property preserved). See bakeInlineObjectAggregate + i6RawNode::cooked. */
+// EXPECT_OUTPUT: got: 11 22
+#beguilerSettings { target = z5; }
+
+class mySize {
+    inline int width = 0;
+    inline int height = 0;
+    mySize operator = (mySize s){ self.width = s.width; self.height = s.height; return self; }
+}
+
+mySize bump(mySize spec){ spec.width = spec.width + 1; spec.height = spec.height + 2; return spec; }
+
+// params `width`/`height` deliberately shadow the mySize field names
+void draw(int width, int height){
+    mySize scaled = bump({width, height});          // bare aggregate; fields are the shadowing locals
+    print("got: "); print(scaled.width); print(" "); print(scaled.height); print("^");
+}
+
+void main(){ draw(10, 20); }

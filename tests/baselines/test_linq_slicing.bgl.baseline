@@ -4,7 +4,6 @@
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
 Constant _BGL_LINQ_SCRATCH_SIZE = 32;
-Constant _BGL_WORLD_BUFSIZE = 128;
 
     ! MAX_DEPTH = number of nesting levels: depth 0 is a top-level chain, depth 1 is a chain
     ! started inside a depth-0 chain lambda, and so on. 2 covers the common one-level nested
@@ -59,11 +58,6 @@ global _bglInitDone = 0;
 
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -535,6 +529,11 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 array g_nums table 10 20 30 40 50 5 $9084;
 array g_empty table 10;
 [main;

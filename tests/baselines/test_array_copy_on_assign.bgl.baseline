@@ -3,7 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 Array _bglFramePool --> 64;
 Global _bglFrameTop = 0;
  [ _bglFrameAlloc size r;
@@ -18,11 +17,6 @@ Global _bglFrameTop = 0;
  [ _bglFrameFree size;
     _bglFrameTop = _bglFrameTop - size;
  ];
- ! Allocate + initialize a local Beguile-declared word array of user-size `size`.
- ! Layout matches static tracked arrays: [header, data×size, length, magic].
- ! Returns a pointer at the header slot. Caller must free with _bglFrameFree(size+3)
- ! on every return path (driven by the function's cleanups list).
- ! Emitted only when the program includes <array>.
  [ _bglArrayLocalAlloc size r i;
     r = _bglFrameAlloc(size + 3);
     r-->0 = size + 2;
@@ -31,25 +25,22 @@ Global _bglFrameTop = 0;
     r-->(size + 2) = $9084;
     return r;
  ];
- ! Plain variant for programs that don't include <array>: untracked layout
- ! [header=size, data×size]. Matches the global-array emission gated on the
- ! same arrayInUse flag. Caller frees with _bglFrameFree(size+1).
  [ _bglArrayLocalAllocPlain size r i;
     r = _bglFrameAlloc(size + 1);
     r-->0 = size;
     for (i = 1: i <= size: i++) r-->i = 0;
     return r;
  ];
- ! Allocate a local Beguile-declared BYTE array (array<char>) of `nbytes` data
- ! bytes. Layout matches the standalone hybrid buffer (`Array X buffer N`): the
- ! capacity/length WORD lives at -->0, the data bytes start at ->WORDSIZE. The
- ! frame slice is sized in words: one length word plus ceil(nbytes/WORDSIZE)
- ! data words. Caller frees the same word count via _bglByteArrayLocalFree(nbytes).
+ [ _bglRawArrayLocalAlloc size r i;
+    r = _bglFrameAlloc(size);
+    for (i = 0: i < size: i++) r-->i = 0;
+    return r;
+ ];
  [ _bglByteArrayLocalAlloc nbytes words r i;
     words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
     r = _bglFrameAlloc(words);
     for (i = 0: i < words: i++) r-->i = 0;
-    r-->0 = nbytes;   ! capacity, mirroring `buffer N`'s length word
+    r-->0 = nbytes;
     return r;
  ];
  [ _bglByteArrayLocalFree nbytes;
@@ -62,11 +53,6 @@ global _bglInitDone = 0;
     dst-->(dst-->0) = $9084;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -328,6 +314,11 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 array src table 11 22 33 44 4 $9084;
 array dst table 10;
 [main keep picked;

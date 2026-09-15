@@ -1,0 +1,27 @@
+#beguilerSettings { target = eTarget.Glulx; }
+// Regression: forward `extend <obj>` order-independence. The `extend` targets `_gadget` BEFORE
+// `_gadget` is declared (and a consumer uses the added member before the real extend runs in source
+// order). The pre-scanner captures the forward extend and replays it after all declarations register
+// (drainDeferredObjectExtends), so the `emitter auto` namespace-redirect member resolves regardless
+// of source order — the same shape as core's platform `extend bgl { emitter auto asm = ... }`.
+// Guards project_prescan_forward_extend_order_dependency (bgl.asm / bgl.util.* include-order dep).
+
+emitter class gtxt : _bglObject {
+    emitter void bold { style bold }
+    emitter int  two  { 2 }
+}
+
+// Forward extend: `_gadget` is not declared until below → resolved via the pre-scan deferred replay.
+extend _gadget { emitter auto face = gtxt; }
+
+// Consumer appears BEFORE the real object/extend in source order → must still resolve _gadget.face
+// against the pre-scan stub the deferred replay registered.
+void useEarly() {
+    _gadget.face.bold;              // namespace-path void, statement
+    int n = _gadget.face.two;       // namespace-path typed, expression
+    print(n);
+}
+
+superposed _bglObject _gadget {}
+
+void main() { useEarly(); }

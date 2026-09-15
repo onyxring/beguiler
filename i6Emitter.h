@@ -154,6 +154,11 @@ class i6Emitter{
         // — at routine entry. Called from both emitFunction (top-level routines) and emitClass
         // (class member methods) with their respective body-indentation strings.
         void emitParamCopyIns(functionDef* fd, const string& indent);
+        // Emit framePool-backed allocation for each local array in `locals`, registering the matching
+        // free in `fn->cleanups`. Shared by top-level functions AND class/object member methods so a
+        // method-local `array<T>`/`rawArray<T>`/`array<char>` gets a real buffer, not a null slot.
+        void emitLocalArrayAllocs(functionDef* fn, const vector<variableDeclaration*>& locals,
+                                  statementBlock* body, const string& indent);
 
         void emit(vector<typeDef*>&);
         void generateI6(typeDef*);
@@ -220,6 +225,10 @@ class i6Emitter{
         void writeSymbolTable(const string& path);
         void writeTypesFile(const string& path);
         void writeDebugBundle(const string& path);
+        // Emit one `.bgldbg [types]` `routine <name>` block + its typed params/locals. `routineName`
+        // must match the .dbg identifier (top-level fn → its i6 name; object/class member method →
+        // `<owner>.<method>`, e.g. `_bglUi.waitforkey`). Shared so method locals get typed too.
+        void emitRoutineLocalTypes(std::ostream& f, functionDef* fd, const std::string& routineName);
 
 };
 

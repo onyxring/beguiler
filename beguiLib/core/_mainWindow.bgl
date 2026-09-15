@@ -1,0 +1,16 @@
+#once
+/*-----------------------------------------------------------------------------
+    _mainWindow 
+
+ -----------------------------------------------------------------------------*/
+extend _bglUi { alias mainWin = _bglMainWindow; } //bgl.ui.statusBar
+
+superposed _bglObject _bglMainWindow {
+    auto id  = {   // id  getter/setter 
+        int _id   = 0;                 
+        int operator() { return _id; }
+        void operator = (int newId){
+            _id=newId;
+        }
+    }
+}

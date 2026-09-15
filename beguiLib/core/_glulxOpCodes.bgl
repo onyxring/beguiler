@@ -31,7 +31,7 @@ enum eGlulxImageAlign{
     inlineCenter = 3,
     marginLeft = 4,
     marginRight = 5,
-    marginCenter = 6
+    //marginCenter = 6
 }
 
 bnum bGlulxWindowBorder : bGlulxWindowMethodFlags{
@@ -52,6 +52,18 @@ bnum bGlulxWindowScale : bGlulxWindowMethodFlags{
 enum eGlulxImageDimension{
     original = -1,
     scaled = -2
+}
+enum eGlulxEventType{
+    none = 0,
+    timer, 
+    charInput, 
+    lineInput, 
+    mouseInput, 
+    arrange,
+    redraw,
+    soundNotify, 
+    hyperlink,
+    volumeNotify, 
 }
 
 emitter class bglOpCodes {
@@ -175,17 +187,11 @@ emitter class bglOpCodes {
     emitter void accelfunc(int idx, int addr) { @accelfunc $idx $addr; }
     emitter void accelparam(int idx, int val) { @accelparam $idx $val; }
 
+
+
+
+
 /*
-Constant evtype_Arrange = 5;
-Constant evtype_CharInput = 2;
-Constant evtype_Hyperlink = 8;
-Constant evtype_LineInput = 3;
-Constant evtype_MouseInput = 4;
-Constant evtype_None = 0;
-Constant evtype_Redraw = 6;
-Constant evtype_SoundNotify = 7;
-Constant evtype_Timer = 1;
-Constant evtype_VolumeNotify = 9;
 Constant filemode_Read = 2;
 Constant filemode_ReadWrite = 3;
 Constant filemode_Write = 1;
@@ -580,8 +586,8 @@ Constant wintype_TextGrid = 4;
     // text-buffer window — so both are `var`: this keeps the low-level opcode from depending on the
     // blorb-gated `eAssets`/`eGlulxImageAlign` types (which would break a non-blorb Glulx build) and
     // lets every caller pass its own type. Semantics live in the facades (printRules.img, window draw).
-    emitter int imageDrawScaled(int a, var b, var c, int d, int e, int f){
-        __glkHook(226, $a, $b, $c, $d, $e, $f)
+    emitter int imageDrawScaled(int win, var img, var alignOrX, int y, int width, int height){
+        __glkHook(226, $win, $img, $alignOrX, $y, $width, $height)
     }
 
     emitter void windowFlowBreak(int a){
@@ -812,6 +818,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(4355, $a, $b)
     }
 }
+
 
 extern var sp;
 //a simple helper: rather than specify each glk routine individually, we declare only one. This is referenced by emitters, eliminating the majority of unused routines generated.

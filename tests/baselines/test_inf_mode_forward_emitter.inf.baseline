@@ -2,7 +2,6 @@
 !% -E1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 
     Constant story    = "";
     Constant headline = "";
@@ -16,11 +15,6 @@ global _bglInitDone = 0;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -282,6 +276,11 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 
 ! test_inf_mode_forward_emitter.inf — emitter functions declared inside a `#bgl{}`
 ! island must be reachable as forward calls from earlier members. This requires

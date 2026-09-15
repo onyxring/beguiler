@@ -888,15 +888,95 @@ string bglParser::inferSubscriptElementType(classDef* cls){
 // Check if a variable is declared const (local, global, or class member).
 
 // ===============================================================================
+// Candidate gathering + brace-argument type inference (for bare `foo({ … })`)
+// ===============================================================================
+// Collect global functionDefs named `name` (collection only, mirrors resolveGlobalCall's filter).
+vector<functionDef*> bglParser::collectGlobalCandidates(const string& name){
+    string lower = name;
+    transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    vector<functionDef*> out;
+    for(typeDef* g : languageService.globals)
+        if(auto* fd = dynamic_cast<functionDef*>(g))
+            if(fd->name == lower && !fd->isPrePassStub) out.push_back(fd);
+    return out;
+}
+// Collect method functionDefs named `methodName` reachable from a receiver of type `typeName`
+// (class hierarchy + objectDef own members + its class hierarchy). Mirrors resolveMethod's walk.
+vector<functionDef*> bglParser::collectMethodCandidates(const string& typeName, const string& methodName){
+    string lower = methodName;
+    transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    vector<functionDef*> out;
+    set<functionDef*> seen;
+    auto add = [&](functionDef* fd){
+        if(fd->name == lower && !fd->isPrePassStub && !seen.count(fd)){ seen.insert(fd); out.push_back(fd); }
+    };
+    std::function<void(classDef*)> walk = [&](classDef* c){
+        if(!c) return;
+        for(typeMember* m : c->members) if(auto* fd = dynamic_cast<functionDef*>(m)) add(fd);
+        for(classDef* base : c->baseClasses) walk(base);
+    };
+    walk(getDispatchClass(typeName));
+    if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(typeName))){
+        for(typeMember* m : od->members) if(auto* fd = dynamic_cast<functionDef*>(m)) add(fd);
+        walk(od->objectClass);
+    }
+    return out;
+}
+// Compute the per-position / per-name agreed object-backed class across candidate callees. A slot
+// is set only when EVERY candidate that reaches it names the same object-backed class; any
+// disagreement (or a non-object-backed / out-of-range param) leaves it nullptr → a bare `{` there
+// errors and the author must write `Type{ … }`.
+bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& candidates){
+    BraceArgHints h;
+    size_t maxP = 0;
+    for(auto* fd : candidates) maxP = std::max(maxP, fd->params.size());
+    h.positional.assign(maxP, nullptr);
+    vector<char> posSet(maxP, 0), posConflict(maxP, 0);
+    map<string, classDef*> namedSeen;
+    set<string> namedConflict;
+    // A class participates in `Type{ … }` aggregate construction if it's object-backed OR it's a
+    // value class declaring `inline` members (positional slots) — both bake through
+    // bakeInlineObjectAggregate. Value/collection types with `operator=(initializerList)` use the
+    // braced-LIST path instead and are intentionally excluded here.
+    std::function<bool(classDef*)> hasInlineMember = [&](classDef* k) -> bool {
+        if(!k) return false;
+        for(typeMember* m : k->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                if(vd->isInline) return true;
+        for(classDef* b : k->baseClasses) if(hasInlineMember(b)) return true;
+        return false;
+    };
+    auto inlineConstructible = [&](classDef* c){ return c && (inheritsFromObject(c) || hasInlineMember(c)); };
+    for(auto* fd : candidates){
+        for(size_t i = 0; i < fd->params.size(); i++){
+            classDef* cls = getDispatchClass(fd->params[i]->type.name);
+            classDef* obj = inlineConstructible(cls) ? cls : nullptr;
+            if(!posSet[i]){ h.positional[i] = obj; posSet[i] = 1; }
+            else if(h.positional[i] != obj) posConflict[i] = 1;
+            const string& pn = fd->params[i]->name;   // canonical (lowercased)
+            auto it = namedSeen.find(pn);
+            if(it == namedSeen.end()) namedSeen[pn] = obj;
+            else if(it->second != obj) namedConflict.insert(pn);
+        }
+    }
+    for(size_t i = 0; i < maxP; i++) if(posConflict[i]) h.positional[i] = nullptr;
+    for(auto& [k, v] : namedSeen) if(v != nullptr && !namedConflict.count(k)) h.named[k] = v;
+    return h;
+}
+
+// ===============================================================================
 // Argument parsing and global-call binding
 // ===============================================================================
-bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statementBlock* body){
+bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statementBlock* body, const BraceArgHints& braceHints){
     ParsedArgList result;
     // Function arguments are a fresh expression context — clear the outer expected-type so it
-    // doesn't bleed into arg resolution. (Per-arg expected types from the callee's signature
-    // would be ideal but require flipping overload-resolution order; deferred for now.)
+    // doesn't bleed into arg resolution. A BARE inline-object aggregate `{ … }` in argument
+    // position IS inferred, though: `braceHints` (computed up-front from the callee's candidate
+    // signatures) supplies the object-backed class per position/name so the aggregate bakes against
+    // the parameter type (the 4th inference slot; see §6.2.1).
     string savedExpectedArgs = currentExpectedType;
     currentExpectedType = "";
+    size_t posIdx = 0;   // count of POSITIONAL args seen so far (named args don't advance it)
     token firstArgTok = file.getToken();
     while(firstArgTok.isNot(token::parenClose)){
         // Named argument detection: identifier followed by ':'
@@ -905,6 +985,40 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             namedArgName = firstArgTok.value;
             file.getToken(); // consume ':'
             firstArgTok = file.getToken(); // read the value expression's first token
+        }
+        // Bare inline-object aggregate argument: `foo({ … })` — infer the object type from the
+        // parameter. The '{' is already consumed (it's firstArgTok), so bake directly.
+        if(firstArgTok.is(token::braceOpen)){
+            classDef* cls = nullptr;
+            if(!namedArgName.empty()){
+                string nm = namedArgName;
+                transform(nm.begin(), nm.end(), nm.begin(), ::tolower);
+                auto it = braceHints.named.find(nm);
+                if(it != braceHints.named.end()) cls = it->second;
+            } else if(posIdx < braceHints.positional.size()){
+                cls = braceHints.positional[posIdx];
+            }
+            if(cls == nullptr){
+                string where = namedArgName.empty() ? format("argument {0}", posIdx + 1)
+                                                    : format("argument '{0}'", namedArgName);
+                parsingError(format("cannot infer the type of the '{{ … }}' {0}: the parameter is not "
+                                    "an object-backed class, is out of range, or overloads disagree here "
+                                    "— write '<Type>{{ … }}' to name the type explicitly", where));
+            }
+            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            bakeInlineObjectAggregate(cls, cls->name, anonName, func, body);  // consumes through '}'
+            expression* arg = new expression();
+            arg->tokens.push_back(anonName);
+            arg->resolvedType = cls->name;
+            token sep = file.getToken();   // ',' or ')'
+            arg->terminator = sep.value;
+            result.args.push_back(arg);
+            result.namedArgNames.push_back(namedArgName);
+            while(result.interpSegmentsPerArg.size() < result.args.size()) result.interpSegmentsPerArg.push_back({});
+            if(namedArgName.empty()) posIdx++;
+            if(sep.is(token::parenClose)){ currentExpectedType = savedExpectedArgs; return result; }
+            firstArgTok = file.getToken();
+            continue;
         }
         if(firstArgTok.is("$") && file.peekToken(1).is(eTokenType::quote)){
             // Interpolated string literal argument: func($"...")
@@ -918,12 +1032,14 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             while(result.interpSegmentsPerArg.size() < result.args.size() - 1)
                 result.interpSegmentsPerArg.push_back({});
             result.interpSegmentsPerArg.push_back(segs);
+            if(namedArgName.empty()) posIdx++;
             if(sep.is(token::parenClose)) break;
             firstArgTok = file.getToken();
         } else {
             expression* arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body);
             result.args.push_back(arg);
             result.namedArgNames.push_back(namedArgName);
+            if(namedArgName.empty()) posIdx++;
             if(arg->terminator == token::parenClose) { currentExpectedType = savedExpectedArgs; return result; }
             firstArgTok = file.getToken();
         }

@@ -345,6 +345,7 @@ bool beguiler::go(int argc, char* argv[]) {
     if(beguilerSettings.framePoolSize == -1) beguilerSettings.framePoolSize = 64;
     if(beguilerSettings.linqScratchSize == -1) beguilerSettings.linqScratchSize = 32;
     if(beguilerSettings.worldBufSize    == -1) beguilerSettings.worldBufSize    = 128;
+    if(beguilerSettings.forInScratchSize == -1) beguilerSettings.forInScratchSize = 31;
 
     // IFID: may already be set from user's #beguilerSettings or from _blorbAssets.bgl.
     // If still empty and blorb is enabled, generate deterministically from source identity

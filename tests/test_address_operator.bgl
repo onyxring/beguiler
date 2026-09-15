@@ -1,0 +1,38 @@
+/*
+    test_address_operator.bgl
+    Tests: unary address-of `&x` (§10.6.2) — exact sugar for the `(int)x` cast.
+      • `&arr` yields the array's base address, identical to `(int)arr`.
+      • `&arr + n` is the canonical "address into a buffer" form (clearer than `((int)arr) + n`).
+      • Prefix `&` does not disturb binary bitwise-`&` or logical `&&`.
+    The baseline pins that `&x` lowers to exactly what `(int)x` does.
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+array<int> _buf[2];
+
+void main() {
+    // Address-of an array == its base address == the (int) cast.
+    int viaAmp  = &_buf;
+    int viaCast = (int)_buf;
+
+    // Canonical buffer-address arithmetic (what motivated the operator).
+    int slot0 = &_buf + bgl.wordsize;
+    int slot1 = &_buf + 2 * bgl.wordsize;
+
+    // Binary bitwise-and and logical-and must be untouched by the prefix form.
+    int a = 12;
+    int b = 10;
+    int band  = a & b;
+    bool land = (a > 0) && (b > 0);
+
+    print(viaAmp);
+    print(viaCast);
+    print(slot0);
+    print(slot1);
+    print(band);
+    if (land) { print(1); }
+}

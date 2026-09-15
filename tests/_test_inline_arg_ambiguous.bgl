@@ -1,0 +1,9 @@
+/* A bare `{ … }` argument cannot be inferred when overloads disagree on the object type
+   at that position — the compiler must ask for an explicit Type{ … }. (§6.2.1) */
+// EXPECT_ERROR: cannot infer the type of the
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class point : object { inline int x = 0; inline int y = 0; }
+class other : object { inline int a = 0; }
+void f(point p){ }
+void f(other o){ }
+void main(){ f({1, 2}); }

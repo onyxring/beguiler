@@ -1,0 +1,17 @@
+#once
+
+
+
+array<int> _glkTmpSizeBuf[2];
+
+bglSize _bglGetImageInfo(eAssets imgId){
+    int ptrWidth = &_glkTmpSizeBuf + bgl.wordsize;  //advance past the length
+    int ptrHeight = ptrWidth + bgl.wordsize; 
+    bglSize retval;
+
+    bgl.asm.imageGetInfo((int)imgId, ptrWidth, ptrHeight);
+
+    retval.width  = _glkTmpSizeBuf[0];
+    retval.height = _glkTmpSizeBuf[1];
+    return retval;
+}

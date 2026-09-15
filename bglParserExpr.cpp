@@ -408,30 +408,37 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         if(t == "charliteral") return "char";
         return "";
     };
-    auto opMatches = [&](typeMember* m, bool wantStatic, bool allowWiden){
+    // widenMode: 0 = exact only, 1 = exact literal-base (paramT == literalBase(rhsType)),
+    //            2 = convertible (isTypeCompatible(literalBase, paramT)). Modes are tried in
+    // order so a MORE-SPECIFIC overload wins: for a `intLiteral` RHS, `operator*(int)` (base-exact,
+    // mode 1) beats `operator*(float)` (convertible only because float publishes an int→float path,
+    // mode 2). Without this ordering the first-declared of two widen candidates won, which raw-
+    // substituted the int into the float operator (denormal). Exact (mode 0) still always wins.
+    auto opMatches = [&](typeMember* m, bool wantStatic, int widenMode){
         auto* opFn = dynamic_cast<functionDef*>(m);
         if(!opFn || opFn->name != opName) return false;
         if(opFn->isStatic != wantStatic) return false;
-        // Pre-scan stubs have no params — match by name only
-        if(opFn->isPrePassStub) return true;
+        // Pre-scan stubs have no params — match by name only (exact phase, as before).
+        if(opFn->isPrePassStub) return widenMode == 0;
         size_t rhsIdx = opFn->isStatic ? 1 : 0;   // static takes (lhs, rhs); instance takes (rhs)
         if(opFn->params.size() <= rhsIdx) return false;
         const string& paramT = opFn->params[rhsIdx]->type.name;
-        if(rhsType.empty() || rhsType == "var" || paramT == rhsType || paramT == "var") return true;
-        if(!allowWiden) return false;
+        bool exact = (rhsType.empty() || rhsType == "var" || paramT == rhsType || paramT == "var");
+        if(widenMode == 0) return exact;
+        if(exact) return false;                          // exact already claimed in mode 0
         string base = literalBase(rhsType);
-        return !base.empty() && (paramT == base || isTypeCompatible(base, paramT));
+        if(base.empty()) return false;
+        if(widenMode == 1) return paramT == base;        // prefer the exact literal-base overload
+        return paramT != base && isTypeCompatible(base, paramT);   // mode 2: convertible only
     };
-    // Exact passes first, and both of them, before any widening is considered — so every
-    // resolution that already worked resolves identically. Widening is a fallback for the
-    // case that previously produced "No operator ... accepting 'intLiteral'", never a
-    // competitor to an exact match. Within each phase, non-static wins: an instance operator
-    // inlines, a static costs a routine call.
-    for(bool widen : {false, true}){
+    // Exact first, then base-exact widen, then convertible widen — so every resolution that already
+    // worked resolves identically (exact always wins), and among widen candidates the more specific
+    // one wins. Within each phase, non-static wins: an instance operator inlines, a static costs a call.
+    for(int widenMode : {0, 1, 2}){
         if(matchedOp != nullptr) break;
         for(bool wantStatic : {false, true}){
             if(matchedOp != nullptr) break;
-            if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* mm){ return opMatches(mm, wantStatic, widen); }))
+            if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* mm){ return opMatches(mm, wantStatic, widenMode); }))
                 matchedOp = dynamic_cast<functionDef*>(m);
         }
     }
@@ -671,8 +678,18 @@ void bglParser::parseExprNullCoalescing(expression* expr, const vector<string>& 
 // (caller should 'continue' to skip getNext at loop bottom).
 bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, bool isSelfCall,
                                        functionDef* func, statementBlock* body){
+    // Compute brace-argument type hints so a bare `foo({ … })` infers its object type from the
+    // callee's parameter (see parseCallArgList / §6.2.1). Self-calls resolve against the enclosing
+    // object/class; plain calls against global functions of that name.
+    BraceArgHints braceHints;
+    if(isSelfCall){
+        string recvType = currentObject ? currentObject->name : (currentClass ? currentClass->name : string());
+        if(!recvType.empty()) braceHints = braceArgHints(collectMethodCandidates(recvType, callName));
+    } else {
+        braceHints = braceArgHints(collectGlobalCandidates(callName));
+    }
     // Parse args as proper expressions (shared with statement-level path)
-    ParsedArgList pal = parseCallArgList(func, body);
+    ParsedArgList pal = parseCallArgList(func, body, braceHints);
     // Resolve and validate
     string retType;
     if(isSelfCall){
@@ -1182,6 +1199,28 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 expr->tokens.push_back(cur.value);
             }
         }
+        // ─── FLOAT LITERAL: 1.0, .3, (with a leading '-' → negative) ───────
+        else if(cur.is(eTokenType::floatLiteral)){
+            // Emit as I6's Glulx float constant `$+<decimal>` / `$-<decimal>` — the I6 compiler
+            // computes the IEEE-754 single-precision bits. A leading unary '-' (sitting as the sole
+            // token so far) selects `$-` and is consumed so it isn't repeated. Glulx-only: the
+            // Z-machine has no float opcodes, so `float` isn't even a type there.
+            if(definedSymbols.find("target_glulx") == definedSymbols.end())
+                parsingError(format("float literal '{0}' requires a Glulx target — the Z-machine has no floating point.", cur.value));
+            bool isNegated = (expr->tokens.size() == 1 && expr->tokens[0] == "-");
+            if(isNegated) expr->tokens.pop_back();
+            string i6lit = (isNegated ? "$-" : "$+") + cur.value;
+            if(!castType.empty()){
+                // Explicit cast on a float literal, e.g. `(int)1.5`.
+                string newText = applyCastConversion(i6lit, "float", castType);
+                expr->tokens.push_back(newText);
+                expr->resolvedType = castType;
+                castType = "";
+            } else {
+                expr->tokens.push_back(i6lit);
+                if(expr->resolvedType.empty()) expr->resolvedType = "float";
+            }
+        }
         else if(cur.isString()){
             if(expr->resolvedType.empty()) expr->resolvedType = "stringliteral";
             expr->tokens.push_back(cur.value);
@@ -1270,6 +1309,17 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 if(tryConsumeNamespacedEnumValue(cur, emission, enumType)){
                     if(expr->resolvedType.empty()) expr->resolvedType = enumType;
                     expr->tokens.push_back(emission);
+                    // Consume a pending cast on the enum VALUE — `(int)Enum.member` (also the
+                    // namespaced `bgl.glulx.Enum.member` form). Per spec §4.9.1 enum→int needs an
+                    // explicit cast; enum values inline as integer literals, so this is a pure retype
+                    // (applyCastConversion leaves the literal text unchanged) that sets the operand's
+                    // type to the cast target — so `x == (int)Enum.member` resolves as int==int and
+                    // `int y = (int)Enum.member` assigns. Without it the cast was silently dropped.
+                    if(!castType.empty()){
+                        expr->tokens.back() = applyCastConversion(expr->tokens.back(), expr->resolvedType, castType);
+                        expr->resolvedType = castType;
+                        castType = "";
+                    }
                     cur = getNext();  // advance past the consumed value — the loop's normal getNext() is skipped by our continue
                     continue;
                 }
@@ -1378,7 +1428,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     if(file.peekToken().is(token::parenOpen)){
                         // Method call: arr[0].method(args) — resolve via bindMethodCall
                         file.getToken(); // consume '('
-                        ParsedArgList pal = parseCallArgList(func, body);
+                        ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(elemType, member.value)));
                         vector<string> namedArgNames = pal.namedArgNames;
                         vector<vector<interpolatedSegment>> interpSegs = pal.interpSegmentsPerArg;
                         functionDef* method = bindMethodCall(elemType, subscriptText, member.value,
@@ -1799,8 +1849,9 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(opaqueRecv && !looseIdentifierMode)
                             parsingError(format("Type '{0}' has no methods", objType));
 
-                        // parse argument list (handles named args via name: value syntax)
-                        ParsedArgList pal = parseCallArgList(func, body);
+                        // parse argument list (handles named args via name: value syntax; and a bare
+                        // `{ … }` arg inferred from the method's parameter type — §6.2.1)
+                        ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(objType, methName)));
                         vector<expression*>& callArgs = pal.args;
                         functionDef* method = nullptr;
                         if(opaqueRecv){
@@ -2169,6 +2220,19 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             } else {
                                 expr->tokens.push_back(member.value);
                             }
+                            // Consume a pending cast on a dotted enum VALUE — `(int)E.member`. Per spec
+                            // §4.9.1 enum→int needs an explicit cast; enum values inline as integer
+                            // literals, so this is a pure retype (applyCastConversion leaves the literal
+                            // text unchanged) that sets the operand's type to the cast target, so e.g.
+                            // `x == (int)E.member` resolves as int==int. Without it the cast was silently
+                            // dropped and the comparison failed ("No operator '==' on type 'int'
+                            // accepting '<enum>'"). Mirrors the property-access cast handling below and the
+                            // already-working cast on an enum *variable*.
+                            if(!castType.empty()){
+                                expr->tokens.back() = applyCastConversion(expr->tokens.back(), expr->resolvedType, castType);
+                                expr->resolvedType = castType;
+                                castType = "";
+                            }
                         } else if(isAliasMember) {
                             continue;  // re-enter loop with cur set to alias type
                         } else if(!isStaticAccess && !isValueEmitterAccess) {
@@ -2494,6 +2558,13 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 }
             } else if(cur.value == "!"){
                 parseExprPrefixNot(expr, getNext(), prefetched, func, body);
+            } else if(cur.value == "&"){
+                // Unary address-of: `&x` ≡ `(int)x`. In prefix position (no left operand — a binary
+                // `&` can never start an operand) the ampersand yields x's raw machine address, the
+                // same value the int cast produces, but reads as "address of". Pure sugar: set the
+                // int cast and let the operand be processed with it (see §14 address-of). No pointer
+                // type, no element math — for an array/object/buffer x that's its base address.
+                castType = "int";
             } else {
                 emitRawBinaryOp(cur.value);
             }
@@ -2868,10 +2939,11 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 else if(key == "informname")    strVal = beguilerSettings.informName;
                 else if(key == "release")     { isInt = true; intVal = beguilerSettings.release; }
                 else if(key == "serial")       strVal = beguilerSettings.serial;
-                else if(key == "framepoolsize" || key == "linqscratchsize" || key == "worldbufsize"){
+                else if(key == "framepoolsize" || key == "linqscratchsize" || key == "worldbufsize" || key == "forinscratchsize"){
                     isInt = true;
                     int v = (key == "framepoolsize") ? beguilerSettings.framePoolSize
                           : (key == "linqscratchsize") ? beguilerSettings.linqScratchSize
+                          : (key == "forinscratchsize") ? beguilerSettings.forInScratchSize
                           : beguilerSettings.worldBufSize;
                     if(v < 0){
                         // applySchemaDefaults() runs after parsing, so during source parse the

@@ -203,10 +203,6 @@ class returnStatement:public statement{
 //the declaration of a variable.  This may be a global variable, an object member, or a local variable within a function.
 class variableDeclaration:public typeMember, public statement, public typeDef, public typeInstance{
     public:
-        // On a `property` declaration written in the typed form (`additive property rawArray<T> p;`):
-        // the type every member bound to this property must use. Empty for the untyped form.
-        std::string declaredMemberType;
-    public:
         typeDef type;
         bool isConst = false;
         // isConst: for globals, emits as I6 Constant; for class members, prevents reassignment (property still has runtime storage)
@@ -392,6 +388,13 @@ class forInStatement : public statement {
 class i6RawNode : public typeDef, public statement, public typeMember {
     public:
         string text;
+        // When true, `text` is emitter-generated I6 that references routine locals/params by their
+        // Beguile names and MUST participate in the property-shadow rename + spill machinery (unlike a
+        // user `#i6{}` block, which is verbatim). The emitter runs spillWord() over it at emit time
+        // (renaming a shadowing local's value-context uses while leaving `.property` accesses intact),
+        // and buildLocalRenameMap's raw-I6 "don't rename" scan skips it. Set on the runtime-field-init
+        // injections hoisted out of an inline value aggregate (bakeInlineObjectAggregate, §6.2.1).
+        bool cooked = false;
         // If non-empty, the node contains a sequence of raw I6 text fragments interleaved with
         // Beguile statements (each entry is either a string fragment or a pointer to a parsed
         // statement). Used by `#i6{}` blocks that contain `#bgl{}` regions at global scope —
@@ -542,6 +545,7 @@ class beguilerSettingsDef : public typeDef {
         int framePoolSize = -1;        // Z-machine frame pool slot count (-1 = unset; default 64 from schema)
         int linqScratchSize = -1;      // LINQ chain scratch buffer capacity per buffer (-1 = unset; default 32 from schema)
         int worldBufSize    = -1;      // bglWorld scratch buffer capacity (-1 = unset; default 128 from schema)
+        int forInScratchSize = -1;     // literal-list for-in scratch capacity, max elements (-1 = unset; default 31 from schema)
         optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)
         bool   autoInitialize = true;  // false → BLR does NOT wrap main (replace main / [main; bglInit; _oldmain]).
                                        // Set false when another extension (e.g. orLibrary) already replaces main;

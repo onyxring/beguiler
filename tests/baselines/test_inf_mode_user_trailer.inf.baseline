@@ -1,18 +1,12 @@
 !% -v5
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -274,6 +268,11 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 ! test_inf_mode_user_trailer.inf — Slice 5b: trailer extraction. The first `end;`
 ! directive in the trailing raw text and everything after it is hoisted to the very
 ! bottom of the emitted output, after #emitlast blocks. This lets I6's "ignore

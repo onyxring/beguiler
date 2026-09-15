@@ -8,11 +8,16 @@
 // backing routines are `superposed` (emitted only when a call site names them).
 // A Glulx game that never touches float pays nothing.
 //
-// Storage is a single native word, same width as int; the operators reinterpret
-// the bits as IEEE 754 single. Conversion to/from int is explicit only —
-// (float)i and (int)f — using @numtof / @ftonumz. There is no implicit promotion;
-// mixing a bare intLiteral with a float requires the cast (this catches
-// `float x = 5;` errors, where the bit pattern of int 5 is a denormal ≈ 7e-45).
+// Storage is a single native word, same width as int; the operators reinterpret the bits as
+// IEEE 754 single. int → float assignment is value-preserving via @numtof: `float x = 5;` (and
+// `x = n;`) gives 5.0. That is done in the LIBRARY, not the compiler — the float class publishes
+// `operator=(int)` below, which the assignment matcher selects for an int / int-literal RHS and
+// lowers to @numtof. The int→float CONVERSION operator (`(float)i`) stays `explicit` on purpose:
+// a non-explicit one would make `isTypeCompatible(int,float)` true and let a raw bit-copy slip
+// through (int 5's bit pattern is a denormal ≈ 7e-45) — the explicit form + `operator=(int)` keeps
+// every int→float path routed through @numtof. float → int stays EXPLICIT too (`(int)f`, truncating
+// via @ftonumz). Float LITERALS are written directly (`1.0`, `.3`, `-1.2`); the compiler lowers
+// them to Glulx `$+`/`$-` constants.
 //
 // The Glulx float opcodes (@fadd, @jflt, …) are statement/branch-form (they need
 // a target slot or a branch), so each is wrapped in a `superposed` routine that
@@ -23,6 +28,13 @@
 
 extern emitter class float : _bglObject {
     emitter int operator = (float v){ $target = $v; }
+    // int → float assignment (`x = n;` for an int var → exact match here) routed through @numtof
+    // so the stored bits are the float VALUE (5 → 5.0), never a raw bit-copy. Int LITERALS carry
+    // their own pseudo-types (`intliteral` / `negativeintliteral`) that aren't isTypeCompatible with
+    // `int`, so `float x = 5;` / `float x = -3;` need their own exact overloads below.
+    emitter int operator = (int v){ $target = _bglFloatNumtof($v); }
+    emitter int operator = (intLiteral v){ $target = _bglFloatNumtof($v); }
+    emitter int operator = (negativeIntLiteral v){ $target = _bglFloatNumtof($v); }
 
     // Arithmetic — call the standalone routines directly (these are emitters and
     // can't nest-call the _bglFloat facade, so they target the routines below).
@@ -64,20 +76,55 @@ extern emitter class float : _bglObject {
     emitter float operator /= (float v){ $val = $val / $v }
     emitter float operator %= (float v){ $val = $val % $v }
 
+    // Mixed float⊙int operators (float LHS, int RHS): promote the int operand to float via
+    // @numtof, then run the float op. This is the established pattern — a type publishes an
+    // operator per operand type it accepts (cf. int's own operators). Result stays float.
+    emitter float operator + (int v){ _bglFloatFadd($val, _bglFloatNumtof($v)) }
+    emitter float operator - (int v){ _bglFloatFsub($val, _bglFloatNumtof($v)) }
+    emitter float operator * (int v){ _bglFloatFmul($val, _bglFloatNumtof($v)) }
+    emitter float operator / (int v){ _bglFloatFdiv($val, _bglFloatNumtof($v)) }
+    emitter float operator % (int v){ _bglFloatFmod($val, _bglFloatNumtof($v)) }
+    emitter bool  operator == (int v){ $val == _bglFloatNumtof($v) }
+    emitter bool  operator != (int v){ $val ~= _bglFloatNumtof($v) }
+    emitter bool  operator <  (int v){ _bglFloatLt($val, _bglFloatNumtof($v)) }
+    emitter bool  operator <= (int v){ _bglFloatLe($val, _bglFloatNumtof($v)) }
+    emitter bool  operator >  (int v){ _bglFloatGt($val, _bglFloatNumtof($v)) }
+    emitter bool  operator >= (int v){ _bglFloatGe($val, _bglFloatNumtof($v)) }
+    emitter float operator += (int v){ $val = $val + _bglFloatNumtof($v) }
+    emitter float operator -= (int v){ $val = $val - _bglFloatNumtof($v) }
+    emitter float operator *= (int v){ $val = $val * _bglFloatNumtof($v) }
+    emitter float operator /= (int v){ $val = $val / _bglFloatNumtof($v) }
+
     // Explicit cast: (int)f — truncate toward zero via @ftonumz. Use the raw
     // opcode bgl.asm.ftonumn() if nearest-even rounding is wanted instead.
     explicit emitter int operator(){ _bglFloatFtonumz($val) }
 }
 
-// Reverse cast: (float)i — @numtof on a regular int variable.
+// Reverse cast: (float)i — @numtof on a regular int variable. `explicit` (see the header note):
+// int→float goes through `operator=(int)` for assignment and this cast for expressions; keeping
+// it explicit stops a raw int→float bit-copy from ever type-checking as "compatible".
 extend extern class int {
     explicit emitter float operator(){ _bglFloatNumtof($val) }
+
+    // Mixed int⊙float operators (int LHS, float RHS): promote self to float via @numtof, then
+    // run the float op. Result is float. Same pattern as float's int-accepting operators above.
+    emitter float operator + (float v){ _bglFloatFadd(_bglFloatNumtof($val), $v) }
+    emitter float operator - (float v){ _bglFloatFsub(_bglFloatNumtof($val), $v) }
+    emitter float operator * (float v){ _bglFloatFmul(_bglFloatNumtof($val), $v) }
+    emitter float operator / (float v){ _bglFloatFdiv(_bglFloatNumtof($val), $v) }
+    emitter float operator % (float v){ _bglFloatFmod(_bglFloatNumtof($val), $v) }
+    emitter bool  operator == (float v){ _bglFloatNumtof($val) == $v }
+    emitter bool  operator != (float v){ _bglFloatNumtof($val) ~= $v }
+    emitter bool  operator <  (float v){ _bglFloatLt(_bglFloatNumtof($val), $v) }
+    emitter bool  operator <= (float v){ _bglFloatLe(_bglFloatNumtof($val), $v) }
+    emitter bool  operator >  (float v){ _bglFloatGt(_bglFloatNumtof($val), $v) }
+    emitter bool  operator >= (float v){ _bglFloatGe(_bglFloatNumtof($val), $v) }
 }
-// Literal cast: (float)5 — explicit-only so `float x = 5;` errors out.
+// Literal cast: (float)5 — explicit for the same reason.
 extend extern class intLiteral {
     explicit emitter float operator(){ _bglFloatNumtof($val) }
 }
-// Negative literal: (float)-3 — explicit cast required.
+// Negative literal: (float)-3 — explicit for the same reason.
 extend extern class negativeIntLiteral {
     explicit emitter float operator(){ _bglFloatNumtof($val) }
 }

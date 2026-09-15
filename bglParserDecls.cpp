@@ -208,6 +208,14 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     // APIs (orArray's single-array form) expect. (NB: a rawArray *parameter* is a different thing —
     // a data-only `-->` view of an external buffer, subscript `-->i`; see §4.7.1.)
     if((string)dataType.value == "rawarray") arrDecl.isRaw = true;
+    // A rawArray is a bare I6 word block with NO housekeeping (no count/length/magic) in EVERY
+    // form (spec §4.9.1) — it exists only to hand a raw memory block to I6 code (e.g. glk_ records).
+    // Carry the full `rawarray<T>` type so the subscript dispatches to rawArray's flat operator[]
+    // (`$val-->$i`, indexing from word 0, no count slot) and size()/length()/for-in are rejected —
+    // matching the parameter form. (Members are unaffected: they use the property `.&prop-->n`
+    // mechanism, already flat.) type is a per-node value copy, so this doesn't touch the shared type.
+    if(arrDecl.isRaw && elementType != "char")
+        arrDecl.type.name = "rawarray<" + elementType + ">";
 
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
@@ -228,11 +236,23 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         // Check for string initializer: array<char> name = "text";
         token firstVal = file.peekToken(1);
         if(firstVal.is(eTokenType::quote) || firstVal.is(eTokenType::rawQuote)){
-            if(elementType != "char" && elementType != "charliteral")
-                parsingError("String initializer is only valid for array<char>");
-            token strTok = file.getToken();
-            arrDecl.stringInitializer = strTok.value;
-            file.getToken(token::endStatement);
+            if(elementType == "char" || elementType == "charliteral"){
+                token strTok = file.getToken();
+                arrDecl.stringInitializer = strTok.value;
+                file.getToken(token::endStatement);
+            } else if(elementType.empty() || elementType == "string" || elementType == "stringliteral" || elementType == "var"){
+                // One-element shorthand: `array<var>/<string> name = "s"` ≡ `= {"s"}` — a string is a
+                // valid var/string element (mirrors `array<int> x = 3` ≡ {3}). Only array<char> fills
+                // a char buffer from a string; every other element type takes the string as one element.
+                token strTok = file.getToken();
+                initializerList* list = new initializerList();
+                list->elements.push_back(parseExpression(strTok, {token::endStatement}, func, body));
+                if(file.peekToken().is(token::endStatement)) file.getToken();
+                arrDecl.declaredExpressionValue = list;
+            } else {
+                parsingError(format("String initializer is only valid for array<char>; '{0}' cannot "
+                    "hold a string element.", typeDisplayName(elementType)));
+            }
         } else if(firstVal.is(token::braceOpen)){
             // array<T> name = { v1, v2, ... };  (nested `{...}` elements bake as inline objects or,
             // for an array-of-arrays element type, anonymous inner arrays — see parseArrayInitializerList)

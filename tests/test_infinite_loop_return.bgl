@@ -1,0 +1,45 @@
+/*
+    test_infinite_loop_return.bgl — return-path analysis recognizes non-terminating loops.
+    A `while(true)` / `for(;;)` with no `break` that escapes it never falls through: control
+    leaves only via a `return` inside, so a trailing return would be dead code. allPathsReturn
+    treats such a loop as a terminating path, so these non-void routines need no trailing return.
+    (A break inside a NESTED loop targets that inner loop and does NOT make the outer one exitable.)
+*/
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+enum eT { charInput = 2 }
+
+char whileForever(){
+    int i = 0;
+    while (true) {
+        i = i + 1;
+        if (i == (int)eT.charInput) return (char)i;   // only exit: return from inside
+    }
+}
+
+int forForever(){
+    for(;;){
+        if (true) return 1;
+    }
+}
+
+int nestedBreakDoesNotEscape(){
+    while(true){
+        while(true){ break; }        // this break targets the INNER loop, not the outer
+        return 7;
+    }
+}
+
+char doWhileForever(){
+    int i = 0;
+    do { i = i + 1; if (i == (int)eT.charInput) return (char)i; } while(true);   // do…while(true)
+}
+
+char doUntilForever(){
+    int i = 0;
+    do { i = i + 1; if (i == (int)eT.charInput) return (char)i; } until(false);  // do…until(false)
+}

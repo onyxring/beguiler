@@ -1,0 +1,9 @@
+/*
+    _test_include_angle_unterminated.bgl  (negative)
+    A `#include <...>` missing its closing `>` must error at the include (naming the partial name),
+    not scan to EOF / a stray `>` far below and blame an unrelated line with a whole-file "filename".
+*/
+#beguilerSettings { target = glulx; informName = "none"; }
+#include <util
+int probe(){ return 0; }
+// EXPECT_ERROR: missing closing '>'

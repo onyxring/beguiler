@@ -3,18 +3,12 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -276,6 +270,11 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 class thing
   class object
 ;
@@ -290,18 +289,18 @@ class rule
         return 2;
     ]
 ;
-array book table _bglanon1 _bglanon2 2 $9084;
+array book table _bglanon3 _bglanon4 2 $9084;
 [main v;
     print ( book-->(1+1) ).pri;
     if(( book-->(0+1) ).matcher provides print) ( book-->(0+1) ).matcher.print(); else print (name)( book-->(0+1) ).matcher;
     v = ( book-->(0+1) ).run();
     print v;
 ];
-rule _bglanon1
+rule _bglanon3
   with matcher shirt,
        pri 5
 ;
-rule _bglanon2
+rule _bglanon4
   with matcher shirt,
        pri 7
 ;

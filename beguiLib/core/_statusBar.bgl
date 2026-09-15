@@ -8,7 +8,13 @@
 extend _bglUi { alias statusBar = _bglStatus; } //bgl.ui.statusBar
 
 superposed _bglObject _bglStatus {
-    
+     auto id  = {   // id  getter/setter 
+        int _id   = 0;                 
+        int operator() { return _id; }
+        void operator = (int newId){
+            _id=newId;
+        }
+    }
     auto height = {   // height  getter/setter 
         int _h   = 0;                 
         #if TARGET_GLULX

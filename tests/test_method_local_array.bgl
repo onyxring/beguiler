@@ -1,0 +1,36 @@
+/*
+    test_method_local_array.bgl — local arrays inside class/object METHODS must be framePool-allocated
+    (and freed on exit), exactly like top-level functions. Regression: the class-method and object-
+    property-routine emission paths skipped the local-array allocation loop entirely, so a method-local
+    array<T>/rawArray<T> was left as an unallocated null slot (a rawArray<int> handed to glk_select
+    crashed; the debugger showed it empty). Both paths must emit `= _bglRawArrayLocalAlloc(N)` +
+    `_bglFrameFree(N)`.
+*/
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <array>
+
+class Widget {
+    int viaClassMethod(){
+        rawArray<int> buf[3];      // must allocate: buf = _bglRawArrayLocalAlloc(3)
+        buf[0] = 5;
+        return buf[0];
+    }
+}
+Widget w;
+
+object gadget {
+    int viaObjectMethod(){
+        rawArray<int> buf[3];      // object property routine — same requirement
+        buf[0] = 9;
+        return buf[0];
+    }
+    array<int> viaTracked(){       // tracked array in a method too (alloc + free)
+        array<int> nums[4];
+        nums[0] = 1;
+        return nums;
+    }
+}

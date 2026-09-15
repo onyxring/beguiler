@@ -352,6 +352,133 @@ void bglParser::preScanDirective(token tok){
     // Other directives (#message, #error, #warning, #exit, ##ifdef, etc.) are ignored during pre-scan
 }
 
+// Register the members of an `extend <obj>` body onto obj during pre-scan. Assumes the stream is
+// positioned right after `extend <name>` (scans to '{', processes through the matching '}').
+// Registers function stubs plus auto/alias namespace-redirect members — see header comment.
+void bglParser::preScanExtendObjectMembers(objectDef* obj){
+    // Open the body
+    token t = file.getToken();
+    while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken();
+    t = file.getToken();
+    while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+        bool memberIsEmitter = false;
+        bool memberIsReplace = false;
+        if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
+        if(t.is("explicit")) t = file.getToken();
+        if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
+        if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
+
+        // Namespace-redirect members become resolution stubs so dotted resolution (bgl.asm,
+        // bgl.glulx, bgl.util.*) works before the real `extend` runs in the main pass. Gate STRICTLY
+        // on the exact simple forms via lookahead, so accessor bodies (`auto X = { ... }`), aggregate
+        // inits, and anything richer fall through to the normal property handling BYTE-IDENTICALLY:
+        //   alias X for Type;      alias X = ident;      [emitter] auto X = ident;
+        // The stub is isExternal (no I6 emission) + isPrePassStub; the main pass reconciles it away
+        // once its real member lands (see processObjectExtension).
+        if(t.is("alias") || t.is("auto")){
+            bool isAliasKw = t.is("alias");
+            token p3 = file.peekToken(2);   // 'for' | '='
+            token p4 = file.peekToken(3);   // Type/ident | '{' | ...
+            token p5 = file.peekToken(4);   // ';' for a simple redirect
+            bool aliasFor = isAliasKw && p3.is("for") && p5.is(token::endStatement);
+            bool eqRedir  = p3.is(token::assignment) && (p4.is(eTokenType::identifier) || p4.isDataType()) && p5.is(token::endStatement);
+            if(aliasFor || eqRedir){
+                token nm = file.getToken();          // member name
+                file.getToken();                     // 'for' | '='
+                token rhs = file.getToken();         // type/ident
+                file.getToken();                     // ';'
+                variableDeclaration& vd = *(new variableDeclaration());
+                vd.name = nm.value;
+                vd.displayName = nm.originalValue;
+                vd.isExternal = true;
+                vd.isPrePassStub = true;
+                vd.type = languageService.getType(rhs.value);   // real type if already registered
+                if(vd.type.name.empty()){                       // else stash the (lowercased) name for by-name resolution
+                    string ln = rhs.value; transform(ln.begin(), ln.end(), ln.begin(), ::tolower);
+                    vd.type.name = ln;
+                }
+                if(aliasFor){
+                    vd.isAlias = true;
+                } else {
+                    // Object-valued redirect (auto/alias to an object) needs the init name so the
+                    // expr walk can follow it to the target object; harmless for class targets.
+                    expression* e = new expression();
+                    e->tokens.push_back(rhs.value);
+                    vd.declaredExpressionValue = e;
+                }
+                bool replaced = false;
+                for(auto& m : obj->members)
+                    if(m->name == vd.name && m->isPrePassStub){ m = &vd; replaced = true; break; }
+                if(!replaced) obj->members.push_back(&vd);
+                t = file.getToken();
+                continue;
+            }
+            // not a simple redirect — fall through to normal handling below
+        }
+
+        if(t.isDataType() || t.is(eTokenType::identifier)){
+            preScanConsumeGenericSuffix(t);
+            token memberName = file.getToken();
+            if(memberName.is("operator")){
+                token opTok = file.getToken();
+                if(opTok.is(token::parenOpen)){ memberName.value = "operator()"; }
+                else if(opTok.is(token::bracketOpen)){ file.getToken(); memberName.value = "[]"; token ma = file.getToken(); if(ma.is("=")) memberName.value = "[]="; }
+                else if(opTok.is("?")) memberName.value = "?";
+                else if(opTok.is("switch")) memberName.value = "switch";
+                else memberName.value = opTok.value;
+            }
+            token afterName = file.getToken();
+            if(afterName.is(token::parenOpen)){
+                functionDef& fd = *(new functionDef());
+                fd.name = memberName.value;
+                fd.returnType = languageService.getType(t.value);
+                fd.isEmitter = memberIsEmitter;
+                fd.isPrePassStub = true;
+                preScanCaptureParams(fd.params);
+                token bodyStart = file.getToken();
+                if(bodyStart.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                bool exists = false;
+                for(auto it = obj->members.begin(); it != obj->members.end(); ++it){
+                    if((*it)->name == fd.name){
+                        exists = true;
+                        if(memberIsReplace) *it = &fd;
+                        break;
+                    }
+                }
+                if(!exists) obj->members.push_back(&fd);
+            } else {
+                // Property — skip to ;
+                while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
+                    if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
+                    afterName = file.getToken();
+                }
+                if(afterName.is(token::braceClose)) break;
+            }
+        } else {
+            while(!t.is(token::endStatement) && !t.is(token::braceClose) && !t.is(eTokenType::eof)) t = file.getToken();
+            if(t.is(token::braceClose)) break;
+        }
+        t = file.getToken();
+    }
+}
+
+// Replay forward `extend <obj>` bodies captured during pre-scan onto their now-registered targets.
+// Called once, at the top-level pre-scan entry, after the whole include tree has been walked.
+void bglParser::drainDeferredObjectExtends(){
+    for(const DeferredObjectExtend& de : deferredObjectExtends){
+        objectDef* obj = nullptr;
+        for(typeDef* g : languageService.globals)
+            if(auto* od = dynamic_cast<objectDef*>(g))
+                if(od->name == de.objName){ obj = od; break; }
+        if(obj == nullptr) continue;   // still unknown — the main pass will report it (old skip behavior)
+        // Wrap the captured inner body back in braces so the member loop opens it as usual.
+        file.openText("{" + de.body + "}", de.virtualName, de.startLine);
+        preScanExtendObjectMembers(obj);
+        file.close();
+    }
+    deferredObjectExtends.clear();
+}
+
 void bglParser::preScanFile(string filename, const std::string* contentOverride){
     string absPath;
     try { absPath = filesystem::canonical(filesystem::absolute(filename)).string(); }
@@ -386,6 +513,7 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
         try { preScanInfFileBodyForDecls(); }
         catch(...){ file.close(); preScanDepth--; throw; }
         file.close();
+        drainDeferredObjectExtends();   // all decls registered — replay forward extends
         preScanDepth--;
         return;
     }
@@ -406,6 +534,10 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
     }
 
     preScanGlobalLoop();
+
+    // Top-level entry only: the whole include tree is now pre-scanned, so every `extend` target is
+    // registered. Replay any forward extends captured while their target was still undeclared.
+    if(isFirst) drainDeferredObjectExtends();
 
     file.close();
     preScanDepth--;
@@ -477,65 +609,23 @@ void bglParser::preScanGlobalLoop(){
                     if(auto* od = dynamic_cast<objectDef*>(g))
                         if(od->name == tok.value){ obj = od; break; }
                 if(obj == nullptr){
-                    // Unknown object — full-pass will report it; skip body here.
-                    preScanSkipBody();
+                    // Forward `extend <obj>` — target not declared yet at this source position (e.g.
+                    // a platform-core `extend bgl {...}` included before `object bgl`). Capture the
+                    // raw body and replay it after the whole include tree is pre-scanned
+                    // (drainDeferredObjectExtends), so declarative `extend` is order-independent.
+                    // Previously this skipped the body, leaving `bgl.asm`/`bgl.util.*` unresolvable
+                    // when a consumer preceded the platform core. See
+                    // [[project_prescan_forward_extend_order_dependency]].
+                    auto detail = file.getCurrentFileDetail();
+                    string vname = std::get<1>(detail);
+                    int    vline = std::get<2>(detail);
+                    token t = file.getToken();
+                    while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken();
+                    string body = file.getRawTextThroughClosingBrace();
+                    deferredObjectExtends.push_back({ tok.value, body, vname, vline });
                     continue;
                 }
-                // Open the body
-                token t = file.getToken();
-                while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken();
-                t = file.getToken();
-                while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
-                    bool memberIsEmitter = false;
-                    bool memberIsReplace = false;
-                    if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
-                    if(t.is("explicit")) t = file.getToken();
-                    if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
-                    if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
-                    if(t.isDataType() || t.is(eTokenType::identifier)){
-                        preScanConsumeGenericSuffix(t);
-                        token memberName = file.getToken();
-                        if(memberName.is("operator")){
-                            token opTok = file.getToken();
-                            if(opTok.is(token::parenOpen)){ memberName.value = "operator()"; }
-                            else if(opTok.is(token::bracketOpen)){ file.getToken(); memberName.value = "[]"; token ma = file.getToken(); if(ma.is("=")) memberName.value = "[]="; }
-                            else if(opTok.is("?")) memberName.value = "?";
-                            else if(opTok.is("switch")) memberName.value = "switch";
-                            else memberName.value = opTok.value;
-                        }
-                        token afterName = file.getToken();
-                        if(afterName.is(token::parenOpen)){
-                            functionDef& fd = *(new functionDef());
-                            fd.name = memberName.value;
-                            fd.returnType = languageService.getType(t.value);
-                            fd.isEmitter = memberIsEmitter;
-                            fd.isPrePassStub = true;
-                            preScanCaptureParams(fd.params);
-                            token bodyStart = file.getToken();
-                            if(bodyStart.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
-                            bool exists = false;
-                            for(auto it = obj->members.begin(); it != obj->members.end(); ++it){
-                                if((*it)->name == fd.name){
-                                    exists = true;
-                                    if(memberIsReplace) *it = &fd;
-                                    break;
-                                }
-                            }
-                            if(!exists) obj->members.push_back(&fd);
-                        } else {
-                            // Property — skip to ;
-                            while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
-                                if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
-                                afterName = file.getToken();
-                            }
-                            if(afterName.is(token::braceClose)) break;
-                        }
-                    } else {
-                        while(!t.is(token::endStatement) && !t.is(token::braceClose) && !t.is(eTokenType::eof)) t = file.getToken();
-                        if(t.is(token::braceClose)) break;
-                    }
-                    t = file.getToken();
-                }
+                preScanExtendObjectMembers(obj);
                 continue;
             }
             if(tok.is("extern")) tok = file.getToken(); // consume "extern", now tok = "class"

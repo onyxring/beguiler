@@ -1,0 +1,22 @@
+/*
+    test_rawarray_local.bgl — a LOCAL `rawArray<T> name[N]` is a bare flat block (spec §4.9.1),
+    identical in shape to a rawArray parameter: NO count/length/magic. It must
+      • allocate via `_bglRawArrayLocalAlloc(N)` (N frame-pool words, no header), freeing N; and
+      • subscript from word 0 (`name-->i`, NOT the count-prefixed `name-->(i+1)`).
+    This is the shape used to hand a raw memory block to I6 code (e.g. a glk_select event buffer).
+*/
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <array>
+
+int probe(){
+    rawArray<var> ev[4];    // -> ev = _bglRawArrayLocalAlloc(4);  (free 4)
+    ev[0] = 2;              // -> ev-->0
+    ev[1] = 640;            // -> ev-->1
+    ev[2] = 106;            // -> ev-->2
+    ev[3] = 0;              // -> ev-->3
+    return ev[0];           // -> ev-->0
+}

@@ -1,10 +1,13 @@
-/* Negative test: an additive property cannot be declared `array<T>`. A tracked array keeps its
-   length in a trailing slot; an additive property accumulates, so that slot would land inside
-   the accumulated data. Only the raw form can hold one. */
-// EXPECT_ERROR: an additive property accumulates
-// EXPECT_ERROR: Declare it `rawArray<T>`
+/* Negative test: a member bound to an ADDITIVE property cannot be a tracked `array<T>`. A tracked
+   array keeps its length in a trailing slot; an additive property accumulates, so that slot would
+   land inside the accumulated data. Only the raw form can hold one. (The type lives on the member,
+   not the property — the property declaration is now type-less.) */
+// EXPECT_ERROR: is an ADDITIVE property
+// EXPECT_ERROR: Declare it `rawArray<int>`
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-additive property array<int> hook;
+additive property hook;
+
+class C { array<int> hook = {1,2}; }
 
 void main(){ bglInit(); }

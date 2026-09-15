@@ -1,0 +1,25 @@
+/*
+    test_array_string_shorthand.bgl — a string literal assigned to an array whose element type is
+    string/var is the ONE-ELEMENT shorthand (`= "s"` ≡ `= {"s"}`), mirroring `array<int> x = 3`.
+    Only `array<char>` fills a char buffer from a string. Covers file-scope AND member declarations
+    (the member additive case is how an I6 `describe`/`name` run takes a single contribution).
+*/
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+#include <array>
+
+array<string> greetings = "hello";          // file-scope → {"hello"}
+array<var>    payload   = "opaque";          // var element accepts a string → {"opaque"}
+
+class Tagged {
+    array<string> tags = "solo";             // member shorthand → {"solo"}
+}
+Tagged t;
+
+// Bare instance assignment to an array-typed property (parsePropertyValue path) — the additive
+// `describe = "s"` shape. Must emit one contribution: `with items "s"`, not a type error.
+class Holder : object { array<var> items; }
+Holder h { items = "single"; }

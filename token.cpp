@@ -208,6 +208,8 @@ string token::tokenTypeToString(eTokenType type){
             break;
         case eTokenType::integer: return "integer";
             break;
+        case eTokenType::floatLiteral: return "float literal";
+            break;
         case eTokenType::oper: return "operator";
             break;
         case eTokenType::dictionaryWord: return "dictionary word";

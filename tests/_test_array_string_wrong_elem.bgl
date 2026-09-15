@@ -1,0 +1,11 @@
+/*
+    _test_array_string_wrong_elem.bgl  (negative)
+    A string literal can only initialize array<char> (fills the buffer) or a string/var array (as a
+    single element). An int/object/etc. array cannot hold a string element — clear error, not the
+    old blanket "only valid for array<char>".
+*/
+#beguilerSettings { target = glulx; informName = "none"; }
+#include <array>
+class C { array<int> nums = "oops"; }
+C c;
+// EXPECT_ERROR: cannot hold a string element

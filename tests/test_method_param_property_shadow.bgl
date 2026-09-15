@@ -1,0 +1,38 @@
+/*
+    test_method_param_property_shadow.bgl
+    Regression: a CLASS/OBJECT METHOD whose parameter (or local) name collides with a used
+    property name is renamed to `_l_<name>` in the body to avoid shadowing the I6 property.
+    The method's routine HEADER must declare the SAME renamed name — earlier it emitted the raw
+    name while the body used `_l_<name>`, leaving `_l_width` undeclared:
+        with img [width height …;      _l_width = … ;   →  "'=' applied to undeclared variable"
+    Here `img` takes params `width`/`height`, which collide with `bglSize`'s `width`/`height`
+    properties (read via the class-typed local `sz`). The baseline pins the header/body agreement.
+    (The free-function path already did this; this covers the `with <name> [...]` method path.)
+*/
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+class bglSize {
+    int width = 0;
+    int height = 0;
+    bglSize operator = (bglSize s){ self.width = s.width; self.height = s.height; return self; }
+}
+
+bglSize _getInfo(){ bglSize s; return s; }
+
+_bglObject drawer {
+    void img(int width = 0, int height = 0){
+        if (width == 0) {
+            bglSize sz = _getInfo();
+            width  = sz.width;      // reads property `width`  → param `width` renamed in body
+            height = sz.height;     // reads property `height` → param `height` renamed in body
+        }
+        print(width);
+        print(height);
+    }
+}
+
+void main(){ drawer.img(0, 0); }

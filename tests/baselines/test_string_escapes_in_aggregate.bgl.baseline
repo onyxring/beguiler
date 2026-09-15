@@ -3,18 +3,12 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -276,6 +270,11 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 array lines table "~I don't trust you,~ he mutters." "~...for you, friend,~ the guard says, ~the gate's always open.~" "plain line, no quotes" 3 $9084;
 class response
   class object
@@ -283,16 +282,16 @@ class response
     weight,
     text
 ;
-array table table _bglanon1 _bglanon2 2 $9084;
+array table table _bglanon3 _bglanon4 2 $9084;
 [main;
     print (string) lines-->(0+1) ;
     print (string)( table-->(0+1) ).text;
 ];
-response _bglanon1
+response _bglanon3
   with weight 1,
        text "~Don't move,~ she warns."
 ;
-response _bglanon2
+response _bglanon4
   with weight 2,
        text "He won't say."
 ;

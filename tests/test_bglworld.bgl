@@ -15,7 +15,7 @@
       objectloop(o ofclass C) if(p(o))  → for(object o in bgl.world.instances(C, p))
 */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
-#include <bglWorld>
+// bgl.world is auto-loaded by core (__beguileCore includes <core/_bglWorld>); no explicit include.
 
 class Animal : object {
     int legs = 4;

@@ -243,6 +243,7 @@
 - 14.8 I6 Emission Ordering
 - 14.9 Debug Bundle
 - 14.10 `superposed` Routines, Globals, Objects, and Classes
+- 14.11 Built-in I6 Templates (`.i6b`)
 
 ### Chapter 15 - Runtime Library
 - 15.1 Overview
@@ -608,6 +609,7 @@ The meaning of each operator is detailed in later chapters. The following table 
 | `?.` | Optional chaining | §10.5 |
 | `??` | Null coalescing | §10.5 |
 | `(Type)x` | Type cast and conversion | §10.6, §5.6.4 |
+| `&x` (prefix) | Address-of — raw machine address as `int` (sugar for `(int)x`) | §10.6.2 |
 | `[]` `[]=` | Subscript read / write | §5.6.3 |
 | `::name` | Global-scope qualifier | §12.3 |
 
@@ -2879,7 +2881,21 @@ array<rule> book = {           // each element inferred as `rule` from array<rul
 rule fallback = { look, any, lookBody };   // object-backed variable initializer folds into `fallback`
 ```
 
-Inference applies in three slots: an **`array<T>` element**, an **object-backed variable initializer** (`Type name = { … }`, which is the same declaration as `Type name { … }` — the fields bake straight into the named object), and a declarative **`inject`** (§5.9.1). It only ever produces an *object aggregate* when the target type is an **object-backed class**; if the target is an `array<…>` or a value/collection type (one with an `operator=(initializerList)`), a bare `{ … }` stays a braced *list*, exactly as before. An explicit `Type{ … }` is always available and additionally disambiguates a single element from a list.
+Inference applies in four slots: an **`array<T>` element**, an **object-backed variable initializer** (`Type name = { … }`, which is the same declaration as `Type name { … }` — the fields bake straight into the named object), a declarative **`inject`** (§5.9.1), and a **function/method-call argument** whose parameter is an object-backed class. It only ever produces an *object aggregate* when the target type is an **object-backed class**; if the target is an `array<…>` or a value/collection type (one with an `operator=(initializerList)`), a bare `{ … }` stays a braced *list*, exactly as before. An explicit `Type{ … }` is always available and additionally disambiguates a single element from a list.
+
+**Inline objects as arguments.** A `Type{ … }` (or a bare `{ … }`) may be passed directly to a routine — it bakes a static object and passes a reference:
+
+```bgl
+void place(point p) { … }
+place(point{3, 4});         // explicit
+place({3, 4});              // bare — type inferred from the parameter
+place(p: {3, 4});           // bare as a named argument
+obj.method({ x=1; y=2; });  // on a method call, named fields
+```
+
+For the **bare** form the parameter type must resolve unambiguously: the compiler infers it only when every viable overload of that name expects the *same* aggregate-constructible class at that argument position (an object-backed class, or a value class declaring `inline` members). If overloads disagree (or the parameter can't take a `{ … }` aggregate), it is a compile error asking for an explicit `Type{ … }`.
+
+**Constant vs. runtime fields.** When every field is a compile-time constant, the aggregate bakes one **static** object, so repeated calls pass a reference to the *same* object (the static-object semantics of any inline literal). When a field is a **runtime** expression (e.g. a local or parameter — `foo({ width, height })`), a static property can't hold it, so the compiler **hoists** the runtime field-inits to the call site: it materializes a per-aggregate-site instance and populates those fields at run time, immediately before the call. Each call therefore sees freshly-populated values. (Caveat: the per-site instance is reused by a *recursive* call to the same site — the same reentrancy limitation as any class-typed local, which is likewise a synthesized backing rather than a stack frame.)
 
 **Nested aggregate values.** A field value may itself be a `{ … }` aggregate, whose shape is taken from the *member's* type: an `array<T>` member takes a braced **array literal**, and an object-backed member takes a **nested inline object**. An `array<T>` member may itself be declared `inline`, making it a positional slot like any other. So a whole record can be built in one positional expression:
 
@@ -3271,31 +3287,31 @@ Inform 6 maintains a single global property table, populated implicitly by every
 For names that are not members of any Beguile class, typically because they live in I6 code that Beguile interoperates with, or because they are runtime-attached flags with no compile-time owner, Beguile provides a `property` declaration that operates analogously to `attribute`:
 
 ```bgl
-property var hidden_flag;                    // emits `Property hidden_flag;`
-extern property var libDefinedProp;          // defined externally (e.g. by an I6 library)
+property hidden_flag;                        // emits `Property hidden_flag;`
+extern property libDefinedProp;              // defined externally (e.g. by an I6 library)
 ```
 
 Both forms register the name with the compiler so `obj.provides(name)` resolves in strict mode. The non-`extern` form additionally emits an I6 `Property` directive so I6 itself knows about the name even when no class declares a member of that name. The `extern` form trusts that the I6 stream will declare it elsewhere.
 
-### 7.7.1 Every property declaration carries a type
+### 7.7.1 Property declarations are type-less
 
-The type is **required**. Nothing else in the program says what a property holds: an `extern` slot is owned by external I6 code, and a property's members can be spread across a class hierarchy with no one place naming the type. The declaration is that place, and **every layer that contributes to the property is checked against it** — a disagreement in element type, in raw-vs-tracked, or a scalar member where an array is declared, is an error.
-
-`var` is the escape hatch when the type is genuinely unconstrained. It constrains no member, but it records that the openness is deliberate:
+A property declaration names the property; it does **not** carry a type. The type lives at each *use site* — every class or object member that contributes to the property declares its own type there:
 
 ```bgl
-extern property var plural;                  // holds whatever the I6 library puts there
-property rawArray<int> hook;                 // every contributing layer must match
+extern property plural;                      // holds whatever the I6 library puts there
+property hook;                               // an ordinary (non-additive) property — unconstrained
 ```
 
-Without the requirement a class contributing `rawArray<int>` alongside an instance contributing `rawArray<dictionaryWord>` would accumulate into one property holding both, with no diagnostic.
+A non-additive property is unconstrained: because I6 *overrides* it (an object's value replaces its class's), the layers never share storage, so each contribution may be whatever type it needs. An **additive** property is different — its contributions accumulate into one shared run of words, so they must agree; §7.7.3 gives the rules.
+
+> **Changed.** Earlier versions *required* a type on the declaration (`property rawArray<int> hook;`). That form is now rejected — write `property hook;` and let the members carry the type. The constraint that additive contributions agree is enforced across the hierarchy (§7.7.3) rather than against a single declared type.
 
 ### 7.7.2 `additive` properties
 
 By default an I6 property is overriding: when an object and one of its ancestor classes both supply the property, the object's value replaces the class's. Marking the *slot* **`additive`** makes I6 instead *accumulate* the values, gathering the object's contribution and all its ancestors' into one contiguous run of words — the mechanism the standard library uses for the `before`/`after`/`life` hooks:
 
 ```bgl
-additive property rawArray<int> myHooks;     // emits `Property additive myHooks;`
+additive property myHooks;                   // emits `Property additive myHooks;`
 ```
 
 `additive` is meaningful only on a `property` declaration — not on a class/object member and not on a value type. On an `extern property` it is a *declaration of fact* rather than a directive: I6 has already declared the property additive, so nothing is emitted, and the marker exists only so the compiler knows the property accumulates.
@@ -3306,20 +3322,29 @@ Every other additive property is library-specific and is declared by its binding
 
 ### 7.7.3 Additive properties are raw arrays
 
-An additive property accumulates into one contiguous run of words with **no length word** — which is exactly Beguile's `rawArray<T>` layout. So an additive property **must** be declared `rawArray<T>`, and so must every member bound to it:
+An additive property accumulates into one contiguous run of words with **no length word** — which is exactly Beguile's `rawArray<T>` layout. The property declaration itself is type-less (§7.7.1); the rule falls on the *members* that contribute to it: **every contribution must be a `rawArray<T>`** (or a routine — I6's `before`/`after`/`life`/… are routine-valued additive properties).
 
 ```bgl
-extern additive property rawArray<dictionaryWord> name;   // the core BLR's declaration
+extern additive property name;              // the core BLR's declaration (type-less)
 
-class Room      { rawArray<dictionaryWord> name = {.box, .crate}; }
+class Room      { rawArray<dictionaryWord> name = {.box, .crate}; }   // fixes the element type here
 object r1: Room { rawArray<dictionaryWord> name = {.wooden};      }   // matches all three words
 ```
 
-`array<T>` is rejected in both places. A tracked array keeps its length in a trailing slot, and accumulation would bury that slot inside the data:
+The **element type is fixed by the highest ancestor that declares it** — the first member declaration in the class hierarchy, walked root-first. Every other contribution in that same hierarchy (further-derived classes and every instance) must use the same element type; unrelated hierarchies may each fix their own. An inference-typed override (`name = {.wooden};` with no type of its own) inherits the ancestor's type and so is always consistent.
+
+```bgl
+class Base       { rawArray<int> hook = {1,2}; }         // Base fixes hook as rawArray<int>
+object leaf: Base{ rawArray<dictionaryWord> hook = {.a}; }
+  error: 'leaf.hook' contributes 'rawArray<dictionaryWord>' to the ADDITIVE property 'hook',
+         but its class hierarchy fixes 'hook' as 'rawArray<int>'. … Declare it `rawArray<int>`.
+```
+
+`array<T>` is rejected. A tracked array keeps its length in a trailing slot, and accumulation would bury that slot inside the data:
 
 ```bgl
 class Room { array<dictionaryWord> name = {.box}; }
-  error: 'name' is an ADDITIVE property … Declare it `rawArray<dictionaryWord>`.
+  error: 'Room.name' is declared 'array<dictionaryWord>', but 'name' is an ADDITIVE property … Declare it `rawArray<dictionaryWord>`.
 ```
 
 A **scalar** member is rejected for the same reason. `stringObj name` or `int name` with a class default *and* an instance override silently became a multi-word property, and every read then failed at run time with I6's *"has a property `name`, but it is longer than 2 bytes so you cannot use `.` to read it"* — a message naming neither the class nor the override:
@@ -3327,7 +3352,7 @@ A **scalar** member is rejected for the same reason. `stringObj name` or `int na
 ```bgl
 class Room      { stringObj name = "box";    }
 object r1: Room { stringObj name = "wooden"; }
-  error: 'r1.name' is declared 'stringObj', but the property 'name' is declared 'rawArray<dictionaryWord>'.
+  error: 'Room.name' is declared 'stringObj', but 'name' is an ADDITIVE property: … each must be a `rawArray<T>` (or a routine). A scalar cannot bind to it.
 ```
 
 **Extent.** A raw member's extent is fixed by the property, and `size()` and `length()` both answer `obj.#prop/WORDSIZE`. Inform 6 computes `#prop` *after* accumulation, so this reads correctly across inheritance layers with no bookkeeping — a class contributing two words and an instance contributing one give an extent of three.
@@ -3356,7 +3381,7 @@ int r = obj.m(2);         // message send — binds self to obj, as I6 does
 
 Both emit I6's computed form (`obj.(p)`, `obj.(m)(2)`), so the property is resolved at runtime and a routine property receives the receiver as `self`.
 
-The name after the dot is treated this way **only** when it is a local or parameter declared `property` or `var`, and only when it is not a real member of the receiver's type — a genuine member always wins. A file-scope `property var foo;` does *not* qualify: it registers an identifier for passing as a value and still grants no `obj.foo` access.
+The name after the dot is treated this way **only** when it is a local or parameter declared `property` or `var`, and only when it is not a real member of the receiver's type — a genuine member always wins. A file-scope `property foo;` does *not* qualify: it registers an identifier for passing as a value and still grants no `obj.foo` access.
 
 **`property` parameters treat a bare argument as a property identifier.** When a function or emitter parameter is typed `property`, a bare property-name argument emits as the **bare I6 property constant** (its slot number) rather than as a value read, an implicit `(property)` cast (§10.6). This holds even inside an object method body, where a bare known-property name would otherwise emit as `self.<name>`. Any known property name is accepted: a member of any class or object, or a free-standing `property`/`extern property` decl. This lets an engine that indexes objects by property number (e.g. a task/state tracker whose task IDs are members of a single instance) declare `property`-typed parameters and have callers pass the bare name; no file-scope `extern property` re-declaration of each member is required:
 
@@ -3371,7 +3396,7 @@ achieved(taskGetBanana);   // emits `achieved(taskgetbanana)` - the bare propert
 
 `object.provides(property name)` is the canonical built-in that consumes a `property` parameter; the same rule now applies to any user- or library-declared `property` parameter.
 
-In strict mode, `obj.provides(unknownName)` is a compile error: declare the name as a class member, or with `property var unknownName;` / `extern property var unknownName;` at file scope. In loose mode (`#bgl` islands and `.inf` precompiler mode; see §14.6), the check is skipped and the name passes through verbatim, matching the loose-identifier policy applied to all other identifiers in those contexts.
+In strict mode, `obj.provides(unknownName)` is a compile error: declare the name as a class member, or with `property unknownName;` / `extern property unknownName;` at file scope. In loose mode (`#bgl` islands and `.inf` precompiler mode; see §14.6), the check is skipped and the name passes through verbatim, matching the loose-identifier policy applied to all other identifiers in those contexts.
 
 ## 7.8 Class Tests
 
@@ -4380,6 +4405,19 @@ int x = obj.parent.cap;   // ERROR: 'cap' is not a member of 'object'. This valu
 ```
 
 The error points you at the cast idioms above rather than dropping the trailing member and surfacing a confusing downstream type mismatch. It fires only in strict mode (loose `#bgl` islands keep raw I6 passthrough) and only when the member genuinely isn't on `object` (`obj.parent.parent`, reaching `object`'s own `parent`, resolves normally). The method form (`obj.parent.someMethod()`) already reported this accurately ("No method 'someMethod' on type 'object'").
+
+### 10.6.2 Address-of operator `&`
+
+The unary prefix operator `&x` yields the **raw machine address** of its operand as an `int`. It is exact sugar for the `(int)` cast — `&x` lowers identically to `(int)x` — but reads as "the address of x" rather than a numeric coercion:
+
+```bgl
+array<int> buf[2];
+bgl.asm.imageGetInfo(id, &buf + bgl.wordsize, &buf + 2*bgl.wordsize);  // clearer than ((int)buf) + …
+```
+
+Because a value whose representation *is* an address — an `array`, a buffer, an object/instance — passes through unchanged, `&` on such a value gives its base address, exactly what an I6 opcode expecting a pointer wants. On a value that is *not* address-shaped (a plain `int`, `char`, …) `&` yields that value verbatim, identical to `(int)` — it does **not** compute the storage address of a scalar variable or a property (the Z-machine/Glulx model has no portable address for a bare global/local, and Beguile does not introduce pointer types). For a writable single-word target, use an `array` slot or an object member.
+
+`&` binds like a cast: it applies to the immediately-following operand in **prefix position** (the start of an operand — `&buf`, `f(&buf)`, `&buf + n`). A binary `&` (bitwise-and) is unaffected, since it always has a left operand.
 
 ## 10.7 `new` and `delete` for Pooled Classes
 
@@ -6250,6 +6288,40 @@ Unlike objects and routines, an I6 `Class` directive must physically **precede**
 - **Reference matching is case-insensitive**, in keeping with Beguile's case-insensitive identity: a `superposed` `_bglPow` is still observed when it is called as `_bglpow`.
 - **Over-inclusion is the safe direction.** A name that also appears inside a string literal or comment falsely materializes its declaration (a harmless dead entry); however, it never drops a genuinely-referenced one. Give superposed helpers distinctive names (a `_bgl`-style prefix) to avoid accidental matches.
 - `superposed` may appear in any qualifier order.
+
+---
+
+## 14.11 Built-in I6 Templates (`.i6b`)
+
+Some constructs have no fixed I6 form until the compiler knows how they are used — the Z-machine frame pool sizes to the program's worst-case local overflow, a `for`-in loop varies by container layout, a literal-list `for`-in needs a shared scratch buffer. The compiler emits these from **built-in I6 templates** kept in `beguiLib/core/__builtins.i6b`. Unlike a `.bgl` file, `__builtins.i6b` is **not** `#include`d: the compiler loads it once and splices a template's body wherever it needs that construct.
+
+Authors never write `.i6b`; this section documents the format for anyone extending the compiler's built-in codegen.
+
+### Template syntax
+
+```
+template <name>($p1, $p2, ...) [triggers <n1> <n2> ...] {{{
+    ... raw I6, with $param holes ...
+}}}
+```
+
+- The body is delimited by a triple-brace **fence**: `{{{` must end the header line, and `}}}` must stand alone on the closing line. The three braces are contiguous — `{ { {` / `} } }` are not recognized.
+- Brace matching is **not** used; the fence alone delimits the body. I6 bodies with intentionally unbalanced braces are therefore fine (e.g. `forIn.open` leaves an open `{` that `forIn.close` closes).
+- Template names may contain dots (`forIn.open`). Parameters may be written `$p` or `p` in the header.
+
+### Parameter substitution
+
+- `$name` in the body is replaced by the caller's argument, matched on **word boundaries** and **case-insensitively**.
+- Bare `name` (no `$`) is ordinary I6 and is left alone. I6 literals such as `$9084` (hex) are untouched — only **declared** parameters substitute, so an undeclared `$token` is never rewritten.
+
+### `triggers` — pay-only-if-used support code
+
+A `triggers <name> ...` clause flags each named block when the template is applied, so the matching `#storedEmitFirst` / `#storedEmitLast` block (§14.10) is emitted — and only then. This is the mechanism behind pay-only-if-used runtime helpers: e.g. `forInList.push` / `forInList.make` carry `triggers scratchSupport`, which pulls in the shared literal-list scratch buffer (the `#storedEmitFirst scratchSupport` block in `core/_array.bgl`) exclusively when a program uses `for(x in {a, b, c})`.
+
+### Comments
+
+- `//` (to end of line) and `/* ... */` (block) are **build-time** comments: the loader strips them, so they are never emitted and may appear **anywhere**, including inside a `{{{ ... }}}` body. The stripper is string-aware, so `//` or `/*` inside an I6 `"..."` literal are left intact.
+- Avoid I6 `!` comments inside a body: they are **not** stripped and would be emitted into every story file as noise. Prefer `//` or `/* */`.
 
 ---
 

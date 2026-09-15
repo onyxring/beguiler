@@ -13,6 +13,7 @@
         int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
         int             linqScratchSize = 32;           // LINQ-style chain scratch buffer capacity (per buffer; two buffers allocated)
         int             worldBufSize   = 128;            // bgl.world.* scratch buffer capacity (max objects per query); raise for very large worlds
+        int             forInScratchSize = 31;          // literal-list for-in (for(x in {a,b,c})) scratch capacity: max elements per loop; raise if a list overflows
         string          includePaths;                   // include search path entries for both Beguile and I6 (additive); comma-separated allowed: "../a,../b,../c"
         bool            rewritePaths   = true;          // substitute path separators to match OS
         bool            autoInitialize = true;          // false → BLR does not wrap main (replace main / [main; bglInit; oldmain]); set when another extension already replaces main (e.g. orLibrary)

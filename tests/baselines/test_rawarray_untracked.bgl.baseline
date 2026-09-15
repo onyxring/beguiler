@@ -3,18 +3,12 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _zcode
-;
-object bgl
-  with zcode _zcode
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -276,12 +270,17 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _zcode
+;
+object bgl
+  with zcode _zcode
+;
 array trk table "a" "b" "c" 3 $9084;
-array raw table "a" "b" "c";
-array rs table 4;
+array raw --> "a" "b" "c";
+array rs --> 4;
 [main;
-    print (string) raw-->(0+1) ;
-    print _bglArray.size(raw, 0);
+    print (string) raw-->0 ;
     print (string) trk-->(0+1) ;
-    rs-->(0+1) = 7;
+    rs-->0 = 7;
+    rs-->1 = 8;
 ];

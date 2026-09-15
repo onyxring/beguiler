@@ -1,0 +1,11 @@
+/*
+    _test_infinite_do_break_needs_return.bgl  (negative)
+    A `do…while(true)` whose body has an escaping `break` CAN fall through past the loop, so a
+    non-void routine still needs a return on that path — the infinite-loop exemption must not apply.
+*/
+#beguilerSettings { target = glulx; informName = "none"; }
+
+char canExit(){
+    do { if(false) break; } while(true);   // escapes via break → falls through with no return
+}
+// EXPECT_ERROR: has no return statement

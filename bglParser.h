@@ -161,6 +161,9 @@ class bglParser {
         // LSP can report only ranges for the document being parsed. Half-open: [startLine0, endLine0Exclusive).
         struct InactiveRegion { int startLine0; int endLine0Exclusive; };
         std::map<std::string, std::vector<InactiveRegion>> inactiveRegions;
+        set<string> includedFilePaths; // canonical paths of every file the main pass parsed (root +
+                                       // all includes). The LSP consults this after an entry-point
+                                       // context parse to confirm an opened include was covered.
         // Record a dead-code range from a 1-based inclusive [startLine1, endLine1]. Resolves the
         // current file from the lexer stack. Silently ignores empty or inverted ranges.
         void recordInactiveRange(int startLine1, int endLine1Inclusive);
@@ -559,7 +562,22 @@ class bglParser {
             vector<string> namedArgNames;
             vector<vector<interpolatedSegment>> interpSegmentsPerArg;
         };
-        ParsedArgList parseCallArgList(functionDef* func, statementBlock* body);
+        // Per-argument type hints for inferring a BARE inline-object aggregate `foo({ … })`: the
+        // object-backed class each argument position (or named param) resolves to, when all viable
+        // overloads agree. `positional[i]` / `named[name]` == nullptr means "cannot infer here"
+        // (no agreement, not object-backed, or out of range) → a bare `{` there is an error.
+        struct BraceArgHints {
+            vector<classDef*> positional;
+            map<string, classDef*> named;
+        };
+        // Gather candidate callees by name (globals) or by receiver type + name (methods), mirroring
+        // the candidate-gathering in resolveGlobalCall / resolveMethod (collection only, no scoring).
+        vector<functionDef*> collectGlobalCandidates(const string& name);
+        vector<functionDef*> collectMethodCandidates(const string& typeName, const string& methodName);
+        // Compute the per-position / per-name agreed object-backed class from candidate callees.
+        BraceArgHints braceArgHints(const vector<functionDef*>& candidates);
+
+        ParsedArgList parseCallArgList(functionDef* func, statementBlock* body, const BraceArgHints& braceHints = {});
 
         // Global function resolution: finds the best matching global function for a call.
         // Resolution priority: exact type match > conversion match > var fallback.
@@ -658,6 +676,23 @@ class bglParser {
         // the generic parameter list ('<T>' for array, balanced '<...>' for func) so the caller
         // can continue reading the identifier name. Used by pre-scan member header recognition.
         void preScanConsumeGenericSuffix(const token& typeTok);
+
+        // Order-independent `extend`: an `extend <obj>` whose target object isn't declared yet
+        // when pre-scan reaches it (e.g. platform-core `extend bgl {...}` included before the
+        // `object bgl` declaration) is captured here — object name + raw body text — and replayed
+        // after the whole include tree has been pre-scanned (drainDeferredObjectExtends), so the
+        // target is registered by then. This makes declarative `extend` order-free; only `#define`
+        // remains order-dependent. See [[project_prescan_forward_extend_order_dependency]].
+        struct DeferredObjectExtend { std::string objName; std::string body; std::string virtualName; int startLine; };
+        vector<DeferredObjectExtend> deferredObjectExtends;
+        // Register the members added by an `extend <obj>` body onto obj during pre-scan. Assumes the
+        // stream is positioned right after the `extend <name>` (scans to '{', processes through '}').
+        // Registers function stubs and — new — auto/alias namespace-redirect members (`emitter auto
+        // X = Class;`, `auto X = obj;`, `alias X = ...;`) as isExternal/isPrePassStub variable stubs
+        // so dotted resolution (bgl.asm, bgl.util.*) works regardless of source order. The main pass
+        // reconciles these stubs (processObjectExtension drops a stub once its real member lands).
+        void preScanExtendObjectMembers(objectDef* obj);
+        void drainDeferredObjectExtends();  // replay queued forward-extends onto now-registered targets
 
         vector<statement*> pendingInjections;  // pre-statements to emit before next main statement (e.g. from ternary lowering)
         vector<statement*> postInjections;     // post-statements to emit after next main statement (e.g. closing braces for ?. guards)

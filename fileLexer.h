@@ -68,6 +68,7 @@ class fileLexer{
         std::tuple<std::istream*, std::string, int, int> getCurrentFileDetail();
         void bleedSpaces();
         char peekChar();
+        char peekChar2();
         char readChar();
         bool isValidIdentifierChar(char c);
 

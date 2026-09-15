@@ -39,6 +39,13 @@ string rewritePathSeps(const string& path);
 filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& target);
 filesystem::path findLibIncludeRecursive(const filesystem::path& root, const string& includeName);
 
+// True when an include filename spans newlines — the tell-tale of a missing closing quote, which
+// makes the string lexer swallow across lines (up to the next quote) into a bogus filename. Include
+// filenames are always on one line, so this is unambiguously a malformed include.
+static bool includeNameSpansLines(const string& n){
+    return n.find('\n') != string::npos || n.find('\r') != string::npos;
+}
+
 // Substitute `##beguilerSettings.<key>` references inside a raw-I6 block with
 // their compile-time values. Uses the `##` prefix that already marks Beguile-
 // inside-I6 constructs (see processBglConditionals for ##if/##ifdef/##else
@@ -84,6 +91,7 @@ static string substituteBeguilerSettingsRefs(const string& block){
             else if(key == "framepoolsize"){ isInt = true; iv = beguilerSettings.framePoolSize > 0 ? beguilerSettings.framePoolSize : 0; }
             else if(key == "linqscratchsize"){ isInt = true; iv = beguilerSettings.linqScratchSize > 0 ? beguilerSettings.linqScratchSize : 0; }
             else if(key == "worldbufsize"){ isInt = true; iv = beguilerSettings.worldBufSize > 0 ? beguilerSettings.worldBufSize : 0; }
+            else if(key == "forinscratchsize"){ isInt = true; iv = beguilerSettings.forInScratchSize > 0 ? beguilerSettings.forInScratchSize : 31; }
             else {
                 out += block[i++];   // unknown key — pass through, let I6 surface the error
                 continue;
@@ -361,6 +369,10 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                 string includeName = next.value;
                 if(includeName.size() >= 2 && includeName.front()=='"' && includeName.back()=='"')
                     includeName = includeName.substr(1, includeName.size()-2);
+                if(includeNameSpansLines(includeName)){
+                    parsingError("#include \"...\": missing closing '\"' — the include filename must be on one line.");
+                    break;
+                }
                 filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
                 string resolved = resolveIncludePath(includeName, ".bgl", curDir, beguilerSettings.includePaths);
                 if(!resolved.empty())
@@ -370,10 +382,22 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             } else if(next.is("<")){
                 // Angle-bracket form: search lib path for sub-paths like <bindings/i6StandardLibrary>
                 string includeName;
+                // A library include name is always on ONE line. Guard against a missing '>': without
+                // this the scan runs to EOF (or a stray '>' — e.g. inside a later `array<var>`),
+                // swallowing the whole file as a bogus filename and blaming a line far from the typo.
+                int includeLine = file.currentLocation().line;   // line of the `<`
+                bool unterminated = false;
                 token t = file.getToken();
                 while(!t.is(">") && !t.is(eTokenType::eof)){
+                    if(file.currentLocation().line > includeLine){ unterminated = true; break; }
                     includeName += t.originalValue.empty() ? t.value : t.originalValue;
                     t = file.getToken();
+                }
+                if(t.is(eTokenType::eof)) unterminated = true;
+                if(unterminated){
+                    parsingError(format("#include <{0}…>: missing closing '>'. A library include name "
+                                        "must be on one line — add the '>'.", includeName));
+                    break;   // stop this directive (don't search for a garbage filename)
                 }
                 // Recursive lib search: `<name>` finds name.bgl anywhere under beguiLib (files first,
                 // subfolders alphabetically, depth-first); a `sub/name` prefix constrains the match to
@@ -561,6 +585,10 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             string innerPath = filename.value;
             if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
                 innerPath = innerPath.substr(1, innerPath.size()-2);
+            if(includeNameSpansLines(innerPath)){
+                parsingError("#includeI6: missing closing '\"' — the include filename must be on one line.");
+                return false;
+            }
             string emitPath;
             if(filename.is(eTokenType::rawQuote)){
                 // Raw form `#includeI6 @"..."` — emit verbatim, no resolution, no
@@ -1176,6 +1204,11 @@ bool bglParser::processBeguilerSettings(){
             if(sz < 1) parsingError("beguilerSettings property 'worldBufSize' must be at least 1");
             if(cfg.worldBufSize == -1) cfg.worldBufSize = sz;  // -1 = unset sentinel
         }
+        else if(key == "forinscratchsize"){
+            int sz = stoi(strVal);
+            if(sz < 1) parsingError("beguilerSettings property 'forInScratchSize' must be at least 1");
+            if(cfg.forInScratchSize == -1) cfg.forInScratchSize = sz;  // -1 = unset sentinel
+        }
         else if(key == "target"){
             if(languageService.getEnumType(strVal) != "etarget")
                 parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z5, or Z8).", strVal));
@@ -1247,6 +1280,7 @@ void bglParser::applySchemaDefaults(){
         else if(key == "framepoolsize" && cfg.framePoolSize == -1) cfg.framePoolSize = stoi(defVal);
         else if(key == "linqscratchsize" && cfg.linqScratchSize == -1) cfg.linqScratchSize = stoi(defVal);
         else if(key == "worldbufsize" && cfg.worldBufSize == -1) cfg.worldBufSize = stoi(defVal);
+        else if(key == "forinscratchsize" && cfg.forInScratchSize == -1) cfg.forInScratchSize = stoi(defVal);
         else if(key == "errorformat"  && cfg.errorFormat.empty()){
             string upper = defVal;
             transform(upper.begin(), upper.end(), upper.begin(), ::toupper);

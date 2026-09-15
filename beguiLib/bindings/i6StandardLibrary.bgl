@@ -26,15 +26,15 @@ extern attribute transparent;   // see through even when closed
 extern attribute animate;       // is an NPC or animate object
 extern attribute talkable;      // can be addressed directly
 extern attribute proper;        // name needs no "the" prefix
-extern additive property rawArray<var> before;
-extern additive property rawArray<var> after;
-extern additive property rawArray<var> life;
-extern additive property rawArray<var> orders;
-extern additive property rawArray<var> describe;
-extern additive property rawArray<var> time_out;
-extern additive property rawArray<var> each_turn;
+extern additive property before;
+extern additive property after;
+extern additive property life;
+extern additive property orders;
+extern additive property describe;
+extern additive property time_out;
+extern additive property each_turn;
 
-extern property var plural;         // the plural print-name of an object (I6 library property, linklpa.h — NOT an attribute; `pluralname` is the attribute)
+extern property plural;         // the plural print-name of an object (I6 library property, linklpa.h — NOT an attribute; `pluralname` is the attribute)
 extern attribute pluralname;    // object is referred to in the plural ("some keys")
 extern attribute female;        // animate: use she/her pronouns
 extern attribute male;          // animate: use he/him pronouns
@@ -444,14 +444,21 @@ extern void AfterGameOver();                  // post-game-over menu loop: AMUSI
 // by core (with a self-contained inline `height` accessor); here we replace that whole member with a
 // stdlib-backed one. Core stays library-ignorant; this binding owns the integration.
 extend _bglStatus {
+    replace auto id = {
+        int operator()        { return gg_statuswin; }
+        void operator = (int v){ gg_statuswin=v; }
+    }
     replace auto height = {
         int operator()        { return gg_statuswin_cursize; }
         void operator = (int v){ StatusLineHeight(v); }
     }
 }
-//TODO: tie the window id to gg_statuswin here
-//TODO: tie the main window id to gg_mainwin here
-
+extend _bglMainWindow {
+    replace auto id = {
+        int operator()        { return gg_mainwin; }
+        void operator = (int v){ gg_mainwin=v; }
+    }
+}
 
 //-- Standard library entry points (`Stub` defaults) --------------------------
 // The optional hooks the library calls at defined moments (grammar.h's `Stub` list). Each is

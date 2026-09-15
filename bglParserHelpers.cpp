@@ -78,10 +78,71 @@ bool hasReturn(statementBlock* blk){
     return false;
 }
 
+// A `break;` lowers to an i6RawNode "break;". A break escapes the CURRENT loop only when it sits at
+// the loop's own level or inside an `if` within it — a break inside a NESTED loop targets that inner
+// loop, and switch-case breaks are stripped at parse. So descend into if/else but NOT nested loops.
+static bool loopBodyHasEscapingBreak(statementBlock* blk){
+    if(blk == nullptr) return false;
+    for(statement* s : blk->statements){
+        if(auto* raw = dynamic_cast<i6RawNode*>(s)){
+            const string& t = raw->text;
+            size_t a = t.find_first_not_of(" \t\r\n");
+            size_t b = t.find_last_not_of(" \t\r\n;");
+            string core = (a == string::npos) ? "" : t.substr(a, (b == string::npos ? t.size() : b + 1) - a);
+            if(core == "break") return true;
+        }
+        if(auto* is = dynamic_cast<ifStatement*>(s))
+            if(loopBodyHasEscapingBreak(is->thenBlock) || loopBodyHasEscapingBreak(is->elseBlock)) return true;
+    }
+    return false;
+}
+
+// Trim leading/trailing whitespace from a condition's emitted text.
+static string trimmedCondText(expression* c){
+    if(c == nullptr) return "";
+    string t = c->text();
+    size_t a = t.find_first_not_of(" \t\r\n");
+    size_t b = t.find_last_not_of(" \t\r\n");
+    return (a == string::npos) ? "" : t.substr(a, (b == string::npos ? t.size() : b + 1) - a);
+}
+
+// True when `c` is a compile-time-constant true loop condition — `while(true)`, `for(;;)` (null/
+// empty condition), or `do…while(true)`. Such a loop never terminates on its own; only a `break`
+// can leave it.
+static bool isConstTrueCondition(expression* c){
+    if(c == nullptr) return true;               // for(;;) — no condition
+    string core = trimmedCondText(c);
+    return core.empty() || core == "true" || core == "1";
+}
+
+// True when `c` is a compile-time-constant false condition — the `do…until(false)` infinite form
+// (a do-until loops UNTIL its condition is true, so a false condition never lets it exit).
+static bool isConstFalseCondition(expression* c){
+    if(c == nullptr) return false;
+    string core = trimmedCondText(c);
+    return core == "false" || core == "0";
+}
+
 bool allPathsReturn(statementBlock* blk){
     if(blk == nullptr) return false;
     for(statement* s : blk->statements){
         if(dynamic_cast<returnStatement*>(s)) return true;
+        // An infinite loop (`while(true)` / `for(;;)`) with no `break` that escapes it never falls
+        // through — control leaves only via a `return` inside, so the code after it (and a trailing
+        // return) is unreachable. Treat such a loop as a terminating path so routines that loop
+        // forever and return from within don't demand a dead trailing return.
+        if(auto* ws = dynamic_cast<whileStatement*>(s))
+            if(isConstTrueCondition(ws->condition) && !loopBodyHasEscapingBreak(ws->body)) return true;
+        if(auto* fs = dynamic_cast<forStatement*>(s))
+            if(isConstTrueCondition(fs->condition) && !loopBodyHasEscapingBreak(fs->body)) return true;
+        // do-loops run the body at least once; they're non-terminating when the guard can never let
+        // them exit: `do…while(true)` (isWhile: loop while condition true) or `do…until(false)`
+        // (loop until condition true) — again, only an escaping `break` can leave them.
+        if(auto* ds = dynamic_cast<doStatement*>(s)){
+            bool infinite = ds->isWhile ? isConstTrueCondition(ds->condition)
+                                        : isConstFalseCondition(ds->condition);
+            if(infinite && !loopBodyHasEscapingBreak(ds->body)) return true;
+        }
         if(auto* is = dynamic_cast<ifStatement*>(s)){
             if(is->elseBlock != nullptr &&
                allPathsReturn(is->thenBlock) && allPathsReturn(is->elseBlock))

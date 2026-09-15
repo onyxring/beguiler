@@ -3,7 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 1000;
 #Ifdef beguiler;#Endif;
-Constant _BGL_WORLD_BUFSIZE = 128;
 global _bgl_temp0;
 global _bgl_temp1;
 global _bgl_temp2;
@@ -44,11 +43,6 @@ global _bglInitDone = 0;
     bufsmall = bufsmall_raw + WORDSIZE + 2;
 ];
  Constant NO_ATTRIBUTE 0; 
-object _glulx
-;
-object bgl
-  with glulx _glulx
-;
 [_bglArrayCompareAsc lhs rhs;
     
         if(lhs < rhs) return -1;
@@ -310,6 +304,21 @@ object _bglArray
   ]
 ;
 global _bglWorldBufIdx = -1;
+object _glulx
+;
+class bglsize
+  with
+    width 0,
+    height 0,
+    _opeq[s;
+        self.width=s.width;
+        self.height=s.height;
+        return self;
+    ]
+;
+object bgl
+  with glulx _glulx
+;
 array _bglbufstreamstack table 18;
 array _bglbufglulxstreams table 18;
 array _bgltrackedregistry table 130;

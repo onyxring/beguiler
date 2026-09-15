@@ -235,6 +235,7 @@ void bglParser::reset(){
     openCompileContext(eCompileContext::global);
     onceFiles.clear();
     startupFiles.clear();
+    includedFilePaths.clear();
     usingImports.clear();
     usingObjectImports.clear();
     includeDepth = 0;
@@ -410,77 +411,107 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
 //
 // Recorded here rather than at the member's parse site because a member's declared value is
 // attached after the member itself, and because inherited members have to be swept too.
-// A property written in the typed form declares the type its members must use. Every layer that
-// contributes to the property has to agree: for an ADDITIVE property the contributions accumulate
-// into one run of words, so a class holding rawArray<int> and an instance holding
-// rawArray<dictionaryWord> produce a single property with mixed element types and no diagnostic.
-// The declaration is the one place that type is written down, so it is checked against here.
+// Property declarations are TYPE-LESS: the type lives at each use site (each contributing member's
+// own declaration), not on the property. This pass enforces the two rules that keep an ADDITIVE
+// property coherent — its contributions accumulate into one shared run of words, so a mismatch
+// buries one layout inside another:
+//   (1) every member bound to an additive property must be a raw array (a tracked array's trailing
+//       length slot would otherwise land inside the accumulated data); and
+//   (2) all contributions within ONE class hierarchy (the class's ancestor chain plus every
+//       instance of it) must use the SAME element type — fixed by the highest ancestor that
+//       declares it. Unrelated hierarchies may each fix their own element type.
 void bglParser::checkTypedPropertyMemberTypes(){
-    std::map<string, string> declared;      // property name -> declared member type
-    for(typeDef* g : languageService.globals)
-        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-            if(vd->type.name == "property" && !vd->declaredMemberType.empty())
-                declared[vd->name] = vd->declaredMemberType;
-    // No early return on an empty `declared`: the additive-property check below applies to every
-    // member bound to an additive property, whether or not that property was declared in the
-    // typed form.
+    // The property name a member binds to (its i6name override, else its declared name).
+    auto propOf = [](variableDeclaration* vd){ return vd->i6name.empty() ? vd->name : vd->i6name; };
 
-    auto check = [&](vector<typeMember*>& members, const string& ownerLabel){
+    // (1) every member bound to an additive property must be a `rawArray<T>` — or a routine. The
+    // contributions accumulate into one shared run of words: a tracked `array<T>` keeps its length
+    // in a trailing slot that would land inside that data, and a scalar has no run at all. A routine
+    // is exempt — I6's `before`/`after`/`life`/… are routine-valued additive properties. Rejected
+    // here rather than silently demoted, so the source says what the layout is.
+    auto checkRaw = [&](vector<typeMember*>& members, const string& ownerLabel){
         for(typeMember* m : members){
+            if(dynamic_cast<functionDef*>(m)) continue;        // routine contribution — legal
             auto* vd = dynamic_cast<variableDeclaration*>(m);
-            if(vd == nullptr || vd->type.name.empty()) continue;   // untyped: inherits the class's
-            string propName = vd->i6name.empty() ? vd->name : vd->i6name;
-            // An ADDITIVE property accumulates its contributions into one run of words, so a
-            // member bound to one must be a raw array: a tracked `array<T>` keeps its length in a
-            // trailing slot, and accumulation would bury that slot inside the data. Rejected here
-            // rather than silently demoted to raw, so the source says what the layout is.
-            if(auto* ad = dynamic_cast<arrayDeclaration*>(m))
-                if(!ad->isRaw && !ad->elementType.empty() && languageService.isAdditiveProperty(propName)){
-                    string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
-                    parsingError(where + format("'{0}.{1}' is declared 'array<{2}>', but '{3}' is an "
-                        "ADDITIVE property: its contributions accumulate into a single run of words, "
-                        "and a tracked array's trailing length slot would land inside that data. "
-                        "Declare it `rawArray<{2}>`.", ownerLabel, vd->dName(),
-                        typeDisplayName(ad->elementType), propName));
-                }
-            auto it = declared.find(propName);
-            // `var` is the unconstrained declaration — it records that the property's type is
-            // deliberately open (required on `extern property`, where nothing else says what the
-            // slot holds), so it constrains no member.
-            if(it == declared.end() || it->second == "var") continue;
-            // A member array records its base in type.name ("array"), its rawness in isRaw and its
-            // element in elementType — never the "rawarray<int>" spelling the declaration uses — so
-            // the shapes are compared piecewise rather than as strings.
-            size_t lt = it->second.find('<');
-            string wantBase = it->second.substr(0, lt);
-            string wantElem = it->second.substr(lt + 1, it->second.size() - lt - 2);
-            string gotBase, gotElem, gotShown;
-            if(auto* ad = dynamic_cast<arrayDeclaration*>(m)){
-                gotBase  = ad->isRaw ? "rawarray" : "array";
-                gotElem  = ad->elementType;
-                gotShown = typeDisplayName(gotBase) + "<" + typeDisplayName(gotElem) + ">";
-                if(gotElem.empty()) continue;          // element inherited from the class decl
-            } else {
-                gotBase  = vd->type.name;
-                gotShown = typeDisplayName(vd->type.name);
-            }
-            if(gotBase == wantBase && gotElem == wantElem) continue;
-            // Runs after every file is closed, so parsingError has no location to attach; carry
-            // the member's own location instead, so the error points at the declaration.
+            if(vd == nullptr) continue;
+            string propName = propOf(vd);
+            if(!languageService.isAdditiveProperty(propName)) continue;
+            auto* ad = dynamic_cast<arrayDeclaration*>(m);
+            if(ad != nullptr && ad->isRaw) continue;           // rawArray<T> — the one legal array form
+            // An inference-typed override (`name = {…}` with no type of its own) is a bare
+            // variableDeclaration whose type is inherited from a base member — which is itself
+            // checked here. Its own type is empty at this point, so it is not a scalar to reject.
+            if(ad == nullptr && vd->type.name.empty()) continue;
             string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
-            parsingError(where + format("'{0}.{1}' is declared '{2}', but the property '{3}' is declared "
-                "'{4}'. Every layer that contributes to a property must use the type from its "
-                "declaration — for an additive property the contributions accumulate into a single "
-                "run of words, so a disagreement produces one property holding mixed element types.",
-                ownerLabel, vd->dName(), gotShown,
-                it->first, typeDisplayName(wantBase) + "<" + typeDisplayName(wantElem) + ">"));
+            if(ad != nullptr)
+                parsingError(where + format("'{0}.{1}' is declared 'array<{2}>', but '{3}' is an ADDITIVE "
+                    "property: its contributions accumulate into a single run of words, and a tracked "
+                    "array's trailing length slot would land inside that data. Declare it `rawArray<{2}>`.",
+                    ownerLabel, vd->dName(), typeDisplayName(ad->elementType), propName));
+            else
+                parsingError(where + format("'{0}.{1}' is declared '{2}', but '{3}' is an ADDITIVE "
+                    "property: its contributions accumulate into one shared run of words, so each must be "
+                    "a `rawArray<T>` (or a routine). A scalar cannot bind to it.",
+                    ownerLabel, vd->dName(), typeDisplayName(vd->type.name), propName));
         }
     };
+
+    // Element type an additive property `prop` is given on a member set (first non-empty found).
+    auto elemFor = [&](vector<typeMember*>& members, const string& prop) -> string {
+        for(typeMember* m : members)
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(m)){
+                auto* vd = dynamic_cast<variableDeclaration*>(m);
+                if(propOf(vd) == prop && !ad->elementType.empty()) return ad->elementType;
+            }
+        return "";
+    };
+    // Canonical element type for an additive property in a class chain, walked ROOT-FIRST so the
+    // highest ancestor that declares it wins. "" if no member in the chain gives it an element type.
+    std::function<string(classDef*, const string&)> canonical =
+        [&](classDef* cd, const string& prop) -> string {
+            if(cd == nullptr) return "";
+            for(classDef* base : cd->baseClasses){          // bases before self ⇒ root-first
+                string t = canonical(base, prop);
+                if(!t.empty()) return t;
+            }
+            return elemFor(cd->members, prop);
+        };
+
+    // (2) reconcile each additive-property contribution against the element type its hierarchy fixes.
+    // `chainRoot` is the class whose ancestor chain sets the canonical type: the class itself (its
+    // own members are part of the chain) or, for an object, its class (own members are leaves that
+    // must match what the class hierarchy already declares).
+    auto reconcile = [&](vector<typeMember*>& members, const string& ownerLabel,
+                         classDef* chainRoot, bool ownerIsInstance){
+        for(typeMember* m : members){
+            auto* ad = dynamic_cast<arrayDeclaration*>(m);
+            if(ad == nullptr || ad->elementType.empty()) continue;
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            string prop = propOf(vd);
+            if(!languageService.isAdditiveProperty(prop)) continue;
+            string want = canonical(chainRoot, prop);
+            if(want.empty() || want == ad->elementType) continue;
+            string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
+            parsingError(where + (ownerIsInstance
+                ? format("'{0}.{1}' contributes 'rawArray<{2}>' to the ADDITIVE property '{3}', but its "
+                    "class hierarchy fixes '{3}' as 'rawArray<{4}>'. An instance must match the element "
+                    "type its class declares. Declare it `rawArray<{4}>`.",
+                    ownerLabel, vd->dName(), typeDisplayName(ad->elementType), prop, typeDisplayName(want))
+                : format("'{0}.{1}' contributes 'rawArray<{2}>' to the ADDITIVE property '{3}', but the "
+                    "highest ancestor that declares '{3}' fixes its element type as '{4}'. Every "
+                    "contribution in one hierarchy must use the same element type. Declare it "
+                    "`rawArray<{4}>` (or change the ancestor).",
+                    ownerLabel, vd->dName(), typeDisplayName(ad->elementType), prop, typeDisplayName(want))));
+        }
+    };
+
     for(typeDef* g : languageService.objectTypes)
-        if(auto* cd = dynamic_cast<classDef*>(g)) check(cd->members, cd->dName());
+        if(auto* cd = dynamic_cast<classDef*>(g)){ checkRaw(cd->members, cd->dName());
+            reconcile(cd->members, cd->dName(), cd, false); }
     for(typeDef* g : languageService.globals)
         if(auto* od = dynamic_cast<objectDef*>(g))
-            if(!od->isExternal) check(od->members, od->dName());
+            if(!od->isExternal){ checkRaw(od->members, od->dName());
+                reconcile(od->members, od->dName(), od->objectClass, true); }
 }
 
 void bglParser::recordObjectMemberInits(){
@@ -1032,6 +1063,7 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
     string absPath;
     try { absPath = filesystem::canonical(filesystem::absolute(filename)).string(); }
     catch(...) { absPath = filename; }  // contentOverride callers may pass paths that don't exist on disk
+    includedFilePaths.insert(absPath);  // record coverage for the LSP entry-point context check
     // If this file declared #once, silently skip subsequent inclusions.
     if(onceFiles.count(absPath)) return false;
     // Guard against runaway or circular includes.
@@ -1386,17 +1418,13 @@ bool bglParser::processInlineObjectStatement(vector<token>& t, Qualifiers&, abst
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
     {
         t[0] = consumeTypeToken(t[0]);
-        // A property declaration must say what the property holds. Nothing else in the program
-        // does: an `extern` slot is owned by external I6 code, and any property's members can be
-        // spread across a class hierarchy with no one place that names the type. Without it the
-        // layers cannot be checked against each other — a class contributing rawArray<int> and an
-        // instance contributing rawArray<dictionaryWord> would accumulate into one property
-        // holding both. `var` is the escape hatch when the type is genuinely unconstrained; it
-        // constrains no member, but it records that the openness is deliberate.
-        if((string)t[0].value == "property")
-            parsingError(format("'property {0};' does not say what the property holds. Declare its "
-                "type — `property var {0};` if it is unconstrained, or the concrete type (e.g. "
-                "`property rawArray<dictionaryWord> {0};`).", (string)t[1].value));
+        // `[additive] property name;` — a property declaration is TYPE-LESS. The type lives at the
+        // use sites (each contributing member's own declaration), not on the property. For an
+        // ADDITIVE property, every contributing member must be a `rawArray<T>` with a consistent
+        // element type across the hierarchy (enforced in checkTypedPropertyMemberTypes); the element
+        // type is fixed by the highest ancestor that declares it, and inferred from the contribution's
+        // elements otherwise. A specified type on a property declaration is now rejected upstream
+        // (processTypedProperty).
         return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef, q.isSuperposed, q.isAdditive);
     }
 // `additive property rawArray<T> name;` — the property declaration carries the type its members
@@ -1404,35 +1432,18 @@ bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject&
 // "property" <base> "<" have been consumed by the matcher.
 bool bglParser::processTypedProperty(vector<token>& t, Qualifiers& q, abstractObject& c)
     {
-        string base = (string)t[1].value;
-        // Two shapes reach here: the generic `property rawArray<T> name;`, where the matcher has
-        // consumed the '<', and the plain `property var name;`, where it has consumed the name.
-        bool isGeneric = ((string)t[2].value == "<");
-        string elemType, declType = base;
-        token nameTok = t[2];
-        if(isGeneric){
-            elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
-            if(elemType == "func") elemType = parseFuncType();
-            else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
-            file.getToken(">");
-            declType = base + "<" + elemType + ">";
-            nameTok  = file.getToken({eTokenType::identifier, eTokenType::dataType});
-        }
-        token symbol  = file.getToken(token::endStatement);
-        string propName = (string)nameTok.value;
-        // An additive property accumulates its contributions into one property with no length
-        // word, so a tracked `array<T>` member — whose length lives in a trailing slot — would
-        // put that slot inside the accumulated data. Only the raw form can hold one.
-        if(q.isAdditive && base != "rawarray")
-            parsingError(format("'additive property {0} {1}': an additive property accumulates its "
-                "contributions into a single property with no length word, so its members are raw "
-                "arrays. Declare it `rawArray<T>`.", typeDisplayName(declType), propName));
-        processVariableDeclaration(t[0], nameTok, symbol, c, q.isExtern, q.isConst, "",
-                                   q.isRef, q.isSuperposed, q.isAdditive);
-        for(typeDef* g : languageService.globals)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                if(vd->type.name == "property" && vd->name == propName)
-                    { vd->declaredMemberType = declType; break; }
+        // A property declaration no longer carries a type — the type lives at the use sites (each
+        // contributing member's own declaration). Two shapes reach here, both now illegal:
+        //   `property rawArray<T> name;`  (matcher consumed through the '<')
+        //   `property T name;`            (matcher consumed the name)
+        // Consume the rest of the statement so error recovery (LSP) resyncs cleanly, then reject.
+        while(!file.peekToken().is(token::endStatement) && !file.peekToken().is(eTokenType::eof))
+            file.getToken();
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        parsingError("a property declaration no longer specifies a type. Write "
+            "`[additive] property <name>;` — the type is set by each use site, not the property. "
+            "For an additive property, every contributing member must be a `rawArray<T>` with a "
+            "consistent element type across the hierarchy.");
         return false;
     }
 bool bglParser::processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c)

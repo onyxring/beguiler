@@ -896,15 +896,33 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
         prop.declaredExpressionValue = list;
     } else {
         expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+        // One-element shorthand for a string on an array-typed property whose element accepts a
+        // string: `describe = "s"` ≡ `describe = {"s"}` — a single contribution to (often additive)
+        // parser/description vocabulary, emitting `with describe "s"`. Mirrors the array-declaration
+        // shorthand; scoped to strings so an array/var-pointer RHS stays a plain assignment.
+        string aElem;
+        if((typeName.rfind("array<",0)==0 || typeName.rfind("rawarray<",0)==0) && !typeName.empty() && typeName.back()=='>'){
+            size_t lt = typeName.find('<');
+            aElem = typeName.substr(lt+1, typeName.size()-lt-2);
+        }
+        bool rhsIsString = expr->resolvedType == "stringliteral" || expr->resolvedType == "string";
+        if(!aElem.empty() && rhsIsString && (aElem == "var" || aElem == "string" || aElem == "stringliteral")){
+            initializerList* list = new initializerList();
+            list->elements.push_back(expr);
+            prop.declaredExpressionValue = list;
+        }
         // auto inference: if the property type is 'auto', adopt the expression's resolved type
-        if(typeName == "auto" && !expr->resolvedType.empty()){
+        else if(typeName == "auto" && !expr->resolvedType.empty()){
             typeName = expr->resolvedType;
             prop.type = languageService.getType(typeName);
-        } else if(!typeName.empty() && typeName != "var" && !expr->resolvedType.empty()
-           && !isTypeCompatible(expr->resolvedType, typeName))
-            parsingError(format("Cannot assign value of type '{0}' to property '{1}' of type '{2}'",
-                typeDisplayName(expr->resolvedType), prop.dName(), typeDisplayName(typeName)));
-        prop.declaredExpressionValue = expr;
+            prop.declaredExpressionValue = expr;
+        } else {
+            if(!typeName.empty() && typeName != "var" && !expr->resolvedType.empty()
+               && !isTypeCompatible(expr->resolvedType, typeName))
+                parsingError(format("Cannot assign value of type '{0}' to property '{1}' of type '{2}'",
+                    typeDisplayName(expr->resolvedType), prop.dName(), typeDisplayName(typeName)));
+            prop.declaredExpressionValue = expr;
+        }
     }
 }
 
@@ -1054,6 +1072,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
 
     token sym = file.getToken({token::bracketOpen, token::assignment, token::endStatement});
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
+    arrDecl.src = file.currentLocation();   // so diagnostics on this member array report a line
     arrDecl.name = (string)propName;
     if(q) arrDecl.isInline = q->isInline;   // an `inline array<T>` member is a positional slot (§6.2.1)
     arrDecl.isRaw = declIsRaw;             // `rawArray<T>` member: no tracking layer
@@ -1072,13 +1091,26 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
         // Check for string initializer: array<char> name = "text";
         token peek = file.peekToken(1);
         if(peek.is(eTokenType::quote) || peek.is(eTokenType::rawQuote)){
-            if(elemType != "char" && elemType != "charliteral")
-                parsingError("String initializer is only valid for array<char>");
-            token strTok = file.getToken();
-            arrDecl.stringInitializer = strTok.value;
-            arrDecl.isByteArray = true;
-            arrDecl.type = languageService.getType("bytearray");
-            if(file.peekToken().is(token::endStatement)) file.getToken();
+            if(elemType == "char" || elemType == "charliteral"){
+                token strTok = file.getToken();
+                arrDecl.stringInitializer = strTok.value;
+                arrDecl.isByteArray = true;
+                arrDecl.type = languageService.getType("bytearray");
+                if(file.peekToken().is(token::endStatement)) file.getToken();
+            } else if(elemType.empty() || elemType == "string" || elemType == "stringliteral" || elemType == "var"){
+                // One-element shorthand: `array<var>/<string> name = "s"` ≡ `= {"s"}` — a string is a
+                // valid var/string element (mirrors `array<int> x = 3` ≡ {3}). Wrap the literal in a
+                // one-element list so it flows through the normal element emit (e.g. an additive
+                // property's `with describe "s"`). Only array<char> fills a char buffer from a string.
+                token strTok = file.getToken();
+                initializerList* list = new initializerList();
+                list->elements.push_back(parseExpression(strTok, {token::endStatement}, nullptr, nullptr));
+                if(file.peekToken().is(token::endStatement)) file.getToken();
+                arrDecl.declaredExpressionValue = list;
+            } else {
+                parsingError(format("String initializer is only valid for array<char>; '{0}' cannot "
+                    "hold a string element.", typeDisplayName(elemType)));
+            }
         } else {
             file.getToken(token::braceOpen);
             initializerList* list = new initializerList();
@@ -1574,6 +1606,12 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
                                           functionDef* func, statementBlock* body){
     objectDef& od = languageService.registerObject(objName, false, "");
     od.objectClass = cls;
+    // An inline-baked anonymous object is a file-scope static regardless of where the `Type{ … }`
+    // literal appears. When it appears inside a routine body (e.g. as a call argument), the compile
+    // context isn't global, so registerObject did NOT add it to the emitted `globals` list — the
+    // I6 output would then reference an object it never declares ("No such constant"). Force it in.
+    if(std::find(languageService.globals.begin(), languageService.globals.end(), &od) == languageService.globals.end())
+        languageService.globals.push_back(&od);
     // Positional slots = the class's `inline` members, BASE CLASS FIRST, in declaration order
     // (a subclass appends its own after its base's). Only `inline` members take positional values.
     std::vector<variableDeclaration*> inlineFields;
@@ -1693,6 +1731,41 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
             expectNamed = (terminator == token::endStatement);
         }
         vt = file.getToken();
+    }
+
+    // ── Runtime field hoisting ──────────────────────────────────────────────────────────────
+    // A static I6 object property can't hold a value computed from routine locals/params — it would
+    // reference names not in scope at object-definition time ("No such constant as …"). When a
+    // scalar field's value is a RUNTIME expression (a primitive value type, not a literal) AND we
+    // are inside a routine body, hoist it OUT of the static object and set it at runtime, before
+    // the enclosing statement (via pendingInjections). Constant fields (literals) and object-
+    // reference members stay baked as static properties; a nested inline object's own runtime
+    // fields were already hoisted by its own (recursive) bake. This is what lets an inline value
+    // aggregate with runtime fields — `Type{ runtimeA, runtimeB }` — be passed to a routine (§6.2.1).
+    // The per-site static object thus doubles as the per-site value temp (recursion caveat: a
+    // recursive call reusing the same site reuses this instance — same limitation as class locals).
+    if(func != nullptr){
+        auto isRuntimeScalar = [](const std::string& t){
+            return t=="int" || t=="uint" || t=="char" || t=="float" || t=="bool";
+        };
+        std::vector<typeMember*> kept;
+        for(typeMember* m : od.members){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd && dynamic_cast<arrayDeclaration*>(vd) == nullptr && vd->declaredExpressionValue
+               && isRuntimeScalar(vd->declaredExpressionValue->resolvedType)){
+                i6RawNode* inj = new i6RawNode();
+                inj->text = objName + "." + vd->name + " = " + vd->declaredExpressionValue->text() + ";";
+                // The RHS may reference routine locals/params (e.g. `{width, height}` where width/height
+                // are params) that shadow the aggregate class's property names. Mark the node `cooked` so
+                // the emitter renames those value-context uses (RHS `width` → `_l_width`) while leaving the
+                // LHS `.width` property access intact — and so it doesn't poison the shadow-rename guard.
+                inj->cooked = true;
+                pendingInjections.push_back(inj);
+            } else {
+                kept.push_back(m);
+            }
+        }
+        od.members = kept;
     }
 }
 
@@ -2510,6 +2583,23 @@ bool bglParser::processObjectExtension(token nameTok){
         for(typeMember* m : vod->members)
             if(auto* fd = dynamic_cast<functionDef*>(m))
                 if(fd->name == "handler"){ vod->doFunc = fd; break; }
+    }
+
+    // Reconcile pre-scan namespace-redirect stubs: preScanExtendObjectMembers registers `auto`/
+    // `alias`/`emitter auto` members as isPrePassStub variableDeclarations so dotted resolution
+    // (bgl.asm, bgl.util.*) stays order-free during the main pass. Now that this extend's real
+    // members have been added above, drop any stub whose real same-named member has landed — so the
+    // object keeps exactly one member per name (no duplicate). A stub with no real sibling yet
+    // (added by a different, not-yet-processed extend) is left in place until its own extend runs.
+    for(auto it = obj->members.begin(); it != obj->members.end(); ){
+        auto* vd = dynamic_cast<variableDeclaration*>(*it);
+        if(vd && vd->isPrePassStub){
+            bool hasReal = false;
+            for(typeMember* m2 : obj->members)
+                if(m2 != *it && !m2->isPrePassStub && m2->name == vd->name){ hasReal = true; break; }
+            if(hasReal){ it = obj->members.erase(it); continue; }
+        }
+        ++it;
     }
 
     return false;
