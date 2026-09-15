@@ -24,6 +24,7 @@
 #include <core/_bglAllocated>
 #include <core/_bglWorld>
 #include <core/_math>
+#include <core/_typeof>
 #include <core/_mainWindow>
 #include <core/_printRules>  
 #include <core/_random>

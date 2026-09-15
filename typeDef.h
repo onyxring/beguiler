@@ -74,6 +74,18 @@ class classDef:public typeDef{
         }
         vector<typeMember*> members;
         vector<classDef*> baseClasses;
+        // Named union type: `union Name = A | B { members }`. A nominal type over a structural
+        // union that can carry (emitter/static) members. unionMembers holds the member type names
+        // (e.g. {"string","func<void>"}); empty for ordinary classes. Represented as an emitter
+        // class (no I6 backing — a union value is a bare word), so its `print()`/methods ride the
+        // normal class-member dispatch, while compatibility expands it to the structural union.
+        vector<string> unionMembers;
+        bool isUnion() const { return !unionMembers.empty(); }
+        std::string unionExpansion() const {   // "A|B|…" structural form, "" if not a union
+            std::string r;
+            for(size_t i = 0; i < unionMembers.size(); i++){ if(i) r += "|"; r += unionMembers[i]; }
+            return r;
+        }
         std::string globalDeclarationBody; // raw I6 body of 'emitter void globalDeclaration()'; emitted after each instance
         // Pool size for `class Foo[N] {...}` — reserves N statically-allocated instances at compile time.
         // 0  = not pooled (regular class).

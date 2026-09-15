@@ -887,6 +887,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // would return where we are NOW (after consuming the name), which may be on a later line.
     funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
     funcDef.returnType=languageService.getType((string) returnType);
+    if(funcDef.returnType.name.empty()) funcDef.returnType.name = (string) returnType;  // func<…> / union return types
     funcDef.isExternal=isExternal;
     funcDef.isEmitter=isEmitter;
     if(!returnType.docComment.empty())   funcDef.docComment = returnType.docComment;

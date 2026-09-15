@@ -1549,10 +1549,24 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
     if(q.isExtend && !q.isExtern && (tok.is(token::enumDeclaration) || tok.is(token::bnumDeclaration) || tok.value == "enum" || tok.value == "bnum"))
         return processEnumDeclaration(tok, false, token(), /*isExtend*/true);
 
+    // `extend <unionName> { … }` — attach members to a named union. It's an emitter class under
+    // the hood, so route to the class-extend path (which appends members) rather than the object one.
+    if(q.isExtend && !q.isExtern && (tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration)){
+        auto* uc = dynamic_cast<classDef*>(&languageService.getType((string)tok));
+        if(uc && uc->isUnion())
+            return processClassDeclaration(tok, false, /*isExtend*/true, /*isEmitterClass*/true, false, tok);
+    }
     if(q.isExtend && !q.isExtern && (tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration))
         return processObjectExtension(tok);
 
     if(!q.isExtern && tok.is("grammar")) return processGrammarDeclaration();
+
+    // Named union declaration: `union Name = A | B [ { members } ]`. `union` is a soft keyword
+    // (handled here like `grammar`), so it stays usable as an identifier elsewhere. It takes no
+    // qualifiers — a qualifier before it (`alias union`, `static union`, …) is not a union
+    // declaration and falls through to the generic error path, exactly like any bogus construct.
+    // `extend <unionName> { … }` is routed via the extend path below.
+    if(!q.anySet() && tok.is("union")) return processUnionDeclaration(q);
 
     // Namespace-scoped type path: identifier.identifier...identifier resolving to a type.
     // Consume the dotted path, resolve to a flat type, then re-dispatch with the synthetic token.
@@ -1582,6 +1596,20 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
                         goto usingResolved;
                     }
         usingResolved:;
+    }
+
+    // Union type at a declaration head: `A | B | ... name`. A '|' immediately after a type name
+    // is only ever a union (a type name is not a valid expression operand), so collapse the
+    // '|'-separated members into ONE synthetic dataType token carrying the canonical union name.
+    // The grammar's `dataType identifier …` declaration rules then match unchanged, so this one
+    // choke point gives unions to locals, return types, members, and typed object declarations.
+    // Restricted to a simple leading type (uses a single-token peek, no speculative consumption);
+    // a func<…>/array<…> first member is not collapsed here — write the scalar member first
+    // (canonicalization makes member order irrelevant to the resulting type).
+    if(!q.isExtern && tok.isDataType()
+       && tok.value != "func" && tok.value != "array" && tok.value != "rawarray"
+       && file.peekToken().value == "|"){
+        tok.value = maybeParseUnionTail(tok.value);
     }
 
     // Try grammar-driven matching
@@ -1690,6 +1718,46 @@ string bglParser::parseArrayTypeTail(const string& base){
 }
 
 
+// Read a single complete member type after a union '|' — a base type name plus any
+// func<...> / array<...> tail. Mirrors the inline resolution the declaration sites do,
+// including the array<char> -> bytearray mapping so a member reads identically to a
+// standalone declaration of the same type.
+string bglParser::readUnionMemberType(){
+    token t = file.getToken({eTokenType::dataType, eTokenType::identifier});
+    string tn = t.value;
+    if(tn == "func") return parseFuncType();
+    if(tn == "array" || tn == "rawarray"){
+        string full = parseArrayTypeTail(tn);            // "array<Elem>" / "rawarray<Elem>"
+        if(full == "array<char>" || full == "array<charliteral>") return "bytearray";
+        return full;
+    }
+    return tn;
+}
+
+// If a '|' follows the just-read first type, consume the '|'-separated members and return
+// the canonical union name. Members are sorted+deduped so `string|func<>` and `func<>|string`
+// name the same type (and a lone member after dedup collapses back to that member — a union of
+// a type with itself is just that type). Returns firstType unchanged when no '|' follows.
+string bglParser::maybeParseUnionTail(const string& firstType){
+    if(file.peekToken().value != "|") return firstType;
+    vector<string> members;
+    members.push_back(firstType);
+    while(file.peekToken().value == "|"){
+        file.getToken();                    // consume '|'
+        members.push_back(readUnionMemberType());
+    }
+    std::sort(members.begin(), members.end());
+    members.erase(std::unique(members.begin(), members.end()), members.end());
+    if(members.size() == 1) return members[0];
+    string result;
+    for(size_t i = 0; i < members.size(); i++){
+        if(i) result += "|";
+        result += members[i];
+    }
+    return result;
+}
+
+
 bool bglParser::processParameterList(functionDef& funcDef){
     token tok=file.getToken(); // first type, or ")" for empty list
     while(tok.isNot(token::parenClose)){
@@ -1716,8 +1784,9 @@ bool bglParser::processParameterList(functionDef& funcDef){
             else
                 paramTypeName = format("{0}<{1}>", base, elemType);
         }
+        paramTypeName = maybeParseUnionTail(paramTypeName);  // A | B | ... union parameter type
         param.type=languageService.getType(paramTypeName);
-        if(param.type.name.empty()) param.type.name = paramTypeName; // for func<...> types
+        if(param.type.name.empty()) param.type.name = paramTypeName; // for func<...> and union types
         tok=file.getToken(); // name, "=", ",", or ")"
         // Accept both identifier and dataType tokens for the parameter name. A dataType here
         // means the name collides with a registered class (e.g., parameter 'b' when 'class B'

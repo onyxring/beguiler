@@ -1,0 +1,43 @@
+/*  Named unions with members — `union Name = A | B { … }`, `extend Name { … }`, and a global
+    `print(Name)` overload giving the string-or-routine idiom.
+
+    A named union is a nominal type over a structural union that carries members. It is transparent
+    for assignment/passing (a string or a routine flows into a `describable`) but nominal for member
+    lookup (`.isRoutine()`, and the `print(describable)` overload). print() discrimination uses raw
+    I6 `metaclass` in emitter bodies — library-independent (no PrintOrRun). Runtime-verified.  */
+// EXPECT_OUTPUT: [text S] [RAN R] param:text member:done
+#beguilerSettings { target = z5; informName = "none"; }
+
+// declare-with-body form + a member method
+union describable = string | func<void> {
+    emitter bool isRoutine() { metaclass($val) == Routine }
+}
+// attach the print override via extend (global print(T) overload — Beguile's print mechanism)
+emitter void print(describable d){ if(metaclass($d) == Routine) $d(); else print (string)$d; }
+
+void ran(){ print("RAN"); }
+
+// union as a parameter (transparent: a string or a routine is accepted)
+void show(describable d){
+    print("["); print(d);
+    if (d.isRoutine()) print(" R"); else print(" S");
+    print("]");
+}
+
+// union as a class member
+class Slot { describable label; }
+object s1 : Slot { }
+
+void main(){
+    show("text");  print(" ");   // string branch
+    show(ran);                    // routine branch
+
+    // union parameter accepts a bare string directly
+    describable p = "text";
+    print(" param:"); print(p);
+
+    // member assignment (both forms) + discrimination
+    s1.label = ran;
+    print(" member:");
+    if (s1.label.isRoutine()) print("done");
+}

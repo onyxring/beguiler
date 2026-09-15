@@ -1,0 +1,55 @@
+/*  Union types (A | B) — a value that is one of several types, discriminated at runtime.
+
+    Exercises all four declaration sites (parameter, local, return, member), the union->member
+    narrowing cast (a no-op reinterpret), typeof-based discrimination, and union method-overload
+    resolution (an exact member overload wins; the union catches the other members). Runtime-
+    verified — this tier runs the program, so a wrong discrimination or cast is caught here.  */
+// EXPECT_OUTPUT: p:text p:[run] L:text R:pos R:[run] M:[run] O:exact O:union
+#beguilerSettings { target = z5; informName = "none"; }
+
+void helper(){ print("[run]"); }
+
+// --- parameter union + narrowing cast ---
+void describe(string | func<void> x){
+    if (typeof(x) == eType.routine) { func<void> f = (func<void>)x; f(); }
+    else print((string)x);
+}
+
+// --- return-type union ---
+string | func<void> pick(int n){
+    if (n > 0) return "pos";
+    return helper;
+}
+
+// --- member union ---
+class Slot { string | func<void> handler; }
+object s1 : Slot { handler = helper; }
+
+// --- method overload: exact vs union (exact wins) ---
+class Sink {
+    void take(string s)              { print("exact"); }
+    void take(string | func<void> x) { print("union"); }
+}
+object sink1 : Sink { }
+
+void main(){
+    print("p:"); describe("text");      // param, string branch
+    print(" p:"); describe(helper);     // param, routine branch
+
+    // local union + reassignment across member types
+    string | func<void> L = "text";
+    print(" L:"); describe(L);
+    L = helper;
+
+    // return union, both branches, consumed via describe
+    print(" R:"); describe(pick(1));    // returns "pos"
+    print(" R:"); describe(pick(0));    // returns helper
+
+    // member union, discriminated
+    print(" M:");
+    if (typeof(s1.handler) == eType.routine){ func<void> f = (func<void>)s1.handler; f(); }
+
+    // overload resolution
+    print(" O:"); sink1.take("hi");     // exact string overload
+    print(" O:"); sink1.take(helper);   // union overload
+}

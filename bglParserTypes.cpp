@@ -2075,10 +2075,54 @@ std::set<string> bglParser::collectPropertyClassMemberNames(){
 // ===============================================================================
 // Type compatibility and arg conversion
 // ===============================================================================
+// A union type name carries a top-level '|' (one not nested inside a func<...>/array<...>
+// argument list). These two helpers recognize and split such names.
+bool bglParser::isUnionType(const std::string& t){
+    int depth = 0;
+    for(char c : t){
+        if(c == '<') depth++;
+        else if(c == '>') depth--;
+        else if(c == '|' && depth == 0) return true;
+    }
+    return false;
+}
+std::vector<std::string> bglParser::splitUnionType(const std::string& t){
+    std::vector<std::string> out;
+    int depth = 0; std::string cur;
+    for(char c : t){
+        if(c == '<') depth++;
+        else if(c == '>') depth--;
+        if(c == '|' && depth == 0){ out.push_back(cur); cur.clear(); }
+        else cur += c;
+    }
+    if(!cur.empty()) out.push_back(cur);
+    return out;
+}
+
 bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     if(paramType == "var") return true;  // var accepts any type without checking
     if(argType == "var") return true;    // var is assignable to any type (untyped source)
     if(argType == paramType) return true;
+    // Named union → structural expansion: a named union (`union X = A|B`) is transparent for
+    // assignment/passing (member lookup stays nominal elsewhere via its classDef). Expand here so
+    // the structural-union rules below apply, then fall through.
+    { string ax = unionExpansionOf(argType);   if(!ax.empty()) argType = ax; }
+    { string px = unionExpansionOf(paramType); if(!px.empty()) paramType = px; }
+    if(argType == paramType) return true;
+    // Union types. A value/union is assignable INTO a union when every member of the source is
+    // compatible with some member of the target; a value is assignable into a union when it is
+    // compatible with some member. A UNION is NOT assignable into a plain member type — that
+    // direction requires an explicit `(Member)x` narrowing cast (handled at the cast site).
+    if(isUnionType(paramType) || isUnionType(argType)){
+        std::vector<std::string> am = isUnionType(argType)   ? splitUnionType(argType)   : std::vector<std::string>{argType};
+        std::vector<std::string> pm = isUnionType(paramType) ? splitUnionType(paramType) : std::vector<std::string>{paramType};
+        for(const auto& a : am){
+            bool matched = false;
+            for(const auto& p : pm) if(isTypeCompatible(a, p)){ matched = true; break; }
+            if(!matched) return false;
+        }
+        return true;
+    }
     // bglclass accepts any registered class as an operand. Lets `obj.is(Foo)` work for
     // every class regardless of whether `Foo` resolved as its own type (non-extern,
     // visible in `globals`) or fell through to the isKnownClassName fallback (extern).

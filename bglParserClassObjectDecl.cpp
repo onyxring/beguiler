@@ -312,11 +312,13 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             } else {
                 tok.assertDataType();
                 returnType = tok;
+                returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type
                 name = file.getToken({eTokenType::identifier, eTokenType::dataType});
             }
         } else {
             returnType=tok.assertDataType();
             if(returnType.value == "func") returnType.value = parseFuncType();  // func<...> member type: consume its own <...>
+            returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type
             name=file.getToken({eTokenType::identifier, eTokenType::dataType});
         }
         if(name.is("operator")){
@@ -1301,6 +1303,7 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
 void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace, bool isRef){
     // func<...> member: consume its own <...> so it isn't mistaken for the member name.
     if(typeTok.value == "func") typeTok.value = parseFuncType();
+    typeTok.value = maybeParseUnionTail(typeTok.value);  // A | B | ... union member type
     token propName = file.getToken(eTokenType::identifier);
     if(propName.is("operator")){
         token opTok = file.getToken();
@@ -1850,6 +1853,60 @@ void bglParser::parseAliasMember(token aliasName, std::vector<typeMember*>& memb
     }
     file.getToken(token::endStatement);
     members.push_back(&aliasDef);
+}
+
+// Named union: `union Name = A | B [ { members } | ; ]` (the `union` keyword already consumed).
+// Registers Name as an emitter class carrying the member type list; an optional `{ … }` body is
+// parsed by processClassDeclaration so members (emitter/static, especially `print()`) reuse the
+// normal class machinery. Compatibility later expands the name to its structural union.
+bool bglParser::processUnionDeclaration(Qualifiers& q){
+    if(getCurrentCompileContext() != eCompileContext::global)
+        parsingError("union declarations are only allowed in global context");
+    token nameTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+    file.getToken("=");
+
+    // Read the member list: firstType [ '|' member ]…  (reusing the union-tail machinery).
+    token ft = file.getToken({eTokenType::dataType, eTokenType::identifier});
+    string first = ft.value;
+    if(first == "func") first = parseFuncType();
+    else if(first == "array" || first == "rawarray"){
+        string full = parseArrayTypeTail(first);
+        first = (full == "array<char>" || full == "array<charliteral>") ? "bytearray" : full;
+    }
+    string canonical = maybeParseUnionTail(first);          // "A|B…" (sorted + deduped)
+    vector<string> members = splitUnionType(canonical);
+    if(members.size() < 2)
+        parsingError(format("union '{0}' must have at least two distinct member types", (string)nameTok));
+
+    token next = file.peekToken();
+    if(next.is(token::endStatement)){
+        file.getToken(token::endStatement);
+        classDef& cls = languageService.registerClass((string)nameTok, false, nameTok.originalValue);
+        cls.isEmitterClass = true;
+        cls.unionMembers   = members;
+        if(!nameTok.docComment.empty()) cls.docComment = nameTok.docComment;
+        return false;
+    }
+    if(next.is(token::braceOpen)){
+        // Reuse the class member-body parser (registers the emitter class + parses `{ … }`),
+        // then attach the union member list.
+        processClassDeclaration(nameTok, /*isExternal*/false, /*isExtend*/false,
+                                /*isEmitterClass*/true, /*isAlias*/false, nameTok);
+        if(auto* cls = dynamic_cast<classDef*>(&languageService.getType((string)nameTok)))
+            cls->unionMembers = members;
+        return false;
+    }
+    parsingError(format("union '{0}': expected ';' or '{{ … }}' after the member list", (string)nameTok));
+    return false;
+}
+
+// "A|B…" structural expansion of a named-union type name; "" if typeName is not a named union
+// (or is already a structural `A|B` form). Lets isTypeCompatible treat a named union transparently.
+std::string bglParser::unionExpansionOf(const std::string& typeName){
+    if(isUnionType(typeName)) return "";   // already structural
+    auto* cls = dynamic_cast<classDef*>(&languageService.getType(typeName));
+    if(cls && cls->isUnion()) return cls->unionExpansion();
+    return "";
 }
 
 bool bglParser::processObjectDeclaration(token objectType, token name, bool isExternal, string className, string i6alias, bool hasBody, bool isEmitter, bool isSuperposed){

@@ -1,0 +1,29 @@
+#once
+//-----------------------------------------------------------------------------
+//  _commonBindings.bgl — named union types commonly wanted by IF authors, shared
+//  by the standard-library and PunyInform bindings (both `#include` this file;
+//  `#once` keeps a single definition if a project pulls both).
+//
+//  These are LIBRARY types, not core — you get them when you include a library
+//  binding, which is exactly when you reach for the classic Inform "string-or-
+//  routine" idiom. Their behavior is still library-INDEPENDENT: the print
+//  override discriminates with I6's built-in `metaclass`, not `PrintOrRun`, so
+//  it carries no parser.h/stdlib dependency.
+//-----------------------------------------------------------------------------
+
+// stringOrRoutine — a value that is EITHER printable text OR a no-argument
+// routine to run (the description/short_name/cant_go family). Assign either;
+// `print(x)` prints the string or runs the routine (I6 PrintOrRun semantics,
+// done inline via metaclass).
+union stringOrRoutine = string | func<void> {
+    emitter bool isRoutine() { metaclass($val) == Routine }   // runtime discriminator
+}
+
+// The print override. `print(x)` dispatches through a global `print(T)` overload
+// (Beguile's print mechanism — the same way int/bool/dictionaryWord define it),
+// so this is where the string-or-routine behavior lives. Emitter body is raw I6
+// (metaclass is an I6 compiler built-in, present with or without any library).
+emitter void print(stringOrRoutine v){
+    if(metaclass($v) == Routine) $v();
+    else print (string)$v;
+}

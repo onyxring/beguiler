@@ -1,0 +1,33 @@
+/*  typeof — runtime type discrimination (Layer 0 of the union-type feature).
+
+    `typeof(v)` reports a value's machine category as an `eType`, wrapping I6's
+    metaclass(). Verifies the four reference categories plus the scalar fallback,
+    and that `== eType.X` discrimination fires correctly. Runtime-verified (this
+    tier actually runs the program), so a wrong metaclass mapping is caught here,
+    not just in emission.  */
+// EXPECT_OUTPUT: s=2 r=3 n=1 o=4 | string routine int object
+#beguilerSettings { target = z5; informName = "none"; }
+
+object thing {
+    short_name = "thing";
+}
+
+void helper(){ print("hi"); }
+
+void main(){
+    string s = "text";
+    var    r = helper;
+    int    n = 42;
+    object o = thing;
+
+    print("s="); print((int)typeof(s));
+    print(" r="); print((int)typeof(r));
+    print(" n="); print((int)typeof(n));
+    print(" o="); print((int)typeof(o));
+    print(" | ");
+
+    if (typeof(s) == eType.string)  print("string ");
+    if (typeof(r) == eType.routine) print("routine ");
+    if (typeof(n) == eType.int)     print("int ");
+    if (typeof(o) == eType.object)  print("object");
+}

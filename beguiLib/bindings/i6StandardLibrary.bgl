@@ -5,6 +5,8 @@
 //-----------------------------------------------------------------------------
 #once
 
+#include <bindings/_commonBindings>   // stringOrRoutine + print override (shared with the PunyInform binding)
+
 // Advertise the standard library so core/BLR files can detect it regardless of include order
 // (see §3.3.3). e.g. core/_statusBar keys off this to defer to the library's status-window handling.
 #declare I6_STANDARD_LIBRARY
