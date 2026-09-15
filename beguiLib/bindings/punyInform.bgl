@@ -9,6 +9,8 @@
 //-----------------------------------------------------------------------------
 #once
 
+#include <bindings/_commonBindings>   // stringOrRoutine + print override (shared with the I6 std-lib binding)
+
 // Advertise the PunyInform library so core/BLR files can detect it regardless of include order
 // (see §3.3.3). Its counterpart in the I6 standard library binding is I6_STANDARD_LIBRARY.
 #declare PUNYINFORM

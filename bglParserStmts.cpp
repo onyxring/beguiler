@@ -2275,6 +2275,17 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
     }
     if(symbol.is(token::parenOpen))  { //then this is a function call.
 
+        // Guard: a bare union-typed value cannot be called directly — its runtime type is not yet
+        // known, so calling it would run whichever member it happens to hold (a string as a routine
+        // crashes). Require narrowing first (a `(func<...>)x` cast, after a `typeof(x)` check).
+        {
+            string calleeType = resolveIdentifierType((string)tok, func, body);
+            if(isUnionType(calleeType))
+                parsingError(format("Cannot call '{0}' directly — it has union type '{1}'. "
+                    "Discriminate with typeof() and narrow with a cast first, e.g. "
+                    "`func<void> f = (func<void>){0}; f();`", (string)tok, calleeType));
+        }
+
         functionCallStatement& callStmt = *(new functionCallStatement());
         callStmt.src = stmtLoc;
         // Qualify bare function name: if inside an instance and the name matches an instance

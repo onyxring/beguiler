@@ -1,0 +1,52 @@
+#once
+//=============================================================================
+// typeof — runtime type discrimination (Layer 0 of the union-type feature).
+//
+// `typeof(v)` reports the *machine category* of a value as an `eType`, wrapping
+// I6's one-opcode `metaclass()`. It is the general primitive behind union-typed
+// parameters: discriminate with `typeof(x)` / `switch`, then consume with a
+// `(T)x` cast. Works on both Z-machine and Glulx (metaclass is provided by the
+// I6 veneer on Glulx). ALWAYS present, no include; `superposed` so a game that
+// never calls it pays nothing, and the metaclass helpers are emitters (inlined).
+//
+// Contract: return a DEFINITE category, or `unknown` — never guess. A value that
+// is `nothing`/0 reports `unknown` (so it coincides with null; `eType.unknown` is
+// 0 and eType defines `operator ?()`, letting `typeof(x) ?? eType.int` fall back).
+//
+// LIMITATION — reports machine categories, not source types. `bool`, `char` and
+// `enum` values are indistinguishable from `int` at runtime and all report as
+// `eType.int`. A scalar that happens to equal a valid object number / packed
+// string or routine address is reported as that reference category (the classic
+// Z/Glulx metaclass ambiguity); discriminate such unions with a `(T)x` cast plus
+// your own residence check rather than relying on `typeof`.
+//=============================================================================
+
+// unknown = 0 so it coincides with null/nothing. (A null-coalescing `operator ?()`
+// over eType is deferred to Phase 2 with the safe-cast family; for now discriminate
+// with `== eType.unknown`.)
+enum eType {
+    unknown = 0,   // nothing/null, or a category metaclass cannot determine
+    int,           // a scalar word (also bool / char / enum — same representation)
+    string,        // a packed string address
+    routine,       // a routine address
+    object,        // an object
+    class          // a class
+}
+
+// Raw-I6 metaclass probes. Emitter bodies are raw I6, so `metaclass`/`Routine`/
+// `String`/`Object`/`Class` (I6 built-ins) are referenced directly here without
+// polluting the Beguile namespace — the same idiom the array/string libraries use.
+emitter bool _bglMcRoutine(var v) { metaclass($v) == Routine }
+emitter bool _bglMcString(var v)  { metaclass($v) == String }
+emitter bool _bglMcObject(var v)  { metaclass($v) == Object }
+emitter bool _bglMcClass(var v)   { metaclass($v) == Class }
+
+// typeof — the public primitive.
+superposed eType typeof(var v) {
+    if (v == null)          return eType.unknown;
+    if (_bglMcRoutine(v))   return eType.routine;
+    if (_bglMcString(v))    return eType.string;
+    if (_bglMcClass(v))     return eType.class;   // test Class before Object
+    if (_bglMcObject(v))    return eType.object;
+    return eType.int;                              // none of the above: a scalar word
+}

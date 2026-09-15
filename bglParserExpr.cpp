@@ -1118,6 +1118,19 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                 cur = getNext();
                 continue;  // re-process the token after the cast with castType set
             }
+            // Templated cast target: (func<...>)x / (array<T>)x / (rawarray<T>)x. These type
+            // names only ever appear in type position, so `(` <one of them> `<` is unambiguously a
+            // cast — parse the full templated name and expect the closing ')'. Enables narrowing a
+            // union value to a func<...> member: `(func<void>)x`.
+            if((file.peekToken(1).value == "func" || file.peekToken(1).value == "array"
+                    || file.peekToken(1).value == "rawarray")
+               && file.peekToken(2).value == "<"){
+                string base = file.getToken(eTokenType::dataType).value;
+                castType = (base == "func") ? parseFuncType() : parseArrayTypeTail(base);
+                file.getToken(token::parenClose);
+                cur = getNext();
+                continue;
+            }
             // Instance cast: `(instanceName)expr`. An objectDef instance is its own type but is
             // lexed as an *identifier* (not a dataType), so it doesn't match the class-cast branch
             // above. Detect `(` ident `)` where the identifier names an objectDef, and an OPERAND

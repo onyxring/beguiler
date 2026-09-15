@@ -163,13 +163,13 @@ void bglParser::preScanCaptureParams(vector<paramDef*>& out){
 }
 
 void bglParser::preScanConsumeGenericSuffix(const token& typeTok){
-    if(!file.peekToken().is("<")) return;
     // array<...> and func<...> can nest arbitrarily (e.g. array<func<eVerdict>>),
     // so consume the whole <...> by matching angle-bracket depth rather than a
     // fixed number of tokens.
     // rawArray<T> takes a type parameter exactly as array<T> does; without it here the
     // pre-scan left the '<' unconsumed and a stray member named "<" was registered.
-    if(typeTok.value == "array" || typeTok.value == "rawarray" || typeTok.value == "func"){
+    if(file.peekToken().is("<")
+       && (typeTok.value == "array" || typeTok.value == "rawarray" || typeTok.value == "func")){
         file.getToken(); // '<'
         int depth = 1;
         while(depth > 0){
@@ -178,6 +178,14 @@ void bglParser::preScanConsumeGenericSuffix(const token& typeTok){
             else if(t.value == ">") depth--;
             else if(t.is(eTokenType::eof)) return;
         }
+    }
+    // Union tail: `| Type | Type ...`. A '|' right after a type at a declaration head is a union,
+    // so consume each member (and its own generic suffix) — otherwise a union return/member/param
+    // type would derail the pre-scan and the following declaration's name would go unregistered.
+    while(file.peekToken().value == "|"){
+        file.getToken();                       // '|'
+        token member = file.getToken();        // member base type
+        preScanConsumeGenericSuffix(member);   // member's own <...> (and any further '|' chain)
     }
 }
 
@@ -1216,6 +1224,34 @@ void bglParser::preScanGlobalLoop(){
                 languageService.globals.push_back(&stub);
             }
             preScanSkipToSemicolon();
+            continue;
+        }
+
+        // Named union declaration: `union Name = A | B [ { … } | ; ]`. Register Name as an emitter
+        // class stub (forward references + so it isn't mis-scanned as a `union`-typed global var,
+        // which would leak a stray `global name;`). Skip the `= members` and any `{ … }` body — the
+        // main pass parses them.
+        if(tok.is("union") && !tok.isDataType()){
+            token nameTok = file.getToken();
+            if(nameTok.is(eTokenType::identifier) || nameTok.isDataType()){
+                if(!languageService.isObjectType(nameTok.value)){
+                    classDef& stub = languageService.registerClass(nameTok.value, false);
+                    stub.isPrePassStub  = true;
+                    stub.isEmitterClass = true;
+                }
+                token t = file.getToken();                       // '=' (or bail)
+                while(!t.is(token::endStatement) && !t.is(token::braceOpen) && !t.is(eTokenType::eof))
+                    t = file.getToken();                          // skip the member list up to ';' or '{'
+                if(t.is(token::braceOpen)){                        // skip the balanced body
+                    int depth = 1;
+                    while(depth > 0){
+                        token b = file.getToken();
+                        if(b.is(token::braceOpen)) depth++;
+                        else if(b.is(token::braceClose)) depth--;
+                        else if(b.is(eTokenType::eof)) break;
+                    }
+                }
+            }
             continue;
         }
 

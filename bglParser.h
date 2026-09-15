@@ -119,6 +119,11 @@ struct Qualifiers {
                                // I6 `Property additive foo;`, so the property slot accumulates values
                                // across the class hierarchy (obj + ancestors) rather than overriding.
                                // Directive-only in I6 — valid only on a non-extern `property`.
+    bool anySet() const {      // true if ANY qualifier was consumed before the current token
+        return isReplace || isExplicit || isExtern || isEmitter || isConst || isStatic || isInline
+            || isExtend || isAlias || isDefault || isRef || isByVal || isSuperposed || isTypeSealed
+            || isAdditive;
+    }
 };
 
 // Forward-declare bglParser so handler signature can reference it
@@ -311,6 +316,14 @@ class bglParser {
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
         bool processGrammarDeclaration(token nameOverride=token());
         bool processObjectExtension(token nameTok);
+        // Named union: `union Name = A | B [ { members } ]` and `alias union Name = A | B;`.
+        // Registers Name as an emitter class carrying unionMembers; an optional `{ … }` body is
+        // parsed via processClassDeclaration so members (emitter/static, esp. `print()`) reuse the
+        // normal class machinery. `extend Name { … }` (Name a union) routes to the extend path.
+        bool processUnionDeclaration(Qualifiers& q);
+        // "A|B…" structural expansion of a named-union type name; "" if not a named union. Used by
+        // isTypeCompatible to make a named union transparent for assignment/passing.
+        std::string unionExpansionOf(const std::string& typeName);
         // Declarative build-time editing of a previously-declared array's baked initializer:
         // `extend <array> { inject/remove/move ... }`. Edits the initializerList in place; the
         // normal array baking then emits the result. Generic (any array of elements/references).
@@ -375,6 +388,12 @@ class bglParser {
 
         string parseFuncType();             // reads <ReturnType,ParamType,...> from stream; returns "func<...>"
         string parseArrayTypeTail(const std::string& base);  // base ("array"/"rawarray") read; consumes <Elem>, returns "array<Elem>" (nests + splits ">>")
+        // Union types (A | B | ...): after a complete first type is read at a declaration site,
+        // if the next token is '|', consume the '|'-separated members and return the canonical
+        // union name ("A|B" — members sorted+deduped; a single member collapses). No-op (returns
+        // firstType unchanged) when no '|' follows, so call sites stay cheap and low-risk.
+        string maybeParseUnionTail(const std::string& firstType);
+        string readUnionMemberType();       // reads one complete member type (base + func<>/array<> tail) after a '|'
         string parseLambdaExpr(functionDef* func, statementBlock* body);  // parses lambda, lifts to global, returns lifted name
 
         bool processStatement(token, abstractObject& = emptyContainer);
@@ -482,6 +501,8 @@ class bglParser {
         string substituteElemOps(const string& body, const string& elemType,
                                  const string& contextName = "");
         bool isTypeCompatible(string argType, string paramType);
+        static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
+        static std::vector<std::string> splitUnionType(const std::string& t);  // split a union name into its member type names
         // Element-type compatibility for array/list initializers: isTypeCompatible plus an
         // initializer-only relaxation letting a byte array (`array<char>`) accept integer literals.
         bool isArrayElementCompatible(string argType, string elementType);

@@ -1678,6 +1678,152 @@ The free is *logical* (the frame slot is not zeroed), so an ephemeral read often
 
 This applies to chained/`<array>` results too; see the local-array source caveat in §16.2.7.
 
+## 4.10 Union Types
+
+A **union type** declares that a value is *one of* several types, distinguished at runtime. It is
+written as the member types separated by `|`:
+
+```bgl
+string | func<void> describable;      // either a string or a no-arg routine
+```
+
+Unions exist for the classic IF idiom of a value that may be *either data to print or a routine to
+run* (the Inform "string-or-routine" property). They are complementary to overloads, not a
+replacement: an overload dispatches on the caller's **static** type at compile time, whereas a
+union carries a value whose type is only known at **runtime** (e.g. one read out of a property or
+array) and is discriminated with `typeof` (§4.11).
+
+A union type is valid at every type position — parameter, local, return type, class/object member,
+and collection element type:
+
+```bgl
+void describe(string | func<void> x) { … }        // parameter
+string | func<void> L = "hello";                    // local
+string | func<void> pick(int n) { … }               // return type
+class Slot { string | func<void> handler; }         // member
+array<string | func<void>> items;                   // element type
+```
+
+**Canonical form.** Members are order-independent and de-duplicated: `string | func<void>` and
+`func<void> | string` name the same type, and a union of a type with itself collapses to that type.
+*(Parser note: when the **first** member is a `func<…>`/`array<…>` type, write a scalar member
+first — e.g. `string | func<void>`, not `func<void> | string` — at declaration heads; canonical
+form makes the resulting type identical either way.)*
+
+**What you may do with a union value.** Assign it, pass it, return it, and compare it with `==` /
+`!=`. You may **not** call it, print it, access a member, or do arithmetic on it while it is still a
+union — its runtime type is not yet known. Attempting to (for example) call a union value is a
+compile error directing you to narrow first:
+
+```bgl
+void describe(string | func<void> x) {
+    x();                              // ERROR: cannot call a union directly — narrow first
+    if (typeof(x) == eType.routine) {
+        func<void> f = (func<void>)x; // narrow: union → member (a no-op reinterpret)
+        f();
+    } else {
+        print((string)x);            // narrow: union → member
+    }
+}
+```
+
+**Narrowing** is done with an ordinary cast `(Member)x` (§10.6). Because every member shares the
+machine word, the cast is a no-op reinterpret — it retypes the value without emitting any
+conversion code. The cast is an **assertion**: the author is responsible for having discriminated
+correctly (normally via `typeof`). This is also the escape hatch for members that `typeof` cannot
+tell apart on its own (see the limitations in §4.11): discriminate by your own means, then assert
+the type with the cast.
+
+**Compatibility.** A value of type `T` is assignable to a union `U` when `T` is compatible with some
+member of `U`; a union `U₁` is assignable to a union `U₂` when every member of `U₁` is compatible
+with some member of `U₂`. A union is **not** assignable to a plain member type without a narrowing
+cast. In overload resolution a union parameter is the **widest** candidate: an exact or
+member-typed overload always wins, and the union only catches arguments whose static type is itself
+a union.
+
+## 4.11 `typeof` and `eType`
+
+`typeof(v)` returns the **runtime machine category** of any value as an `eType`. It is the general
+primitive behind union discrimination, and works on any `var`:
+
+```bgl
+enum eType { unknown = 0, int, string, routine, object, class }
+
+if (typeof(x) == eType.routine) …
+switch (typeof(x)) { case eType.string: …  case eType.object: … }
+```
+
+`typeof` is always available (declared in core, no include) and works on both the Z-machine and
+Glulx — it wraps I6's one-opcode `metaclass()`. It is `superposed`, so a program that never calls
+it pays nothing.
+
+**Limitations — it reports machine categories, not source types.**
+
+- `bool`, `char`, and `enum` values are represented identically to `int` and all report as
+  `eType.int`. Two members of a union that share a representation (e.g. `int | bool`) are therefore
+  *physically* indistinguishable on every VM and cannot be told apart by `typeof`.
+- A scalar that happens to equal a valid object number, or a packed string/routine address, is
+  reported as that reference category (the classic Z/Glulx `metaclass` ambiguity). For a union that
+  mixes a scalar with a reference type (e.g. `int | string`), discriminate with your own residence
+  check and narrow with a `(T)x` cast rather than relying on `typeof`.
+- `typeof` returns `eType.unknown` for `nothing`/`null` (and never guesses — an undeterminable value
+  reports `unknown`, so a wrong narrowing is the author's explicit choice via a cast, not a silent
+  mistake).
+
+Objects and classes, though both are `eType.object`/`eType.class` at the category level, remain
+distinguishable from each other with `ofclass` (via `x.is(SomeClass)` / a `(SomeClass)x` cast).
+
+## 4.12 Named Unions (unions with members)
+
+A **named union** gives an anonymous union a name *and* a place to hang behavior. It is a nominal
+type over a structural union that can carry members:
+
+```bgl
+union stringOrRoutine = string | func<void> {
+    emitter bool isRoutine() { metaclass($val) == Routine }   // a member method
+}
+// — bodyless + attach-later forms are equivalent —
+union stringOrRoutine = string | func<void>;
+extend stringOrRoutine { emitter bool isRoutine() { metaclass($val) == Routine } }
+```
+
+`union` is a soft keyword (it remains usable as an identifier elsewhere). A named union must have at
+least two distinct member types. A bodyless `union N = A | B;` is already a transparent named union
+you can `extend` later — `union` takes no qualifiers.
+
+**Compatibility is hybrid:** transparent for assignment/passing (a `stringOrRoutine` *is* a
+`string | func<void>` — a string or a routine flows in, and it satisfies a plain `string | func<void>`
+parameter), but **nominal for member lookup** (only a value statically typed `stringOrRoutine` sees
+`.isRoutine()`; an anonymous `string | func<void>` stays bare — §4.10).
+
+**Members** may be **emitters** (inlined by static type — the usual choice, since a union value is a
+bare machine word with no runtime object) or **static** methods (resolved by the type name). Emitter
+bodies are raw I6, so discriminate inside them with I6's built-in `metaclass` (not `typeof`, which
+lowers only in typed Beguile).
+
+**Printing a named union** uses a global `print(T)` overload — the same mechanism `int`/`bool` use —
+not a member, because `print(x)` dispatches on the argument's static type through the global `print`
+overload set:
+
+```bgl
+emitter void print(stringOrRoutine v){ if(metaclass($v) == Routine) $v(); else print (string)$v; }
+```
+
+With that overload in scope, `print(x)` on a `stringOrRoutine` runs the routine or prints the string
+(I6 `PrintOrRun` semantics) — implemented with `metaclass` alone, so it carries **no library
+dependency** even though the type is shipped by a library.
+
+**Library types.** The standard-library and PunyInform bindings ship `stringOrRoutine` (with its
+`print` override) — you get it when you `#include` a library binding, which is when the classic
+Inform "string-or-routine" property (`description`, `cant_go`, …) is what you want:
+
+```bgl
+object lamp { stringOrRoutine description; }
+lamp.description = "a brass lamp";   // prints the text
+lamp.description = describeLampFn;   // runs the routine
+print(lamp.description);             // either — via the print(stringOrRoutine) overload
+```
+
 # Chapter 5 - Classes
 
 > **Emitters and `$` tokens, in brief.** Some of the class members shown in this chapter are *emitters*: methods or operators whose body is raw Inform 6 that the compiler inlines at each call site rather than calling as a routine. Inside an emitter body, `$`-prefixed tokens are substituted at that site: `$self` is the receiver (the object the member was called on), `$val` is the receiver's value (identical to `$self` except when the receiver is a property access), `$target` is the left-hand side of an assignment, and `$paramName` is a named parameter. That is enough to read the examples below; emitters are covered in full in §14.4.
