@@ -1495,6 +1495,37 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         // Re-attach the global qualifier to the head so the recursion forces file scope for it.
         string qualifiedHead = qualifyIdentifier((forceGlobalScope ? "::" : "") + head, func, body);
         if(qualifiedHead.empty()) return "";
+        // Bare #using-imported namespace alias as the head (e.g. `ui` from `#using bgl`, where
+        // bgl declares `alias ui = _bglUi`). Such a head is not itself a type, so the
+        // getType(head)-keyed alias-member redirect below misses and the whole path falls through
+        // to a raw property chain (`_bglui.statusbar.height...`) that names nothing in I6. Resolve
+        // the path against the alias's target so `ui.statusBar.height` qualifies exactly like the
+        // fully-qualified `bgl.ui.statusBar.height`. Gated so a param/local/global of the same name
+        // still wins (only fires when the head isn't a scoped variable).
+        if(!forceGlobalScope
+           && dynamic_cast<classDef*>(&languageService.getType(head)) == nullptr
+           && dynamic_cast<objectDef*>(&languageService.getType(head)) == nullptr){
+            bool shadowed = false;
+            if(func != nullptr) for(paramDef* p : func->params) if(p->name == head){ shadowed = true; break; }
+            if(!shadowed && body != nullptr) for(statement* s : body->statements)
+                if(auto* lv = dynamic_cast<variableDeclaration*>(s)) if(lv->name == head){ shadowed = true; break; }
+            if(!shadowed) for(statementBlock* blk : activeBlockStack)
+                if(blk != nullptr) for(statement* s : blk->statements)
+                    if(auto* lv = dynamic_cast<variableDeclaration*>(s)) if(lv->name == head){ shadowed = true; break; }
+            if(!shadowed) for(typeDef* g : languageService.globals)
+                if(g->name == head && dynamic_cast<variableDeclaration*>(g)){ shadowed = true; break; }
+            if(!shadowed)
+                for(objectDef* imp : usingObjectImports)
+                    for(typeMember* m : imp->members)
+                        if(auto* avd = dynamic_cast<variableDeclaration*>(m))
+                            if(avd->name == head){
+                                string tgt = avd->declaredExpressionValue ? avd->declaredExpressionValue->text() : avd->type.name;
+                                if(!tgt.empty()
+                                   && (dynamic_cast<classDef*>(&languageService.getType(tgt)) != nullptr
+                                       || dynamic_cast<objectDef*>(&languageService.getType(tgt)) != nullptr))
+                                    return qualifyIdentifier(tgt + "." + tail, func, body);
+                            }
+        }
         // Check if head is a class/emitter-namespace with a value emitter or alias member
         string lowerTail = tail;
         transform(lowerTail.begin(), lowerTail.end(), lowerTail.begin(), ::tolower);
