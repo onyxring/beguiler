@@ -418,6 +418,12 @@ class i6RawNode : public typeDef, public statement, public typeMember {
         // fragments map back to specific .bgl source lines.
         struct rawPart { string text; statement* stmt; sourceLocation textSrc; };
         vector<rawPart> parts;
+        // True when this node is a genuine user `#i6{ }` island (verbatim raw I6), as opposed to a
+        // compiler-synthesized raw statement (loop increment, destroy call, spilled assignment, …).
+        // The return-path analysis (allPathsReturn) treats a return-bearing island as a terminating
+        // path, so a routine whose returns live inside opaque raw I6 doesn't demand a dead trailing
+        // return the way it used to.
+        bool isI6Island = false;
 };
 
 // try/catch statement: structured exception handling using Z-machine @catch/@throw opcodes

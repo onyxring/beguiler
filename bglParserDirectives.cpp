@@ -653,6 +653,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             // when one exists, otherwise into globals (claiming the pre-scan placeholder so
             // source order is preserved).
             auto installI6Node = [&](i6RawNode* node){
+                node->isI6Island = true;   // genuine user #i6{} island (verbatim raw I6)
                 if(body != nullptr){
                     body->statements.push_back(node);
                 } else {
