@@ -15,12 +15,10 @@ global _bglInitDone = 0;
         if(lhs > rhs) return 1;
         return 0;
     
-    return 0;
 ];
 object _bglArray
   with rawGet [addr slot;
      return addr-->slot; 
-    return 0;
   ],
        rawSet [addr slot v;
      addr-->slot = v; 
@@ -30,7 +28,6 @@ object _bglArray
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
-    return 0;
   ],
        set [obj prop n v;
     
@@ -428,7 +425,6 @@ runningavg avg;
             if(_bglFloatGt(a, b)) return 1;
             return 0;
         
-    return 0;
 ];
 [_bglFloatAbs v;
     if (_bglfloatlt(v,_bglFloatNumtof(0))) {
@@ -474,11 +470,9 @@ runningavg avg;
 ];
 [_bglFloatGt x y;
      @jfgt x y ?yes; rfalse; .yes; rtrue; 
-    return false;
 ];
 [_bglFloatLe x y;
      @jfle x y ?yes; rfalse; .yes; rtrue; 
-    return false;
 ];
 [_bglFloatLog v r;
      @log v r; 
@@ -486,7 +480,6 @@ runningavg avg;
 ];
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
-    return false;
 ];
 [_bglFloatNumtof n r;
      @numtof n r; 

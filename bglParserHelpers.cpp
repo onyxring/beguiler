@@ -123,10 +123,27 @@ static bool isConstFalseCondition(expression* c){
     return core == "false" || core == "0";
 }
 
+// A genuine user `#i6{}` island whose raw text contains a return-like statement. The return-path
+// analysis can't parse raw I6, but when the author has dropped to an opaque island that returns,
+// requiring a *further* trailing Beguile `return` only produces dead code that Inform 6 then flags
+// as unreachable. Trust a return-bearing island as a terminating path. (A synthesized i6RawNode —
+// loop increment, destroy call, spilled assignment — is NOT an island and never matches.)
+static bool i6IslandMayReturn(i6RawNode* raw){
+    if(raw == nullptr || !raw->isI6Island) return false;
+    auto scan = [](const string& t) -> bool {
+        return t.find("return") != string::npos || t.find("rtrue") != string::npos
+            || t.find("rfalse") != string::npos || t.find("@ret")  != string::npos;
+    };
+    if(scan(raw->text)) return true;
+    for(auto& p : raw->parts) if(scan(p.text)) return true;
+    return false;
+}
+
 bool allPathsReturn(statementBlock* blk){
     if(blk == nullptr) return false;
     for(statement* s : blk->statements){
         if(dynamic_cast<returnStatement*>(s)) return true;
+        if(auto* raw = dynamic_cast<i6RawNode*>(s)) if(i6IslandMayReturn(raw)) return true;
         // An infinite loop (`while(true)` / `for(;;)`) with no `break` that escapes it never falls
         // through — control leaves only via a `return` inside, so the code after it (and a trailing
         // return) is unreachable. Treat such a loop as a terminating path so routines that loop

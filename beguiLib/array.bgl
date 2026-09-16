@@ -36,7 +36,6 @@ int _bglArrayCompareAsc(var lhs, var rhs){
         if(lhs > rhs) return 1;
         return 0;
     }
-    return 0;   // unreachable; satisfies return-check
 }
 
 //-----------------------------------------------------------------------------
@@ -156,7 +155,7 @@ object _bglArray {
     // ── Raw word access on a global/local array ADDRESS ───────────────────────
     // Bypasses operator[] so this object never recurses through its own dispatch.
     // `addr-->slot` is the raw I6 slot (slot 0 = header/count, data at 1..N).
-    var  rawGet(var addr, var slot)        { #i6 { return addr-->slot; } return 0; }
+    var  rawGet(var addr, var slot)        { #i6 { return addr-->slot; } }
     void rawSet(var addr, var slot, var v) { #i6 { addr-->slot = v; } }
 
     // ── Dual-form element access (orLibrary util.orArray convention) ───────────
@@ -169,7 +168,6 @@ object _bglArray {
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         }
-        return 0;   // unreachable; satisfies return-check
     }
     void set(var obj, var prop, int n, var v){
         #i6 {
