@@ -32,7 +32,7 @@ superposed _bglObject _bglStatus {
                 else
                     bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(_win), winMethod, v, _win);
             #else
-                bgl.asm.split_window(v);
+                bgl.asm.splitWindow(v);
             #endif
         }
     }

@@ -8,7 +8,7 @@
  *   - capture/release goes through the Glulx `bgl.asm.streamGetCurrent` /
  *     `streamOpenMemory` / `streamSetCurrent` / `streamClose` / `putBuffer`
  *     opcodes (the Z target uses `@output_stream` instead).
- *   - print uses `bgl.asm.putBuffer` (Z target loops `bgl.asm.print_char`).
+ *   - print uses `bgl.asm.putBuffer` (Z target loops `bgl.asm.printChar`).
  *   - The stdlib-independence shim (`#Ifndef filemode_Write` /
  *     `#Ifndef gg_arguments` in #emitfirst) must trigger on this Glulx
  *     compile without parser.h pulled in.

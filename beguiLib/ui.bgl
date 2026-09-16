@@ -31,17 +31,12 @@ extend _bglUi {
             }
         }
     #else
-        //char key;
-        //if(win) @set_window win;
-        //bgl.asm.set_window(bgl.main);
-        //@read_char 1 -> key;
-        return bgl.asm.read_char(1);
-        //return key;
+        return bgl.asm.readChar(1);   // read_char is now a value-returning routine; returns cleanly
     #endif
     }
     // void setStatusHeight(int height){
     //     #if TARGET_ZCODE;
-    //         bgl.asm.split_window(height);
+    //         bgl.asm.splitWindow(height);
     //     #else;
     //         int parwin = glk_window_get_parent(gg_statuswin); //TODO: gg_statuswin is a standard library variable.  It needs to be removed from the BLRT
     //         bgl.asm.glk.window_set_arrangement(parwin, $12, height, 0);

@@ -302,7 +302,7 @@ object _bglBuf {
         int frmPtr = (int)fromBuf + fromPos + bgl.wordsize;
         int toPtr  = (int)toBuf  + toPos  + bgl.wordsize;
         #if TARGET_ZCODE
-            bgl.asm.copy_table(frmPtr, toPtr, numCharsToCopy);
+            bgl.asm.copyTable(frmPtr, toPtr, numCharsToCopy);
         #else
             bgl.asm.mcopy(numCharsToCopy, frmPtr, toPtr);
         #endif
@@ -318,7 +318,7 @@ object _bglBuf {
     void capture(array<char> buf, int maxBytes = 0){
         _bglBufStreamStack[self._stackTop] = buf;
         #if TARGET_ZCODE
-            bgl.asm.output_stream(3, (int)buf);
+            bgl.asm.outputStream(3, (int)buf);
         #else
             if(maxBytes == 0){
                 int s = size(buf);
@@ -338,7 +338,7 @@ object _bglBuf {
         self._stackTop--;
         array<char> buf = _bglBufStreamStack[self._stackTop];
         #if TARGET_ZCODE
-            bgl.asm.output_stream(-1 * 3);
+            bgl.asm.outputStream(-1 * 3);
         #else
             bgl.asm.streamClose(bgl.asm.streamGetCurrent(), (int)gg_arguments);
             // gg_arguments[0] is glk_stream_close's byte-count result on Glulx;
@@ -367,7 +367,7 @@ object _bglBuf {
             for(int i = 0; i < len; i++){
                 int c = _bglGetByte(buf, i + bgl.wordsize);
                 if(c == 0) break;
-                bgl.asm.print_char(c);
+                bgl.asm.printChar(c);
             }
         #endif
         return buf;

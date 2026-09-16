@@ -250,6 +250,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         bool isExplicitConversion = q.isExplicit;
         bool isMemberConst = q.isConst;
         bool isMemberStatic = q.isStatic;
+        bool isMemberSuperposed = q.isSuperposed;
         bool isOperator = false;
         token returnType;
         token name;
@@ -438,6 +439,17 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(isMemberStatic && funcDef.name == "deinit" && funcDef.params.size() != 1)
                 parsingError("a 'static deinit' takes exactly one parameter: the value to destroy");
             funcDef.isStatic = isMemberStatic;
+            // Carry `superposed` onto the method. Only a STATIC method (emitted as a free routine
+            // via emitStaticClassRoutines→emitFunction) can honor it — the withhold/revive path
+            // lives in emitFunction. An instance method emits as a property routine on the class
+            // object and cannot be withheld/revived, so `superposed` there is inert. It's harmless
+            // (a no-op), so warn rather than error: the method still works, it just won't drop.
+            if(isMemberSuperposed && !isMemberStatic)
+                parsingWarning(format("'superposed' on method '{0}' has no effect without 'static'. "
+                                      "An instance method emits as a property routine, which can't be "
+                                      "withheld and revived on demand; write 'static superposed' (a "
+                                      "free routine) for pay-only-if-used, or drop 'superposed'.", funcDef.name));
+            funcDef.isSuperposed = isMemberSuperposed;
             if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter && !funcDef.isStatic){
                 // extern/alias class non-emitter INSTANCE methods not allowed: they would need to
                 // emit a property routine on a class Beguile does not own. A `static` method has no
