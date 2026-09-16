@@ -2109,6 +2109,31 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // Distinguish enum-qualified access (EnumType.value → _EnumType_value),
                         // static member access (ClassName.staticMember → _bgl_ClassName_memberName),
                         // from object/variable property access (obj.prop → obj.prop)
+                        // Bare #using-imported namespace alias as the chain receiver (e.g. `ui`
+                        // from `#using bgl`, where bgl declares `alias ui = _bglUi`): `cur.value`
+                        // is "ui", not a type, so the alias-member redirects below would miss and
+                        // the chain falls through to a raw property access. Resolve it to the
+                        // alias's target canonical name so `ui.statusBar.…` redirects exactly like
+                        // fully-qualified `bgl.ui.statusBar.…`. Gated: a param/local of the same
+                        // name still wins.
+                        if(dynamic_cast<classDef*>(&languageService.getType(cur.value)) == nullptr
+                           && dynamic_cast<objectDef*>(&languageService.getType(cur.value)) == nullptr){
+                            bool shadowed = false;
+                            if(func != nullptr) for(paramDef* p : func->params) if(p->name == cur.value){ shadowed = true; break; }
+                            if(!shadowed && body != nullptr) for(statement* s : body->statements)
+                                if(auto* lv = dynamic_cast<variableDeclaration*>(s)) if(lv->name == cur.value){ shadowed = true; break; }
+                            if(!shadowed)
+                                for(objectDef* imp : usingObjectImports)
+                                    for(typeMember* m : imp->members)
+                                        if(auto* avd = dynamic_cast<variableDeclaration*>(m))
+                                            if(avd->name == cur.value){
+                                                string tgt = avd->declaredExpressionValue ? avd->declaredExpressionValue->text() : avd->type.name;
+                                                if(!tgt.empty()
+                                                   && (dynamic_cast<classDef*>(&languageService.getType(tgt)) != nullptr
+                                                       || dynamic_cast<objectDef*>(&languageService.getType(tgt)) != nullptr))
+                                                    cur.value = tgt;
+                                            }
+                        }
                         bool isEnum = dynamic_cast<enumDef*>(&languageService.getType(cur.value)) != nullptr;
                         classDef* maybeCls = getDispatchClass(cur.value);
                         bool isStaticAccess = false;
