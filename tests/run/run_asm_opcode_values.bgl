@@ -1,0 +1,38 @@
+/*  run_asm_opcode_values — value-returning Z-machine asm opcodes compose everywhere.
+
+    Guards the opcode reshape: value-returning `bgl.asm.*` ops are `static superposed`
+    routine methods (a free routine `_bgl_bglOpCodes_<op>`, dropped when unused), so their
+    value must be usable as a plain expression — in an assignment, a return, and embedded in
+    a larger expression. Void ops stay inline emitters; pure-arithmetic ops stay expression
+    emitters. Also exercises a store+BRANCH opcode (`getChild`), whose emitter needs a branch
+    label — the bare `-> $target` form the old emitters used was silently malformed.
+
+    Runtime-verified (this tier actually runs the story), so a mis-emitted opcode, a missing
+    branch label, or a broken static-method call is caught here, not just in emission.  */
+// EXPECT_OUTPUT: add=42 assign=55 ret=55 embed=155 child=Y
+#beguilerSettings { target = z5; informName = "none"; }
+
+object box { }
+object coin { }
+
+// loadw in a RETURN position: exercises a static-superposed value-op call composing as the
+// routine's return value (and the materialize-on-reference path).
+int slot(int arr, int i){ return bgl.asm.loadw(arr, i); }
+
+void main(){
+    // pure-arithmetic op stays an expression emitter → composes as an operand
+    print("add=");    print(bgl.asm.add(40, 2));          print(" ");   // 42
+
+    rawArray<int> a[4];
+    bgl.asm.storew(&a, 0, 55);                                          // void op (emitter)
+    int v = bgl.asm.loadw(&a, 0);                                       // value op — ASSIGNMENT
+    print("assign="); print(v);                           print(" ");   // 55
+    print("ret=");    print(slot(&a, 0));                 print(" ");   // 55 — RETURN position
+    print("embed=");  print(bgl.asm.loadw(&a, 0) + 100);  print(" ");   // 155 — EMBEDDED in expr
+
+    // store+BRANCH opcode: get_child requires a branch label; value used in a comparison
+    bgl.asm.insertObj((int)coin, (int)box);                            // void op
+    print("child=");
+    if(bgl.asm.getChild((int)box) != 0) print("Y"); else print("N");   // Y
+    print("\n");
+}

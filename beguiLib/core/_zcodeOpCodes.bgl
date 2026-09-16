@@ -9,12 +9,17 @@
 //
 // Usage:
 //     int r = asmZcode.add(a, b);
-//     asmZcode.print_char('A');
-//     int parent = asmZcode.get_parent(obj);
+//     asmZcode.printChar('A');
+//     int parent = asmZcode.getParent(obj);
 //
 // Reference: https://www.inform-fiction.org/zmachine/standards/z1point0/sect15.html
 
-emitter class bglOpCodes {
+// NOTE: a regular (backed) class, not an `emitter class`. Void opcodes stay `emitter`
+// (inlined @asm, no object footprint); value-returning opcodes that can't inline as a
+// bare `-> $target` store are `static superposed` routine methods (emitted as free
+// routines `_bgl_bglOpCodes_<op>`, dropped when unused). `superposed` on the class
+// withholds its `class` directive too, so a program touching no value-op emits nothing.
+superposed class bglOpCodes {
 
     //── Integer Math (all versions) ─────────────────────────────────────
     emitter int add(int a, int b)        { ($a + $b) }
@@ -29,56 +34,58 @@ emitter class bglOpCodes {
     emitter int bitnot(int a)            { (~$a) }
 
     //── Memory Access (all versions) ────────────────────────────────────
-    emitter int loadw(int arr, int idx)  { @loadw $arr $idx -> $target }
-    emitter int loadb(int arr, int idx)  { @loadb $arr $idx -> $target }
+    static superposed int loadw(int arr, int idx){ int result; #i6 { @loadw arr idx -> result; } return result; }
+    static superposed int loadb(int arr, int idx){ int result; #i6 { @loadb arr idx -> result; } return result; }
     emitter void storew(int arr, int idx, int v) { @storew $arr $idx $v; }
     emitter void storeb(int arr, int idx, int v) { @storeb $arr $idx $v; }
 
     //── Stack Operations (all versions) ─────────────────────────────────
     emitter void push(int v)             { @push $v; }
-    emitter int pull()                   { @pull $target }
+    static superposed int pull(){ int result; #i6 { @pull result; } return result; }
 
     //── Object Tree (all versions) ──────────────────────────────────────
-    emitter int get_parent(int obj)      { @get_parent $obj -> $target }
-    emitter int get_child(int obj)       { @get_child $obj -> $target }
-    emitter int get_sibling(int obj)     { @get_sibling $obj -> $target }
-    emitter void insert_obj(int obj, int dst) { @insert_obj $obj $dst; }
-    emitter void remove_obj(int obj)     { @remove_obj $obj; }
-    emitter void print_obj(int obj)      { @print_obj $obj; }
+    static superposed int getParent(int obj){ int result; #i6 { @get_parent obj -> result; } return result; }
+    // get_child/get_sibling are store+BRANCH opcodes: I6 requires a branch label. The forward
+    // label lands on the next line either way, so we always fall through with the value stored.
+    static superposed int getChild(int obj){ int result; #i6 { @get_child obj -> result ?~gc; .gc; } return result; }
+    static superposed int getSibling(int obj){ int result; #i6 { @get_sibling obj -> result ?~gs; .gs; } return result; }
+    emitter void insertObj(int obj, int dst) { @insert_obj $obj $dst; }
+    emitter void removeObj(int obj)     { @remove_obj $obj; }
+    emitter void printObj(int obj)      { @print_obj $obj; }
 
     //── Object Properties (all versions) ────────────────────────────────
-    emitter int get_prop(int obj, int prop)      { @get_prop $obj $prop -> $target }
-    emitter int get_prop_addr(int obj, int prop) { @get_prop_addr $obj $prop -> $target }
-    emitter int get_prop_len(int propAddr)        { @get_prop_len $propAddr -> $target }
-    emitter int get_next_prop(int obj, int prop)  { @get_next_prop $obj $prop -> $target }
-    emitter void put_prop(int obj, int prop, int v) { @put_prop $obj $prop $v; }
+    static superposed int getProp(int obj, int prop){ int result; #i6 { @get_prop obj prop -> result; } return result; }
+    static superposed int getPropAddr(int obj, int prop){ int result; #i6 { @get_prop_addr obj prop -> result; } return result; }
+    static superposed int getPropLen(int propAddr){ int result; #i6 { @get_prop_len propAddr -> result; } return result; }
+    static superposed int getNextProp(int obj, int prop){ int result; #i6 { @get_next_prop obj prop -> result; } return result; }
+    emitter void putProp(int obj, int prop, int v) { @put_prop $obj $prop $v; }
 
     //── Object Attributes (all versions) ────────────────────────────────
-    emitter void set_attr(int obj, int attr)   { @set_attr $obj $attr; }
-    emitter void clear_attr(int obj, int attr) { @clear_attr $obj $attr; }
+    emitter void setAttr(int obj, int attr)   { @set_attr $obj $attr; }
+    emitter void clearAttr(int obj, int attr) { @clear_attr $obj $attr; }
 
     //── Variables (all versions) ────────────────────────────────────────
     emitter void inc(int variable)       { @inc $variable; }
     emitter void dec(int variable)       { @dec $variable; }
 
     //── I/O (all versions) ──────────────────────────────────────────────
-    emitter void print_char(int ch)      { @print_char $ch; }
-    emitter void print_num(int n)        { @print_num $n; }
-    emitter void print_addr(int addr)    { @print_addr $addr; }
-    emitter void print_paddr(int addr)   { @print_paddr $addr; }
-    emitter void new_line()              { @new_line; }
+    emitter void printChar(int ch)      { @print_char $ch; }
+    emitter void printNum(int n)        { @print_num $n; }
+    emitter void printAddr(int addr)    { @print_addr $addr; }
+    emitter void printPaddr(int addr)   { @print_paddr $addr; }
+    emitter void newLine()              { @new_line; }
 
     //── Window / Display (Z3+) ──────────────────────────────────────────
-    emitter void split_window(int lines) { @split_window $lines; }
-    emitter void set_window(int win)     { @set_window $win; }
+    emitter void splitWindow(int lines) { @split_window $lines; }
+    emitter void setWindow(int win)     { @set_window $win; }
 
     //── Streams (Z3+) ───────────────────────────────────────────────────
-    emitter void output_stream(int n)              { @output_stream $n; }
-    emitter void output_stream(int n, int table)   { @output_stream $n $table; }
-    emitter void input_stream(int n)               { @input_stream $n; }
+    emitter void outputStream(int n)              { @output_stream $n; }
+    emitter void outputStream(int n, int table)   { @output_stream $n $table; }
+    emitter void inputStream(int n)               { @input_stream $n; }
 
     //── Random Numbers (all versions) ───────────────────────────────────
-    emitter int random(int range)        { @random $range -> $target }
+    static superposed int random(int range){ int result; #i6 { @random range -> result; } return result; }
 
     //── Game State (all versions) ───────────────────────────────────────
     emitter void quit()                  { @quit; }
@@ -86,7 +93,7 @@ emitter class bglOpCodes {
     emitter int verify()                 { @verify; }
 
     //── Sound (Z3+) ─────────────────────────────────────────────────────
-    emitter void sound_effect(int num, int effect, int vol) {
+    emitter void soundEffect(int num, int effect, int vol) {
         @sound_effect $num $effect $vol;
     }
 }
@@ -98,57 +105,61 @@ emitter class bglOpCodes {
 extend class bglOpCodes {
 
     //── Window / Display (Z4+) ──────────────────────────────────────────
-    emitter void erase_window(int win)   { @erase_window $win; }
-    emitter void erase_line(int v)       { @erase_line $v; }
-    emitter void set_cursor(int line, int col) { @set_cursor $line $col; }
-    emitter void get_cursor(int arr)     { @get_cursor $arr; }
-    emitter void set_text_style(int style) { @set_text_style $style; }
-    emitter void buffer_mode(int flag)   { @buffer_mode $flag; }
+    emitter void eraseWindow(int win)   { @erase_window $win; }
+    emitter void eraseLine(int v)       { @erase_line $v; }
+    emitter void setCursor(int line, int col) { @set_cursor $line $col; }
+    emitter void getCursor(int arr)     { @get_cursor $arr; }
+    emitter void setTextStyle(int style) { @set_text_style $style; }
+    emitter void bufferMode(int flag)   { @buffer_mode $flag; }
 
     //── Input (Z4+) ─────────────────────────────────────────────────────
-    emitter int read_char(int dev = 1)   { @read_char $dev -> $target }  // dev defaults to 1 (the only legal Z-machine value)
-    emitter int scan_table(int x, int table, int len) {
-        @scan_table $x $table $len -> $target
+    // read_char stores its result via `-> store`, so a bare `@read_char -> $target` emitter
+    // can only bind to an assignment LHS — it can't be returned or embedded in an expression.
+    // Wrapping the opcode in a routine (the infglk shape) makes its value usable anywhere: the
+    // raw opcode is emitted verbatim via #i6 (no recursion — this is the opcode, not the
+    // emitter). `superposed`: materializes only if the program actually reads a character.
+    static superposed int readChar(int dev = 1){   // dev defaults to 1 (the only legal Z-machine value)
+        int c;
+        #i6 { @read_char dev -> c; }
+        return c;
     }
+    // scan_table is store+BRANCH (branches when found); forward label to fall through with the result.
+    static superposed int scanTable(int x, int table, int len){ int result; #i6 { @scan_table x table len -> result ?~st; .st; } return result; }
 
     //── Function Calls (Z4+) ────────────────────────────────────────────
-    emitter int call_1s(int routine)              { @call_1s $routine -> $target }
-    emitter int call_2s(int routine, int a)       { @call_2s $routine $a -> $target }
+    static superposed int call1s(int routine){ int result; #i6 { @call_1s routine -> result; } return result; }
+    static superposed int call2s(int routine, int a){ int result; #i6 { @call_2s routine a -> result; } return result; }
 
     //── Bitwise (Z5+ EXT) ───────────────────────────────────────────────
-    emitter int log_shift(int a, int places)  { @log_shift $a $places -> $target }
-    emitter int art_shift(int a, int places)  { @art_shift $a $places -> $target }
+    static superposed int logShift(int a, int places){ int result; #i6 { @log_shift a places -> result; } return result; }
+    static superposed int artShift(int a, int places){ int result; #i6 { @art_shift a places -> result; } return result; }
 
     //── Memory (Z5+) ────────────────────────────────────────────────────
-    emitter void copy_table(int src, int dst, int size) { @copy_table $src $dst $size; }
+    emitter void copyTable(int src, int dst, int size) { @copy_table $src $dst $size; }
 
     //── I/O (Z5+) ───────────────────────────────────────────────────────
-    emitter void print_unicode(int ch)   { @print_unicode $ch; }
-    emitter void set_colour(int fg, int bg)  { @set_colour $fg $bg; }
-    emitter int set_font(int font)       { @set_font $font -> $target }
+    emitter void printUnicode(int ch)   { @print_unicode $ch; }
+    emitter void setColour(int fg, int bg)  { @set_colour $fg $bg; }
+    static superposed int setFont(int font){ int result; #i6 { @set_font font -> result; } return result; }
 
     //── Text Processing (Z5+) ───────────────────────────────────────────
     emitter void tokenise(int text, int parse) { @tokenise $text $parse; }
-    emitter void encode_text(int zscii, int len, int from, int coded) {
+    emitter void encodeText(int zscii, int len, int from, int coded) {
         @encode_text $zscii $len $from $coded;
     }
-    emitter void print_table(int zscii, int width) { @print_table $zscii $width; }
+    emitter void printTable(int zscii, int width) { @print_table $zscii $width; }
 
     //── Game State (Z5+ EXT) ────────────────────────────────────────────
-    emitter int save(int table, int bytes, int name) {
-        @save $table $bytes $name -> $target
-    }
-    emitter int restore(int table, int bytes, int name) {
-        @restore $table $bytes $name -> $target
-    }
-    emitter int save_undo()              { @save_undo -> $target }
-    emitter int restore_undo()           { @restore_undo -> $target }
+    static superposed int save(int table, int bytes, int name){ int result; #i6 { @save table bytes name -> result; } return result; }
+    static superposed int restore(int table, int bytes, int name){ int result; #i6 { @restore table bytes name -> result; } return result; }
+    static superposed int saveUndo(){ int result; #i6 { @save_undo -> result; } return result; }
+    static superposed int restoreUndo(){ int result; #i6 { @restore_undo -> result; } return result; }
 
     //── Function Calls (Z5+) ────────────────────────────────────────────
-    emitter void call_1n(int routine)             { @call_1n $routine; }
-    emitter void call_2n(int routine, int a)      { @call_2n $routine $a; }
+    emitter void call1n(int routine)             { @call_1n $routine; }
+    emitter void call2n(int routine, int a)      { @call_2n $routine $a; }
 
     //── Unicode (Z5+ EXT) ───────────────────────────────────────────────
-    emitter int check_unicode(int ch)    { @check_unicode $ch -> $target }
+    static superposed int checkUnicode(int ch){ int result; #i6 { @check_unicode ch -> result; } return result; }
 }
 #endif

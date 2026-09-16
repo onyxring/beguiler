@@ -1997,6 +1997,20 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                 callText = b;
                                 expr->tokens.push_back(b);
                             }
+                        } else if(method->isStatic){
+                            // Static method: no receiver/self, so it emits as a file-scope routine
+                            // (emitStaticClassRoutines) named _bgl_<class>_<method>. A message-send
+                            // `obj.method(args)` would look up a non-existent property and fail in I6
+                            // ("No such constant as <method>"); emit a direct call to that routine.
+                            classDef* stCls = getDispatchClass(objType);
+                            string call = i6Emitter::staticRoutineName(stCls, method) + "(";
+                            for(size_t i = 0; i < callArgs.size(); i++){
+                                if(i > 0) call += ", ";
+                                call += callArgs[i]->text();
+                            }
+                            call += ")";
+                            callText = call;
+                            expr->tokens.push_back(call);
                         } else {
                             // non-emitter: emit verbatim as obj.method(args) (or obj.<mangled>(args)
                             // if this method is part of an overload set).
