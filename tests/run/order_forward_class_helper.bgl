@@ -1,0 +1,13 @@
+// Helper for run_order_forward_class.bgl — deliberately USES class `Pt` which is declared in
+// the parent file AFTER this file is #included. Exercises the two forward-resolution paths that
+// need a complete pre-scan signature: `{3,4}` aggregate inference (braceArgHints → inline members)
+// and the `Pt r = …` copy-init (operator= param match). NOT a test itself (no run_ prefix).
+Pt makePt(Pt p){ return p; }
+
+void runOrderForwardCheck(){
+    Pt r = makePt({3, 4});   // DECL-INIT: {3,4} infers as Pt; copy-init finds Pt::operator=(Pt)
+    Pt s;
+    s = makePt({5, 6});      // STMT-ASSIGN: same, via the assignment path's operator= dispatch
+    print("pt="); print(r.x); print(","); print(r.y);
+    print(" q="); print(s.x); print(","); print(s.y);
+}
