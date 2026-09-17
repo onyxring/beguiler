@@ -1,0 +1,23 @@
+/*  run_order_forward_class — order-independence for a class used before its declaration, across
+    an #include.
+
+    `Pt` is declared in THIS file AFTER the #include of the helper that constructs and copies it.
+    The pre-scan (forward pass) must carry Pt's FULL signature — its `inline` members and its
+    `operator=` parameter types — so that, in the helper (processed before Pt is main-parsed):
+      • `makePt({3, 4})` infers `{3,4}` as Pt (braceArgHints keys inline-aggregate construction
+        off inline members), and
+      • `Pt r = makePt(…)` resolves the copy-init `operator=(Pt)` (matched by param type).
+    A name-only stub made both silently fail ("cannot infer …" / "no operator="). Runtime-verified
+    so the baked aggregate and the copy actually produce the right values.  */
+// EXPECT_OUTPUT: pt=3,4 q=5,6
+#beguilerSettings { target = z5; informName = "none"; }
+
+#include "order_forward_class_helper"
+
+class Pt {
+    inline int x = 0;
+    inline int y = 0;
+    Pt operator = (Pt o){ self.x = o.x; self.y = o.y; return self; }
+}
+
+void main(){ runOrderForwardCheck(); }

@@ -826,11 +826,18 @@ void bglParser::preScanGlobalLoop(){
                       // so source-order is preserved when main parse fills them in. Without property
                       // stubs, pre-scan adds method stubs first and main parse appends properties
                       // last, scrambling the emission order relative to source.
-                      if(cls != nullptr && (bt.isDataType() || bt.is(eTokenType::identifier))){
-                          // Skip optional method-modifier keywords
+                      if(cls != nullptr && (bt.isDataType() || bt.is(eTokenType::identifier) || bt.is("inline"))){
+                          // Skip optional member-modifier keywords. `inline` is TRACKED (not just
+                          // skipped): a property stub must carry isInline so braceArgHints recognizes
+                          // the class as inline-constructible (`Type{ … }` / bare `{ … }` args) even
+                          // when the class is only a pre-scan stub at the use site — i.e. defined
+                          // AFTER the #include that uses it. Order-independence requires the stub to
+                          // carry the full signature, not just the name.
                           bool sawEmitter = false;
-                          while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit") || bt.is("ref")){
+                          bool sawInline  = false;
+                          while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit") || bt.is("ref") || bt.is("inline")){
                               if(bt.is("emitter")) sawEmitter = true;
+                              if(bt.is("inline"))  sawInline  = true;
                               bt = file.getToken();
                           }
                           if(bt.isDataType() || bt.is(eTokenType::identifier)){
@@ -869,7 +876,12 @@ void bglParser::preScanGlobalLoop(){
                                   } else {
                                       opName = opTok.value;
                                   }
-                                  // Register the stub
+                                  // Register the stub, capturing its parameter list so forward
+                                  // overload / copy-init resolution (which matches on param TYPES —
+                                  // e.g. finding `operator=(bglSize)` for a `bglSize` RHS) works even
+                                  // when the class is used before it is main-parsed. Name-only stubs
+                                  // silently failed those matches, breaking order-independence.
+                                  functionDef* opStub = nullptr;
                                   bool exists = false;
                                   for(typeMember* m : cls->members)
                                       if(m->name == opName){ exists = true; break; }
@@ -880,6 +892,14 @@ void bglParser::preScanGlobalLoop(){
                                       fd.isEmitter = sawEmitter;
                                       fd.isPrePassStub = true;
                                       cls->members.push_back(&fd);
+                                      opStub = &fd;
+                                  }
+                                  // Capture the parameter list if present (`operator = (bglSize s)`).
+                                  if(file.peekToken().is(token::parenOpen)){
+                                      file.getToken();  // consume '('
+                                      vector<paramDef*> ps;
+                                      preScanCaptureParams(ps);
+                                      if(opStub) opStub->params = ps;
                                   }
                                   // Drain to end of declaration (body or ;)
                                   token s = file.getToken();
@@ -892,8 +912,10 @@ void bglParser::preScanGlobalLoop(){
                                   continue;
                               }
                               if(afterType.is(eTokenType::identifier) && file.peekToken().is(token::parenOpen)){
-                                  // Method declaration — register functionDef stub
+                                  // Method declaration — register functionDef stub, capturing params
+                                  // so forward overload resolution has the signature (order-independence).
                                   string mname = afterType.value;
+                                  functionDef* mStub = nullptr;
                                   bool exists = false;
                                   for(typeMember* m : cls->members)
                                       if(m->name == mname){ exists = true; break; }
@@ -904,16 +926,11 @@ void bglParser::preScanGlobalLoop(){
                                       fd.isEmitter = sawEmitter;
                                       fd.isPrePassStub = true;
                                       cls->members.push_back(&fd);
+                                      mStub = &fd;
                                   }
-                                  // Consume parens and body
+                                  // Consume params (capturing types) then the body
                                   file.getToken(); // '('
-                                  int depth = 1;
-                                  while(depth > 0){
-                                      token p = file.getToken();
-                                      if(p.is(eTokenType::eof)) break;
-                                      if(p.is(token::parenOpen)) depth++;
-                                      else if(p.is(token::parenClose)) depth--;
-                                  }
+                                  { vector<paramDef*> ps; preScanCaptureParams(ps); if(mStub) mStub->params = ps; }
                                   token bodyOrSemi = file.getToken();
                                   if(bodyOrSemi.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
                                   bt = file.getToken();
@@ -929,6 +946,7 @@ void bglParser::preScanGlobalLoop(){
                                       variableDeclaration& vd = *(new variableDeclaration());
                                       vd.name = pname;
                                       vd.type.name = typeTok.value;
+                                      vd.isInline = sawInline;   // carry inline so braceArgHints treats the class as inline-constructible pre-main-pass
                                       vd.isPrePassStub = true;
                                       cls->members.push_back(&vd);
                                   }

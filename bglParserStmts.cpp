@@ -1822,12 +1822,12 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     if(!found){
                         typeMember* m = findMemberInHierarchy(classType, [&](typeMember* m){
                             auto* opFunc = dynamic_cast<functionDef*>(m);
-                            return opFunc && opFunc->name=="=" && !opFunc->isEmitter && !opFunc->isPrePassStub
+                            return opFunc && opFunc->name=="=" && !opFunc->isEmitter
                                    && opFunc->params.size()==1 && opFunc->params[0]->type.name==valueTypeName;
                         });
                         if(!m) m = findMemberInHierarchy(classType, [&](typeMember* m){
                             auto* opFunc = dynamic_cast<functionDef*>(m);
-                            return opFunc && opFunc->name=="=" && !opFunc->isEmitter && !opFunc->isPrePassStub
+                            return opFunc && opFunc->name=="=" && !opFunc->isEmitter
                                    && opFunc->params.size()==1 && opFunc->params[0]->type.name=="var";
                         });
                         if(m){
@@ -1901,7 +1901,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         if(!found){
                             m = findMemberInHierarchy(classType, [&](typeMember* mm){
                                 auto* opFunc = dynamic_cast<functionDef*>(mm);
-                                return opFunc && opFunc->name=="=" && !opFunc->isEmitter && !opFunc->isPrePassStub
+                                return opFunc && opFunc->name=="=" && !opFunc->isEmitter
                                        && opFunc->params.size()==1
                                        && isTypeCompatible(valueTypeName, opFunc->params[0]->type.name);
                             });
