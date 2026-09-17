@@ -129,7 +129,9 @@ extern int    notify_mode;          // score notification on/off
 extern int    inventory_style;      // inventory display style
 extern int    debug_flag;           // debug mode flag
 extern int    screen_width;         // screen width in characters
-extern int    statusline_height;    // status line height
+extern int    statusline_height;         // status-line height CONFIG (puny redraws to this each turn)
+extern int    statusline_current_height; // puny's tracked CURRENT status-window height (lines)
+extern void   _StatusLineHeight(int h);  // puny: split the status window to `h` lines and record it
 
 //-- Colour settings (z5+ only) -----------------------------------------------
 extern int    clr_on;              // set to true to enable colours
@@ -344,6 +346,23 @@ extern verb RoutinesOff { .routines|.messages }                     // routines 
 extern verb Scope { .scope }                                        // scope
 extern verb TimersOn { .timers|.daemons }                           // timers / daemons on
 extern verb TimersOff { .timers|.daemons }                          // timers / daemons off
+
+//-- Status window integration ------------------------------------------------
+// Map bgl.ui.statusBar.height onto PunyInform's status-line model. Without this,
+// `statusBar.height = v` falls through to core _statusBar's raw `@split_window`,
+// which puny's own DrawStatusLine reapplies (to `statusline_height`) every turn and
+// clobbers. So: read the tracked CURRENT height; on write, set puny's persistent
+// `statusline_height` (what its redraw reapplies) AND split immediately via
+// `_StatusLineHeight`. z-code has no status-window id → `id` is null (mirrors the
+// i6-stdlib binding's z-code branch). Puny defines `_StatusLineHeight` /
+// `statusline_current_height`, NOT the stdlib's `StatusLineHeight` / `gg_statuswin_cursize`.
+extend _bglStatus {
+    replace auto id = null;
+    replace auto height = {
+        int operator()        { return statusline_current_height; }
+        void operator = (int v){ statusline_height = v; _StatusLineHeight(v); }
+    }
+}
 
 //-- Map beguilerSettings metadata to PunyInform constants ----------------------
 // Hoisted via #emitfirst so the constants appear ABOVE the user's #includeI6
