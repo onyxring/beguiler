@@ -894,21 +894,31 @@ string bglParser::inferSubscriptElementType(classDef* cls){
 vector<functionDef*> bglParser::collectGlobalCandidates(const string& name){
     string lower = name;
     transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-    vector<functionDef*> out;
+    vector<functionDef*> out, stubs;
     for(typeDef* g : languageService.globals)
         if(auto* fd = dynamic_cast<functionDef*>(g))
-            if(fd->name == lower && !fd->isPrePassStub) out.push_back(fd);
-    return out;
+            if(fd->name == lower){
+                if(!fd->isPrePassStub) out.push_back(fd);
+                else                   stubs.push_back(fd);
+            }
+    // Fall back to pre-scan stubs only when no real definition is visible yet — i.e. a FORWARD
+    // call (the function is declared after this use site). The stubs now carry parameter types
+    // (preScanCaptureParams), so brace-argument inference resolves order-independently. Real
+    // definitions always win, so already-resolvable calls are unaffected.
+    return out.empty() ? stubs : out;
 }
 // Collect method functionDefs named `methodName` reachable from a receiver of type `typeName`
 // (class hierarchy + objectDef own members + its class hierarchy). Mirrors resolveMethod's walk.
 vector<functionDef*> bglParser::collectMethodCandidates(const string& typeName, const string& methodName){
     string lower = methodName;
     transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-    vector<functionDef*> out;
+    vector<functionDef*> out, stubs;
     set<functionDef*> seen;
     auto add = [&](functionDef* fd){
-        if(fd->name == lower && !fd->isPrePassStub && !seen.count(fd)){ seen.insert(fd); out.push_back(fd); }
+        if(fd->name != lower || seen.count(fd)) return;
+        seen.insert(fd);
+        if(fd->isPrePassStub) stubs.push_back(fd);   // forward method (declared later) — fallback only
+        else                  out.push_back(fd);
     };
     std::function<void(classDef*)> walk = [&](classDef* c){
         if(!c) return;
@@ -920,7 +930,10 @@ vector<functionDef*> bglParser::collectMethodCandidates(const string& typeName, 
         for(typeMember* m : od->members) if(auto* fd = dynamic_cast<functionDef*>(m)) add(fd);
         walk(od->objectClass);
     }
-    return out;
+    // Real definitions win; a param-carrying pre-scan stub is used only when the method is
+    // declared after this use site (forward call) — so brace-argument inference stays
+    // order-independent, matching collectGlobalCandidates.
+    return out.empty() ? stubs : out;
 }
 // Compute the per-position / per-name agreed object-backed class across candidate callees. A slot
 // is set only when EVERY candidate that reaches it names the same object-backed class; any

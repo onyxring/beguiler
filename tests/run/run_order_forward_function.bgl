@@ -1,0 +1,25 @@
+/*  run_order_forward_function — order-independence for a global FUNCTION used before its
+    definition.
+
+    `driver()` calls `makeFwd({8,9})` where `makeFwd` is declared LATER in the file. At the call
+    site `makeFwd` is only a pre-scan stub, so brace-argument inference (which needs the callee's
+    parameter type to know `{8,9}` is a Pt) must consult the stub. collectGlobalCandidates now
+    falls back to param-carrying stubs when no real definition is visible yet, so the forward call
+    resolves — matching how a backward call already works. Runtime-verified.  */
+// EXPECT_OUTPUT: fwd=8,9
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Pt {
+    inline int x = 0;
+    inline int y = 0;
+    Pt operator = (Pt o){ self.x = o.x; self.y = o.y; return self; }
+}
+
+void driver(){
+    Pt r = makeFwd({8, 9});   // forward global-function call with a {…} aggregate argument
+    print("fwd="); print(r.x); print(","); print(r.y);
+}
+
+Pt makeFwd(Pt p){ return p; }   // declared AFTER the call above
+
+void main(){ driver(); }
