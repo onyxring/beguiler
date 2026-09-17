@@ -34,16 +34,6 @@ enum eGlulxStyleType{
    ,    user2
 }
 
-class bglSize{
-    inline int width=0;
-    inline int height=0;
-    bglSize operator = (bglSize s){
-        self.width=s.width;
-        self.height=s.height;
-        return self;
-    }
-}
-
 #include<core/_glulxOpCodes>
 extend bgl { emitter auto asm = bglOpCodes; } //attach the opcodes to the namespace
 

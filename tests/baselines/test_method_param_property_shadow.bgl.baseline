@@ -272,7 +272,7 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-class bglsize
+class sizerec
   with
     width 0,
     height 0,
@@ -301,5 +301,5 @@ object drawer
 [main;
     drawer.img(0, 0);
 ];
-bglsize _bglLocal__getinfo_s;
-bglsize _bglLocal__sz;
+sizerec _bglLocal__getinfo_s;
+sizerec _bglLocal__sz;

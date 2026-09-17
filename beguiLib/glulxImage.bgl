@@ -1,7 +1,5 @@
 #once
 
-
-
 array<int> _glkTmpSizeBuf[2];
 
 bglSize _bglGetImageInfo(eAssets imgId){

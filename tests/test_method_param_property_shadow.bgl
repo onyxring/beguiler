@@ -5,7 +5,7 @@
     The method's routine HEADER must declare the SAME renamed name — earlier it emitted the raw
     name while the body used `_l_<name>`, leaving `_l_width` undeclared:
         with img [width height …;      _l_width = … ;   →  "'=' applied to undeclared variable"
-    Here `img` takes params `width`/`height`, which collide with `bglSize`'s `width`/`height`
+    Here `img` takes params `width`/`height`, which collide with `sizeRec`'s `width`/`height`
     properties (read via the class-typed local `sz`). The baseline pins the header/body agreement.
     (The free-function path already did this; this covers the `with <name> [...]` method path.)
 */
@@ -15,18 +15,18 @@
     outputPath = "tests/output";
 }
 
-class bglSize {
+class sizeRec {
     int width = 0;
     int height = 0;
-    bglSize operator = (bglSize s){ self.width = s.width; self.height = s.height; return self; }
+    sizeRec operator = (sizeRec s){ self.width = s.width; self.height = s.height; return self; }
 }
 
-bglSize _getInfo(){ bglSize s; return s; }
+sizeRec _getInfo(){ sizeRec s; return s; }
 
 _bglObject drawer {
     void img(int width = 0, int height = 0){
         if (width == 0) {
-            bglSize sz = _getInfo();
+            sizeRec sz = _getInfo();
             width  = sz.width;      // reads property `width`  → param `width` renamed in body
             height = sz.height;     // reads property `height` → param `height` renamed in body
         }

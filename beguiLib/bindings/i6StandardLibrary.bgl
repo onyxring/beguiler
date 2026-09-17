@@ -445,6 +445,7 @@ extern void AfterGameOver();                  // post-game-over menu loop: AMUSI
 // (StatusLineHeight) — instead of core's self-managed @split_window / _h. `_bglStatus` is auto-included
 // by core (with a self-contained inline `height` accessor); here we replace that whole member with a
 // stdlib-backed one. Core stays library-ignorant; this binding owns the integration.
+#if(TARGET_GLULX)
 extend _bglStatus {
     replace auto id = {
         int operator()        { return gg_statuswin; }
@@ -455,6 +456,15 @@ extend _bglStatus {
         void operator = (int v){ StatusLineHeight(v); }
     }
 }
+#else //Z-code
+extend _bglStatus {
+    replace auto id = null; //zcode doesn't maintain ids for windows    
+    replace auto height = {
+        int operator()        { return gg_statuswin_cursize; }
+        void operator = (int v){ StatusLineHeight(v); }
+    }
+}
+#endif
 extend _bglMainWindow {
     replace auto id = {
         int operator()        { return gg_mainwin; }
