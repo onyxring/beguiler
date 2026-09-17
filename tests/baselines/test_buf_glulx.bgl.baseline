@@ -303,16 +303,6 @@ object _bglArray
 global _bglWorldBufIdx = -1;
 object _glulx
 ;
-class bglsize
-  with
-    width 0,
-    height 0,
-    _opeq[s;
-        self.width=s.width;
-        self.height=s.height;
-        return self;
-    ]
-;
 object bgl
   with glulx _glulx
 ;

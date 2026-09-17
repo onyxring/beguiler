@@ -63,3 +63,13 @@ emitter void printName(object o){ print (name)$o; }   // I6 `(name) obj` print r
 enum eAssets { }   // A place to land asset ids.  Beguile extends this when blorbification is enabled.
 extern void bglInit(); // bglInit() is a special, compiler built routine used to initialize the BLR
 
+//-- Utility types
+superposed class bglSize{
+    inline int width=0;
+    inline int height=0;
+    bglSize operator = (bglSize s){
+        self.width=s.width;
+        self.height=s.height;
+        return self;
+    }
+}
