@@ -1,297 +1,262 @@
 #once
-// The glulx core (bgl.asm, the bgl.glulx / _glulx namespace, opcodes) auto-loads on TARGET_GLULX via
-// __beguileCore — no import needed for it. This extension is the heavier, opt-in footprint that DOES
-// require an explicit `#include <glulxWindow>`.
-/* Extend the bgl.glulx namespace object to include all the stuff we are declaring in this file;
-    _glulx is object backing for bgl.glulx, so that what we extend.
-*/
-extend _glulx{
-    alias window for _glulxWindow;
-    alias size for _glulxWindowSize;
+//=============================================================================
+// glulxWindow.bgl — the opt-in Glulx window toolkit (`#include <glulxWindow>`).
+//
+// A typed veneer over the raw glk window opcodes (already bound as bgl.asm.* in
+// core/_glulxOpCodes.bgl). Provides a window class hierarchy with compile-time
+// subtype safety (§7.6 Axis A), active-property sizing `.width`/`.height` (§4.2),
+// directional typed splits (§4.7), and image drawing. The core roots
+// bgl.ui.mainWin / bgl.ui.statusBar are the SAME objects, enriched here (§7.4).
+//
+// PURE BLR — zero compiler work (⛔ diktat 2026-09-17). Design notes:
+//  • Child windows are pooled `window`-class instances (reference semantics;
+//    `new` needs a sized pool per concrete subtype).
+//  • `.width`/`.height` on child instances use the `_winDim` value-helper proxy,
+//    which carries its OWN copy of the window id — because accessor `outer` is
+//    object-singleton-only today (tracked compiler ticket
+//    project_ticket_outer_on_class_instance_accessors). The root OBJECTS below
+//    DO use `outer.id`.
+//  • The split family is declared on `window` (inherited by subtypes) AND on the
+//    root objects; the bodies are identical (`self.id`). That duplication is
+//    inherent until Beguile grows a mixin/trait — noted, not a workaround.
+//
+// Design doc: SilverBullet IF/Beguile/glulx-window-extension-design.md
+//=============================================================================
 
-    _glulxWindow createMainWindow(){
-        bgl.asm.setIoSys(2,0);
-        tmpWin.id = bgl.asm.windowOpen(0, eGlulxWindowType.textBuffer, 30);
-        bgl.asm.setWindow(tmpWin.id);
-        return tmpWin;
+// Two-word scratch: glk writes [0]=width, [1]=height.
+array<int> _glkWinSizeBuf[2];
+
+// Image drawing reuses core's aspect-preserving `scaleVectors` (in _glulxCore, #if generateBlorb) and
+// `_bglGetImageInfo` (in <glulxImage>). Both are blorb-only — you can't draw images without blorb
+// assets — so the drawImage methods below are gated `#if generateBlorb` to match. Pull in glulxImage
+// for `_bglGetImageInfo`; scaleVectors auto-loads with the platform core under the same gate.
+#if (generateBlorb == true)
+#include <glulxImage>
+#endif
+
+// Active-property dimension proxy for child window INSTANCES (roots use outer.id).
+class _winDim {
+    int _id = 0;
+    int _axis = 0;      // 0 = width, 1 = height
+    int _method = 0;    // split method to re-apply on resize (placement|scale|border)
+    int operator() {
+        bgl.asm.windowGetSize(_id, ((int)_glkWinSizeBuf) + bgl.wordsize, ((int)_glkWinSizeBuf) + (2 * bgl.wordsize));
+        return _glkWinSizeBuf[_axis];
     }
-}
-// Window/image enums and bnums moved to core/_glulxOpCodes.bgl so that typed
-// bglOpCodes overloads (e.g. windowOpen) can compile without requiring this file.
-
-// IMPORTANT — caller convention:
-//   Declare your _glulxWindow instances at FILE SCOPE, not as function-locals.
-//   Locals are bare I6 int slots (no backing storage), so `local = factory()`
-//   becomes pointer-assignment and every local ends up aliasing tmpWin.
-//   File-scope instances have their own field storage, so the assignment
-//   dispatches operator=(_glulxWindow) which copies tmpWin's values into
-//   the permanent instance — leaving tmpWin free to be reused on the next call.
-_glulxWindow tmpWin;
-
-// Size struct returned by getSize(). Two int fields populated from a Glk
-// glk_window_get_size call (which writes width/height to two consecutive
-// memory slots). Callers read .width / .height directly.
-class _glulxWindowSize {
-    int width;
-    int height;
-}
-_glulxWindowSize _tmpWindowSize;
-
-// Scratch array used as the out-buffer for glk_window_get_size and
-// glk_image_get_info. Two words wide — Glk writes [0]=width, [1]=height.
-array<int> _glkSizeBuf[2];
-
-// Reads an image's natural dimensions from the blorb. Reuses _glkSizeBuf and
-// _tmpWindowSize, so the returned struct is only valid until the next getSize()
-// or _getImageInfo() call.
-_glulxWindowSize _getImageInfo(int imgId){
-    bgl.asm.imageGetInfo(imgId, ((int)_glkSizeBuf) + bgl.wordsize, ((int)_glkSizeBuf) + (2 * bgl.wordsize));
-    _tmpWindowSize.width  = _glkSizeBuf[0];
-    _tmpWindowSize.height = _glkSizeBuf[1];
-    return _tmpWindowSize;
+    void operator = (int v){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(_id), _method, v, _id); }
 }
 
-//-----------------------
-class _glulxWindow{
-    int id;
-    eGlulxWindowType winType;
-    ref _glulxWindow parentWin;   // a REFERENCE to the parent window, not an owned copy (a value copy
-                                  // of a self-referential member would recurse infinitely in operator=)
-    bGlulxWindowMethodFlags winMethod;
-    
-    _glulxWindow operator = (_glulxWindow w){ 
-        self.id=w.id; 
-        self.winMethod=w.winMethod; 
-        self.winType=w.winType; 
-        self.parentWin:=w.parentWin; 
-        return self;
+// ---- base window (pooled) + Axis-A subtypes ----
+// Rooted at `_bglObject` (reference semantics) NOT `object`: a window is a reference-identity UI
+// entity, not an IF world-tree citizen — it has no `parent`/`children`/attributes and isn't
+// `remove`-able from the object tree. Reference locals (`window w = mainWin.split…()`) work because
+// reference semantics roots at `_bglObject` (see isReferenceBacked in the compiler).
+class window[16] : _bglObject {
+    int id = 0;
+    _winDim width;
+    _winDim height;
+
+    void _bind(int newId, bGlulxWindowMethodFlags method = noBorder){
+        self.id = newId;
+        self.width._id  = newId; self.width._axis  = 0; self.width._method  = (int)method;
+        self.height._id = newId; self.height._axis = 1; self.height._method = (int)method;
     }
+    // Close this window (glk closes its subtree). self.id guards double-close.
+    void close(){ if(self.id != 0){ bgl.asm.windowClose(self.id, 0); self.id = 0; } }
 
-    _glulxWindow splitWindow(eGlulxWindowType type, int size, bGlulxWindowScale scale=fixed, bGlulxWindowPlacement placement=left, bGlulxWindowBorder border=noBoarder){
-        // tmpWin is the scratch return slot. The caller's file-scope instance copies
-        // the values out via operator=, freeing tmpWin for the next call.
-        // Read self.id BEFORE windowOpen, since self may be the same instance the
-        // caller copied from tmpWin (their fields are independent now, but the
-        // reading-then-writing order keeps the intent clear).
-        
-        tmpWin.winMethod=(placement | scale | border);
-        tmpWin.winType=type;
-        tmpWin.parentWin:=self;
-        tmpWin.id=bgl.asm.windowOpen(self.id, type, size, tmpWin.winMethod, 0);
-        return tmpWin;
+    // ---- split family: content type in the name → typed return; direction → placement ----
+    textGridWindow   splitGridUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size); }
+    textGridWindow   splitGridDown  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size); }
+    textGridWindow   splitGridLeft  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size); }
+    textGridWindow   splitGridRight (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size); }
+    graphicsWindow   splitGraphicsUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size); }
+    graphicsWindow   splitGraphicsDown  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size); }
+    graphicsWindow   splitGraphicsLeft  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size); }
+    graphicsWindow   splitGraphicsRight (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size); }
+    textBufferWindow splitBufferUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size); }
+    textBufferWindow splitBufferDown  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size); }
+    textBufferWindow splitBufferLeft  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size); }
+    textBufferWindow splitBufferRight (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size); }
+}
+class textWindow[8]       : window { }
+class textBufferWindow[8] : textWindow { }   // drawImage(align) added under #if generateBlorb below
+class textGridWindow[8]   : textWindow {
+    void moveCursor(int col, int line){ bgl.asm.windowMoveCursor(self.id, col, line); }
+}
+class graphicsWindow[8]   : window {
+    void setBackgroundColor(int color){ bgl.asm.windowSetBackgroundColor(self.id, color); bgl.asm.windowClear(self.id); }
+    // drawImage(x,y,…) added under #if generateBlorb below
+}
+
+// Shared split machinery — allocates the right pooled subtype, opens the glk window, binds.
+window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags method, int size){
+    window kid;
+    if(type == eGlulxWindowType.graphics)       kid = new graphicsWindow();
+    else if(type == eGlulxWindowType.textGrid)  kid = new textGridWindow();
+    else                                        kid = new textBufferWindow();
+    kid._bind(bgl.asm.windowOpen(parentId, type, size, method, 0), method);
+    return kid;
+}
+
+// ---- expose window types under bgl.glulx (bgl.ui.mainWin/statusBar are the roots, §7.4) ----
+extend _glulx {
+    alias window           for window;
+    alias textBufferWindow for textBufferWindow;
+    alias textGridWindow   for textGridWindow;
+    alias graphicsWindow   for graphicsWindow;
+    // (enum members are reached via eGlulxWindowType.*; an enum-type alias does not
+    //  forward member access, so there is no `winType` alias here.)
+}
+
+// ---- root integration (§7.4): the SAME core objects gain the window API ----
+// mainWin (text buffer): add .width/.height (via outer.id) + the full split family.
+extend _bglMainWindow {
+    auto width = {
+        int _m = 0;
+        int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[0]; }
+        void operator=(int v){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(outer.id), _m, v, outer.id); }
     }
-
-    // Draw an image into this window (graphics window: x/y are pixel coords, w/h are pixel dims).
-    // Scaling convention (mirrors orLibrary):
-    //   width=0, height=0                                → use image's natural dimensions
-    //   width>0, height=0                                → fit width, compute h to keep aspect ratio
-    //   width=0, height>0                                → fit height, compute w to keep aspect ratio
-    //   width=eGlulxImageDimension.original (-1)    → that dim becomes the image's natural size
-    //   any positive value                      → explicit pixel size (no scaling)
-    // imgId is `var` so callers can pass any int-shaped id (literal, int var, or enum).
-    
-    void drawImage(var imgId, int x, int y, int width=0, int height=0){
-        // Sentinel: -1 means "use natural dimension" (matches eGlulxImageDimension.original).
-        // The literal is used directly because Beguile doesn't auto-convert enum→int in
-        // assignments to plain int locals.
-        if(width == 0 && height == 0){ width = -1; height = -1; }
-        if(width == 0 || height == 0 || width == -1 || height == -1){
-            ref _glulxWindowSize info := _getImageInfo(imgId);   // aliases the shared _tmpWindowSize (no copy)
-            if(width==0)   width = (info.width * height) / info.height;
-            if(height == 0)   height = (info.height * width) / info.width;
-            if(width==-1)  width = info.width;
-            if(height == -1)  height = info.height;
-        }
-        bgl.asm.imageDrawScaled(self.id, imgId, x, y, width, height);
+    auto height = {
+        int _m = 0;
+        int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[1]; }
+        void operator=(int v){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(outer.id), _m, v, outer.id); }
     }
-    
-    /*void drawImage(var imgId, int x, int y, int w=0, int h=0){
-        // Sentinel: -1 means "use natural dimension" (matches eGlulxImageDimension.original).
-        // The literal is used directly because Beguile doesn't auto-convert enum→int in
-        // assignments to plain int locals.
-        if(w == 0 && h == 0){ w = -1; h = -1; }
-        if(w == 0 || h == 0 || w == -1 || h == -1){
-            _glulxWindowSize info = _getImageInfo(imgId);
-            if(w == 0)   w = (info.width * h) / info.height;
-            if(h == 0)   h = (info.height * w) / info.width;
-            if(w == -1)  w = info.width;
-            if(h == -1)  h = info.height;
-        }
-        bgl.asm.imageDrawScaled(self.id, imgId, x, y, w, h);
+    // (mainWin is a text-buffer window: drawImage(align) added under #if generateBlorb below)
+    textGridWindow   splitGridUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size); }
+    textGridWindow   splitGridDown  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size); }
+    textGridWindow   splitGridLeft  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size); }
+    textGridWindow   splitGridRight (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size); }
+    graphicsWindow   splitGraphicsUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size); }
+    graphicsWindow   splitGraphicsDown  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size); }
+    graphicsWindow   splitGraphicsLeft  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size); }
+    graphicsWindow   splitGraphicsRight (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size); }
+    textBufferWindow splitBufferUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size); }
+    textBufferWindow splitBufferDown  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size); }
+    textBufferWindow splitBufferLeft  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size); }
+    textBufferWindow splitBufferRight (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size); }
+}
+// statusBar (text grid): library binding already owns .height — add .width + split family only.
+extend _bglStatus {
+    auto width = {
+        int _m = 0;
+        int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[0]; }
+        void operator=(int v){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(outer.id), _m, v, outer.id); }
     }
-    */
-    // Query the window's current dimensions. Glk writes width and height to consecutive
-    // memory slots; we point it at our scratch array and unpack into a struct.
-    // NOTE: array<int>[N] currently emits as an I6 `table` with a length-prefix word at
-    // offset 0; Beguile's [0]/[1] indexing skips that prefix. So the byte address of
-    // _glkSizeBuf[0] is (int)_glkSizeBuf + wordsize, and [1] is + 2*wordsize. We pass
-    // those exact addresses to Glk so writes land where [0]/[1] read from.
-    _glulxWindowSize getSize(){
-        // _glkSizeBuf is a length-prefixed table, so [0] lives at +wordsize and [1] at +2*wordsize.
-        // Pass those exact addresses so Glk's writes line up with what [0]/[1] read back.
-        bgl.asm.windowGetSize(self.id, ((int)_glkSizeBuf) + bgl.wordsize, ((int)_glkSizeBuf) + (2 * bgl.wordsize));
-        _tmpWindowSize.width  = _glkSizeBuf[0];
-        _tmpWindowSize.height = _glkSizeBuf[1];
-        return _tmpWindowSize;
+    textGridWindow   splitGridUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size); }
+    textGridWindow   splitGridDown  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size); }
+    textGridWindow   splitGridLeft  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size); }
+    textGridWindow   splitGridRight (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size); }
+    graphicsWindow   splitGraphicsUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size); }
+    graphicsWindow   splitGraphicsDown  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size); }
+    graphicsWindow   splitGraphicsLeft  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size); }
+    graphicsWindow   splitGraphicsRight (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (graphicsWindow)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size); }
+    textBufferWindow splitBufferUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size); }
+    textBufferWindow splitBufferDown  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size); }
+    textBufferWindow splitBufferLeft  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size); }
+    textBufferWindow splitBufferRight (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindow)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size); }
+}
+
+// ---- Images (§4.3) — blorb-only: reuse core aspect-preserving scaleVectors + _bglGetImageInfo ----
+// Gated as a single top-level block (#if is not allowed inside class/extend bodies) that `extend`s the
+// window subtypes and the mainWin root. `var img` accepts a blorb `eAssets`, a cast int, or a raw id.
+// 0 width/height ⇒ natural size / aspect-preserving fit; both set ⇒ explicit box. Text-buffer windows
+// take an alignment where a graphics window takes x/y (the y slot is unused, 0).
+#if (generateBlorb == true)
+// One shared drawer holds the sole `bglSize` local. The three drawImage methods below just forward to
+// it — this both keeps the scaling in one place AND sidesteps a value-local backing-name collision
+// (same-named methods across classes synthesize the same `_bglLocal_drawImage_sz` backing).
+// `alignOrX`/`y`: a graphics window passes x,y; a text-buffer window passes the alignment and 0.
+void _drawScaled(int winId, var img, int alignOrX, int y, int width, int height){
+    bglSize sz = scaleVectors({width, height}, _bglGetImageInfo(img));
+    bgl.asm.imageDrawScaled(winId, (int)img, alignOrX, y, sz.width, sz.height);
+}
+extend class textBufferWindow {
+    void drawImage(var img, eGlulxImageAlign align = inlineCenter, int width = 0, int height = 0){ _drawScaled(self.id, img, (int)align, 0, width, height); }
+}
+extend class graphicsWindow {
+    void drawImage(var img, int x, int y, int width = 0, int height = 0){ _drawScaled(self.id, img, x, y, width, height); }
+}
+extend _bglMainWindow {
+    void drawImage(var img, eGlulxImageAlign align = inlineCenter, int width = 0, int height = 0){ _drawScaled(self.id, img, (int)align, 0, width, height); }
+}
+#endif
+
+// ============================ Styles (§4.4) ============================
+// glk style hints are set per (window TYPE, style type, hint) and affect windows of that type created
+// AFTER the call — so set styles before splitting the windows they should shape (that is how children
+// "inherit" a parent's styles). Hints are always-available opcodes (NOT blorb-gated).
+
+const int styleUnset = $7FFFFFFF;   // "leave the interpreter default" sentinel — no real glk hint value
+
+// Justification values (glk stylehint_just_*). Cast to int when set on a style: `justify: (int)eGlulxJustify.centered`.
+enum eGlulxJustify { left = 0, full = 1, centered = 2, right = 3 }
+
+// Declarative style bag — set only the fields you want; omitted fields keep the interpreter default.
+// A value struct (copied), used as `win.setStyle(styleType, style{ backColor: $111111, italics: true })`.
+class style {
+    inline int justify              = styleUnset;   // an eGlulxJustify value (cast to int)
+    inline int indentation          = styleUnset;   // left-margin indent
+    inline int paragraphIndentation = styleUnset;   // first-line extra indent
+    inline int sizeAdjustment       = styleUnset;   // relative to the base text size (…-1, 0, 1…)
+    inline int fontWeight           = styleUnset;   // -1 lighter, 0 normal, 1 bold
+    inline int italics              = styleUnset;   // bool: oblique/italic
+    inline int fixedWidth           = styleUnset;   // bool: true ⇒ fixed-pitch (non-proportional)
+    inline int foreColor            = styleUnset;   // 0xRRGGBB text colour
+    inline int backColor            = styleUnset;   // 0xRRGGBB background colour
+    inline int reverse              = styleUnset;   // bool: swap fore/back
+}
+
+// Apply the set fields of `s` to (wintype, st) via glk_stylehint_set. Hint indices are the fixed glk
+// ABI (Glk §5.5): 0 Indentation, 1 ParaIndentation, 2 Justification, 3 Size, 4 Weight, 5 Oblique,
+// 6 Proportional, 7 TextColor, 8 BackColor, 9 ReverseColor.
+void _applyStyle(int wintype, eGlulxStyleType st, style s){
+    if(s.justify              != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 2, s.justify);
+    if(s.indentation          != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 0, s.indentation);
+    if(s.paragraphIndentation != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 1, s.paragraphIndentation);
+    if(s.sizeAdjustment       != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 3, s.sizeAdjustment);
+    if(s.fontWeight           != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 4, s.fontWeight);
+    if(s.italics              != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 5, s.italics);
+    if(s.fixedWidth           != styleUnset){ int prop = 1; if(s.fixedWidth != 0) prop = 0; bgl.asm.stylehintSet(wintype, (int)st, 6, prop); }  // Proportional is the inverse of fixed-pitch
+    if(s.foreColor            != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 7, s.foreColor);
+    if(s.backColor            != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 8, s.backColor);
+    if(s.reverse              != styleUnset) bgl.asm.stylehintSet(wintype, (int)st, 9, s.reverse);
+}
+// Reset every hint for (wintype, st) back to the interpreter default.
+void _clearStyle(int wintype, eGlulxStyleType st){
+    int h = 0;
+    for(h = 0; h < 10; h++) bgl.asm.stylehintClear(wintype, (int)st, h);
+}
+
+// Per-wintype styling on the text window subtypes.
+extend class textBufferWindow {
+    void setStyle(eGlulxStyleType type, style s){ _applyStyle((int)eGlulxWindowType.textBuffer, type, s); }
+    void clearStyle(eGlulxStyleType type){ _clearStyle((int)eGlulxWindowType.textBuffer, type); }
+}
+extend class textGridWindow {
+    void setStyle(eGlulxStyleType type, style s){ _applyStyle((int)eGlulxWindowType.textGrid, type, s); }
+    void clearStyle(eGlulxStyleType type){ _clearStyle((int)eGlulxWindowType.textGrid, type); }
+}
+
+// bgl.ui.screen — the global style scope (both text window types at once). The idiomatic place to set
+// up styles at game start, before any window is split.
+superposed _bglObject _bglScreen {
+    void setStyle(eGlulxStyleType type, style s){
+        _applyStyle((int)eGlulxWindowType.textBuffer, type, s);
+        _applyStyle((int)eGlulxWindowType.textGrid,   type, s);
     }
+    void clearStyle(eGlulxStyleType type){
+        _clearStyle((int)eGlulxWindowType.textBuffer, type);
+        _clearStyle((int)eGlulxWindowType.textGrid,   type);
+    }
+}
+extend _bglUi { alias screen = _bglScreen; }   // bgl.ui.screen
 
-    //     ,  _splitWindow[win method size type
-    //            retval;
-    //         retval=glk_window_open(win, method, size, type, 0);
-    //         return retval;
-    //      ]
-
-    //          gg_statuswin = glk_window_open(gg_mainwin, $12,
-    //             gg_statuswin_cursize, 4, GG_STATUSWIN_ROCK);
-
-    //        emitter int glk(int sel, int argc)   { @glk $sel $argc $target }      
-
-         
-
-    //     //self._applyQueuedStyles(type);
-    //     //retval.id=util.orUi.glulx._splitWindow(self.id, retval.arrangement, heightOrWidth, type);
-
-    //     bgl.glulx.windowOpen
-        
-    //     return retval;         
-    // }
-
-} 
-//       with  id 0
-//       ,  parentWin 0
-//       ,  arrangement 0
-//       ,  _winType 0
-//       ,  create[;
-//             self.supports=_glulxWindowSupport.create(self);
-//          ]
-//       ,  splitLeft[type width scale;
-//             return self._splitWindow(type, width, scale, winmethod_Left);
-//          ]
-//       ,  splitRight[type width scale;
-//             return self._splitWindow(type, width, scale, winmethod_Right);
-//          ]
-//       ,  splitUp[type height scale;
-//             return self._splitWindow(type, height, scale, winmethod_Above);
-//          ]
-//       ,  splitDown[type height scale;
-//             return self._splitWindow(type, height, scale, winmethod_Below);
-//          ]
-//       ,  _splitWindow[type heightOrWidth scale arngmnt
-//                retval;
-//             if(scale==0) scale=imageScale.fixed;
-//             retval=_glulxWindow.create();
-//             retval.arrangement=arngmnt | scale | winmethod_NoBorder;
-//             self._applyQueuedStyles(type);
-//             retval.id=util.orUi.glulx._splitWindow(self.id, retval.arrangement, heightOrWidth, type);
-//             retval._winType=type;
-//             retval.parentWin=self;
-//             return retval;
-//          ]
-//       ,  _numStyles 0
-//       ,  queuedStyleDefinitions 0 0 0 0 0
-//       ,  queueStyle[styl
-//                retval;
-//             retval=styleDefinition.create();
-//             retval._styleType=styl;
-//             util.orArray.set(self, queuedStyleDefinitions, self._numStyles, retval);
-//             self._numStyles=self._numStyles+1;
-//             return retval;
-//          ]
-//       ,  getQueuedStyle[styl
-//                retval t;
-//             for(t=0:t<self._numStyles:t++){
-//                retval=util.orArray.get(self,queuedStyleDefinitions, t);
-//                if(retval._styleType==styl) return retval;
-//             }
-//             return 0;
-//          ]
-//       ,  _applyQueuedStyles[type
-//                t;
-//             for(t=0:t<self._numStyles:t++){
-//                util.orArray.get(self,queuedStyleDefinitions, t).apply(type);
-//             }
-//           ]
-//       ,  clearQueuedStyles[type
-//                t s;
-//             for(t=0:t<self._numStyles:t++) {
-//                s=util.orArray.get(self,queuedStyleDefinitions, t);
-//                s.clear(type);
-//                styleDefinition.destroy(s);
-//             }
-//             util.orArray.clear(self,queuedStyleDefinitions);
-//             self._numStyles=0;
-//          ]
-//       ,  validateQueuedStylesAgainst[win
-//                t s failed;
-
-//                for(t=0:t<self._numStyles:t++) {
-//                   s=util.orArray.get(self,queuedStyleDefinitions, t);
-//                   failed=failed+s.validateAgainst(win);
-//                }
-//                return failed;
-//          ]
-
-//       ! ,  moveUp[height scale
-//       !          par;
-//       !       if(scale==0) scale=imageScale.fixed;
-//       !       self.arrangement=winmethod_Above | scale | winmethod_NoBorder;
-//       !       par = glk_window_get_parent(self.id);
-//       !       glk_window_set_arrangement(par, self.arrangement, height, self.id);
-//       !    ]
-//       ! ,  moveDown[height scale
-//       !          par;
-//       !       if(scale==0) scale=imageScale.fixed;
-//       !       self.arrangement=winmethod_Below | scale | winmethod_NoBorder;
-//       !       par = glk_window_get_parent(self.id);
-//       !       glk_window_set_arrangement(par, self.arrangement, height, self.id);
-//       !    ]
-//       ! ,  moveLeft[width scale
-//       !          par;
-//       !       if(scale==0) scale=imageScale.fixed;
-//       !       self.arrangement=winmethod_Left | scale | winmethod_NoBorder;
-//       !       par = glk_window_get_parent(self.id);
-//       !       glk_window_set_arrangement(par, self.arrangement, height, self.id);
-//       !    ]
-//       ! ,  moveRight[width scale
-//       !          par;
-//       !       if(scale==0) scale=imageScale.fixed;
-//       !       self.arrangement=winmethod_Right | scale | winmethod_NoBorder;
-//       !       par = glk_window_get_parent(self.id);
-//       !       glk_window_set_arrangement(par, self.arrangement, height, self.id);
-//       !    ]
-//       ,  drawImage[imgId xOrAlignment yOrW wOrH hOrIgnore;
-//             util.orUi.glulx._drawImage(self, imgId, xOrAlignment, yOrW, wOrH, hOrIgnore);
-//          ]
-//       ,  getSize[retval;
-//             glk_window_get_size(self.id, gg_arguments, gg_arguments+WORDSIZE);
-//             retval=_tmpSizeStruct;
-//             retval.width=gg_arguments-->0;
-//             retval.height=gg_arguments-->1;
-//             return retval;
-//          ]
-//       ,  close[ c;
-//             if(self.id==0) return;
-//             objectloop(c ofclass _glulxWindow) if(c.parentWin==self) c.close();
-//             glk_window_close(self.id, 0);
-//             if(self.supports ofclass _glulxWindowSupport) _glulxWindowSupport.destroy(self.supports);
-//             _glulxWindow.destroy(self);
-//          ]
-//       ,  supports 0
-//       ,  resize[dim key
-//                p v;
-//             if(key==0) key=self.id;
-
-//              p=glk_window_get_parent(self.id);
-//              glk_window_get_arrangement(p, gg_arguments, gg_arguments+WORDSIZE, gg_arguments+(WORDSIZE*2));
-//              glk_window_set_arrangement(p, gg_arguments-->0, dim, key);
-//           ]
-//       ,  setBackgroundColor[col;
-//             if(self._winType==winType.graphics){
-//                glk_window_set_background_color(self.id, col);
-//                glk_window_clear(self.id);
-//             }
-//             else{
-//                print "Error: setBackgroundColor() is only valid for Graphics windows.";
-//             }
-//          ]
-//    ;
+// The roots are typed windows too: mainWin = text buffer, statusBar = text grid.
+extend _bglMainWindow {
+    void setStyle(eGlulxStyleType type, style s){ _applyStyle((int)eGlulxWindowType.textBuffer, type, s); }
+    void clearStyle(eGlulxStyleType type){ _clearStyle((int)eGlulxWindowType.textBuffer, type); }
+}
+extend _bglStatus {
+    void setStyle(eGlulxStyleType type, style s){ _applyStyle((int)eGlulxWindowType.textGrid, type, s); }
+    void clearStyle(eGlulxStyleType type){ _clearStyle((int)eGlulxWindowType.textGrid, type); }
+}

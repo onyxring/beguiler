@@ -20,36 +20,41 @@ _bglObject _glulx{
    alias eStyleType for eGlulxStyleType; //bgl.glulx.eStyleType
 }
 
+// Values MUST match glk's style_* constants (Glk §5.5): style_Normal=0 … style_User2=10. Beguile
+// enums otherwise start at 1, so `normal = 0` anchors the sequence to the glk ABI — these are passed
+// straight to glk_stylehint_set/_clear (see <glulxWindow> setStyle).
 enum eGlulxStyleType{
-        normal
-   ,    emphasized
-   ,    fixed
-   ,    header
-   ,    subheader
-   ,    alert
-   ,    note
-   ,    blockQuote
-   ,    input
-   ,    user1
-   ,    user2
+        normal = 0
+   ,    emphasized      // 1  (glk style_Emphasized)
+   ,    fixed           // 2  (glk style_Preformatted)
+   ,    header          // 3
+   ,    subheader       // 4
+   ,    alert           // 5
+   ,    note            // 6
+   ,    blockQuote      // 7
+   ,    input           // 8
+   ,    user1           // 9
+   ,    user2           // 10
 }
 
 #include<core/_glulxOpCodes>
 extend bgl { emitter auto asm = bglOpCodes; } //attach the opcodes to the namespace
 
 #if (generateBlorb == true) //no blorb, no images; so don't bother including the code
-bglSize scaleVectors(bglSize imgSize, bglSize specified){
+bglSize scaleVectors(bglSize specified, bglSize imgSize){
     float scaleX=1.0;
     float scaleY=1.0;
 
     if(specified.width==0 || specified.height==0){
         if(specified.width!=0){
             scaleX=(float)specified.width/imgSize.width;
+            scaleY=scaleX;
         }
         else if(specified.height!=0){
             scaleY=(float)specified.height/imgSize.height;
+            scaleX=scaleY;
         }
-            
+
         specified.width=(int)(imgSize.width * scaleX);
         specified.height=(int)(imgSize.height * scaleY);
     }

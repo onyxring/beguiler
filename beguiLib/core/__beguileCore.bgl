@@ -1,5 +1,6 @@
-/*-----------------------------------------------------------------------------
+/*=============================================================================
     __beguileCore.bgl
+ -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
     The entry point of the Beguile Language Runtime.  This file is included
     automatically by the compiler and is responsible for loading the entirety
     of the core BLR.
@@ -20,7 +21,7 @@
 #include <core/_string>
 #include <core/_uint>
 #include <core/_verb>
-//--now helpers...
+//--now utilities...
 #include <core/_bglAllocated>
 #include <core/_bglWorld>
 #include <core/_math>
@@ -42,10 +43,10 @@ _bglObject bgl{ // bgl is root
     emitter int wordsize {WORDSIZE} //bgl.wordsize value
     alias util = _bglUtil;          //bgl.util - the util namespace to which other extensions will attach
 }
-superposed _bglObject _bglUtil{}    //actual bgl.util object
+superposed _bglObject _bglUtil{}    //actual bgl.util object, defined here so other extensions can hook into it
 
-//-- Types ---------------------------------------------------------
-emitter class _bglObject{}                      //the base type of all Beguile objects. Intentionally empty.  Note: Beguile is order independent, so this is also the base class of object, which is included above.
+//-- Base object types ---------------------------------------------------------
+emitter class _bglObject{}                      //Root of REFERENCE-semantics types (object identity + pointer locals). Intentionally empty. Deriving it opts a stored-field class into reference semantics; `object` (below) adds world-tree citizenship on top. A bare `class Foo{}` (no base) is a VALUE struct (copied). Built-in wrappers (int/char/array/…) also derive it but are `emitter`/`extern` (inlined, no backing), so the reference-vs-value decision skips them. NOT auto-inherited — that's what keeps value structs value-typed. (Base class of `object`; Beguile is order independent.)
 extern emitter class bglClass : _bglObject{ }   //the base type of all class references, used in cases where the type is checked (e.g. .is(bglClass))
 
 //-- Print routines ---------------------------------------------------------------------------
