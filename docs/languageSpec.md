@@ -7115,16 +7115,22 @@ The family is `splitGrid{Up,Down,Left,Right}`, `splitGraphics{Up,Down,Left,Right
 
 `size` is lines (grid/text) or pixels (graphics) for a `fixed` split, or a percentage for a `proportional` split. Any window (root or child) can be split.
 
-#### Sizing — active properties `.width` / `.height`
+#### Sizing and re-arrangement
 
-Size is read and written as ordinary-looking properties; reading queries Glk live, writing re-arranges the window:
+On a **child** window (one produced by a split), `.width` and `.height` are **read-only** — they query Glk live (`glk_window_get_size`). Resizing is done with **`resize(n)`**, which sets the window's *adjustable* dimension — the axis it was split along (width for a Left/Right split, height for Above/Below). Writing `.width`/`.height` directly is a **compile error** (§7.6 Axis-B): a window's cross dimension is dictated by its sibling, so a cross-axis write is physically meaningless and is disallowed rather than silently misapplied.
 
 ```bgl
-int w = pic.width;      // getter → glk_window_get_size
-pic.height = 64;        // setter → glk_window_set_arrangement (resizes via the parent pair window)
+int w = pic.width;      // read (query) — always available
+pic.resize(60);         // set the adjustable axis (glk_window_set_arrangement via the parent pair)
 ```
 
-Both dimensions are always readable. Writing the dimension the window was *split along* resizes it; the cross dimension is governed by the sibling.
+`move{Up,Down,Left,Right}(n, scale=fixed, border=noBorder)` re-arranges an *existing* window within its parent pair — changing both its placement and size, and updating which axis `resize` subsequently controls:
+
+```bgl
+pic.moveRight(30);      // move pic to the right side of its pair, 30 wide
+```
+
+> The **root** windows `bgl.ui.mainWin` / `bgl.ui.statusBar` keep *writable* `.width`/`.height` (e.g. the idiomatic `bgl.ui.statusBar.height = 2`), since they are the screen-level windows managed by the active library, not split children.
 
 #### Images
 
@@ -7181,6 +7187,27 @@ hud.clearStyle(eGlulxStyleType.alert);   // reset every hint for that style back
 | `backColor` | int | `$RRGGBB` background colour |
 | `reverse` | bool | swap fore/background |
 
+#### Colors
+
+`bgl.glulx.color` is sugar over raw `0xRRGGBB` ints for `setBackgroundColor` and style colours. `color.rgb(r, g, b)` composes a colour from 0–255 channels; the named members (`color.black`, `white`, `red`, `green`, `blue`, `yellow`, `cyan`, `magenta`, `gray`, `lightGray`, `darkGray`) are ready-made values. All are plain ints, so they drop straight in:
+
+```bgl
+#using bgl.glulx;
+pic.setBackgroundColor(color.rgb(20, 30, 40));
+bgl.ui.screen.setStyle(eGlulxStyleType.normal, style{ foreColor = color.white; backColor = color.rgb(17,17,17); });
+```
+
+#### Style validation
+
+Interpreters may ignore style hints. On any window, `measureStyle(styleType, hint)` reports the value the interpreter *actually* uses (via `glk_style_measure`), or `styleUnset` if the hint isn't measurable; `styleHonored(styleType, hint)` is the boolean "did the interpreter report this hint at all". The hint selector is `eGlulxStyleHint`, whose members mirror the `style` fields:
+
+```bgl
+if(!hud.styleHonored(eGlulxStyleType.alert, eGlulxStyleHint.reverse)) { /* fall back */ }
+int c = hud.measureStyle(eGlulxStyleType.normal, eGlulxStyleHint.foreColor);
+```
+
+These query the *live* window, so call them after it exists (unlike `setStyle`, which sets hints for windows created afterward).
+
 #### Enums
 
 Provided by the platform core (`bgl.glulx`) and this extension:
@@ -7194,6 +7221,7 @@ Provided by the platform core (`bgl.glulx`) and this extension:
 | `eGlulxImageAlign` | `inlineUp`, `inlineDown`, `inlineCenter`, `marginLeft`, `marginRight` |
 | `eGlulxStyleType` | `normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2` (values match the Glk `style_*` constants) |
 | `eGlulxJustify` | `left`, `full`, `centered`, `right` |
+| `eGlulxStyleHint` | `indentation`, `paragraphIndentation`, `justify`, `sizeAdjustment`, `fontWeight`, `italics`, `fixedWidth`, `foreColor`, `backColor`, `reverse` (the `measureStyle` selector; members mirror the `style` fields) |
 
 ## 16.3 IF Library Bindings
 
