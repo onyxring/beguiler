@@ -34,16 +34,17 @@ array<int> _glkWinSizeBuf[2];
 #include <glulxImage>
 #endif
 
-// Active-property dimension proxy for child window INSTANCES (roots use outer.id).
-class _winDim {
+// READ-ONLY dimension proxy for child window INSTANCES — `.width`/`.height` QUERY the live window
+// (glk_window_get_size); there is no operator=, so writing a child window's dimension is a COMPILE
+// error (§7.6 Axis-B: only the axis a window was split along is resizable, via resize() below — a
+// cross-axis write is physically meaningless, so it is disallowed rather than silently misapplied).
+class _winDimRO {
     int _id = 0;
     int _axis = 0;      // 0 = width, 1 = height
-    int _method = 0;    // split method to re-apply on resize (placement|scale|border)
     int operator() {
         bgl.asm.windowGetSize(_id, ((int)_glkWinSizeBuf) + bgl.wordsize, ((int)_glkWinSizeBuf) + (2 * bgl.wordsize));
         return _glkWinSizeBuf[_axis];
     }
-    void operator = (int v){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(_id), _method, v, _id); }
 }
 
 // ---- base window (pooled) + Axis-A subtypes ----
@@ -53,16 +54,33 @@ class _winDim {
 // reference semantics roots at `_bglObject` (see isReferenceBacked in the compiler).
 class window[16] : _bglObject {
     int id = 0;
-    _winDim width;
-    _winDim height;
+    _winDimRO width;    // read-only (query); resize the adjustable axis with resize()
+    _winDimRO height;
+    int _method = 0;    // this window's split method (placement|scale|border); resize() re-applies it
 
     void _bind(int newId, bGlulxWindowMethodFlags method = noBorder){
         self.id = newId;
-        self.width._id  = newId; self.width._axis  = 0; self.width._method  = (int)method;
-        self.height._id = newId; self.height._axis = 1; self.height._method = (int)method;
+        self.width._id  = newId; self.width._axis  = 0;
+        self.height._id = newId; self.height._axis = 1;
+        self._method = (int)method;
     }
+    // Resize this window's ADJUSTABLE dimension — the axis it was split along (width for a Left/Right
+    // split, height for Above/Below) — to `n`. The cross axis is dictated by the sibling window.
+    void resize(int n){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(self.id), self._method, n, self.id); }
     // Close this window (glk closes its subtree). self.id guards double-close.
     void close(){ if(self.id != 0){ bgl.asm.windowClose(self.id, 0); self.id = 0; } }
+
+    // ---- re-arrangement: change an EXISTING window's placement/size within its parent pair ----
+    // Re-runs glk_window_set_arrangement on the parent and updates the stored split method, so a later
+    // resize() re-applies the new placement (the adjustable axis follows the new direction).
+    void _rearrange(bGlulxWindowMethodFlags method, int size){
+        self._method = (int)method;
+        bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(self.id), method, size, self.id);
+    }
+    void moveUp   (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ self._rearrange(bGlulxWindowPlacement.above | scale | border, size); }
+    void moveDown (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ self._rearrange(bGlulxWindowPlacement.below | scale | border, size); }
+    void moveLeft (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ self._rearrange(bGlulxWindowPlacement.left  | scale | border, size); }
+    void moveRight(int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ self._rearrange(bGlulxWindowPlacement.right | scale | border, size); }
 
     // ---- split family: content type in the name → typed return; direction → placement ----
     textGridWindow   splitGridUp    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindow)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size); }
@@ -188,11 +206,20 @@ extend _bglMainWindow {
 
 const int styleUnset = $7FFFFFFF;   // "leave the interpreter default" sentinel — no real glk hint value
 
-// Justification values (glk stylehint_just_*). Cast to int when set on a style: `justify: (int)eGlulxJustify.centered`.
+// Justification values (glk stylehint_just_*). Cast to int when set on a style: `justify = (int)eGlulxJustify.centered;`.
 enum eGlulxJustify { left = 0, full = 1, centered = 2, right = 3 }
 
+// Style-hint selector for measureStyle(). Members are named after the `style` fields (so you validate
+// the same aspect you set); the values are the fixed glk hint indices (Glk §5.5). Named this way —
+// rather than the raw glk names — both for author consistency and to avoid a bare-name clash (glk's
+// "Proportional" would collide with bGlulxWindowScale.proportional).
+enum eGlulxStyleHint {
+    indentation = 0, paragraphIndentation = 1, justify = 2, sizeAdjustment = 3, fontWeight = 4,
+    italics = 5, fixedWidth = 6, foreColor = 7, backColor = 8, reverse = 9
+}
+
 // Declarative style bag — set only the fields you want; omitted fields keep the interpreter default.
-// A value struct (copied), used as `win.setStyle(styleType, style{ backColor: $111111, italics: true })`.
+// A value struct (copied), used as `win.setStyle(styleType, style{ backColor = $111111; italics = true; })`.
 class style {
     inline int justify              = styleUnset;   // an eGlulxJustify value (cast to int)
     inline int indentation          = styleUnset;   // left-margin indent
@@ -260,3 +287,40 @@ extend _bglStatus {
     void setStyle(eGlulxStyleType type, style s){ _applyStyle((int)eGlulxWindowType.textGrid, type, s); }
     void clearStyle(eGlulxStyleType type){ _clearStyle((int)eGlulxWindowType.textGrid, type); }
 }
+
+// ---- style validation (glk_style_measure) ----
+// Interpreters may ignore style hints. measureStyle reports the ACTUAL value the interpreter uses for
+// a (style type, hint) on this window, or `styleUnset` if the hint isn't measurable; styleHonored is
+// the boolean "did the interpreter report this hint at all". Both query the LIVE window, so call them
+// after the window exists (unlike setStyle, which sets hints for windows created afterward).
+extend class window {
+    int measureStyle(eGlulxStyleType type, eGlulxStyleHint hint){
+        int ok = bgl.asm.styleMeasure(self.id, (int)type, (int)hint, ((int)_glkWinSizeBuf) + bgl.wordsize);
+        if(ok == 0) return styleUnset;
+        return _glkWinSizeBuf[0];
+    }
+    bool styleHonored(eGlulxStyleType type, eGlulxStyleHint hint){
+        return bgl.asm.styleMeasure(self.id, (int)type, (int)hint, ((int)_glkWinSizeBuf) + bgl.wordsize) != 0;
+    }
+}
+
+// ============================ Colors (§4.5) ============================
+// Sugar over raw 0xRRGGBB ints for setBackgroundColor / style colours. `color.rgb(r,g,b)` composes a
+// colour from 0-255 channels; the named members are ready-made 0xRRGGBB values. Both are plain ints,
+// so they drop straight into `foreColor = color.red;` / `pic.setBackgroundColor(color.rgb(20,30,40));`.
+superposed _bglObject _bglColor {
+    int rgb(int r, int g, int b){ return (r * 65536) + (g * 256) + b; }
+
+    int black     = $000000;
+    int white     = $ffffff;
+    int red       = $ff0000;
+    int green     = $00ff00;
+    int blue      = $0000ff;
+    int yellow    = $ffff00;
+    int cyan      = $00ffff;
+    int magenta   = $ff00ff;
+    int gray      = $808080;
+    int lightGray = $c0c0c0;
+    int darkGray  = $404040;
+}
+extend _glulx { alias color = _bglColor; }   // bgl.glulx.color
