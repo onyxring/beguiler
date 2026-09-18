@@ -226,6 +226,45 @@ bool isReferenceBacked(classDef* cls){
     return false;
 }
 
+// True iff `ancestor` is a STRICT (transitive) base of `descendant`. Walks descendant's base
+// chain; returns false if either is null or they are the same class (so an identity cast
+// `(T)obj` where obj is already a T does NOT trigger ancestor dispatch). Multiple inheritance
+// is handled — any base path that reaches `ancestor` counts.
+bool isAncestorClass(classDef* ancestor, classDef* descendant){
+    if(!ancestor || !descendant || ancestor == descendant) return false;
+    for(classDef* base : descendant->baseClasses){
+        if(base == ancestor) return true;
+        if(isAncestorClass(ancestor, base)) return true;
+    }
+    return false;
+}
+
+const hiddenMember* findHiddenMember(classDef* cls, const string& memberName,
+                                     const string& queriedOp,
+                                     const vector<string>& operandTypeNames){
+    if(!cls) return nullptr;
+    for(const hiddenMember& hm : cls->hiddenMembers){
+        if(hm.memberName != memberName) continue;
+        // A whole-member hide (operatorName == "") subsumes any access — read, write, method,
+        // any operator. An operator-scoped hide matches only its own operator.
+        if(!hm.operatorName.empty() && hm.operatorName != queriedOp) continue;
+        // Overload narrowing: an entry that named an operand list matches only that overload.
+        if(!hm.operandTypes.empty()){
+            if(hm.operandTypes.size() != operandTypeNames.size()) continue;
+            bool same = true;
+            for(size_t i = 0; i < hm.operandTypes.size(); i++)
+                if(hm.operandTypes[i] != operandTypeNames[i]){ same = false; break; }
+            if(!same) continue;
+        }
+        return &hm;
+    }
+    // Hides declared on a base apply to derived types too (the restriction is inherited).
+    for(classDef* base : cls->baseClasses)
+        if(const hiddenMember* hit = findHiddenMember(base, memberName, queriedOp, operandTypeNames))
+            return hit;
+    return nullptr;
+}
+
 bool isConstVariable(const string& name, functionDef* func, statementBlock* body){
     if(body != nullptr)
         for(statement* s : body->statements)

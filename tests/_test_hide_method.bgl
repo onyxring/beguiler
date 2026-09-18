@@ -1,0 +1,6 @@
+// Calling a whole-method-hidden method must be a compile error.
+// EXPECT_ERROR: is hidden
+#beguilerSettings { target = z5; informName = "none"; }
+class base[4] : _bglObject { int ping(){ return 7; } }
+class deriv[4] : base { hide ping(); }
+void main(){ deriv d = new deriv(); print(d.ping()); }

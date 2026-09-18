@@ -1,15 +1,43 @@
 #once
+//=============================================================================
+// glulxImage.bgl — a typed handle to a Glulx image resource (blorb asset).
+//
+// `glulxImage` is a METADATA wrapper: it answers "how big is this picture?"
+// (natural pixel dimensions from glk_image_get_info). Drawing lives in the
+// windows (`window.drawImage`) and in print rules (`bgl.printRules.img`) — a
+// glulxImage passes straight into those because it IS the raw resource int.
+//
+// Representation: `extern emitter class … : _bglObject` — a zero-overhead newtype
+// over the asset id. The value is literally the int, so there is NO backing, NO
+// pool, NO emitted I6 class; every member inlines to a `$self`-based call. A
+// glulxImage therefore flows anywhere an image id (var/int) is expected.
+//=============================================================================
 
 array<int> _glkTmpSizeBuf[2];
 
-bglSize _bglGetImageInfo(eAssets imgId){
-    int ptrWidth = &_glkTmpSizeBuf + bgl.wordsize;  //advance past the length
-    int ptrHeight = ptrWidth + bgl.wordsize; 
+// Natural pixel size of a glk image resource. Takes the raw resource int (a glulxImage,
+// a cast eAssets, or a bare id all satisfy it). The single metadata primitive the wrapper
+// and any draw facade share.
+bglSize _bglGetImageInfo(int imgId){
+    int ptrWidth  = &_glkTmpSizeBuf + bgl.wordsize;   // advance past the array length slot
+    int ptrHeight = ptrWidth + bgl.wordsize;
     bglSize retval;
-
-    bgl.asm.imageGetInfo((int)imgId, ptrWidth, ptrHeight);
-
+    bgl.asm.imageGetInfo(imgId, ptrWidth, ptrHeight);
     retval.width  = _glkTmpSizeBuf[0];
     retval.height = _glkTmpSizeBuf[1];
     return retval;
+}
+int _imgWidth (int imgId){ return _bglGetImageInfo(imgId).width;  }
+int _imgHeight(int imgId){ return _bglGetImageInfo(imgId).height; }
+
+// The image handle. Assign it a blorb asset (or a raw resource id); query its size.
+extern emitter class glulxImage : _bglObject {
+    emitter void operator = (eAssets a){ $self = (int)$a; }   // glulxImage pic = eAssets.logo;
+    emitter void operator = (int id)   { $self = $id; }       // …or a raw resource id
+    emitter int  operator ()           { ($self) }            // → int: the raw resource id
+
+    // Natural (unscaled) pixel dimensions of the asset.
+    emitter bglSize size  (){ (_bglGetImageInfo($self)) }
+    emitter int     width (){ (_imgWidth($self))  }
+    emitter int     height(){ (_imgHeight($self)) }
 }

@@ -1,0 +1,37 @@
+/*  run_ancestor_dispatch — ancestor-qualified (static) method dispatch via the cast syntax.
+
+    Beguile method dispatch is DYNAMIC by default (most-derived override wins). An explicit
+    ancestor CAST on a method-call receiver — `(Base)obj.method(args)` — opts into STATIC dispatch
+    to that ancestor's version, emitted as I6's `obj.Base::method(args)`. This is reused cast syntax,
+    NOT new grammar: `(base)d.rank()` already parses as `((base)d).rank()`; the compiler formerly
+    dropped the cast (dynamic), and now emits the `::` qualifier when the cast target is a strict
+    ancestor of the receiver's actual type. Two consumers exercised here:
+      • ancestor-version dispatch on an instance: `(base)d.rank()` runs base's rank, not deriv's.
+      • the super-call idiom from inside an override: `both()` calls the dynamic rank() (deriv → 2)
+        plus `(base)self.rank()` (base → 1) = 3, with NO infinite recursion.
+    A bare `d.rank()` stays dynamic (deriv → 2), confirming the default is unchanged. Runtime-verified.  */
+// EXPECT_OUTPUT: dyn=2
+// EXPECT_OUTPUT: anc=1
+// EXPECT_OUTPUT: both=3
+// EXPECT_OUTPUT: tag=10
+#beguilerSettings { target = z5; informName = "none"; }
+
+class base[4] : _bglObject {
+    int mark = 0;
+    int rank(){ return 1; }
+    void tag(){ mark = 10; }
+}
+class deriv[4] : base {
+    int rank(){ return 2; }                             // overrides base.rank
+    void tag(){ mark = 20; }                            // overrides base.tag
+    int both(){ return rank() + (base)self.rank(); }    // dynamic (deriv→2) + super-call (base→1)
+}
+
+void main(){
+    deriv d = new deriv();
+    print("dyn=");  print(d.rank());        print("^");   // 2 — dynamic dispatch (most-derived)
+    print("anc=");  print((base)d.rank());   print("^");   // 1 — static ancestor dispatch
+    print("both="); print(d.both());         print("^");   // 3 — override + super-call
+    (base)d.tag();                                          // statement-form ancestor call → base.tag
+    print("tag="); print(d.mark);                          // 10 — base's tag ran, not deriv's (20)
+}

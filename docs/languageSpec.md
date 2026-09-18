@@ -2718,6 +2718,48 @@ alias class verb for object {
 
 This provides a default bridge to the I6 action routine (`<verbName>Sub`) while allowing each verb to override `handler()` without boilerplate. (Verbs are additionally required by the compiler to define `handler()` unless declared `extern`; see §13.2.)
 
+### Hiding Inherited Members — `hide`
+
+Inheritance is additive: a subtype has every member of its bases. `hide` removes an **inherited** member — or one operator on it — from a subtype's static surface, so accessing it *through that type* is a compile error. It is per-type access control, useful to amputate an inherited method a subtype shouldn't expose, or to make one axis of a value-property read-only where writing it is meaningless.
+
+```bgl
+class baseWin : object {
+    dim width;                    // dim: a value-helper proxy with operator() (read) + operator = (write)
+    dim height;
+    void setColor(int c){ … }
+}
+class vertWin : baseWin {
+    hide height.operator =;       // fixed axis: block the WRITE; the read still works
+    hide setColor();              // remove the whole method from vertWin's surface
+}
+```
+
+Grammar (the operator is spelled as in §10.8.6 / operator declarations):
+```
+hide <member> [ . operator <op> ] [ ( <operandTypes> ) ] ;
+```
+- A bare `hide member;` hides the **whole** member — read *and* write.
+- `hide member.operator <op>;` hides just that operator (so `hide height.operator =;` blocks writing while leaving the read intact).
+- A parenthesised operand list narrows to one overload (`hide setColor(int);`, `hide m.operator =(int);`); omit it to hide all overloads.
+
+**It is front-end only — the underlying routine still exists.** Hiding never changes emitted I6; it only removes the member from *this type's* resolvable surface. Because the routine is still there, a value of a **base type that does not hide it** reaches it — the deliberate escape hatch:
+
+```bgl
+vertWin v = …;
+v.height = 5;                 // ERROR: 'height.operator =' is hidden on 'vertWin'
+(baseWin)v.height = 5;        // OK — the base surface still has the write (runtime-sound)
+void resize(baseWin w){ w.height = 5; }   // OK inside — w is statically baseWin
+resize(v);                    // passing a vertWin up to a baseWin parameter is the same door
+```
+
+This is the sound *narrowing* direction: casting/upcasting only ever loses capability, and the write it reaches genuinely exists in the slot (no missing-property trap). The error message names this door.
+
+Rules:
+- **Inherited members only.** You can only hide something a base class declares; hiding a member declared on the same class is meaningless (just don't declare it).
+- **Reads vs. writes.** An operator hide (`.operator =`) leaves reads (`operator()`) untouched; a whole-member hide blocks both.
+- **Where.** Allowed in a subclass body and in `extend class`.
+- **Unresolved paths are a warning, not an error.** A `hide` naming a member that isn't inherited (or an operator its type doesn't have) is reported as a warning and has no effect — so a later rename or refactor degrades gracefully instead of breaking the build.
+
 ### Matching rules for `replace` in class/object bodies
 - **In `extend class`**: `replace` replaces an existing member on the same class. Adding a duplicate without `replace` is a compile-time error.
 - **In `extend object` (§5.9)**: `replace` replaces an existing method or property on the object. Same duplicate/warning rules as `extend class`.
@@ -4507,13 +4549,31 @@ A type cast overrides the resolved type of an expression at compile time, redire
 (TypeName)expr
 ```
 
-No I6 cast is emitted; this is a compile-time-only annotation. It is useful for:
+For most casts no I6 cast is emitted; the cast is a compile-time-only annotation that redirects resolution. The one case that changes emission is **explicit ancestor dispatch** on a method call (below). The cast is useful for:
 
-**Explicit parent dispatch** - when a subclass overrides a method and you want to call the parent's version:
+**Explicit ancestor dispatch** — Beguile method dispatch is otherwise **dynamic**: `myDog.speak()` always runs the most-derived override. Casting the receiver to an **ancestor class** opts into **static** dispatch to that ancestor's version:
 
 ```bgl
-(Animal)myDog.speak();   // dispatches speak() through Animal, not Dog
+(Animal)myDog.speak();   // runs Animal's speak(), NOT Dog's override
 ```
+
+This is the **super-call** idiom when written on `self` inside an override — it calls the version being overridden without re-entering the override (no infinite recursion):
+
+```bgl
+class Dog : Animal {
+    void speak() {
+        (Animal)self.speak();   // run Animal's speak() first…
+        print("Woof!");         // …then extend it
+    }
+}
+```
+
+The cast lowers to Inform 6's class-qualified message send, `myDog.Animal::speak()`, which selects the routine defined by (or inherited into) `Animal`. Rules:
+
+- **Ancestor (upcast) only.** The cast target must be a strict ancestor of the receiver's static type. An identity cast (`(Dog)myDog.speak()`), a downcast, or a cast to an unrelated type all keep the default **dynamic** dispatch.
+- **Regular methods only.** The receiver must be a reference type (a class/object with real routine properties). `emitter` methods are inlined at the call site — there is no routine for the ancestor qualifier to select — so an ancestor cast on an emitter method is a **compile error**.
+- **Methods, not data.** This qualifies *method* dispatch. It does **not** apply to data-member or `operator=` access (`(Base)obj.field = x`): a data member is a single storage slot per instance, so there is no ancestor version to select.
+- **A base-typed *variable* stays dynamic.** Only an explicit cast opts in — `Animal a = myDog; a.speak();` still runs Dog's override. The cast is the deliberate, local opt-out of virtual dispatch.
 
 **Explicit conversion operators** - triggering a conversion operator marked `explicit` that won't fire during implicit resolution (see §5.6.4):
 
@@ -7098,19 +7158,21 @@ The core `bgl.ui` windows are the roots of the tree; this extension enriches the
 
 #### Splitting
 
-The content type is baked into the method **name** (so the return type is a compile-time subtype); the direction gives the split placement. Each split returns the newly created child **as its specific subtype**:
+The method **name** reads as the action: `split` + **direction** + **content type** (`splitUpGrid`, `splitLeftGraphics`). The direction gives the placement; the content type fixes the return subtype. Each split returns the new child as an **orientation view** of that content type (see *Sizing* below):
 
 ```bgl
 #using bgl.glulx;
-textGridWindow  hud  = bgl.ui.mainWin.splitGridUp(3);              // 3-line grid above main
-graphicsWindow  pic  = bgl.ui.mainWin.splitGraphicsLeft(40);      // 40-wide graphics to the left
-graphicsWindow  band = bgl.ui.statusBar.splitGraphicsRight(20, proportional);   // 20% wide
+auto hud  = bgl.ui.mainWin.splitUpGrid(3);              // textGridWindowHorz — 3-line grid above main
+auto pic  = bgl.ui.mainWin.splitLeftGraphics(40);       // graphicsWindowVert — 40-wide graphics, left
+auto band = bgl.ui.statusBar.splitRightGraphics(20, proportional);   // graphicsWindowVert — 20% wide
 ```
 
-The family is `splitGrid{Up,Down,Left,Right}`, `splitGraphics{Up,Down,Left,Right}`, `splitBuffer{Up,Down,Left,Right}` — every content type × direction. Each has the signature:
+`auto` infers the exact oriented view, which is what gives you the compile-time axis check below. Holding the result as a plain content type (`textGridWindow hud = …`) is allowed and drops back to the permissive, runtime-guarded surface.
+
+The family is `split{Up,Down,Left,Right}Grid`, `split{Up,Down,Left,Right}Graphics`, `split{Up,Down,Left,Right}Buffer` — every direction × content type. Each has the signature:
 
 ```bgl
-<Subtype> split<Kind><Dir>(int size, bGlulxWindowScale scale = fixed, bGlulxWindowBorder border = noBorder)
+<OrientedSubtype> split<Dir><Kind>(int size, bGlulxWindowScale scale = fixed, bGlulxWindowBorder border = noBorder)
 ```
 
 `size` is lines (grid/text) or pixels (graphics) for a `fixed` split, or a percentage for a `proportional` split. Any window (root or child) can be split.
@@ -7124,7 +7186,20 @@ int w = pic.width;      // read (query)
 pic.height = 8;         // resize
 ```
 
-Only the axis a window was **split along** is resizable — width for a Left/Right split, height for Above/Below — because the cross dimension is dictated by the sibling window. Writing the cross axis is a **runtime no-op** (with a debug-only diagnostic when `DEBUG` is defined), not a compile error, so the `.width`/`.height` API stays uniform across all window types. *(This is the runtime realization of §7.6 Axis-B; a compile-time content×orientation matrix was considered and rejected as over-heavy for the ergonomics.)*
+Only the axis a window was **split along** is resizable — width for a Left/Right split, height for Above/Below — because the cross dimension is dictated by the sibling window. This is enforced at **two levels** (§7.6 Axis-B):
+
+- **Compile time**, when you hold the split result as its **orientation view** (`auto w = win.splitUpGrid(3)` → `textGridWindowHorz`). An Up/Down split owns its height, so its view **hides `width.operator =`**; a Left/Right split hides `height.operator =`. Writing the fixed axis is then a compile error that names the escape:
+
+  ```bgl
+  auto hud = bgl.ui.mainWin.splitUpGrid(3);
+  hud.height = 5;              // OK — the axis it was split along
+  hud.width  = 40;            // ERROR: 'width.operator =' is hidden on 'textGridWindowHorz'
+  (textGridWindow)hud.width = 40;   // escape: the permissive surface (see below)
+  ```
+
+  The views are `alias class`es (zero runtime cost — they dissolve to the content type in emission); the block is purely front-end, so the escape below is VM-sound.
+
+- **Runtime**, on the permissive surface — a base/content-typed handle, or a `(textGridWindow)`/`(window)` cast. There the cross-axis write is a **no-op** with a debug-only diagnostic (when `DEBUG` is defined), keeping a uniform `.width`/`.height` API for generic code that doesn't know a window's orientation.
 
 `move{Up,Down,Left,Right}(n, scale=fixed, border=noBorder)` re-arranges an *existing* window within its parent pair — changing both its placement and size, and updating which axis is subsequently writable:
 
@@ -7150,6 +7225,15 @@ bgl.ui.mainWin.drawImage(eAssets.icon, eGlulxImageAlign.marginLeft, 48, 48);
 ```
 
 Scaling sentinels: `0` for a dimension means "natural size" when both are `0`, or "compute from the other dimension, preserving aspect ratio" when one is given. Drawing reuses core's `scaleVectors` + `_bglGetImageInfo`. Graphics windows also take `setBackgroundColor(color)` (an `0xRRGGBB` int; written `$RRGGBB` in Beguile hex), which clears the window to that colour.
+
+**`glulxImage` — image metadata (`#include <glulxImage>`).** A typed handle to a Glulx image resource that answers "how big is this picture?". It is a zero-overhead newtype over the asset id (`extern emitter class … : _bglObject` — no backing, no pool, no emitted class; the value *is* the resource int), so a `glulxImage` drops straight into the `var`-typed draw calls above. Drawing itself stays on the windows / print rules; `glulxImage` only provides metadata:
+
+```bgl
+glulxImage cover = eAssets.coverArt;   // wrap a blorb asset (or a raw resource id)
+int w = cover.width();                  // natural pixel dimensions (glk_image_get_info)
+bglSize sz = cover.size();
+pic.drawImage(cover, 0, 0, cover.width() / 2);   // flows into the window's draw as its id
+```
 
 #### Cursor and lifecycle
 

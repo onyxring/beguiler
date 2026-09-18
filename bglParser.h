@@ -213,6 +213,8 @@ class bglParser {
         // Check every member bound to a property declared in the typed form
         // (`additive property rawArray<T> p;`) against that declared type.
         void checkTypedPropertyMemberTypes();
+        // Post-parse validation of `hide` directives (unresolved → warning). See the .cpp.
+        void validateHiddenMembers();
         // Reject a length-changing array operation on a RAW member array (rawArray<T> or
         // array<dictionaryWord>), whose extent is fixed by the property that holds it.
         bool rejectRawMemberLengthOp(const std::string& owner, const std::string& prop,
@@ -282,6 +284,15 @@ class bglParser {
 
         // Parser handler methods — called from grammar handlers and processNextStatement.
         bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool isByVal=false, bool allowNested=false, bool isSuperposed=false);
+        // Parse a `hide <name>[.operator <op>][(operandTypes)];` directive inside a class body / extend
+        // class, appending it to `cls.hiddenMembers`. 'hide' is the current token (still unconsumed).
+        void parseHideDirective(classDef& cls);
+        // Enforcement: report an error if `memberName` (optionally its `operatorName`, with the given
+        // operand type names) is hidden on the static class `receiverCls` or any of its ancestors.
+        // queriedOp="" for a read or method call; "=" (etc.) for an operator/write. No-op if not hidden.
+        void enforceHidden(classDef* receiverCls, const std::string& memberName,
+                           const std::string& queriedOp, const std::vector<std::string>& operandTypes,
+                           const std::string& receiverText);
         bool processEnumDeclaration(token, bool, token nameOverride=token(), bool isExtend=false);
         bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false, bool isSuperposed = false);
         // Bake an object of `cls` from an inline-aggregate body `{ ... }`, registered under `objName`.

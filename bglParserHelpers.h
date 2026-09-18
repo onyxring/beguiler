@@ -52,6 +52,24 @@ bool inheritsFromObject(classDef* cls);
 // reference type need not be a world-tree `object` (e.g. a Glulx `window`). See the .cpp.
 bool isReferenceBacked(classDef* cls);
 
+// True iff `ancestor` is a STRICT (transitive) base class of `descendant` — i.e. `ancestor`
+// appears somewhere above `descendant` in the class graph, and they are not the same class.
+// Used to gate ancestor-qualified method dispatch: `(Base)obj.method()` emits I6's
+// `obj.Base::method()` only when Base is a genuine ancestor of the receiver's type.
+bool isAncestorClass(classDef* ancestor, classDef* descendant);
+
+// Find a `hide` entry on `cls` (or any ancestor's hide list) that blocks access to `memberName`
+// under the given operator context, or nullptr if unblocked. `queriedOp` is "" for a read or method
+// call and the operator token (e.g. "=") for a write/operator access. `operandTypeNames` are the
+// call/RHS operand types for overload narrowing (empty = don't narrow). Matching:
+//   • member name must match;
+//   • a whole-member hide (entry.operatorName=="") subsumes any access; an operator hide matches
+//     only its own operator;
+//   • a signature-bearing entry matches only when the operand type names are equal.
+const hiddenMember* findHiddenMember(classDef* cls, const std::string& memberName,
+                                     const std::string& queriedOp,
+                                     const std::vector<std::string>& operandTypeNames);
+
 // True iff the variable named `name` is declared `const` in the current scope.
 // Searches: enclosing statement block's locals, the enclosing function's outer
 // body's locals, then global variableDeclarations. Returns false for unknown

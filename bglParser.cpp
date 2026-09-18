@@ -420,6 +420,49 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
 //   (2) all contributions within ONE class hierarchy (the class's ancestor chain plus every
 //       instance of it) must use the SAME element type — fixed by the highest ancestor that
 //       declares it. Unrelated hierarchies may each fix their own element type.
+// Post-parse validation of `hide` directives. A hide that doesn't resolve to an INHERITED member
+// (or, for an operator hide, whose member type doesn't expose that operator) is a WARNING, not an
+// error (Jim's call — typo/refactor tolerance); the entry simply has no effect. Runs after the full
+// parse so base classes are resolved regardless of declaration order.
+void bglParser::validateHiddenMembers(){
+    for(typeDef* g : languageService.globals){
+        auto* cls = dynamic_cast<classDef*>(g);
+        if(cls == nullptr) continue;
+        for(const hiddenMember& hm : cls->hiddenMembers){
+            // The hidden member must exist in the INHERITED surface (a base class) — you hide what
+            // you inherited; hiding a self-declared member is "just don't declare it".
+            typeMember* mem = nullptr;
+            std::function<void(classDef*)> search = [&](classDef* c){
+                if(mem) return;
+                for(typeMember* m : c->members)
+                    if(m->name == hm.memberName){ mem = m; return; }
+                for(classDef* b : c->baseClasses){ search(b); if(mem) return; }
+            };
+            for(classDef* b : cls->baseClasses){ search(b); if(mem) break; }
+            string where = hm.src.line > 0 ? format("{0}:{1}:1: ", hm.src.file, hm.src.line) : string();
+            if(mem == nullptr){
+                parsingWarning(where + format("hide '{0}' on '{1}': no inherited member named '{0}' — "
+                    "the hide has no effect (you can only hide members inherited from a base class).",
+                    hm.memberName, cls->dName()));
+                continue;
+            }
+            if(!hm.operatorName.empty()){
+                auto* vd = dynamic_cast<variableDeclaration*>(mem);
+                classDef* memType = vd ? getDispatchClass(vd->type.name) : nullptr;
+                bool opFound = memType != nullptr && findMemberInHierarchy(memType, [&](typeMember* m){
+                    auto* fn = dynamic_cast<functionDef*>(m);
+                    return fn && fn->name == hm.operatorName;
+                }) != nullptr;
+                if(!opFound)
+                    parsingWarning(where + format("hide '{0}.operator {1}' on '{2}': {3} has no "
+                        "'operator {1}' — the hide has no effect.",
+                        hm.memberName, hm.operatorName, cls->dName(),
+                        vd ? format("type '{0}'", typeDisplayName(vd->type.name)) : format("member '{0}'", hm.memberName)));
+            }
+        }
+    }
+}
+
 void bglParser::checkTypedPropertyMemberTypes(){
     // The property name a member binds to (its i6name override, else its declared name).
     auto propOf = [](variableDeclaration* vd){ return vd->i6name.empty() ? vd->name : vd->i6name; };

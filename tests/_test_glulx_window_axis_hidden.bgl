@@ -1,0 +1,11 @@
+// glulxWindow §7.6 Axis-B: a window from an Up/Down split (textGridWindowHorz) owns its HEIGHT; its
+// width is fixed by the parent, so writing `.width` must be a compile error. Reading it, and writing
+// `.height`, still work; `(window)w.width = …` is the escape. Guards the `hide`-based integration.
+// EXPECT_ERROR: is hidden
+#beguilerSettings { target = glulx; informName = "none"; }
+#include <glulxWindow>
+void main(){
+    textGridWindowHorz status = bgl.ui.mainWin.splitUpGrid(3);
+    status.height = 2;        // OK — the adjustable axis
+    status.width  = 40;       // ERROR — fixed axis is hidden on a …Horz split
+}

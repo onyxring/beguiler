@@ -1,0 +1,42 @@
+/*  run_hide_members — `hide` per-type access control (positive/runtime half).
+
+    `hide` makes an INHERITED member (or one operator on it) unreachable through a subtype's static
+    surface, while the underlying routine still exists in I6 — so a cast to a base that doesn't hide it
+    reaches it (the sound "door"). Verified here at runtime:
+      • an accessor-WRITE hide (`hide height.operator =;`) leaves the READ intact — `v.height` still
+        reads; and the writable sibling axis `v.width` still writes;
+      • the cast door `(baseWin)v.height = N` writes through the base surface and is VM-sound (the
+        proxy's operator= genuinely exists in the slot — no missing-property trap);
+      • a whole-METHOD hide (`hide ping();`) is reachable via the same base cast.
+    The compile-ERROR halves (writing a hidden axis, calling a hidden method, reading a whole-hidden
+    member) are the negative tests _test_hide_*.bgl.  */
+// EXPECT_OUTPUT: w=10
+// EXPECT_OUTPUT: h=0
+// EXPECT_OUTPUT: h2=20
+// EXPECT_OUTPUT: ping=7
+#beguilerSettings { target = z5; informName = "none"; }
+
+class dim {                                 // value-helper proxy: read via operator(), write via operator=
+    int val;
+    int operator(){ return val; }
+    void operator =(int n){ val = n; }
+}
+class baseWin[4] : _bglObject {             // generic surface: both axes writable
+    dim width;
+    dim height;
+    int ping(){ return 7; }
+}
+class vertWin[4] : baseWin {
+    hide height.operator =;                 // fixed axis — write blocked here, read survives
+    hide ping();                            // whole-method amputation
+}
+
+void main(){
+    vertWin v = new vertWin();
+    v.width = 10;                           // writable axis — dispatches dim.operator=
+    print("w=");  print(v.width);   print("^");   // 10 — read through operator()
+    print("h=");  print(v.height);  print("^");   // 0  — read survives the write-hide
+    (baseWin)v.height = 20;                 // DOOR: write the fixed axis via the base surface
+    print("h2="); print(v.height);  print("^");   // 20 — VM-sound: proxy operator= really ran
+    print("ping="); print((baseWin)v.ping());     // 7  — hidden method reached via the door
+}

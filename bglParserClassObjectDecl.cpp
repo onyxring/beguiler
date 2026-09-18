@@ -47,6 +47,71 @@ using namespace std;
 
 
 // ===============================================================================
+// hide directives — per-type access control for inherited members
+// ===============================================================================
+// Parse `hide <name> [ . operator <op> ] [ ( operandTypes ) ] ;` (the current token is 'hide',
+// already consumed by the caller). Appends one entry to cls.hiddenMembers. The operator token is
+// read with the same conventions as an operator declaration (§5.6.6 / §10.8.6): `=`, `<=>`, `[]`,
+// `[]=`, `()`, `?`, and identifier-qualified forms like `prefix++`.
+void bglParser::parseHideDirective(classDef& cls){
+    hiddenMember hm;
+    token nameTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+    hm.memberName = nameTok.value;
+    hm.src = nameTok.src.line > 0 ? nameTok.src : file.currentLocation();
+    token nxt = file.getToken();
+    // optional `. operator <op>` — scope the hide to one operator on the member's type
+    if(nxt.is(token::period)){
+        token opKw = file.getToken();
+        if(!opKw.is("operator"))
+            parsingError(format("hide {0}: expected 'operator' after '.', got '{1}'", hm.memberName, (string)opKw));
+        token opTok = file.getToken();
+        if(opTok.is(token::parenOpen)){ file.getToken(token::parenClose); hm.operatorName = "()"; }
+        else if(opTok.is(token::bracketOpen)){
+            file.getToken(token::bracketClose);
+            if(file.peekToken().is(token::assignment)){ file.getToken(); hm.operatorName = "[]="; }
+            else hm.operatorName = "[]";
+        }
+        else if(opTok.is("?")) hm.operatorName = "?";
+        else if(opTok.is(eTokenType::identifier)){ token opSym = file.getToken(eTokenType::oper); hm.operatorName = opTok.value + opSym.value; }
+        else hm.operatorName = opTok.value;   // =, ==, <=>, +, -, …
+        nxt = file.getToken();
+    }
+    // optional `( operandTypes )` — narrow to one overload
+    if(nxt.is(token::parenOpen)){
+        hm.hasSignature = true;
+        token t = file.getToken();
+        while(!t.is(token::parenClose)){
+            if(t.is(token::comma)){ t = file.getToken(); continue; }
+            hm.operandTypes.push_back(t.value);
+            t = file.getToken();
+        }
+        nxt = file.getToken();
+    }
+    if(!nxt.is(token::endStatement))
+        parsingError(format("hide {0}: expected ';' to end the hide directive", hm.memberName));
+    cls.hiddenMembers.push_back(hm);
+}
+
+// Report an error if accessing `memberName` (under operator `queriedOp` — "" for read/method-call,
+// "=" etc. for a write) with the given operand types is hidden on `receiverCls` or an ancestor. The
+// diagnostic points at the cast door (a base surface that doesn't hide it). No-op when not hidden.
+void bglParser::enforceHidden(classDef* receiverCls, const string& memberName,
+                              const string& queriedOp, const vector<string>& operandTypes,
+                              const string& receiverText){
+    if(receiverCls == nullptr) return;
+    const hiddenMember* hit = findHiddenMember(receiverCls, memberName, queriedOp, operandTypes);
+    if(hit == nullptr) return;
+    string doorType = receiverCls->baseClasses.empty() ? string("BaseType")
+                                                       : receiverCls->baseClasses[0]->dName();
+    string what = hit->operatorName.empty()
+                ? format("Member '{0}' is hidden", memberName)
+                : format("'{0}.operator {1}' is hidden", memberName, hit->operatorName);
+    parsingError(format("{0} on type '{1}'. Cast to the base surface — e.g. ({2}){3} — to reach it.",
+                        what, receiverCls->dName(), doorType,
+                        receiverText.empty() ? string("x") : receiverText));
+}
+
+// ===============================================================================
 // Top-level: processClassDeclaration
 // ===============================================================================
 bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool isByVal, bool allowNested, bool isSuperposed){
@@ -241,6 +306,14 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 processDirective(tok, newClass);
             else
                 parsingError(format("Unsupported directive in class body: '{0}'", tok.value));
+            tok = file.getToken();
+            continue;
+        }
+        // `hide <member>[.operator <op>][(types)];` — per-type access control for an inherited
+        // member. Recognised at member-start position; safe because no type is named `hide`, so a
+        // member declaration never begins with it. Applies to both subclass bodies and `extend class`.
+        if(tok.is("hide") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType))){
+            parseHideDirective(newClass);
             tok = file.getToken();
             continue;
         }

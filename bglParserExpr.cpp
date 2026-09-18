@@ -1810,8 +1810,24 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // Pass memberHint=methName so the resolver prefers a candidate whose type
                         // exposes the method, breaking name-collision ties (e.g. enum value vs
                         // class instance with the same case-insensitive name).
-                        string objType = !castType.empty() ? castType : resolveIdentifierType(objName, func, body, methName);
+                        string explicitCast = castType;   // "" unless the receiver was written `(T)obj.method()`
+                        // The receiver's ACTUAL static type, independent of any cast. Needed to decide
+                        // whether an explicit cast is a genuine UPCAST (T an ancestor of the real type),
+                        // which is what triggers ancestor-qualified (static `::`) dispatch below.
+                        string actualType = resolveIdentifierType(objName, func, body, methName);
+                        string objType = !castType.empty() ? castType : actualType;
                         castType = "";  // consume the cast
+                        // Ancestor-qualified method dispatch: `(Base)obj.method(args)` forces STATIC
+                        // dispatch to Base's version, emitted as I6 `obj.Base::method(args)`. Triggered
+                        // ONLY when the cast target is a strict ancestor of the receiver's actual type
+                        // (a real upcast); a plain base-typed local, an identity cast, or a downcast all
+                        // keep today's dynamic dispatch. `self.f()` from inside an override works too:
+                        // `(Base)self.f()` is the super-call idiom. See languageSpec §7.x / the ancestor-
+                        // dispatch scope doc. Set here, consumed at the emission sites below.
+                        classDef* ancestorDispatchClass = nullptr;
+                        if(!explicitCast.empty())
+                            if(isAncestorClass(getDispatchClass(explicitCast), getDispatchClass(actualType)))
+                                ancestorDispatchClass = getDispatchClass(explicitCast);
                         if(objType.empty()) parsingError(format("Unknown variable '{0}'", objName));
                         // Qualify objName for I6 emission: a #using-imported member like `glulx`
                         // needs to emit as `bgl.glulx` (the actual property path) so I6 resolves
@@ -1890,11 +1906,25 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                                                callArgs, pal.namedArgNames, pal.interpSegmentsPerArg,
                                                                recvElemType);
 
+                        // `hide` enforcement: is this method hidden on the receiver's static type?
+                        // objType is cast-aware, so `(Base)obj.m()` checks against Base — the door.
+                        {   vector<string> argTypeNames;
+                            for(expression* a : callArgs) argTypeNames.push_back(a->resolvedType);
+                            enforceHidden(getDispatchClass(objType), methName, "", argTypeNames, objName);
+                        }
+
                         // A value emitter is NOT callable: `obj.bold` (value, §14.4.5) and `obj.bold()`
                         // (zero-arg function) are distinct; parens on a value are an error here too,
                         // matching the bare/global-call path.
                         if(method->isEmitter && method->isValueEmitter)
                             parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", methName));
+
+                        // Ancestor-qualified dispatch requires a real I6 routine property for `::` to
+                        // select. An `emitter` method is inlined at the call site — there is no routine
+                        // to qualify — so `(Base)obj.emitterMethod()` is a compile error (v1).
+                        if(ancestorDispatchClass != nullptr && method->isEmitter)
+                            parsingError(format("Ancestor-qualified dispatch '({0}){1}.{2}(...)' is not supported: '{2}' is an emitter method (inlined at the call site), so there is no routine for the ancestor cast to select. Ancestor dispatch works on regular (non-emitter) methods.",
+                                                explicitCast, rawObjName, methName));
 
                         expr->resolvedType = method->returnType.name;
 
@@ -2013,9 +2043,16 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             expr->tokens.push_back(call);
                         } else {
                             // non-emitter: emit verbatim as obj.method(args) (or obj.<mangled>(args)
-                            // if this method is part of an overload set).
+                            // if this method is part of an overload set). When the receiver was an
+                            // explicit ancestor cast, qualify the send with the ancestor's I6 class
+                            // (`obj.Base::method(args)`) so I6 selects THAT class's routine statically,
+                            // bypassing any override on the receiver's actual type — the super-call /
+                            // ancestor-version-dispatch idiom.
                             const string& callName = method->i6name.empty() ? methName : method->i6name;
-                            string call = objName + "." + callName + "(";
+                            string dispatch = ancestorDispatchClass != nullptr
+                                            ? ancestorDispatchClass->i6Name() + "::" + callName
+                                            : callName;
+                            string call = objName + "." + dispatch + "(";
                             for(size_t i = 0; i < callArgs.size(); i++){
                                 if(i > 0) call += ", ";
                                 call += callArgs[i]->text();
@@ -2340,6 +2377,14 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                             // shadowed by properties) — so the bare spelling would rename the very
                             // local being referenced out of the way. Inside parentheses the name is an
                             // ordinary expression token, so it renames consistently or not at all.
+                            // `hide` enforcement (read): a WHOLE-member hide (`hide height;`) blocks
+                            // reads too. queriedOp="" matches only whole-member entries — an
+                            // operator-only hide (`hide height.operator =;`) leaves the read intact.
+                            // castType makes `(Base)obj.member` resolve against Base (the door).
+                            {   string hideRecvType = !castType.empty() ? castType
+                                                     : resolveIdentifierType(cur.value, func, body);
+                                enforceHidden(getDispatchClass(hideRecvType), member.value, "", {}, cur.value);
+                            }
                             string accessText = computedProp.empty()
                                 ? objText + "." + memberI6Name(resolveIdentifierType(cur.value, func, body), member.value)
                                 : objText + ".(" + computedProp + ")";

@@ -1659,6 +1659,14 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                         }
             }
             string ownerType = leftType != nullptr ? "" : resolvePathType(ownerPath, func, body);
+            // `hide` enforcement (write): block `v.member = …` when member's write (`operator =`), or
+            // the whole member, is hidden on v's static type. `(Base)v.member = …` retypes the owner
+            // to Base — the door. Reads are unaffected (fires only on this assignment path).
+            {   string hideOwnerType = (!stmtCastType.empty() && ownerPath.find('.') == string::npos)
+                                     ? stmtCastType : ownerType;
+                if(!hideOwnerType.empty())
+                    enforceHidden(getDispatchClass(hideOwnerType), propName, "=", {}, ownerPath);
+            }
             if(!ownerType.empty()){
                 // The owner may be a classDef (direct class reference) or an objectDef
                 // (object instance with its own type identity). For objectDefs, look
@@ -2380,9 +2388,20 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             string objectName = objectPath;  // kept for backward compat in non-emitter emit path
             // Pass memberHint=methodName so the resolver disambiguates a name collision in favor
             // of whichever candidate's type actually exposes the method.
-            string objectType = !stmtCastType.empty() ? stmtCastType
-                              : !literalTypeName.empty() ? literalTypeName
-                              : resolvePathType(objectPath, func, body, methodName);
+            // The receiver's ACTUAL static type, independent of any cast — needed to decide whether
+            // an explicit cast is a genuine upcast that should trigger ancestor-qualified dispatch.
+            string actualPathType = !literalTypeName.empty() ? literalTypeName
+                                  : resolvePathType(objectPath, func, body, methodName);
+            string objectType = !stmtCastType.empty() ? stmtCastType : actualPathType;
+            // Ancestor-qualified method dispatch (statement form): `(Base)obj.method(args);` emits I6
+            // `obj.Base::method(args)`, forcing static dispatch to Base's version — the super-call /
+            // ancestor-version idiom. Only when Base is a strict ancestor of the receiver's actual
+            // type (a real upcast); identity/downcast/base-typed-local stay dynamic. Consumed at the
+            // non-emitter emission below; emitter methods (inlined) are rejected.
+            classDef* ancestorDispatchClass = nullptr;
+            if(!stmtCastType.empty())
+                if(isAncestorClass(getDispatchClass(stmtCastType), getDispatchClass(actualPathType)))
+                    ancestorDispatchClass = getDispatchClass(stmtCastType);
             stmtCastType = "";  // consume the cast
             if(objectType.empty())
                 parsingError(format("Unknown variable '{0}'", objectPath));
@@ -2484,18 +2503,35 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                 functionDef* method = bindMethodCall(objectType, objectPath, methodName,
                                                        callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
                                                        recvElemType);
+                // `hide` enforcement (statement call): objectType is cast-aware, so a `(Base)obj.m()`
+                // resolves against Base and reaches a hidden-on-the-subtype method — the door.
+                {   vector<string> argTypeNames;
+                    for(expression* a : callStmt.args) argTypeNames.push_back(a->resolvedType);
+                    enforceHidden(getDispatchClass(objectType), methodName, "", argTypeNames, objectPath);
+                }
                 // A value emitter is NOT callable: `obj.bold` (value, §14.4.5) and `obj.bold()`
                 // (zero-arg function) are distinct; parens on a value are an error here too.
                 if(method->isEmitter && method->isValueEmitter)
                     parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", methodName));
+                // Ancestor-qualified dispatch needs a real I6 routine property for `::` to select;
+                // an emitter method is inlined at the call site, so there is no routine to qualify.
+                if(ancestorDispatchClass != nullptr && method->isEmitter)
+                    parsingError(format("Ancestor-qualified dispatch '({0}){1}.{2}(...)' is not supported: '{2}' is an emitter method (inlined at the call site), so there is no routine for the ancestor cast to select. Ancestor dispatch works on regular (non-emitter) methods.",
+                                        ancestorDispatchClass->dName(), objectPath, methodName));
                 cls = dynamic_cast<classDef*>(&languageService.getType(objectType));
                 // Rebuild the call statement's functionName from the (possibly namespace-resolved)
                 // objectPath so emission targets the backing object — e.g. `bgl.ui.pressAnyKey()`
                 // becomes `_bglUi.pressAnyKey()` rather than a literal runtime chain. Overload sets
                 // carry a mangled i6name (assigned by mangleOverloadSetForReceiver in bindMethodCall);
                 // otherwise use the method name. Emitters are handled separately below (inlined body).
-                if(!method->isEmitter)
-                    callStmt.functionName = emitObjectPath + "." + (method->i6name.empty() ? methodName : method->i6name);
+                if(!method->isEmitter){
+                    string callName = method->i6name.empty() ? methodName : method->i6name;
+                    // Explicit ancestor cast → qualify the send with the ancestor's I6 class
+                    // (`obj.Base::method`) so I6 selects that class's routine statically.
+                    if(ancestorDispatchClass != nullptr)
+                        callName = ancestorDispatchClass->i6Name() + "::" + callName;
+                    callStmt.functionName = emitObjectPath + "." + callName;
+                }
                 // if emitter, pre-substitute $self, $prop, and $class
                 if(method->isEmitter)
                     if(auto* blk = dynamic_cast<i6Block*>(method->body)){
