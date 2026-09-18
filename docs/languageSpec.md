@@ -7117,20 +7117,22 @@ The family is `splitGrid{Up,Down,Left,Right}`, `splitGraphics{Up,Down,Left,Right
 
 #### Sizing and re-arrangement
 
-On a **child** window (one produced by a split), `.width` and `.height` are **read-only** — they query Glk live (`glk_window_get_size`). Resizing is done with **`resize(n)`**, which sets the window's *adjustable* dimension — the axis it was split along (width for a Left/Right split, height for Above/Below). Writing `.width`/`.height` directly is a **compile error** (§7.6 Axis-B): a window's cross dimension is dictated by its sibling, so a cross-axis write is physically meaningless and is disallowed rather than silently misapplied.
+`.width` and `.height` are read/write on every window type. Reading queries Glk live (`glk_window_get_size`); writing re-arranges the window through its parent pair (`glk_window_set_arrangement`):
 
 ```bgl
-int w = pic.width;      // read (query) — always available
-pic.resize(60);         // set the adjustable axis (glk_window_set_arrangement via the parent pair)
+int w = pic.width;      // read (query)
+pic.height = 8;         // resize
 ```
 
-`move{Up,Down,Left,Right}(n, scale=fixed, border=noBorder)` re-arranges an *existing* window within its parent pair — changing both its placement and size, and updating which axis `resize` subsequently controls:
+Only the axis a window was **split along** is resizable — width for a Left/Right split, height for Above/Below — because the cross dimension is dictated by the sibling window. Writing the cross axis is a **runtime no-op** (with a debug-only diagnostic when `DEBUG` is defined), not a compile error, so the `.width`/`.height` API stays uniform across all window types. *(This is the runtime realization of §7.6 Axis-B; a compile-time content×orientation matrix was considered and rejected as over-heavy for the ergonomics.)*
+
+`move{Up,Down,Left,Right}(n, scale=fixed, border=noBorder)` re-arranges an *existing* window within its parent pair — changing both its placement and size, and updating which axis is subsequently writable:
 
 ```bgl
 pic.moveRight(30);      // move pic to the right side of its pair, 30 wide
 ```
 
-> The **root** windows `bgl.ui.mainWin` / `bgl.ui.statusBar` keep *writable* `.width`/`.height` (e.g. the idiomatic `bgl.ui.statusBar.height = 2`), since they are the screen-level windows managed by the active library, not split children.
+> The **root** windows `bgl.ui.mainWin` / `bgl.ui.statusBar` also expose read/write `.width`/`.height` (e.g. the idiomatic `bgl.ui.statusBar.height = 2`); the status window's height is routed through the active library's status API.
 
 #### Images
 

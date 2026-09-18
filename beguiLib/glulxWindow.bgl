@@ -34,16 +34,28 @@ array<int> _glkWinSizeBuf[2];
 #include <glulxImage>
 #endif
 
-// READ-ONLY dimension proxy for child window INSTANCES — `.width`/`.height` QUERY the live window
-// (glk_window_get_size); there is no operator=, so writing a child window's dimension is a COMPILE
-// error (§7.6 Axis-B: only the axis a window was split along is resizable, via resize() below — a
-// cross-axis write is physically meaningless, so it is disallowed rather than silently misapplied).
-class _winDimRO {
+// Read+write dimension proxy for child window INSTANCES. Reading queries the live window
+// (glk_window_get_size). Writing is validated at RUNTIME (§7.6 Axis-B): only the axis the window was
+// split along is resizable — Left/Right → width, Above/Below → height — because the cross axis is
+// dictated by the sibling window. A write to the cross axis is a no-op (with a debug-only diagnostic),
+// rather than a compile error, keeping the uniform `.width`/`.height` API on all window types.
+class _winDim {
     int _id = 0;
     int _axis = 0;      // 0 = width, 1 = height
+    int _method = 0;    // the owning window's split method (placement|scale|border)
     int operator() {
         bgl.asm.windowGetSize(_id, ((int)_glkWinSizeBuf) + bgl.wordsize, ((int)_glkWinSizeBuf) + (2 * bgl.wordsize));
         return _glkWinSizeBuf[_axis];
+    }
+    void operator = (int v){
+        // glk placement is the low bits of the method (left=0, right=1, above=2, below=3), so the
+        // adjustable axis is width (0) for left/right and height (1) for above/below.
+        int adjustable = 0;
+        if((_method % 4) >= 2) adjustable = 1;
+        if(_axis == adjustable)
+            bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(_id), _method, v, _id);
+        else
+            log("[glulxWindow] size ignored: this axis is fixed by the sibling window (resize the split axis).");
     }
 }
 
@@ -54,27 +66,23 @@ class _winDimRO {
 // reference semantics roots at `_bglObject` (see isReferenceBacked in the compiler).
 class window[16] : _bglObject {
     int id = 0;
-    _winDimRO width;    // read-only (query); resize the adjustable axis with resize()
-    _winDimRO height;
-    int _method = 0;    // this window's split method (placement|scale|border); resize() re-applies it
+    _winDim width;      // read/write; a write to the non-adjustable axis is a runtime no-op (see _winDim)
+    _winDim height;
 
     void _bind(int newId, bGlulxWindowMethodFlags method = noBorder){
         self.id = newId;
-        self.width._id  = newId; self.width._axis  = 0;
-        self.height._id = newId; self.height._axis = 1;
-        self._method = (int)method;
+        self.width._id  = newId; self.width._axis  = 0; self.width._method  = (int)method;
+        self.height._id = newId; self.height._axis = 1; self.height._method = (int)method;
     }
-    // Resize this window's ADJUSTABLE dimension — the axis it was split along (width for a Left/Right
-    // split, height for Above/Below) — to `n`. The cross axis is dictated by the sibling window.
-    void resize(int n){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(self.id), self._method, n, self.id); }
     // Close this window (glk closes its subtree). self.id guards double-close.
     void close(){ if(self.id != 0){ bgl.asm.windowClose(self.id, 0); self.id = 0; } }
 
     // ---- re-arrangement: change an EXISTING window's placement/size within its parent pair ----
-    // Re-runs glk_window_set_arrangement on the parent and updates the stored split method, so a later
-    // resize() re-applies the new placement (the adjustable axis follows the new direction).
+    // Re-runs glk_window_set_arrangement on the parent and updates the stored split method on both
+    // proxies, so which axis is subsequently writable follows the new placement.
     void _rearrange(bGlulxWindowMethodFlags method, int size){
-        self._method = (int)method;
+        self.width._method  = (int)method;
+        self.height._method = (int)method;
         bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(self.id), method, size, self.id);
     }
     void moveUp   (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ self._rearrange(bGlulxWindowPlacement.above | scale | border, size); }
