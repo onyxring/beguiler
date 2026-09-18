@@ -658,6 +658,12 @@ void bglParser::preScanGlobalLoop(){
                     if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
                     if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
                     if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
+                    // `hide <member>[.operator <op>][(types)];` — an access-control directive, not a
+                    // member. Consume it so the pre-scan doesn't register a bogus `hide`-typed member
+                    // (which would shadow the real inherited member). Recorded in the main pass.
+                    if(t.is("hide") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType))){
+                        preScanSkipToSemicolon(); t = file.getToken(); continue;
+                    }
                     // Accept either a built-in dataType OR an identifier as the return type.
                     // The identifier path covers type parameters (e.g. `T` from `class array<T>`)
                     // and user-defined class names, which the lexer doesn't classify as dataTypes
@@ -795,6 +801,14 @@ void bglParser::preScanGlobalLoop(){
                   while(!bt.is(token::braceClose) && !bt.is(eTokenType::eof)){
                       if(bt.is(token::braceOpen)){
                           file.getRawTextThroughClosingBrace();
+                          bt = file.getToken();
+                          continue;
+                      }
+                      // `hide <member>[.operator <op>][(types)];` — access-control directive, not a
+                      // member. Consume it so pre-scan doesn't register a bogus `hide`-typed member
+                      // that would shadow the real inherited member. Recorded in the main pass.
+                      if(bt.is("hide") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType))){
+                          preScanSkipToSemicolon();
                           bt = file.getToken();
                           continue;
                       }

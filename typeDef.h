@@ -45,6 +45,18 @@ class typeMember:virtual public abstractObject{
     public:        
 };
 
+// A `hide` directive recorded on a subtype (or `extend class`): makes an INHERITED member (or one
+// operator on it) unreachable through this type's static surface. Front-end only — the underlying
+// routine still exists in I6, so a cast to a base that doesn't hide it reaches it (the sound "door").
+// See SilverBullet IF/Beguile/hide-members-scope.md.
+struct hiddenMember {
+    std::string memberName;              // the inherited member/method name (e.g. "height", "setColor")
+    std::string operatorName;            // "" = hide the whole member; else the operator token (e.g. "=", "<=>")
+    std::vector<std::string> operandTypes;  // empty = all overloads; else the specific overload's operand types
+    bool hasSignature = false;           // true when a parenthesised operand list was written (even if empty)
+    sourceLocation src;                  // for the not-found warning + diagnostics
+};
+
 //class definitions
 class classDef:public typeDef{
     public:
@@ -74,6 +86,10 @@ class classDef:public typeDef{
         }
         vector<typeMember*> members;
         vector<classDef*> baseClasses;
+        // `hide` directives declared on THIS class (subclass body or `extend class`). Each blocks an
+        // inherited member/operator from this type's static surface; validated post-parse (unresolved
+        // → warning, dropped). Enforced at method-call / operator= / member-access resolution.
+        vector<hiddenMember> hiddenMembers;
         // Named union type: `union Name = A | B { members }`. A nominal type over a structural
         // union that can carry (emitter/static) members. unionMembers holds the member type names
         // (e.g. {"string","func<void>"}); empty for ordinary classes. Represented as an emitter

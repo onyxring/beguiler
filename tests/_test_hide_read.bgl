@@ -1,0 +1,7 @@
+// A WHOLE-member hide (`hide height;`) blocks reads too, so reading it must be a compile error.
+// EXPECT_ERROR: is hidden
+#beguilerSettings { target = z5; informName = "none"; }
+class dim { int val; int operator(){ return val; } void operator =(int n){ val = n; } }
+class baseWin[4] : _bglObject { dim width; dim height; }
+class vertWin[4] : baseWin { hide height; }
+void main(){ vertWin v = new vertWin(); print(v.height); }
