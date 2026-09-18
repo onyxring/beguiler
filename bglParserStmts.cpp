@@ -1929,11 +1929,11 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     // AND it isn't a world-tree citizen (object-derived classes use
                     // reference semantics by convention). Force the user to declare
                     // operator= so copy semantics aren't a surprise.
-                    if(found && !foundViaOperatorEq && classHasStoredFields(classType) && !inheritsFromObject(classType))
+                    if(found && !foundViaOperatorEq && classHasStoredFields(classType) && !isReferenceBacked(classType))
                         parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to assign with. "
                                             "Declare 'operator =' on the class to define them; bind a reference instead "
-                                            "(`ref {0} x := …`, then `:=` to rebind); or inherit from 'object' for "
-                                            "tree-citizen reference semantics.",
+                                            "(`ref {0} x := …`, then `:=` to rebind); or inherit from '_bglObject' "
+                                            "(reference) / 'object' (world-tree reference) for reference semantics.",
                             typeDisplayName(leftType->name)));
                     if(!found){
                         // Fallback: check if RHS type has emitter LhsType operator(){}

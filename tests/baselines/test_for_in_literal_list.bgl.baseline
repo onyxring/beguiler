@@ -305,11 +305,11 @@ room r3;
        _bglScratchPush(2);
        _bglScratchPush(3);
        _bglfia1 = _bglScratchMake(3);
-    _bglfi2 = 0;
-    for (: _bglfi2 < _bglArray.length(_bglfia1, 0) : _bglfi2++) {
-        x = _bglfia1-->(_bglfi2+1);
+       _bglfi2 = 0;
+       for (: _bglfi2 < _bglArray.length(_bglfia1, 0) : _bglfi2++) {
+          x = _bglfia1-->(_bglfi2+1);
         total = total + x;
-    }
+       }
     print total;
     m = 4;
     n = 5;
@@ -317,21 +317,21 @@ room r3;
        _bglScratchPush(n);
        _bglScratchPush(m * n);
        _bglfia3 = _bglScratchMake(3);
-    _bglfi4 = 0;
-    for (: _bglfi4 < _bglArray.length(_bglfia3, 0) : _bglfi4++) {
-        y = _bglfia3-->(_bglfi4+1);
+       _bglfi4 = 0;
+       for (: _bglfi4 < _bglArray.length(_bglfia3, 0) : _bglfi4++) {
+          y = _bglfia3-->(_bglfi4+1);
         total = total + y;
-    }
+       }
     print total;
     seen = 0;
        _bglScratchPush(r1);
        _bglScratchPush(r2);
        _bglScratchPush(r3);
        _bglfia5 = _bglScratchMake(3);
-    _bglfi6 = 0;
-    for (: _bglfi6 < _bglArray.length(_bglfia5, 0) : _bglfi6++) {
-        r = _bglfia5-->(_bglfi6+1);
+       _bglfi6 = 0;
+       for (: _bglfi6 < _bglArray.length(_bglfia5, 0) : _bglfi6++) {
+          r = _bglfia5-->(_bglfi6+1);
         seen = seen + 1;
-    }
+       }
     print seen;
 ];

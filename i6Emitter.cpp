@@ -2230,6 +2230,8 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
             size_t d = arrayVarS.rfind('.');
             string owner = arrayVarS.substr(0, d), prop = arrayVarS.substr(d + 1);
             openTemplate = "forIn.openMember";
+            closeTemplate = "forIn.closeMember";   // its own close (byte-identical to forIn.close for now,
+                                                   // so a variant can grow a distinct tail without touching the others)
             arrayArg = owner + ".&" + prop;
             lengthExpr = "(" + owner + ".#" + prop + ")/WORDSIZE";
         } else {

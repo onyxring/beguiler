@@ -307,13 +307,13 @@ object stone cage
     print (string)"^";
     print (string)"named animals:^";
     _bglfia1 = _bglworld.instances(animal, 0);
-    _bglfi2 = 0;
-    for (: _bglfi2 < _bglArray.length(_bglfia1, 0) : _bglfi2++) {
-        o = _bglfia1-->(_bglfi2+1);
+       _bglfi2 = 0;
+       for (: _bglfi2 < _bglArray.length(_bglfia1, 0) : _bglfi2++) {
+          o = _bglfia1-->(_bglfi2+1);
         print (string)" - ";
         print (string)o.short_name;
         print (string)"^";
-    }
+       }
     cagedAnimals=_bglArray.length(_bglworld.instances(animal, _bglLambda_0), 0);
     print (string)"caged animals (in-walk filter): ";
     print cagedAnimals;
@@ -328,16 +328,16 @@ object stone cage
     print (string)"^";
     print (string)"nested walk:^";
     _bglfia3 = _bglworld.instances(animal, 0);
-    _bglfi4 = 0;
-    for (: _bglfi4 < _bglArray.length(_bglfia3, 0) : _bglfi4++) {
-        o = _bglfia3-->(_bglfi4+1);
+       _bglfi4 = 0;
+       for (: _bglfi4 < _bglArray.length(_bglfia3, 0) : _bglfi4++) {
+          o = _bglfia3-->(_bglfi4+1);
         here=_bglArray.length(_bglworld.inparent(parent(o), 0), 0);
         print (string)" - ";
         print (string)o.short_name;
         print (string)" shares its parent with ";
         print here;
         print (string)" objects^";
-    }
+       }
 ];
 [_bglLambda_0 o;
     return parent(o) == cage;

@@ -1,0 +1,18 @@
+/*  run_order_forward_emitter — order-independence for an EMITTER called before its definition.
+
+    `useIt` calls `bgl.myasm.dbl(x)` — an emitter method reached through a `bgl.*` emitter-alias —
+    but both the emitter class `myOps` AND its `extend bgl { emitter auto myasm }` attachment are
+    declared AFTER `useIt`. Emitter calls paste the method body inline at the call site, so a
+    body-less pre-scan stub used before the definition previously emitted NOTHING, which Inform 6
+    rejected ("Missing operand"). The pre-scanner now captures emitter bodies, so a
+    use-before-definition expands correctly. This mirrors the core `_statusBar` case (it used
+    `bgl.asm.window*` opcodes but is included before `_glulxCore` attaches `bgl.asm`). Runtime-verified.  */
+// EXPECT_OUTPUT: v=10
+#beguilerSettings { target = z5; informName = "none"; }
+
+int useIt(int x){ return bgl.myasm.dbl(x); }   // emitter alias used BEFORE it is declared below
+
+superposed class myOps { emitter int dbl(int a){ ($a * 2) } }   // declared AFTER the use above
+extend bgl { emitter auto myasm = myOps; }                       // attached AFTER the use above
+
+void main(){ print("v="); print(useIt(5)); }

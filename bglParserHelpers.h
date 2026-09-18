@@ -48,6 +48,9 @@ bool classHasStoredFields(classDef* cls);
 // because they dissolve to their parent for I6 emission. Gates the value-
 // semantics-operator= silent-emission error.
 bool inheritsFromObject(classDef* cls);
+// Reference-vs-value semantics for LOCALS — roots at the compiler's `_bglObject` base, so a
+// reference type need not be a world-tree `object` (e.g. a Glulx `window`). See the .cpp.
+bool isReferenceBacked(classDef* cls);
 
 // True iff the variable named `name` is declared `const` in the current scope.
 // Searches: enclosing statement block's locals, the enclosing function's outer
