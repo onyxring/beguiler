@@ -1,28 +1,28 @@
 #once
 //=============================================================================
 // type bool
-    extern enum eBool{
-        true,
-        false
+extern enum eBool{
+    true,
+    false
+}
+extern emitter class bool : _bglObject{ //--Beguile-side type label over I6's word-sized truthiness; instances emit as `global X;`
+    replace emitter void print(){
+        if($val == true)
+            print "true";
+        else
+            print "false";
     }
-    extern emitter class bool : _bglObject{ //--Beguile-side type label over I6's word-sized truthiness; instances emit as `global X;`
-        replace emitter void print(){
-            if($val == true)
-                print "true";
-            else
-                print "false";
-        }
-        emitter eBool operator == (bool v){ $val == $v }
-        emitter eBool operator == (eBool v){ $val == $v }
-        emitter eBool operator != (bool v){ $val ~= $v }
-        emitter eBool operator != (eBool v){ $val ~= $v }
-        emitter bool operator = (bool v){ $target=$v; }
-        emitter bool operator = (eBool v){ $target=$v; }
-        emitter eBool operator && (bool v){ $val && $v }
-        emitter eBool operator && (eBool v){ $val && $v }
-        emitter eBool operator || (bool v){ $val || $v }
-        emitter eBool operator || (eBool v){ $val || $v }
-        emitter eBool operator ! (){ ~~$val }
-    }
+    emitter eBool operator == (bool v){ $val == $v }
+    emitter eBool operator == (eBool v){ $val == $v }
+    emitter eBool operator != (bool v){ $val ~= $v }
+    emitter eBool operator != (eBool v){ $val ~= $v }
+    emitter bool operator = (bool v){ $target=$v; }
+    emitter bool operator = (eBool v){ $target=$v; }
+    emitter eBool operator && (bool v){ $val && $v }
+    emitter eBool operator && (eBool v){ $val && $v }
+    emitter eBool operator || (bool v){ $val || $v }
+    emitter eBool operator || (eBool v){ $val || $v }
+    emitter eBool operator ! (){ ~~$val }
+}
 
-    emitter void print(bool b){ if($b == true) print "true"; else print "false"; }
+emitter void print(bool b){ if($b == true) print "true"; else print "false"; }

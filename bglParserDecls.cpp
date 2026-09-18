@@ -712,7 +712,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                     // resolves at link time. `!params.empty()` directly guards the params[0] access
                     // (which is why stubs were previously excluded wholesale).
                     else if(assignOp && !assignOp->isEmitter && !assignOp->params.empty()
-                              && classHasStoredFields(classType) && !inheritsFromObject(classType)){
+                              && classHasStoredFields(classType) && !isReferenceBacked(classType)){
                         if(assignOp->i6name.empty()) assignOp->i6name = mangleOperatorName(assignOp->name);
                         string paramName = assignOp->params[0]->name;
                         varDecl.initEmitterBody  = format("$target.{0}(${1});", assignOp->i6name, paramName);
@@ -721,11 +721,11 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                     // Mirror the assignment-statement check: TypeCompatible fallback with no
                     // operator= on a stored-field, non-tree-citizen class would emit silent
                     // pointer-assign and surprise the user expecting value-semantics.
-                    if(found && assignOp == nullptr && classHasStoredFields(classType) && !inheritsFromObject(classType))
+                    if(found && assignOp == nullptr && classHasStoredFields(classType) && !isReferenceBacked(classType))
                         parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to initialise with. "
                                             "Declare 'operator =' on the class to define them; bind a reference instead "
-                                            "(`ref {0} x := …`); or inherit from 'object' for tree-citizen reference "
-                                            "semantics.",
+                                            "(`ref {0} x := …`); or inherit from '_bglObject' (reference) / 'object' "
+                                            "(world-tree reference) for reference semantics.",
                             typeDisplayName((string)dataType)));
                     if(!found){
                         // Fallback: check if RHS type has emitter DeclaredType operator(){}
@@ -775,7 +775,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     if(func != nullptr && body != nullptr && !isExternal && !isConst && !isRef){
         classDef* cls = dynamic_cast<classDef*>(&languageService.getType(varDecl.type.name));
         if(cls && !cls->isEmitterClass && !cls->isAlias && !cls->isExternal
-                 && classHasStoredFields(cls) && !inheritsFromObject(cls)){
+                 && classHasStoredFields(cls) && !isReferenceBacked(cls)){
             string backingName = "_bglLocal_" + func->name + "_" + varDecl.name;
             variableDeclaration* backing = new variableDeclaration();
             backing->name = backingName;

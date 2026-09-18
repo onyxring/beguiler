@@ -278,20 +278,20 @@ array g_src table 1 2 3 3 $9084;
 ];
 [sumList xs total x _bglfi1;
     total = 0;
-    _bglfi1 = 0;
-    for (: _bglfi1 < _bglArray.length(xs, 0) : _bglfi1++) {
-        x = xs-->(_bglfi1+1);
+       _bglfi1 = 0;
+       for (: _bglfi1 < _bglArray.length(xs, 0) : _bglfi1++) {
+          x = xs-->(_bglfi1+1);
         total = total + x;
-    }
+       }
     return total;
 ];
 [main x _bglfia2 _bglfi3 total;
     _bglfia2 = getlist();
-    _bglfi3 = 0;
-    for (: _bglfi3 < _bglArray.length(_bglfia2, 0) : _bglfi3++) {
-        x = _bglfia2-->(_bglfi3+1);
+       _bglfi3 = 0;
+       for (: _bglfi3 < _bglArray.length(_bglfia2, 0) : _bglfi3++) {
+          x = _bglfia2-->(_bglfi3+1);
         print x;
-    }
+       }
     total=sumlist(g_src);
     print total;
 ];

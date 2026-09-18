@@ -1,0 +1,34 @@
+/*  run_reference_nonobject — REFERENCE semantics for a non-world-tree class.
+
+    Reference semantics (pointer locals; `X x = new X()` / `X x = factory()` without a copy operator=)
+    is available to any class rooted at the compiler's `_bglObject` base — it is NOT tied to the
+    library's world-tree `object`. So `handle : _bglObject` gets reference locals (two names alias the
+    same instance) with none of object's world-model surface, while a bare value struct still copies
+    independently. This is what lets a Glulx `window` be a reference type without being a world-tree
+    citizen. Guards: `isReferenceBacked` (roots at `_bglObject`) drives the reference-vs-value LOCAL
+    decision, distinct from `inheritsFromObject` (world-tree `object`) which drives inline-`{}` inference.  */
+// EXPECT_OUTPUT: alias sees: 42
+// EXPECT_OUTPUT: value independent: 1
+#beguilerSettings { target = z5; informName = "none"; }
+
+class handle[4] : _bglObject {          // reference type, NOT object-derived, NO operator=
+    int v = 0;
+}
+class box {                             // bare value struct
+    inline int v = 0;
+    box operator = (box o){ v = o.v; return self; }
+}
+
+handle mk(){ handle h = new handle(); h.v = 1; return h; }   // factory: reference return, no operator=
+
+void main(){
+    handle a = mk();          // reference local from a factory (would error without reference semantics)
+    handle b = a;             // reference COPY — a and b are the same instance
+    b.v = 42;
+    print("alias sees: "); print(a.v);      // 42 — b's write is visible through a
+
+    box x; x.v = 1;
+    box y = x;                // value COPY — independent
+    y.v = 99;
+    print("^value independent: "); print(x.v);   // 1 — unaffected by y
+}

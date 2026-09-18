@@ -444,7 +444,12 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
                 fd.isPrePassStub = true;
                 preScanCaptureParams(fd.params);
                 token bodyStart = file.getToken();
-                if(bodyStart.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                if(bodyStart.is(token::braceOpen)){
+                    // Capture EMITTER bodies for order-independent expansion (see the class-member
+                    // path above for the rationale). Non-emitter bodies never expand → discard.
+                    string rawBody = file.getRawTextThroughClosingBrace(/*isI6Content=*/memberIsEmitter);
+                    if(memberIsEmitter){ i6Block* blk = new i6Block(); blk->i6Body = rawBody; fd.body = blk; }
+                }
                 bool exists = false;
                 for(auto it = obj->members.begin(); it != obj->members.end(); ++it){
                     if((*it)->name == fd.name){
@@ -681,7 +686,16 @@ void bglParser::preScanGlobalLoop(){
                             fd.isPrePassStub = true;
                             preScanCaptureParams(fd.params);
                             token bodyStart = file.getToken();
-                            if(bodyStart.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                            if(bodyStart.is(token::braceOpen)){
+                                // Capture an EMITTER body so a call resolved before this class is
+                                // main-pass-parsed can still expand it (order-independence): emitter
+                                // calls paste the body inline at the call site, so a bodyless stub
+                                // emits nothing. The main pass replaces this stub (replaceStubMember),
+                                // leaving normal emission unchanged; the captured body only matters for
+                                // use-before-definition. Non-emitter bodies never expand, so discard.
+                                string rawBody = file.getRawTextThroughClosingBrace(/*isI6Content=*/memberIsEmitter);
+                                if(memberIsEmitter){ i6Block* blk = new i6Block(); blk->i6Body = rawBody; fd.body = blk; }
+                            }
                             // Add if not already present. For `replace`, overwrite the existing
                             // stub in place so the class ends up with one entry per method name.
                             bool exists = false;
@@ -932,7 +946,15 @@ void bglParser::preScanGlobalLoop(){
                                   file.getToken(); // '('
                                   { vector<paramDef*> ps; preScanCaptureParams(ps); if(mStub) mStub->params = ps; }
                                   token bodyOrSemi = file.getToken();
-                                  if(bodyOrSemi.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                                  if(bodyOrSemi.is(token::braceOpen)){
+                                      // Capture an EMITTER body so a call resolved before this class is
+                                      // main-pass-parsed can still expand it (order-independence): emitter
+                                      // calls paste the body inline, so a bodyless stub emits nothing. The
+                                      // main pass replaces this stub (replaceStubMember), leaving normal
+                                      // emission unchanged — the body only matters for use-before-definition.
+                                      string rawBody = file.getRawTextThroughClosingBrace(/*isI6Content=*/sawEmitter);
+                                      if(sawEmitter && mStub){ i6Block* blk = new i6Block(); blk->i6Body = rawBody; mStub->body = blk; }
+                                  }
                                   bt = file.getToken();
                                   continue;
                               }

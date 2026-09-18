@@ -7065,6 +7065,136 @@ print(g_nums.filter((int x) => x > 0).map((var y) => y * 2)[0]);
 - **Lifetime ends at the next chain start; capture to keep it.** A chain's non-terminal returns a typed handle into scratch; the next chain that runs overwrites that scratch. Consume the result inline (or via a scalar terminal), OR assign it to a typed array local, which copies it into stable storage that survives later chains via copy-on-assign (§4.9.2): `array<int> evens = arr.filter(isEven);` then use `evens` freely. This is the capture mechanism for both stored results and *sibling* chains in one statement.
 - **Local-array source caveat.** Local arrays passed as a chain source are safe within the same statement; however, a *returned* local array is ephemeral: its frame slice is freed on routine exit (§4.9.2). Don't `return arr.filter(p);` from a function with local arrays; assign the result to a typed local first (which copies it) if it must outlive the call.
 
+### 16.2.9 `<glulxWindow>` - Glulx Windows, Images, and Styles
+
+```bgl
+#include <glulxWindow>
+```
+
+**Glulx only.** This extension is a typed veneer over the Glk windowing opcodes (bound as `bgl.asm.*`). It targets Glulx exclusively — the Z-machine has a single text stream and a fixed status line, not a window tree. On a Z-machine build the include is inert; use `#if TARGET_GLULX` to guard window code in cross-target sources.
+
+Glk arranges the screen as a **binary tree of windows**: you never resize a window directly, you *split* an existing window to create a child. The extension models each window as a **reference-semantic** object (identity, not value-copied; see §5.7) with **compile-time subtype safety** — a graphics-only operation on a text window is a compile error, not a runtime check.
+
+#### Window types
+
+| Type | Kind | Adds |
+|---|---|---|
+| `window` | base | `id`, `.width`/`.height` (§sizing), `close()`, the split family (§splitting) |
+| `textBufferWindow` | scrolling prose | `drawImage(align, …)` (§images), `setStyle`/`clearStyle` (§styles) |
+| `textGridWindow` | fixed character grid | `moveCursor(col, line)`, `setStyle`/`clearStyle` |
+| `graphicsWindow` | pixels | `drawImage(x, y, …)`, `setBackgroundColor(color)` |
+
+The types are also aliased under `bgl.glulx` (`bgl.glulx.window`, `bgl.glulx.graphicsWindow`, …). Windows are rooted at `_bglObject` (reference semantics) rather than the world-tree `object` — they are UI entities, not game objects, so they have no `parent`/`children`/attributes.
+
+#### Roots
+
+The core `bgl.ui` windows are the roots of the tree; this extension enriches the *same* objects (it does not introduce rivals):
+
+| Accessor | Window | Notes |
+|---|---|---|
+| `bgl.ui.mainWin` | the main text-buffer window | where ordinary output goes |
+| `bgl.ui.statusBar` | the status text-grid window | `.height` also governed by the active library binding (§16.3) |
+| `bgl.ui.screen` | the global **style** scope | not a drawable window — it sets styles for *both* text window types at once |
+
+#### Splitting
+
+The content type is baked into the method **name** (so the return type is a compile-time subtype); the direction gives the split placement. Each split returns the newly created child **as its specific subtype**:
+
+```bgl
+#using bgl.glulx;
+textGridWindow  hud  = bgl.ui.mainWin.splitGridUp(3);              // 3-line grid above main
+graphicsWindow  pic  = bgl.ui.mainWin.splitGraphicsLeft(40);      // 40-wide graphics to the left
+graphicsWindow  band = bgl.ui.statusBar.splitGraphicsRight(20, proportional);   // 20% wide
+```
+
+The family is `splitGrid{Up,Down,Left,Right}`, `splitGraphics{Up,Down,Left,Right}`, `splitBuffer{Up,Down,Left,Right}` — every content type × direction. Each has the signature:
+
+```bgl
+<Subtype> split<Kind><Dir>(int size, bGlulxWindowScale scale = fixed, bGlulxWindowBorder border = noBorder)
+```
+
+`size` is lines (grid/text) or pixels (graphics) for a `fixed` split, or a percentage for a `proportional` split. Any window (root or child) can be split.
+
+#### Sizing — active properties `.width` / `.height`
+
+Size is read and written as ordinary-looking properties; reading queries Glk live, writing re-arranges the window:
+
+```bgl
+int w = pic.width;      // getter → glk_window_get_size
+pic.height = 64;        // setter → glk_window_set_arrangement (resizes via the parent pair window)
+```
+
+Both dimensions are always readable. Writing the dimension the window was *split along* resizes it; the cross dimension is governed by the sibling.
+
+#### Images
+
+Image drawing requires blorb assets, so it is compiled only under `#beguilerSettings { generateBlorb = true; }`. The image id argument is `var` — a blorb `eAssets` value, or a raw resource id.
+
+```bgl
+// graphics window: pixel box at (x, y)
+pic.drawImage(eAssets.coverArt, 0, 0);            // natural size
+pic.drawImage(eAssets.coverArt, 0, 0, 100);       // width 100, height auto (aspect-preserved)
+pic.drawImage(eAssets.coverArt, 0, 0, 100, 60);   // explicit 100×60 box
+
+// text-buffer window: inline image with an alignment
+bgl.ui.mainWin.drawImage(eAssets.icon, eGlulxImageAlign.inlineCenter);
+bgl.ui.mainWin.drawImage(eAssets.icon, eGlulxImageAlign.marginLeft, 48, 48);
+```
+
+Scaling sentinels: `0` for a dimension means "natural size" when both are `0`, or "compute from the other dimension, preserving aspect ratio" when one is given. Drawing reuses core's `scaleVectors` + `_bglGetImageInfo`. Graphics windows also take `setBackgroundColor(color)` (an `0xRRGGBB` int; written `$RRGGBB` in Beguile hex), which clears the window to that colour.
+
+#### Cursor and lifecycle
+
+```bgl
+hud.moveCursor(0, 0);   // text-grid only: place the cursor at (col, line)
+pic.close();            // close this window (Glk closes its subtree)
+```
+
+#### Styles
+
+Glk styling sets **hints per (window type, style type, hint)** that affect windows of that type created *afterward* — so set styles **before** splitting the windows they should shape (this is how children "inherit" a parent's styles). Styling is declarative: build a `style` value with only the fields you want and hand it to `setStyle`.
+
+```bgl
+// at game start, on the screen (both text window types):
+bgl.ui.screen.setStyle(eGlulxStyleType.normal, style{ backColor = $111111; foreColor = $cccccc; });
+bgl.ui.screen.setStyle(eGlulxStyleType.header, style{ fontWeight = 1; justify = (int)eGlulxJustify.centered; });
+
+// per-window-type (styles that type's future windows):
+bgl.ui.mainWin.setStyle(eGlulxStyleType.emphasized, style{ italics = true; });
+hud.setStyle(eGlulxStyleType.alert, style{ reverse = true; foreColor = $ff0000; });
+
+hud.clearStyle(eGlulxStyleType.alert);   // reset every hint for that style back to the interpreter default
+```
+
+`setStyle`/`clearStyle` are available on `bgl.ui.screen` (both text types), on `bgl.ui.mainWin` / `textBufferWindow` (text-buffer type), and on `bgl.ui.statusBar` / `textGridWindow` (text-grid type). The `style` value is a declarative aggregate (§6.2.1 named form — `field = value;`, `;`-separated); omitted fields keep the interpreter default:
+
+| `style` field | Type | Meaning |
+|---|---|---|
+| `justify` | int (`eGlulxJustify` cast) | `left` / `full` / `centered` / `right` |
+| `indentation` | int | left-margin indent |
+| `paragraphIndentation` | int | first-line extra indent |
+| `sizeAdjustment` | int | text size relative to base (…−1, 0, 1…) |
+| `fontWeight` | int | −1 lighter, 0 normal, 1 bold |
+| `italics` | bool | oblique/italic |
+| `fixedWidth` | bool | fixed-pitch (non-proportional) font |
+| `foreColor` | int | `$RRGGBB` text colour |
+| `backColor` | int | `$RRGGBB` background colour |
+| `reverse` | bool | swap fore/background |
+
+#### Enums
+
+Provided by the platform core (`bgl.glulx`) and this extension:
+
+| Enum / bnum | Values |
+|---|---|
+| `eGlulxWindowType` | `textBuffer`, `textGrid`, `graphics` |
+| `bGlulxWindowPlacement` | `left`, `right`, `above`, `below` (encoded in the split method name) |
+| `bGlulxWindowScale` | `fixed`, `proportional` |
+| `bGlulxWindowBorder` | `border`, `noBorder` |
+| `eGlulxImageAlign` | `inlineUp`, `inlineDown`, `inlineCenter`, `marginLeft`, `marginRight` |
+| `eGlulxStyleType` | `normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2` (values match the Glk `style_*` constants) |
+| `eGlulxJustify` | `left`, `full`, `centered`, `right` |
+
 ## 16.3 IF Library Bindings
 
 Files in `beguiLib/bindings/`. Each binding file is a Beguile declaration layer over one particular external IF library, giving Beguile code typed, name-checked access to that library's attributes, globals, and actions. Binding files do not define behavior; they map existing I6 names into the Beguile type system using `extern` declarations.
