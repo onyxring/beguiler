@@ -1,0 +1,8 @@
+// Only emitter methods may be attached to an enum — a `static` member is rejected (veneer enums).
+// EXPECT_ERROR: only emitter methods
+#beguilerSettings { target = z5; informName = "none"; }
+enum eThing {
+    Alpha, Beta,
+    static int count() { return 2; }
+}
+void main(){ print("x"); }

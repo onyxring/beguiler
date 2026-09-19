@@ -1,0 +1,8 @@
+// Only emitter METHODS may be attached to an enum — a value emitter (no `()`) is rejected.
+// EXPECT_ERROR: must be an emitter method
+#beguilerSettings { target = z5; informName = "none"; }
+enum eThing {
+    Alpha, Beta,
+    emitter int tag { ($self) }
+}
+void main(){ print("x"); }

@@ -3,12 +3,20 @@
 #include <vector>
 #include <ostream>
 
+// Resource kind, mirroring the blorb usage a file is packaged under.
+//   Image   → Pict (PNG/JPEG)  → enum eImages
+//   Sound   → Snd  (AIFF)      → enum eSounds
+//   Unknown → Data (BINA)      → enum eUnknownAsset  (open catch-all: any file we don't specifically
+//                                recognize is still surfaced + packaged as a generic Data resource,
+//                                rather than silently dropped. Promote a kind to first-class later.)
+enum class AssetKind { Image, Sound, Unknown };
+
 // A single asset discovered in the asset directory
 struct BlorbAsset {
     std::string name;        // enum member name, e.g. "priestPng"
     std::string filePath;    // full path to the file
     int         resourceId;  // 1-based, globally sequential across all asset types
-    bool        isPicture;   // true → Pict/PNG , false → Snd /AIFF
+    AssetKind   kind;        // which enum / blorb usage this asset belongs to
 };
 
 class Blorb {
