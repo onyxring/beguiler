@@ -1,0 +1,53 @@
+/*  run_enum_emitter_methods — emitter methods attached to enums/bnums (veneer enums).
+
+    An enum/bnum value is already a bare int word — a veneer over int — so an `emitter` method
+    attached to it inlines at the call site with `$self` = the value, exactly like an emitter class
+    member. No routine is emitted; the method lives on an UNREGISTERED companion emitter class hung on
+    the enum (invisible to the LSP, un-nameable), and getDispatchClass returns it so ordinary method
+    dispatch resolves. Exercised here:
+      • a method reading `$self` on a bare enum value and on an enum-typed variable,
+      • a method taking a parameter (`$n` substitution),
+      • the same on a bnum,
+      • a method added via `extend enum`,
+      • use-BEFORE-declaration (order-independence via pre-scan body capture): main() precedes the
+        enum + extend below, yet the forward calls still expand.
+    Results are stashed in int locals before printing to avoid I6's `print (literal)` print-rule
+    ambiguity. Runtime-verified on z5.  */
+// EXPECT_OUTPUT: bump=101
+// EXPECT_OUTPUT: var=102
+// EXPECT_OUTPUT: plus=13
+// EXPECT_OUTPUT: flag=2
+// EXPECT_OUTPUT: ext=40
+#beguilerSettings { target = z5; informName = "none"; }
+
+void main(){
+    int a = North.bump();        // enum method used before eDirection is declared (order-independence)
+    eDirection d = South;
+    int v = d.bump();            // receiver is an enum-typed variable
+    int p = East.plus(10);       // parameterised emitter: $self + $n
+    int f = Active.raw();        // bnum emitter method
+    int e = West.tenfold();      // method added via `extend enum`, also used before its declaration
+
+    print("bump="); print(a); print("^");   // North=1 -> 1+100 = 101
+    print("var=");  print(v); print("^");   // South=2 -> 2+100 = 102
+    print("plus="); print(p); print("^");   // East=3  -> 3+10  = 13
+    print("flag="); print(f); print("^");   // bnum Active = 2
+    print("ext=");  print(e); print("^");   // West=4  -> 4*10  = 40
+}
+
+enum eDirection {
+    North, South, East, West,
+    emitter int bump()       { ($self + 100) }
+    emitter int plus(int n)  { ($self + $n)  }
+}
+
+// A bnum is a veneer over int too — the same mechanism applies.
+bnum eFlags {
+    Visible, Active, Locked,
+    emitter int raw() { ($self) }
+}
+
+// Attach another emitter method to an already-declared enum.
+extend enum eDirection {
+    emitter int tenfold() { ($self * 10) }
+}

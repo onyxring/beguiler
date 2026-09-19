@@ -294,6 +294,18 @@ class bglParser {
                            const std::string& queriedOp, const std::vector<std::string>& operandTypes,
                            const std::string& receiverText);
         bool processEnumDeclaration(token, bool, token nameOverride=token(), bool isExtend=false);
+        // Parse one `emitter <type> name(params){ body }` member inside an enum/bnum body (the
+        // `emitter` keyword already consumed) into a functionDef, and attach it to the enum's
+        // unregistered companion emitter class (created on first use). Reuses the same leaf parsers
+        // (processParameterList / getRawTextThroughClosingBrace) as class emitter methods so emission
+        // is identical. Only emitter methods are permitted — operators/static/value-emitter error.
+        void parseEnumEmitterMethod(enumDef& en);
+        // Get (creating on first call) the unregistered companion emitter class for an enum.
+        classDef* enumCompanion(enumDef& en);
+        // True if a token at an enum-body entry position is a member-qualifier keyword (static, const,
+        // inline, …) — i.e. a misplaced member declaration. Only `emitter` methods may be attached to
+        // an enum, so these get a clean diagnostic instead of the generic value-grammar error.
+        bool isEnumMemberQualifier(token t);
         bool processObjectDeclaration(token typeTok, token nameTok, bool isExtern, string className = "", string i6alias = "", bool hasBody = true, bool isEmitter = false, bool isSuperposed = false);
         // Bake an object of `cls` from an inline-aggregate body `{ ... }`, registered under `objName`.
         // ASSUMES the opening '{' has already been consumed; parses fields up to the matching '}'.
@@ -708,6 +720,15 @@ class bglParser {
         // the generic parameter list ('<T>' for array, balanced '<...>' for func) so the caller
         // can continue reading the identifier name. Used by pre-scan member header recognition.
         void preScanConsumeGenericSuffix(const token& typeTok);
+        // Pre-scan one `emitter <type> name(params){body}` member inside an enum body (the `emitter`
+        // keyword already consumed) into a companion functionDef stub — capturing params and the
+        // emitter body so a forward call before the enum's main-pass declaration still expands
+        // (order-independence, mirroring class emitter members). The main pass replaces the stub.
+        void preScanEnumEmitterMember(enumDef& en);
+        // Drain one malformed enum-body member entry: skip to its `{ … }` body (consuming it) or, if
+        // there is none, up to the next enum-level separator/close — without erroring, so the pre-scan
+        // survives a bad form and the main pass emits the precise diagnostic.
+        void preScanSkipEnumMemberBody();
 
         // Order-independent `extend`: an `extend <obj>` whose target object isn't declared yet
         // when pre-scan reaches it (e.g. platform-core `extend bgl {...}` included before the

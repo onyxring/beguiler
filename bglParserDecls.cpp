@@ -38,6 +38,77 @@ using namespace std;
 
 
 // ===============================================================================
+// Enum emitter methods (veneer enums)
+// ===============================================================================
+// An enum/bnum value is already a bare int word — a veneer over int — so an emitter method attached
+// to it inlines at the call site with `$self` = the value, exactly like an emitter class member. The
+// methods live on an UNREGISTERED companion emitter class hung on the enumDef: it never enters the
+// type registry, so it is un-nameable and invisible to the LSP/completions, yet all existing method
+// dispatch (getDispatchClass→resolveMethod) works unchanged once getDispatchClass returns it.
+
+// Get (creating on first call) the enum's companion emitter class.
+classDef* bglParser::enumCompanion(enumDef& en){
+    if(en.companion == nullptr){
+        classDef* c = new classDef();
+        c->name = "_bglenum_" + en.name;   // internal only; NEVER registered with languageService
+        c->displayName = en.dName();
+        c->isEmitterClass = true;          // no I6 backing — members inline
+        c->src = en.src;
+        en.companion = c;
+    }
+    return en.companion;
+}
+
+bool bglParser::isEnumMemberQualifier(token t){
+    return t.is("static") || t.is("inline") || t.is("explicit") || t.is("default")
+        || t.is("alias")  || t.is("byval")  || t.is("superposed") || t.is("additive")
+        || t.is("typesealed") || t.is("ref")
+        || t.is(token::constantDeclararion) || t.is(token::replace) || t.is(token::external);
+}
+
+// Parse one `emitter <returnType> <name>(params){ body }` member inside an enum body (the `emitter`
+// keyword already consumed) and attach it to the enum's companion. Reuses the same leaf parsers as
+// class emitter methods (processParameterList / getRawTextThroughClosingBrace) so emission is
+// byte-identical. Only emitter methods are permitted here — operators / value-emitters error.
+void bglParser::parseEnumEmitterMethod(enumDef& en){
+    token returnType = file.getToken({eTokenType::dataType, eTokenType::identifier});
+    if(returnType.value == "func") returnType.value = parseFuncType();
+    returnType.value = maybeParseUnionTail(returnType.value);
+    token name = file.getToken({eTokenType::identifier, eTokenType::dataType});
+    if(name.is("operator"))
+        parsingError(format("enum '{0}': operators cannot be attached to an enum — only emitter methods "
+                            "(`emitter T name(){{ ... }}`) are allowed", en.dName()));
+    token paren = file.getToken();
+    if(!paren.is(token::parenOpen))
+        parsingError(format("enum '{0}': '{1}' must be an emitter method — expected '(' after the name "
+                            "(value emitters and other member forms are not allowed on an enum)",
+                            en.dName(), (string)name));
+    functionDef& fd = *(new functionDef());
+    fd.name = (string)name; fd.displayName = name.originalValue;
+    fd.src = name.src.line > 0 ? name.src : file.currentLocation();
+    fd.returnType = languageService.getType((string)returnType);
+    if(fd.returnType.name.empty()) fd.returnType.name = returnType.value; // func<...>/union return types
+    fd.isEmitter = true;
+    if(!returnType.docComment.empty())   fd.docComment = returnType.docComment;
+    else if(!name.docComment.empty())    fd.docComment = name.docComment;
+    processParameterList(fd);                 // consumes through ')'
+    synthesizeParamBackings(fd, en.dName());  // enum name as the backing-context key
+    if(file.peekToken().is(token::endStatement)){
+        file.getToken();                       // ';' pass-through emitter (returns $self unchanged)
+        i6Block& b = *(new i6Block()); b.i6Body = " $self"; fd.body = &b;
+    } else {
+        file.getToken(token::braceOpen);
+        i6Block& b = *(new i6Block());
+        b.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+        fd.body = &b;
+    }
+    classDef* comp = enumCompanion(en);
+    // Replace a pre-scan stub of the same name if present (order-independence); else append.
+    if(!replaceStubMember(comp->members, fd))
+        comp->members.push_back(&fd);
+}
+
+// ===============================================================================
 // processEnumDeclaration
 // ===============================================================================
 bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOverride, bool isExtend){
@@ -76,25 +147,41 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
         newEnum.baseBnum = base;
     }
     bool hasBase = newEnum.baseBnum != nullptr;
-    tok=file.getToken(token::braceOpen);
-    // If the pre-scanner already populated values, consume the body and return
-    bool alreadyPopulated = !newEnum.namedValues.empty();
+    file.getToken(token::braceOpen);
+    // Values may already have been populated by the pre-scanner (forward references). If so, drain the
+    // value entries rather than re-registering them — but emitter members are ALWAYS parsed in the main
+    // pass so their pre-scan stubs are replaced with fully-resolved definitions (mirroring classes).
+    bool valuesAlreadyPopulated = !newEnum.namedValues.empty();
     int val=1;
-    while(tok.isNot(token::braceClose)){
-        if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside enum — missing closing '}'");
+    while(true){
         tok=file.getToken();
+        if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside enum — missing closing '}'");
         if(tok.is(token::braceClose)) break;
-        if(alreadyPopulated){
-            // Just drain remaining tokens until closing brace
-            while(tok.isNot(token::braceClose) && tok.isNot(eTokenType::eof)) tok=file.getToken();
-            break;
+        if(tok.is(token::comma)) continue;   // tolerate a separator between entries
+        // Emitter method member: `emitter <type> name(params){ body }` (declaration or `extend enum`).
+        if(tok.is("emitter")){
+            parseEnumEmitterMethod(newEnum);
+            if(file.peekToken().is(token::comma)) file.getToken();  // optional trailing comma
+            continue;
+        }
+        // A misplaced member declaration (static/const/… method): only emitter methods may be attached.
+        if(isEnumMemberQualifier(tok))
+            parsingError(format("enum '{0}': only emitter methods (`emitter T name(){{ ... }}`) may be "
+                                "attached to an enum — '{1}' members are not allowed", newEnum.dName(), (string)tok));
+        // Otherwise this is a value entry.
+        if(valuesAlreadyPopulated){
+            // Drain this single value entry (name [= number]) up to the next separator / close brace.
+            while(!file.peekToken().is(token::comma) && !file.peekToken().is(token::braceClose)
+                  && !file.peekToken().is(eTokenType::eof))
+                file.getToken();
+            continue;
         }
         enumValueDef& newVal=*new enumValueDef();
         newVal.name=tok.value;
         newVal.displayName=tok.originalValue;
         newVal.docComment=tok.docComment;  // doc-comment attached to the value's name token
-        tok=file.getToken({token::braceClose, token::comma, token::assignment});
-        if(tok.is(token::assignment)){
+        token sep=file.getToken({token::braceClose, token::comma, token::assignment});
+        if(sep.is(token::assignment)){
             bool negate = false;
             if(file.peekToken().is("-")){ file.getToken(); negate = true; }
             token numTok=file.getToken(eTokenType::integer);
@@ -104,7 +191,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
                 parsingError(format("bnum '{0}': negative value {1} is not allowed", newEnum.dName(), val));
             if(isBnum && !hasBase && val != 0 && (val & (val - 1)) != 0)
                 parsingError(format("bnum '{0}': explicit value {1} is not a power of 2", newEnum.dName(), val));
-            tok=file.getToken({token::braceClose, token::comma});
+            sep=file.getToken({token::braceClose, token::comma});
         }
         newVal.value=val;
         if(isBnum)
@@ -112,6 +199,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
         else
             val++;
         newEnum.namedValues.push_back(&newVal);
+        if(sep.is(token::braceClose)) break;
     }
     return false;
 }

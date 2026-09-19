@@ -33,11 +33,12 @@
 - 3.2 Include Directives
   - 3.2.1 `#include <name>`
   - 3.2.2 `#include "path"`
-  - 3.2.3 `#include ?"path"` (optional)
-  - 3.2.4 `#includeI6 "name"`
-  - 3.2.5 Path resolution
-  - 3.2.6 Differences from I6 path conventions
-  - 3.2.7 `#once`
+  - 3.2.3 `#include @"path"` (raw)
+  - 3.2.4 `#include ?"path"` (optional)
+  - 3.2.5 `#includeI6 "name"`
+  - 3.2.6 Path resolution
+  - 3.2.7 Differences from I6 path conventions
+  - 3.2.8 `#once`
 - 3.3 Preprocessor Symbols
   - 3.3.1 `#define`
   - 3.3.2 `#redef` and `#undef`
@@ -658,7 +659,7 @@ Beguile uses these as language constructs, but they also appear verbatim in the 
 
 The groups above cover the I6 constructs that Beguile surfaces as its own keywords. Inform 6 reserves many more words that Beguile does not, and they matter in two situations.
 
-**Directives with no Beguile form.** Directives such as `Abbreviate`, `Zcharacter`, `Dictionary`, `Fake_action`, `Lowstring`, `Stub`, `Trace`, and `System_file` have no dedicated Beguile keyword. Reach for them through raw I6: `#i6` (§14.5) and `#includeI6` (§3.2.4) pass their contents to the I6 compiler untouched, so any directive is available this way.
+**Directives with no Beguile form.** Directives such as `Abbreviate`, `Zcharacter`, `Dictionary`, `Fake_action`, `Lowstring`, `Stub`, `Trace`, and `System_file` have no dedicated Beguile keyword. Reach for them through raw I6: `#i6` (§14.5) and `#includeI6` (§3.2.5) pass their contents to the I6 compiler untouched, so any directive is available this way.
 
 ```bgl
 #i6 {
@@ -719,14 +720,22 @@ The search is deterministic: it checks the root folder's files first, then desce
 
 This directive includes a Beguile source file by path. The compiler searches the current source file's directory, then each `includePaths` directory, trying with `.bgl` extension first, then without. Subdirectory paths are supported; `#include "utils/helpers"` resolves relative to each folder searched.
 
-A compile-time error is reported if the file is not found. It is legal to include files more than once; protect against this with `#once` (see §3.2.7).
+A compile-time error is reported if the file is not found. It is legal to include files more than once; protect against this with `#once` (see §3.2.8).
 
 ```bgl
 #include "myLibrary"
 #include "utils/helpers"
 ```
 
-### 3.2.3 `#include ?"path"` (optional)
+### 3.2.3 `#include @"path"` (raw)
+
+Same as `#include "path"`, but the path is a **raw string** (`@"…"`): Beguile applies no escape processing to it, so backslashes and escape-like sequences pass through verbatim. Reach for it when a literal path would otherwise be mangled by string escapes. Path search and the file-not-found error are identical to `#include "path"`; only the string literal's escaping differs (separator rewriting from §3.2.6 still applies afterward). The optional and raw modifiers combine — `#include ?@"path"` skips silently *and* takes the path raw. An interpolated string (`$"…"`) is **not** accepted here.
+
+```bgl
+#include @"vendor\legacy\helpers"
+```
+
+### 3.2.4 `#include ?"path"` (optional)
 
 Same as `#include "path"`, but silently skips if the file is not found instead of reporting an error. Also supported with angle brackets: `#include ?<name>`.
 
@@ -734,7 +743,7 @@ Same as `#include "path"`, but silently skips if the file is not found instead o
 #include ?"optionalExtension"
 ```
 
-### 3.2.4 `#includeI6 "name"`
+### 3.2.5 `#includeI6 "name"`
 
 Includes an I6 source file. The compiler resolves the file in the same manner as `#include`, by searching the current source file's directory, then each `includePaths` directory, trying the name as-is and with `.h` extension. The resolved absolute path is emitted into the I6 output.
 
@@ -748,7 +757,7 @@ An optional variant `#includeI6 ?"name"` silently skips if the file is not found
 
 All `includePaths` directories are also emitted as `!% ++include_path=` directives in the I6 output, so that I6 can resolve its own internal includes (e.g., `parser.h` including `linklpa.h`).
 
-### 3.2.5 Path resolution
+### 3.2.6 Path resolution
 
 All file paths in Beguile source (`#include` paths, `#includeI6` paths, and `#beguilerSettings` path properties such as `informPath`, `outputPath`, `blorbAssetPath`) receive two normalization passes at parse time.
 
@@ -772,7 +781,7 @@ emits, into the generated I6:
 
 The raw form `#includeI6 @"parser.h"` bypasses this and emits `#include "parser.h";` verbatim.
 
-### 3.2.6 Differences from I6 path conventions
+### 3.2.7 Differences from I6 path conventions
 
 Beguile does **not** use I6's `>filename` prefix on `#include` or `#includeI6`. In I6, a leading `>` means "from the same directory as the entry-point source file." Beguile already searches the current source file's directory first for `#include "path"` and `#includeI6 "name"`, so the prefix is redundant.
 
@@ -785,7 +794,7 @@ When porting I6 code into Beguile (`#include "..."` or `#includeI6 "..."`), drop
 
 The `>` convention still works for I6's own `Include` directives appearing inside raw I6 regions of `.inf`-mode files, because Beguile passes raw I6 through to the I6 compiler untouched. Only Beguile-layer `#include` / `#includeI6` directives need the prefix dropped.
 
-### 3.2.7 `#once`
+### 3.2.8 `#once`
 
 When placed at the top of a Beguile source file, `#once` marks the file so that any subsequent `#include` of the same file (by any path that resolves to the same absolute location) is silently ignored. Without `#once`, a file may be processed multiple times.
 
@@ -1521,6 +1530,29 @@ extern enum eErrorFormat { E1, E2 }
 
 Enum and bnum values may be referenced by bare name (`true`, `false`, `north`, `portable`, etc.) or by qualified name (`eBool.true`, `eTarget.Z5`). The qualified form is useful for autocompletion in the IDE and is required when two different enum types define values with the same name.
 
+### Emitter methods on enums and bnums
+
+An enum (or bnum) value is already a bare `int` word — it is a *veneer over `int`* in the sense of the primitive-wrapper idiom (§5.2.3). Because the value carries no separate representation, an enum can host **emitter methods**: zero-storage members that inline at the call site with `$self` bound to the value. They are declared in the enum body — or added later with `extend enum` — using the same `emitter` member form as an emitter class:
+
+```bgl
+enum eDirection {
+    north, south, east, west,
+    emitter int  bump()      { ($self + 100) }   // $self = the value
+    emitter int  plus(int n) { ($self + $n)  }   // parameters substitute as $name
+}
+
+extend enum eDirection {
+    emitter int  tenfold()   { ($self * 10) }    // attach more methods after the fact
+}
+
+int a = north.bump();      // 101   — called on a bare value
+eDirection d = south;
+int b = d.bump();          // 102   — called on an enum-typed variable
+int c = east.plus(10);     // 13
+```
+
+Only **emitter methods** may be attached — `operator` overloads, `static` members, plain properties, and value emitters (`emitter T name { … }`, no parentheses) are rejected. Like every emitter, the body is raw I6 with `$self` (the receiver value) and `$paramName` (each argument) substituted in; no routine is generated, so a value with methods costs exactly what a plain value costs. The methods are resolved through an internal companion type that is **not** a nameable type: it never appears in autocompletion or as a declarable name, and a plain enum with no methods behaves exactly as before. Method calls are order-independent — a method may be used before the enum (or `extend enum`) that declares it.
+
 ## 4.8 The `var` Type
 
 `var` is a universal escape type that bypasses static type checking. It is bidirectional: any value can be assigned **to** a `var`, and a `var` can be assigned **to** any type. This mirrors I6's untyped semantics: all values are word-sized and interchangeable at runtime.
@@ -2012,14 +2044,16 @@ emitter class style {
 }
 ```
 
-#### Combined `extern emitter class` - primitive-type wrappers
+#### Combined `extern emitter class` — veneer classes (primitive & value wrappers)
 
-The core library declares each primitive Beguile type (`int`, `bool`, `char`, `string`, `intLiteral`, `negativeIntLiteral`, `charLiteral`, `stringLiteral`, etc.) as `extern emitter class`. The combination expresses two facts about these types:
+A class declared `extern emitter class X : _bglObject` is a **veneer class**: a distinct Beguile type with **no representation of its own**. Its runtime value *is* the value it wraps (a bare word); it adds a type and behaviour (emitter methods, operators) but zero storage. The combination expresses two facts:
 
-- **`extern`** - no I6 class declaration is generated. The underlying type already exists in I6 (every primitive is a word slot).
+- **`extern`** - no I6 class declaration is generated. The underlying representation already exists (a primitive is a word slot; a wrapper over `int` is just that int).
 - **`emitter`** - the wrapper is a Beguile-side type label and operator host only. It has no I6 instance backing of its own. Instances at file scope (`int x = 5;`, `bool b = true;`) emit as **`global X;`**, not as `Object X;`.
 
 This is the discriminator the compiler uses at instance-emission time: classes derived from the real I6 `object` (the `extern class object { ... }` in core, plus everything inheriting from it via normal/alias classes) emit as I6 `Object` directives; classes marked `emitter` (including the combined `extern emitter` form) emit as I6 globals.
+
+The core library declares each primitive Beguile type (`int`, `bool`, `char`, `string`, `intLiteral`, `negativeIntLiteral`, `charLiteral`, `stringLiteral`, etc.) this way:
 
 ```bgl
 extern emitter class int : _bglObject {  // type label over I6's word-sized integer slot
@@ -2033,7 +2067,15 @@ Room   r;               // emits: object r;   (Room is alias to object → tree 
 Tally  t;               // emits: tally t;    (Tally is a normal class : object)
 ```
 
-The combined form is restricted to library-internal use; user code generally declares its own types as normal `class` or `extern class` and uses the existing primitive types from the library.
+**Assigning from the base value is the natural construction.** Because a veneer has no body beyond the word it wraps, a bare base-typed value *is* a complete instance — there is nothing else to initialise. So a veneer over `int` accepts an `int` (or any int-compatible value, such as an enum member) directly, given a matching `operator =`:
+
+```bgl
+// glulxImage is a veneer over int (a blorb resource id); see §16.2.9.
+glulxImage cover = eAssets.coverArt;   // reads oddly only until you know it IS the int
+int w = cover.width();                  // behaviour without storage — an emitter that uses $self
+```
+
+**A veneer is a *newtype*, not an *alias*.** An `alias class` (§5.2.4) *dissolves* to its parent — it is the **same** type under another name. A veneer is a **distinct** type that merely **shares** its base's representation; `glulxImage` and `int` are different types that happen to be bit-identical, and conversions between them are explicit (`operator()` to the base, `operator =(base)` from it). Reach for a veneer when you want a zero-cost typed handle over a word — an asset id, a resource handle, a unit — with its own methods; reach for `alias` when you want a renamed view of an existing type. Veneers are chiefly a library-authoring idiom; ordinary game code uses the primitives and library types already declared this way.
 
 ## 5.2.4 `alias class`
 
@@ -5704,7 +5746,7 @@ The object becomes a referenceable file-scope name (like any global object), but
 
 ## 14.3 `#includeI6`
 
-Emits an I6 `#include` directive into the generated output. See §3.2.4 for full syntax and path resolution details.
+Emits an I6 `#include` directive into the generated output. See §3.2.5 for full syntax and path resolution details.
 
 ## 14.4 Emitters
 

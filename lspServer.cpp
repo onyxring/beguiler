@@ -1381,8 +1381,13 @@ json LspServer::handleHover(const json& params) {
         // Resolve owner to a class. Check scopes in order: enclosing-function locals/params,
         // then classes, then global objects, then global variables.
         LspSymbolRef ownerRef = resolveSymbol(uri, line, ownerLower);
-        if(ownerRef.kind == LspSymbolRef::Local || ownerRef.kind == LspSymbolRef::Parameter)
-            cls = dynamic_cast<classDef*>(&languageService.getType(ownerRef.typeName));
+        if(ownerRef.kind == LspSymbolRef::Local || ownerRef.kind == LspSymbolRef::Parameter) {
+            typeDef& td = languageService.getType(ownerRef.typeName);
+            cls = dynamic_cast<classDef*>(&td);
+            // An enum-typed value (local/param) dispatches its emitter methods through the enum's
+            // companion class — hover the method by treating the companion as the receiver class.
+            if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;
+        }
         if(!cls) {
             typeDef& td = languageService.getType(ownerLower);
             if(auto* cd = dynamic_cast<classDef*>(&td)) cls = cd;
@@ -1396,9 +1401,17 @@ json LspServer::handleHover(const json& params) {
             for(typeDef* g : languageService.globals)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(g))
                     if(vd->name == ownerLower) {
-                        cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+                        typeDef& td = languageService.getType(vd->type.name);
+                        cls = dynamic_cast<classDef*>(&td);
+                        if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;
                         break;
                     }
+        }
+        // A bare enum VALUE receiver (e.g. `north.bump()`): resolve its enum, hover via the companion.
+        if(!cls) {
+            string et = languageService.getEnumType(ownerLower);
+            if(!et.empty())
+                if(auto* e = dynamic_cast<enumDef*>(&languageService.getType(et))) cls = e->companion;
         }
 
         // Search class hierarchy for the member
@@ -2268,12 +2281,15 @@ json LspServer::handleCompletion(const json& params) {
         if(ownerRef.kind == LspSymbolRef::Local || ownerRef.kind == LspSymbolRef::Parameter) {
             typeDef& td = languageService.getType(ownerRef.typeName);
             cls = dynamic_cast<classDef*>(&td);
-            if(!cls) ed = dynamic_cast<enumDef*>(&td);
+            // An enum-typed local/param is a VALUE: complete its emitter methods (via the enum's
+            // companion class), NOT the enum's named values — those are reached through the enum
+            // TYPE name (`eDirection.`), handled by the `ed` path below.
+            if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;
         }
         if(!cls && !ed) {
             typeDef& td = languageService.getType(lower);
             cls = dynamic_cast<classDef*>(&td);
-            if(!cls) ed = dynamic_cast<enumDef*>(&td);
+            if(!cls) ed = dynamic_cast<enumDef*>(&td);   // the enum TYPE name → list its values
         }
         if(!cls && !ed) {
             for(typeDef* g : languageService.globals)
@@ -2286,9 +2302,15 @@ json LspServer::handleCompletion(const json& params) {
                     if(vd->name == lower) {
                         typeDef& td = languageService.getType(vd->type.name);
                         cls = dynamic_cast<classDef*>(&td);
-                        if(!cls) ed = dynamic_cast<enumDef*>(&td);
+                        if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;  // enum var → methods
                         break;
                     }
+        }
+        // A bare enum VALUE (e.g. `north.`) completes the enum's emitter methods via its companion.
+        if(!cls && !ed) {
+            string et = languageService.getEnumType(lower);
+            if(!et.empty())
+                if(auto* e = dynamic_cast<enumDef*>(&languageService.getType(et))) cls = e->companion;
         }
 
         // Namespace object resolution: walk dotted path to find the target object

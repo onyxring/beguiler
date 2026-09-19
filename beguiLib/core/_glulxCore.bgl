@@ -61,7 +61,7 @@ bglSize scaleVectors(bglSize specified, bglSize imgSize){
     return specified;
 }
 extend _bglPrintRules {
-    void img(eAssets image, eGlulxImageAlign align=inlineCenter, int width=0, int height=0){
+    void img(eImages image, eGlulxImageAlign align=inlineCenter, int width=0, int height=0){
         bglSize scaledSize = scaleVectors({width, height}, _bglGetImageInfo((int)image));
         bgl.asm.imageDrawScaled(bgl.ui.mainWin.id, image, align, 0, scaledSize.width, scaledSize.height);
     }

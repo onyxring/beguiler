@@ -116,6 +116,53 @@ void bglParser::preScanSkipParens(){
     }
 }
 
+void bglParser::preScanSkipEnumMemberBody(){
+    token s = file.peekToken();
+    while(!s.is(token::braceOpen) && !s.is(token::comma) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
+        file.getToken(); s = file.peekToken();
+    }
+    if(s.is(token::braceOpen)){ file.getToken(); file.getRawTextThroughClosingBrace(); }
+}
+
+void bglParser::preScanEnumEmitterMember(enumDef& en){
+    // `emitter` already consumed. Header shape: <type> name(params){body}  (or ';' pass-through).
+    token typeTok = file.getToken();
+    preScanConsumeGenericSuffix(typeTok);
+    token nameTok = file.getToken();
+    // Only a well-formed `name (` method is captured. Anything else here (an operator, a value
+    // emitter `name { … }`, junk) is not our concern in the pre-pass: drain it WITHOUT erroring and
+    // let the main pass emit the precise diagnostic (parseEnumEmitterMethod). This keeps a bad form
+    // from aborting the pre-scan with a confusing message before the real error is reached.
+    if(!nameTok.is(eTokenType::identifier) || !file.peekToken().is(token::parenOpen)){
+        preScanSkipEnumMemberBody();
+        return;
+    }
+    classDef* comp = enumCompanion(en);
+    functionDef* mStub = nullptr;
+    bool exists = false;
+    for(typeMember* m : comp->members) if(m->name == nameTok.value){ exists = true; break; }
+    if(!exists){
+        functionDef& fd = *(new functionDef());
+        fd.name = nameTok.value;
+        fd.returnType.name = typeTok.value;
+        fd.isEmitter = true;
+        fd.isPrePassStub = true;
+        comp->members.push_back(&fd);
+        mStub = &fd;
+    }
+    if(file.peekToken().is(token::parenOpen)){
+        file.getToken(); // '('
+        vector<paramDef*> ps; preScanCaptureParams(ps); if(mStub) mStub->params = ps;
+    }
+    token bodyOrSemi = file.getToken();
+    if(bodyOrSemi.is(token::braceOpen)){
+        // Capture the emitter body so a forward call before the enum's declaration expands (see the
+        // class-member capture site). Main pass replaces this stub, so normal emission is unchanged.
+        string rawBody = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+        if(mStub){ i6Block* blk = new i6Block(); blk->i6Body = rawBody; mStub->body = blk; }
+    }
+}
+
 void bglParser::preScanCaptureParams(vector<paramDef*>& out){
     // Opening '(' already consumed. Capture each `type name [= default]` up to matching ')'.
     // Defaults, nested parens (in default exprs), and generic suffixes on param types are all tolerated.
@@ -593,6 +640,20 @@ void bglParser::preScanGlobalLoop(){
                     file.getToken(); // consume '{'
                     token t = file.getToken();
                     while(t.isNot(token::braceClose) && t.isNot(eTokenType::eof)){
+                        // Emitter method member added via `extend enum` — capture into the companion.
+                        if(t.is("emitter")){
+                            preScanEnumEmitterMember(*ex);
+                            t = file.getToken();
+                            if(t.is(token::comma)) t = file.getToken();
+                            continue;
+                        }
+                        // Misplaced member (static/const/… method): skip so the main pass diagnoses it.
+                        if(isEnumMemberQualifier(t)){
+                            preScanSkipEnumMemberBody();
+                            t = file.getToken();
+                            if(t.is(token::comma)) t = file.getToken();
+                            continue;
+                        }
                         enumValueDef& ev = *(new enumValueDef());
                         ev.name = t.value; ev.displayName = t.originalValue; ev.docComment = t.docComment;
                         t = file.getToken({token::braceClose, token::comma, token::assignment});
@@ -1034,7 +1095,21 @@ void bglParser::preScanGlobalLoop(){
                 file.getToken(); // consume '{'
                 token t = file.getToken();
                 int val = 1;
-                while(t.isNot(token::braceClose)){
+                while(t.isNot(token::braceClose) && t.isNot(eTokenType::eof)){
+                    // Emitter method member — capture into the enum's companion (order-independence).
+                    if(t.is("emitter")){
+                        preScanEnumEmitterMember(newEnum);
+                        t = file.getToken();
+                        if(t.is(token::comma)) t = file.getToken();
+                        continue;
+                    }
+                    // Misplaced member (static/const/… method): skip so the main pass diagnoses it.
+                    if(isEnumMemberQualifier(t)){
+                        preScanSkipEnumMemberBody();
+                        t = file.getToken();
+                        if(t.is(token::comma)) t = file.getToken();
+                        continue;
+                    }
                     enumValueDef& ev = *(new enumValueDef());
                     ev.name = t.value;
                     ev.displayName = t.originalValue;

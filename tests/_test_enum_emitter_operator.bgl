@@ -1,0 +1,8 @@
+// Only emitter METHODS may be attached to an enum — operators are rejected (veneer enums).
+// EXPECT_ERROR: operators cannot be attached to an enum
+#beguilerSettings { target = z5; informName = "none"; }
+enum eThing {
+    Alpha, Beta,
+    emitter int operator + (int n) { ($self + $n) }
+}
+void main(){ print("x"); }

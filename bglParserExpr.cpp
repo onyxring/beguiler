@@ -1841,6 +1841,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // either via its Step-2 objectDef-member fallback.
                         typeDef& objTd = languageService.getType(objType);
                         bool opaqueRecv = (dynamic_cast<classDef*>(&objTd) == nullptr && dynamic_cast<objectDef*>(&objTd) == nullptr);
+                        // An enum/bnum with emitter methods dispatches through its companion emitter
+                        // class (getDispatchClass returns it) — treat as non-opaque so the emitter
+                        // method resolves and inlines with $self = the value.
+                        if(opaqueRecv){ if(auto* ed = dynamic_cast<enumDef*>(&objTd)) if(ed->companion) opaqueRecv = false; }
                         // Generic specialization fallback: a templated receiver name like
                         // "array<int>" (from a parametric param) isn't a registered type, but
                         // its base ("array") is. Treat as non-opaque if the base resolves to

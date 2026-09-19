@@ -335,6 +335,14 @@ class enumDef:public typeDef{
         vector<enumValueDef*> namedValues;
         bool isBnum = false;          // bnum (bitwise int) vs plain enum
         enumDef* baseBnum = nullptr;  // shared-base grouping: only valid when isBnum
+        // Emitter methods attached to this enum/bnum (`emitter T name(){...}` in the enum body or via
+        // `extend enum`). An enum value is already a bare int word — a veneer over int — so these
+        // methods inline at the call site with `$self` = the value. Held on an UNREGISTERED companion
+        // emitter class so all existing method dispatch (getDispatchClass→resolveMethod) works
+        // unchanged, while the companion never enters the type registry: it is un-nameable and invisible
+        // to the LSP/completions. Created lazily when the first emitter member is parsed; null for a
+        // plain enum (which then keeps its original no-dispatch behavior). See languageSpec enum §.
+        classDef* companion = nullptr;
 };
 
 // an if statement, with a condition expression and a then-block, and an optional else-block

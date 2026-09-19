@@ -2054,6 +2054,11 @@ string bglParser::addCapture(const string& outerName, const string& typeName){
 classDef* bglParser::getDispatchClass(const string& typeName){
     typeDef& td = languageService.getType(typeName);
     if(auto* cls = dynamic_cast<classDef*>(&td)) return cls;
+    // An enum/bnum with emitter methods dispatches through its unregistered companion emitter class.
+    // Only when a companion exists — a plain enum still returns nullptr (no members, no dispatch), so
+    // its behavior (incl. bnum's built-in `|` handling) is unchanged. The companion holds only emitter
+    // methods (no operators), so operator resolution finds nothing and falls through to int/bnum paths.
+    if(auto* ed = dynamic_cast<enumDef*>(&td)) return ed->companion;   // null when the enum has no emitters
     if(auto* obj = dynamic_cast<objectDef*>(&td)){
         if(obj->objectClass) return obj->objectClass;
         // A bare `object X {}` that is forward-referenced has a pre-scan stub whose objectClass was

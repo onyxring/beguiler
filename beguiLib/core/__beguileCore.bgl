@@ -61,7 +61,18 @@ emitter void cThe(object o){ print (The)$o; }
 emitter void printName(object o){ print (name)$o; }   // I6 `(name) obj` print rule — bare short name, no article
 
 //-----------------------------------------------------------------------------
-enum eAssets { }   // A place to land asset ids.  Beguile extends this when blorbification is enabled.
+// Blorb asset ids, partitioned by resource kind so operations only appear where they apply (an image's
+// width()/height() is meaningless on a sound). The blorbifier extends the matching enum for each asset
+// (pictures → eImages, sounds → eSounds) when blorbification is enabled; both are empty otherwise.
+enum eImages { }        // Pict (image) resource ids.
+enum eSounds { }        // Snd  (sound) resource ids.
+enum eUnknownAsset { }  // Data resource ids — the open catch-all: any file the blorbifier doesn't
+                        // recognize as an image/sound is surfaced here (packaged as generic Data) so
+                        // it is never silently dropped. Promote a kind to its own enum when it earns
+                        // first-class support (its own operations / a proper blorb usage).
+// Umbrella "any asset" type for APIs that genuinely accept any resource — and the extension point as
+// the blorb standard grows: add the new first-class enum as another union member here.
+union eAssets = eImages | eSounds | eUnknownAsset;
 extern void bglInit(); // bglInit() is a special, compiler built routine used to initialize the BLR
 
 //-- Utility types
