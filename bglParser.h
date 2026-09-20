@@ -673,6 +673,80 @@ class bglParser {
         // memberHint: same semantics as resolveIdentifierType — prefer candidates whose type
         // exposes the named member, falling back to first-match if none satisfy.
         string qualifyIdentifier(string name, functionDef* func, statementBlock* body, const string& memberHint = "");
+        // ── Tiered identifier resolution ──────────────────────────────────────────
+        // qualifyIdentifier and resolveIdentifierType are ordered scope searches. Each tier
+        // below examines exactly ONE scope; the parent calls them in declaration order and the
+        // order is load-bearing. Convention for both functions: a tier returns optional<string>
+        // — engaged means "resolved here, use this value" (an engaged but EMPTY string is a
+        // real resolution, not a miss); disengaged means "not in this scope, try the next
+        // tier". A tier that contributes to the file-scope candidate set instead appends to
+        // the caller's vector and returns void.
+
+        // One file-scope match for resolveIdentifierType: the type plus where it came from.
+        struct TypeCandidate { string type; string origin; bool isEnum; bool isObject = false; };
+        // One file-scope match for qualifyIdentifier: also carries the I6 emission to use.
+        struct QualifyCandidate { string qualified; string type; string origin; bool isEnum; bool isObject = false; };
+        // A dotted name split for the qualifyDotted* tiers. head/tail keep the user's case;
+        // firstSeg/rest are the lowercased first segment of the tail and the remainder.
+        struct DottedPath { string head; string tail; string qualifiedHead; string firstSeg; string rest; };
+
+        // resolveIdentifierType tiers, in call order.
+        optional<string> resolveTypeFromParams(const string& name, functionDef* func);
+        optional<string> resolveTypeFromBodyLocals(const string& name, statementBlock* body);
+        optional<string> resolveTypeFromAncestorBlocks(const string& name, statementBlock* body);
+        optional<string> resolveTypeFromCurrentObject(const string& name);
+        optional<string> resolveTypeFromCurrentClass(const string& name);
+        optional<string> resolveTypeFromCaptures(const string& name);
+        // File scope: append every global (variable/function/object/class/enum) named `name`.
+        void collectTypeCandidatesFromGlobals(const string& name, vector<TypeCandidate>& candidates);
+        // Dedupe, apply the precedence rules, and pick one type — or raise the ambiguity error.
+        optional<string> selectTypeCandidate(const string& name, const string& memberHint,
+                                             vector<TypeCandidate>& candidates);
+
+        // qualifyIdentifier's dotted-path branch. Terminal, not a fall-through tier: it always
+        // yields the qualified path, so it returns the string directly ("" = head unresolved).
+        string qualifyDottedPath(const string& name, size_t dot, functionDef* func,
+                                 statementBlock* body, bool forceGlobalScope);
+        // Dotted-path tiers, in call order: bare #using namespace alias head, then class head,
+        // then object head.
+        optional<string> qualifyDottedHeadViaUsingAlias(const DottedPath& p, functionDef* func,
+                                                        statementBlock* body, bool forceGlobalScope);
+        optional<string> qualifyDottedViaClassHead(const DottedPath& p, functionDef* func,
+                                                   statementBlock* body);
+        optional<string> qualifyDottedViaObjectHead(const DottedPath& p, functionDef* func,
+                                                    statementBlock* body);
+        // qualifyIdentifier's bare-name tiers, in call order.
+        optional<string> qualifyFromParams(const string& name, functionDef* func);
+        optional<string> qualifyFromBodyLocals(const string& name, statementBlock* body);
+        optional<string> qualifyFromAncestorBlocks(const string& name, statementBlock* body);
+        optional<string> qualifyFromCurrentObject(const string& name);
+        optional<string> qualifyFromCurrentClass(const string& name);
+        optional<string> qualifyFromCaptures(const string& name);
+        // File scope: append every global / #using-imported match named `name`.
+        void collectQualifyCandidatesFromGlobals(const string& name, vector<QualifyCandidate>& candidates);
+        void collectQualifyCandidatesFromUsingClassImports(const string& name, functionDef* func,
+                                                           statementBlock* body,
+                                                           vector<QualifyCandidate>& candidates);
+        void collectQualifyCandidatesFromUsingObjectImports(const string& name, functionDef* func,
+                                                            statementBlock* body,
+                                                            vector<QualifyCandidate>& candidates);
+        // Dedupe, apply the precedence rules and the shadow warning, and pick one emission —
+        // or raise the ambiguity error.
+        optional<string> selectQualifiedCandidate(const string& name, const string& memberHint,
+                                                  bool forceGlobalScope,
+                                                  vector<QualifyCandidate>& candidates);
+        // Seams lifted out of isTypeCompatible / bindMethodCall.
+        // True when paramType's class hierarchy has an `operator =` that accepts argType —
+        // exact name match, base-class upcast, then the `var` wildcard, in that order.
+        bool compatibleViaAssignmentOperator(const string& argType, const string& paramType);
+        // `obj.member()` where `member` is a `func<...>` property: a synthesized functionDef
+        // carrying the func's return type, so the call emits verbatim. nullptr when absent.
+        functionDef* synthesizeFuncPropertyCall(const string& objType, const string& methodName);
+        // Raise the "no overload accepts these argument types" error, listing each same-arity
+        // candidate and its first mismatching parameter.
+        void reportMethodOverloadMismatch(const string& objType, const string& methodName,
+                                          vector<expression*>& args);
+        // ──────────────────────────────────────────────────────────────────────────
         // If `name` resolves to an object-property (member), split its qualified form
         // ("owner.prop") into owner + prop and return true; globals/locals return false.
         // Drives member-array access through the orLibrary property-array convention.
