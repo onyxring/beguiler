@@ -6,6 +6,8 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <utility>
+#include <functional>
 #include "json.hpp"
 #undef assert  // json.hpp includes <cassert>; undef to avoid conflict with token::assert()
 #include "typeDef.h"  // for functionDef, classDef, variableDeclaration, paramDef, sourceLocation
@@ -69,13 +71,88 @@ private:
     void handleDidChange(const json& params);
     void handleDidClose(const json& params);
     json handleHover(const json& params);
+    // handleHover's cases, called in this order. hoverVerbExtendKeyword follows the completion
+    // convention (sets `handled` and returns the hover, else its return value is ignored); the
+    // three below return the signature line they resolved, or empty when they don't own the cursor.
+    // Hover case: a verb-extend member keyword (`synonyms` / `priority` / `grammar`).
+    json hoverVerbExtendKeyword(const std::string& word, const std::string& docText, int line, int col,
+                                bool& handled);
+    // Hover case: a #beguilerSettings property name or enum value.
+    std::string hoverBeguilerSettingsMember(const std::string& uri, int line, int col,
+                                            const std::string& lower, const std::string& ownerName);
+    // Hover case: `owner.member` — resolve the owner chain, then the member on it.
+    std::string hoverDottedMember(const std::string& uri, int line, const std::string& lower,
+                                  const std::string& ownerName);
+    // Hover case: a bare identifier — locals, params, class members, globals, verbs, enum values.
+    std::string hoverIdentifier(const std::string& uri, int line, const std::string& word,
+                                const std::string& lower, const std::string& ownerName,
+                                std::string& docComment);
     json handleCompletion(const json& params);
+    // handleCompletion's cases, one method each, called in phase order. Convention: each sets
+    // `handled` true and returns that case's completion result when the cursor belongs to it;
+    // otherwise it leaves `handled` false and its return value is ignored by the caller.
+    // Completion case: `#include "..."` project-file paths.
+    json completeQuotedInclude(const std::string& uri, int line, int col, const std::string& lineText, bool& handled);
+    // Completion case: `#includeI6 "..."` Inform 6 library files.
+    json completeI6Include(const std::string& uri, int line, int col, const std::string& lineText, bool& handled);
+    // Completion case: `includePaths = "..."` directory segments inside #beguilerSettings.
+    json completeIncludePathsDir(const std::string& uri, int line, int col, const std::string& lineText,
+                                 bool insideBsBlock, bool& handled);
+    // Completion case: a call argument whose parameter type is an enum -> that enum's members.
+    json completeEnumArgument(const std::string& uri, int line, int col, const std::string& lineText,
+                              const std::string& docText, bool& handled);
+    // Completion case: `#include <...>` beguiLib library names.
+    json completeAngleInclude(int line, int col, const std::string& lineText, bool& handled);
+    // Completion case: class-header inheritance position (`class Foo : |`, `alias class Foo for |`).
+    json completeClassHeader(int col, const std::string& lineText, bool& handled);
+    // Completion case: dotted access (`foo.|`) - members of foo's type, or an enum type's values.
+    json completeDottedMember(const std::string& uri, int line, int col, const std::string& lineText, bool& handled);
+    // Completion case: inside a grammar pattern literal -> grammarToken enum members.
+    json completeGrammarPattern(int line, int col, const std::string& docText, bool& handled);
+    // Completion case: an `attributeList`-typed member initializer -> every `attribute` instance.
+    json completeAttributeListLiteral(int line, int col, const std::string& docText, bool& handled);
+    // Completion case: `extend <verb|array> { | }` member position -> the members an extend may add.
+    json completeExtendBody(int line, int col, const std::string& docText, bool& handled);
+    // Completion case: first token of a class/object member declaration -> the valid member modifiers.
+    json completeMemberModifiers(int line, int col, const std::string& docText, bool insideBsBlock, bool& handled);
+    // Completion case: inside `#beguilerSettings { ... }` -> enum RHS values, else the property names.
+    json completeBeguilerSettingsBlock(int col, const std::string& lineText, bool insideBsBlock, bool& handled);
+    // Completion case: a bare prefix of `enum` -> the keyword syntax snippet + doc popup.
+    json completeKeywordSnippet(int col, const std::string& lineText, bool& handled);
+    // Completion case: bare-identifier position -> members imported by active `#using` directives.
+    json completeUsingImports(int line, const std::string& docText, bool& handled);
     json handleDefinition(const json& params);
     json handleDocumentSymbol(const json& params);
     json handleSignatureHelp(const json& params);
     json handleReferences(const json& params);
     json handleRename(const json& params);
     json handleSemanticTokensFull(const json& params);
+    // handleSemanticTokensFull's phases. InstanceBlockRange indexes one class/instance body;
+    // SemanticScope is the document-derived lookup state the classifying phases read.
+    struct InstanceBlockRange { int startLine0; int endLine0Exclusive; classDef* cls; objectDef* obj; };
+    struct SemanticScope {
+        std::vector<InstanceBlockRange> instanceBlocks;
+        std::map<std::string, int> usingMemberTok;
+        std::map<std::string, std::pair<classDef*, objectDef*>> usingMemberType;
+    };
+    // Index every class/instance body declared in `txt` into scope.instanceBlocks.
+    void buildInstanceBlockIndex(const std::string& uri, const std::string& txt, SemanticScope& scope);
+    // The innermost indexed block containing lineNum, or nullptr.
+    const InstanceBlockRange* blockForLine(const SemanticScope& scope, int lineNum);
+    // Kind of `name` in a block's member scope: 1 = variable/property, 2 = function/method, 0 = absent.
+    int findInBlock(const InstanceBlockRange* b, const std::string& name);
+    // Fill scope's `#using`-imported member maps from the directives in `docText`.
+    void collectUsingNamespaceMembers(const std::string& docText, SemanticScope& scope);
+    // Kind of `member` on the dotted receiver `receiverLower`, in findInBlock's encoding.
+    int lookupDotted(const SemanticScope& scope, const std::string& receiverLower, int lineNum,
+                     const std::string& member);
+    // Token type for a bare `#using`-imported member name, or -1 when the name is not one.
+    int usingMemberKind(const SemanticScope& scope, const std::string& lowerName, int lineNum);
+    // Scan an interpolated string from `i`, emitting literal runs and carving `{expr}` slots as
+    // code through `emit`. Advances `i`; returns true iff the closing '"' is on this line.
+    bool scanInterpString(const SemanticScope& scope,
+                          const std::function<void(int, int, int, int)>& emit,
+                          const std::string& lineText, size_t& i, int lineNum, size_t segStart);
     json handleWorkspaceSymbol(const json& params);
 
     // Semantic token classification
@@ -86,6 +163,20 @@ private:
     // class members → globals.
     functionDef* findEnclosingFunction(const std::string& uri, int cursorLine);
     LspSymbolRef resolveSymbol(const std::string& uri, int cursorLine, const std::string& loweredName);
+    // resolveSymbol's tiers, tried in this order. Each fills `out` and returns true when it
+    // resolves the name; a false return leaves `out` for the next tier to try.
+    // Tier: a class member whose declaration sits on the cursor line.
+    bool resolveTierSourceLineClassMember(const std::string& curFile, int cursorLine1Based,
+                                          const std::string& loweredName, LspSymbolRef& out);
+    // Tier: an object-instance member whose declaration sits on the cursor line.
+    bool resolveTierSourceLineInstanceMember(const std::string& curFile, int cursorLine1Based,
+                                             const std::string& loweredName, LspSymbolRef& out);
+    // Tier: the enclosing function's locals, parameters and containing class members. Sets
+    // out.enclosingFunc even when it resolves nothing.
+    bool resolveTierFunctionScope(const std::string& uri, int cursorLine,
+                                  const std::string& loweredName, LspSymbolRef& out);
+    // Tier: file-scope names — classes, enums, globals.
+    bool resolveTierGlobal(const std::string& loweredName, LspSymbolRef& out);
 
     // Resolve every active `#using <path>` directive above `line` to the namespace object
     // it names (if any). Used by completion to surface #using-imported members (e.g. the

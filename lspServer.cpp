@@ -1020,13 +1020,11 @@ bool LspServer::isInBeguilerSettingsBlock(const string& uri, int line, int col) 
 // 2. parameters of the enclosing function
 // 3. members of the enclosing class (if the function is inside one)
 // 4. globals, classes, enum values, verbs
-LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const string& loweredName) {
-    LspSymbolRef out;
-    int cursorLine1Based = cursorLine + 1;
-    string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
-
+// resolveSymbol tier: a class member whose declaration sits on the cursor line.
     // Tier 0: direct source-line match on class/object members in the current file.
     // Handles hover at a member declaration line (inside class body, not in a method).
+bool LspServer::resolveTierSourceLineClassMember(const string& curFile, int cursorLine1Based,
+                                                 const string& loweredName, LspSymbolRef& out) {
     for(typeDef* t : languageService.objectTypes) {
         auto* cd = dynamic_cast<classDef*>(t);
         if(!cd) continue;
@@ -1040,7 +1038,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                     out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
                     out.docComment = vd->docComment;
                     out.declSrc = vd->src;
-                    return out;
+                    return true;
                 }
             } else if(auto* mfd = dynamic_cast<functionDef*>(m)) {
                 if(mfd->src.file == curFile && mfd->src.line == cursorLine1Based) {
@@ -1050,15 +1048,21 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                     out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
                     out.docComment = mfd->docComment;
                     out.declSrc = mfd->src;
-                    return out;
+                    return true;
                 }
             }
         }
     }
+    return false;
+}
+
+// resolveSymbol tier: an object-instance member whose declaration sits on the cursor line.
     // Tier 0b: same match against object instance bodies. Handles hover inside a `room foyer {
     // short_name = ...; }` initializer where the property assignment is stored as a member
     // variableDeclaration on the object with its own src.line. For definition, prefer jumping
     // to the owning class's member declaration rather than the instance override.
+bool LspServer::resolveTierSourceLineInstanceMember(const string& curFile, int cursorLine1Based,
+                                                    const string& loweredName, LspSymbolRef& out) {
     auto findClassMemberSrc = [&](classDef* startCls, const string& memberName) -> sourceLocation {
         sourceLocation result;
         if(startCls) {
@@ -1085,7 +1089,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                     out.docComment = vd->docComment;
                     sourceLocation clsSrc = findClassMemberSrc(od->objectClass, loweredName);
                     out.declSrc = clsSrc.line > 0 ? clsSrc : vd->src;
-                    return out;
+                    return true;
                 }
             } else if(auto* mfd = dynamic_cast<functionDef*>(m)) {
                 if(mfd->src.file == curFile && mfd->src.line == cursorLine1Based) {
@@ -1096,13 +1100,19 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                     out.docComment = mfd->docComment;
                     sourceLocation clsSrc = findClassMemberSrc(od->objectClass, loweredName);
                     out.declSrc = clsSrc.line > 0 ? clsSrc : mfd->src;
-                    return out;
+                    return true;
                 }
             }
         }
     }
+    return false;
+}
 
+// resolveSymbol tier: the enclosing function's scope. Sets out.enclosingFunc even when it
+// resolves nothing, so a later tier still reports the function the cursor sits in.
     // Tier 1: enclosing function locals and parameters
+bool LspServer::resolveTierFunctionScope(const string& uri, int cursorLine,
+                                         const string& loweredName, LspSymbolRef& out) {
     functionDef* fn = findEnclosingFunction(uri, cursorLine);
     if(fn) {
         out.enclosingFunc = fn;
@@ -1116,7 +1126,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                         out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
                         out.docComment = vd->docComment;
                         out.declSrc = vd->src;
-                        return out;
+                        return true;
                     }
                 }
             }
@@ -1129,7 +1139,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                 out.displayName = p->displayName.empty() ? p->name : p->displayName;
                 out.docComment = p->docComment;
                 out.declSrc = fn->src;  // paramDef has no src; fall back to function signature
-                return out;
+                return true;
             }
         }
         // Tier 2: if the function is a class/object member, check the containing class's members
@@ -1182,7 +1192,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                         out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
                         out.docComment = vd->docComment;
                         out.declSrc = vd->src;
-                        return out;
+                        return true;
                     }
                     if(auto* mfd = dynamic_cast<functionDef*>(m)) {
                         out.kind = LspSymbolRef::ClassMember;
@@ -1191,19 +1201,23 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
                         out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
                         out.docComment = mfd->docComment;
                         out.declSrc = mfd->src;
-                        return out;
+                        return true;
                     }
                 }
             }
             // Walk base classes
             if(encCls) {
                 for(classDef* base : encCls->baseClasses)
-                    if(searchClass(base)) return out;
+                    if(searchClass(base)) return true;
             }
         }
     }
+    return false;
+}
 
+// resolveSymbol tier: file-scope names.
     // Tier 2: globals, classes, verbs, enum values
+bool LspServer::resolveTierGlobal(const string& loweredName, LspSymbolRef& out) {
     typeDef& td = languageService.getType(loweredName);
     if(auto* cd = dynamic_cast<classDef*>(&td)) {
         out.kind = LspSymbolRef::Global;
@@ -1211,7 +1225,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
         out.displayName = cd->displayName.empty() ? cd->name : cd->displayName;
         out.docComment = cd->docComment;
         out.declSrc = cd->src;
-        return out;
+        return true;
     }
     if(auto* ed = dynamic_cast<enumDef*>(&td)) {
         out.kind = LspSymbolRef::Global;
@@ -1219,7 +1233,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
         out.displayName = ed->displayName.empty() ? ed->name : ed->displayName;
         out.docComment = ed->docComment;
         out.declSrc = ed->src;
-        return out;
+        return true;
     }
     if(typeDef* g = languageService.findGlobal(loweredName)) {
         out.kind = LspSymbolRef::Global;
@@ -1239,8 +1253,21 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
             out.docComment = od->docComment;
             out.declSrc = od->src;
         }
-        return out;
+        return true;
     }
+    return false;
+}
+
+LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const string& loweredName) {
+    LspSymbolRef out;
+    int cursorLine1Based = cursorLine + 1;
+    string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+
+    // Tiers in order; the first that resolves fills `out` and stops the walk.
+    if(resolveTierSourceLineClassMember(curFile, cursorLine1Based, loweredName, out)) return out;
+    if(resolveTierSourceLineInstanceMember(curFile, cursorLine1Based, loweredName, out)) return out;
+    if(resolveTierFunctionScope(uri, cursorLine, loweredName, out)) return out;
+    if(resolveTierGlobal(loweredName, out)) return out;
     return out;
 }
 
@@ -1248,39 +1275,16 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
 // Hover
 //=============================================================================
 
-json LspServer::handleHover(const json& params) {
-    string uri = params["textDocument"]["uri"];
-    int line = params["position"]["line"].get<int>();
-    int col = params["position"]["character"].get<int>();
-    ensureParsedForRequest(uri);
-
-    // .inf-mode gating: outside #bgl{} regions, no Beguile hover.
-    if(!requestAllowedAt(uri, line, col)) return nullptr;
-
-    string path = uriToPath(uri);
-
-    // Read the line from the open document
-    auto docIt = openDocuments.find(uri);
-    if(docIt == openDocuments.end()) return nullptr;
-
-    // Extract the word at the cursor position
-    istringstream stream(docIt->second);
-    string lineText;
-    for(int i = 0; i <= line; i++) getline(stream, lineText);
-
-    // Find the word boundaries at col
-    if(col >= (int)lineText.size()) return nullptr;
-    int start = col, end = col;
-    while(start > 0 && (isalnum(lineText[start-1]) || lineText[start-1] == '_')) start--;
-    while(end < (int)lineText.size() && (isalnum(lineText[end]) || lineText[end] == '_')) end++;
-    string word = lineText.substr(start, end - start);
-    if(word.empty()) return nullptr;
-
+// Hover case: a verb-extend member keyword. Sets `handled` and returns the hover when the
+// cursor owns it; otherwise leaves `handled` false and its return value is ignored.
     // Verb-extend member keywords — hover doc for `synonyms` / `priority` / `grammar`, gated on being
     // inside a `verb <name> { … }` or `extend <verb> { … }` body (so a user identifier of the same
     // name elsewhere never false-hovers). Mirrors the extend-body completion docs.
+json LspServer::hoverVerbExtendKeyword(const string& word, const string& docText, int line, int col,
+                                       bool& handled) {
+    handled = false;
     if(word == "synonyms" || word == "priority" || word == "grammar") {
-        const string& dt = docIt->second;
+        const string& dt = docText;
         size_t cursorOffset = 0;
         { int cl = 0; size_t i = 0; while(i < dt.size() && cl < line) { if(dt[i] == '\n') cl++; i++; } cursorOffset = i + (size_t)col; if(cursorOffset > dt.size()) cursorOffset = dt.size(); }
         ptrdiff_t openerPos = -1; int depth = 0;
@@ -1304,39 +1308,21 @@ json LspServer::handleHover(const json& params) {
             if(word == "synonyms")      hd = "**`synonyms`** — declare true I6 aliases of this verb: `synonyms = {.w1, .w2};` emits `Verb 'w1' 'w2' = '<anchor>';`, so any later `extend` of the verb flows to them too (unlike copying a grammar line, which is a one-time snapshot).";
             else if(word == "priority") hd = "**`priority`** — grammar match order. On the verb block it sets the anchor (default `10`); inside an `extend` it is a block-local directive stamped onto the lines that block adds. Lower number = matched earlier.";
             else                        hd = "**`grammar`** — this verb's grammar lines. In an `extend`: `grammar += { … }` appends, `grammar -= { … }` removes matching lines (or evicts a library word), `replace grammar = { … }` wipes and replaces.";
+            handled = true;
             return {{"contents", {{"kind", "markdown"}, {"value", hd}}}};
         }
     }
+    return json();
+}
 
-    // Check for dotted path: walk back through full owner chain (bgl.glulx.window → owner = "bgl.glulx")
-    string ownerName;
-    if(start > 0 && lineText[start - 1] == '.') {
-        int i = start - 1; // at the '.'
-        string path;
-        while(i >= 0 && lineText[i] == '.'){
-            i--;
-            int segEnd = i + 1;
-            while(i >= 0 && (isalnum(lineText[i]) || lineText[i] == '_')) i--;
-            int segStart = i + 1;
-            if(segStart >= segEnd) break;
-            string seg = lineText.substr(segStart, segEnd - segStart);
-            path = path.empty() ? seg : seg + "." + path;
-        }
-        ownerName = path;
-    }
-
-    // Resolve the type
-    string lower = word;
-    transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
-    string typeInfo;
-    // Doc-comment for the resolved symbol (if any). Populated alongside typeInfo at each
-    // resolution branch. Rendered as Markdown below the signature in the hover response.
-    string docComment;
-
+// Hover case: a #beguilerSettings property or enum value. Returns the signature line it
+// resolved, or empty when this case does not own the cursor (the convention for all three).
     // ── #beguilerSettings block: resolve bare identifiers as beguilerSettingsType members ──
     // The block isn't a real AST node, so the regular resolver won't find these. Handle it here
     // so hover on property names (LHS of assignment inside the block) shows the declared type.
+string LspServer::hoverBeguilerSettingsMember(const string& uri, int line, int col,
+                                              const string& lower, const string& ownerName) {
+    string typeInfo;
     if(ownerName.empty() && isInBeguilerSettingsBlock(uri, line, col)) {
         classDef* schema = languageService.findClass("beguilersettingstype");
         if(schema) {
@@ -1364,8 +1350,13 @@ json LspServer::handleHover(const json& params) {
             }
         }
     }
+    return typeInfo;
+}
 
-    // If we have a dotted path (owner.member), resolve the member
+// Hover case: `owner.member` — resolve the owner chain, then the member on it.
+string LspServer::hoverDottedMember(const string& uri, int line, const string& lower,
+                                    const string& ownerName) {
+    string typeInfo;
     if(typeInfo.empty() && !ownerName.empty()) {
         string ownerLower = ownerName;
         transform(ownerLower.begin(), ownerLower.end(), ownerLower.begin(), ::tolower);
@@ -1500,8 +1491,14 @@ json LspServer::handleHover(const json& params) {
             }
         }
     }
+    return typeInfo;
+}
 
-    // Non-dotted: resolve as top-level identifier via shared scope resolver
+// Hover case: a bare identifier — locals, params, class members, globals, verbs, enum values.
+string LspServer::hoverIdentifier(const string& uri, int line, const string& word,
+                                  const string& lower, const string& ownerName,
+                                  string& docComment) {
+    string typeInfo;
     if(typeInfo.empty() && ownerName.empty()) {
         LspSymbolRef ref = resolveSymbol(uri, line, lower);
         if(!ref.docComment.empty()) docComment = ref.docComment;
@@ -1565,6 +1562,70 @@ json LspServer::handleHover(const json& params) {
             }
         }
     }
+    return typeInfo;
+}
+
+json LspServer::handleHover(const json& params) {
+    string uri = params["textDocument"]["uri"];
+    int line = params["position"]["line"].get<int>();
+    int col = params["position"]["character"].get<int>();
+    ensureParsedForRequest(uri);
+
+    // .inf-mode gating: outside #bgl{} regions, no Beguile hover.
+    if(!requestAllowedAt(uri, line, col)) return nullptr;
+
+    string path = uriToPath(uri);
+
+    // Read the line from the open document
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return nullptr;
+
+    // Extract the word at the cursor position
+    istringstream stream(docIt->second);
+    string lineText;
+    for(int i = 0; i <= line; i++) getline(stream, lineText);
+
+    // Find the word boundaries at col
+    if(col >= (int)lineText.size()) return nullptr;
+    int start = col, end = col;
+    while(start > 0 && (isalnum(lineText[start-1]) || lineText[start-1] == '_')) start--;
+    while(end < (int)lineText.size() && (isalnum(lineText[end]) || lineText[end] == '_')) end++;
+    string word = lineText.substr(start, end - start);
+    if(word.empty()) return nullptr;
+
+    bool handled = false;
+    if(json r = hoverVerbExtendKeyword(word, docIt->second, line, col, handled); handled) return r;
+
+    // Check for dotted path: walk back through full owner chain (bgl.glulx.window → owner = "bgl.glulx")
+    string ownerName;
+    if(start > 0 && lineText[start - 1] == '.') {
+        int i = start - 1; // at the '.'
+        string path;
+        while(i >= 0 && lineText[i] == '.'){
+            i--;
+            int segEnd = i + 1;
+            while(i >= 0 && (isalnum(lineText[i]) || lineText[i] == '_')) i--;
+            int segStart = i + 1;
+            if(segStart >= segEnd) break;
+            string seg = lineText.substr(segStart, segEnd - segStart);
+            path = path.empty() ? seg : seg + "." + path;
+        }
+        ownerName = path;
+    }
+
+    // Resolve the type
+    string lower = word;
+    transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+    string typeInfo;
+    // Doc-comment for the resolved symbol (if any). Populated alongside typeInfo at each
+    // resolution branch. Rendered as Markdown below the signature in the hover response.
+    string docComment;
+
+    // Hover cases, tried in order; each returns the signature line it resolved, or empty.
+    typeInfo = hoverBeguilerSettingsMember(uri, line, col, lower, ownerName);
+    if(typeInfo.empty()) typeInfo = hoverDottedMember(uri, line, lower, ownerName);
+    if(typeInfo.empty()) typeInfo = hoverIdentifier(uri, line, word, lower, ownerName, docComment);
 
     if(typeInfo.empty()) return nullptr;
 
@@ -1699,35 +1760,6 @@ vector<paramDef*> LspServer::resolveCalleeParams(const string& uri, int line,
     return candidates[0]->params;
 }
 
-json LspServer::handleCompletion(const json& params) {
-    string uri = params["textDocument"]["uri"];
-    int line = params["position"]["line"].get<int>();
-    int col = params["position"]["character"].get<int>();
-    ensureParsedForRequest(uri);
-
-    // .inf-mode gating: outside #bgl{} regions, defer to other providers / word fallback.
-    if(!requestAllowedAt(uri, line, col)) return nullptr;
-
-    auto docIt = openDocuments.find(uri);
-    if(docIt == openDocuments.end()) return nullptr;
-    const string& docText = docIt->second;
-
-    // Get the text before the cursor on this line
-    istringstream stream(docText);
-    string lineText;
-    for(int i = 0; i <= line; i++) getline(stream, lineText);
-
-    // ── Phase order ──
-    //   1.   Dotted access (foo.|)           — return members of foo's type / enum values if foo is an enum
-    //   1.5. Grammar pattern literal         — cursor inside `grammar [+]= { … ▮ … }` → grammarToken values
-    //   2.   Enum RHS in bs-block (prop = |) — return enum values for the property's declared type
-    //   3.   Bare identifier in bs-block     — return beguilerSettingsType property names
-    //   4.   Fallthrough                     — return nullptr (let client do word completion)
-    // Dotted-access wins over bs-block member completion so `target = eTarget.` correctly
-    // offers Glulx/Z3/Z5/Z8 instead of the 24 property names.
-
-    bool insideBsBlock = isInBeguilerSettingsBlock(uri, line, col);
-
     // Build an include completion item. The edit range spans the WHOLE partial path (from just
     // after the opening delimiter to the cursor) so accepting replaces everything typed in the
     // delimiter — correct across '/', spaces, and '#'. `delimCol` is the 0-based column of the
@@ -1739,21 +1771,22 @@ json LspServer::handleCompletion(const json& params) {
     // leading '#', e.g. `par` vs `#parser`). Prefixing the typed query makes the query a literal
     // prefix of filterText, which VS Code's matcher always accepts, so nothing we return is
     // dropped. `newText`/`label` stay the real path.
-    auto makeIncludeItem = [&](const string& relStr, const char* detail, int delimCol, const string& query) -> json {
-        return {
-            {"label", relStr},
-            {"kind", 17},               // CompletionItemKind.File
-            {"detail", detail},
-            {"filterText", query + relStr},
-            {"textEdit", {
-                {"range", {
-                    {"start", {{"line", line}, {"character", delimCol + 1}}},
-                    {"end",   {{"line", line}, {"character", col}}}
-                }},
-                {"newText", relStr}
-            }}
-        };
+static json makeIncludeItem(const string& relStr, const char* detail, int delimCol,
+                            const string& query, int line, int col) {
+    return {
+        {"label", relStr},
+        {"kind", 17},               // CompletionItemKind.File
+        {"detail", detail},
+        {"filterText", query + relStr},
+        {"textEdit", {
+            {"range", {
+                {"start", {{"line", line}, {"character", delimCol + 1}}},
+                {"end",   {{"line", line}, {"character", col}}}
+            }},
+            {"newText", relStr}
+        }}
     };
+}
 
     // Case-insensitive SUBSTRING test. The include phases filter candidates server-side by
     // substring against the full relative path (and return isIncomplete=true so the client
@@ -1761,22 +1794,26 @@ json LspServer::handleCompletion(const json& params) {
     // fuzzy match, which is too loose for paths — e.g. `par` fuzzy-matches `pkgOrEnhancements`
     // (p…a…r) but is NOT a substring, so it's correctly excluded here. A substring is always a
     // subsequence, so the client's own filter keeps everything we return.
-    auto ciContains = [](const string& hay, const string& needle) -> bool {
-        if(needle.empty()) return true;
-        string h = hay, n = needle;
-        transform(h.begin(), h.end(), h.begin(), ::tolower);
-        transform(n.begin(), n.end(), n.begin(), ::tolower);
-        return h.find(n) != string::npos;
-    };
-    // Extract the partial path already typed between the opening delimiter and the cursor.
-    auto includeQuery = [&](int delimCol) -> string {
-        int qs = delimCol + 1;
-        if(qs < 0) qs = 0;
-        if(qs >= (int)lineText.size() || qs >= col) return "";
-        int end = std::min(col, (int)lineText.size());
-        return lineText.substr(qs, end - qs);
-    };
+static bool ciContains(const string& hay, const string& needle) {
+    if(needle.empty()) return true;
+    string h = hay, n = needle;
+    transform(h.begin(), h.end(), h.begin(), ::tolower);
+    transform(n.begin(), n.end(), n.begin(), ::tolower);
+    return h.find(n) != string::npos;
+}
 
+    // Extract the partial path already typed between the opening delimiter and the cursor.
+static string includeQuery(const string& lineText, int col, int delimCol) {
+    int qs = delimCol + 1;
+    if(qs < 0) qs = 0;
+    if(qs >= (int)lineText.size() || qs >= col) return "";
+    int end = std::min(col, (int)lineText.size());
+    return lineText.substr(qs, end - qs);
+}
+
+// Completion case: `#include "..."` project-file paths.
+json LspServer::completeQuotedInclude(const string& uri, int line, int col, const string& lineText, bool& handled) {
+    handled = false;
     // ── Phase 0b: `#include "…"` project-file completion ──────────────────
     // The quoted include form searches the current file's directory first, then
     // each configured includePath (mirrors resolveIncludePath in bglParser.cpp).
@@ -1803,7 +1840,7 @@ json LspServer::handleCompletion(const json& params) {
                 json items = json::array();
                 std::set<string> seen;
                 int delimCol = (int)(lt + q);
-                string query = includeQuery(delimCol);
+                string query = includeQuery(lineText, col, delimCol);
 
                 string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
                 filesystem::path srcDir = filesystem::path(curFile).parent_path();
@@ -1845,15 +1882,20 @@ json LspServer::handleCompletion(const json& params) {
                         if(relStr.empty() || relStr[0] == '/') continue;
                         if(!ciContains(relStr, query)) continue;     // server-side substring filter
                         if(!seen.insert(relStr).second) continue;   // dedup; earlier root wins
-                        items.push_back(makeIncludeItem(relStr, "Beguile include (project file)", delimCol, query));
+                        items.push_back(makeIncludeItem(relStr, "Beguile include (project file)", delimCol, query, line, col));
                     }
                 }
                 // isIncomplete: re-query each keystroke so the substring filter re-runs.
-                return json{{"isIncomplete", true}, {"items", items}};
+                handled = true; return json{{"isIncomplete", true}, {"items", items}};
             }
         }
     }
+    return json();
+}
 
+// Completion case: `#includeI6 "..."` Inform 6 library files.
+json LspServer::completeI6Include(const string& uri, int line, int col, const string& lineText, bool& handled) {
+    handled = false;
     // ── Phase 0c: `#includeI6 "…"` Inform 6 library completion ─────────────
     // `#includeI6 "name"` resolves an I6 file (exact name, then name.h) from the source
     // dir + includePaths. Offer the .h files reachable from those roots, named without
@@ -1879,7 +1921,7 @@ json LspServer::handleCompletion(const json& params) {
                 json items = json::array();
                 std::set<string> seen;
                 int delimCol = (int)(lt + q);
-                string query = includeQuery(delimCol);
+                string query = includeQuery(lineText, col, delimCol);
                 string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
                 filesystem::path srcDir = filesystem::path(curFile).parent_path();
                 vector<filesystem::path> roots;
@@ -1911,15 +1953,21 @@ json LspServer::handleCompletion(const json& params) {
                         if(relStr.empty() || relStr[0] == '/') continue;
                         if(!ciContains(relStr, query)) continue;     // server-side substring filter
                         if(!seen.insert(relStr).second) continue;
-                        items.push_back(makeIncludeItem(relStr, "Inform 6 library file", delimCol, query));
+                        items.push_back(makeIncludeItem(relStr, "Inform 6 library file", delimCol, query, line, col));
                     }
                 }
                 // isIncomplete: re-query each keystroke so the substring filter re-runs.
-                return json{{"isIncomplete", true}, {"items", items}};
+                handled = true; return json{{"isIncomplete", true}, {"items", items}};
             }
         }
     }
+    return json();
+}
 
+// Completion case: `includePaths = "..."` directory segments inside #beguilerSettings.
+json LspServer::completeIncludePathsDir(const string& uri, int line, int col, const string& lineText,
+                                        bool insideBsBlock, bool& handled) {
+    handled = false;
     // ── Phase 0d: `includePaths = "…"` directory completion (in #beguilerSettings) ──
     // Inside a #beguilerSettings block the includePaths value is a filesystem path. Offer only
     // DIRECTORIES (kind=Folder), resolved relative to the source file's directory (or absolute).
@@ -1941,7 +1989,7 @@ json LspServer::handleCompletion(const json& params) {
             if(headCompact == "includepaths=") {
                 int delimCol  = (int)(lt + q);
                 int pathStart = delimCol + 1;
-                string typedPath = includeQuery(delimCol);   // text from delim+1 to cursor
+                string typedPath = includeQuery(lineText, col, delimCol);   // text from delim+1 to cursor
                 size_t slash = typedPath.rfind('/');
                 string dirPrefix = (slash == string::npos) ? string() : typedPath.substr(0, slash + 1);
                 string segment   = (slash == string::npos) ? typedPath : typedPath.substr(slash + 1);
@@ -1982,11 +2030,17 @@ json LspServer::handleCompletion(const json& params) {
                     }
                 }
                 // isIncomplete: re-query each keystroke so the substring filter re-runs.
-                return json{{"isIncomplete", true}, {"items", items}};
+                handled = true; return json{{"isIncomplete", true}, {"items", items}};
             }
         }
     }
+    return json();
+}
 
+// Completion case: a call argument whose parameter type is an enum -> that enum's members.
+json LspServer::completeEnumArgument(const string& uri, int line, int col, const string& lineText,
+                                     const string& docText, bool& handled) {
+    handled = false;
     // ── Enum-argument completion ─────────────────────────────────────────
     // At a call argument whose parameter type is an enum, offer that enum's members.
     // Fires in ordinary code — `foo(bar, ▮)` — AND inside an interpolated string —
@@ -2031,27 +2085,19 @@ json LspServer::handleCompletion(const json& params) {
                                 item["documentation"] = {{"kind", "markdown"}, {"value", ev->docComment}};
                             items.push_back(item);
                         }
-                        if(!items.empty()) return items;
+                        if(!items.empty()) { handled = true; return items; }
                         break;
                     }
                 }
             }
         }
     }
+    return json();
+}
 
-    // Suppress completion inside string literals — the user is typing prose.
-    auto isInsideStringLiteral = [&]() -> bool {
-        int limit = col;
-        if(limit > (int)lineText.size()) limit = (int)lineText.size();
-        bool inStr = false;
-        for(int i = 0; i < limit; i++) {
-            char c = lineText[i];
-            if(c == '"' && (i == 0 || lineText[i-1] != '\\')) inStr = !inStr;
-        }
-        return inStr;
-    };
-    if(isInsideStringLiteral()) return nullptr;
-
+// Completion case: `#include <...>` beguiLib library names.
+json LspServer::completeAngleInclude(int line, int col, const string& lineText, bool& handled) {
+    handled = false;
     // ── Phase 0: `#include <…>` library completion ───────────────────────
     // When the cursor is positioned inside the angle brackets of a `#include <…>` directive,
     // scan beguiLib for .bgl files and offer them. Names are returned without the .bgl
@@ -2077,7 +2123,7 @@ json LspServer::handleCompletion(const json& params) {
             // Expect '#' immediately before the word (this is `#include`, not a bare `include`)
             if(word == "include" && i >= 0 && lineText[i] == '#') {
                 json items = json::array();
-                string query = includeQuery(angleCol);
+                string query = includeQuery(lineText, col, angleCol);
                 try {
                     std::filesystem::path libRoot = settings.libPath;
                     for(const auto& entry : std::filesystem::recursive_directory_iterator(libRoot)) {
@@ -2099,15 +2145,20 @@ json LspServer::handleCompletion(const json& params) {
                         if(relStr.size() >= 4)
                             relStr = relStr.substr(0, relStr.size() - 4);  // strip ".bgl"
                         if(!ciContains(relStr, query)) continue;     // server-side substring filter
-                        items.push_back(makeIncludeItem(relStr, "Beguile language extension", angleCol, query));
+                        items.push_back(makeIncludeItem(relStr, "Beguile language extension", angleCol, query, line, col));
                     }
                 } catch(...) { /* directory unreadable — fall back to empty list */ }
                 // isIncomplete: re-query each keystroke so the substring filter re-runs.
-                return json{{"isIncomplete", true}, {"items", items}};
+                handled = true; return json{{"isIncomplete", true}, {"items", items}};
             }
         }
     }
+    return json();
+}
 
+// Completion case: class-header inheritance position (`class Foo : |`, `alias class Foo for |`).
+json LspServer::completeClassHeader(int col, const string& lineText, bool& handled) {
+    handled = false;
     // ── Phase 0.5: class inheritance position ────────────────────────────
     // Detect cursor in:
     //   `class Foo : <here>`                (single inheritance start)
@@ -2188,9 +2239,14 @@ json LspServer::handleCompletion(const json& params) {
                 {"detail", "class"}
             });
         }
-        return items;
+        handled = true; return items;
     } while(false);
+    return json();
+}
 
+// Completion case: dotted access (`foo.|`) - members of foo's type, or an enum type's values.
+json LspServer::completeDottedMember(const string& uri, int line, int col, const string& lineText, bool& handled) {
+    handled = false;
     // ── Phase 1: dotted access ────────────────────────────────────────────
     // Detect `identifier.|` — if the char immediately before the cursor (skipping a partial
     // identifier in progress) is '.', we're completing a member of the prefix. This runs
@@ -2323,7 +2379,7 @@ json LspServer::handleCompletion(const json& params) {
                         items.push_back({{"label", label}, {"kind", fd->isValueEmitter ? 6 : 2}, {"detail", fd->returnType.dName()}});
                     }
                 }
-                return items;
+                handled = true; return items;
             }
         }
 
@@ -2338,10 +2394,10 @@ json LspServer::handleCompletion(const json& params) {
                     {"detail", enumLabel}
                 });
             }
-            return items;
+            handled = true; return items;
         }
 
-        if(!cls) return json::array();
+        if(!cls) { handled = true; return json::array(); }
 
         // Collect class members walking the hierarchy.
         json items = json::array();
@@ -2387,9 +2443,14 @@ json LspServer::handleCompletion(const json& params) {
             }
         }
 
-        return items;
+        handled = true; return items;
     }
+    return json();
+}
 
+// Completion case: inside a grammar pattern literal -> grammarToken enum members.
+json LspServer::completeGrammarPattern(int line, int col, const string& docText, bool& handled) {
+    handled = false;
     // ── Phase 1.5: grammar pattern literal context ────────────────────────
     // Detect cursor inside a grammar pattern literal:
     //   verb V { grammar = { {.w, ▮} } }            (canonical)
@@ -2458,10 +2519,15 @@ json LspServer::handleCompletion(const json& params) {
                 }
                 break;
             }
-            return items;
+            handled = true; return items;
         }
     }
+    return json();
+}
 
+// Completion case: an `attributeList`-typed member initializer -> every `attribute` instance.
+json LspServer::completeAttributeListLiteral(int line, int col, const string& docText, bool& handled) {
+    handled = false;
     // ── attributeList initializer completion ─────────────────────────────
     // Cursor inside an `attributeList`-typed member initializer literal —
     //   attributes = { ▮ }     // e.g. { light, !scenery }
@@ -2537,10 +2603,15 @@ json LspServer::handleCompletion(const json& params) {
             for(typeDef* t : languageService.objectInstances)
                 if(auto* od = dynamic_cast<objectDef*>(t))
                     addAttrInstance(od, od->objectClass ? od->objectClass->name : string());
-            if(!items.empty()) return items;
+            if(!items.empty()) { handled = true; return items; }
         }
     }
+    return json();
+}
 
+// Completion case: `extend <verb|array> { | }` member position -> the members an extend may add.
+json LspServer::completeExtendBody(int line, int col, const string& docText, bool& handled) {
+    handled = false;
     // ── Phase 1.6: extend-body member completion ─────────────────────────
     // Inside `extend <Verb> { ▮ }` at member position, offer the members you add to a
     // verb via an extend: `grammar` (+=/-=/replace), `synonyms`, `priority`, and the
@@ -2593,7 +2664,7 @@ json LspServer::handleCompletion(const json& params) {
                     add("synonyms", "verb synonyms", "`synonyms = {.w1, .w2};` — declare true I6 aliases of this verb (emits `Verb 'w1' 'w2' = '<anchor>';`), so later extensions flow to them.");
                     add("priority", "verb priority", "`priority = N;` — block-local grammar priority stamped onto the lines this extend adds (lower number = matched earlier).");
                     add("replace",  "member replace","Qualifier to override an inherited member: `replace grammar = { … }` or `replace void handler(){ … }`.");
-                    return items;
+                    handled = true; return items;
                 }
                 // extend <array> { inject/remove/move … } — declarative build-time array editing.
                 // Gated on the extended name resolving to a non-extern declared array (extern arrays
@@ -2612,12 +2683,17 @@ json LspServer::handleCompletion(const json& params) {
                     add("inject", "add an element", "`inject <element> [after X | before X | first | last];` — splice an element in at a position (no clause = append). The element is a reference, a value, or an inline object `Type{ … }` / inferred `{ … }`.");
                     add("remove", "remove an element", "`remove <name | [N]>;` — remove an element by reference or index.");
                     add("move",   "reposition an element", "`move <name | [N]> <after Y | before Y | first | last>;` — reposition an existing element (remove-then-inject at the new spot).");
-                    return items;
+                    handled = true; return items;
                 }
             }
         }
     }
+    return json();
+}
 
+// Completion case: first token of a class/object member declaration -> the valid member modifiers.
+json LspServer::completeMemberModifiers(int line, int col, const string& docText, bool insideBsBlock, bool& handled) {
+    handled = false;
     // ── Phase 1.7: class/object member-declaration position — offer member modifiers ──
     // At the FIRST token of a member declaration inside a class or object body, offer the
     // modifiers valid there. Context-scoped (never a flat always-on list): gated on the
@@ -2704,16 +2780,21 @@ json LspServer::handleCompletion(const json& params) {
                         add("inline", "positional slot", "`inline` — mark a member so it takes a positional value in inline object construction `Type{ v1, v2 }` (§6.2.1).");
                         add("default","class default member", "`default` — a member value provided as the class default (valid in class declarations only).");
                     }
-                    return json{{"isIncomplete", true}, {"items", items}};
+                    handled = true; return json{{"isIncomplete", true}, {"items", items}};
                 }
             }
         }
     }
+    return json();
+}
 
+// Completion case: inside `#beguilerSettings { ... }` -> enum RHS values, else the property names.
+json LspServer::completeBeguilerSettingsBlock(int col, const string& lineText, bool insideBsBlock, bool& handled) {
+    handled = false;
     // ── Phases 2 & 3: #beguilerSettings block ─────────────────────────────
     if(insideBsBlock) {
         classDef* schema = languageService.findClass("beguilersettingstype");
-        if(!schema) return json::array();  // type not registered (shouldn't happen)
+        if(!schema) { handled = true; return json::array(); }  // type not registered (shouldn't happen)
 
         // Phase 2: enum RHS context — `property = |` resolves the property's type and offers
         // its enum values. Walks back past any partial identifier + whitespace looking for '='.
@@ -2741,9 +2822,9 @@ json LspServer::handleCompletion(const json& params) {
             for(typeMember* m : schema->members)
                 if(m->name == lowerProp)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(m)) { propType = vd->type.name; break; }
-            if(propType.empty()) return json::array();
+            if(propType.empty()) { handled = true; return json::array(); }
             auto* ed = languageService.findEnum(propType);
-            if(!ed) return nullptr;  // primitive (string, int, bool) — let client fall back
+            if(!ed) { handled = true; return nullptr; }  // primitive (string, int, bool) — let client fall back
             json items = json::array();
             for(enumValueDef* ev : ed->namedValues) {
                 items.push_back({
@@ -2752,7 +2833,7 @@ json LspServer::handleCompletion(const json& params) {
                     {"detail", ed->displayName.empty() ? ed->name : ed->displayName}
                 });
             }
-            return items;
+            handled = true; return items;
         }
 
         // Phase 3: LHS context — return all beguilerSettingsType property names.
@@ -2766,9 +2847,14 @@ json LspServer::handleCompletion(const json& params) {
                 });
             }
         }
-        return items;
+        handled = true; return items;
     }
+    return json();
+}
 
+// Completion case: a bare prefix of `enum` -> the keyword syntax snippet + doc popup.
+json LspServer::completeKeywordSnippet(int col, const string& lineText, bool& handled) {
+    handled = false;
     // ── Phase 3.9 (EXPERIMENTAL, enum-only): keyword syntax snippet + doc popup ──────────────
     // As you type a prefix of `enum` at a bare-identifier position (dotted/string/member-body/
     // bs-block contexts have all returned above), offer an `enum` completion whose documentation
@@ -2802,10 +2888,15 @@ json LspServer::handleCompletion(const json& params) {
                     "The first value defaults to `0`; each later member auto-increments unless given an "
                     "explicit `= N`. Reference members as `Name.member`."}}}
             };
-            return json{{"isIncomplete", true}, {"items", json::array({item})}};
+            handled = true; return json{{"isIncomplete", true}, {"items", json::array({item})}};
         }
     }
+    return json();
+}
 
+// Completion case: bare-identifier position -> members imported by active `#using` directives.
+json LspServer::completeUsingImports(int line, const string& docText, bool& handled) {
+    handled = false;
     // ── Phase 4: bare-identifier position — offer #using-imported type aliases ──
     // Scan the doc above the cursor for active `#using <path>` directives and surface
     // their bare alias members as completions. Runs alongside VS Code's word-based
@@ -2913,10 +3004,74 @@ json LspServer::handleCompletion(const json& params) {
 
             if(!items.empty()){
                 // isIncomplete:true lets VS Code keep re-querying and merges with word-based.
-                return json{{"isIncomplete", true}, {"items", items}};
+                handled = true; return json{{"isIncomplete", true}, {"items", items}};
             }
         }
     }
+    return json();
+}
+
+json LspServer::handleCompletion(const json& params) {
+    string uri = params["textDocument"]["uri"];
+    int line = params["position"]["line"].get<int>();
+    int col = params["position"]["character"].get<int>();
+    ensureParsedForRequest(uri);
+
+    // .inf-mode gating: outside #bgl{} regions, defer to other providers / word fallback.
+    if(!requestAllowedAt(uri, line, col)) return nullptr;
+
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return nullptr;
+    const string& docText = docIt->second;
+
+    // Get the text before the cursor on this line
+    istringstream stream(docText);
+    string lineText;
+    for(int i = 0; i <= line; i++) getline(stream, lineText);
+
+    // ── Phase order ──
+    //   1.   Dotted access (foo.|)           — return members of foo's type / enum values if foo is an enum
+    //   1.5. Grammar pattern literal         — cursor inside `grammar [+]= { … ▮ … }` → grammarToken values
+    //   2.   Enum RHS in bs-block (prop = |) — return enum values for the property's declared type
+    //   3.   Bare identifier in bs-block     — return beguilerSettingsType property names
+    //   4.   Fallthrough                     — return nullptr (let client do word completion)
+    // Dotted-access wins over bs-block member completion so `target = eTarget.` correctly
+    // offers Glulx/Z3/Z5/Z8 instead of the 24 property names.
+
+    bool insideBsBlock = isInBeguilerSettingsBlock(uri, line, col);
+
+    // Each completeXxx() below owns one case. It sets `handled` and returns that case's result
+    // when the cursor belongs to it; otherwise it leaves `handled` false and its return value is
+    // ignored. The call order IS the phase order documented above.
+    bool handled = false;
+    if(json r = completeQuotedInclude(uri, line, col, lineText, handled); handled) return r;
+    if(json r = completeI6Include(uri, line, col, lineText, handled); handled) return r;
+    if(json r = completeIncludePathsDir(uri, line, col, lineText, insideBsBlock, handled); handled) return r;
+    if(json r = completeEnumArgument(uri, line, col, lineText, docText, handled); handled) return r;
+
+    // Suppress completion inside string literals — the user is typing prose.
+    auto isInsideStringLiteral = [&]() -> bool {
+        int limit = col;
+        if(limit > (int)lineText.size()) limit = (int)lineText.size();
+        bool inStr = false;
+        for(int i = 0; i < limit; i++) {
+            char c = lineText[i];
+            if(c == '"' && (i == 0 || lineText[i-1] != '\\')) inStr = !inStr;
+        }
+        return inStr;
+    };
+    if(isInsideStringLiteral()) return nullptr;
+
+    if(json r = completeAngleInclude(line, col, lineText, handled); handled) return r;
+    if(json r = completeClassHeader(col, lineText, handled); handled) return r;
+    if(json r = completeDottedMember(uri, line, col, lineText, handled); handled) return r;
+    if(json r = completeGrammarPattern(line, col, docText, handled); handled) return r;
+    if(json r = completeAttributeListLiteral(line, col, docText, handled); handled) return r;
+    if(json r = completeExtendBody(line, col, docText, handled); handled) return r;
+    if(json r = completeMemberModifiers(line, col, docText, insideBsBlock, handled); handled) return r;
+    if(json r = completeBeguilerSettingsBlock(col, lineText, insideBsBlock, handled); handled) return r;
+    if(json r = completeKeywordSnippet(col, lineText, handled); handled) return r;
+    if(json r = completeUsingImports(line, docText, handled); handled) return r;
 
     return nullptr;
 }
@@ -3682,6 +3837,354 @@ int LspServer::classifyWord(const string& word) const {
     return -1;  // unknown — don't emit a token
 }
 
+    // Pre-scan instance/class body ranges so bare identifiers inside them can be resolved as
+    // members via class-hierarchy walk. Each entry: (startLine0, endLine0Exclusive, classDef*).
+    // For 'room foyer { short_name = ... }', the block covers the interior of foyer's body and
+    // maps to the 'room' classDef so 'short_name' (inherited from room) resolves as a property.
+    // For 'class Counter { ... }', maps to Counter itself so bare member names inside the class
+    // body resolve as members.
+void LspServer::buildInstanceBlockIndex(const string& uri, const string& txt, SemanticScope& scope) {
+    // Helper: find the matching '}' for an open brace at openPos, skipping strings and
+    // // and /* */ comments. Returns the char index AFTER the matching '}', or npos if EOF.
+    auto matchClose = [&](size_t openPos) -> size_t {
+        int depth = 1;
+        size_t j = openPos + 1;
+        while(j < txt.size() && depth > 0) {
+            char c = txt[j];
+            if(c == '"') {
+                j++;
+                while(j < txt.size() && txt[j] != '"') {
+                    if(txt[j] == '\\') j++;
+                    if(j < txt.size()) j++;
+                }
+                if(j < txt.size()) j++;
+            } else if(c == '/' && j + 1 < txt.size() && txt[j+1] == '/') {
+                while(j < txt.size() && txt[j] != '\n') j++;
+            } else if(c == '/' && j + 1 < txt.size() && txt[j+1] == '*') {
+                j += 2;
+                while(j + 1 < txt.size() && !(txt[j] == '*' && txt[j+1] == '/')) j++;
+                if(j + 1 < txt.size()) j += 2;
+            } else {
+                if(c == '{') depth++;
+                else if(c == '}') { depth--; if(depth == 0) return j + 1; }
+                j++;
+            }
+        }
+        return txt.size();
+    };
+    // Line-number-at-offset cache (linear scan ok for typical file sizes)
+    auto lineAt = [&](size_t offset) -> int {
+        int ln = 0;
+        for(size_t j = 0; j < offset && j < txt.size(); j++) if(txt[j] == '\n') ln++;
+        return ln;
+    };
+
+    string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+    auto addFromSrcLine = [&](int srcLine1, classDef* cls, objectDef* obj) {
+        if(!cls && !obj) return;
+        if(srcLine1 <= 0) return;
+        // Find the first '{' on or after srcLine1-1 (0-based)
+        // Skip to the start of srcLine1
+        int targetLine = srcLine1 - 1;
+        int ln = 0; size_t startOff = 0;
+        while(startOff < txt.size() && ln < targetLine) {
+            if(txt[startOff] == '\n') ln++;
+            startOff++;
+        }
+        // Find first '{' from startOff (honouring strings/comments)
+        size_t bracePos = string::npos;
+        for(size_t j = startOff; j < txt.size(); j++) {
+            char c = txt[j];
+            if(c == '"') {
+                j++;
+                while(j < txt.size() && txt[j] != '"') { if(txt[j] == '\\') j++; if(j < txt.size()) j++; }
+            } else if(c == '/' && j + 1 < txt.size() && txt[j+1] == '/') {
+                while(j < txt.size() && txt[j] != '\n') j++;
+            } else if(c == '/' && j + 1 < txt.size() && txt[j+1] == '*') {
+                j += 2;
+                while(j + 1 < txt.size() && !(txt[j] == '*' && txt[j+1] == '/')) j++;
+                if(j + 1 < txt.size()) j++;
+            } else if(c == '{') { bracePos = j; break; }
+        }
+        if(bracePos == string::npos) return;
+        size_t closeEnd = matchClose(bracePos);
+        scope.instanceBlocks.push_back({ lineAt(bracePos) + 1, lineAt(closeEnd), cls, obj });
+    };
+    // Instance bodies: record both the objectDef (for its own members, including methods
+    // declared inline) and its declared class (for inherited members).
+    for(typeDef* t : languageService.objectInstances) {
+        if(auto* od = dynamic_cast<objectDef*>(t)) {
+            if(od->src.file != curFile) continue;
+            addFromSrcLine(od->src.line, od->objectClass, od);
+        }
+    }
+    // Class bodies: the class itself is the lookup scope
+    for(typeDef* t : languageService.objectTypes) {
+        if(auto* cd = dynamic_cast<classDef*>(t)) {
+            if(cd->src.file != curFile) continue;
+            addFromSrcLine(cd->src.line, cd, nullptr);
+        }
+    }
+}
+
+    // Return the innermost block containing lineNum, or nullptr.
+const LspServer::InstanceBlockRange* LspServer::blockForLine(const SemanticScope& scope, int lineNum) {
+    const InstanceBlockRange* best = nullptr;
+    int bestStart = -1;
+    for(const auto& b : scope.instanceBlocks) {
+        if(lineNum >= b.startLine0 && lineNum < b.endLine0Exclusive)
+            if(b.startLine0 > bestStart) { bestStart = b.startLine0; best = &b; }
+    }
+    return best;
+}
+
+    // Walk a block's member scope (objectDef members first, then class hierarchy) looking for
+    // 'name'. Returns kind: 1 = variable/property, 2 = function/method, 0 = not found.
+int LspServer::findInBlock(const InstanceBlockRange* b, const string& name) {
+    if(!b) return 0;
+    // objectDef's own members (includes methods declared inline in the instance body)
+    if(b->obj) {
+        for(typeMember* m : b->obj->members) {
+            if(m->name != name) continue;
+            if(dynamic_cast<variableDeclaration*>(m)) return 1;
+            if(dynamic_cast<functionDef*>(m))         return 2;
+        }
+    }
+    // Class hierarchy
+    if(!b->cls) return 0;
+    typeMember* hit = b->cls->findMember([&](typeMember* m){
+        return m->name == name
+               && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
+    });
+    if(dynamic_cast<variableDeclaration*>(hit)) return 1;
+    if(dynamic_cast<functionDef*>(hit))         return 2;
+    return 0;
+}
+
+    // `#using`-imported namespace members (bug: a bare `style` from `#using bgl.ui`, and its dotted
+    // `.italics`/`.roman`, were never colored — only receivers already declared as globals resolved).
+    // Precompute, from every active `#using <path>` in the doc (mirrors the completion-side resolution):
+    //   usingMemberTok   — bare member name → token type, for coloring a bare `style`.
+    //   usingMemberType  — bare member name → the (classDef, objectDef) it resolves to, so a dotted
+    //                      `style.italics` can be resolved against that type. `#using` is file-scoped.
+void LspServer::collectUsingNamespaceMembers(const string& docText, SemanticScope& scope) {
+    auto objByName = [&](const string& nm) -> objectDef* {
+        if(auto* od = languageService.findGlobalAs<objectDef>(nm)) return od;
+        for(typeDef* t : languageService.objectInstances)
+            if(auto* od = dynamic_cast<objectDef*>(t)) if(od->name == nm) return od;
+        return nullptr;
+    };
+    auto walkObjectPath = [&](const string& path) -> objectDef* {
+        size_t dot = path.find('.');
+        string head = (dot == string::npos) ? path : path.substr(0, dot);
+        string rest = (dot == string::npos) ? "" : path.substr(dot + 1);
+        objectDef* curObj = objByName(head);
+        while(curObj && !rest.empty()){
+            dot = rest.find('.');
+            string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
+            rest = (dot == string::npos) ? "" : rest.substr(dot + 1);
+            objectDef* next = nullptr;
+            for(typeMember* m : curObj->members){
+                auto* vd = dynamic_cast<variableDeclaration*>(m);
+                if(!vd || vd->name != seg) continue;
+                string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+                if(!initName.empty()) next = objByName(initName);
+                if(!next)             next = objByName(vd->type.name);
+                break;
+            }
+            curObj = next;
+        }
+        return curObj;
+    };
+    auto addMember = [&](typeMember* m){
+        if(auto* fd = dynamic_cast<functionDef*>(m)){
+            if(fd->isPrePassStub) return;
+            scope.usingMemberTok[fd->name] = fd->isValueEmitter ? stVariable : stMethod;
+        } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+            scope.usingMemberTok[vd->name] = vd->isAlias ? stClass : stVariable;
+            // Resolve what this member points at, so `member.foo` colors against it.
+            string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+            objectDef* target = initName.empty() ? nullptr : objByName(initName);
+            if(!target) target = objByName(vd->type.name);
+            if(target) scope.usingMemberType[vd->name] = {target->objectClass, target};
+            else if(auto* cd = languageService.findClass(vd->type.name))
+                scope.usingMemberType[vd->name] = {cd, nullptr};
+        }
+    };
+    istringstream ds(docText);
+    string dl;
+    while(getline(ds, dl)){
+        size_t p = dl.find_first_not_of(" \t");
+        if(p == string::npos || dl.compare(p, 7, "#using ") != 0) continue;
+        size_t s = p + 7;
+        while(s < dl.size() && (dl[s] == ' ' || dl[s] == '\t')) s++;
+        size_t e = s;
+        while(e < dl.size() && (isalnum((unsigned char)dl[e]) || dl[e] == '_' || dl[e] == '.')) e++;
+        if(e <= s) continue;
+        string path = dl.substr(s, e - s);
+        transform(path.begin(), path.end(), path.begin(), ::tolower);
+        if(objectDef* ns = walkObjectPath(path)) {
+            for(typeMember* m : ns->members) addMember(m);
+        } else if(path.find('.') == string::npos) {
+            if(auto* cls = languageService.findClass(path))
+                for(typeMember* m : cls->members) addMember(m);
+        }
+    }
+}
+
+    // Resolve a dotted-access receiver name to a transient block-style lookup context.
+    // Returns a pair (classDef*, objectDef*) — the caller uses findInBlock via a temp range.
+int LspServer::lookupDotted(const SemanticScope& scope, const string& receiverLower, int lineNum,
+                            const string& member) {
+    // A `#using`-imported member used as a receiver (e.g. `style.italics()`).
+    if(auto ut = scope.usingMemberType.find(receiverLower); ut != scope.usingMemberType.end()) {
+        InstanceBlockRange tmp{0,0,ut->second.first,ut->second.second};
+        if(int r = findInBlock(&tmp, member)) return r;
+    }
+    if(receiverLower == "self") {
+        return findInBlock(blockForLine(scope, lineNum), member);
+    }
+    // Class or enum lookup by name (e.g. bgl.world.instances)
+    typeDef& td = languageService.getType(receiverLower);
+    if(auto* cd = dynamic_cast<classDef*>(&td)) {
+        InstanceBlockRange tmp{0,0,cd,nullptr};
+        return findInBlock(&tmp, member);
+    }
+    // Check objectInstances directly (they're not always in globals).
+    for(typeDef* t : languageService.objectInstances) {
+        if(t->name != receiverLower) continue;
+        if(auto* od = dynamic_cast<objectDef*>(t)) {
+            InstanceBlockRange tmp{0,0,od->objectClass,od};
+            return findInBlock(&tmp, member);
+        }
+    }
+    // Global object or variable: check its members first, then its class hierarchy
+    for(typeDef* g : languageService.globals) {
+        if(g->name != receiverLower) continue;
+        if(auto* od = dynamic_cast<objectDef*>(g)) {
+            InstanceBlockRange tmp{0,0,od->objectClass,od};
+            return findInBlock(&tmp, member);
+        }
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
+            auto* cd = languageService.findClass(vd->type.name);
+            if(cd) { InstanceBlockRange tmp{0,0,cd,nullptr}; return findInBlock(&tmp, member); }
+        }
+    }
+    return 0;
+}
+
+// Token type for a bare `#using`-imported member name, or -1 when the name is not one.
+int LspServer::usingMemberKind(const SemanticScope& scope, const string& lowerName, int /*lineNum*/) {
+    auto it = scope.usingMemberTok.find(lowerName);
+    return it == scope.usingMemberTok.end() ? -1 : it->second;
+}
+
+    // Scan an interpolated-string body from cursor `i`, with the current literal segment beginning
+    // at `segStart`. Emits literal runs as stString and carves each `{expr}` slot as code. Used for
+    // BOTH the opening `$"…"` line and any continuation lines of a multi-line interpolated string, so
+    // embedded `{expr}` is colored the same on every line. Advances `i`; returns true iff the closing
+    // '"' is on this line (false means the string carries to the next line).
+bool LspServer::scanInterpString(const SemanticScope& scope,
+                                 const std::function<void(int,int,int,int)>& emit,
+                                 const string& lineText, size_t& i, int lineNum, size_t segStart) {
+    while(i < lineText.size()) {
+        char ic = lineText[i];
+        if(ic == '\\' && i + 1 < lineText.size()) { i += 2; continue; }
+        if(ic == '{') {
+            if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
+            i++;                // past {
+            int exprDepth = 1;
+            while(i < lineText.size() && exprDepth > 0) {
+                char ec = lineText[i];
+                if(isspace((unsigned char)ec)) { i++; continue; }
+                if(ec == '{') { exprDepth++; i++; continue; }
+                if(ec == '}') { exprDepth--; i++; continue; }
+                if(ec == '"') {
+                    size_t ss = i++;
+                    while(i < lineText.size() && lineText[i] != '"') {
+                        if(lineText[i] == '\\' && i + 1 < lineText.size()) i++;
+                        i++;
+                    }
+                    if(i < lineText.size()) i++;
+                    emit(lineNum, (int)ss, (int)(i - ss), stString);
+                    continue;
+                }
+                if(ec == '\'') {
+                    size_t ss = i++;
+                    while(i < lineText.size() && lineText[i] != '\'') {
+                        if(lineText[i] == '\\') i++;
+                        i++;
+                    }
+                    if(i < lineText.size()) i++;
+                    emit(lineNum, (int)ss, (int)(i - ss), stString);
+                    continue;
+                }
+                if(isalpha((unsigned char)ec) || ec == '_') {
+                    size_t ss = i;
+                    while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
+                    string word = lineText.substr(ss, i - ss);
+                    string lowerWord = word;
+                    transform(lowerWord.begin(), lowerWord.end(), lowerWord.begin(), ::tolower);
+                    if(ss > 0 && lineText[ss-1] == '.') {
+                        int rEnd = (int)ss - 1;
+                        int rStart = rEnd - 1;
+                        while(rStart >= 0 && (isalnum((unsigned char)lineText[rStart]) || lineText[rStart] == '_')) rStart--;
+                        rStart++;
+                        if(rStart < rEnd) {
+                            string recvLower = lineText.substr(rStart, rEnd - rStart);
+                            transform(recvLower.begin(), recvLower.end(), recvLower.begin(), ::tolower);
+                            int kind = lookupDotted(scope, recvLower, lineNum, lowerWord);
+                            if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
+                            if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
+                        }
+                    }
+                    if(const InstanceBlockRange* blk = blockForLine(scope, lineNum)) {
+                        int kind = findInBlock(blk, lowerWord);
+                        if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
+                        if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
+                    }
+                    int usingKind = usingMemberKind(scope, lowerWord, lineNum);
+                    if(usingKind >= 0) { emit(lineNum, (int)ss, (int)(i - ss), usingKind); continue; }
+                    int tokenType = classifyWord(word);
+                    if(tokenType >= 0) emit(lineNum, (int)ss, (int)(i - ss), tokenType);
+                    continue;
+                }
+                if(isdigit((unsigned char)ec)) {
+                    size_t ss = i;
+                    if(i + 1 < lineText.size() && lineText[i] == '0' && lineText[i+1] == 'x') {
+                        i += 2;
+                        while(i < lineText.size() && isxdigit((unsigned char)lineText[i])) i++;
+                    } else {
+                        while(i < lineText.size() && isdigit((unsigned char)lineText[i])) i++;
+                    }
+                    if(ss == 0 || !(isalnum((unsigned char)lineText[ss-1]) || lineText[ss-1] == '_'))
+                        emit(lineNum, (int)ss, (int)(i - ss), stNumber);
+                    continue;
+                }
+                if(ec == '.' && i + 1 < lineText.size() && isalpha((unsigned char)lineText[i+1])
+                   && (i == 0 || !(isalnum((unsigned char)lineText[i-1]) || lineText[i-1] == '_'))) {
+                    size_t ss = i++;
+                    if(i < lineText.size() && lineText[i] == '.') i++;
+                    while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
+                    emit(lineNum, (int)ss, (int)(i - ss), stString);
+                    continue;
+                }
+                i++;            // unrecognized inside expression slot
+            }
+            segStart = i;       // resume literal segment after closing }
+            continue;
+        }
+        if(ic == '"') {
+            emit(lineNum, (int)segStart, (int)(i - segStart + 1), stString);
+            i++;
+            return true;
+        }
+        i++;
+    }
+    if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
+    return false;
+}
+
 json LspServer::handleSemanticTokensFull(const json& params) {
     string uri = params["textDocument"]["uri"];
     auto docIt = openDocuments.find(uri);
@@ -3718,7 +4221,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
         return units;
     };
     // Helper: emit a token at (lineNum, byte start) with given byte length and type.
-    auto emit = [&](int lineNum, int start, int len, int tokenType) {
+    std::function<void(int,int,int,int)> emit = [&](int lineNum, int start, int len, int tokenType) {
         int u16start = byteToU16(lineText, start);
         int u16len   = byteToU16(lineText, start + len) - u16start;
         int deltaLine = lineNum - prevLine;
@@ -3779,351 +4282,10 @@ json LspServer::handleSemanticTokensFull(const json& params) {
     if(auto* schema = languageService.findClass("beguilersettingstype"))
         for(typeMember* m : schema->members) bsMemberNames.insert(m->name);
 
-    // Pre-scan instance/class body ranges so bare identifiers inside them can be resolved as
-    // members via class-hierarchy walk. Each entry: (startLine0, endLine0Exclusive, classDef*).
-    // For 'room foyer { short_name = ... }', the block covers the interior of foyer's body and
-    // maps to the 'room' classDef so 'short_name' (inherited from room) resolves as a property.
-    // For 'class Counter { ... }', maps to Counter itself so bare member names inside the class
-    // body resolve as members.
-    struct InstanceBlockRange { int startLine0; int endLine0Exclusive; classDef* cls; objectDef* obj; };
-    vector<InstanceBlockRange> instanceBlocks;
-    {
-        const string& txt = docIt->second;
-        // Helper: find the matching '}' for an open brace at openPos, skipping strings and
-        // // and /* */ comments. Returns the char index AFTER the matching '}', or npos if EOF.
-        auto matchClose = [&](size_t openPos) -> size_t {
-            int depth = 1;
-            size_t j = openPos + 1;
-            while(j < txt.size() && depth > 0) {
-                char c = txt[j];
-                if(c == '"') {
-                    j++;
-                    while(j < txt.size() && txt[j] != '"') {
-                        if(txt[j] == '\\') j++;
-                        if(j < txt.size()) j++;
-                    }
-                    if(j < txt.size()) j++;
-                } else if(c == '/' && j + 1 < txt.size() && txt[j+1] == '/') {
-                    while(j < txt.size() && txt[j] != '\n') j++;
-                } else if(c == '/' && j + 1 < txt.size() && txt[j+1] == '*') {
-                    j += 2;
-                    while(j + 1 < txt.size() && !(txt[j] == '*' && txt[j+1] == '/')) j++;
-                    if(j + 1 < txt.size()) j += 2;
-                } else {
-                    if(c == '{') depth++;
-                    else if(c == '}') { depth--; if(depth == 0) return j + 1; }
-                    j++;
-                }
-            }
-            return txt.size();
-        };
-        // Line-number-at-offset cache (linear scan ok for typical file sizes)
-        auto lineAt = [&](size_t offset) -> int {
-            int ln = 0;
-            for(size_t j = 0; j < offset && j < txt.size(); j++) if(txt[j] == '\n') ln++;
-            return ln;
-        };
-
-        string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
-        auto addFromSrcLine = [&](int srcLine1, classDef* cls, objectDef* obj) {
-            if(!cls && !obj) return;
-            if(srcLine1 <= 0) return;
-            // Find the first '{' on or after srcLine1-1 (0-based)
-            // Skip to the start of srcLine1
-            int targetLine = srcLine1 - 1;
-            int ln = 0; size_t startOff = 0;
-            while(startOff < txt.size() && ln < targetLine) {
-                if(txt[startOff] == '\n') ln++;
-                startOff++;
-            }
-            // Find first '{' from startOff (honouring strings/comments)
-            size_t bracePos = string::npos;
-            for(size_t j = startOff; j < txt.size(); j++) {
-                char c = txt[j];
-                if(c == '"') {
-                    j++;
-                    while(j < txt.size() && txt[j] != '"') { if(txt[j] == '\\') j++; if(j < txt.size()) j++; }
-                } else if(c == '/' && j + 1 < txt.size() && txt[j+1] == '/') {
-                    while(j < txt.size() && txt[j] != '\n') j++;
-                } else if(c == '/' && j + 1 < txt.size() && txt[j+1] == '*') {
-                    j += 2;
-                    while(j + 1 < txt.size() && !(txt[j] == '*' && txt[j+1] == '/')) j++;
-                    if(j + 1 < txt.size()) j++;
-                } else if(c == '{') { bracePos = j; break; }
-            }
-            if(bracePos == string::npos) return;
-            size_t closeEnd = matchClose(bracePos);
-            instanceBlocks.push_back({ lineAt(bracePos) + 1, lineAt(closeEnd), cls, obj });
-        };
-        // Instance bodies: record both the objectDef (for its own members, including methods
-        // declared inline) and its declared class (for inherited members).
-        for(typeDef* t : languageService.objectInstances) {
-            if(auto* od = dynamic_cast<objectDef*>(t)) {
-                if(od->src.file != curFile) continue;
-                addFromSrcLine(od->src.line, od->objectClass, od);
-            }
-        }
-        // Class bodies: the class itself is the lookup scope
-        for(typeDef* t : languageService.objectTypes) {
-            if(auto* cd = dynamic_cast<classDef*>(t)) {
-                if(cd->src.file != curFile) continue;
-                addFromSrcLine(cd->src.line, cd, nullptr);
-            }
-        }
-    }
-    // Return the innermost block containing lineNum, or nullptr.
-    auto blockForLine = [&](int lineNum) -> const InstanceBlockRange* {
-        const InstanceBlockRange* best = nullptr;
-        int bestStart = -1;
-        for(const auto& b : instanceBlocks) {
-            if(lineNum >= b.startLine0 && lineNum < b.endLine0Exclusive)
-                if(b.startLine0 > bestStart) { bestStart = b.startLine0; best = &b; }
-        }
-        return best;
-    };
-    // Walk a block's member scope (objectDef members first, then class hierarchy) looking for
-    // 'name'. Returns kind: 1 = variable/property, 2 = function/method, 0 = not found.
-    auto findInBlock = [&](const InstanceBlockRange* b, const string& name) -> int {
-        if(!b) return 0;
-        // objectDef's own members (includes methods declared inline in the instance body)
-        if(b->obj) {
-            for(typeMember* m : b->obj->members) {
-                if(m->name != name) continue;
-                if(dynamic_cast<variableDeclaration*>(m)) return 1;
-                if(dynamic_cast<functionDef*>(m))         return 2;
-            }
-        }
-        // Class hierarchy
-        if(!b->cls) return 0;
-        typeMember* hit = b->cls->findMember([&](typeMember* m){
-            return m->name == name
-                   && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
-        });
-        if(dynamic_cast<variableDeclaration*>(hit)) return 1;
-        if(dynamic_cast<functionDef*>(hit))         return 2;
-        return 0;
-    };
-
-    // `#using`-imported namespace members (bug: a bare `style` from `#using bgl.ui`, and its dotted
-    // `.italics`/`.roman`, were never colored — only receivers already declared as globals resolved).
-    // Precompute, from every active `#using <path>` in the doc (mirrors the completion-side resolution):
-    //   usingMemberTok   — bare member name → token type, for coloring a bare `style`.
-    //   usingMemberType  — bare member name → the (classDef, objectDef) it resolves to, so a dotted
-    //                      `style.italics` can be resolved against that type. `#using` is file-scoped.
-    std::map<string,int> usingMemberTok;
-    std::map<string,std::pair<classDef*,objectDef*>> usingMemberType;
-    {
-        auto objByName = [&](const string& nm) -> objectDef* {
-            if(auto* od = languageService.findGlobalAs<objectDef>(nm)) return od;
-            for(typeDef* t : languageService.objectInstances)
-                if(auto* od = dynamic_cast<objectDef*>(t)) if(od->name == nm) return od;
-            return nullptr;
-        };
-        auto walkObjectPath = [&](const string& path) -> objectDef* {
-            size_t dot = path.find('.');
-            string head = (dot == string::npos) ? path : path.substr(0, dot);
-            string rest = (dot == string::npos) ? "" : path.substr(dot + 1);
-            objectDef* curObj = objByName(head);
-            while(curObj && !rest.empty()){
-                dot = rest.find('.');
-                string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
-                rest = (dot == string::npos) ? "" : rest.substr(dot + 1);
-                objectDef* next = nullptr;
-                for(typeMember* m : curObj->members){
-                    auto* vd = dynamic_cast<variableDeclaration*>(m);
-                    if(!vd || vd->name != seg) continue;
-                    string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
-                    if(!initName.empty()) next = objByName(initName);
-                    if(!next)             next = objByName(vd->type.name);
-                    break;
-                }
-                curObj = next;
-            }
-            return curObj;
-        };
-        auto addMember = [&](typeMember* m){
-            if(auto* fd = dynamic_cast<functionDef*>(m)){
-                if(fd->isPrePassStub) return;
-                usingMemberTok[fd->name] = fd->isValueEmitter ? stVariable : stMethod;
-            } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-                usingMemberTok[vd->name] = vd->isAlias ? stClass : stVariable;
-                // Resolve what this member points at, so `member.foo` colors against it.
-                string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
-                objectDef* target = initName.empty() ? nullptr : objByName(initName);
-                if(!target) target = objByName(vd->type.name);
-                if(target) usingMemberType[vd->name] = {target->objectClass, target};
-                else if(auto* cd = languageService.findClass(vd->type.name))
-                    usingMemberType[vd->name] = {cd, nullptr};
-            }
-        };
-        istringstream ds(docIt->second);
-        string dl;
-        while(getline(ds, dl)){
-            size_t p = dl.find_first_not_of(" \t");
-            if(p == string::npos || dl.compare(p, 7, "#using ") != 0) continue;
-            size_t s = p + 7;
-            while(s < dl.size() && (dl[s] == ' ' || dl[s] == '\t')) s++;
-            size_t e = s;
-            while(e < dl.size() && (isalnum((unsigned char)dl[e]) || dl[e] == '_' || dl[e] == '.')) e++;
-            if(e <= s) continue;
-            string path = dl.substr(s, e - s);
-            transform(path.begin(), path.end(), path.begin(), ::tolower);
-            if(objectDef* ns = walkObjectPath(path)) {
-                for(typeMember* m : ns->members) addMember(m);
-            } else if(path.find('.') == string::npos) {
-                if(auto* cls = languageService.findClass(path))
-                    for(typeMember* m : cls->members) addMember(m);
-            }
-        }
-    }
-
-    // Resolve a dotted-access receiver name to a transient block-style lookup context.
-    // Returns a pair (classDef*, objectDef*) — the caller uses findInBlock via a temp range.
-    auto lookupDotted = [&](const string& receiverLower, int lineNum, const string& member) -> int {
-        // A `#using`-imported member used as a receiver (e.g. `style.italics()`).
-        if(auto ut = usingMemberType.find(receiverLower); ut != usingMemberType.end()) {
-            InstanceBlockRange tmp{0,0,ut->second.first,ut->second.second};
-            if(int r = findInBlock(&tmp, member)) return r;
-        }
-        if(receiverLower == "self") {
-            return findInBlock(blockForLine(lineNum), member);
-        }
-        // Class or enum lookup by name (e.g. bgl.world.instances)
-        typeDef& td = languageService.getType(receiverLower);
-        if(auto* cd = dynamic_cast<classDef*>(&td)) {
-            InstanceBlockRange tmp{0,0,cd,nullptr};
-            return findInBlock(&tmp, member);
-        }
-        // Check objectInstances directly (they're not always in globals).
-        for(typeDef* t : languageService.objectInstances) {
-            if(t->name != receiverLower) continue;
-            if(auto* od = dynamic_cast<objectDef*>(t)) {
-                InstanceBlockRange tmp{0,0,od->objectClass,od};
-                return findInBlock(&tmp, member);
-            }
-        }
-        // Global object or variable: check its members first, then its class hierarchy
-        for(typeDef* g : languageService.globals) {
-            if(g->name != receiverLower) continue;
-            if(auto* od = dynamic_cast<objectDef*>(g)) {
-                InstanceBlockRange tmp{0,0,od->objectClass,od};
-                return findInBlock(&tmp, member);
-            }
-            if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
-                auto* cd = languageService.findClass(vd->type.name);
-                if(cd) { InstanceBlockRange tmp{0,0,cd,nullptr}; return findInBlock(&tmp, member); }
-            }
-        }
-        return 0;
-    };
-    auto usingMemberKind = [&](const string& lowerName, int /*lineNum*/) -> int {
-        auto it = usingMemberTok.find(lowerName);
-        return it == usingMemberTok.end() ? -1 : it->second;
-    };
-
-    // Scan an interpolated-string body from cursor `i`, with the current literal segment beginning
-    // at `segStart`. Emits literal runs as stString and carves each `{expr}` slot as code. Used for
-    // BOTH the opening `$"…"` line and any continuation lines of a multi-line interpolated string, so
-    // embedded `{expr}` is colored the same on every line. Advances `i`; returns true iff the closing
-    // '"' is on this line (false means the string carries to the next line).
-    auto scanInterpString = [&](const string& lineText, size_t& i, int lineNum, size_t segStart) -> bool {
-        while(i < lineText.size()) {
-            char ic = lineText[i];
-            if(ic == '\\' && i + 1 < lineText.size()) { i += 2; continue; }
-            if(ic == '{') {
-                if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
-                i++;                // past {
-                int exprDepth = 1;
-                while(i < lineText.size() && exprDepth > 0) {
-                    char ec = lineText[i];
-                    if(isspace((unsigned char)ec)) { i++; continue; }
-                    if(ec == '{') { exprDepth++; i++; continue; }
-                    if(ec == '}') { exprDepth--; i++; continue; }
-                    if(ec == '"') {
-                        size_t ss = i++;
-                        while(i < lineText.size() && lineText[i] != '"') {
-                            if(lineText[i] == '\\' && i + 1 < lineText.size()) i++;
-                            i++;
-                        }
-                        if(i < lineText.size()) i++;
-                        emit(lineNum, (int)ss, (int)(i - ss), stString);
-                        continue;
-                    }
-                    if(ec == '\'') {
-                        size_t ss = i++;
-                        while(i < lineText.size() && lineText[i] != '\'') {
-                            if(lineText[i] == '\\') i++;
-                            i++;
-                        }
-                        if(i < lineText.size()) i++;
-                        emit(lineNum, (int)ss, (int)(i - ss), stString);
-                        continue;
-                    }
-                    if(isalpha((unsigned char)ec) || ec == '_') {
-                        size_t ss = i;
-                        while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
-                        string word = lineText.substr(ss, i - ss);
-                        string lowerWord = word;
-                        transform(lowerWord.begin(), lowerWord.end(), lowerWord.begin(), ::tolower);
-                        if(ss > 0 && lineText[ss-1] == '.') {
-                            int rEnd = (int)ss - 1;
-                            int rStart = rEnd - 1;
-                            while(rStart >= 0 && (isalnum((unsigned char)lineText[rStart]) || lineText[rStart] == '_')) rStart--;
-                            rStart++;
-                            if(rStart < rEnd) {
-                                string recvLower = lineText.substr(rStart, rEnd - rStart);
-                                transform(recvLower.begin(), recvLower.end(), recvLower.begin(), ::tolower);
-                                int kind = lookupDotted(recvLower, lineNum, lowerWord);
-                                if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
-                                if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
-                            }
-                        }
-                        if(const InstanceBlockRange* blk = blockForLine(lineNum)) {
-                            int kind = findInBlock(blk, lowerWord);
-                            if(kind == 2) { emit(lineNum, (int)ss, (int)(i - ss), stMethod);   continue; }
-                            if(kind == 1) { emit(lineNum, (int)ss, (int)(i - ss), stProperty); continue; }
-                        }
-                        int usingKind = usingMemberKind(lowerWord, lineNum);
-                        if(usingKind >= 0) { emit(lineNum, (int)ss, (int)(i - ss), usingKind); continue; }
-                        int tokenType = classifyWord(word);
-                        if(tokenType >= 0) emit(lineNum, (int)ss, (int)(i - ss), tokenType);
-                        continue;
-                    }
-                    if(isdigit((unsigned char)ec)) {
-                        size_t ss = i;
-                        if(i + 1 < lineText.size() && lineText[i] == '0' && lineText[i+1] == 'x') {
-                            i += 2;
-                            while(i < lineText.size() && isxdigit((unsigned char)lineText[i])) i++;
-                        } else {
-                            while(i < lineText.size() && isdigit((unsigned char)lineText[i])) i++;
-                        }
-                        if(ss == 0 || !(isalnum((unsigned char)lineText[ss-1]) || lineText[ss-1] == '_'))
-                            emit(lineNum, (int)ss, (int)(i - ss), stNumber);
-                        continue;
-                    }
-                    if(ec == '.' && i + 1 < lineText.size() && isalpha((unsigned char)lineText[i+1])
-                       && (i == 0 || !(isalnum((unsigned char)lineText[i-1]) || lineText[i-1] == '_'))) {
-                        size_t ss = i++;
-                        if(i < lineText.size() && lineText[i] == '.') i++;
-                        while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
-                        emit(lineNum, (int)ss, (int)(i - ss), stString);
-                        continue;
-                    }
-                    i++;            // unrecognized inside expression slot
-                }
-                segStart = i;       // resume literal segment after closing }
-                continue;
-            }
-            if(ic == '"') {
-                emit(lineNum, (int)segStart, (int)(i - segStart + 1), stString);
-                i++;
-                return true;
-            }
-            i++;
-        }
-        if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
-        return false;
-    };
+    // Document-derived lookup state, built once here and read by the classifying phases below.
+    SemanticScope scope;
+    buildInstanceBlockIndex(uri, docIt->second, scope);
+    collectUsingNamespaceMembers(docIt->second, scope);
 
     istringstream stream(docIt->second);
     lineText.clear();              // (declared earlier, ahead of `emit`, for UTF-16 column conversion)
@@ -4156,7 +4318,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
             // Continuation of a multi-line `$"…"`: carve `{expr}` slots as code, same as the opening
             // line, instead of flat whole-line stString (which swallowed embedded interpolation code).
             size_t j = 0;
-            bool closed = scanInterpString(lineText, j, lineNum, 0);
+            bool closed = scanInterpString(scope, emit, lineText, j, lineNum, 0);
             if(!closed) { lineNum++; continue; }   // string still open — whole line consumed
             inInterpolatedString = false;
             i = j;                                 // resume code scanning after the closing '"'
@@ -4258,7 +4420,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
             if(c == '$' && i + 1 < lineText.size() && lineText[i+1] == '"') {
                 size_t segStart = i;       // start of current stString segment ($" included)
                 i += 2;                     // past $"
-                bool closed = scanInterpString(lineText, i, lineNum, segStart);
+                bool closed = scanInterpString(scope, emit, lineText, i, lineNum, segStart);
                 if(!closed) inInterpolatedString = true;   // carries to next line (continuation carves {expr})
                 continue;
             }
@@ -4363,7 +4525,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
                     if(rStart < rEnd) {
                         string recvLower = lineText.substr(rStart, rEnd - rStart);
                         transform(recvLower.begin(), recvLower.end(), recvLower.begin(), ::tolower);
-                        int kind = lookupDotted(recvLower, lineNum, lowerWord);
+                        int kind = lookupDotted(scope, recvLower, lineNum, lowerWord);
                         if(kind == 2) { emit(lineNum, (int)start, (int)(i - start), stMethod);   continue; }
                         if(kind == 1) { emit(lineNum, (int)start, (int)(i - start), stProperty); continue; }
                     }
@@ -4373,7 +4535,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
                 // block's member scope (objectDef own members first, then class hierarchy).
                 // Covers Gap 1 (property initializers like `short_name = ...`) and Gap 2
                 // (method declarations like `bool before() { }` that live on the objectDef).
-                if(const InstanceBlockRange* blk = blockForLine(lineNum)) {
+                if(const InstanceBlockRange* blk = blockForLine(scope, lineNum)) {
                     int kind = findInBlock(blk, lowerWord);
                     if(kind == 2) { emit(lineNum, (int)start, (int)(i - start), stMethod);   continue; }
                     if(kind == 1) { emit(lineNum, (int)start, (int)(i - start), stProperty); continue; }
@@ -4381,7 +4543,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
 
                 // A bare identifier that names a `#using`-imported namespace member (e.g. `style`
                 // from `#using bgl.ui`) — color it as that member rather than leaving it default.
-                int usingKind = usingMemberKind(lowerWord, lineNum);
+                int usingKind = usingMemberKind(scope, lowerWord, lineNum);
                 if(usingKind >= 0) { emit(lineNum, (int)start, (int)(i - start), usingKind); continue; }
 
                 int tokenType = classifyWord(word);
