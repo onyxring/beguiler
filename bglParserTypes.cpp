@@ -1707,8 +1707,8 @@ optional<string> bglParser::qualifyFromCurrentClass(const string& name){
     // Direct members: match both variables and functions (same as before).
     // Static variables resolve to their mangled global name, not `self.name` — they
     // live outside any instance's property table.
-    for(typeMember* m : currentClass->members)
-        if(m->name == name)
+    for(typeMember* m : currentClass->members){
+        if(m->name == name){
             if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 if(vd->isStatic) return "_bgl_" + currentClass->dName() + "_" + vd->dName();
                 // `as <i6name>` — the member emits under the alias, so a bare reference
@@ -1717,6 +1717,8 @@ optional<string> bglParser::qualifyFromCurrentClass(const string& name){
             }
             else if(dynamic_cast<functionDef*>(m))
                 return "self." + m->dName();
+        }
+    }
     // Base class hierarchy: only match VARIABLES, not functions. Function/method resolution
     // has its own hierarchy-aware path (resolveMethod) that checks arity and types correctly.
     // Walking functions here would shadow global functions of the same name (e.g. `print`
