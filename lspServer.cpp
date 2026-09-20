@@ -1061,17 +1061,14 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
     // to the owning class's member declaration rather than the instance override.
     auto findClassMemberSrc = [&](classDef* startCls, const string& memberName) -> sourceLocation {
         sourceLocation result;
-        function<bool(classDef*)> walk = [&](classDef* c) -> bool {
-            if(!c) return false;
-            for(typeMember* m : c->members) {
-                if(m->name != memberName) continue;
-                if(auto* vd = dynamic_cast<variableDeclaration*>(m)) { result = vd->src; return true; }
-                if(auto* fd = dynamic_cast<functionDef*>(m)) { result = fd->src; return true; }
-            }
-            for(classDef* base : c->baseClasses) if(walk(base)) return true;
-            return false;
-        };
-        walk(startCls);
+        if(startCls) {
+            typeMember* hit = startCls->findMember([&](typeMember* m){
+                return m->name == memberName
+                       && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
+            });
+            if(auto* vd = dynamic_cast<variableDeclaration*>(hit)) result = vd->src;
+            else if(auto* fd = dynamic_cast<functionDef*>(hit)) result = fd->src;
+        }
         return result;
     };
     for(typeDef* t : languageService.objectInstances) {
@@ -1153,31 +1150,28 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
         auto [encCls, encObj] = findEnclosingType(fn);
         vector<typeMember*>* members = encCls ? &encCls->members : (encObj ? &encObj->members : nullptr);
         if(members) {
-            std::function<bool(classDef*)> searchClass = [&](classDef* c) -> bool {
+            auto searchClass = [&](classDef* c) -> bool {
                 if(!c) return false;
-                for(typeMember* m : c->members) {
-                    if(m->name != loweredName) continue;
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                        out.kind = LspSymbolRef::ClassMember;
-                        out.enclosingClass = c;
-                        out.typeName = vd->type.name;
-                        out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
-                        out.docComment = vd->docComment;
-                        out.declSrc = vd->src;
-                        return true;
-                    }
-                    if(auto* mfd = dynamic_cast<functionDef*>(m)) {
-                        out.kind = LspSymbolRef::ClassMember;
-                        out.enclosingClass = c;
-                        out.typeName = mfd->returnType.name;
-                        out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
-                        out.docComment = mfd->docComment;
-                        out.declSrc = mfd->src;
-                        return true;
-                    }
+                typeMember* hit = c->findMember([&](typeMember* m){
+                    return m->name == loweredName
+                           && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
+                });
+                if(!hit) return false;
+                out.kind = LspSymbolRef::ClassMember;
+                out.enclosingClass = c->declaringClassOf(hit);
+                if(auto* vd = dynamic_cast<variableDeclaration*>(hit)) {
+                    out.typeName = vd->type.name;
+                    out.displayName = vd->displayName.empty() ? vd->name : vd->displayName;
+                    out.docComment = vd->docComment;
+                    out.declSrc = vd->src;
+                } else {
+                    auto* mfd = dynamic_cast<functionDef*>(hit);
+                    out.typeName = mfd->returnType.name;
+                    out.displayName = mfd->displayName.empty() ? mfd->name : mfd->displayName;
+                    out.docComment = mfd->docComment;
+                    out.declSrc = mfd->src;
                 }
-                for(classDef* base : c->baseClasses) if(searchClass(base)) return true;
-                return false;
+                return true;
             };
             for(typeMember* m : *members) {
                 if(m->name == loweredName) {
@@ -1410,35 +1404,25 @@ json LspServer::handleHover(const json& params) {
 
         // Search class hierarchy for the member
         if(cls) {
-            function<bool(classDef*)> findMember = [&](classDef* c) -> bool {
-                if(!c) return false;
-                for(typeMember* m : c->members) {
-                    if(m->name == lower) {
-                        if(auto* fd = dynamic_cast<functionDef*>(m)) {
-                            typeInfo = typeDisplay(fd->returnType.name) + " " +
-                                       (fd->displayName.empty() ? fd->name : fd->displayName);
-                            if(!fd->isValueEmitter) {
-                                typeInfo += "(";
-                                for(size_t i = 0; i < fd->params.size(); i++) {
-                                    if(i > 0) typeInfo += ", ";
-                                    typeInfo += typeDisplay(fd->params[i]->type.name) + " " +
-                                                (fd->params[i]->displayName.empty() ? fd->params[i]->name : fd->params[i]->displayName);
-                                }
-                                typeInfo += ")";
-                            }
-                            if(fd->isEmitter) typeInfo = "emitter " + typeInfo;
-                        } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                            typeInfo = typeDisplay(vd->type.name) + " " +
-                                       (vd->displayName.empty() ? vd->name : vd->displayName);
+            if(typeMember* m = cls->findMember([&](typeMember* mm){ return mm->name == lower; })) {
+                if(auto* fd = dynamic_cast<functionDef*>(m)) {
+                    typeInfo = typeDisplay(fd->returnType.name) + " " +
+                               (fd->displayName.empty() ? fd->name : fd->displayName);
+                    if(!fd->isValueEmitter) {
+                        typeInfo += "(";
+                        for(size_t i = 0; i < fd->params.size(); i++) {
+                            if(i > 0) typeInfo += ", ";
+                            typeInfo += typeDisplay(fd->params[i]->type.name) + " " +
+                                        (fd->params[i]->displayName.empty() ? fd->params[i]->name : fd->params[i]->displayName);
                         }
-                        return true;
+                        typeInfo += ")";
                     }
+                    if(fd->isEmitter) typeInfo = "emitter " + typeInfo;
+                } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
+                    typeInfo = typeDisplay(vd->type.name) + " " +
+                               (vd->displayName.empty() ? vd->name : vd->displayName);
                 }
-                for(classDef* base : c->baseClasses)
-                    if(findMember(base)) return true;
-                return false;
-            };
-            findMember(cls);
+            }
         }
 
         // Also check object instance members (including namespace walking for dotted paths)
@@ -1500,24 +1484,19 @@ json LspServer::handleHover(const json& params) {
             }
             // Owner resolved to a class (e.g. bgl.asm → bglOpCodes emitter class) — hover its member.
             if(typeInfo.empty() && nsCls){
-                function<bool(classDef*)> findInCls = [&](classDef* c) -> bool {
-                    if(!c) return false;
-                    for(typeMember* m : c->members){
-                        if(m->name != lower) continue;
-                        if(auto* fd = dynamic_cast<functionDef*>(m)){
-                            if(fd->isPrePassStub) continue;
-                            typeInfo = typeDisplay(fd->returnType.name) + " " + (fd->displayName.empty() ? fd->name : fd->displayName) + "(...)";
-                            if(fd->isEmitter) typeInfo = "emitter " + typeInfo;
-                            return true;
-                        } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-                            typeInfo = typeDisplay(vd->type.name) + " " + (vd->displayName.empty() ? vd->name : vd->displayName);
-                            return true;
-                        }
+                if(typeMember* m = nsCls->findMember([&](typeMember* mm){
+                        if(mm->name != lower) return false;
+                        auto* fd = dynamic_cast<functionDef*>(mm);
+                        if(fd != nullptr) return !fd->isPrePassStub;
+                        return dynamic_cast<variableDeclaration*>(mm) != nullptr;
+                   })){
+                    if(auto* fd = dynamic_cast<functionDef*>(m)){
+                        typeInfo = typeDisplay(fd->returnType.name) + " " + (fd->displayName.empty() ? fd->name : fd->displayName) + "(...)";
+                        if(fd->isEmitter) typeInfo = "emitter " + typeInfo;
+                    } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+                        typeInfo = typeDisplay(vd->type.name) + " " + (vd->displayName.empty() ? vd->name : vd->displayName);
                     }
-                    for(classDef* base : c->baseClasses) if(findInCls(base)) return true;
-                    return false;
-                };
-                findInCls(nsCls);
+                }
             }
         }
     }
@@ -1699,14 +1678,11 @@ vector<paramDef*> LspServer::resolveCalleeParams(const string& uri, int line,
         if(!cls)
             if(auto* vd = languageService.findGlobalAs<variableDeclaration>(objLower)) cls = languageService.findClass(vd->type.name);
 
-        function<void(classDef*)> findMethods = [&](classDef* c) {
-            if(!c) return;
-            for(typeMember* m : c->members)
+        if(cls)
+            cls->forEachMember([&](typeMember* m){
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     if(fd->name == lower && !fd->isPrePassStub) candidates.push_back(fd);
-            for(classDef* base : c->baseClasses) findMethods(base);
-        };
-        if(cls) findMethods(cls);
+            });
     } else {
         // Bare call: global functions first, then #using-imported namespace members.
         for(typeDef* g : languageService.globals)
@@ -2369,11 +2345,11 @@ json LspServer::handleCompletion(const json& params) {
 
         // Collect class members walking the hierarchy.
         json items = json::array();
-        function<void(classDef*)> collectMembers = [&](classDef* c) {
+        auto collectMembers = [&](classDef* c) {
             if(!c) return;
-            for(typeMember* m : c->members) {
+            c->forEachMember([&](typeMember* m) {
                 if(auto* fd = dynamic_cast<functionDef*>(m)) {
-                    if(fd->isPrePassStub) continue;
+                    if(fd->isPrePassStub) return;
                     int kind = fd->isValueEmitter ? 6 : 2;  // 6=Variable, 2=Method
                     string detail = fd->returnType.name;
                     string label = fd->displayName.empty() ? fd->name : fd->displayName;
@@ -2393,8 +2369,7 @@ json LspServer::handleCompletion(const json& params) {
                         {"detail", vd->type.name}
                     });
                 }
-            }
-            for(classDef* base : c->baseClasses) collectMembers(base);
+            });
         };
         collectMembers(cls);
 
@@ -3006,17 +2981,14 @@ json LspServer::handleDefinition(const json& params) {
             typeDef& td = languageService.getType(ownerLower);
             cls = dynamic_cast<classDef*>(&td);
         }
-        function<bool(classDef*)> findMember = [&](classDef* c) -> bool {
-            if(!c) return false;
-            for(typeMember* m : c->members) {
-                if(m->name != lower) continue;
-                if(auto* vd = dynamic_cast<variableDeclaration*>(m)) { src = vd->src; return true; }
-                if(auto* fd = dynamic_cast<functionDef*>(m)) { src = fd->src; return true; }
-            }
-            for(classDef* base : c->baseClasses) if(findMember(base)) return true;
-            return false;
-        };
-        findMember(cls);
+        if(cls) {
+            typeMember* hit = cls->findMember([&](typeMember* m){
+                return m->name == lower
+                       && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
+            });
+            if(auto* vd = dynamic_cast<variableDeclaration*>(hit)) src = vd->src;
+            else if(auto* fd = dynamic_cast<functionDef*>(hit)) src = fd->src;
+        }
 
         // Namespace walk: if class lookup didn't find it, walk the dotted path through
         // namespace objects to locate the target object, then search its members.
@@ -3079,17 +3051,12 @@ json LspServer::handleDefinition(const json& params) {
             // Owner resolved to a class (e.g. bgl.asm → bglOpCodes emitter class) — jump to the
             // member's definition in the class hierarchy.
             if(src.file.empty() && nsCls){
-                function<bool(classDef*)> findInCls = [&](classDef* c) -> bool {
-                    if(!c) return false;
-                    for(typeMember* m : c->members){
-                        if(m->name != lower) continue;
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(m)){ src = vd->src; return true; }
-                        if(auto* fd = dynamic_cast<functionDef*>(m)){ src = fd->src; return true; }
-                    }
-                    for(classDef* base : c->baseClasses) if(findInCls(base)) return true;
-                    return false;
-                };
-                findInCls(nsCls);
+                typeMember* hit = nsCls->findMember([&](typeMember* m){
+                    return m->name == lower
+                           && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
+                });
+                if(auto* vd = dynamic_cast<variableDeclaration*>(hit)) src = vd->src;
+                else if(auto* fd = dynamic_cast<functionDef*>(hit)) src = fd->src;
             }
         }
     } else {
@@ -3394,16 +3361,12 @@ json LspServer::handleSignatureHelp(const json& params) {
         }
 
         // Walk class hierarchy for matching methods
-        function<void(classDef*)> findMethods = [&](classDef* c) {
-            if(!c) return;
-            for(typeMember* m : c->members) {
+        if(cls)
+            cls->forEachMember([&](typeMember* m) {
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     if(fd->name == lower && !fd->isValueEmitter && !fd->isPrePassStub)
                         candidates.push_back(fd);
-            }
-            for(classDef* base : c->baseClasses) findMethods(base);
-        };
-        if(cls) findMethods(cls);
+            });
     } else {
         // Global function
         for(typeDef* g : languageService.globals) {
@@ -3931,17 +3894,14 @@ json LspServer::handleSemanticTokensFull(const json& params) {
             }
         }
         // Class hierarchy
-        function<int(classDef*)> walk = [&](classDef* c) -> int {
-            if(!c) return 0;
-            for(typeMember* m : c->members) {
-                if(m->name != name) continue;
-                if(dynamic_cast<variableDeclaration*>(m)) return 1;
-                if(dynamic_cast<functionDef*>(m))         return 2;
-            }
-            for(classDef* base : c->baseClasses) { int r = walk(base); if(r) return r; }
-            return 0;
-        };
-        return walk(b->cls);
+        if(!b->cls) return 0;
+        typeMember* hit = b->cls->findMember([&](typeMember* m){
+            return m->name == name
+                   && (dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m));
+        });
+        if(dynamic_cast<variableDeclaration*>(hit)) return 1;
+        if(dynamic_cast<functionDef*>(hit))         return 2;
+        return 0;
     };
 
     // `#using`-imported namespace members (bug: a bare `style` from `#using bgl.ui`, and its dotted

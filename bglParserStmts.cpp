@@ -849,20 +849,17 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
     string conditionType = swStmt.condition->resolvedType;
     classDef* condCls = !conditionType.empty() ? languageService.findClass(conditionType) : nullptr;
     if(condCls != nullptr){
-        std::function<void(classDef*)> findSwitchOps = [&](classDef* c){
-            for(typeMember* m : c->members)
-                if(auto* fn = dynamic_cast<functionDef*>(m))
-                    if(fn->name == "switch" && fn->isEmitter && fn->params.size() == 1)
-                        if(auto* blk = dynamic_cast<i6Block*>(fn->body)){
-                            string paramType = fn->params[0]->type.name;
-                            if(swStmt.switchEmitters.find(paramType) == swStmt.switchEmitters.end()){
-                                string b = processBglConditionals(blk->i6Body);
-                                swStmt.switchEmitters[paramType] = fn->params[0]->name + "\t" + b;
-                            }
+        condCls->forEachMember([&](typeMember* m){
+            if(auto* fn = dynamic_cast<functionDef*>(m))
+                if(fn->name == "switch" && fn->isEmitter && fn->params.size() == 1)
+                    if(auto* blk = dynamic_cast<i6Block*>(fn->body)){
+                        string paramType = fn->params[0]->type.name;
+                        if(swStmt.switchEmitters.find(paramType) == swStmt.switchEmitters.end()){
+                            string b = processBglConditionals(blk->i6Body);
+                            swStmt.switchEmitters[paramType] = fn->params[0]->name + "\t" + b;
                         }
-            for(classDef* base : c->baseClasses) findSwitchOps(base);
-        };
-        findSwitchOps(condCls);
+                    }
+        });
         if(!swStmt.switchEmitters.empty()) swStmt.needsIfChain = true;
     }
     file.getToken(token::braceOpen);
@@ -1856,11 +1853,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                             classDef* paramCls = getDispatchClass(opFunc->params[0]->type.name);
                             classDef* valCls   = getDispatchClass(valueTypeName);
                             if(!paramCls || !valCls || paramCls == valCls) return false;
-                            std::function<bool(classDef*)> inh = [&](classDef* c) -> bool {
-                                for(classDef* b : c->baseClasses) if(b == paramCls || inh(b)) return true;
-                                return false;
-                            };
-                            return inh(valCls);
+                            return valCls->hasAncestor(paramCls);
                         });
                         if(m){
                             auto* opFunc = dynamic_cast<functionDef*>(m);
@@ -2308,15 +2301,10 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
                     bool isGlobalFunc = false;
                     if(auto* fd = languageService.findGlobalAs<functionDef>(rawName)) isGlobalFunc = true;
                     if(!isGlobalFunc){
-                        function<bool(classDef*)> searchHierarchy = [&](classDef* c) -> bool {
-                            for(typeMember* m : c->members)
-                                if(auto* fd = dynamic_cast<functionDef*>(m))
-                                    if(fd->name == rawName) return true;
-                            for(classDef* base : c->baseClasses)
-                                if(searchHierarchy(base)) return true;
-                            return false;
-                        };
-                        if(searchHierarchy(currentClass)) qualified = "self." + rawName;
+                        if(currentClass->findMember([&](typeMember* m){
+                               auto* fd = dynamic_cast<functionDef*>(m);
+                               return fd != nullptr && fd->name == rawName;
+                           })) qualified = "self." + rawName;
                     }
                 }
                 callStmt.functionName = qualified.empty() ? rawName : qualified;

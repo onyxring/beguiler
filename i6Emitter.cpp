@@ -341,18 +341,11 @@ void i6Emitter::emitParamCopyIns(functionDef* fd, const string& indent){
         if(!p->isClassParamWithBacking) continue;
         classDef* cls = languageService.findClass(p->type.name);
         if(!cls) continue;
-        functionDef* assignOp = nullptr;
-        function<void(classDef*)> findOp = [&](classDef* c){
-            if(!c || assignOp) return;
-            for(typeMember* m : c->members)
-                if(auto* fd = dynamic_cast<functionDef*>(m))
-                    if(fd->name == "=" && fd->params.size() == 1
-                       && (fd->params[0]->type.name == p->type.name || fd->params[0]->type.name == "var")){
-                        assignOp = fd; return;
-                    }
-            for(classDef* base : c->baseClasses) findOp(base);
-        };
-        findOp(cls);
+        auto* assignOp = dynamic_cast<functionDef*>(cls->findMember([&](typeMember* m){
+            auto* fd = dynamic_cast<functionDef*>(m);
+            return fd != nullptr && fd->name == "=" && fd->params.size() == 1
+                   && (fd->params[0]->type.name == p->type.name || fd->params[0]->type.name == "var");
+        }));
         if(!assignOp) continue;  // parser already errored if missing; defensive
         const string& opName = assignOp->i6name.empty() ? assignOp->dName() : assignOp->i6name;
         out << format("{0}{1}.{2}({3});\n", indent, p->i6name, opName, p->name);
@@ -891,19 +884,14 @@ void i6Emitter::writeDebugBundle(const string& path){
     // inference-typed instance assignment like `name = {.a,.b}` (type inherited from the class) leaves
     // the instance member's own type.name empty, so without this the debugger can't decode it (e.g. an
     // object's `name` array<dictionaryword> would render as a raw number).
-    std::function<string(classDef*, const string&)> inheritedMemberType =
-        [&](classDef* cd, const string& nm) -> string {
-            if(!cd) return "";
-            for(typeMember* cm : cd->members)
-                if(auto* cmv = dynamic_cast<variableDeclaration*>(cm))
-                    if(cmv->name == nm && !propTypeName(cmv).empty())
-                        return propTypeName(cmv);
-            for(classDef* base : cd->baseClasses){
-                string t = inheritedMemberType(base, nm);
-                if(!t.empty()) return t;
-            }
-            return "";
-        };
+    auto inheritedMemberType = [&](classDef* cd, const string& nm) -> string {
+        if(!cd) return "";
+        typeMember* cm = cd->findMember([&](typeMember* m){
+            auto* cmv = dynamic_cast<variableDeclaration*>(m);
+            return cmv != nullptr && cmv->name == nm && !propTypeName(cmv).empty();
+        });
+        return cm == nullptr ? "" : propTypeName(dynamic_cast<variableDeclaration*>(cm));
+    };
 
     // Class declarations
     for(typeDef* node : languageService.globals){
@@ -2436,18 +2424,10 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
 
             classDef* cls = languageService.findClass(rt);
             if(cls != nullptr){
-                functionDef* printFn = nullptr;
-                std::function<void(classDef*)> findPrint = [&](classDef* c){
-                    for(typeMember* m : c->members)
-                        if(auto* fd = dynamic_cast<functionDef*>(m))
-                            if(fd->name == "print" && fd->params.empty()){
-                                printFn = fd;
-                                return;
-                            }
-                    if(printFn == nullptr)
-                        for(classDef* base : c->baseClasses){ findPrint(base); if(printFn) return; }
-                };
-                findPrint(cls);
+                auto* printFn = dynamic_cast<functionDef*>(cls->findMember([](typeMember* m){
+                    auto* fd = dynamic_cast<functionDef*>(m);
+                    return fd != nullptr && fd->name == "print" && fd->params.empty();
+                }));
 
                 if(printFn != nullptr && printFn->isEmitter){
                     if(auto* blk = dynamic_cast<i6Block*>(printFn->body)){
@@ -2959,12 +2939,8 @@ void i6Emitter::emitObject(objectDef* obj){
         // Own members first (an instance-level declaration wins), then members inherited from the
         // object's class chain — so `class Thing { Box b; }` gives every `Thing` instance its own Box.
         for(typeMember* m : obj->members) consider(dynamic_cast<variableDeclaration*>(m));
-        std::function<void(classDef*)> scanClass = [&](classDef* c){
-            if(!c) return;
-            for(typeMember* m : c->members) consider(dynamic_cast<variableDeclaration*>(m));
-            for(classDef* b : c->baseClasses) scanClass(b);
-        };
-        scanClass(obj->objectClass);
+        if(obj->objectClass)
+            obj->objectClass->forEachMember([&](typeMember* m){ consider(dynamic_cast<variableDeclaration*>(m)); });
     }
 
     // Owned members that are INHERITED from the class chain (not redeclared on this instance) still
@@ -2978,17 +2954,14 @@ void i6Emitter::emitObject(objectDef* obj){
         set<string> ownArrNames;
         for(typeMember* m : obj->members)
             if(auto* a = dynamic_cast<arrayDeclaration*>(m)) ownArrNames.insert(a->name);
-        std::function<void(classDef*)> scanPromoted = [&](classDef* c){
-            if(c == nullptr) return;
-            for(typeMember* m : c->members)
+        if(obj->objectClass != nullptr)
+            obj->objectClass->forEachMember([&](typeMember* m){
                 if(auto* a = dynamic_cast<arrayDeclaration*>(m))
                     if(a->isPromoted && !ownArrNames.count(a->name)){
                         ownArrNames.insert(a->name);
                         inheritedOwned.push_back({a->dName(), promotedArrayName(obj->dName(), a->dName())});
                     }
-            for(classDef* b : c->baseClasses) scanPromoted(b);
-        };
-        scanPromoted(obj->objectClass);
+            });
     }
     {
         set<string> ownMemberNames;
@@ -3314,15 +3287,10 @@ void i6Emitter::synthesizePooledOwnedMembers(){
         // Owned members: own declarations plus those inherited from the class chain (dedup by name).
         vector<variableDeclaration*> owned;
         set<string> seenName;
-        std::function<void(classDef*)> scan = [&](classDef* c){
-            if(!c) return;
-            for(typeMember* m : c->members){
-                auto* vd = dynamic_cast<variableDeclaration*>(m);
-                if(vd && !seenName.count(vd->name) && ownedClass(vd)){ owned.push_back(vd); seenName.insert(vd->name); }
-            }
-            for(classDef* b : c->baseClasses) scan(b);
-        };
-        scan(cd);
+        cd->forEachMember([&](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd && !seenName.count(vd->name) && ownedClass(vd)){ owned.push_back(vd); seenName.insert(vd->name); }
+        });
         if(owned.empty()) continue;
 
         // Insertion point: just before the pooled class in `globals`, so the backing instances and

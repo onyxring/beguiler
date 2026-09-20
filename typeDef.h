@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <functional>
 
 using namespace std;
 
@@ -119,6 +120,23 @@ class classDef:public typeDef{
         // bglLanguageService::isClassType / getType consult parser.currentClass to recognize
         // them inside the class body; method lookup substitutes parameter→concrete at call sites.
         vector<string> typeParameters;
+
+        // ---- class-hierarchy walks (own members first, then each base depth-first) ----
+        // Every one of these requires a non-null receiver; callers guard the pointer first.
+
+        // First member of the hierarchy for which `pred` is true — own members in declaration
+        // order, then each base in `baseClasses` order, recursively. nullptr if none matches.
+        typeMember* findMember(const std::function<bool(typeMember*)>& pred);
+        // Visit EVERY member of the hierarchy in that same order, with no early exit. A member
+        // reachable through two base paths is visited once per path; callers that need each
+        // member at most once dedupe themselves.
+        void forEachMember(const std::function<void(typeMember*)>& fn);
+        // True iff `ancestor` is a STRICT (transitive) base of this class — the same class is
+        // NOT its own ancestor. The single implementation behind free function isAncestorClass().
+        bool hasAncestor(const classDef* ancestor) const;
+        // The class in this hierarchy (self first, then bases depth-first) whose `members` holds
+        // `m` by POINTER identity — i.e. the class that declares it. nullptr if no class does.
+        classDef* declaringClassOf(const typeMember* m);
 };
 //instances of classes, including overrides
 class objectDef: public typeDef{

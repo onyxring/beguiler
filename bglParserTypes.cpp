@@ -733,16 +733,11 @@ bool bglParser::isInheritedObjectMember(const string& name, functionDef* func, s
         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
             if(vd->name == name) return false;
     // Now walk the class hierarchy.
-    function<bool(classDef*)> walk = [&](classDef* c) -> bool {
-        if(!c) return false;
-        for(typeMember* m : c->members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->name == name) return true;
-        for(classDef* base : c->baseClasses)
-            if(walk(base)) return true;
-        return false;
-    };
-    return walk(currentObject->objectClass);
+    classDef* objCls = currentObject->objectClass;
+    return objCls != nullptr && objCls->findMember([&](typeMember* m){
+        auto* vd = dynamic_cast<variableDeclaration*>(m);
+        return vd != nullptr && vd->name == name;
+    }) != nullptr;
 }
 
 // Return the declared element type of an array variable, or "" if `name` isn't an arrayDeclaration
@@ -913,10 +908,9 @@ vector<functionDef*> bglParser::collectMethodCandidates(const string& typeName, 
         if(fd->isPrePassStub) stubs.push_back(fd);   // forward method (declared later) — fallback only
         else                  out.push_back(fd);
     };
-    std::function<void(classDef*)> walk = [&](classDef* c){
+    auto walk = [&](classDef* c){
         if(!c) return;
-        for(typeMember* m : c->members) if(auto* fd = dynamic_cast<functionDef*>(m)) add(fd);
-        for(classDef* base : c->baseClasses) walk(base);
+        c->forEachMember([&](typeMember* m){ if(auto* fd = dynamic_cast<functionDef*>(m)) add(fd); });
     };
     walk(getDispatchClass(typeName));
     if(auto* od = languageService.findObjectType(typeName)){
@@ -944,13 +938,11 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
     // value class declaring `inline` members (positional slots) — both bake through
     // bakeInlineObjectAggregate. Value/collection types with `operator=(initializerList)` use the
     // braced-LIST path instead and are intentionally excluded here.
-    std::function<bool(classDef*)> hasInlineMember = [&](classDef* k) -> bool {
-        if(!k) return false;
-        for(typeMember* m : k->members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->isInline) return true;
-        for(classDef* b : k->baseClasses) if(hasInlineMember(b)) return true;
-        return false;
+    auto hasInlineMember = [](classDef* k) -> bool {
+        return k != nullptr && k->findMember([](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            return vd != nullptr && vd->isInline;
+        }) != nullptr;
     };
     auto inlineConstructible = [&](classDef* c){ return c && (inheritsFromObject(c) || hasInlineMember(c)); };
     for(auto* fd : candidates){
@@ -1248,13 +1240,7 @@ string bglParser::operatorRef(const string& typeName, const string& opName,
         // referenced through a subclass produced `_bgl_Derived__oplteqgt` for a routine
         // emitted as `_bgl_Base__oplteqgt` — a name I6 rejects outright. This bit both
         // `Type::operator` and $opref, so a sort over a subclass was broken too.
-        std::function<classDef*(classDef*)> owner = [&](classDef* c) -> classDef* {
-            if(c == nullptr) return nullptr;
-            for(typeMember* mm : c->members) if(mm == f) return c;
-            for(classDef* b : c->baseClasses) if(classDef* r = owner(b)) return r;
-            return nullptr;
-        };
-        classDef* declaring = owner(cd);
+        classDef* declaring = cd == nullptr ? nullptr : cd->declaringClassOf(f);
         return i6Emitter::staticRoutineName(declaring ? declaring : cd, f);
     }
     return f->i6name;                                 // instance: the mangled property name
@@ -1939,16 +1925,11 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                 for(typeMember* m : currentObject->members)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                         if(vd->name == name) return true;
-                function<bool(classDef*)> walk = [&](classDef* c) -> bool {
-                    if(!c) return false;
-                    for(typeMember* m : c->members)
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                            if(vd->name == name) return true;
-                    for(classDef* base : c->baseClasses)
-                        if(walk(base)) return true;
-                    return false;
-                };
-                return walk(currentObject->objectClass);
+                classDef* objCls = currentObject->objectClass;
+                return objCls != nullptr && objCls->findMember([&](typeMember* m){
+                    auto* vd = dynamic_cast<variableDeclaration*>(m);
+                    return vd != nullptr && vd->name == name;
+                }) != nullptr;
             };
             if(isObjectProperty()){
                 parsingWarning(format(
@@ -2203,13 +2184,7 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
         classDef* argCls2 = getDispatchClass(argType);
         classDef* paramCls2 = getDispatchClass(paramType);
         if(argCls2 && paramCls2){
-            std::function<bool(classDef*)> inheritsFrom = [&](classDef* c) -> bool {
-                for(classDef* base : c->baseClasses){
-                    if(base == paramCls2 || inheritsFrom(base)) return true;
-                }
-                return false;
-            };
-            if(inheritsFrom(argCls2)) return true;
+            if(argCls2->hasAncestor(paramCls2)) return true;
         }
     }
     // Block implicit upcast: if argType is an ancestor of paramType, object-level operator= inherited
@@ -2219,12 +2194,7 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
         classDef* argCls3  = getDispatchClass(argType);
         classDef* paramCls3 = getDispatchClass(paramType);
         if(argCls3 && paramCls3 && argCls3 != paramCls3){
-            std::function<bool(classDef*)> isAncestorOf = [&](classDef* c) -> bool {
-                for(classDef* base : c->baseClasses)
-                    if(base == argCls3 || isAncestorOf(base)) return true;
-                return false;
-            };
-            if(isAncestorOf(paramCls3)) return false;
+            if(paramCls3->hasAncestor(argCls3)) return false;
         }
     }
     // Check target type's operator = (argType)
@@ -2251,11 +2221,7 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
                 // class name — e.g. a bare objectDef `m` (type "m", class `object`) into
                 // `operator=(object)`. Accept it here by class identity.
                 if(parCls == argClsOp) return true;
-                std::function<bool(classDef*)> inh = [&](classDef* c) -> bool {
-                    for(classDef* b : c->baseClasses) if(b == parCls || inh(b)) return true;
-                    return false;
-                };
-                return inh(argClsOp);
+                return argClsOp->hasAncestor(parCls);
             })) return true;
         }
         if(findMemberInHierarchy(cls, [&](typeMember* m){
@@ -2513,9 +2479,8 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
         if(looseIdentifierMode){
             functionDef* sole = nullptr;
             int matchCount = 0;
-            std::function<void(classDef*)> gatherLoose = [&](classDef* c){
-                if(!c) return;
-                for(typeMember* m : c->members)
+            if(auto* cls = getDispatchClass(objType))
+                cls->forEachMember([&](typeMember* m){
                     if(auto* fd = dynamic_cast<functionDef*>(m))
                         if(fd->name == methodName && !fd->isPrePassStub){
                             size_t req = 0;
@@ -2524,10 +2489,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
                                 sole = fd; matchCount++;
                             }
                         }
-                for(classDef* base : c->baseClasses) gatherLoose(base);
-            };
-            if(auto* cls = getDispatchClass(objType))
-                gatherLoose(cls);
+                });
             if(matchCount == 1){
                 mm.method = sole;
                 finalizeCallArgs(args, namedArgNames, interpSegmentsPerArg, mm.method);
@@ -2544,9 +2506,8 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
             provided += at.empty() ? "?" : typeDisplayName(at);
         }
         vector<functionDef*> candidates;
-        std::function<void(classDef*)> gather = [&](classDef* c){
-            if(!c) return;
-            for(typeMember* m : c->members)
+        if(auto* cls = getDispatchClass(objType))
+            cls->forEachMember([&](typeMember* m){
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     if(fd->name == methodName && !fd->isPrePassStub){
                         size_t req = 0;
@@ -2554,10 +2515,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
                         if(args.size() >= req && args.size() <= fd->params.size())
                             candidates.push_back(fd);
                     }
-            for(classDef* base : c->baseClasses) gather(base);
-        };
-        if(auto* cls = getDispatchClass(objType))
-            gather(cls);
+            });
         string detail;
         for(functionDef* fd : candidates){
             detail += "\n  candidate: " + formatSignature(fd);

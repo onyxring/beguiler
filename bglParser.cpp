@@ -432,13 +432,10 @@ void bglParser::validateHiddenMembers(){
             // The hidden member must exist in the INHERITED surface (a base class) — you hide what
             // you inherited; hiding a self-declared member is "just don't declare it".
             typeMember* mem = nullptr;
-            std::function<void(classDef*)> search = [&](classDef* c){
-                if(mem) return;
-                for(typeMember* m : c->members)
-                    if(m->name == hm.memberName){ mem = m; return; }
-                for(classDef* b : c->baseClasses){ search(b); if(mem) return; }
-            };
-            for(classDef* b : cls->baseClasses){ search(b); if(mem) break; }
+            for(classDef* b : cls->baseClasses){
+                mem = b->findMember([&](typeMember* m){ return m->name == hm.memberName; });
+                if(mem) break;
+            }
             string where = hm.src.line > 0 ? format("{0}:{1}:1: ", hm.src.file, hm.src.line) : string();
             if(mem == nullptr){
                 parsingWarning(where + format("hide '{0}' on '{1}': no inherited member named '{0}' — "
@@ -578,14 +575,11 @@ void bglParser::recordObjectMemberInits(){
         for(typeMember* m : obj->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(seen.insert(vd->name).second) candidates.push_back(vd);
-        std::function<void(classDef*)> scanClass = [&](classDef* c){
-            if(c == nullptr) return;
-            for(typeMember* m : c->members)
+        if(obj->objectClass != nullptr)
+            obj->objectClass->forEachMember([&](typeMember* m){
                 if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                     if(seen.insert(vd->name).second) candidates.push_back(vd);
-            for(classDef* b : c->baseClasses) scanClass(b);
-        };
-        scanClass(obj->objectClass);
+            });
 
         // A class-typed member may itself hold class-typed members needing init — an object
         // whose field is a class with a stringObj in it. Walk down as the backing synthesis
@@ -613,14 +607,10 @@ void bglParser::recordObjectMemberInits(){
                 if(onPath.insert(cls).second){
                     vector<variableDeclaration*> nested;
                     set<string> nseen;
-                    std::function<void(classDef*)> collect = [&](classDef* c){
-                        if(c == nullptr) return;
-                        for(typeMember* nm : c->members)
-                            if(auto* nvd = dynamic_cast<variableDeclaration*>(nm))
-                                if(nseen.insert(nvd->name).second) nested.push_back(nvd);
-                        for(classDef* b : c->baseClasses) collect(b);
-                    };
-                    collect(cls);
+                    cls->forEachMember([&](typeMember* nm){
+                        if(auto* nvd = dynamic_cast<variableDeclaration*>(nm))
+                            if(nseen.insert(nvd->name).second) nested.push_back(nvd);
+                    });
                     sweep(nested, path, onPath);
                     onPath.erase(cls);
                 }
@@ -1898,14 +1888,9 @@ bool bglParser::processParameterList(functionDef& funcDef){
 
 // Depth-first search through a class and its base classes (first-listed wins).
 // Returns the first typeMember* for which pred returns true, or nullptr.
+// `cls` must be non-null.
 typeMember* bglParser::findMemberInHierarchy(classDef* cls, std::function<bool(typeMember*)> pred){
-    for(typeMember* m : cls->members)
-        if(pred(m)) return m;
-    for(classDef* base : cls->baseClasses){
-        typeMember* found = findMemberInHierarchy(base, pred);
-        if(found) return found;
-    }
-    return nullptr;
+    return cls->findMember(pred);
 }
 
 // Unified method resolution. Searches:

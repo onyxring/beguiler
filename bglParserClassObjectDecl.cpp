@@ -360,19 +360,18 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                 // reconstruct the full templated typeName (`array<dictionaryWord>`) so downstream
                 // element-type validation has the T to check against — `vd->type.name` alone is
                 // just `array` and loses the elementType.
-                std::function<void(classDef*)> searchBases = [&](classDef* c){
-                    for(typeMember* m : c->members)
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                            if(vd->name == memberName){
-                                if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
-                                    inferredType = "array<" + arr->elementType + ">";
-                                else
-                                    inferredType = vd->type.name;
-                                return;
-                            }
-                    for(classDef* base : c->baseClasses){ searchBases(base); if(!inferredType.empty()) return; }
-                };
-                for(classDef* base : newClass.baseClasses){ searchBases(base); if(!inferredType.empty()) break; }
+                for(classDef* base : newClass.baseClasses){
+                    typeMember* m = base->findMember([&](typeMember* mm){
+                        auto* vd = dynamic_cast<variableDeclaration*>(mm);
+                        return vd != nullptr && vd->name == memberName;
+                    });
+                    if(m == nullptr) continue;
+                    if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
+                        inferredType = "array<" + arr->elementType + ">";
+                    else
+                        inferredType = dynamic_cast<variableDeclaration*>(m)->type.name;
+                    break;
+                }
                 if(!inferredType.empty()){
                     // Inferred: treat tok as the member name, use the inherited type
                     returnType.value = inferredType;
@@ -1540,19 +1539,17 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
     // For arrayDeclaration members, reconstruct the full templated typeName (e.g. `array<dictionaryWord>`)
     // so parsePropertyValue can extract the element type — otherwise `vd->type.name` returns just `array`
     // and parsePropertyValue's fallback misidentifies the element type as int (from operator[]'s index param).
-    std::function<void(classDef*)> searchClass = [&](classDef* cls){
+    auto searchClass = [&](classDef* cls){
         if(!cls || !propTypeName.empty()) return;
-        for(typeMember* m : cls->members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->name == nameTok.value){
-                    if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
-                        propTypeName = "array<" + arr->elementType + ">";
-                    else
-                        propTypeName = vd->type.name;
-                    return;
-                }
-        for(classDef* base : cls->baseClasses)
-            searchClass(base);
+        typeMember* m = cls->findMember([&](typeMember* mm){
+            auto* vd = dynamic_cast<variableDeclaration*>(mm);
+            return vd != nullptr && vd->name == nameTok.value;
+        });
+        if(m == nullptr) return;
+        if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
+            propTypeName = "array<" + arr->elementType + ">";
+        else
+            propTypeName = dynamic_cast<variableDeclaration*>(m)->type.name;
     };
     searchClass(obj.objectClass);
     if(propTypeName.empty()){
@@ -1711,14 +1708,12 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
                 if(vd->isInline) inlineFields.push_back(vd);
     };
     collectInline(cls);
-    std::function<variableDeclaration*(classDef*, const std::string&)> findField =
-        [&](classDef* c, const std::string& fname) -> variableDeclaration* {
+    auto findField = [](classDef* c, const std::string& fname) -> variableDeclaration* {
         if(!c) return nullptr;
-        for(typeMember* m : c->members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->name == fname) return vd;
-        for(classDef* base : c->baseClasses){ auto* r = findField(base, fname); if(r) return r; }
-        return nullptr;
+        return dynamic_cast<variableDeclaration*>(c->findMember([&](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            return vd != nullptr && vd->name == fname;
+        }));
     };
     // Separators carry meaning: POSITIONAL values are ','-separated (they read like a list);
     // a single ';' TRAILS the positional section and enters the NAMED section; NAMED members
@@ -2759,14 +2754,12 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
     }
     // Search class hierarchy if not found on object
     if(memberType.empty()){
-        function<void(classDef*)> searchClass = [&](classDef* cls){
-            if(!cls || !memberType.empty()) return;
-            for(typeMember* m : cls->members)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                    if(vd->name == memberNameStr){ memberType = vd->type.name; break; }
-            for(classDef* base : cls->baseClasses) searchClass(base);
-        };
-        if(obj.objectClass) searchClass(obj.objectClass);
+        if(obj.objectClass)
+            if(typeMember* m = obj.objectClass->findMember([&](typeMember* mm){
+                    auto* vd = dynamic_cast<variableDeclaration*>(mm);
+                    return vd != nullptr && vd->name == memberNameStr;
+               }))
+                memberType = dynamic_cast<variableDeclaration*>(m)->type.name;
     }
     if(memberType.empty())
         parsingError(format("'{0}' is not a member of this object; cannot use {1}", display, op));

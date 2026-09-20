@@ -1539,15 +1539,10 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         bool isGlobalFunc = false;
                         if(auto* fd = languageService.findGlobalAs<functionDef>(callName)) isGlobalFunc = true;
                         if(!isGlobalFunc){
-                            function<bool(classDef*)> searchHierarchy = [&](classDef* c) -> bool {
-                                for(typeMember* m : c->members)
-                                    if(auto* fd = dynamic_cast<functionDef*>(m))
-                                        if(fd->name == callName) return true;
-                                for(classDef* base : c->baseClasses)
-                                    if(searchHierarchy(base)) return true;
-                                return false;
-                            };
-                            isSelfCall = searchHierarchy(currentClass);
+                            isSelfCall = currentClass->findMember([&](typeMember* m){
+                                auto* fd = dynamic_cast<functionDef*>(m);
+                                return fd != nullptr && fd->name == callName;
+                            }) != nullptr;
                         }
                     }
                 }

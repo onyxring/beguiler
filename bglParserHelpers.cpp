@@ -231,12 +231,7 @@ bool isReferenceBacked(classDef* cls){
 // `(T)obj` where obj is already a T does NOT trigger ancestor dispatch). Multiple inheritance
 // is handled — any base path that reaches `ancestor` counts.
 bool isAncestorClass(classDef* ancestor, classDef* descendant){
-    if(!ancestor || !descendant || ancestor == descendant) return false;
-    for(classDef* base : descendant->baseClasses){
-        if(base == ancestor) return true;
-        if(isAncestorClass(ancestor, base)) return true;
-    }
-    return false;
+    return descendant != nullptr && descendant->hasAncestor(ancestor);
 }
 
 const hiddenMember* findHiddenMember(classDef* cls, const string& memberName,
