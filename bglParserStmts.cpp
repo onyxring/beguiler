@@ -1048,79 +1048,65 @@ bool bglParser::processDelete(vector<token>& t, Qualifiers& q, abstractObject& c
 }
 
 
-// ===============================================================================
-// processStatement - free-standing expression-statement parser
-// ===============================================================================
-bool bglParser::processStatement(token tok, abstractObject& contextObj){
-    sourceLocation stmtLoc = tok.src.line > 0 ? tok.src : file.currentLocation();
-    currentStatementSrc = stmtLoc;
-    functionDef* func = dynamic_cast<functionDef*>(&contextObj);
-    statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
-    string stmtCastType; // set when statement begins with (TypeName) cast prefix
-
-    // Cast prefix: (TypeName)obj.method(args); — overrides type used for method dispatch
-    if(tok.is(token::parenOpen) && file.peekToken(1).is(eTokenType::dataType) && file.peekToken(2).is(token::parenClose)){
-        stmtCastType = file.getToken(eTokenType::dataType).value;
-        file.getToken(token::parenClose);
-        tok = file.getToken();  // the actual object identifier
-    }
-
-    // Static member access: ClassName.member — reclassify the class as an identifier so
-    // dot-access works. Object instances are already identifiers after the type/instance split.
-    if(tok.is(eTokenType::dataType)){
-        if(file.peekToken(1).is(token::period) || file.peekToken(1).is("?."))
-            tok.tokenType = eTokenType::identifier;
-    }
-
-    // Prefix ++ / --
-    if(tok.is(eTokenType::oper) && (tok.value == "++" || tok.value == "--")){
-        token varName = file.getToken(eTokenType::identifier);
-        string lhs = func != nullptr ? qualifyIdentifier(varName.value, func, body) : varName.value;
-        if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", varName.value));
-        if(isConstVariable(varName.value, func, body))
-            parsingError(format("Cannot assign to const variable '{0}'", varName.value));
-        file.getToken(token::endStatement);
-        // Try emitter lookup for "prefix++" / "prefix--" on the LHS type, falling back to the
-        // plain "++" / "--" emitter if no prefix-specific override is defined.
-        string lhsTypeName = resolveIdentifierType(varName.value, func, body);
-        classDef* lhsClass = languageService.findClass(lhsTypeName);
-        bool emitterFound = false;
-        string prefixOpName = "prefix" + tok.value;  // e.g. "prefix++"
-        auto tryEmitter = [&](const string& opName) -> bool {
-            if(!lhsClass) return false;
-            typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
-                auto* opFunc = dynamic_cast<functionDef*>(m);
-                return opFunc && opFunc->name==opName && opFunc->isEmitter
-                       && opFunc->params.empty() && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
-            });
-            if(!m) return false;
+// `++x;` / `--x;` — prefix increment or decrement as a whole statement.
+bool bglParser::processPrefixIncDec(token op, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    const token& tok = op;
+    token varName = file.getToken(eTokenType::identifier);
+    string lhs = func != nullptr ? qualifyIdentifier(varName.value, func, body) : varName.value;
+    if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", varName.value));
+    if(isConstVariable(varName.value, func, body))
+        parsingError(format("Cannot assign to const variable '{0}'", varName.value));
+    file.getToken(token::endStatement);
+    // Try emitter lookup for "prefix++" / "prefix--" on the LHS type, falling back to the
+    // plain "++" / "--" emitter if no prefix-specific override is defined.
+    string lhsTypeName = resolveIdentifierType(varName.value, func, body);
+    classDef* lhsClass = languageService.findClass(lhsTypeName);
+    bool emitterFound = false;
+    string prefixOpName = "prefix" + tok.value;  // e.g. "prefix++"
+    auto tryEmitter = [&](const string& opName) -> bool {
+        if(!lhsClass) return false;
+        typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
             auto* opFunc = dynamic_cast<functionDef*>(m);
-            auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-            string b = processBglConditionals(blk->i6Body);
-            b = replaceWord(b, "$self", lhs);
-            b = replaceWord(b, "$val",  lhs);
-            i6RawNode& node = *(new i6RawNode());
-            node.text = b + ";";
-            node.src = stmtLoc;
-            if(body != nullptr) body->statements.push_back(&node);
-            return true;
-        };
-        if(tryEmitter(prefixOpName) || tryEmitter(tok.value)) emitterFound = true;
-        if(!emitterFound){
-            if(!lhsTypeName.empty() && lhsTypeName != "var")
-                parsingError(format("No operator '{0}' defined on type '{1}'", tok.value, typeDisplayName(lhsTypeName)));
-            i6RawNode& node = *(new i6RawNode());
-            node.text = tok.value + lhs + ";";
-            node.src = stmtLoc;
-            if(body != nullptr) body->statements.push_back(&node);
-        }
-        return false;
+            return opFunc && opFunc->name==opName && opFunc->isEmitter
+                   && opFunc->params.empty() && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+        });
+        if(!m) return false;
+        auto* opFunc = dynamic_cast<functionDef*>(m);
+        auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+        string b = processBglConditionals(blk->i6Body);
+        b = replaceWord(b, "$self", lhs);
+        b = replaceWord(b, "$val",  lhs);
+        i6RawNode& node = *(new i6RawNode());
+        node.text = b + ";";
+        node.src = stmtLoc;
+        if(body != nullptr) body->statements.push_back(&node);
+        return true;
+    };
+    if(tryEmitter(prefixOpName) || tryEmitter(tok.value)) emitterFound = true;
+    if(!emitterFound){
+        if(!lhsTypeName.empty() && lhsTypeName != "var")
+            parsingError(format("No operator '{0}' defined on type '{1}'", tok.value, typeDisplayName(lhsTypeName)));
+        i6RawNode& node = *(new i6RawNode());
+        node.text = tok.value + lhs + ";";
+        node.src = stmtLoc;
+        if(body != nullptr) body->statements.push_back(&node);
     }
+    return false;
+}
 
+// Completes the statement head: typed-literal detection, then the dotted / `?.` member path,
+// accumulated into `tok`. Returns the symbol token that follows the path.
+token bglParser::parseStatementPath(token& tok, StatementContext& sc){
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
     // Determine if this token is a literal with a registered class (e.g. intLiteral, stringLiteral).
     // If so, it may head a method call: "hello".print() or 42.someMethod().
     // literalSelfText holds the I6 text to substitute for $self in emitter bodies.
-    string literalTypeName, literalSelfText;
+    string& literalTypeName = sc.literalTypeName;
+    string& literalSelfText = sc.literalSelfText;
     {
         auto resolveLiteralType = [&]() -> pair<string,string> {
             if(tok.is(eTokenType::integer))       return {"intliteral",    tok.value};
@@ -1137,7 +1123,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
     }
     bool tokIsLiteral = !literalTypeName.empty();
     if(!tok.is(eTokenType::identifier) && !tokIsLiteral)
-        return parsingError(format("Unrecognized statement starting with token '{0}'", (string) tok));
+        parsingError(format("Unrecognized statement starting with token '{0}'", (string) tok));
 
     //make sure the identifier is complete, including any member access paths (chain all dots and ?.)
     token symbol = file.getToken({eTokenType::symbol, eTokenType::oper});
@@ -1188,1545 +1174,1673 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
 
     // A literal with no chained method call is meaningless as a statement.
     if(tokIsLiteral && tok.value.find('.') == string::npos)
-        return parsingError(format("Literal value cannot appear as a statement without a method call"));
+        parsingError(format("Literal value cannot appear as a statement without a method call"));
+    return symbol;
+}
 
-
-
-    //----------------------------------------------------------------------
-    //We've encountered an identifier, which could be a variable assignment,
-    //  subscript assignment, function call, or value emitter statement.
-
-    // Value emitter as statement: identifier; or dot-path; where it resolves to a value emitter
-    if(symbol.is(token::endStatement)){
-        string ident = tok.value;
-        // Use qualifyIdentifier to resolve dot-paths, aliases, and #using imports
-        string qualified = qualifyIdentifier(ident, func, body);
-        if(!qualified.empty() && qualified != ident){
-            // qualifyIdentifier expanded a value emitter — emit as raw I6
+// `name;` / `a.b.c;` — a value emitter used as a statement. Returns true when it handled the
+// statement, false to let the caller go on matching.
+bool bglParser::processValueEmitterStatement(token tok, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    string ident = tok.value;
+    // Use qualifyIdentifier to resolve dot-paths, aliases, and #using imports
+    string qualified = qualifyIdentifier(ident, func, body);
+    if(!qualified.empty() && qualified != ident){
+        // qualifyIdentifier expanded a value emitter — emit as raw I6
+        i6RawNode& node = *(new i6RawNode());
+        node.text = qualified + ";";
+        node.src = stmtLoc;
+        for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+        pendingInjections.clear();
+        if(body != nullptr) body->statements.push_back(&node);
+        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+        postInjections.clear();
+        return true;
+    }
+    // Also check simple global/import value emitters (qualified == ident means no expansion)
+    functionDef* veFunc = nullptr;
+    for(typeDef* g : languageService.globals)
+        if(auto* fd = dynamic_cast<functionDef*>(g))
+            if(fd->name == ident && fd->isValueEmitter && fd->isEmitter){ veFunc = fd; break; }
+    if(!veFunc)
+        for(classDef* imp : usingImports)
+            for(typeMember* m : imp->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->name == ident && fd->isValueEmitter && fd->isEmitter){ veFunc = fd; break; }
+    if(!veFunc)
+        for(objectDef* imp : usingObjectImports)
+            for(typeMember* m : imp->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->name == ident && fd->isValueEmitter && fd->isEmitter){ veFunc = fd; break; }
+    if(veFunc){
+        if(auto* blk = dynamic_cast<i6Block*>(veFunc->body)){
+            string bodyText = processBglConditionals(blk->i6Body);
+            size_t s = bodyText.find_first_not_of(" \t\n\r"); if(s != string::npos) bodyText = bodyText.substr(s);
+            size_t e = bodyText.find_last_not_of(" \t\n\r;"); if(e != string::npos) bodyText = bodyText.substr(0, e+1);
             i6RawNode& node = *(new i6RawNode());
-            node.text = qualified + ";";
+            node.text = bodyText + ";";
             node.src = stmtLoc;
             for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
             pendingInjections.clear();
             if(body != nullptr) body->statements.push_back(&node);
             for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
             postInjections.clear();
-            return false;
         }
-        // Also check simple global/import value emitters (qualified == ident means no expansion)
-        functionDef* veFunc = nullptr;
-        for(typeDef* g : languageService.globals)
-            if(auto* fd = dynamic_cast<functionDef*>(g))
-                if(fd->name == ident && fd->isValueEmitter && fd->isEmitter){ veFunc = fd; break; }
-        if(!veFunc)
-            for(classDef* imp : usingImports)
-                for(typeMember* m : imp->members)
-                    if(auto* fd = dynamic_cast<functionDef*>(m))
-                        if(fd->name == ident && fd->isValueEmitter && fd->isEmitter){ veFunc = fd; break; }
-        if(!veFunc)
-            for(objectDef* imp : usingObjectImports)
-                for(typeMember* m : imp->members)
-                    if(auto* fd = dynamic_cast<functionDef*>(m))
-                        if(fd->name == ident && fd->isValueEmitter && fd->isEmitter){ veFunc = fd; break; }
-        if(veFunc){
-            if(auto* blk = dynamic_cast<i6Block*>(veFunc->body)){
-                string bodyText = processBglConditionals(blk->i6Body);
-                size_t s = bodyText.find_first_not_of(" \t\n\r"); if(s != string::npos) bodyText = bodyText.substr(s);
-                size_t e = bodyText.find_last_not_of(" \t\n\r;"); if(e != string::npos) bodyText = bodyText.substr(0, e+1);
-                i6RawNode& node = *(new i6RawNode());
-                node.text = bodyText + ";";
-                node.src = stmtLoc;
-                for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
-                pendingInjections.clear();
-                if(body != nullptr) body->statements.push_back(&node);
-                for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
-                postInjections.clear();
-            }
-            return false;
-        }
+        return true;
     }
+    return false;
+}
 
-    // Subscript: name[i] = v  (assignment) or  name[i].member (dot-chain on result)
-    if(symbol.is(token::bracketOpen)) {
-        string arrPath = (string)tok;  // e.g. "scores" or "player.inventory"
-        expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+// `a[i].member = v;` / `a[i].method(...);` — member access on the subscript result.
+bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* indexExpr, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    file.getToken(); // consume '.'
+    // Build subscript-read I6 text (same emitter expansion as expression-level path)
+    string arrType = resolvePathType(arrPath, func, body);
+    classDef* arrCls = languageService.findClass(arrType);
+    string elemType;
+    size_t dotPos = arrPath.find('.');
+    if(dotPos == string::npos) elemType = resolveArrayElementType(arrPath, func, body);
+    else elemType = resolveArrayElementTypeDotted(arrPath.substr(0, dotPos), arrPath.substr(dotPos + 1), func, body);
+    if(elemType.empty() && arrType == "bytearray") elemType = "char";
+    if(elemType.empty() && arrCls != nullptr) elemType = inferSubscriptElementType(arrCls);
+    functionDef* getMethod = nullptr;
+    if(arrCls != nullptr && !elemType.empty())
+        getMethod = findArraySubscriptOp(arrCls, elemType, /*isWrite=*/false);
+    if(getMethod == nullptr)
+        parsingError(format("Subscript on '{0}': cannot read element for dot-access", arrPath));
+    string subscriptText;
+    if(getMethod->isEmitter)
+        if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)){
+            string b = processBglConditionals(blk->i6Body);
+            string pv = (isWordArrayType(arrType) || arrType == "bytearray") ? "0" : "<$prop undefined>";
+            string selfValue = arrPath;
+            size_t innerDot = arrPath.rfind('.');
+            if(innerDot != string::npos){ selfValue = arrPath.substr(0, innerDot); pv = arrPath.substr(innerDot + 1); }
+            b = replaceWord(b, "$self", selfValue);
+            b = replaceWord(b, "$val",  arrPath);
+            b = replaceWord(b, "$prop", pv);
+            if(!getMethod->params.empty())
+                b = replaceWord(b, "$" + getMethod->params[0]->name, indexExpr->text());
+            subscriptText = b;
+        }
+    // Read member name and dispatch
+    token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+    string memberName = memberTok.value;
+    token afterMember = file.getToken();
+    if(afterMember.is(token::parenOpen)){
+        // Method call: arr[i].method(args)
+        classDef* elemCls = languageService.findClass(elemType);
+        ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(elemType, memberName)));
+        vector<string> namedArgNames = pal.namedArgNames;
+        vector<vector<interpolatedSegment>> interpSegs = pal.interpSegmentsPerArg;
+        functionDef* method = bindMethodCall(elemType, subscriptText, memberName,
+            pal.args, namedArgNames, interpSegs);
+        functionCallStatement& callStmt = *(new functionCallStatement());
+        callStmt.src = stmtLoc;
+        callStmt.functionName = subscriptText + "." + (method->i6name.empty() ? memberName : method->i6name);
+        callStmt.args = pal.args;
+        callStmt.namedArgNames = namedArgNames;
+        callStmt.interpSegmentsPerArg = interpSegs;
+        if(method->isEmitter && !method->isPrePassStub)
+            if(auto* blk = dynamic_cast<i6Block*>(method->body)){
+                string b = processBglConditionals(blk->i6Body);
+                for(size_t i = 0; i < method->params.size() && i < pal.args.size(); i++)
+                    b = replaceWord(b, "$" + method->params[i]->name, pal.args[i]->text());
+                b = replaceWord(b, "$self", subscriptText);
+                b = replaceWord(b, "$val",  subscriptText);
+                callStmt.emitterBody = b;
+            }
+        file.getToken(token::endStatement);
+        if(body != nullptr) body->statements.push_back(&callStmt);
+        return false;
+    } else if(afterMember.is(token::assignment)){
+        // Property assignment: arr[i].prop = value
+        // parseExpression with endStatement terminator consumes through ';'
+        expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
+        assignmentStatement& assign = *(new assignmentStatement());
+        assign.src = stmtLoc;
+        assign.variableLeft = subscriptText + "." + memberName;
+        assign.assignedExpression = valExpr;
+        if(body != nullptr) body->statements.push_back(&assign);
+        return false;
+    } else {
+        parsingError(format("Expected '(' or '=' after '{0}[...].{1}', got '{2}'",
+            arrPath, memberName, afterMember.value));
+    }
+    return false;
+}
 
-        // Peek after ']': if '.', this is a dot-chain on the subscript result (e.g. arr[0].method()).
-        // Build the subscript-read text, then dispatch the continuation as a method call or property access.
-        token afterBracket = file.peekToken();
-        if(afterBracket.is(token::period)){
+// `grid[i][j]...[k] = v;` — chained subscript write into an array of arrays.
+bool bglParser::processChainedSubscriptWrite(const string& arrPath, expression* indexExpr, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    string arrType = resolvePathType(arrPath, func, body);
+    size_t dotPos  = arrPath.find('.');
+    string elemType = (dotPos == string::npos)
+        ? resolveArrayElementType(arrPath, func, body)
+        : resolveArrayElementTypeDotted(arrPath.substr(0, dotPos), arrPath.substr(dotPos + 1), func, body);
+    if(elemType.empty() && arrType == "bytearray") elemType = "char";
+    classDef* arrCls = getDispatchClass(arrType);
+    functionDef* getM = (arrCls != nullptr && !elemType.empty())
+                      ? findArraySubscriptOp(arrCls, elemType, /*isWrite=*/false) : nullptr;
+    i6Block* gblk = getM != nullptr ? dynamic_cast<i6Block*>(getM->body) : nullptr;
+    if(gblk == nullptr)
+        parsingError(format("Chained subscript on '{0}': element type '{1}' has no readable operator[].",
+                            arrPath, typeDisplayName(elemType)));
+    // First read step: name-based $self/$prop (handles member-array `obj.prop` too).
+    string readText;
+    {
+        string b = processBglConditionals(gblk->i6Body);
+        size_t innerDot = arrPath.rfind('.');
+        string selfV = (innerDot == string::npos) ? arrPath : arrPath.substr(0, innerDot);
+        string pv    = (innerDot != string::npos) ? arrPath.substr(innerDot + 1)
+                     : (isWordArrayType(arrType) || arrType == "bytearray" ? "0" : "<$prop undefined>");
+        b = replaceWord(b, "$self", selfV);
+        b = replaceWord(b, "$val",  arrPath);
+        b = replaceWord(b, "$prop", pv);
+        if(!getM->params.empty()) b = replaceWord(b, "$" + getM->params[0]->name, indexExpr->text());
+        readText = b;
+    }
+    string curType = elemType;   // type of grid[0] — an array<...>
+    while(true){
+        file.getToken(); // consume '['
+        expression* idx = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+        string innerElem = curType == "bytearray" ? "char" : arrayInnerType(curType);
+        classDef* curCls = getDispatchClass(curType);
+        token after = file.peekToken();
+        if(after.is(token::bracketOpen)){
+            // Intermediate read: extend the pointer expression.
+            functionDef* gm = (curCls != nullptr && !innerElem.empty())
+                            ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/false) : nullptr;
+            i6Block* blk = gm != nullptr ? dynamic_cast<i6Block*>(gm->body) : nullptr;
+            if(blk == nullptr)
+                parsingError(format("Chained subscript: '{0}' has no readable operator[].", typeDisplayName(curType)));
+            string recv = "(" + readText + ")";
+            string b = processBglConditionals(blk->i6Body);
+            b = replaceWord(b, "$self", recv);
+            b = replaceWord(b, "$val",  recv);
+            b = replaceWord(b, "$prop", "0");
+            if(!gm->params.empty()) b = replaceWord(b, "$" + gm->params[0]->name, idx->text());
+            readText = b;
+            curType  = innerElem;
+            continue;
+        }
+        if(after.is(token::period)){
+            // Element member write/call: grid[i]..[j].member = v  or  .method(args). Fold this
+            // final subscript into a READ (yielding the element value), then dispatch on it.
+            functionDef* gm = (curCls != nullptr && !innerElem.empty())
+                            ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/false) : nullptr;
+            i6Block* rblk = gm != nullptr ? dynamic_cast<i6Block*>(gm->body) : nullptr;
+            if(rblk == nullptr)
+                parsingError(format("Chained subscript: '{0}' has no readable operator[].", typeDisplayName(curType)));
+            string recv0 = "(" + readText + ")";
+            string eb = processBglConditionals(rblk->i6Body);
+            eb = replaceWord(eb, "$self", recv0);
+            eb = replaceWord(eb, "$val",  recv0);
+            eb = replaceWord(eb, "$prop", "0");
+            if(!gm->params.empty()) eb = replaceWord(eb, "$" + gm->params[0]->name, idx->text());
+            string recv = "(" + eb + ")";     // the element value (type innerElem)
             file.getToken(); // consume '.'
-            // Build subscript-read I6 text (same emitter expansion as expression-level path)
-            string arrType = resolvePathType(arrPath, func, body);
-            classDef* arrCls = languageService.findClass(arrType);
-            string elemType;
-            size_t dotPos = arrPath.find('.');
-            if(dotPos == string::npos) elemType = resolveArrayElementType(arrPath, func, body);
-            else elemType = resolveArrayElementTypeDotted(arrPath.substr(0, dotPos), arrPath.substr(dotPos + 1), func, body);
-            if(elemType.empty() && arrType == "bytearray") elemType = "char";
-            if(elemType.empty() && arrCls != nullptr) elemType = inferSubscriptElementType(arrCls);
-            functionDef* getMethod = nullptr;
-            if(arrCls != nullptr && !elemType.empty())
-                getMethod = findArraySubscriptOp(arrCls, elemType, /*isWrite=*/false);
-            if(getMethod == nullptr)
-                parsingError(format("Subscript on '{0}': cannot read element for dot-access", arrPath));
-            string subscriptText;
-            if(getMethod->isEmitter)
-                if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)){
-                    string b = processBglConditionals(blk->i6Body);
-                    string pv = (isWordArrayType(arrType) || arrType == "bytearray") ? "0" : "<$prop undefined>";
-                    string selfValue = arrPath;
-                    size_t innerDot = arrPath.rfind('.');
-                    if(innerDot != string::npos){ selfValue = arrPath.substr(0, innerDot); pv = arrPath.substr(innerDot + 1); }
-                    b = replaceWord(b, "$self", selfValue);
-                    b = replaceWord(b, "$val",  arrPath);
-                    b = replaceWord(b, "$prop", pv);
-                    if(!getMethod->params.empty())
-                        b = replaceWord(b, "$" + getMethod->params[0]->name, indexExpr->text());
-                    subscriptText = b;
-                }
-            // Read member name and dispatch
             token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
             string memberName = memberTok.value;
             token afterMember = file.getToken();
-            if(afterMember.is(token::parenOpen)){
-                // Method call: arr[i].method(args)
-                classDef* elemCls = languageService.findClass(elemType);
-                ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(elemType, memberName)));
-                vector<string> namedArgNames = pal.namedArgNames;
-                vector<vector<interpolatedSegment>> interpSegs = pal.interpSegmentsPerArg;
-                functionDef* method = bindMethodCall(elemType, subscriptText, memberName,
-                    pal.args, namedArgNames, interpSegs);
-                functionCallStatement& callStmt = *(new functionCallStatement());
-                callStmt.src = stmtLoc;
-                callStmt.functionName = subscriptText + "." + (method->i6name.empty() ? memberName : method->i6name);
-                callStmt.args = pal.args;
-                callStmt.namedArgNames = namedArgNames;
-                callStmt.interpSegmentsPerArg = interpSegs;
-                if(method->isEmitter && !method->isPrePassStub)
-                    if(auto* blk = dynamic_cast<i6Block*>(method->body)){
-                        string b = processBglConditionals(blk->i6Body);
-                        for(size_t i = 0; i < method->params.size() && i < pal.args.size(); i++)
-                            b = replaceWord(b, "$" + method->params[i]->name, pal.args[i]->text());
-                        b = replaceWord(b, "$self", subscriptText);
-                        b = replaceWord(b, "$val",  subscriptText);
-                        callStmt.emitterBody = b;
-                    }
-                file.getToken(token::endStatement);
-                if(body != nullptr) body->statements.push_back(&callStmt);
-                return false;
-            } else if(afterMember.is(token::assignment)){
-                // Property assignment: arr[i].prop = value
-                // parseExpression with endStatement terminator consumes through ';'
+            if(afterMember.is(token::assignment)){
                 expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
                 assignmentStatement& assign = *(new assignmentStatement());
                 assign.src = stmtLoc;
-                assign.variableLeft = subscriptText + "." + memberName;
+                assign.variableLeft = recv + "." + memberName;
                 assign.assignedExpression = valExpr;
                 if(body != nullptr) body->statements.push_back(&assign);
                 return false;
-            } else {
-                parsingError(format("Expected '(' or '=' after '{0}[...].{1}', got '{2}'",
-                    arrPath, memberName, afterMember.value));
-            }
-        }
-
-        // Chained subscript write into an array-of-arrays: grid[i][j]...[k] = v. Every subscript
-        // but the last is a READ producing a pointer to an inner array; the final one is the
-        // element write. Build the read pointer through the leading subscripts, then emit the
-        // final operator[]= against it. (`grid[0]` was already parsed above as arrPath+indexExpr.)
-        if(afterBracket.is(token::bracketOpen)){
-            string arrType = resolvePathType(arrPath, func, body);
-            size_t dotPos  = arrPath.find('.');
-            string elemType = (dotPos == string::npos)
-                ? resolveArrayElementType(arrPath, func, body)
-                : resolveArrayElementTypeDotted(arrPath.substr(0, dotPos), arrPath.substr(dotPos + 1), func, body);
-            if(elemType.empty() && arrType == "bytearray") elemType = "char";
-            classDef* arrCls = getDispatchClass(arrType);
-            functionDef* getM = (arrCls != nullptr && !elemType.empty())
-                              ? findArraySubscriptOp(arrCls, elemType, /*isWrite=*/false) : nullptr;
-            i6Block* gblk = getM != nullptr ? dynamic_cast<i6Block*>(getM->body) : nullptr;
-            if(gblk == nullptr)
-                parsingError(format("Chained subscript on '{0}': element type '{1}' has no readable operator[].",
-                                    arrPath, typeDisplayName(elemType)));
-            // First read step: name-based $self/$prop (handles member-array `obj.prop` too).
-            string readText;
-            {
-                string b = processBglConditionals(gblk->i6Body);
-                size_t innerDot = arrPath.rfind('.');
-                string selfV = (innerDot == string::npos) ? arrPath : arrPath.substr(0, innerDot);
-                string pv    = (innerDot != string::npos) ? arrPath.substr(innerDot + 1)
-                             : (isWordArrayType(arrType) || arrType == "bytearray" ? "0" : "<$prop undefined>");
-                b = replaceWord(b, "$self", selfV);
-                b = replaceWord(b, "$val",  arrPath);
-                b = replaceWord(b, "$prop", pv);
-                if(!getM->params.empty()) b = replaceWord(b, "$" + getM->params[0]->name, indexExpr->text());
-                readText = b;
-            }
-            string curType = elemType;   // type of grid[0] — an array<...>
-            while(true){
-                file.getToken(); // consume '['
-                expression* idx = parseExpression(file.getToken(), {token::bracketClose}, func, body);
-                string innerElem = curType == "bytearray" ? "char" : arrayInnerType(curType);
-                classDef* curCls = getDispatchClass(curType);
-                token after = file.peekToken();
-                if(after.is(token::bracketOpen)){
-                    // Intermediate read: extend the pointer expression.
-                    functionDef* gm = (curCls != nullptr && !innerElem.empty())
-                                    ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/false) : nullptr;
-                    i6Block* blk = gm != nullptr ? dynamic_cast<i6Block*>(gm->body) : nullptr;
-                    if(blk == nullptr)
-                        parsingError(format("Chained subscript: '{0}' has no readable operator[].", typeDisplayName(curType)));
-                    string recv = "(" + readText + ")";
-                    string b = processBglConditionals(blk->i6Body);
-                    b = replaceWord(b, "$self", recv);
-                    b = replaceWord(b, "$val",  recv);
-                    b = replaceWord(b, "$prop", "0");
-                    if(!gm->params.empty()) b = replaceWord(b, "$" + gm->params[0]->name, idx->text());
-                    readText = b;
-                    curType  = innerElem;
-                    continue;
-                }
-                if(after.is(token::period)){
-                    // Element member write/call: grid[i]..[j].member = v  or  .method(args). Fold this
-                    // final subscript into a READ (yielding the element value), then dispatch on it.
-                    functionDef* gm = (curCls != nullptr && !innerElem.empty())
-                                    ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/false) : nullptr;
-                    i6Block* rblk = gm != nullptr ? dynamic_cast<i6Block*>(gm->body) : nullptr;
-                    if(rblk == nullptr)
-                        parsingError(format("Chained subscript: '{0}' has no readable operator[].", typeDisplayName(curType)));
-                    string recv0 = "(" + readText + ")";
-                    string eb = processBglConditionals(rblk->i6Body);
-                    eb = replaceWord(eb, "$self", recv0);
-                    eb = replaceWord(eb, "$val",  recv0);
-                    eb = replaceWord(eb, "$prop", "0");
-                    if(!gm->params.empty()) eb = replaceWord(eb, "$" + gm->params[0]->name, idx->text());
-                    string recv = "(" + eb + ")";     // the element value (type innerElem)
-                    file.getToken(); // consume '.'
-                    token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                    string memberName = memberTok.value;
-                    token afterMember = file.getToken();
-                    if(afterMember.is(token::assignment)){
-                        expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
-                        assignmentStatement& assign = *(new assignmentStatement());
-                        assign.src = stmtLoc;
-                        assign.variableLeft = recv + "." + memberName;
-                        assign.assignedExpression = valExpr;
-                        if(body != nullptr) body->statements.push_back(&assign);
-                        return false;
-                    } else if(afterMember.is(token::parenOpen)){
-                        ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(innerElem, memberName)));
-                        functionDef* method = bindMethodCall(innerElem, recv, memberName,
-                            pal.args, pal.namedArgNames, pal.interpSegmentsPerArg);
-                        functionCallStatement& cs = *(new functionCallStatement());
-                        cs.src = stmtLoc;
-                        cs.functionName = recv + "." + (method->i6name.empty() ? memberName : method->i6name);
-                        cs.args = pal.args; cs.namedArgNames = pal.namedArgNames; cs.interpSegmentsPerArg = pal.interpSegmentsPerArg;
-                        if(method->isEmitter && !method->isPrePassStub)
-                            if(auto* mblk = dynamic_cast<i6Block*>(method->body)){
-                                string mb = processBglConditionals(mblk->i6Body);
-                                for(size_t i = 0; i < method->params.size() && i < pal.args.size(); i++)
-                                    mb = replaceWord(mb, "$" + method->params[i]->name, pal.args[i]->text());
-                                mb = replaceWord(mb, "$self", recv);
-                                mb = replaceWord(mb, "$val",  recv);
-                                cs.emitterBody = mb;
-                            }
-                        file.getToken(token::endStatement);
-                        if(body != nullptr) body->statements.push_back(&cs);
-                        return false;
-                    } else {
-                        parsingError(format("Expected '=' or '(' after '{0}[...].{1}', got '{2}'",
-                                            arrPath, memberName, afterMember.value));
-                    }
-                }
-                // Final subscript — the write target.
-                file.getToken(token::assignment);
-                expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
-                if(valExpr != nullptr && !valExpr->resolvedType.empty()
-                   && !isArrayElementCompatible(valExpr->resolvedType, innerElem))
-                    parsingError(format("Cannot assign value of type '{0}' to element of array<{1}>",
-                                        typeDisplayName(valExpr->resolvedType), typeDisplayName(innerElem)));
-                checkByteElementRange(valExpr, innerElem);
-                functionDef* setM = (curCls != nullptr && !innerElem.empty())
-                                  ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/true) : nullptr;
-                i6Block* sblk = setM != nullptr ? dynamic_cast<i6Block*>(setM->body) : nullptr;
-                if(sblk == nullptr)
-                    parsingError(format("No operator[]= for element type '{0}' on type '{1}'.",
-                                        typeDisplayName(innerElem), typeDisplayName(curType)));
-                string recv = "(" + readText + ")";
-                string b = processBglConditionals(sblk->i6Body);
-                if(setM->params.size() > 0) b = replaceWord(b, "$" + setM->params[0]->name, idx->text());
-                if(setM->params.size() > 1) b = replaceWord(b, "$" + setM->params[1]->name, valExpr->text());
-                b = replaceWord(b, "$self", recv);
-                b = replaceWord(b, "$val",  recv);
-                b = replaceWord(b, "$prop", "0");
-                b = substituteElemOps(b, innerElem);
+            } else if(afterMember.is(token::parenOpen)){
+                ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(innerElem, memberName)));
+                functionDef* method = bindMethodCall(innerElem, recv, memberName,
+                    pal.args, pal.namedArgNames, pal.interpSegmentsPerArg);
                 functionCallStatement& cs = *(new functionCallStatement());
                 cs.src = stmtLoc;
-                cs.emitterBody = b;
+                cs.functionName = recv + "." + (method->i6name.empty() ? memberName : method->i6name);
+                cs.args = pal.args; cs.namedArgNames = pal.namedArgNames; cs.interpSegmentsPerArg = pal.interpSegmentsPerArg;
+                if(method->isEmitter && !method->isPrePassStub)
+                    if(auto* mblk = dynamic_cast<i6Block*>(method->body)){
+                        string mb = processBglConditionals(mblk->i6Body);
+                        for(size_t i = 0; i < method->params.size() && i < pal.args.size(); i++)
+                            mb = replaceWord(mb, "$" + method->params[i]->name, pal.args[i]->text());
+                        mb = replaceWord(mb, "$self", recv);
+                        mb = replaceWord(mb, "$val",  recv);
+                        cs.emitterBody = mb;
+                    }
+                file.getToken(token::endStatement);
                 if(body != nullptr) body->statements.push_back(&cs);
                 return false;
+            } else {
+                parsingError(format("Expected '=' or '(' after '{0}[...].{1}', got '{2}'",
+                                    arrPath, memberName, afterMember.value));
             }
         }
-
+        // Final subscript — the write target.
         file.getToken(token::assignment);
         expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
-
-        // Resolve array type and compute $self/$prop
-        string arrType = resolvePathType(arrPath, func, body);
-        // Use getDispatchClass so templated receiver types (e.g. `array<var>` on a
-        // parametric param) strip down to the generic class for operator[]= lookup.
-        classDef* arrCls = getDispatchClass(arrType);
-        if(arrCls == nullptr) parsingError(format("Type '{0}' does not support subscript access", arrType));
-
-        // Element-type-aware lookup: find operator[]= whose second parameter type matches the
-        // array's declared element type. Handles both bare (`name[i]=v`) and dotted
-        // (`obj.prop[i]=v`) paths by splitting arrPath on '.'.
-        string elemType;
-        size_t dotPos = arrPath.find('.');
-        if(dotPos == string::npos)
-            elemType = resolveArrayElementType(arrPath, func, body);
-        else
-            elemType = resolveArrayElementTypeDotted(arrPath.substr(0, dotPos), arrPath.substr(dotPos + 1), func, body);
-        if(elemType.empty() && arrType == "bytearray") elemType = "char";
-        // Non-array classes (e.g. string) derive their element type from operator[]'s return.
-        if(elemType.empty() && arrCls != nullptr) elemType = inferSubscriptElementType(arrCls);
-
-        functionDef* setMethod = nullptr;
-        if(!elemType.empty())
-            setMethod = findArraySubscriptOp(arrCls, elemType, /*isWrite=*/true);
-        if(setMethod == nullptr){
-            if(elemType.empty())
-                parsingError(format("Subscript on '{0}': no declared element type. Declare as array<T>.", arrPath));
-            parsingError(format("No operator[]= for element type '{0}' on type '{1}'. Add an overload or use a supported element type.",
-                typeDisplayName(elemType), typeDisplayName(arrType)));
-        }
-        // Validate value type against element type
-        string valType = valExpr ? valExpr->resolvedType : "";
-        if(!valType.empty() && !isArrayElementCompatible(valType, elemType))
+        if(valExpr != nullptr && !valExpr->resolvedType.empty()
+           && !isArrayElementCompatible(valExpr->resolvedType, innerElem))
             parsingError(format("Cannot assign value of type '{0}' to element of array<{1}>",
-                typeDisplayName(valType), typeDisplayName(elemType)));
-        checkByteElementRange(valExpr, elemType);
-
-        // Compute $self and $prop
-        size_t innerDot = arrPath.rfind('.');
-        string selfValue = (innerDot == string::npos) ? arrPath : arrPath.substr(0, innerDot);
-        string propValue = (innerDot == string::npos)
-            ? (isWordArrayType(arrType) ? "0" : "<$prop undefined>")
-            : arrPath.substr(innerDot + 1);
-
-        // Member (property) WORD array write uses the orLibrary property convention
-        // obj.&prop-->n = v (0-indexed, no count slot), not the global/table form. A dotted
-        // path is already a property access; a bare name resolving to a member qualifies to one.
-        string memOwner, memProp;
-        bool isMemberWordArray = false;
-        if(isWordArrayType(arrType)){
-            if(innerDot != string::npos){ memOwner = selfValue; memProp = propValue; isMemberWordArray = true; }
-            else isMemberWordArray = splitQualifiedMember(arrPath, func, body, memOwner, memProp);
-        if(isMemberWordArray && memberArrayIsRef(memOwner, memProp, func, body)){
-            arrPath = memOwner + "." + memProp;   // the pointer the member holds
-            isMemberWordArray = false;
-        }
-        }
-
-        functionCallStatement& callStmt = *(new functionCallStatement());
-        callStmt.src = stmtLoc;
-        callStmt.functionName = arrPath + ".set";
-        callStmt.args.push_back(indexExpr);
-        callStmt.args.push_back(valExpr);
-
-        // A slot whose element type owns storage accepts a bare text pointer — no explicit
-        // _bglStr.new() needed: a type that owns storage publishes `static operator =`, which
-        // setOwned hands the slot's CURRENT value plus the incoming one, so the type allocates
-        // on first write and copies into its own buffer thereafter. A type that owns storage but
-        // publishes no assign still falls through to a raw word store — see the array<T>
-        // requirements in the spec.
-
-        // If the element type publishes a static `operator =` it OWNS its storage, so the slot
-        // write must go through the type rather than being a raw word store. Prefer array<T>'s
-        // `setOwnedAt` member in that case; every plain element type keeps core's inline
-        // `$val-->($i+1) = $v` and pays nothing. Both bodies live in the BLR — this only picks.
-        // operatorRef returns "" when the type publishes no assign — the "0" substitution
-        // happens later, in substituteElemOps. Comparing against "0" here made this true for
-        // EVERY element type, so every subscript write took the setOwnedAt routine instead of
-        // the inline store, and a non-array receiver (stringObj) got "<$prop undefined>".
-        if(!isMemberWordArray && !operatorRef(elemType, "=").empty()){
-            if(auto* ac = languageService.findClass("array"))
-                if(auto* owned = dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
-                        auto* fn = dynamic_cast<functionDef*>(m);
-                        return fn && fn->name == "setownedat" && fn->isEmitter;
-                    })))
-                    setMethod = owned;
-        }
-        if(isMemberWordArray)
-            callStmt.emitterBody = memOwner + ".&" + memProp + "-->(" + indexExpr->text() + ") = " + valExpr->text();
-        else if(setMethod->isEmitter)
-            if(auto* blk = dynamic_cast<i6Block*>(setMethod->body)) {
-                string b = processBglConditionals(blk->i6Body);
-                size_t pos = 0;
-                for(size_t i = 0; i < setMethod->params.size() && i < callStmt.args.size(); i++)
-                    b = replaceWord(b, "$" + setMethod->params[i]->name, callStmt.args[i]->text());
-                b = replaceWord(b, "$self", selfValue);
-                b = replaceWord(b, "$val",  arrPath);
-                b = replaceWord(b, "$prop", propValue);
-                // One substitution covers every $elemop(<op>) in the body.
-                b = substituteElemOps(b, elemType);
-                callStmt.emitterBody = b;
-            }
-        if(body != nullptr) body->statements.push_back(&callStmt);
-        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
-        postInjections.clear();
+                                typeDisplayName(valExpr->resolvedType), typeDisplayName(innerElem)));
+        checkByteElementRange(valExpr, innerElem);
+        functionDef* setM = (curCls != nullptr && !innerElem.empty())
+                          ? findArraySubscriptOp(curCls, innerElem, /*isWrite=*/true) : nullptr;
+        i6Block* sblk = setM != nullptr ? dynamic_cast<i6Block*>(setM->body) : nullptr;
+        if(sblk == nullptr)
+            parsingError(format("No operator[]= for element type '{0}' on type '{1}'.",
+                                typeDisplayName(innerElem), typeDisplayName(curType)));
+        string recv = "(" + readText + ")";
+        string b = processBglConditionals(sblk->i6Body);
+        if(setM->params.size() > 0) b = replaceWord(b, "$" + setM->params[0]->name, idx->text());
+        if(setM->params.size() > 1) b = replaceWord(b, "$" + setM->params[1]->name, valExpr->text());
+        b = replaceWord(b, "$self", recv);
+        b = replaceWord(b, "$val",  recv);
+        b = replaceWord(b, "$prop", "0");
+        b = substituteElemOps(b, innerElem);
+        functionCallStatement& cs = *(new functionCallStatement());
+        cs.src = stmtLoc;
+        cs.emitterBody = b;
+        if(body != nullptr) body->statements.push_back(&cs);
         return false;
     }
+    return false;
+}
 
-    if(symbol.is(token::assignment) || symbol.is(token::bindAssignment))  {
-        // `:=` is the reference binding (rebinding) operator: it stores the right-hand instance
-        // itself and never dispatches the type's `operator =`. `=` keeps its meaning exactly —
-        // copy, through operator= when the type defines one. The two are separate spellings
-        // because a class that overloads `=` has spent it on copy semantics, leaving no way to
-        // say "point at this" otherwise.
-        bool isBindAssign = symbol.is(token::bindAssignment);
-        assignmentStatement& assignExpr=*(new assignmentStatement());
-        assignExpr.src = stmtLoc;
-        string lhsOriginal = (string)tok;
-        // `container.children = { … }` at runtime reads as "replace all contents" — a footgun. Only the
-        // object-body form (initial population) uses `=`; at runtime require `+=` to add.
-        if(lhsOriginal.size() > 9 && lhsOriginal.substr(lhsOriginal.size() - 9) == ".children")
-            parsingError("assigning to `.children` with `=` would replace all contents; use `.children += { … }` to add objects (or move them individually).");
-        if(isConstVariable(lhsOriginal, func, body))
-            parsingError(format("Cannot assign to const variable '{0}'", lhsOriginal));
-        if(func != nullptr){
-            string qualified = qualifyIdentifier(lhsOriginal, func, body);
-            if(qualified.empty())
-                parsingError(format("Undeclared variable '{0}'", lhsOriginal));
-            // Honour a member's `as <i6name>` alias on the assignment target, as the read
-            // path does — the declaration emits under the alias, so writing to the Beguile
-            // name would target a property that does not exist.
-            if(size_t d = qualified.rfind('.'); d != string::npos){
-                string recvPath = lhsOriginal.substr(0, lhsOriginal.rfind('.'));
-                string mem      = qualified.substr(d + 1);
-                string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
-                if(aliased != mem) qualified = qualified.substr(0, d + 1) + aliased;
-            }
-            assignExpr.variableLeft = qualified;
-        } else {
-            assignExpr.variableLeft = lhsOriginal;
+// `a[i] = v;` — a single-subscript element write.
+bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    file.getToken(token::assignment);
+    expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
+
+    // Resolve array type and compute $self/$prop
+    string arrType = resolvePathType(arrPath, func, body);
+    // Use getDispatchClass so templated receiver types (e.g. `array<var>` on a
+    // parametric param) strip down to the generic class for operator[]= lookup.
+    classDef* arrCls = getDispatchClass(arrType);
+    if(arrCls == nullptr) parsingError(format("Type '{0}' does not support subscript access", arrType));
+
+    // Element-type-aware lookup: find operator[]= whose second parameter type matches the
+    // array's declared element type. Handles both bare (`name[i]=v`) and dotted
+    // (`obj.prop[i]=v`) paths by splitting arrPath on '.'.
+    string elemType;
+    size_t dotPos = arrPath.find('.');
+    if(dotPos == string::npos)
+        elemType = resolveArrayElementType(arrPath, func, body);
+    else
+        elemType = resolveArrayElementTypeDotted(arrPath.substr(0, dotPos), arrPath.substr(dotPos + 1), func, body);
+    if(elemType.empty() && arrType == "bytearray") elemType = "char";
+    // Non-array classes (e.g. string) derive their element type from operator[]'s return.
+    if(elemType.empty() && arrCls != nullptr) elemType = inferSubscriptElementType(arrCls);
+
+    functionDef* setMethod = nullptr;
+    if(!elemType.empty())
+        setMethod = findArraySubscriptOp(arrCls, elemType, /*isWrite=*/true);
+    if(setMethod == nullptr){
+        if(elemType.empty())
+            parsingError(format("Subscript on '{0}': no declared element type. Declare as array<T>.", arrPath));
+        parsingError(format("No operator[]= for element type '{0}' on type '{1}'. Add an overload or use a supported element type.",
+            typeDisplayName(elemType), typeDisplayName(arrType)));
+    }
+    // Validate value type against element type
+    string valType = valExpr ? valExpr->resolvedType : "";
+    if(!valType.empty() && !isArrayElementCompatible(valType, elemType))
+        parsingError(format("Cannot assign value of type '{0}' to element of array<{1}>",
+            typeDisplayName(valType), typeDisplayName(elemType)));
+    checkByteElementRange(valExpr, elemType);
+
+    // Compute $self and $prop
+    size_t innerDot = arrPath.rfind('.');
+    string selfValue = (innerDot == string::npos) ? arrPath : arrPath.substr(0, innerDot);
+    string propValue = (innerDot == string::npos)
+        ? (isWordArrayType(arrType) ? "0" : "<$prop undefined>")
+        : arrPath.substr(innerDot + 1);
+
+    // Member (property) WORD array write uses the orLibrary property convention
+    // obj.&prop-->n = v (0-indexed, no count slot), not the global/table form. A dotted
+    // path is already a property access; a bare name resolving to a member qualifies to one.
+    string memOwner, memProp;
+    bool isMemberWordArray = false;
+    if(isWordArrayType(arrType)){
+        if(innerDot != string::npos){ memOwner = selfValue; memProp = propValue; isMemberWordArray = true; }
+        else isMemberWordArray = splitQualifiedMember(arrPath, func, body, memOwner, memProp);
+    if(isMemberWordArray && memberArrayIsRef(memOwner, memProp, func, body)){
+        arrPath = memOwner + "." + memProp;   // the pointer the member holds
+        isMemberWordArray = false;
+    }
+    }
+
+    functionCallStatement& callStmt = *(new functionCallStatement());
+    callStmt.src = stmtLoc;
+    callStmt.functionName = arrPath + ".set";
+    callStmt.args.push_back(indexExpr);
+    callStmt.args.push_back(valExpr);
+
+    // A slot whose element type owns storage accepts a bare text pointer — no explicit
+    // _bglStr.new() needed: a type that owns storage publishes `static operator =`, which
+    // setOwned hands the slot's CURRENT value plus the incoming one, so the type allocates
+    // on first write and copies into its own buffer thereafter. A type that owns storage but
+    // publishes no assign still falls through to a raw word store — see the array<T>
+    // requirements in the spec.
+
+    // If the element type publishes a static `operator =` it OWNS its storage, so the slot
+    // write must go through the type rather than being a raw word store. Prefer array<T>'s
+    // `setOwnedAt` member in that case; every plain element type keeps core's inline
+    // `$val-->($i+1) = $v` and pays nothing. Both bodies live in the BLR — this only picks.
+    // operatorRef returns "" when the type publishes no assign — the "0" substitution
+    // happens later, in substituteElemOps. Comparing against "0" here made this true for
+    // EVERY element type, so every subscript write took the setOwnedAt routine instead of
+    // the inline store, and a non-array receiver (stringObj) got "<$prop undefined>".
+    if(!isMemberWordArray && !operatorRef(elemType, "=").empty()){
+        if(auto* ac = languageService.findClass("array"))
+            if(auto* owned = dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
+                    auto* fn = dynamic_cast<functionDef*>(m);
+                    return fn && fn->name == "setownedat" && fn->isEmitter;
+                })))
+                setMethod = owned;
+    }
+    if(isMemberWordArray)
+        callStmt.emitterBody = memOwner + ".&" + memProp + "-->(" + indexExpr->text() + ") = " + valExpr->text();
+    else if(setMethod->isEmitter)
+        if(auto* blk = dynamic_cast<i6Block*>(setMethod->body)) {
+            string b = processBglConditionals(blk->i6Body);
+            size_t pos = 0;
+            for(size_t i = 0; i < setMethod->params.size() && i < callStmt.args.size(); i++)
+                b = replaceWord(b, "$" + setMethod->params[i]->name, callStmt.args[i]->text());
+            b = replaceWord(b, "$self", selfValue);
+            b = replaceWord(b, "$val",  arrPath);
+            b = replaceWord(b, "$prop", propValue);
+            // One substitution covers every $elemop(<op>) in the body.
+            b = substituteElemOps(b, elemType);
+            callStmt.emitterBody = b;
         }
+    if(body != nullptr) body->statements.push_back(&callStmt);
+    for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+    postInjections.clear();
+    return false;
+}
 
-        // look up the left-hand variable's type using original (unqualified) name
-        typeDef* leftType = nullptr;
-        bool lhsIsRefLocal = false;     // set true if the bare LHS resolves to a `ref` local
-        bool lhsIsByteArray = false;    // set true if the LHS is an array<char> (byteArray) — value-copy unsupported
-        // $self for emitter substitution. A member declared `as <i6name>` emits under that
-        // name, so the emitter body has to address it the same way the declaration did —
-        // otherwise `r1.name = "x"` sent the message to a property that does not exist.
-        string emitterSelfForLhs = lhsOriginal;
-        if(func != nullptr){
-            if(size_t ed = lhsOriginal.rfind('.'); ed != string::npos){
-                string recvPath = lhsOriginal.substr(0, ed);
-                string mem      = lhsOriginal.substr(ed + 1);
-                string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
-                if(aliased != mem) emitterSelfForLhs = recvPath + "." + aliased;
+// `name[i] …` — an element write, a chained subscript, or member access on the element.
+bool bglParser::processSubscriptStatement(token tok, StatementContext& sc){
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    string arrPath = (string)tok;  // e.g. "scores" or "player.inventory"
+    expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+
+    // Peek after ']': if '.', this is a dot-chain on the subscript result (e.g. arr[0].method()).
+    // Build the subscript-read text, then dispatch the continuation as a method call or property access.
+    token afterBracket = file.peekToken();
+    if(afterBracket.is(token::period))
+        return processSubscriptMemberAccess(arrPath, indexExpr, sc);
+
+    // Chained subscript write into an array-of-arrays: grid[i][j]...[k] = v. Every subscript
+    // but the last is a READ producing a pointer to an inner array; the final one is the
+    // element write. Build the read pointer through the leading subscripts, then emit the
+    // final operator[]= against it. (`grid[0]` was already parsed above as arrPath+indexExpr.)
+    if(afterBracket.is(token::bracketOpen))
+        return processChainedSubscriptWrite(arrPath, indexExpr, sc);
+
+    return processSubscriptWrite(arrPath, indexExpr, sc);
+}
+
+// Resolves an assignment's left-hand side: emitted name, declared type, ref / byte-array flags,
+// emitter `$self`, and the class used for `operator =` dispatch.
+bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOriginal, StatementContext& sc){
+    AssignTarget t;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    const string& stmtCastType = sc.castType;
+    // `container.children = { … }` at runtime reads as "replace all contents" — a footgun. Only the
+    // object-body form (initial population) uses `=`; at runtime require `+=` to add.
+    if(lhsOriginal.size() > 9 && lhsOriginal.substr(lhsOriginal.size() - 9) == ".children")
+        parsingError("assigning to `.children` with `=` would replace all contents; use `.children += { … }` to add objects (or move them individually).");
+    if(isConstVariable(lhsOriginal, func, body))
+        parsingError(format("Cannot assign to const variable '{0}'", lhsOriginal));
+    if(func != nullptr){
+        string qualified = qualifyIdentifier(lhsOriginal, func, body);
+        if(qualified.empty())
+            parsingError(format("Undeclared variable '{0}'", lhsOriginal));
+        // Honour a member's `as <i6name>` alias on the assignment target, as the read
+        // path does — the declaration emits under the alias, so writing to the Beguile
+        // name would target a property that does not exist.
+        if(size_t d = qualified.rfind('.'); d != string::npos){
+            string recvPath = lhsOriginal.substr(0, lhsOriginal.rfind('.'));
+            string mem      = qualified.substr(d + 1);
+            string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
+            if(aliased != mem) qualified = qualified.substr(0, d + 1) + aliased;
+        }
+        t.variableLeft = qualified;
+    } else {
+        t.variableLeft = lhsOriginal;
+    }
+
+    // look up the left-hand variable's type using original (unqualified) name
+    typeDef*& leftType = t.leftType;
+    bool& lhsIsRefLocal = t.lhsIsRefLocal;     // set true if the bare LHS resolves to a `ref` local
+    bool& lhsIsByteArray = t.lhsIsByteArray;    // set true if the LHS is an array<char> (byteArray) — value-copy unsupported
+    // $self for emitter substitution. A member declared `as <i6name>` emits under that
+    // name, so the emitter body has to address it the same way the declaration did —
+    // otherwise `r1.name = "x"` sent the message to a property that does not exist.
+    string& emitterSelfForLhs = t.emitterSelf;
+    emitterSelfForLhs = lhsOriginal;
+    if(func != nullptr){
+        if(size_t ed = lhsOriginal.rfind('.'); ed != string::npos){
+            string recvPath = lhsOriginal.substr(0, ed);
+            string mem      = lhsOriginal.substr(ed + 1);
+            string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
+            if(aliased != mem) emitterSelfForLhs = recvPath + "." + aliased;
+        }
+    }
+
+    size_t lhsDot = lhsOriginal.rfind('.');
+    if(lhsDot != string::npos){
+        // dot-path LHS: resolve owner type, then find property type in its class
+        string ownerPath = lhsOriginal.substr(0, lhsDot);
+        string propName  = lhsOriginal.substr(lhsDot + 1);
+        // Check for static member assignment: ClassName.staticMember
+        classDef* ownerAsCls = languageService.findClass(ownerPath);
+        if(ownerAsCls != nullptr){
+            for(typeMember* m : ownerAsCls->members)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                    if(vd->isStatic && vd->name == propName){
+                        if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
+                        string mangledName = "_bgl_" + ownerAsCls->name + "_" + propName;
+                        t.variableLeft = mangledName;
+                        emitterSelfForLhs = mangledName;  // $self should be the mangled global, not the owner
+                        leftType = &vd->type;
+                    if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
+                        break;
+                    }
+        }
+        string ownerType = leftType != nullptr ? "" : resolvePathType(ownerPath, func, body);
+        // `hide` enforcement (write): block `v.member = …` when member's write (`operator =`), or
+        // the whole member, is hidden on v's static type. `(Base)v.member = …` retypes the owner
+        // to Base — the door. Reads are unaffected (fires only on this assignment path).
+        {   string hideOwnerType = (!stmtCastType.empty() && ownerPath.find('.') == string::npos)
+                                 ? stmtCastType : ownerType;
+            if(!hideOwnerType.empty())
+                enforceHidden(getDispatchClass(hideOwnerType), propName, "=", {}, ownerPath);
+        }
+        if(!ownerType.empty()){
+            // The owner may be a classDef (direct class reference) or an objectDef
+            // (object instance with its own type identity). For objectDefs, look
+            // first at the instance's own members, then walk its class hierarchy —
+            // without the hierarchy walk, inherited members like `parent` declared
+            // on the base `object` class wouldn't be found, and `obj.parent = X`
+            // would fall through to a literal `obj.parent = X` instead of dispatching
+            // the parentProp operator= (→ `move obj to X`).
+            typeDef& ownerTd = languageService.getType(ownerType);
+            classDef* hierarchyRoot = dynamic_cast<classDef*>(&ownerTd);
+            if(hierarchyRoot == nullptr){
+                if(auto* ownerObj = dynamic_cast<objectDef*>(&ownerTd)){
+                    for(typeMember* m : ownerObj->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                            if(vd->name == propName){
+                                if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
+                                leftType = &vd->type;
+                    if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
+                                if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
+                                break;
+                            }
+                    if(leftType == nullptr) hierarchyRoot = ownerObj->objectClass;
+                }
+            }
+            if(leftType == nullptr && hierarchyRoot != nullptr){
+                typeMember* found = findMemberInHierarchy(hierarchyRoot, [&](typeMember* m){
+                    auto* vd = dynamic_cast<variableDeclaration*>(m);
+                    return vd != nullptr && vd->name == propName;
+                });
+                if(found){
+                    auto* vd = dynamic_cast<variableDeclaration*>(found);
+                    if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
+                    leftType = &vd->type;
+                    if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
+                    if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
+                }
             }
         }
-
-        size_t lhsDot = lhsOriginal.rfind('.');
-        if(lhsDot != string::npos){
-            // dot-path LHS: resolve owner type, then find property type in its class
-            string ownerPath = lhsOriginal.substr(0, lhsDot);
-            string propName  = lhsOriginal.substr(lhsDot + 1);
-            // Check for static member assignment: ClassName.staticMember
-            classDef* ownerAsCls = languageService.findClass(ownerPath);
-            if(ownerAsCls != nullptr){
-                for(typeMember* m : ownerAsCls->members)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                        if(vd->isStatic && vd->name == propName){
-                            if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
-                            string mangledName = "_bgl_" + ownerAsCls->name + "_" + propName;
-                            assignExpr.variableLeft = mangledName;
-                            emitterSelfForLhs = mangledName;  // $self should be the mangled global, not the owner
+        // $self = the OWNER for a property-class member, whose emitters are written against
+        // the host (parentProp's `parent($self)`). For a member that simply stores a class
+        // instance, $self is the member itself — its operator= acts on the stored value, so
+        // pointing $self at the owner sent the message to the wrong object entirely
+        // (`j.setFromLit(...)` instead of `j.name.setFromLit(...)`).
+        if(emitterSelfForLhs.rfind("_bgl_", 0) != 0
+           && (leftType == nullptr || isPropertyClassType(leftType->name)))
+            emitterSelfForLhs = ownerPath;  // $self = the owner object, not the full obj.prop path
+    } else {
+        if(func != nullptr){
+            for(paramDef* p : func->params)
+                if(p->name == lhsOriginal){ leftType = &p->type; break; }
+            if(leftType == nullptr && body != nullptr)
+                for(statement* s : body->statements)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == lhsOriginal){
                             leftType = &vd->type;
-                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
+                    if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
+                            if(vd->isRefLocal) lhsIsRefLocal = true;
                             break;
                         }
-            }
-            string ownerType = leftType != nullptr ? "" : resolvePathType(ownerPath, func, body);
-            // `hide` enforcement (write): block `v.member = …` when member's write (`operator =`), or
-            // the whole member, is hidden on v's static type. `(Base)v.member = …` retypes the owner
-            // to Base — the door. Reads are unaffected (fires only on this assignment path).
-            {   string hideOwnerType = (!stmtCastType.empty() && ownerPath.find('.') == string::npos)
-                                     ? stmtCastType : ownerType;
-                if(!hideOwnerType.empty())
-                    enforceHidden(getDispatchClass(hideOwnerType), propName, "=", {}, ownerPath);
-            }
-            if(!ownerType.empty()){
-                // The owner may be a classDef (direct class reference) or an objectDef
-                // (object instance with its own type identity). For objectDefs, look
-                // first at the instance's own members, then walk its class hierarchy —
-                // without the hierarchy walk, inherited members like `parent` declared
-                // on the base `object` class wouldn't be found, and `obj.parent = X`
-                // would fall through to a literal `obj.parent = X` instead of dispatching
-                // the parentProp operator= (→ `move obj to X`).
-                typeDef& ownerTd = languageService.getType(ownerType);
-                classDef* hierarchyRoot = dynamic_cast<classDef*>(&ownerTd);
-                if(hierarchyRoot == nullptr){
-                    if(auto* ownerObj = dynamic_cast<objectDef*>(&ownerTd)){
-                        for(typeMember* m : ownerObj->members)
-                            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                                if(vd->name == propName){
-                                    if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
-                                    leftType = &vd->type;
-                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
-                                    if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
-                                    break;
-                                }
-                        if(leftType == nullptr) hierarchyRoot = ownerObj->objectClass;
-                    }
+            if(leftType == nullptr && currentObject != nullptr)
+                for(typeMember* m : currentObject->members)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                        if(vd->name == lhsOriginal){
+                            if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
+                            leftType = &vd->type;
+                    if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
+                            if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
+                            break;
+                        }
+            if(leftType == nullptr && currentClass != nullptr)
+                for(typeMember* m : currentClass->members)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                        if(vd->name == lhsOriginal){
+                            if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
+                            leftType = &vd->type;
+                    if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
+                            if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
+                            break;
+                        }
+        }
+        if(leftType == nullptr)
+            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(lhsOriginal)){ leftType = &vd->type; if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray; }
+    }
+
+    // Resolve via getDispatchClass so a template-typed LHS (e.g. `array<int>`) reaches
+    // operator= dispatch — getType("array<int>") returns null (only the base `array` is
+    // registered), which would silently skip copy semantics. getDispatchClass strips the
+    // <...> and resolves the base class. (For non-template names this is equivalent.)
+    t.classType = leftType != nullptr ? getDispatchClass(leftType->name) : nullptr;
+    return t;
+}
+
+// Applies `operator =` dispatch (emitter, method, or conversion) to one assignment node.
+void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* val, const AssignTarget& t, bool isBindAssign){
+    const string& emitterSelfForLhs = t.emitterSelf;
+    classDef* classType = t.classType;
+    typeDef* leftType   = t.leftType;
+    const bool lhsIsByteArray = t.lhsIsByteArray;
+    a.emitterSelf = emitterSelfForLhs;  // always record $self for this assignment
+    // Only `:=` skips operator= dispatch — that is what rebinding means. A plain `=`
+    // on a `ref` slot assigns THROUGH the reference: it dispatches the type's
+    // operator= into whatever the slot currently points at, exactly as it would on a
+    // slot that owned its instance.
+    if(classType != nullptr && val != nullptr && !isBindAssign){
+        string valueTypeName = val->resolvedType;
+        if(!valueTypeName.empty()){
+            // Two-pass emitter lookup first — explicit operator= emitters always beat raw type compatibility
+            bool found = false;
+            {
+                typeMember* m = findMemberInHierarchy(classType, [&](typeMember* m){
+                    auto* opFunc = dynamic_cast<functionDef*>(m);
+                    return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
+                           && opFunc->params[0]->type.name==valueTypeName && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+                });
+                if(!m) m = findMemberInHierarchy(classType, [&](typeMember* m){
+                    auto* opFunc = dynamic_cast<functionDef*>(m);
+                    return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
+                           && opFunc->params[0]->type.name=="var" && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+                });
+                if(m){
+                    auto* opFunc = dynamic_cast<functionDef*>(m);
+                    auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                    a.emitterBody = processBglConditionals(blk->i6Body);
+                    a.emitterParam = opFunc->params[0]->name;
+                    // Pre-substitute $class with the LHS's declared type. $self / $param /
+                    // $target are substituted later at emit time (i6Emitter), but $class
+                    // resolves at parse time because it depends on the static type known here.
+                    if(classType != nullptr)
+                        a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
+                    found = true;
                 }
-                if(leftType == nullptr && hierarchyRoot != nullptr){
-                    typeMember* found = findMemberInHierarchy(hierarchyRoot, [&](typeMember* m){
-                        auto* vd = dynamic_cast<variableDeclaration*>(m);
-                        return vd != nullptr && vd->name == propName;
+            }
+            // Template-aware emitter match: an emitter operator= whose parameter and the RHS
+            // resolve to the SAME dispatch class (e.g. `operator=(array<T>)` for an `array<int>`
+            // RHS). The exact/var string match above can't see this because the param type name
+            // ("array" / "array<T>") won't string-equal the RHS ("array<int>"). Backs array
+            // copy-on-assign. Only adds matches the string passes missed (for non-generic
+            // classes it's equivalent to the exact match, which already ran).
+            if(!found){
+                classDef* valCls = getDispatchClass(valueTypeName);
+                if(valCls != nullptr){
+                    typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
+                        auto* opFunc = dynamic_cast<functionDef*>(mm);
+                        return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
+                               && dynamic_cast<i6Block*>(opFunc->body)!=nullptr
+                               && getDispatchClass(opFunc->params[0]->type.name) == valCls;
                     });
-                    if(found){
-                        auto* vd = dynamic_cast<variableDeclaration*>(found);
-                        if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", propName));
-                        leftType = &vd->type;
-                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
-                        if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
+                    if(m){
+                        auto* opFunc = dynamic_cast<functionDef*>(m);
+                        auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                        a.emitterBody = processBglConditionals(blk->i6Body);
+                        a.emitterParam = opFunc->params[0]->name;
+                        if(classType != nullptr)
+                            a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
+                        found = true;
                     }
                 }
             }
-            // $self = the OWNER for a property-class member, whose emitters are written against
-            // the host (parentProp's `parent($self)`). For a member that simply stores a class
-            // instance, $self is the member itself — its operator= acts on the stored value, so
-            // pointing $self at the owner sent the message to the wrong object entirely
-            // (`j.setFromLit(...)` instead of `j.name.setFromLit(...)`).
-            if(emitterSelfForLhs.rfind("_bgl_", 0) != 0
-               && (leftType == nullptr || isPropertyClassType(leftType->name)))
-                emitterSelfForLhs = ownerPath;  // $self = the owner object, not the full obj.prop path
-        } else {
-            if(func != nullptr){
-                for(paramDef* p : func->params)
-                    if(p->name == lhsOriginal){ leftType = &p->type; break; }
-                if(leftType == nullptr && body != nullptr)
-                    for(statement* s : body->statements)
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                            if(vd->name == lhsOriginal){
-                                leftType = &vd->type;
-                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
-                                if(vd->isRefLocal) lhsIsRefLocal = true;
-                                break;
-                            }
-                if(leftType == nullptr && currentObject != nullptr)
-                    for(typeMember* m : currentObject->members)
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                            if(vd->name == lhsOriginal){
-                                if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
-                                leftType = &vd->type;
-                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
-                                if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
-                                break;
-                            }
-                if(leftType == nullptr && currentClass != nullptr)
-                    for(typeMember* m : currentClass->members)
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                            if(vd->name == lhsOriginal){
-                                if(vd->isConst) parsingError(format("Cannot assign to const member '{0}'", lhsOriginal));
-                                leftType = &vd->type;
-                        if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
-                                if(vd->isRefLocal) lhsIsRefLocal = true;   // ref member: pointer-copy assign
-                                break;
-                            }
-            }
-            if(leftType == nullptr)
-                if(auto* vd = languageService.findGlobalAs<variableDeclaration>(lhsOriginal)){ leftType = &vd->type; if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray; }
-        }
-
-        // Resolve via getDispatchClass so a template-typed LHS (e.g. `array<int>`) reaches
-        // operator= dispatch — getType("array<int>") returns null (only the base `array` is
-        // registered), which would silently skip copy semantics. getDispatchClass strips the
-        // <...> and resolves the base class. (For non-template names this is equivalent.)
-        classDef* classType = leftType != nullptr ? getDispatchClass(leftType->name) : nullptr;
-
-        // helper: apply operator= emitter lookup to an assignment node for a given rhs expression
-        auto resolveEmitter = [&](assignmentStatement& a, expression* val){
-            a.emitterSelf = emitterSelfForLhs;  // always record $self for this assignment
-            // Only `:=` skips operator= dispatch — that is what rebinding means. A plain `=`
-            // on a `ref` slot assigns THROUGH the reference: it dispatches the type's
-            // operator= into whatever the slot currently points at, exactly as it would on a
-            // slot that owned its instance.
-            if(classType != nullptr && val != nullptr && !isBindAssign){
-                string valueTypeName = val->resolvedType;
-                if(!valueTypeName.empty()){
-                    // Two-pass emitter lookup first — explicit operator= emitters always beat raw type compatibility
-                    bool found = false;
-                    {
-                        typeMember* m = findMemberInHierarchy(classType, [&](typeMember* m){
-                            auto* opFunc = dynamic_cast<functionDef*>(m);
-                            return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
-                                   && opFunc->params[0]->type.name==valueTypeName && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
-                        });
-                        if(!m) m = findMemberInHierarchy(classType, [&](typeMember* m){
-                            auto* opFunc = dynamic_cast<functionDef*>(m);
-                            return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
-                                   && opFunc->params[0]->type.name=="var" && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
-                        });
-                        if(m){
-                            auto* opFunc = dynamic_cast<functionDef*>(m);
-                            auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-                            a.emitterBody = processBglConditionals(blk->i6Body);
-                            a.emitterParam = opFunc->params[0]->name;
-                            // Pre-substitute $class with the LHS's declared type. $self / $param /
-                            // $target are substituted later at emit time (i6Emitter), but $class
-                            // resolves at parse time because it depends on the static type known here.
-                            if(classType != nullptr)
-                                a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
-                            found = true;
-                        }
-                    }
-                    // Template-aware emitter match: an emitter operator= whose parameter and the RHS
-                    // resolve to the SAME dispatch class (e.g. `operator=(array<T>)` for an `array<int>`
-                    // RHS). The exact/var string match above can't see this because the param type name
-                    // ("array" / "array<T>") won't string-equal the RHS ("array<int>"). Backs array
-                    // copy-on-assign. Only adds matches the string passes missed (for non-generic
-                    // classes it's equivalent to the exact match, which already ran).
-                    if(!found){
-                        classDef* valCls = getDispatchClass(valueTypeName);
-                        if(valCls != nullptr){
-                            typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
-                                auto* opFunc = dynamic_cast<functionDef*>(mm);
-                                return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
-                                       && dynamic_cast<i6Block*>(opFunc->body)!=nullptr
-                                       && getDispatchClass(opFunc->params[0]->type.name) == valCls;
-                            });
-                            if(m){
-                                auto* opFunc = dynamic_cast<functionDef*>(m);
-                                auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-                                a.emitterBody = processBglConditionals(blk->i6Body);
-                                a.emitterParam = opFunc->params[0]->name;
-                                if(classType != nullptr)
-                                    a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
-                                found = true;
-                            }
-                        }
-                    }
-                    // Non-emitter operator=: dispatch via a mangled method call so the routine runs
-                    // exactly once and the RHS is evaluated exactly once. We synthesize a one-line
-                    // emitter body using $target (the full LHS path, e.g. retval.parentWin) so that
-                    // member-access assignments dispatch on the property, not its owner.
-                    if(!found){
-                        typeMember* m = findMemberInHierarchy(classType, [&](typeMember* m){
-                            auto* opFunc = dynamic_cast<functionDef*>(m);
-                            return opFunc && opFunc->name=="=" && !opFunc->isEmitter
-                                   && opFunc->params.size()==1 && opFunc->params[0]->type.name==valueTypeName;
-                        });
-                        if(!m) m = findMemberInHierarchy(classType, [&](typeMember* m){
-                            auto* opFunc = dynamic_cast<functionDef*>(m);
-                            return opFunc && opFunc->name=="=" && !opFunc->isEmitter
-                                   && opFunc->params.size()==1 && opFunc->params[0]->type.name=="var";
-                        });
-                        if(m){
-                            auto* opFunc = dynamic_cast<functionDef*>(m);
-                            if(opFunc->i6name.empty()) opFunc->i6name = mangleOperatorName(opFunc->name);
-                            string paramName = opFunc->params[0]->name;
-                            a.emitterBody  = format("$target.{0}(${1});", opFunc->i6name, paramName);
-                            a.emitterParam = paramName;
-                            found = true;
-                        }
-                    }
-                    // Last resort — subclass upcast into an emitter operator=(Base): reached only when no
-                    // exact/var operator= (emitter or non-emitter) matched, so a derived class's own
-                    // operator= always wins first. This is what lets `obj.parent = someRoom` invoke
-                    // `parentProp operator=(object)` (→ `move obj to someRoom`) with a place/thing RHS.
-                    // Without it the assignment falls through to isTypeCompatible with NO emitter body and
-                    // silently emits a raw `lhs = rhs` (which, for a declared-`parent` object, even
-                    // constant-folds the LHS to its initial-parent value). Mirrors isTypeCompatible's upcast.
-                    if(!found){
-                        typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
-                            auto* opFunc = dynamic_cast<functionDef*>(mm);
-                            if(!(opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
-                                 && dynamic_cast<i6Block*>(opFunc->body)!=nullptr)) return false;
-                            classDef* paramCls = getDispatchClass(opFunc->params[0]->type.name);
-                            classDef* valCls   = getDispatchClass(valueTypeName);
-                            if(!paramCls || !valCls || paramCls == valCls) return false;
-                            return valCls->hasAncestor(paramCls);
-                        });
-                        if(m){
-                            auto* opFunc = dynamic_cast<functionDef*>(m);
-                            auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-                            a.emitterBody = processBglConditionals(blk->i6Body);
-                            a.emitterParam = opFunc->params[0]->name;
-                            if(classType != nullptr)
-                                a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
-                            found = true;
-                        }
-                    }
-                    // Compatible-arg operator= match: an operator= whose parameter is isTypeCompatible
-                    // with the RHS but not caught by the exact/var/template/upcast passes above. The key
-                    // case is a LITERAL RHS into a value-typed setter — `obj.height = 5` where `height`'s
-                    // type declares `operator=(int)`: the literal is typed `intliteral`, which is
-                    // assignable to `int` (isTypeCompatible) but is not a subclass of it, so the
-                    // inheritance-based upcast pass misses it. Runs last, so exact overloads still win.
-                    // Handles the emitter form (inline body) and the non-emitter form (mangled call).
-                    // Guard: only when the RHS is NOT already assignable to the member type by the raw
-                    // path — otherwise a plain `intVar = 0` would needlessly route through int's identity
-                    // `operator=($target=$v)` and reformat. This fires precisely for a proxy member whose
-                    // type isn't literal-compatible on its own but declares an operator= that accepts the
-                    // literal's base type (e.g. `heightProxy` with `operator=(int)`).
-                    if(!found && !isTypeCompatible(valueTypeName, leftType->name)){
-                        typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
-                            auto* opFunc = dynamic_cast<functionDef*>(mm);
-                            return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
-                                   && dynamic_cast<i6Block*>(opFunc->body)!=nullptr
-                                   && isTypeCompatible(valueTypeName, opFunc->params[0]->type.name);
-                        });
-                        if(m){
-                            auto* opFunc = dynamic_cast<functionDef*>(m);
-                            auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-                            a.emitterBody = processBglConditionals(blk->i6Body);
-                            a.emitterParam = opFunc->params[0]->name;
-                            if(classType != nullptr)
-                                a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
-                            found = true;
-                        }
-                        if(!found){
-                            m = findMemberInHierarchy(classType, [&](typeMember* mm){
-                                auto* opFunc = dynamic_cast<functionDef*>(mm);
-                                return opFunc && opFunc->name=="=" && !opFunc->isEmitter
-                                       && opFunc->params.size()==1
-                                       && isTypeCompatible(valueTypeName, opFunc->params[0]->type.name);
-                            });
-                            if(m){
-                                auto* opFunc = dynamic_cast<functionDef*>(m);
-                                if(opFunc->i6name.empty()) opFunc->i6name = mangleOperatorName(opFunc->name);
-                                string paramName = opFunc->params[0]->name;
-                                a.emitterBody  = format("$target.{0}(${1});", opFunc->i6name, paramName);
-                                a.emitterParam = paramName;
-                                found = true;
-                            }
-                        }
-                    }
-                    bool foundViaOperatorEq = found;
-                    // array<char> (byteArray) matches the inherited array<T> word-copy operator=
-                    // (via the upcast pass — byteArray : array). That word-copy corrupts byte data
-                    // (copies `length` WORDS, not bytes). Char-array value-copy isn't supported yet —
-                    // a clean error beats corruption/broken I6. Fires for any operator= match on a
-                    // byte-array LHS (byteArray has no operator= of its own — only the inherited copy).
-                    if(foundViaOperatorEq && lhsIsByteArray)
-                        parsingError("array<char> value-copy (`dst = src`) is not yet supported — the element copy would corrupt byte data. Copy elements explicitly, or use <string>/<buf> for text buffers.");
-                    if(!found) found = isTypeCompatible(valueTypeName, leftType->name);
-                    // Silent value-semantics gap: TypeCompatible let it through but no
-                    // operator= matched, AND the LHS class carries its own stored fields,
-                    // AND it isn't a world-tree citizen (object-derived classes use
-                    // reference semantics by convention). Force the user to declare
-                    // operator= so copy semantics aren't a surprise.
-                    if(found && !foundViaOperatorEq && classHasStoredFields(classType) && !isReferenceBacked(classType))
-                        parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to assign with. "
-                                            "Declare 'operator =' on the class to define them; bind a reference instead "
-                                            "(`ref {0} x := …`, then `:=` to rebind); or inherit from '_bglObject' "
-                                            "(reference) / 'object' (world-tree reference) for reference semantics.",
-                            typeDisplayName(leftType->name)));
-                    if(!found){
-                        // Fallback: check if RHS type has emitter LhsType operator(){}
-                        classDef* rhsCls = languageService.findClass(valueTypeName);
-                        if(rhsCls != nullptr)
-                            if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
-                                auto* opFn = dynamic_cast<functionDef*>(m);
-                                return opFn && opFn->name=="operator()" && opFn->params.empty() && opFn->isEmitter && !opFn->isExplicit
-                                       && opFn->returnType.name==leftType->name && dynamic_cast<i6Block*>(opFn->body)!=nullptr;
-                            })){
-                                auto* opFn = dynamic_cast<functionDef*>(m);
-                                auto* blk = dynamic_cast<i6Block*>(opFn->body);
-                                string b = processBglConditionals(blk->i6Body);
-                                string argText = val->text();
-                                size_t pos = 0;
-                                while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
-                                val->tokens.clear();
-                                val->tokens.push_back(b);
-                                val->resolvedType = leftType->name;
-                                found = true;
-                            }
-                        // Same fallback for a NON-emitter (regular-method) conversion operator on the
-                        // RHS type: call its emitted routine. Parity with the emitter form above and with
-                        // operator=; this is what makes `int a = obj.height` convert through a Beguile-method
-                        // `operator()` getter, not just an emitter one.
-                        if(!found && rhsCls != nullptr)
-                            if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
-                                auto* opFn = dynamic_cast<functionDef*>(m);
-                                return opFn && opFn->name=="operator()" && opFn->params.empty() && !opFn->isEmitter && !opFn->isExplicit
-                                       && opFn->returnType.name==leftType->name;
-                            })){
-                                auto* opFn = dynamic_cast<functionDef*>(m);
-                                if(opFn->i6name.empty()) opFn->i6name = mangleOperatorName(opFn->name);
-                                string argText = val->text();
-                                val->tokens.clear();
-                                val->tokens.push_back(argText + "." + opFn->i6name + "()");
-                                val->resolvedType = leftType->name;
-                                found = true;
-                            }
-                    }
-                    if(!found)
-                        parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'", typeDisplayName(valueTypeName), typeDisplayName(leftType->name)));
+            // Non-emitter operator=: dispatch via a mangled method call so the routine runs
+            // exactly once and the RHS is evaluated exactly once. We synthesize a one-line
+            // emitter body using $target (the full LHS path, e.g. retval.parentWin) so that
+            // member-access assignments dispatch on the property, not its owner.
+            if(!found){
+                typeMember* m = findMemberInHierarchy(classType, [&](typeMember* m){
+                    auto* opFunc = dynamic_cast<functionDef*>(m);
+                    return opFunc && opFunc->name=="=" && !opFunc->isEmitter
+                           && opFunc->params.size()==1 && opFunc->params[0]->type.name==valueTypeName;
+                });
+                if(!m) m = findMemberInHierarchy(classType, [&](typeMember* m){
+                    auto* opFunc = dynamic_cast<functionDef*>(m);
+                    return opFunc && opFunc->name=="=" && !opFunc->isEmitter
+                           && opFunc->params.size()==1 && opFunc->params[0]->type.name=="var";
+                });
+                if(m){
+                    auto* opFunc = dynamic_cast<functionDef*>(m);
+                    if(opFunc->i6name.empty()) opFunc->i6name = mangleOperatorName(opFunc->name);
+                    string paramName = opFunc->params[0]->name;
+                    a.emitterBody  = format("$target.{0}(${1});", opFunc->i6name, paramName);
+                    a.emitterParam = paramName;
+                    found = true;
                 }
             }
-        };
-
-        // Interpolated string literal on RHS: var = $"..."
-        if(file.peekToken(1).is("$") && file.peekToken(2).is(eTokenType::quote)){
-            file.getToken();  // consume '$'
-            assignExpr.interpSegments = parseInterpolatedSegments(func, body);
-            file.getToken(token::endStatement);  // consume ';'
-            // Create a dummy RHS expression typed as interpolatedstringliteral for emitter resolution
-            expression* rhs = new expression();
-            rhs->resolvedType = "interpolatedstringliteral";
-            assignExpr.assignedExpression = rhs;
-            resolveEmitter(assignExpr, rhs);
-            if(body != nullptr) body->statements.push_back(&assignExpr);
-            for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
-            postInjections.clear();
-            return false;
+            // Last resort — subclass upcast into an emitter operator=(Base): reached only when no
+            // exact/var operator= (emitter or non-emitter) matched, so a derived class's own
+            // operator= always wins first. This is what lets `obj.parent = someRoom` invoke
+            // `parentProp operator=(object)` (→ `move obj to someRoom`) with a place/thing RHS.
+            // Without it the assignment falls through to isTypeCompatible with NO emitter body and
+            // silently emits a raw `lhs = rhs` (which, for a declared-`parent` object, even
+            // constant-folds the LHS to its initial-parent value). Mirrors isTypeCompatible's upcast.
+            if(!found){
+                typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
+                    auto* opFunc = dynamic_cast<functionDef*>(mm);
+                    if(!(opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
+                         && dynamic_cast<i6Block*>(opFunc->body)!=nullptr)) return false;
+                    classDef* paramCls = getDispatchClass(opFunc->params[0]->type.name);
+                    classDef* valCls   = getDispatchClass(valueTypeName);
+                    if(!paramCls || !valCls || paramCls == valCls) return false;
+                    return valCls->hasAncestor(paramCls);
+                });
+                if(m){
+                    auto* opFunc = dynamic_cast<functionDef*>(m);
+                    auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                    a.emitterBody = processBglConditionals(blk->i6Body);
+                    a.emitterParam = opFunc->params[0]->name;
+                    if(classType != nullptr)
+                        a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
+                    found = true;
+                }
+            }
+            // Compatible-arg operator= match: an operator= whose parameter is isTypeCompatible
+            // with the RHS but not caught by the exact/var/template/upcast passes above. The key
+            // case is a LITERAL RHS into a value-typed setter — `obj.height = 5` where `height`'s
+            // type declares `operator=(int)`: the literal is typed `intliteral`, which is
+            // assignable to `int` (isTypeCompatible) but is not a subclass of it, so the
+            // inheritance-based upcast pass misses it. Runs last, so exact overloads still win.
+            // Handles the emitter form (inline body) and the non-emitter form (mangled call).
+            // Guard: only when the RHS is NOT already assignable to the member type by the raw
+            // path — otherwise a plain `intVar = 0` would needlessly route through int's identity
+            // `operator=($target=$v)` and reformat. This fires precisely for a proxy member whose
+            // type isn't literal-compatible on its own but declares an operator= that accepts the
+            // literal's base type (e.g. `heightProxy` with `operator=(int)`).
+            if(!found && !isTypeCompatible(valueTypeName, leftType->name)){
+                typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
+                    auto* opFunc = dynamic_cast<functionDef*>(mm);
+                    return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
+                           && dynamic_cast<i6Block*>(opFunc->body)!=nullptr
+                           && isTypeCompatible(valueTypeName, opFunc->params[0]->type.name);
+                });
+                if(m){
+                    auto* opFunc = dynamic_cast<functionDef*>(m);
+                    auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                    a.emitterBody = processBglConditionals(blk->i6Body);
+                    a.emitterParam = opFunc->params[0]->name;
+                    if(classType != nullptr)
+                        a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
+                    found = true;
+                }
+                if(!found){
+                    m = findMemberInHierarchy(classType, [&](typeMember* mm){
+                        auto* opFunc = dynamic_cast<functionDef*>(mm);
+                        return opFunc && opFunc->name=="=" && !opFunc->isEmitter
+                               && opFunc->params.size()==1
+                               && isTypeCompatible(valueTypeName, opFunc->params[0]->type.name);
+                    });
+                    if(m){
+                        auto* opFunc = dynamic_cast<functionDef*>(m);
+                        if(opFunc->i6name.empty()) opFunc->i6name = mangleOperatorName(opFunc->name);
+                        string paramName = opFunc->params[0]->name;
+                        a.emitterBody  = format("$target.{0}(${1});", opFunc->i6name, paramName);
+                        a.emitterParam = paramName;
+                        found = true;
+                    }
+                }
+            }
+            bool foundViaOperatorEq = found;
+            // array<char> (byteArray) matches the inherited array<T> word-copy operator=
+            // (via the upcast pass — byteArray : array). That word-copy corrupts byte data
+            // (copies `length` WORDS, not bytes). Char-array value-copy isn't supported yet —
+            // a clean error beats corruption/broken I6. Fires for any operator= match on a
+            // byte-array LHS (byteArray has no operator= of its own — only the inherited copy).
+            if(foundViaOperatorEq && lhsIsByteArray)
+                parsingError("array<char> value-copy (`dst = src`) is not yet supported — the element copy would corrupt byte data. Copy elements explicitly, or use <string>/<buf> for text buffers.");
+            if(!found) found = isTypeCompatible(valueTypeName, leftType->name);
+            // Silent value-semantics gap: TypeCompatible let it through but no
+            // operator= matched, AND the LHS class carries its own stored fields,
+            // AND it isn't a world-tree citizen (object-derived classes use
+            // reference semantics by convention). Force the user to declare
+            // operator= so copy semantics aren't a surprise.
+            if(found && !foundViaOperatorEq && classHasStoredFields(classType) && !isReferenceBacked(classType))
+                parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to assign with. "
+                                    "Declare 'operator =' on the class to define them; bind a reference instead "
+                                    "(`ref {0} x := …`, then `:=` to rebind); or inherit from '_bglObject' "
+                                    "(reference) / 'object' (world-tree reference) for reference semantics.",
+                    typeDisplayName(leftType->name)));
+            if(!found){
+                // Fallback: check if RHS type has emitter LhsType operator(){}
+                classDef* rhsCls = languageService.findClass(valueTypeName);
+                if(rhsCls != nullptr)
+                    if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
+                        auto* opFn = dynamic_cast<functionDef*>(m);
+                        return opFn && opFn->name=="operator()" && opFn->params.empty() && opFn->isEmitter && !opFn->isExplicit
+                               && opFn->returnType.name==leftType->name && dynamic_cast<i6Block*>(opFn->body)!=nullptr;
+                    })){
+                        auto* opFn = dynamic_cast<functionDef*>(m);
+                        auto* blk = dynamic_cast<i6Block*>(opFn->body);
+                        string b = processBglConditionals(blk->i6Body);
+                        string argText = val->text();
+                        size_t pos = 0;
+                        while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
+                        val->tokens.clear();
+                        val->tokens.push_back(b);
+                        val->resolvedType = leftType->name;
+                        found = true;
+                    }
+                // Same fallback for a NON-emitter (regular-method) conversion operator on the
+                // RHS type: call its emitted routine. Parity with the emitter form above and with
+                // operator=; this is what makes `int a = obj.height` convert through a Beguile-method
+                // `operator()` getter, not just an emitter one.
+                if(!found && rhsCls != nullptr)
+                    if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
+                        auto* opFn = dynamic_cast<functionDef*>(m);
+                        return opFn && opFn->name=="operator()" && opFn->params.empty() && !opFn->isEmitter && !opFn->isExplicit
+                               && opFn->returnType.name==leftType->name;
+                    })){
+                        auto* opFn = dynamic_cast<functionDef*>(m);
+                        if(opFn->i6name.empty()) opFn->i6name = mangleOperatorName(opFn->name);
+                        string argText = val->text();
+                        val->tokens.clear();
+                        val->tokens.push_back(argText + "." + opFn->i6name + "()");
+                        val->resolvedType = leftType->name;
+                        found = true;
+                    }
+            }
+            if(!found)
+                parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'", typeDisplayName(valueTypeName), typeDisplayName(leftType->name)));
         }
+    }
+}
 
-        // Set expected type from the LHS so name resolution can disambiguate the RHS.
-        string savedExpectedAssign = currentExpectedType;
-        if(leftType != nullptr) currentExpectedType = leftType->name;
-        expression* rhs = parseExpression(file.getToken(), {token::endStatement, "?"}, func, body);
-        currentExpectedType = savedExpectedAssign;
+// `lhs = rhs;` / `lhs := rhs;` — plain assignment and reference binding.
+bool bglParser::processAssignmentStatement(token tok, token symbol, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    // `:=` is the reference binding (rebinding) operator: it stores the right-hand instance
+    // itself and never dispatches the type's `operator =`. `=` keeps its meaning exactly —
+    // copy, through operator= when the type defines one. The two are separate spellings
+    // because a class that overloads `=` has spent it on copy semantics, leaving no way to
+    // say "point at this" otherwise.
+    bool isBindAssign = symbol.is(token::bindAssignment);
+    assignmentStatement& assignExpr=*(new assignmentStatement());
+    assignExpr.src = stmtLoc;
+    string lhsOriginal = (string)tok;
+    AssignTarget target = resolveAssignmentTarget(lhsOriginal, sc);
+    assignExpr.variableLeft = target.variableLeft;
+    typeDef* leftType   = target.leftType;
+    classDef* classType = target.classType;
 
-        if(rhs->terminator == "?"){
-            // conditional assignment: lhs = condition ? trueVal : falseVal
-            // build as an ifStatement with two assignment branches, each with full emitter dispatch
-            ifStatement& ifStmt = *(new ifStatement());
-            ifStmt.src = stmtLoc;
-            ifStmt.condition = rhs;
-
-            auto makeAssign = [&](expression* val) -> assignmentStatement* {
-                assignmentStatement* a = new assignmentStatement();
-                a->src = stmtLoc;
-                a->variableLeft = assignExpr.variableLeft;
-                a->assignedExpression = val;
-                resolveEmitter(*a, val);
-                return a;
-            };
-
-            expression* trueVal  = parseExpression(file.getToken(), {":"}, func, body);
-            expression* falseVal = parseExpression(file.getToken(), {token::endStatement}, func, body);
-
-            ifStmt.thenBlock = new statementBlock();
-            ifStmt.thenBlock->statements.push_back(makeAssign(trueVal));
-            ifStmt.elseBlock = new statementBlock();
-            ifStmt.elseBlock->statements.push_back(makeAssign(falseVal));
-
-            if(body != nullptr) body->statements.push_back(&ifStmt);
-            for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
-            postInjections.clear();
-            return false;
-        }
-
-        // `:=` binds one instance to a slot of the same class, so both sides must BE that class.
-        // Restricting it this way keeps it from becoming a general escape from the type system:
-        // it is a reference binding, not a reinterpreting store.
-        if(isBindAssign){
-            string rhsT = rhs != nullptr ? rhs->resolvedType : string();
-            classDef* lhsCls = classType;
-            if(lhsCls == nullptr)
-                parsingError(format("the reference binding operator ':=' needs a class-typed left "
-                                    "side; '{0}' is not one. Use '=' for ordinary assignment.",
-                                    lhsOriginal));
-            if(rhsT.empty() || getDispatchClass(rhsT) == nullptr)
-                parsingError(format("the reference binding operator ':=' binds a reference, so the "
-                                    "right side must be an instance of a class; got '{0}'.",
-                                    typeDisplayName(rhsT.empty() ? "unknown" : rhsT)));
-            else if(!isTypeCompatible(rhsT, lhsCls->name))
-                parsingError(format("cannot bind '{0}' to '{1}': the reference binding operator ':=' "
-                                    "requires the same class (or a subclass). Use '=' to copy values "
-                                    "between types.",
-                                    typeDisplayName(rhsT), typeDisplayName(lhsCls->name)));
-        }
+    // Interpolated string literal on RHS: var = $"..."
+    if(file.peekToken(1).is("$") && file.peekToken(2).is(eTokenType::quote)){
+        file.getToken();  // consume '$'
+        assignExpr.interpSegments = parseInterpolatedSegments(func, body);
+        file.getToken(token::endStatement);  // consume ';'
+        // Create a dummy RHS expression typed as interpolatedstringliteral for emitter resolution
+        expression* rhs = new expression();
+        rhs->resolvedType = "interpolatedstringliteral";
         assignExpr.assignedExpression = rhs;
-        // Skip operator= emitter if RHS contains $target — the opcode handles its own store
-        if(rhs->text().find("$target") == string::npos)
-            resolveEmitter(assignExpr, rhs);
-
-        for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
-        pendingInjections.clear();
+        resolveAssignmentOperator(assignExpr, rhs, target, isBindAssign);
         if(body != nullptr) body->statements.push_back(&assignExpr);
         for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
         postInjections.clear();
         return false;
     }
-    // Compound assignment: +=, -=, *=, /=, %=, |=, &=, ^=, <<=, >>=
-    static const vector<string> compoundOps = {"+=","-=","*=","/=","%=","|=","&=","^=","<<=",">>="};
-    if(symbol.is(eTokenType::oper) && find(compoundOps.begin(), compoundOps.end(), symbol.value) != compoundOps.end()){
-        string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
-        if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
-        // Honour a member's `as <i6name>` alias, as the plain-assignment and read paths do:
-        // the member emits under the alias, so a compound write to its Beguile name targeted
-        // a property that does not exist ("No such constant as score").
-        if(func != nullptr){
-            if(size_t cd2 = tok.value.rfind('.'); cd2 != string::npos){
-                string recvPath = tok.value.substr(0, cd2);
-                string mem      = tok.value.substr(cd2 + 1);
-                string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
-                size_t ld = lhs.rfind('.');
-                if(aliased != mem && ld != string::npos) lhs = lhs.substr(0, ld + 1) + aliased;
-            }
-        }
-        if(isConstVariable(tok.value, func, body))
-            parsingError(format("Cannot assign to const variable '{0}'", tok.value));
 
-        // Array braced-list compound: `arr += {a, b, c}` (and `-=`) applies the per-element
-        // operator (append / removeValue) to EACH element in turn — the grammar/extend `+=`
-        // list idiom, at runtime. Only for the append/remove ops on a word/byte array; every
-        // other case falls through to the single-RHS operator dispatch below.
-        // World-model child placement at runtime: `container.children += { a, b }` moves each listed
-        // object INTO the container. Only `+=` (add) — plain `=` reads as "replace all contents" and is
-        // rejected below; `-=` has no well-defined target (move out to where?) so it's rejected too.
-        if(tok.value.size() > 9 && tok.value.substr(tok.value.size() - 9) == ".children"){
-            if(symbol.value != "+=")
-                parsingError(format("'{0}' on `.children` is not supported; use `+=` to add objects (e.g. `x.children += {{ a, b }}`), or move objects individually.", symbol.value));
-            if(!file.peekToken().is(token::braceOpen))
-                parsingError("`.children += ` expects a brace list of objects, e.g. `x.children += { a, b }`.");
-            string owner = tok.value.substr(0, tok.value.size() - 9);
-            string container = func != nullptr ? qualifyIdentifier(owner, func, body) : owner;
+    // Set expected type from the LHS so name resolution can disambiguate the RHS.
+    string savedExpectedAssign = currentExpectedType;
+    if(leftType != nullptr) currentExpectedType = leftType->name;
+    expression* rhs = parseExpression(file.getToken(), {token::endStatement, "?"}, func, body);
+    currentExpectedType = savedExpectedAssign;
+
+    if(rhs->terminator == "?"){
+        // conditional assignment: lhs = condition ? trueVal : falseVal
+        // build as an ifStatement with two assignment branches, each with full emitter dispatch
+        ifStatement& ifStmt = *(new ifStatement());
+        ifStmt.src = stmtLoc;
+        ifStmt.condition = rhs;
+
+        auto makeAssign = [&](expression* val) -> assignmentStatement* {
+            assignmentStatement* a = new assignmentStatement();
+            a->src = stmtLoc;
+            a->variableLeft = assignExpr.variableLeft;
+            a->assignedExpression = val;
+            resolveAssignmentOperator(*a, val, target, isBindAssign);
+            return a;
+        };
+
+        expression* trueVal  = parseExpression(file.getToken(), {":"}, func, body);
+        expression* falseVal = parseExpression(file.getToken(), {token::endStatement}, func, body);
+
+        ifStmt.thenBlock = new statementBlock();
+        ifStmt.thenBlock->statements.push_back(makeAssign(trueVal));
+        ifStmt.elseBlock = new statementBlock();
+        ifStmt.elseBlock->statements.push_back(makeAssign(falseVal));
+
+        if(body != nullptr) body->statements.push_back(&ifStmt);
+        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+        postInjections.clear();
+        return false;
+    }
+
+    // `:=` binds one instance to a slot of the same class, so both sides must BE that class.
+    // Restricting it this way keeps it from becoming a general escape from the type system:
+    // it is a reference binding, not a reinterpreting store.
+    if(isBindAssign){
+        string rhsT = rhs != nullptr ? rhs->resolvedType : string();
+        classDef* lhsCls = classType;
+        if(lhsCls == nullptr)
+            parsingError(format("the reference binding operator ':=' needs a class-typed left "
+                                "side; '{0}' is not one. Use '=' for ordinary assignment.",
+                                lhsOriginal));
+        if(rhsT.empty() || getDispatchClass(rhsT) == nullptr)
+            parsingError(format("the reference binding operator ':=' binds a reference, so the "
+                                "right side must be an instance of a class; got '{0}'.",
+                                typeDisplayName(rhsT.empty() ? "unknown" : rhsT)));
+        else if(!isTypeCompatible(rhsT, lhsCls->name))
+            parsingError(format("cannot bind '{0}' to '{1}': the reference binding operator ':=' "
+                                "requires the same class (or a subclass). Use '=' to copy values "
+                                "between types.",
+                                typeDisplayName(rhsT), typeDisplayName(lhsCls->name)));
+    }
+    assignExpr.assignedExpression = rhs;
+    // Skip operator= emitter if RHS contains $target — the opcode handles its own store
+    if(rhs->text().find("$target") == string::npos)
+        resolveAssignmentOperator(assignExpr, rhs, target, isBindAssign);
+
+    for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+    pendingInjections.clear();
+    if(body != nullptr) body->statements.push_back(&assignExpr);
+    for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+    postInjections.clear();
+    return false;
+}
+
+// `x.children += { a, b };` — world-model child placement at runtime.
+bool bglParser::processChildrenPlacement(token tok, token symbol, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    if(symbol.value != "+=")
+        parsingError(format("'{0}' on `.children` is not supported; use `+=` to add objects (e.g. `x.children += {{ a, b }}`), or move objects individually.", symbol.value));
+    if(!file.peekToken().is(token::braceOpen))
+        parsingError("`.children += ` expects a brace list of objects, e.g. `x.children += { a, b }`.");
+    string owner = tok.value.substr(0, tok.value.size() - 9);
+    string container = func != nullptr ? qualifyIdentifier(owner, func, body) : owner;
+    file.getToken();  // consume '{'
+    token et = file.getToken();
+    while(!et.is(token::braceClose)){
+        expression* elem = parseExpression(et, {token::comma, token::braceClose}, func, body);
+        i6RawNode* mv = new i6RawNode();
+        mv->text = "move " + elem->text() + " to " + container + ";";
+        mv->src = stmtLoc;
+        if(body != nullptr) body->statements.push_back(mv);
+        if(elem != nullptr && elem->terminator == token::braceClose) break;
+        et = file.getToken();
+    }
+    if(file.peekToken().is(token::endStatement)) file.getToken();
+    return false;
+}
+
+// `arr += { a, b };` / `arr -= { … };` — the per-element compound op over a brace list. Returns
+// true when it handled the statement, false to fall through to the single-RHS path.
+bool bglParser::processArrayBracedCompound(token tok, token symbol, const string& lhs, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    if((symbol.value == "+=" || symbol.value == "-=") && file.peekToken().is(token::braceOpen)){
+        string aType = resolveIdentifierType(tok.value, func, body);
+        if(isWordArrayType(aType) || aType == "bytearray"){
+            classDef* ac = languageService.findClass(aType);
+            typeMember* opm = ac ? findMemberInHierarchy(ac, [&](typeMember* m){
+                auto* f = dynamic_cast<functionDef*>(m);
+                return f && f->name == symbol.value && f->isEmitter && f->params.size() == 1
+                       && dynamic_cast<i6Block*>(f->body) != nullptr;
+            }) : nullptr;
+            if(!opm)
+                parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(aType)));
+            auto* opFunc = dynamic_cast<functionDef*>(opm);
+            string opBody = replaceWord(processBglConditionals(dynamic_cast<i6Block*>(opFunc->body)->i6Body), "$prop", "0");
+            opBody = substituteElemOps(opBody, resolveArrayElementType(tok.value, func, body));
             file.getToken();  // consume '{'
             token et = file.getToken();
             while(!et.is(token::braceClose)){
-                expression* elem = parseExpression(et, {token::comma, token::braceClose}, func, body);
-                i6RawNode* mv = new i6RawNode();
-                mv->text = "move " + elem->text() + " to " + container + ";";
-                mv->src = stmtLoc;
-                if(body != nullptr) body->statements.push_back(mv);
-                if(elem != nullptr && elem->terminator == token::braceClose) break;
-                et = file.getToken();
-            }
-            if(file.peekToken().is(token::endStatement)) file.getToken();
-            return false;
-        }
-        if((symbol.value == "+=" || symbol.value == "-=") && file.peekToken().is(token::braceOpen)){
-            string aType = resolveIdentifierType(tok.value, func, body);
-            if(isWordArrayType(aType) || aType == "bytearray"){
-                classDef* ac = languageService.findClass(aType);
-                typeMember* opm = ac ? findMemberInHierarchy(ac, [&](typeMember* m){
-                    auto* f = dynamic_cast<functionDef*>(m);
-                    return f && f->name == symbol.value && f->isEmitter && f->params.size() == 1
-                           && dynamic_cast<i6Block*>(f->body) != nullptr;
-                }) : nullptr;
-                if(!opm)
-                    parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(aType)));
-                auto* opFunc = dynamic_cast<functionDef*>(opm);
-                string opBody = replaceWord(processBglConditionals(dynamic_cast<i6Block*>(opFunc->body)->i6Body), "$prop", "0");
-                opBody = substituteElemOps(opBody, resolveArrayElementType(tok.value, func, body));
-                file.getToken();  // consume '{'
-                token et = file.getToken();
-                while(!et.is(token::braceClose)){
-                    expression* elem = parseExpression(et, {",", token::braceClose}, func, body);
-                    assignmentStatement& a = *(new assignmentStatement());
-                    a.src = stmtLoc;
-                    a.variableLeft = lhs;
-                    a.assignedExpression = elem;
-                    a.emitterBody = opBody;
-                    a.emitterParam = opFunc->params[0]->name;
-                    a.emitterSelf = lhs;
-                    if(body != nullptr) body->statements.push_back(&a);
-                    if(elem != nullptr && elem->terminator == token::braceClose) break;
-                    et = file.getToken();
-                }
-                file.getToken(token::endStatement);
-                for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
-                postInjections.clear();
-                return false;
-            }
-        }
-        expression* rhs = parseExpression(file.getToken(), {token::endStatement}, func, body);
-
-        // Try emitter lookup for this compound operator on the LHS type. A dotted path names
-        // a member, which resolveIdentifierType does not resolve — so `shelf.items += x` found
-        // no type, no operator, and fell through to a NUMERIC compound assignment
-        // (`shelf.items = shelf.items + x`) rather than the array's `+=`.
-        string lhsTypeName = tok.value.find('.') == string::npos
-                           ? resolveIdentifierType(tok.value, func, body)
-                           : resolvePathType(tok.value, func, body);
-        classDef* lhsClass = languageService.findClass(lhsTypeName);
-        bool emitterFound = false;
-        if(lhsClass != nullptr && rhs != nullptr && !rhs->resolvedType.empty()){
-            string rhsType = rhs->resolvedType;
-            // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all
-            typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
-                auto* opFunc = dynamic_cast<functionDef*>(m);
-                return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
-                       && opFunc->params.size()==1 && opFunc->params[0]->type.name==rhsType
-                       && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
-            });
-            // Conversion fallback: check if RHS type converts to a type the operator accepts
-            if(!m){
-                classDef* rhsCls = languageService.findClass(rhsType);
-                if(rhsCls != nullptr)
-                    for(typeMember* rm : rhsCls->members){
-                        auto* convFn = dynamic_cast<functionDef*>(rm);
-                        if(!convFn || convFn->name != "operator()" || !convFn->params.empty() || !convFn->isEmitter || convFn->isExplicit) continue;
-                        string convertedType = convFn->returnType.name;
-                        m = findMemberInHierarchy(lhsClass, [&](typeMember* m2){
-                            auto* opFunc = dynamic_cast<functionDef*>(m2);
-                            return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
-                                   && opFunc->params.size()==1 && opFunc->params[0]->type.name==convertedType
-                                   && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
-                        });
-                        if(m) break;
-                    }
-            }
-            // var wildcard fallback
-            if(!m) m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
-                auto* opFunc = dynamic_cast<functionDef*>(m);
-                return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
-                       && opFunc->params.size()==1 && opFunc->params[0]->type.name=="var"
-                       && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
-            });
-            if(m){
-                auto* opFunc = dynamic_cast<functionDef*>(m);
-                auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+                expression* elem = parseExpression(et, {",", token::braceClose}, func, body);
                 assignmentStatement& a = *(new assignmentStatement());
                 a.src = stmtLoc;
                 a.variableLeft = lhs;
-                a.assignedExpression = rhs;
-                a.emitterBody = processBglConditionals(blk->i6Body);
-                // $self/$prop: a member array is addressed as (owner, property); a bare
-                // global or local array uses the 0 sentinel, the same pair the method-call
-                // path computes. A BARE IDENTIFIER is not proof of the non-member case —
-                // inside an object's own method `nums += x` names a member — and assuming
-                // so emitted `_bglArray.append(self.nums, 0, …)`, passing a multi-word
-                // property where a pointer belongs. I6 then refuses to read it with `.`.
-                string cOwner, cProp;
-                bool cIsMember = splitQualifiedMember(lhs, func, body, cOwner, cProp);
-                if(cIsMember && memberArrayIsRef(cOwner, cProp, func, body)) cIsMember = false;
-                if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray"){
-                    a.emitterBody = replaceWord(a.emitterBody, "$prop", cIsMember ? cProp : "0");
-                    a.emitterBody = substituteElemOps(a.emitterBody, resolveArrayElementType(lhs, func, body));
-                }
+                a.assignedExpression = elem;
+                a.emitterBody = opBody;
                 a.emitterParam = opFunc->params[0]->name;
-                a.emitterSelf = cIsMember ? cOwner : lhs;
+                a.emitterSelf = lhs;
                 if(body != nullptr) body->statements.push_back(&a);
-                emitterFound = true;
+                if(elem != nullptr && elem->terminator == token::braceClose) break;
+                et = file.getToken();
             }
+            file.getToken(token::endStatement);
+            for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+            postInjections.clear();
+            return true;
         }
-        if(!emitterFound){
-            if(!lhsTypeName.empty() && lhsTypeName != "var")
-                parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(lhsTypeName)));
-            // No emitter and untyped: expand to I6 form: x op= y  →  x = x op y;
-            string op = symbol.value.substr(0, symbol.value.size() - 1); // strip trailing '='
-            string rhsText = rhs != nullptr ? rhs->text() : "";
+    }
+    return false;
+}
+
+// `lhs op= rhs;` — compound assignment (+=, -=, *=, /=, %=, |=, &=, ^=, <<=, >>=).
+bool bglParser::processCompoundAssignment(token tok, token symbol, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
+    if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
+    // Honour a member's `as <i6name>` alias, as the plain-assignment and read paths do:
+    // the member emits under the alias, so a compound write to its Beguile name targeted
+    // a property that does not exist ("No such constant as score").
+    if(func != nullptr){
+        if(size_t cd2 = tok.value.rfind('.'); cd2 != string::npos){
+            string recvPath = tok.value.substr(0, cd2);
+            string mem      = tok.value.substr(cd2 + 1);
+            string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
+            size_t ld = lhs.rfind('.');
+            if(aliased != mem && ld != string::npos) lhs = lhs.substr(0, ld + 1) + aliased;
+        }
+    }
+    if(isConstVariable(tok.value, func, body))
+        parsingError(format("Cannot assign to const variable '{0}'", tok.value));
+
+    // World-model child placement at runtime: `container.children += { a, b }` moves each listed
+    // object INTO the container. Only `+=` (add) — plain `=` reads as "replace all contents" and is
+    // rejected below; `-=` has no well-defined target (move out to where?) so it's rejected too.
+    if(tok.value.size() > 9 && tok.value.substr(tok.value.size() - 9) == ".children")
+        return processChildrenPlacement(tok, symbol, sc);
+
+    // Array braced-list compound: `arr += {a, b, c}` (and `-=`) applies the per-element
+    // operator (append / removeValue) to EACH element in turn — the grammar/extend `+=`
+    // list idiom, at runtime. Only for the append/remove ops on a word/byte array; every
+    // other case falls through to the single-RHS operator dispatch below.
+    if(processArrayBracedCompound(tok, symbol, lhs, sc)) return false;
+
+    expression* rhs = parseExpression(file.getToken(), {token::endStatement}, func, body);
+
+    // Try emitter lookup for this compound operator on the LHS type. A dotted path names
+    // a member, which resolveIdentifierType does not resolve — so `shelf.items += x` found
+    // no type, no operator, and fell through to a NUMERIC compound assignment
+    // (`shelf.items = shelf.items + x`) rather than the array's `+=`.
+    string lhsTypeName = tok.value.find('.') == string::npos
+                       ? resolveIdentifierType(tok.value, func, body)
+                       : resolvePathType(tok.value, func, body);
+    classDef* lhsClass = languageService.findClass(lhsTypeName);
+    bool emitterFound = false;
+    if(lhsClass != nullptr && rhs != nullptr && !rhs->resolvedType.empty()){
+        string rhsType = rhs->resolvedType;
+        // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all
+        typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
+            auto* opFunc = dynamic_cast<functionDef*>(m);
+            return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
+                   && opFunc->params.size()==1 && opFunc->params[0]->type.name==rhsType
+                   && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+        });
+        // Conversion fallback: check if RHS type converts to a type the operator accepts
+        if(!m){
+            classDef* rhsCls = languageService.findClass(rhsType);
+            if(rhsCls != nullptr)
+                for(typeMember* rm : rhsCls->members){
+                    auto* convFn = dynamic_cast<functionDef*>(rm);
+                    if(!convFn || convFn->name != "operator()" || !convFn->params.empty() || !convFn->isEmitter || convFn->isExplicit) continue;
+                    string convertedType = convFn->returnType.name;
+                    m = findMemberInHierarchy(lhsClass, [&](typeMember* m2){
+                        auto* opFunc = dynamic_cast<functionDef*>(m2);
+                        return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
+                               && opFunc->params.size()==1 && opFunc->params[0]->type.name==convertedType
+                               && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+                    });
+                    if(m) break;
+                }
+        }
+        // var wildcard fallback
+        if(!m) m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
+            auto* opFunc = dynamic_cast<functionDef*>(m);
+            return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
+                   && opFunc->params.size()==1 && opFunc->params[0]->type.name=="var"
+                   && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+        });
+        if(m){
+            auto* opFunc = dynamic_cast<functionDef*>(m);
+            auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+            assignmentStatement& a = *(new assignmentStatement());
+            a.src = stmtLoc;
+            a.variableLeft = lhs;
+            a.assignedExpression = rhs;
+            a.emitterBody = processBglConditionals(blk->i6Body);
+            // $self/$prop: a member array is addressed as (owner, property); a bare
+            // global or local array uses the 0 sentinel, the same pair the method-call
+            // path computes. A BARE IDENTIFIER is not proof of the non-member case —
+            // inside an object's own method `nums += x` names a member — and assuming
+            // so emitted `_bglArray.append(self.nums, 0, …)`, passing a multi-word
+            // property where a pointer belongs. I6 then refuses to read it with `.`.
+            string cOwner, cProp;
+            bool cIsMember = splitQualifiedMember(lhs, func, body, cOwner, cProp);
+            if(cIsMember && memberArrayIsRef(cOwner, cProp, func, body)) cIsMember = false;
+            if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray"){
+                a.emitterBody = replaceWord(a.emitterBody, "$prop", cIsMember ? cProp : "0");
+                a.emitterBody = substituteElemOps(a.emitterBody, resolveArrayElementType(lhs, func, body));
+            }
+            a.emitterParam = opFunc->params[0]->name;
+            a.emitterSelf = cIsMember ? cOwner : lhs;
+            if(body != nullptr) body->statements.push_back(&a);
+            emitterFound = true;
+        }
+    }
+    if(!emitterFound){
+        if(!lhsTypeName.empty() && lhsTypeName != "var")
+            parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(lhsTypeName)));
+        // No emitter and untyped: expand to I6 form: x op= y  →  x = x op y;
+        string op = symbol.value.substr(0, symbol.value.size() - 1); // strip trailing '='
+        string rhsText = rhs != nullptr ? rhs->text() : "";
+        i6RawNode& node = *(new i6RawNode());
+        node.text = lhs + " = " + lhs + " " + op + " " + rhsText + ";";
+        node.src = stmtLoc;
+        if(body != nullptr) body->statements.push_back(&node);
+    }
+    for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+    postInjections.clear();
+    return false;
+}
+
+// `x++;` / `x--;` — postfix increment or decrement as a whole statement.
+bool bglParser::processPostfixIncDec(token tok, token symbol, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    file.getToken(token::endStatement);
+    string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
+    if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
+    if(isConstVariable(tok.value, func, body))
+        parsingError(format("Cannot assign to const variable '{0}'", tok.value));
+    // Try emitter lookup for this operator on the LHS type
+    string lhsTypeName = resolveIdentifierType(tok.value, func, body);
+    classDef* lhsClass = languageService.findClass(lhsTypeName);
+    bool emitterFound = false;
+    if(lhsClass != nullptr){
+        if(typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
+            auto* opFunc = dynamic_cast<functionDef*>(m);
+            return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
+                   && opFunc->params.empty() && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
+        })){
+            auto* opFunc = dynamic_cast<functionDef*>(m);
+            auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+            string b = processBglConditionals(blk->i6Body);
+            b = replaceWord(b, "$self", lhs);
+            b = replaceWord(b, "$val",  lhs);
             i6RawNode& node = *(new i6RawNode());
-            node.text = lhs + " = " + lhs + " " + op + " " + rhsText + ";";
+            node.text = b + ";";
             node.src = stmtLoc;
             if(body != nullptr) body->statements.push_back(&node);
+            emitterFound = true;
         }
-        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
-        postInjections.clear();
-        return false;
     }
-    if(symbol.is(eTokenType::oper) && (symbol.value == "++" || symbol.value == "--")){
-        file.getToken(token::endStatement);
-        string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
-        if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
-        if(isConstVariable(tok.value, func, body))
-            parsingError(format("Cannot assign to const variable '{0}'", tok.value));
-        // Try emitter lookup for this operator on the LHS type
-        string lhsTypeName = resolveIdentifierType(tok.value, func, body);
-        classDef* lhsClass = languageService.findClass(lhsTypeName);
-        bool emitterFound = false;
-        if(lhsClass != nullptr){
-            if(typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
-                auto* opFunc = dynamic_cast<functionDef*>(m);
-                return opFunc && opFunc->name==symbol.value && opFunc->isEmitter
-                       && opFunc->params.empty() && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
-            })){
-                auto* opFunc = dynamic_cast<functionDef*>(m);
-                auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+    if(!emitterFound){
+        if(!lhsTypeName.empty() && lhsTypeName != "var")
+            parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(lhsTypeName)));
+        i6RawNode& node = *(new i6RawNode());
+        node.text = lhs + symbol.value + ";";
+        node.src = stmtLoc;
+        if(body != nullptr) body->statements.push_back(&node);
+    }
+    for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+    postInjections.clear();
+    return false;
+}
+
+// Computes the called name of a call statement: the `replaced()` rewrite, then qualification of
+// a bare name (an instance method becomes `self.name`).
+string bglParser::qualifyCallName(token tok, StatementContext& sc){
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    string rawName = (string)tok;
+    // replace chaining: replaced() resolves to the predecessor's mangled name
+    if(rawName == "replaced" && currentFunc && !currentFunc->replacedTarget.empty()){
+        rawName = currentFunc->replacedTarget;
+        currentFunc->replacedWasCalled = true;
+    }
+    if(func != nullptr && rawName.find('.') == string::npos){
+        string qualified = qualifyIdentifier(rawName, func, body);
+        // qualifyIdentifier walks inherited VARIABLES but not functions.
+        // For call-form resolution, also check the class hierarchy for inherited methods.
+        // Skip if the name also exists as a global function (global arity matching wins).
+        if((qualified.empty() || qualified == rawName) && currentClass != nullptr){
+            bool isGlobalFunc = false;
+            if(auto* fd = languageService.findGlobalAs<functionDef>(rawName)) isGlobalFunc = true;
+            if(!isGlobalFunc){
+                if(currentClass->findMember([&](typeMember* m){
+                       auto* fd = dynamic_cast<functionDef*>(m);
+                       return fd != nullptr && fd->name == rawName;
+                   })) qualified = "self." + rawName;
+            }
+        }
+        return qualified.empty() ? rawName : qualified;
+    } else {
+        return rawName;
+    }
+}
+
+// Parses a call statement's argument list, with brace-argument hints taken from the callee.
+void bglParser::parseCallArgsWithHints(functionCallStatement& callStmt, StatementContext& sc){
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    BraceArgHints braceHints;
+    size_t dp = callStmt.functionName.rfind('.');
+    if(dp == string::npos){
+        braceHints = braceArgHints(collectGlobalCandidates(callStmt.functionName));
+    } else {
+        string objectPath = callStmt.functionName.substr(0, dp);
+        string methodName = callStmt.functionName.substr(dp + 1);
+        string recvType = (objectPath == "self")
+            ? (currentObject ? currentObject->name : (currentClass ? currentClass->name : string()))
+            : resolveIdentifierType(objectPath, func, body);
+        if(!recvType.empty()) braceHints = braceArgHints(collectMethodCandidates(recvType, methodName));
+    }
+    ParsedArgList pal = parseCallArgList(func, body, braceHints);
+    callStmt.args = pal.args;
+    callStmt.namedArgNames = pal.namedArgNames;
+    callStmt.interpSegmentsPerArg = pal.interpSegmentsPerArg;
+}
+
+// `recv.method(args);` — binds a method call statement (receiver type, `hide` enforcement,
+// emitter substitution). Returns true when it emitted the statement itself.
+bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token tok, string& chainReturnType, StatementContext& sc){
+    const size_t dotPos = callStmt.functionName.rfind('.');
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    string& stmtCastType = sc.castType;
+    const string& literalTypeName = sc.literalTypeName;
+    const string& literalSelfText = sc.literalSelfText;
+    // method call: validate and resolve emitter
+    string objectPath = callStmt.functionName.substr(0, dotPos);  // may be "obj" or "obj.prop"
+    string methodName = callStmt.functionName.substr(dotPos + 1);
+    // Resolve a namespace auto-member receiver (bgl.ui → _bglUi, bgl.util.math → _bglMath)
+    // to the backing object so emission is a message-send, not a literal runtime property
+    // chain (which fails to set `self`). Only rewrite when the receiver collapses to a
+    // single global object — leaving locals, class-typed paths, and emitter namespaces
+    // (bgl.asm) untouched. Mirrors the expression-context walk.
+    {
+        string q = qualifyIdentifier(objectPath, func, body);
+        if(q != objectPath && q.find('.') == string::npos && q.find('(') == string::npos
+           && languageService.findObjectType(q))
+            objectPath = q;
+    }
+    // Emission path: same as objectPath but with the HEAD alias-resolved to its I6 name
+    // (e.g. `orLibUtil` → `util`), for a multi-hop receiver that doesn't collapse to a single
+    // object above. objectPath itself stays the Beguile path so resolvePathType still works;
+    // emitObjectPath drives $self/$val/functionName so emission uses the I6 name. Mirrors the
+    // expression walk, which emits `util.orlooparray.getNext(...)`.
+    string emitObjectPath = objectPath;
+    if(objectPath.find('.') != string::npos){
+        size_t hd = objectPath.find('.');
+        string head = objectPath.substr(0, hd);
+        string qh = qualifyIdentifier(head, func, body);
+        if(!qh.empty() && qh != head && qh.find('(') == string::npos && qh.find('.') == string::npos)
+            emitObjectPath = qh + objectPath.substr(hd);
+    }
+    string objectName = objectPath;  // kept for backward compat in non-emitter emit path
+    // Pass memberHint=methodName so the resolver disambiguates a name collision in favor
+    // of whichever candidate's type actually exposes the method.
+    // The receiver's ACTUAL static type, independent of any cast — needed to decide whether
+    // an explicit cast is a genuine upcast that should trigger ancestor-qualified dispatch.
+    string actualPathType = !literalTypeName.empty() ? literalTypeName
+                          : resolvePathType(objectPath, func, body, methodName);
+    string objectType = !stmtCastType.empty() ? stmtCastType : actualPathType;
+    // Ancestor-qualified method dispatch (statement form): `(Base)obj.method(args);` emits I6
+    // `obj.Base::method(args)`, forcing static dispatch to Base's version — the super-call /
+    // ancestor-version idiom. Only when Base is a strict ancestor of the receiver's actual
+    // type (a real upcast); identity/downcast/base-typed-local stay dynamic. Consumed at the
+    // non-emitter emission below; emitter methods (inlined) are rejected.
+    classDef* ancestorDispatchClass = nullptr;
+    if(!stmtCastType.empty())
+        if(isAncestorClass(getDispatchClass(stmtCastType), getDispatchClass(actualPathType)))
+            ancestorDispatchClass = getDispatchClass(stmtCastType);
+    stmtCastType = "";  // consume the cast
+    if(objectType.empty())
+        parsingError(format("Unknown variable '{0}'", objectPath));
+    // Compute $self and $prop for emitter substitution.
+    // For literals, $self is the raw literal text (e.g. "hello", 42, 'x'), not the path.
+    size_t innerDot = objectPath.rfind('.');
+    // $self defaults to the FULL receiver path — the object the method is invoked on
+    // (e.g. `orLibUtil.orArray.set(...)` → $self = `orLibUtil.orArray`). Literals use their
+    // raw text. Only the word-array member dual-dispatch (obj.prop) wants the pre-dot owner,
+    // and it overrides selfValue below (isMemberArr). Previously this split off the last hop
+    // unconditionally, which mis-set $self to the owner for namespace-sub-object receivers.
+    string selfValue = (!literalSelfText.empty() && innerDot == string::npos)
+                      ? literalSelfText
+                      : emitObjectPath;
+    string propValue = (innerDot == string::npos)
+        ? (isWordArrayType(objectType) ? "0" : "<$prop undefined>")
+        : objectPath.substr(innerDot + 1);
+    // Member (property) WORD array: route through the dual-form _bglArray utility with
+    // the owning object + property (matches the expression-context path). Override of
+    // selfValue/propValue is applied just before emitter substitution (after recvElemType).
+    string memOwner, memProp;
+    bool isMemberArr = false;
+    if(isWordArrayType(objectType)){
+        // Member word array `obj.prop`: dual-dispatch wants $self = owner, $prop = prop.
+        // (selfValue now defaults to the full path, so split the owner off explicitly.)
+        if(innerDot != string::npos){ memOwner = objectPath.substr(0, innerDot); memProp = propValue; isMemberArr = true; }
+        else isMemberArr = splitQualifiedMember(objectPath, func, body, memOwner, memProp);
+        // A `ref` member holds a POINTER to an array owned elsewhere, so it is addressed
+        // as a value — (obj.prop, 0) — not as inline property data. Checked against the
+        // resolved owner/property rather than the path text, which varies by call site.
+        if(isMemberArr && memberArrayIsRef(memOwner, memProp, func, body)){
+            selfValue = memOwner + "." + memProp;   // the pointer the member holds
+            isMemberArr = false;
+        }
+        if(isMemberArr) rejectRawMemberLengthOp(memOwner, memProp, methodName, func, body);
+    }
+    // Receiver type can be a classDef OR an objectDef (each unclassed objectDef has its
+    // own type identity); both have addressable methods.
+    typeDef& objTd2 = languageService.getType(objectType);
+    classDef* cls = dynamic_cast<classDef*>(&objTd2);
+    bool opaqueReceiver = (cls == nullptr && dynamic_cast<objectDef*>(&objTd2) == nullptr);
+    // Generic specialization fallback: templated receiver name (`array<int>` from
+    // a parametric param) isn't a registered type, but its base ("array") is. Treat
+    // as non-opaque if the base resolves to a class — bindMethodCall handles the
+    // element-type binding for substitution.
+    if(opaqueReceiver){
+        auto lt = objectType.find('<');
+        if(lt != string::npos && lt > 0){
+            typeDef& baseTd = languageService.getType(objectType.substr(0, lt));
+            if(dynamic_cast<classDef*>(&baseTd) != nullptr){
+                opaqueReceiver = false;
+                cls = dynamic_cast<classDef*>(&baseTd);
+            }
+        }
+    }
+    if(opaqueReceiver && !looseIdentifierMode)
+        parsingError(format("Type '{0}' is not a class or object", objectType));
+    if(opaqueReceiver){
+        // Loose mode: receiver is unknown to Beguile (typically an I6 symbol). Skip
+        // method binding and emitter substitution; the call statement emits the
+        // verbatim `path.method(args)`, which is valid I6. Carry original case via
+        // the inherited displayName field (same convention as typeMember.dName()).
+        chainReturnType = "var";
+        callStmt.displayName = tok.originalValue;
+    } else {
+        // Element-type binding for generic receivers (array<T>, etc.). Resolve from the
+        // bare receiver path (handles bare member + global); the member override below
+        // then switches selfValue/propValue to owner/property for the utility dispatch.
+        string recvElemType;
+        {
+            size_t ed = objectPath.find('.');
+            if(ed == string::npos) recvElemType = resolveArrayElementType(objectPath, func, body);
+            else recvElemType = resolveArrayElementTypeDotted(objectPath.substr(0, ed), objectPath.substr(ed + 1), func, body);
+        }
+        if(isMemberArr){ selfValue = memOwner; propValue = memProp; }
+        // Computed message send as a STATEMENT — `obj.m();` where `m` holds a property.
+        // The expression path handles the value form; this is the discard-result form,
+        // which reaches bindMethodCall and would be rejected as an unknown method.
+        {
+            bool realMember = false;
+            if(classDef* rc = getDispatchClass(objectType))
+                realMember = findMemberInHierarchy(rc, [&](typeMember* m){ return m->name == methodName; }) != nullptr;
+            if(!realMember)
+                if(auto* od = languageService.findObjectType(objectType))
+                    for(typeMember* m : od->members)
+                        if(m->name == methodName){ realMember = true; break; }
+            if(!realMember && isPropertyValuedLocal(methodName, func, body)){
+                string argText;
+                for(size_t i = 0; i < callStmt.args.size(); i++)
+                    argText += (i ? ", " : "") + callStmt.args[i]->text();
+                i6RawNode& raw = *(new i6RawNode());
+                raw.src = stmtLoc;
+                raw.text = emitObjectPath + ".(" + qualifyIdentifier(methodName, func, body)
+                         + ")(" + argText + ");";
+                if(body != nullptr) body->statements.push_back(&raw);
+                return true;
+            }
+        }
+        functionDef* method = bindMethodCall(objectType, objectPath, methodName,
+                                               callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
+                                               recvElemType);
+        // `hide` enforcement (statement call): objectType is cast-aware, so a `(Base)obj.m()`
+        // resolves against Base and reaches a hidden-on-the-subtype method — the door.
+        {   vector<string> argTypeNames;
+            for(expression* a : callStmt.args) argTypeNames.push_back(a->resolvedType);
+            enforceHidden(getDispatchClass(objectType), methodName, "", argTypeNames, objectPath);
+        }
+        // A value emitter is NOT callable: `obj.bold` (value, §14.4.5) and `obj.bold()`
+        // (zero-arg function) are distinct; parens on a value are an error here too.
+        if(method->isEmitter && method->isValueEmitter)
+            parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", methodName));
+        // Ancestor-qualified dispatch needs a real I6 routine property for `::` to select;
+        // an emitter method is inlined at the call site, so there is no routine to qualify.
+        if(ancestorDispatchClass != nullptr && method->isEmitter)
+            parsingError(format("Ancestor-qualified dispatch '({0}){1}.{2}(...)' is not supported: '{2}' is an emitter method (inlined at the call site), so there is no routine for the ancestor cast to select. Ancestor dispatch works on regular (non-emitter) methods.",
+                                ancestorDispatchClass->dName(), objectPath, methodName));
+        cls = languageService.findClass(objectType);
+        // Rebuild the call statement's functionName from the (possibly namespace-resolved)
+        // objectPath so emission targets the backing object — e.g. `bgl.ui.pressAnyKey()`
+        // becomes `_bglUi.pressAnyKey()` rather than a literal runtime chain. Overload sets
+        // carry a mangled i6name (assigned by mangleOverloadSetForReceiver in bindMethodCall);
+        // otherwise use the method name. Emitters are handled separately below (inlined body).
+        if(!method->isEmitter){
+            string callName = method->i6name.empty() ? methodName : method->i6name;
+            // Explicit ancestor cast → qualify the send with the ancestor's I6 class
+            // (`obj.Base::method`) so I6 selects that class's routine statically.
+            if(ancestorDispatchClass != nullptr)
+                callName = ancestorDispatchClass->i6Name() + "::" + callName;
+            callStmt.functionName = emitObjectPath + "." + callName;
+        }
+        // if emitter, pre-substitute $self, $prop, and $class
+        if(method->isEmitter)
+            if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                 string b = processBglConditionals(blk->i6Body);
-                b = replaceWord(b, "$self", lhs);
-                b = replaceWord(b, "$val",  lhs);
-                i6RawNode& node = *(new i6RawNode());
-                node.text = b + ";";
-                node.src = stmtLoc;
-                if(body != nullptr) body->statements.push_back(&node);
-                emitterFound = true;
+                // $selfsub → `<self>sub` (the I6 action routine) for the verb class's
+                // perform() bridge — e.g. `Take.perform()` → `TakeSub()`. Must run before
+                // $self: $self is a prefix of $selfsub, and replaceWord's word boundary
+                // leaves $selfsub untouched if $self runs first (it was emitted literally).
+                b = replaceWord(b, "$selfsub", selfValue + "sub");
+                b = replaceWord(b, "$self", selfValue);
+                // $val generic (receiver-value) substitution — skip when a parameter is
+                // named `val`, so the emission-time param substitution ($val → arg) wins.
+                // Mirrors the $prop/hasPropParam guard below (e.g. orArray.set(...,var val)).
+                bool hasValParam = false;
+                for(paramDef* p : method->params) if(p->name == "val"){ hasValParam = true; break; }
+                if(!hasValParam)
+                    b = replaceWord(b, "$val",  emitObjectPath);
+                // $class — declared receiver type (ignores multiple inheritance).
+                // Resolves to the variable's static type, not the type that owns the
+                // inherited emitter. Powers class-message I6 emission from mixins.
+                if(cls != nullptr)
+                    b = replaceWord(b, "$class", cls->i6Name());
+                // $prop fallback — done before staging callStmt.emitterBody so that
+                // resolveEmitterText's later param substitution can still substitute
+                // a `prop`-named parameter when present (e.g. `provides(property prop)`).
+                // Skip if any parameter is named `prop` so the param sub wins.
+                bool hasPropParam = false;
+                for(paramDef* p : method->params) if(p->name == "prop"){ hasPropParam = true; break; }
+                if(!hasPropParam)
+                    b = replaceWord(b, "$prop", propValue);
+                // One substitution covers every $elemop(<op>) in the body.
+                b = substituteElemOps(b, recvElemType.empty() ? objectType : recvElemType, methodName);
+                callStmt.emitterBody = b;
+                for(paramDef* p : method->params)
+                    callStmt.emitterParams.push_back(p->name);
             }
-        }
-        if(!emitterFound){
-            if(!lhsTypeName.empty() && lhsTypeName != "var")
-                parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(lhsTypeName)));
-            i6RawNode& node = *(new i6RawNode());
-            node.text = lhs + symbol.value + ";";
-            node.src = stmtLoc;
-            if(body != nullptr) body->statements.push_back(&node);
-        }
-        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
-        postInjections.clear();
-        return false;
+        chainReturnType = method->returnType.name;
     }
-    if(symbol.is(token::parenOpen))  { //then this is a function call.
+    return false;
+}
 
-        // Guard: a bare union-typed value cannot be called directly — its runtime type is not yet
-        // known, so calling it would run whichever member it happens to hold (a string as a routine
-        // crashes). Require narrowing first (a `(func<...>)x` cast, after a `typeof(x)` check).
-        {
-            string calleeType = resolveIdentifierType((string)tok, func, body);
-            if(isUnionType(calleeType))
-                parsingError(format("Cannot call '{0}' directly — it has union type '{1}'. "
-                    "Discriminate with typeof() and narrow with a cast first, e.g. "
-                    "`func<void> f = (func<void>){0}; f();`", (string)tok, calleeType));
+// `name(args);` — binds a global function call statement.
+void bglParser::bindGlobalCallStatement(functionCallStatement& callStmt, token tok, string& chainReturnType, StatementContext& sc){
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    // global function call: bind (resolve + validate + finalize) then stage emitter body
+    GlobalCallBinding gcb = bindGlobalCall(callStmt.functionName, callStmt.args,
+                                            callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
+                                            func, body);
+    if(!gcb.funcVarReturnType.empty())  chainReturnType = gcb.funcVarReturnType;
+    else if(gcb.method != nullptr)      chainReturnType = gcb.method->returnType.name;
+    else                                chainReturnType = "var"; // loose mode: unresolved → opaque
+    if(gcb.method && gcb.method->isEmitter)
+        if(auto* blk = dynamic_cast<i6Block*>(gcb.method->body)){
+            callStmt.emitterBody = processBglConditionals(blk->i6Body);
+            for(paramDef* p : gcb.method->params) callStmt.emitterParams.push_back(p->name);
         }
+    // Loose-mode unresolved global call: carry original case via displayName so
+    // the emitter can prefer it over the lowercased functionName.
+    if(gcb.method == nullptr && gcb.funcVarReturnType.empty() && looseIdentifierMode)
+        callStmt.displayName = tok.originalValue;
+}
 
-        functionCallStatement& callStmt = *(new functionCallStatement());
-        callStmt.src = stmtLoc;
-        // Qualify bare function name: if inside an instance and the name matches an instance
-        // member method, prepend "self." so it routes to the method call path below.
-        {
-            string rawName = (string)tok;
-            // replace chaining: replaced() resolves to the predecessor's mangled name
-            if(rawName == "replaced" && currentFunc && !currentFunc->replacedTarget.empty()){
-                rawName = currentFunc->replacedTarget;
-                currentFunc->replacedWasCalled = true;
-            }
-            if(func != nullptr && rawName.find('.') == string::npos){
-                string qualified = qualifyIdentifier(rawName, func, body);
-                // qualifyIdentifier walks inherited VARIABLES but not functions.
-                // For call-form resolution, also check the class hierarchy for inherited methods.
-                // Skip if the name also exists as a global function (global arity matching wins).
-                if((qualified.empty() || qualified == rawName) && currentClass != nullptr){
-                    bool isGlobalFunc = false;
-                    if(auto* fd = languageService.findGlobalAs<functionDef>(rawName)) isGlobalFunc = true;
-                    if(!isGlobalFunc){
-                        if(currentClass->findMember([&](typeMember* m){
-                               auto* fd = dynamic_cast<functionDef*>(m);
-                               return fd != nullptr && fd->name == rawName;
-                           })) qualified = "self." + rawName;
-                    }
-                }
-                callStmt.functionName = qualified.empty() ? rawName : qualified;
-            } else {
-                callStmt.functionName = rawName;
-            }
+// `…().m1().m2();` — folds any chained `.method()` suffixes into the call statement, up to `;`.
+void bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainReturnType, StatementContext& sc){
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
+    auto resolveEmitterText = [&](functionCallStatement& cs) -> string {
+        string b = cs.emitterBody;
+        for(size_t i=0; i<cs.emitterParams.size() && i<cs.args.size(); i++)
+            b = replaceWord(b, cs.emitterParams[i], cs.args[i]->text());
+        size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
+        size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
+        return b;
+    };
+    token chainTok = file.getToken();
+    while(chainTok.is(token::period) || chainTok.is(eTokenType::dictionaryWord)){
+        // After ')' the lexer returns '.method' as a dictionaryWord; after an identifier it returns '.' + identifier separately.
+        token chainMember;
+        if(chainTok.is(token::period))
+            // method name may collide with a type name → accept dataType too.
+            chainMember = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        else
+            chainMember = chainTok;  // dictionaryWord already holds the method name
+        file.getToken(token::parenOpen);
+        vector<expression*> chainArgs;
+        token chainArgTok = file.getToken();
+        while(chainArgTok.isNot(token::parenClose)){
+            expression* arg = parseExpression(chainArgTok, {token::comma, token::parenClose}, func, body);
+            chainArgs.push_back(arg);
+            if(arg->terminator == token::parenClose) break;
+            chainArgTok = file.getToken();
         }
-
-        // parse argument list. Compute brace-argument hints so a bare `{ … }` arg infers its object
-        // type from the callee's parameter (§6.2.1): a bare name → global candidates; a dotted path →
-        // method candidates on the receiver's type.
-        {
-            BraceArgHints braceHints;
-            size_t dp = callStmt.functionName.rfind('.');
-            if(dp == string::npos){
-                braceHints = braceArgHints(collectGlobalCandidates(callStmt.functionName));
-            } else {
-                string objectPath = callStmt.functionName.substr(0, dp);
-                string methodName = callStmt.functionName.substr(dp + 1);
-                string recvType = (objectPath == "self")
-                    ? (currentObject ? currentObject->name : (currentClass ? currentClass->name : string()))
-                    : resolveIdentifierType(objectPath, func, body);
-                if(!recvType.empty()) braceHints = braceArgHints(collectMethodCandidates(recvType, methodName));
+        classDef* chainCls = languageService.findClass(chainReturnType);
+        if(chainCls == nullptr)
+            parsingError(format("Type '{0}' is not a class (cannot chain method '{1}')", chainReturnType, chainMember.value));
+        string chainMethodName = chainMember.value;
+        functionDef* chainMethod = nullptr;
+        functionDef* chainNameMatch = nullptr;
+        findMemberInHierarchy(chainCls, [&](typeMember* m) -> bool {
+            auto* fd = dynamic_cast<functionDef*>(m);
+            if(!fd || fd->name != chainMethodName) return false;
+            if(chainNameMatch == nullptr) chainNameMatch = fd;
+            size_t req=0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+            if(chainArgs.size() >= req && chainArgs.size() <= fd->params.size()){
+                chainMethod = fd; return true;
             }
-            ParsedArgList pal = parseCallArgList(func, body, braceHints);
-            callStmt.args = pal.args;
-            callStmt.namedArgNames = pal.namedArgNames;
-            callStmt.interpSegmentsPerArg = pal.interpSegmentsPerArg;
-        }
-
-        string chainReturnType;
-        size_t dotPos = callStmt.functionName.rfind('.');  // use LAST dot for method name
-        if(dotPos != string::npos){
-            // method call: validate and resolve emitter
-            string objectPath = callStmt.functionName.substr(0, dotPos);  // may be "obj" or "obj.prop"
-            string methodName = callStmt.functionName.substr(dotPos + 1);
-            // Resolve a namespace auto-member receiver (bgl.ui → _bglUi, bgl.util.math → _bglMath)
-            // to the backing object so emission is a message-send, not a literal runtime property
-            // chain (which fails to set `self`). Only rewrite when the receiver collapses to a
-            // single global object — leaving locals, class-typed paths, and emitter namespaces
-            // (bgl.asm) untouched. Mirrors the expression-context walk.
-            {
-                string q = qualifyIdentifier(objectPath, func, body);
-                if(q != objectPath && q.find('.') == string::npos && q.find('(') == string::npos
-                   && languageService.findObjectType(q))
-                    objectPath = q;
-            }
-            // Emission path: same as objectPath but with the HEAD alias-resolved to its I6 name
-            // (e.g. `orLibUtil` → `util`), for a multi-hop receiver that doesn't collapse to a single
-            // object above. objectPath itself stays the Beguile path so resolvePathType still works;
-            // emitObjectPath drives $self/$val/functionName so emission uses the I6 name. Mirrors the
-            // expression walk, which emits `util.orlooparray.getNext(...)`.
-            string emitObjectPath = objectPath;
-            if(objectPath.find('.') != string::npos){
-                size_t hd = objectPath.find('.');
-                string head = objectPath.substr(0, hd);
-                string qh = qualifyIdentifier(head, func, body);
-                if(!qh.empty() && qh != head && qh.find('(') == string::npos && qh.find('.') == string::npos)
-                    emitObjectPath = qh + objectPath.substr(hd);
-            }
-            string objectName = objectPath;  // kept for backward compat in non-emitter emit path
-            // Pass memberHint=methodName so the resolver disambiguates a name collision in favor
-            // of whichever candidate's type actually exposes the method.
-            // The receiver's ACTUAL static type, independent of any cast — needed to decide whether
-            // an explicit cast is a genuine upcast that should trigger ancestor-qualified dispatch.
-            string actualPathType = !literalTypeName.empty() ? literalTypeName
-                                  : resolvePathType(objectPath, func, body, methodName);
-            string objectType = !stmtCastType.empty() ? stmtCastType : actualPathType;
-            // Ancestor-qualified method dispatch (statement form): `(Base)obj.method(args);` emits I6
-            // `obj.Base::method(args)`, forcing static dispatch to Base's version — the super-call /
-            // ancestor-version idiom. Only when Base is a strict ancestor of the receiver's actual
-            // type (a real upcast); identity/downcast/base-typed-local stay dynamic. Consumed at the
-            // non-emitter emission below; emitter methods (inlined) are rejected.
-            classDef* ancestorDispatchClass = nullptr;
-            if(!stmtCastType.empty())
-                if(isAncestorClass(getDispatchClass(stmtCastType), getDispatchClass(actualPathType)))
-                    ancestorDispatchClass = getDispatchClass(stmtCastType);
-            stmtCastType = "";  // consume the cast
-            if(objectType.empty())
-                parsingError(format("Unknown variable '{0}'", objectPath));
-            // Compute $self and $prop for emitter substitution.
-            // For literals, $self is the raw literal text (e.g. "hello", 42, 'x'), not the path.
-            size_t innerDot = objectPath.rfind('.');
-            // $self defaults to the FULL receiver path — the object the method is invoked on
-            // (e.g. `orLibUtil.orArray.set(...)` → $self = `orLibUtil.orArray`). Literals use their
-            // raw text. Only the word-array member dual-dispatch (obj.prop) wants the pre-dot owner,
-            // and it overrides selfValue below (isMemberArr). Previously this split off the last hop
-            // unconditionally, which mis-set $self to the owner for namespace-sub-object receivers.
-            string selfValue = (!literalSelfText.empty() && innerDot == string::npos)
-                              ? literalSelfText
-                              : emitObjectPath;
-            string propValue = (innerDot == string::npos)
-                ? (isWordArrayType(objectType) ? "0" : "<$prop undefined>")
-                : objectPath.substr(innerDot + 1);
-            // Member (property) WORD array: route through the dual-form _bglArray utility with
-            // the owning object + property (matches the expression-context path). Override of
-            // selfValue/propValue is applied just before emitter substitution (after recvElemType).
-            string memOwner, memProp;
-            bool isMemberArr = false;
-            if(isWordArrayType(objectType)){
-                // Member word array `obj.prop`: dual-dispatch wants $self = owner, $prop = prop.
-                // (selfValue now defaults to the full path, so split the owner off explicitly.)
-                if(innerDot != string::npos){ memOwner = objectPath.substr(0, innerDot); memProp = propValue; isMemberArr = true; }
-                else isMemberArr = splitQualifiedMember(objectPath, func, body, memOwner, memProp);
-                // A `ref` member holds a POINTER to an array owned elsewhere, so it is addressed
-                // as a value — (obj.prop, 0) — not as inline property data. Checked against the
-                // resolved owner/property rather than the path text, which varies by call site.
-                if(isMemberArr && memberArrayIsRef(memOwner, memProp, func, body)){
-                    selfValue = memOwner + "." + memProp;   // the pointer the member holds
-                    isMemberArr = false;
-                }
-                if(isMemberArr) rejectRawMemberLengthOp(memOwner, memProp, methodName, func, body);
-            }
-            // Receiver type can be a classDef OR an objectDef (each unclassed objectDef has its
-            // own type identity); both have addressable methods.
-            typeDef& objTd2 = languageService.getType(objectType);
-            classDef* cls = dynamic_cast<classDef*>(&objTd2);
-            bool opaqueReceiver = (cls == nullptr && dynamic_cast<objectDef*>(&objTd2) == nullptr);
-            // Generic specialization fallback: templated receiver name (`array<int>` from
-            // a parametric param) isn't a registered type, but its base ("array") is. Treat
-            // as non-opaque if the base resolves to a class — bindMethodCall handles the
-            // element-type binding for substitution.
-            if(opaqueReceiver){
-                auto lt = objectType.find('<');
-                if(lt != string::npos && lt > 0){
-                    typeDef& baseTd = languageService.getType(objectType.substr(0, lt));
-                    if(dynamic_cast<classDef*>(&baseTd) != nullptr){
-                        opaqueReceiver = false;
-                        cls = dynamic_cast<classDef*>(&baseTd);
-                    }
-                }
-            }
-            if(opaqueReceiver && !looseIdentifierMode)
-                parsingError(format("Type '{0}' is not a class or object", objectType));
-            if(opaqueReceiver){
-                // Loose mode: receiver is unknown to Beguile (typically an I6 symbol). Skip
-                // method binding and emitter substitution; the call statement emits the
-                // verbatim `path.method(args)`, which is valid I6. Carry original case via
-                // the inherited displayName field (same convention as typeMember.dName()).
-                chainReturnType = "var";
-                callStmt.displayName = tok.originalValue;
-            } else {
-                // Element-type binding for generic receivers (array<T>, etc.). Resolve from the
-                // bare receiver path (handles bare member + global); the member override below
-                // then switches selfValue/propValue to owner/property for the utility dispatch.
-                string recvElemType;
-                {
-                    size_t ed = objectPath.find('.');
-                    if(ed == string::npos) recvElemType = resolveArrayElementType(objectPath, func, body);
-                    else recvElemType = resolveArrayElementTypeDotted(objectPath.substr(0, ed), objectPath.substr(ed + 1), func, body);
-                }
-                if(isMemberArr){ selfValue = memOwner; propValue = memProp; }
-                // Computed message send as a STATEMENT — `obj.m();` where `m` holds a property.
-                // The expression path handles the value form; this is the discard-result form,
-                // which reaches bindMethodCall and would be rejected as an unknown method.
-                {
-                    bool realMember = false;
-                    if(classDef* rc = getDispatchClass(objectType))
-                        realMember = findMemberInHierarchy(rc, [&](typeMember* m){ return m->name == methodName; }) != nullptr;
-                    if(!realMember)
-                        if(auto* od = languageService.findObjectType(objectType))
-                            for(typeMember* m : od->members)
-                                if(m->name == methodName){ realMember = true; break; }
-                    if(!realMember && isPropertyValuedLocal(methodName, func, body)){
-                        string argText;
-                        for(size_t i = 0; i < callStmt.args.size(); i++)
-                            argText += (i ? ", " : "") + callStmt.args[i]->text();
-                        i6RawNode& raw = *(new i6RawNode());
-                        raw.src = stmtLoc;
-                        raw.text = emitObjectPath + ".(" + qualifyIdentifier(methodName, func, body)
-                                 + ")(" + argText + ");";
-                        if(body != nullptr) body->statements.push_back(&raw);
-                        return false;
-                    }
-                }
-                functionDef* method = bindMethodCall(objectType, objectPath, methodName,
-                                                       callStmt.args, callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
-                                                       recvElemType);
-                // `hide` enforcement (statement call): objectType is cast-aware, so a `(Base)obj.m()`
-                // resolves against Base and reaches a hidden-on-the-subtype method — the door.
-                {   vector<string> argTypeNames;
-                    for(expression* a : callStmt.args) argTypeNames.push_back(a->resolvedType);
-                    enforceHidden(getDispatchClass(objectType), methodName, "", argTypeNames, objectPath);
-                }
-                // A value emitter is NOT callable: `obj.bold` (value, §14.4.5) and `obj.bold()`
-                // (zero-arg function) are distinct; parens on a value are an error here too.
-                if(method->isEmitter && method->isValueEmitter)
-                    parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", methodName));
-                // Ancestor-qualified dispatch needs a real I6 routine property for `::` to select;
-                // an emitter method is inlined at the call site, so there is no routine to qualify.
-                if(ancestorDispatchClass != nullptr && method->isEmitter)
-                    parsingError(format("Ancestor-qualified dispatch '({0}){1}.{2}(...)' is not supported: '{2}' is an emitter method (inlined at the call site), so there is no routine for the ancestor cast to select. Ancestor dispatch works on regular (non-emitter) methods.",
-                                        ancestorDispatchClass->dName(), objectPath, methodName));
-                cls = languageService.findClass(objectType);
-                // Rebuild the call statement's functionName from the (possibly namespace-resolved)
-                // objectPath so emission targets the backing object — e.g. `bgl.ui.pressAnyKey()`
-                // becomes `_bglUi.pressAnyKey()` rather than a literal runtime chain. Overload sets
-                // carry a mangled i6name (assigned by mangleOverloadSetForReceiver in bindMethodCall);
-                // otherwise use the method name. Emitters are handled separately below (inlined body).
-                if(!method->isEmitter){
-                    string callName = method->i6name.empty() ? methodName : method->i6name;
-                    // Explicit ancestor cast → qualify the send with the ancestor's I6 class
-                    // (`obj.Base::method`) so I6 selects that class's routine statically.
-                    if(ancestorDispatchClass != nullptr)
-                        callName = ancestorDispatchClass->i6Name() + "::" + callName;
-                    callStmt.functionName = emitObjectPath + "." + callName;
-                }
-                // if emitter, pre-substitute $self, $prop, and $class
-                if(method->isEmitter)
-                    if(auto* blk = dynamic_cast<i6Block*>(method->body)){
-                        string b = processBglConditionals(blk->i6Body);
-                        // $selfsub → `<self>sub` (the I6 action routine) for the verb class's
-                        // perform() bridge — e.g. `Take.perform()` → `TakeSub()`. Must run before
-                        // $self: $self is a prefix of $selfsub, and replaceWord's word boundary
-                        // leaves $selfsub untouched if $self runs first (it was emitted literally).
-                        b = replaceWord(b, "$selfsub", selfValue + "sub");
-                        b = replaceWord(b, "$self", selfValue);
-                        // $val generic (receiver-value) substitution — skip when a parameter is
-                        // named `val`, so the emission-time param substitution ($val → arg) wins.
-                        // Mirrors the $prop/hasPropParam guard below (e.g. orArray.set(...,var val)).
-                        bool hasValParam = false;
-                        for(paramDef* p : method->params) if(p->name == "val"){ hasValParam = true; break; }
-                        if(!hasValParam)
-                            b = replaceWord(b, "$val",  emitObjectPath);
-                        // $class — declared receiver type (ignores multiple inheritance).
-                        // Resolves to the variable's static type, not the type that owns the
-                        // inherited emitter. Powers class-message I6 emission from mixins.
-                        if(cls != nullptr)
-                            b = replaceWord(b, "$class", cls->i6Name());
-                        // $prop fallback — done before staging callStmt.emitterBody so that
-                        // resolveEmitterText's later param substitution can still substitute
-                        // a `prop`-named parameter when present (e.g. `provides(property prop)`).
-                        // Skip if any parameter is named `prop` so the param sub wins.
-                        bool hasPropParam = false;
-                        for(paramDef* p : method->params) if(p->name == "prop"){ hasPropParam = true; break; }
-                        if(!hasPropParam)
-                            b = replaceWord(b, "$prop", propValue);
-                        // One substitution covers every $elemop(<op>) in the body.
-                        b = substituteElemOps(b, recvElemType.empty() ? objectType : recvElemType, methodName);
-                        callStmt.emitterBody = b;
-                        for(paramDef* p : method->params)
-                            callStmt.emitterParams.push_back(p->name);
-                    }
-                chainReturnType = method->returnType.name;
-            }
-        } else {
-            // global function call: bind (resolve + validate + finalize) then stage emitter body
-            GlobalCallBinding gcb = bindGlobalCall(callStmt.functionName, callStmt.args,
-                                                    callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
-                                                    func, body);
-            if(!gcb.funcVarReturnType.empty())  chainReturnType = gcb.funcVarReturnType;
-            else if(gcb.method != nullptr)      chainReturnType = gcb.method->returnType.name;
-            else                                chainReturnType = "var"; // loose mode: unresolved → opaque
-            if(gcb.method && gcb.method->isEmitter)
-                if(auto* blk = dynamic_cast<i6Block*>(gcb.method->body)){
-                    callStmt.emitterBody = processBglConditionals(blk->i6Body);
-                    for(paramDef* p : gcb.method->params) callStmt.emitterParams.push_back(p->name);
-                }
-            // Loose-mode unresolved global call: carry original case via displayName so
-            // the emitter can prefer it over the lowercased functionName.
-            if(gcb.method == nullptr && gcb.funcVarReturnType.empty() && looseIdentifierMode)
-                callStmt.displayName = tok.originalValue;
-        }
-
-        // method chaining: handle optional ".method()" suffixes before the final ";"
-        auto resolveEmitterText = [&](functionCallStatement& cs) -> string {
-            string b = cs.emitterBody;
-            for(size_t i=0; i<cs.emitterParams.size() && i<cs.args.size(); i++)
-                b = replaceWord(b, cs.emitterParams[i], cs.args[i]->text());
-            size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
-            size_t e=b.find_last_not_of(" \t\n\r;"); if(e!=string::npos) b=b.substr(0,e+1);
-            return b;
-        };
-        token chainTok = file.getToken();
-        while(chainTok.is(token::period) || chainTok.is(eTokenType::dictionaryWord)){
-            // After ')' the lexer returns '.method' as a dictionaryWord; after an identifier it returns '.' + identifier separately.
-            token chainMember;
-            if(chainTok.is(token::period))
-                // method name may collide with a type name → accept dataType too.
-                chainMember = file.getToken({eTokenType::identifier, eTokenType::dataType});
-            else
-                chainMember = chainTok;  // dictionaryWord already holds the method name
-            file.getToken(token::parenOpen);
-            vector<expression*> chainArgs;
-            token chainArgTok = file.getToken();
-            while(chainArgTok.isNot(token::parenClose)){
-                expression* arg = parseExpression(chainArgTok, {token::comma, token::parenClose}, func, body);
-                chainArgs.push_back(arg);
-                if(arg->terminator == token::parenClose) break;
-                chainArgTok = file.getToken();
-            }
-            classDef* chainCls = languageService.findClass(chainReturnType);
-            if(chainCls == nullptr)
-                parsingError(format("Type '{0}' is not a class (cannot chain method '{1}')", chainReturnType, chainMember.value));
-            string chainMethodName = chainMember.value;
-            functionDef* chainMethod = nullptr;
-            functionDef* chainNameMatch = nullptr;
-            findMemberInHierarchy(chainCls, [&](typeMember* m) -> bool {
-                auto* fd = dynamic_cast<functionDef*>(m);
-                if(!fd || fd->name != chainMethodName) return false;
-                if(chainNameMatch == nullptr) chainNameMatch = fd;
-                size_t req=0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-                if(chainArgs.size() >= req && chainArgs.size() <= fd->params.size()){
-                    chainMethod = fd; return true;
-                }
-                return false;
-            });
-            // Conversion operator fallback for chained methods
-            if(chainNameMatch == nullptr && chainCls){
-                for(typeMember* m : chainCls->members){
-                    auto* convOp = dynamic_cast<functionDef*>(m);
-                    if(convOp && convOp->name == "operator()" && convOp->isEmitter && !convOp->isExplicit){
-                        string convertedType = convOp->returnType.name;
-                        classDef* convCls = languageService.findClass(convertedType);
-                        if(convCls){
-                            findMemberInHierarchy(convCls, [&](typeMember* m2) -> bool {
-                                auto* fd = dynamic_cast<functionDef*>(m2);
-                                if(!fd || fd->name != chainMethodName) return false;
-                                if(chainNameMatch == nullptr) chainNameMatch = fd;
-                                size_t req=0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
-                                if(chainArgs.size() >= req && chainArgs.size() <= fd->params.size()){
-                                    chainMethod = fd; return true;
-                                }
-                                return false;
-                            });
-                            if(chainNameMatch){
-                                chainReturnType = convertedType;
-                                chainCls = convCls;
-                                break;
+            return false;
+        });
+        // Conversion operator fallback for chained methods
+        if(chainNameMatch == nullptr && chainCls){
+            for(typeMember* m : chainCls->members){
+                auto* convOp = dynamic_cast<functionDef*>(m);
+                if(convOp && convOp->name == "operator()" && convOp->isEmitter && !convOp->isExplicit){
+                    string convertedType = convOp->returnType.name;
+                    classDef* convCls = languageService.findClass(convertedType);
+                    if(convCls){
+                        findMemberInHierarchy(convCls, [&](typeMember* m2) -> bool {
+                            auto* fd = dynamic_cast<functionDef*>(m2);
+                            if(!fd || fd->name != chainMethodName) return false;
+                            if(chainNameMatch == nullptr) chainNameMatch = fd;
+                            size_t req=0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+                            if(chainArgs.size() >= req && chainArgs.size() <= fd->params.size()){
+                                chainMethod = fd; return true;
                             }
+                            return false;
+                        });
+                        if(chainNameMatch){
+                            chainReturnType = convertedType;
+                            chainCls = convCls;
+                            break;
                         }
                     }
                 }
             }
-            if(chainNameMatch == nullptr)
-                parsingError(format("No method '{0}' on type '{1}'", chainMethodName, typeDisplayName(chainReturnType)));
-            if(chainMethod == nullptr)
-                parsingError(format("Method '{0}' on type '{1}' has wrong arity for {2} argument(s)",
-                    chainMethodName, chainReturnType, chainArgs.size()));
-            if(!chainMethod->isEmitter || !dynamic_cast<i6Block*>(chainMethod->body))
-                parsingError(format("Chained method '{0}' on type '{1}' is not an emitter", chainMethodName, chainReturnType));
-            string selfText = resolveEmitterText(callStmt);
-            i6Block* chainBlk = dynamic_cast<i6Block*>(chainMethod->body);
-            string b = processBglConditionals(chainBlk->i6Body);
-            b = replaceWord(b, "$self", selfText);
-            b = replaceWord(b, "$val",  selfText);
-            for(size_t i=0; i<chainMethod->params.size() && i<chainArgs.size(); i++)
-                b = replaceWord(b, "$" + chainMethod->params[i]->name, chainArgs[i]->text());
-            callStmt.emitterBody = b;
-            callStmt.emitterParams.clear();
-            callStmt.args.clear();
-            chainReturnType = chainMethod->returnType.name;
-            chainTok = file.getToken();
         }
-        chainTok.assert(token::endStatement);
-
-        // $target substitution for a DISCARDED emitter-call statement. A value-returning opcode
-        // emitter (e.g. `bgl.asm.read_char(1)` → `@read_char $dev -> $target`) has no destination
-        // in statement position. Since the result is thrown away, store it to `sp` — the stack
-        // pointer (I6 variable 0), a compiler-built-in destination that needs no declaration, so
-        // no per-call temp is allocated. Directly-assigned opcodes never reach here (parseExpression
-        // binds $target to the LHS); compound expressions allocate their own temps (they hold live
-        // values). Note: the pushed value lingers on the routine's stack until it returns (the
-        // frame discards it) — harmless except for a discarded opcode inside a hot loop, which
-        // would grow the stack per iteration.
-        if(callStmt.emitterBody.find("$target") != string::npos)
-            callStmt.emitterBody = replaceWord(callStmt.emitterBody, "$target", "sp");
-
-        for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
-        pendingInjections.clear();
-        if(body != nullptr) body->statements.push_back(&callStmt);
-        for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
-        postInjections.clear();
-        return false;
+        if(chainNameMatch == nullptr)
+            parsingError(format("No method '{0}' on type '{1}'", chainMethodName, typeDisplayName(chainReturnType)));
+        if(chainMethod == nullptr)
+            parsingError(format("Method '{0}' on type '{1}' has wrong arity for {2} argument(s)",
+                chainMethodName, chainReturnType, chainArgs.size()));
+        if(!chainMethod->isEmitter || !dynamic_cast<i6Block*>(chainMethod->body))
+            parsingError(format("Chained method '{0}' on type '{1}' is not an emitter", chainMethodName, chainReturnType));
+        string selfText = resolveEmitterText(callStmt);
+        i6Block* chainBlk = dynamic_cast<i6Block*>(chainMethod->body);
+        string b = processBglConditionals(chainBlk->i6Body);
+        b = replaceWord(b, "$self", selfText);
+        b = replaceWord(b, "$val",  selfText);
+        for(size_t i=0; i<chainMethod->params.size() && i<chainArgs.size(); i++)
+            b = replaceWord(b, "$" + chainMethod->params[i]->name, chainArgs[i]->text());
+        callStmt.emitterBody = b;
+        callStmt.emitterParams.clear();
+        callStmt.args.clear();
+        chainReturnType = chainMethod->returnType.name;
+        chainTok = file.getToken();
     }
-    return parsingError(format("Unhandled token '{0}'",tok.value));
+    chainTok.assert(token::endStatement);
 }
 
-/*bool bglParser::processDataType(token dataType, bool isExternal){
-    token name;
-    token symbol;
+// `name(args);` / `recv.method(args);` — a call used as a statement, with method chaining.
+bool bglParser::processCallStatement(token tok, StatementContext& sc){
+    const sourceLocation& stmtLoc = sc.src;
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
 
-    // if(dataType.is(token::constantDeclararion)){
-    //     dataType = file.getToken(eTokenType::dataType);
-    //     name = file.getToken(eTokenType::identifier);
-    //     symbol = file.getToken(token::assignment);
-    //     processConstantDeclaration(dataType, name, symbol);        
-    //     file.getToken(token::endStatement);
-    //     return false;
-    // }
-    
-    name = file.getToken(eTokenType::identifier);
-    if(name.is("operator")){
-        //set is operator value here.
-        name = file.getToken(eTokenType::oper);    
+    // Guard: a bare union-typed value cannot be called directly — its runtime type is not yet
+    // known, so calling it would run whichever member it happens to hold (a string as a routine
+    // crashes). Require narrowing first (a `(func<...>)x` cast, after a `typeof(x)` check).
+    {
+        string calleeType = resolveIdentifierType((string)tok, func, body);
+        if(isUnionType(calleeType))
+            parsingError(format("Cannot call '{0}' directly — it has union type '{1}'. "
+                "Discriminate with typeof() and narrow with a cast first, e.g. "
+                "`func<void> f = (func<void>){0}; f();`", (string)tok, calleeType));
     }
-    
-    symbol = file.getToken({eTokenType::symbol, eTokenType::oper}); 
 
-    //--a variable declaration, with optional assignment:
-    //      int myVar;
-    //      int myVar=99; 
-    if(symbol.isOneOf({token::endStatement, token::assignment})) {
-        processVariableDeclaration(dataType, name, symbol);
-        if(symbol.value==token::assignment) file.getToken(token::endStatement);
-        return false;
+    functionCallStatement& callStmt = *(new functionCallStatement());
+    callStmt.src = stmtLoc;
+    // Qualify bare function name: if inside an instance and the name matches an instance
+    // member method, prepend "self." so it routes to the method call path below.
+    callStmt.functionName = qualifyCallName(tok, sc);
+
+    // parse argument list. Compute brace-argument hints so a bare `{ … }` arg infers its object
+    // type from the callee's parameter (§6.2.1): a bare name → global candidates; a dotted path →
+    // method candidates on the receiver's type.
+    parseCallArgsWithHints(callStmt, sc);
+
+    string chainReturnType;
+    size_t dotPos = callStmt.functionName.rfind('.');  // use LAST dot for method name
+    if(dotPos != string::npos){
+        if(bindMethodCallStatement(callStmt, tok, chainReturnType, sc)) return false;
+    } else {
+        bindGlobalCallStatement(callStmt, tok, chainReturnType, sc);
     }
-  
-    //--a function declaration:
-    if(symbol.is(token::parenOpen)) return processRoutineDeclaration(dataType, name, isExternal);
 
-    //--an object instance declaration:
-    if(symbol.is(token::braceOpen)) return processObjectDeclaration(dataType, name, isExternal);
+    parseMethodChain(callStmt, chainReturnType, sc);
 
-    return parsingError("Unexpected value '"+symbol.value+"'.");
-   
-}*/
-// bool parser::processAttribute(token tok){
+    // $target substitution for a DISCARDED emitter-call statement. A value-returning opcode
+    // emitter (e.g. `bgl.asm.read_char(1)` → `@read_char $dev -> $target`) has no destination
+    // in statement position. Since the result is thrown away, store it to `sp` — the stack
+    // pointer (I6 variable 0), a compiler-built-in destination that needs no declaration, so
+    // no per-call temp is allocated. Directly-assigned opcodes never reach here (parseExpression
+    // binds $target to the LHS); compound expressions allocate their own temps (they hold live
+    // values). Note: the pushed value lingers on the routine's stack until it returns (the
+    // frame discards it) — harmless except for a discarded opcode inside a hot loop, which
+    // would grow the stack per iteration.
+    if(callStmt.emitterBody.find("$target") != string::npos)
+        callStmt.emitterBody = replaceWord(callStmt.emitterBody, "$target", "sp");
 
-// }
-// Resolves the Beguile type of a potentially dotted path (e.g. "player.inventory").
-// Single segment: delegates to resolveIdentifierType.
-// Two segments: resolves head type, then looks up tail member on that type.
+    for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+    pendingInjections.clear();
+    if(body != nullptr) body->statements.push_back(&callStmt);
+    for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+    postInjections.clear();
+    return false;
+}
 
+// ===============================================================================
+// processStatement - free-standing expression-statement parser
+// ===============================================================================
+bool bglParser::processStatement(token tok, abstractObject& contextObj){
+    StatementContext sc;
+    sc.src  = tok.src.line > 0 ? tok.src : file.currentLocation();
+    currentStatementSrc = sc.src;
+    sc.func = dynamic_cast<functionDef*>(&contextObj);
+    sc.body = sc.func ? dynamic_cast<statementBlock*>(sc.func->body) : nullptr;
 
+    // Cast prefix: (TypeName)obj.method(args); — overrides type used for method dispatch
+    if(tok.is(token::parenOpen) && file.peekToken(1).is(eTokenType::dataType) && file.peekToken(2).is(token::parenClose)){
+        sc.castType = file.getToken(eTokenType::dataType).value;
+        file.getToken(token::parenClose);
+        tok = file.getToken();  // the actual object identifier
+    }
+
+    // Static member access: ClassName.member — reclassify the class as an identifier so
+    // dot-access works. Object instances are already identifiers after the type/instance split.
+    if(tok.is(eTokenType::dataType)){
+        if(file.peekToken(1).is(token::period) || file.peekToken(1).is("?."))
+            tok.tokenType = eTokenType::identifier;
+    }
+
+    // Prefix ++ / --
+    if(tok.is(eTokenType::oper) && (tok.value == "++" || tok.value == "--"))
+        return processPrefixIncDec(tok, sc);
+
+    token symbol = parseStatementPath(tok, sc);
+
+    //----------------------------------------------------------------------
+    //We've encountered an identifier, which could be a variable assignment,
+    //  subscript assignment, function call, or value emitter statement.
+
+    // Value emitter as statement: identifier; or dot-path; where it resolves to a value emitter
+    if(symbol.is(token::endStatement) && processValueEmitterStatement(tok, sc)) return false;
+
+    // Subscript: name[i] = v  (assignment) or  name[i].member (dot-chain on result)
+    if(symbol.is(token::bracketOpen))
+        return processSubscriptStatement(tok, sc);
+
+    if(symbol.is(token::assignment) || symbol.is(token::bindAssignment))
+        return processAssignmentStatement(tok, symbol, sc);
+
+    // Compound assignment: +=, -=, *=, /=, %=, |=, &=, ^=, <<=, >>=
+    static const vector<string> compoundOps = {"+=","-=","*=","/=","%=","|=","&=","^=","<<=",">>="};
+    if(symbol.is(eTokenType::oper) && find(compoundOps.begin(), compoundOps.end(), symbol.value) != compoundOps.end())
+        return processCompoundAssignment(tok, symbol, sc);
+
+    if(symbol.is(eTokenType::oper) && (symbol.value == "++" || symbol.value == "--"))
+        return processPostfixIncDec(tok, symbol, sc);
+
+    if(symbol.is(token::parenOpen))  //then this is a function call.
+        return processCallStatement(tok, sc);
+
+    return parsingError(format("Unhandled token '{0}'",tok.value));
+}
 
 #pragma endregion
 

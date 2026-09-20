@@ -420,6 +420,64 @@ class bglParser {
         string parseLambdaExpr(functionDef* func, statementBlock* body);  // parses lambda, lifts to global, returns lifted name
 
         bool processStatement(token, abstractObject& = emptyContainer);
+        // Per-statement context shared by the processStatement branch methods.
+        struct StatementContext {
+            sourceLocation src;          // location recorded on every node this statement creates
+            functionDef* func = nullptr; // enclosing function, or nullptr at object/global scope
+            statementBlock* body = nullptr; // where nodes are pushed; nullptr when there is no body
+            string castType;             // `(TypeName)` prefix on the statement; consumed by the method-call path
+            string literalTypeName;      // set when the statement head is a typed literal (intliteral, …)
+            string literalSelfText;      // the literal's I6 text, used as $self for emitters on it
+        };
+        // Resolved left-hand side of an assignment statement.
+        struct AssignTarget {
+            string variableLeft;            // the emitted name written to
+            typeDef* leftType = nullptr;    // declared type of the target, or nullptr when unknown
+            bool lhsIsRefLocal = false;     // the target is a `ref` slot (pointer-copy assign)
+            bool lhsIsByteArray = false;    // the target is an array<char> (byteArray)
+            string emitterSelf;             // $self for the target's operator= emitter
+            classDef* classType = nullptr;  // class used for operator= dispatch
+        };
+        // `++x;` / `--x;` — prefix increment or decrement as a whole statement.
+        bool processPrefixIncDec(token op, StatementContext& sc);
+        // Completes the statement head (typed literal, dotted / `?.` path into `tok`); returns the symbol after it.
+        token parseStatementPath(token& tok, StatementContext& sc);
+        // `name;` / `a.b.c;` — a value emitter used as a statement; true when it handled the statement.
+        bool processValueEmitterStatement(token tok, StatementContext& sc);
+        // `name[i] …` — an element write, a chained subscript, or member access on the element.
+        bool processSubscriptStatement(token tok, StatementContext& sc);
+        // `a[i].member = v;` / `a[i].method(...);` — member access on the subscript result.
+        bool processSubscriptMemberAccess(const string& arrPath, expression* indexExpr, StatementContext& sc);
+        // `grid[i][j]...[k] = v;` — chained subscript write into an array of arrays.
+        bool processChainedSubscriptWrite(const string& arrPath, expression* indexExpr, StatementContext& sc);
+        // `a[i] = v;` — a single-subscript element write.
+        bool processSubscriptWrite(string arrPath, expression* indexExpr, StatementContext& sc);
+        // `lhs = rhs;` / `lhs := rhs;` — plain assignment and reference binding.
+        bool processAssignmentStatement(token tok, token symbol, StatementContext& sc);
+        // Resolves an assignment's left-hand side (name, type, flags, $self, dispatch class).
+        AssignTarget resolveAssignmentTarget(const string& lhsOriginal, StatementContext& sc);
+        // Applies `operator =` dispatch (emitter, method, or conversion) to one assignment node.
+        void resolveAssignmentOperator(assignmentStatement& a, expression* val, const AssignTarget& t, bool isBindAssign);
+        // `lhs op= rhs;` — compound assignment (+=, -=, *=, /=, %=, |=, &=, ^=, <<=, >>=).
+        bool processCompoundAssignment(token tok, token symbol, StatementContext& sc);
+        // `x.children += { a, b };` — world-model child placement at runtime.
+        bool processChildrenPlacement(token tok, token symbol, StatementContext& sc);
+        // `arr += { a, b };` — per-element compound op over a brace list; true when it handled the statement.
+        bool processArrayBracedCompound(token tok, token symbol, const string& lhs, StatementContext& sc);
+        // `x++;` / `x--;` — postfix increment or decrement as a whole statement.
+        bool processPostfixIncDec(token tok, token symbol, StatementContext& sc);
+        // `name(args);` / `recv.method(args);` — a call used as a statement, with method chaining.
+        bool processCallStatement(token tok, StatementContext& sc);
+        // Computes the called name of a call statement (`replaced()` rewrite, bare-name qualification).
+        string qualifyCallName(token tok, StatementContext& sc);
+        // Parses a call statement's argument list, with brace-argument hints from the callee.
+        void parseCallArgsWithHints(functionCallStatement& callStmt, StatementContext& sc);
+        // `recv.method(args);` — binds a method call statement; true when it emitted the statement itself.
+        bool bindMethodCallStatement(functionCallStatement& callStmt, token tok, string& chainReturnType, StatementContext& sc);
+        // `name(args);` — binds a global function call statement.
+        void bindGlobalCallStatement(functionCallStatement& callStmt, token tok, string& chainReturnType, StatementContext& sc);
+        // `…().m1().m2();` — folds chained `.method()` suffixes into the call statement, up to `;`.
+        void parseMethodChain(functionCallStatement& callStmt, string& chainReturnType, StatementContext& sc);
         bool processDirective(token, abstractObject& = emptyContainer);
         // One handler per directive; processDirective's switch is the dispatch table over these.
         bool processDirectiveUnrecognized(token directive);                          // shared tail: no case matched, or a case bailed out
