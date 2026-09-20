@@ -421,6 +421,27 @@ class bglParser {
 
         bool processStatement(token, abstractObject& = emptyContainer);
         bool processDirective(token, abstractObject& = emptyContainer);
+        // One handler per directive; processDirective's switch is the dispatch table over these.
+        bool processDirectiveUnrecognized(token directive);                          // shared tail: no case matched, or a case bailed out
+        bool directiveInclude(token directive, abstractObject& contextObj);          // #include "file" / #include <libName>
+        bool directiveStartup(token directive, abstractObject& contextObj);          // #startup { raw I6 for bglInit() }
+        bool directiveUsing(token directive, abstractObject& contextObj);            // #using Class / object / dotted path
+        bool directiveEmitFirst(token directive, abstractObject& contextObj);        // #emitfirst { raw I6 }
+        bool directiveEmitLast(token directive, abstractObject& contextObj);         // #emitlast { raw I6 }
+        bool directiveStoredEmitFirst(token directive, abstractObject& contextObj);  // #storedemitfirst name { raw I6 }
+        bool directiveStoredEmitLast(token directive, abstractObject& contextObj);   // #storedemitlast name { raw I6 }
+        bool directiveIncludeI6(token directive, abstractObject& contextObj);        // #includei6 "file" / @"file"
+        bool directiveI6(token directive, abstractObject& contextObj);               // #i6 — dispatches to the single-line or block form
+        bool directiveI6SingleLine(token t, statementBlock* body, const sourceLocation& i6DirLoc);                 // #i6 <rest of line>
+        bool directiveI6Block(statementBlock* body, abstractObject& contextObj, const sourceLocation& i6DirLoc);   // #i6 { raw I6 interleaved with #bgl{} }
+        void installI6Node(i6RawNode* node, statementBlock* body, const sourceLocation& i6DirLoc);                 // places an #i6 node in the body, or claims its global placeholder
+        bool directiveI6Replace(token directive, abstractObject& contextObj);        // #i6replace Routine [Saved];
+        bool directiveDefine(token directive, abstractObject& contextObj);           // #define and #redef
+        bool directiveDeclare(token directive, abstractObject& contextObj);          // #declare — immutable, pre-scan-hoisted define
+        bool directiveIf(token directive, abstractObject& contextObj);               // #if cond
+        bool directiveElif(token directive, abstractObject& contextObj);             // #elif reached on a taken branch — skip to #endif
+        bool directiveElse(token directive, abstractObject& contextObj);             // #else reached on a taken branch — skip to #endif
+        bool directiveBglElse(token directive, abstractObject& contextObj);          // ##else reached on a taken branch — skip to ##endif
 
         // Namespace-scoped type resolution helpers
         string resolveNamespacedType(const string& dottedPath); // walks namespace objects to resolve dotted type path
@@ -701,6 +722,16 @@ class bglParser {
         int preScanDepth = 0;
         void preScanDirective(token tok);
         void preScanGlobalLoop();         // walks tokens in the currently-open file, registering type/global stubs until EOF
+        // One handler per declaration shape preScanGlobalLoop recognizes; each consumes the whole declaration.
+        void preScanExtend(token& tok);                                             // extend enum / extend <object> / extend [extern] class
+        bool preScanGlobalEmitterObject(token& tok);                                // `emitter Foo { … }`; false (nothing consumed) if no '{' follows
+        void preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClass);    // class declaration + its member stubs
+        void preScanEnum(token& tok, bool isExtern);                                // enum / bnum declaration
+        void preScanObject(token& tok, bool isExtern);                              // `object Name {…}` / `ClassName Name {…}` / `ClassName Name;`
+        void preScanProperty(bool isExtern);                                        // `property [type] name;`
+        void preScanAttribute(bool isExtern);                                       // `attribute name;`
+        void preScanUnion();                                                        // `union Name = A | B [ {…} | ; ]`
+        void preScanTypedDecl(token& tok, bool isExtern, bool isEmitter);           // typed head: function, emitter value, type-named object, or global variable
         void preScanInfFileBodyForDecls(); // .inf-mode pass-1: scans .inf body for #bglDecl{} / #bgl(decl-mode){} islands and pre-scans their content as declarations
         // Walk a string of bgl content and pre-scan declarations from it. Used for #bgl islands
         // discovered inside an .inf file during Pass 1. The content is opened as a virtual file

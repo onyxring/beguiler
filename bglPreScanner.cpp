@@ -604,6 +604,854 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
 // Walks tokens in the currently-open file, registering type/global stubs until EOF.
 // Separate from preScanFile so .inf-mode declaration islands (opened as virtual files)
 // can run the same registration logic.
+// extend enum / extend <object> / extend [extern] class — register the added members on the existing type.
+void bglParser::preScanExtend(token& tok){
+    // extend enum X { ... } — append members to an existing enum during pre-scan, so the
+    // main pass finds a populated enum and drains (mirrors a fresh enum's two-pass shape).
+    if(tok.is(token::enumDeclaration) || tok.is(token::bnumDeclaration) || tok.value == "enum" || tok.value == "bnum"){
+        bool isBnum = tok.is(token::bnumDeclaration) || tok.value == "bnum";
+        token nameTok = file.getToken();
+        string nameStr = nameTok.value;
+        enumDef* ex = languageService.findEnum(nameStr);
+        if(ex != nullptr){   // a pre-scan stub is fine — it just means forward-declared
+            // Continue auto-numbering from the current max; explicit `= N` overrides.
+            int val = 1;
+            for(enumValueDef* v : ex->namedValues) if(v->value >= val) val = v->value + 1;
+            file.getToken(); // consume '{'
+            token t = file.getToken();
+            while(t.isNot(token::braceClose) && t.isNot(eTokenType::eof)){
+                // Emitter method member added via `extend enum` — capture into the companion.
+                if(t.is("emitter")){
+                    preScanEnumEmitterMember(*ex);
+                    t = file.getToken();
+                    if(t.is(token::comma)) t = file.getToken();
+                    continue;
+                }
+                // Misplaced member (static/const/… method): skip so the main pass diagnoses it.
+                if(isEnumMemberQualifier(t)){
+                    preScanSkipEnumMemberBody();
+                    t = file.getToken();
+                    if(t.is(token::comma)) t = file.getToken();
+                    continue;
+                }
+                enumValueDef& ev = *(new enumValueDef());
+                ev.name = t.value; ev.displayName = t.originalValue; ev.docComment = t.docComment;
+                t = file.getToken({token::braceClose, token::comma, token::assignment});
+                if(t.is(token::assignment)){
+                    bool negate = false;
+                    if(file.peekToken().is("-")){ file.getToken(); negate = true; }
+                    token numTok = file.getToken(eTokenType::integer);
+                    val = stoi(numTok.value); if(negate) val = -val;
+                    t = file.getToken({token::braceClose, token::comma});
+                }
+                ev.value = val;
+                if(isBnum) val <<= 1; else val++;
+                ex->namedValues.push_back(&ev);
+                if(t.is(token::comma)) t = file.getToken();
+            }
+        } else {
+            preScanSkipBody(); // base not yet declared at this point — main pass will error
+        }
+        return;
+    }
+    // extend object by name — register added members on the existing objectDef.
+    // Without this pre-pass, sibling-method calls inside the extended body fail
+    // to resolve in the full pass when the caller is declared above the callee.
+    if((tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration)){
+        objectDef* obj = nullptr;
+        if(auto* od = languageService.findGlobalAs<objectDef>(tok.value)) obj = od;
+        if(obj == nullptr){
+            // Forward `extend <obj>` — target not declared yet at this source position (e.g.
+            // a platform-core `extend bgl {...}` included before `object bgl`). Capture the
+            // raw body and replay it after the whole include tree is pre-scanned
+            // (drainDeferredObjectExtends), so declarative `extend` is order-independent.
+            // Skipping the body instead would leave `bgl.asm`/`bgl.util.*` unresolvable
+            // whenever a consumer precedes the platform core.
+            auto detail = file.getCurrentFileDetail();
+            string vname = std::get<1>(detail);
+            int    vline = std::get<2>(detail);
+            token t = file.getToken();
+            while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken();
+            string body = file.getRawTextThroughClosingBrace();
+            deferredObjectExtends.push_back({ tok.value, body, vname, vline });
+            return;
+        }
+        preScanExtendObjectMembers(obj);
+        return;
+    }
+    if(tok.is("extern")) tok = file.getToken(); // consume "extern", now tok = "class"
+    if(tok.is(token::classDeclaration)) tok = file.getToken(); // consume "class", now tok = name
+    token nameTok = tok;
+    classDef* cls = languageService.findClass(nameTok.value);
+    if(cls != nullptr){
+        // Skip inheritance clause if present
+        token t = file.getToken();
+        while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken();
+        // Scan body for member stubs
+        t = file.getToken();
+        while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+            bool memberIsEmitter = false;
+            bool memberIsReplace = false;
+            if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
+            if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
+            if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
+            if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
+            // `hide <member>[.operator <op>][(types)];` — an access-control directive, not a
+            // member. Consume it so the pre-scan doesn't register a bogus `hide`-typed member
+            // (which would shadow the real inherited member). Recorded in the main pass.
+            if(t.is("hide") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType))){
+                preScanSkipToSemicolon(); t = file.getToken(); continue;
+            }
+            // Accept either a built-in dataType OR an identifier as the return type.
+            // The identifier path covers type parameters (e.g. `T` from `class array<T>`)
+            // and user-defined class names, which the lexer doesn't classify as dataTypes
+            // at pre-scan time. Without this, hitting `T pop()` triggered the "unrecognized"
+            // fallback below, which skipped to the emitter body's `}` and then `break`ed
+            // out of the entire extend body — leaving subsequent methods unscanned.
+            if(t.isDataType() || t.is(eTokenType::identifier)){
+                preScanConsumeGenericSuffix(t);
+                token memberName = file.getToken();
+                if(memberName.is("operator")){
+                    // operator declarations — just skip to body
+                    token opTok = file.getToken();
+                    if(opTok.is(token::parenOpen)){ memberName.value = "operator()"; }
+                    else if(opTok.is(token::bracketOpen)){ file.getToken(); memberName.value = "[]"; token ma = file.getToken(); if(ma.is("=")) memberName.value = "[]="; }
+                    else if(opTok.is("?")) memberName.value = "?";
+                    else if(opTok.is("switch")) memberName.value = "switch";
+                    else memberName.value = opTok.value;
+                }
+                token afterName = file.getToken();
+                if(afterName.is(token::parenOpen)){
+                    // Method: register stub on the class
+                    functionDef& fd = *(new functionDef());
+                    fd.name = memberName.value;
+                    fd.returnType = languageService.getType(t.value);
+                    fd.isEmitter = memberIsEmitter;
+                    fd.isPrePassStub = true;
+                    preScanCaptureParams(fd.params);
+                    token bodyStart = file.getToken();
+                    if(bodyStart.is(token::braceOpen)){
+                        // Capture an EMITTER body so a call resolved before this class is
+                        // main-pass-parsed can still expand it (order-independence): emitter
+                        // calls paste the body inline at the call site, so a bodyless stub
+                        // emits nothing. The main pass replaces this stub (replaceStubMember),
+                        // leaving normal emission unchanged; the captured body only matters for
+                        // use-before-definition. Non-emitter bodies never expand, so discard.
+                        string rawBody = file.getRawTextThroughClosingBrace(/*isI6Content=*/memberIsEmitter);
+                        if(memberIsEmitter){ i6Block* blk = new i6Block(); blk->i6Body = rawBody; fd.body = blk; }
+                    }
+                    // Add if not already present. For `replace`, overwrite the existing
+                    // stub in place so the class ends up with one entry per method name.
+                    bool exists = false;
+                    for(auto it = cls->members.begin(); it != cls->members.end(); ++it){
+                        if((*it)->name == fd.name){
+                            exists = true;
+                            if(memberIsReplace) *it = &fd;
+                            break;
+                        }
+                    }
+                    if(!exists) cls->members.push_back(&fd);
+                } else {
+                    // Property — skip to ;
+                    while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
+                        if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
+                        afterName = file.getToken();
+                    }
+                    if(afterName.is(token::braceClose)) break;
+                }
+            } else {
+                // Unrecognized — skip to ;
+                while(!t.is(token::endStatement) && !t.is(token::braceClose) && !t.is(eTokenType::eof)) t = file.getToken();
+                if(t.is(token::braceClose)) break;
+            }
+            t = file.getToken();
+        }
+    } else {
+        preScanSkipBody();
+    }
+}
+
+// class declaration — register the class stub, its type parameters, and a stub per member.
+void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClass){
+    token nameTok = file.getToken();
+    string nameStr = nameTok.value;
+    classDef* cls = nullptr;
+    if(!languageService.isObjectType(nameStr)){
+        classDef& stub = languageService.registerClass(nameStr, isExtern);
+        stub.isPrePassStub = true;
+        if(isEmitter)     stub.isEmitterClass = true;
+        if(isAliasClass)  stub.isAlias = true;
+        cls = &stub;
+    } else {
+        cls = languageService.findClass(nameStr);
+    }
+    // Type parameter clause: `class Foo<T> {…}` — store names on the classDef
+    // stub. Not registered as global types (would collide with same-named
+    // instances). Member signatures parse T as identifier-typed; substitution
+    // at method-lookup time replaces T with the use-site binding.
+    if(file.peekToken().is("<")){
+        file.getToken(); // consume '<'
+        while(true){
+            token paramTok = file.getToken();
+            if(paramTok.is(eTokenType::identifier) || paramTok.isDataType()){
+                string paramName = paramTok.value;
+                if(cls != nullptr) cls->typeParameters.push_back(paramName);
+            }
+            token sep = file.getToken();
+            if(sep.value == ">") break;
+            if(!sep.is(token::comma)) break; // malformed — let main pass produce the diagnostic
+        }
+    }
+    // Skip past any inheritance clause to find '{'
+    { token t = file.getToken();
+      while(!t.is(token::braceOpen) && !t.is(token::endStatement) && !t.is(eTokenType::eof))
+          t = file.getToken();
+      if(t.is(token::braceOpen)) {
+          // Walk the class body at token level looking for top-level `static TYPE NAME`
+          // declarations, registering them as member stubs. Any nested `{ ... }` block
+          // (method bodies, emitter bodies, initializer blocks) is consumed as raw text
+          // via getRawTextThroughClosingBrace() because it may contain ##, $self, etc.
+          // that would confuse the tokenizer.
+          token bt = file.getToken();
+          while(!bt.is(token::braceClose) && !bt.is(eTokenType::eof)){
+              if(bt.is(token::braceOpen)){
+                  file.getRawTextThroughClosingBrace();
+                  bt = file.getToken();
+                  continue;
+              }
+              // `hide <member>[.operator <op>][(types)];` — access-control directive, not a
+              // member. Consume it so pre-scan doesn't register a bogus `hide`-typed member
+              // that would shadow the real inherited member. Recorded in the main pass.
+              if(bt.is("hide") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType))){
+                  preScanSkipToSemicolon();
+                  bt = file.getToken();
+                  continue;
+              }
+              if(bt.is("static") && cls != nullptr){
+                  // static TYPE NAME [= expr] ;
+                  token typeTok = file.getToken();
+                  token memberName = file.getToken();
+                  // Only a real static VARIABLE gets a stub. `static int helper(int v)`
+                  // and `static bool operator ==(...)` are methods — they emit as free
+                  // routines, and stubbing them as variables produced a `global` that
+                  // collided with the routine's own name.
+                  token afterName = file.peekToken();
+                  bool isStaticVar = typeTok.isDataType()
+                                  && memberName.is(eTokenType::identifier)
+                                  && !memberName.is("operator")
+                                  && (afterName.is(token::assignment)
+                                      || afterName.is(token::endStatement));
+                  if(isStaticVar){
+                      bool exists = false;
+                      for(typeMember* m : cls->members)
+                          if(m->name == memberName.value){ exists = true; break; }
+                      if(!exists){
+                          variableDeclaration& vd = *(new variableDeclaration());
+                          vd.name = memberName.value;
+                          vd.type.name = typeTok.value;
+                          vd.isStatic = true;
+                          vd.isPrePassStub = true;
+                          cls->members.push_back(&vd);
+                      }
+                  }
+                  // Skip to ';' — but if we hit a '{' (an init block), consume it raw
+                  token s = file.getToken();
+                  while(!s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
+                      if(s.is(token::braceOpen)) { file.getRawTextThroughClosingBrace(); break; }
+                      s = file.getToken();
+                  }
+                  if(s.is(token::braceClose)) break;
+                  bt = file.getToken();
+                  continue;
+              }
+              // Method or property stub: [emitter] [replace] [default] TYPE NAME (...) | TYPE NAME [= ...] ;
+              // Register a stub (functionDef for methods, variableDeclaration for properties)
+              // so source-order is preserved when main parse fills them in. Without property
+              // stubs, pre-scan adds method stubs first and main parse appends properties
+              // last, scrambling the emission order relative to source.
+              if(cls != nullptr && (bt.isDataType() || bt.is(eTokenType::identifier) || bt.is("inline"))){
+                  // Skip optional member-modifier keywords. `inline` is TRACKED (not just
+                  // skipped): a property stub must carry isInline so braceArgHints recognizes
+                  // the class as inline-constructible (`Type{ … }` / bare `{ … }` args) even
+                  // when the class is only a pre-scan stub at the use site — i.e. defined
+                  // AFTER the #include that uses it. Order-independence requires the stub to
+                  // carry the full signature, not just the name.
+                  bool sawEmitter = false;
+                  bool sawInline  = false;
+                  while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit") || bt.is("ref") || bt.is("inline")){
+                      if(bt.is("emitter")) sawEmitter = true;
+                      if(bt.is("inline"))  sawInline  = true;
+                      bt = file.getToken();
+                  }
+                  if(bt.isDataType() || bt.is(eTokenType::identifier)){
+                      token typeTok = bt;
+                      token afterType = file.getToken();
+                      // Operator declarations — register a stub so forward references resolve.
+                      // The full-pass name conventions are mirrored here (see bglParser.cpp:2244+):
+                      //   operator(<>)        → "operator()"
+                      //   operator[]          → "[]"      (read)
+                      //   operator[]=         → "[]="     (write)
+                      //   operator switch     → "switch"
+                      //   operator auto       → "auto"
+                      //   operator <symbol>   → "<symbol>" (e.g. "<", "==", "+")
+                      //   operator id<sym>    → "id<sym>" (e.g. "prefix++")
+                      //   operator ?          → "?"
+                      if(afterType.value == "operator"){
+                          token opTok = file.getToken();
+                          string opName;
+                          if(opTok.is(token::parenOpen)){
+                              opName = "operator()";
+                              // ( already consumed — drain params
+                              int depth = 1;
+                              while(depth > 0){ token p = file.getToken(); if(p.is(eTokenType::eof)) break; if(p.is(token::parenOpen)) depth++; else if(p.is(token::parenClose)) depth--; }
+                          } else if(opTok.is(token::bracketOpen)){
+                              file.getToken();                 // ]
+                              token maybeAssign = file.getToken();
+                              if(maybeAssign.is(token::assignment)) opName = "[]=";
+                              else                                  opName = "[]";
+                          } else if(opTok.is("switch") || opTok.is("auto")){
+                              opName = opTok.value;
+                          } else if(opTok.is(eTokenType::identifier)){
+                              token opSym = file.getToken();
+                              opName = opTok.value + opSym.value;
+                          } else if(opTok.is("?")){
+                              opName = "?";
+                          } else {
+                              opName = opTok.value;
+                          }
+                          // Register the stub, capturing its parameter list so forward
+                          // overload / copy-init resolution (which matches on param TYPES —
+                          // e.g. finding `operator=(bglSize)` for a `bglSize` RHS) works even
+                          // when the class is used before it is main-parsed. Name-only stubs
+                          // silently failed those matches, breaking order-independence.
+                          functionDef* opStub = nullptr;
+                          bool exists = false;
+                          for(typeMember* m : cls->members)
+                              if(m->name == opName){ exists = true; break; }
+                          if(!exists){
+                              functionDef& fd = *(new functionDef());
+                              fd.name = opName;
+                              fd.returnType.name = typeTok.value;
+                              fd.isEmitter = sawEmitter;
+                              fd.isPrePassStub = true;
+                              cls->members.push_back(&fd);
+                              opStub = &fd;
+                          }
+                          // Capture the parameter list if present (`operator = (bglSize s)`).
+                          if(file.peekToken().is(token::parenOpen)){
+                              file.getToken();  // consume '('
+                              vector<paramDef*> ps;
+                              preScanCaptureParams(ps);
+                              if(opStub) opStub->params = ps;
+                          }
+                          // Drain to end of declaration (body or ;)
+                          token s = file.getToken();
+                          while(!s.is(token::braceOpen) && !s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
+                              s = file.getToken();
+                          }
+                          if(s.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                          if(s.is(token::braceClose)) break;
+                          bt = file.getToken();
+                          continue;
+                      }
+                      if(afterType.is(eTokenType::identifier) && file.peekToken().is(token::parenOpen)){
+                          // Method declaration — register functionDef stub, capturing params
+                          // so forward overload resolution has the signature (order-independence).
+                          string mname = afterType.value;
+                          functionDef* mStub = nullptr;
+                          bool exists = false;
+                          for(typeMember* m : cls->members)
+                              if(m->name == mname){ exists = true; break; }
+                          if(!exists){
+                              functionDef& fd = *(new functionDef());
+                              fd.name = mname;
+                              fd.returnType.name = typeTok.value;
+                              fd.isEmitter = sawEmitter;
+                              fd.isPrePassStub = true;
+                              cls->members.push_back(&fd);
+                              mStub = &fd;
+                          }
+                          // Consume params (capturing types) then the body
+                          file.getToken(); // '('
+                          { vector<paramDef*> ps; preScanCaptureParams(ps); if(mStub) mStub->params = ps; }
+                          token bodyOrSemi = file.getToken();
+                          if(bodyOrSemi.is(token::braceOpen)){
+                              // Capture an EMITTER body so a call resolved before this class is
+                              // main-pass-parsed can still expand it (order-independence): emitter
+                              // calls paste the body inline, so a bodyless stub emits nothing. The
+                              // main pass replaces this stub (replaceStubMember), leaving normal
+                              // emission unchanged — the body only matters for use-before-definition.
+                              string rawBody = file.getRawTextThroughClosingBrace(/*isI6Content=*/sawEmitter);
+                              if(sawEmitter && mStub){ i6Block* blk = new i6Block(); blk->i6Body = rawBody; mStub->body = blk; }
+                          }
+                          bt = file.getToken();
+                          continue;
+                      }
+                      if(afterType.is(eTokenType::identifier)){
+                          // Property declaration — register variableDeclaration stub
+                          string pname = afterType.value;
+                          bool exists = false;
+                          for(typeMember* m : cls->members)
+                              if(m->name == pname){ exists = true; break; }
+                          if(!exists){
+                              variableDeclaration& vd = *(new variableDeclaration());
+                              vd.name = pname;
+                              vd.type.name = typeTok.value;
+                              vd.isInline = sawInline;   // carry inline so braceArgHints treats the class as inline-constructible pre-main-pass
+                              vd.isPrePassStub = true;
+                              cls->members.push_back(&vd);
+                          }
+                          // Skip to ';' — handle initializer, brace block, or bare decl
+                          token s = file.getToken();
+                          while(!s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
+                              if(s.is(token::braceOpen)) { file.getRawTextThroughClosingBrace(); break; }
+                              s = file.getToken();
+                          }
+                          if(s.is(token::braceClose)) break;
+                          bt = file.getToken();
+                          continue;
+                      }
+                      // Not a method or property — fall through
+                      bt = afterType;
+                      continue;
+                  }
+              }
+              bt = file.getToken();
+          }
+      }
+    }
+}
+
+// enum / bnum declaration — register the type and its named values (auto-numbered unless given).
+void bglParser::preScanEnum(token& tok, bool isExtern){
+    bool isBnum = tok.is(token::bnumDeclaration);
+    token nameTok = file.getToken();
+    string nameStr = nameTok.value;
+    if(!languageService.isObjectType(nameStr)){
+        enumDef& newEnum = languageService.registerEnum(nameStr, isExtern);
+        newEnum.isPrePassStub = true;
+        newEnum.isBnum = isBnum;
+        // Optional shared-base clause: `bnum Name : Base { ... }` — only valid for bnums.
+        // Base grouping allows sibling bnums to combine via `|` (see spec). The base
+        // also relaxes the power-of-2 constraint (children occupy packed sub-fields).
+        if(file.peekToken().is(":")){
+            file.getToken(); // consume ':'
+            token baseTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            if(!isBnum)
+                parsingError(format("enum '{0}': shared-base inheritance is only valid for bnum declarations", nameStr));
+            enumDef* base = languageService.findEnum(baseTok.value);
+            if(!base || !base->isBnum)
+                parsingError(format("bnum '{0}': base '{1}' is not a declared bnum", nameStr, baseTok.originalValue));
+            newEnum.baseBnum = base;
+        }
+        bool hasBase = newEnum.baseBnum != nullptr;
+        file.getToken(); // consume '{'
+        token t = file.getToken();
+        int val = 1;
+        while(t.isNot(token::braceClose) && t.isNot(eTokenType::eof)){
+            // Emitter method member — capture into the enum's companion (order-independence).
+            if(t.is("emitter")){
+                preScanEnumEmitterMember(newEnum);
+                t = file.getToken();
+                if(t.is(token::comma)) t = file.getToken();
+                continue;
+            }
+            // Misplaced member (static/const/… method): skip so the main pass diagnoses it.
+            if(isEnumMemberQualifier(t)){
+                preScanSkipEnumMemberBody();
+                t = file.getToken();
+                if(t.is(token::comma)) t = file.getToken();
+                continue;
+            }
+            enumValueDef& ev = *(new enumValueDef());
+            ev.name = t.value;
+            ev.displayName = t.originalValue;
+            ev.docComment = t.docComment;
+            t = file.getToken({token::braceClose, token::comma, token::assignment});
+            if(t.is(token::assignment)){
+                bool negate = false;
+                if(file.peekToken().is("-")){ file.getToken(); negate = true; }
+                token numTok = file.getToken(eTokenType::integer);
+                val = stoi(numTok.value);
+                if(negate) val = -val;
+                if(isBnum && negate)
+                    parsingError(format("bnum '{0}': negative value {1} is not allowed", nameStr, val));
+                // Power-of-2 check is relaxed for bnums with a shared base — children
+                // of a packed composite may occupy sub-fields with non-power-of-2 patterns.
+                if(isBnum && !hasBase && val != 0 && (val & (val - 1)) != 0)
+                    parsingError(format("bnum '{0}': explicit value {1} is not a power of 2", nameStr, val));
+                t = file.getToken({token::braceClose, token::comma});
+            }
+            ev.value = val;
+            if(isBnum) val <<= 1; else val++;
+            newEnum.namedValues.push_back(&ev);
+            if(t.is(token::comma)) t = file.getToken();
+        }
+    } else {
+        preScanSkipBody(); // already registered — just skip the body
+    }
+}
+
+// `object Name {…}` / `ClassName Name {…}` / `ClassName Name;` — register an object or variable stub, plus member stubs for a body.
+void bglParser::preScanObject(token& tok, bool isExtern){
+    // Could be: object Name { }, ClassName Name { }, or ClassName Name : Parent { }
+    string classType = tok.value;
+    token nameTok = file.getToken();
+    string nameStr = nameTok.value;
+    transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+    // Check if class is verb-derived — create verbObjectDef instead of objectDef
+    bool isVerbType = false;
+    {   function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
+            if(!c) return false;
+            if(c->name == "verb") return true;
+            for(classDef* b : c->baseClasses) if(checkVerb(b)) return true;
+            return false;
+        };
+        if(auto* cls = languageService.findClass(classType))
+            isVerbType = checkVerb(cls);
+    }
+    token peek = file.peekToken();
+    if(peek.is(token::braceOpen) || peek.is(":")){ // object body
+        objectDef* objStub = nullptr;
+        if(!languageService.isObjectType(nameStr)){
+            if(isVerbType){
+                verbObjectDef& vs = languageService.registerVerbObject(nameTok.value, isExtern);
+                vs.isPrePassStub = true;
+                objStub = &vs;
+            } else {
+                objStub = &languageService.registerObject(nameStr, isExtern);
+                objStub->isPrePassStub = true;
+            }
+            // Set objectClass from the declared type so forward references resolve correctly
+            if(classType != "object")
+                if(auto* cls = languageService.findClass(classType))
+                    objStub->objectClass = cls;
+        } else {
+            // Already registered — find it
+            if(auto* od = languageService.findGlobalAs<objectDef>(nameStr)) objStub = od;
+        }
+        // Skip inheritance clause to reach '{'
+        { token t = file.getToken();
+          while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken(); }
+        // Scan body for member stubs: look for type name ( patterns → register as method stubs
+        if(objStub != nullptr){
+            token t = file.getToken();
+            while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+                bool memberIsEmitter = false;
+                if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
+                if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
+                if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
+                if(t.isDataType()){
+                    preScanConsumeGenericSuffix(t);
+                    token memberName = file.getToken();
+                    token afterName = file.getToken();
+                    if(afterName.is(token::parenOpen)){
+                        // Method: register a stub
+                        functionDef& fd = *(new functionDef());
+                        fd.name = memberName.value;
+                        fd.returnType = languageService.getType(t.value);
+                        fd.isEmitter = memberIsEmitter;
+                        fd.isPrePassStub = true;
+                        preScanCaptureParams(fd.params);
+                        token bodyStart = file.getToken();
+                        if(bodyStart.is(token::braceOpen))
+                            file.getRawTextThroughClosingBrace();
+                        // Only add if not already registered
+                        bool exists = false;
+                        for(typeMember* m : objStub->members)
+                            if(m->name == fd.name){ exists = true; break; }
+                        if(!exists) objStub->members.push_back(&fd);
+                    } else {
+                        // Property — register a stub so forward references from sibling
+                        // methods resolve correctly. Without this, a method declared above
+                        // a property would not find the property in currentObject->members
+                        // during full-pass body parsing, fall through to file-scope, and
+                        // resolve against an unrelated enum value or global with the same
+                        // name (compiler can't disambiguate; the user's intent of self.X
+                        // is silently swapped for the file-scope hit).
+                        // Skip emitters (e.g. `emitter int wordsize {WORDSIZE}`) — those
+                        // look like a property shape without parens but are value-emitters
+                        // that the full pass installs differently.
+                        if(!memberIsEmitter){
+                            variableDeclaration& vd = *(new variableDeclaration());
+                            vd.name = memberName.value;
+                            vd.displayName = memberName.originalValue;
+                            vd.type = languageService.getType(t.value);
+                            vd.isPrePassStub = true;
+                            bool exists = false;
+                            for(typeMember* m : objStub->members)
+                                if(m->name == vd.name){ exists = true; break; }
+                            if(!exists) objStub->members.push_back(&vd);
+                        }
+                        // Skip the rest of the declaration up to AND INCLUDING the
+                        // terminating ';' (or until the object's closing '}'). If we
+                        // left a stray ';' as the next outer token, the outer loop's
+                        // else-branch would feed it to preScanSkipToSemicolon, which
+                        // then scans into the following statement looking for the
+                        // *next* ';' — silently swallowing the next method body and
+                        // its trailing property.
+                        while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
+                            if(afterName.is(token::braceOpen)){
+                                file.getRawTextThroughClosingBrace();
+                                // After consuming the {...}, continue reading until ';'
+                                // (or '}') so the trailing ';' doesn't leak to the outer loop.
+                                afterName = file.getToken();
+                                continue;
+                            }
+                            afterName = file.getToken();
+                        }
+                        if(afterName.is(token::braceClose)) break;
+                    }
+                } else if(t.is("#i6")){
+                    // Raw I6 block inside object — skip
+                    token b = file.getToken();
+                    if(b.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
+                } else {
+                    // Inherited member or unknown — skip to ;
+                    preScanSkipToSemicolon();
+                }
+                t = file.getToken();
+            }
+        } else {
+            file.getRawTextThroughClosingBrace();
+        }
+    } else {
+        // extern ClassName Name; or ClassName Name = ...; — variable or object stub
+        if(isVerbType){
+            // extern verb-derived: register as verb object
+            bool alreadyReg = false;
+            for(verbObjectDef* v : languageService.verbs)
+                if(v->name == nameStr){ alreadyReg = true; break; }
+            if(!alreadyReg){
+                verbObjectDef& vs = languageService.registerVerbObject(nameTok.value, isExtern);
+                vs.isPrePassStub = true;
+            }
+        } else {
+            bool alreadyReg = false;
+            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(nameStr)) alreadyReg = true;
+            if(!alreadyReg){
+                variableDeclaration& stub = *(new variableDeclaration());
+                stub.name = nameStr;
+                stub.type.name = "object";
+                stub.isPrePassStub = true;
+                stub.isExternal = isExtern;
+                languageService.globals.push_back(&stub);
+            }
+        }
+        preScanSkipToSemicolon();
+    }
+}
+
+// `property [type] name;` — reserve the global stub at this source position so I6 sees the Property directive before any class use.
+void bglParser::preScanProperty(bool isExtern){
+    // Same reservation the `attribute` branch makes below, and for the same reason: without
+    // a stub at this source position the declaration is appended to globals at main-parse
+    // time, landing AFTER the pre-scanned classes. I6 then sees the class create the
+    // property as an individual property and rejects the later `Property` directive
+    // ("is a name already in use"). The untyped form `property foo;` came through the
+    // generic TYPE NAME path above; the typed forms (`property var foo;`,
+    // `property rawArray<T> foo;`) do not, because the token after `property` is a type.
+    // The property NAME is the last token before the ';' in every form.
+    token last, t = file.getToken();
+    while(t.isNot(token::endStatement) && t.isNot(eTokenType::eof)){ last = t; t = file.getToken(); }
+    string nameStr = last.value;
+    transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+    bool alreadyReg = false;
+    for(typeDef* g : languageService.globals)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+            if(vd->name == nameStr && vd->type.name == "property"){ alreadyReg = true; break; }
+    if(!alreadyReg && !nameStr.empty()){
+        variableDeclaration& stub = *(new variableDeclaration());
+        stub.name = nameStr;
+        stub.type.name = "property";
+        stub.isPrePassStub = true;
+        stub.isExternal = isExtern;
+        languageService.globals.push_back(&stub);
+    }
+}
+
+// `attribute name;` — reserve the global stub at this source position so `has <attr>` clauses keep their source-order dependency.
+void bglParser::preScanAttribute(bool isExtern){
+    // Register a stub at this source position so the main-parse emitter can see the
+    // attribute's declaration index. Without this, `extern attribute light;` gets
+    // appended to globals at main-parse time (after class pre-scan stubs), which
+    // breaks source-order dependency checks for `has light` clauses.
+    token nameTok = file.getToken();
+    string nameStr = nameTok.value;
+    transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+    bool alreadyReg = false;
+    for(typeDef* g : languageService.globals)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+            if(vd->name == nameStr && vd->type.name == "attribute"){ alreadyReg = true; break; }
+    if(!alreadyReg){
+        variableDeclaration& stub = *(new variableDeclaration());
+        stub.name = nameStr;
+        stub.type.name = "attribute";
+        stub.isPrePassStub = true;
+        stub.isExternal = isExtern;
+        languageService.globals.push_back(&stub);
+    }
+    preScanSkipToSemicolon();
+}
+
+// `union Name = A | B [ {…} | ; ]` — register Name as an emitter class stub and skip the member list and any body.
+void bglParser::preScanUnion(){
+    token nameTok = file.getToken();
+    if(nameTok.is(eTokenType::identifier) || nameTok.isDataType()){
+        if(!languageService.isObjectType(nameTok.value)){
+            classDef& stub = languageService.registerClass(nameTok.value, false);
+            stub.isPrePassStub  = true;
+            stub.isEmitterClass = true;
+        }
+        token t = file.getToken();                       // '=' (or bail)
+        while(!t.is(token::endStatement) && !t.is(token::braceOpen) && !t.is(eTokenType::eof))
+            t = file.getToken();                          // skip the member list up to ';' or '{'
+        if(t.is(token::braceOpen)){                        // skip the balanced body
+            int depth = 1;
+            while(depth > 0){
+                token b = file.getToken();
+                if(b.is(token::braceOpen)) depth++;
+                else if(b.is(token::braceClose)) depth--;
+                else if(b.is(eTokenType::eof)) break;
+            }
+        }
+    }
+}
+
+// Typed declaration head — a function, an emitter value, a type-named object, or a global variable.
+void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
+    string typeName = tok.value;
+    preScanConsumeGenericSuffix(tok);
+    // Consume a dotted namespace type path: identifier.identifier.identifier …
+    // Without this, a decl like `bgl.glulx.window winStatus;` never registers a stub,
+    // so the variable gets appended to `globals` at the END of main-parse registration,
+    // causing it to be emitted after its uses (I6 "Variable must be defined before use").
+    while(file.peekToken().is(token::period)){
+        token seg = file.peekToken(2);
+        if(!seg.is(eTokenType::identifier) && !seg.is(eTokenType::dataType)) break;
+        file.getToken(); file.getToken();
+        typeName += "." + seg.value;
+    }
+    token nameTok = file.getToken();
+    if(!nameTok.is(eTokenType::identifier)){ preScanSkipToSemicolon(); return; }
+    string nameStr = nameTok.value;
+    transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+
+    // Optional ': ClassName' for typed object declarations
+    token sym = file.getToken();
+    if(sym.is(":")){
+        file.getToken(); // class name
+        sym = file.getToken(); // should be '{'
+    }
+
+    if(sym.is(token::parenOpen)){
+        // Function declaration — register stub with return type.
+        // We dedup by full signature (name + param types) rather than name
+        // alone, so each overload of an overloaded function (e.g. print(int)
+        // vs print(string) vs print(stringLiteral)) gets its own stub. Without
+        // this, only the first overload was registered and resolveGlobalCall
+        // would reject calls whose arg types matched a later overload.
+        functionDef& stub = *(new functionDef());
+        stub.name = nameStr;
+        stub.returnType.name = typeName;
+        stub.isEmitter = isEmitter;
+        stub.isPrePassStub = true;
+        preScanCaptureParams(stub.params);
+        bool alreadyReg = false;
+        for(typeDef* g : languageService.globals){
+            auto* fd = dynamic_cast<functionDef*>(g);
+            if(fd == nullptr || fd->name != nameStr) continue;
+            if(fd->params.size() != stub.params.size()) continue;
+            bool sameSig = true;
+            for(size_t i = 0; i < fd->params.size(); i++){
+                if(fd->params[i]->type.name != stub.params[i]->type.name){
+                    sameSig = false; break;
+                }
+            }
+            if(sameSig){ alreadyReg = true; break; }
+        }
+        functionDef* stubPtr = nullptr;
+        if(!alreadyReg){
+            languageService.globals.push_back(&stub);
+            stubPtr = &stub;
+        }
+        token peek = file.peekToken();
+        if(peek.is(token::braceOpen)){
+            // For emitter functions, capture the body during prescan so forward
+            // calls inside the same .inf island (where the stub remains in globals)
+            // can inline correctly. Without this, the stub has a null body and the
+            // call site falls back to verbatim emission. Main pass will replace the
+            // stub with a fresh functionDef when it processes the actual declaration.
+            if(stubPtr != nullptr && isEmitter){
+                file.getToken(); // consume '{'
+                i6Block* body = new i6Block();
+                body->i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+                stubPtr->body = body;
+            } else preScanSkipBody();
+        } else preScanSkipToSemicolon();
+    } else if(sym.is(token::braceOpen) && isEmitter){
+        // Emitter value: emitter Type name { body } — register stub, skip body
+        bool alreadyReg = false;
+        if(auto* fd = languageService.findGlobalAs<functionDef>(nameStr)) alreadyReg = true;
+        if(!alreadyReg){
+            functionDef& stub = *(new functionDef());
+            stub.name = nameStr;
+            stub.returnType.name = typeName;
+            stub.isEmitter = true;
+            stub.isValueEmitter = true;
+            stub.isPrePassStub = true;
+            languageService.globals.push_back(&stub);
+        }
+        file.getRawTextThroughClosingBrace();
+    } else if(sym.is(token::braceOpen)){
+        // Type-named object: Room myRoom { }
+        if(!languageService.isObjectType(nameStr)){
+            objectDef& stub = languageService.registerObject(nameStr, isExtern);
+            stub.isPrePassStub = true;
+            // Record the declared class so forward references resolve correctly
+            if(!typeName.empty() && typeName != "object"){
+                classDef* cls = languageService.findClass(typeName);
+                if(cls != nullptr) stub.objectClass = cls;
+            }
+        }
+        preScanSkipBodyContents();
+    } else if(sym.is(token::endStatement) || sym.is(token::assignment) ||
+              sym.is(token::bracketOpen)){
+        // Global variable declaration
+        bool alreadyReg = false;
+        if(auto* vd = languageService.findGlobalAs<variableDeclaration>(nameStr)) alreadyReg = true;
+        if(!alreadyReg){
+            variableDeclaration& stub = *(new variableDeclaration());
+            stub.name = nameStr;
+            stub.type.name = typeName;
+            stub.isPrePassStub = true;
+            stub.isExternal = isExtern;
+            languageService.globals.push_back(&stub);
+        }
+        if(sym.isNot(token::endStatement)) preScanSkipToSemicolon();
+    } else {
+        preScanSkipToSemicolon();
+    }
+}
+
+// `emitter Foo { … }` at global scope — registers the emitter-object class stub.
+// Returns false without consuming anything when the identifier is not followed by '{'.
+bool bglParser::preScanGlobalEmitterObject(token& tok){
+    token peek = file.peekToken();
+    if(peek.is(token::braceOpen)){
+        string nameStr = tok.value;
+        if(!languageService.isObjectType(nameStr)){
+            classDef& stub = languageService.registerClass(nameStr, false);
+            stub.isPrePassStub = true;
+            stub.isEmitterClass = true;
+            stub.isGlobalEmitterObject = true;
+        }
+        preScanSkipBody();
+        return true;
+    }
+    return false;
+}
+
 void bglParser::preScanGlobalLoop(){
     while(true){
         token tok = file.getToken();
@@ -623,188 +1471,12 @@ void bglParser::preScanGlobalLoop(){
 
         // extend class/object — register new members on the existing type during pre-scan
         // Note: 'extend' was consumed by parseQualifiers; tok is now 'class', 'verb', identifier, or 'extern'
-        if(q.isExtend){
-            // extend enum X { ... } — append members to an existing enum during pre-scan, so the
-            // main pass finds a populated enum and drains (mirrors a fresh enum's two-pass shape).
-            if(tok.is(token::enumDeclaration) || tok.is(token::bnumDeclaration) || tok.value == "enum" || tok.value == "bnum"){
-                bool isBnum = tok.is(token::bnumDeclaration) || tok.value == "bnum";
-                token nameTok = file.getToken();
-                string nameStr = nameTok.value;
-                enumDef* ex = languageService.findEnum(nameStr);
-                if(ex != nullptr){   // a pre-scan stub is fine — it just means forward-declared
-                    // Continue auto-numbering from the current max; explicit `= N` overrides.
-                    int val = 1;
-                    for(enumValueDef* v : ex->namedValues) if(v->value >= val) val = v->value + 1;
-                    file.getToken(); // consume '{'
-                    token t = file.getToken();
-                    while(t.isNot(token::braceClose) && t.isNot(eTokenType::eof)){
-                        // Emitter method member added via `extend enum` — capture into the companion.
-                        if(t.is("emitter")){
-                            preScanEnumEmitterMember(*ex);
-                            t = file.getToken();
-                            if(t.is(token::comma)) t = file.getToken();
-                            continue;
-                        }
-                        // Misplaced member (static/const/… method): skip so the main pass diagnoses it.
-                        if(isEnumMemberQualifier(t)){
-                            preScanSkipEnumMemberBody();
-                            t = file.getToken();
-                            if(t.is(token::comma)) t = file.getToken();
-                            continue;
-                        }
-                        enumValueDef& ev = *(new enumValueDef());
-                        ev.name = t.value; ev.displayName = t.originalValue; ev.docComment = t.docComment;
-                        t = file.getToken({token::braceClose, token::comma, token::assignment});
-                        if(t.is(token::assignment)){
-                            bool negate = false;
-                            if(file.peekToken().is("-")){ file.getToken(); negate = true; }
-                            token numTok = file.getToken(eTokenType::integer);
-                            val = stoi(numTok.value); if(negate) val = -val;
-                            t = file.getToken({token::braceClose, token::comma});
-                        }
-                        ev.value = val;
-                        if(isBnum) val <<= 1; else val++;
-                        ex->namedValues.push_back(&ev);
-                        if(t.is(token::comma)) t = file.getToken();
-                    }
-                } else {
-                    preScanSkipBody(); // base not yet declared at this point — main pass will error
-                }
-                continue;
-            }
-            // extend object by name — register added members on the existing objectDef.
-            // Without this pre-pass, sibling-method calls inside the extended body fail
-            // to resolve in the full pass when the caller is declared above the callee.
-            if((tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration)){
-                objectDef* obj = nullptr;
-                if(auto* od = languageService.findGlobalAs<objectDef>(tok.value)) obj = od;
-                if(obj == nullptr){
-                    // Forward `extend <obj>` — target not declared yet at this source position (e.g.
-                    // a platform-core `extend bgl {...}` included before `object bgl`). Capture the
-                    // raw body and replay it after the whole include tree is pre-scanned
-                    // (drainDeferredObjectExtends), so declarative `extend` is order-independent.
-                    // Skipping the body instead would leave `bgl.asm`/`bgl.util.*` unresolvable
-                    // whenever a consumer precedes the platform core.
-                    auto detail = file.getCurrentFileDetail();
-                    string vname = std::get<1>(detail);
-                    int    vline = std::get<2>(detail);
-                    token t = file.getToken();
-                    while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken();
-                    string body = file.getRawTextThroughClosingBrace();
-                    deferredObjectExtends.push_back({ tok.value, body, vname, vline });
-                    continue;
-                }
-                preScanExtendObjectMembers(obj);
-                continue;
-            }
-            if(tok.is("extern")) tok = file.getToken(); // consume "extern", now tok = "class"
-            if(tok.is(token::classDeclaration)) tok = file.getToken(); // consume "class", now tok = name
-            token nameTok = tok;
-            classDef* cls = languageService.findClass(nameTok.value);
-            if(cls != nullptr){
-                // Skip inheritance clause if present
-                token t = file.getToken();
-                while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken();
-                // Scan body for member stubs
-                t = file.getToken();
-                while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
-                    bool memberIsEmitter = false;
-                    bool memberIsReplace = false;
-                    if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
-                    if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
-                    if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
-                    if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
-                    // `hide <member>[.operator <op>][(types)];` — an access-control directive, not a
-                    // member. Consume it so the pre-scan doesn't register a bogus `hide`-typed member
-                    // (which would shadow the real inherited member). Recorded in the main pass.
-                    if(t.is("hide") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType))){
-                        preScanSkipToSemicolon(); t = file.getToken(); continue;
-                    }
-                    // Accept either a built-in dataType OR an identifier as the return type.
-                    // The identifier path covers type parameters (e.g. `T` from `class array<T>`)
-                    // and user-defined class names, which the lexer doesn't classify as dataTypes
-                    // at pre-scan time. Without this, hitting `T pop()` triggered the "unrecognized"
-                    // fallback below, which skipped to the emitter body's `}` and then `break`ed
-                    // out of the entire extend body — leaving subsequent methods unscanned.
-                    if(t.isDataType() || t.is(eTokenType::identifier)){
-                        preScanConsumeGenericSuffix(t);
-                        token memberName = file.getToken();
-                        if(memberName.is("operator")){
-                            // operator declarations — just skip to body
-                            token opTok = file.getToken();
-                            if(opTok.is(token::parenOpen)){ memberName.value = "operator()"; }
-                            else if(opTok.is(token::bracketOpen)){ file.getToken(); memberName.value = "[]"; token ma = file.getToken(); if(ma.is("=")) memberName.value = "[]="; }
-                            else if(opTok.is("?")) memberName.value = "?";
-                            else if(opTok.is("switch")) memberName.value = "switch";
-                            else memberName.value = opTok.value;
-                        }
-                        token afterName = file.getToken();
-                        if(afterName.is(token::parenOpen)){
-                            // Method: register stub on the class
-                            functionDef& fd = *(new functionDef());
-                            fd.name = memberName.value;
-                            fd.returnType = languageService.getType(t.value);
-                            fd.isEmitter = memberIsEmitter;
-                            fd.isPrePassStub = true;
-                            preScanCaptureParams(fd.params);
-                            token bodyStart = file.getToken();
-                            if(bodyStart.is(token::braceOpen)){
-                                // Capture an EMITTER body so a call resolved before this class is
-                                // main-pass-parsed can still expand it (order-independence): emitter
-                                // calls paste the body inline at the call site, so a bodyless stub
-                                // emits nothing. The main pass replaces this stub (replaceStubMember),
-                                // leaving normal emission unchanged; the captured body only matters for
-                                // use-before-definition. Non-emitter bodies never expand, so discard.
-                                string rawBody = file.getRawTextThroughClosingBrace(/*isI6Content=*/memberIsEmitter);
-                                if(memberIsEmitter){ i6Block* blk = new i6Block(); blk->i6Body = rawBody; fd.body = blk; }
-                            }
-                            // Add if not already present. For `replace`, overwrite the existing
-                            // stub in place so the class ends up with one entry per method name.
-                            bool exists = false;
-                            for(auto it = cls->members.begin(); it != cls->members.end(); ++it){
-                                if((*it)->name == fd.name){
-                                    exists = true;
-                                    if(memberIsReplace) *it = &fd;
-                                    break;
-                                }
-                            }
-                            if(!exists) cls->members.push_back(&fd);
-                        } else {
-                            // Property — skip to ;
-                            while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
-                                if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
-                                afterName = file.getToken();
-                            }
-                            if(afterName.is(token::braceClose)) break;
-                        }
-                    } else {
-                        // Unrecognized — skip to ;
-                        while(!t.is(token::endStatement) && !t.is(token::braceClose) && !t.is(eTokenType::eof)) t = file.getToken();
-                        if(t.is(token::braceClose)) break;
-                    }
-                    t = file.getToken();
-                }
-            } else {
-                preScanSkipBody();
-            }
-            continue;
-        }
+        if(q.isExtend){ preScanExtend(tok); continue; }
 
         // global emitter object: 'emitter Foo { }' — identifier immediately followed by '{'
         // Distinct from emitter class (requires 'class' keyword) and emitter functions (require a return type).
         if(isEmitter && tok.is(eTokenType::identifier)){
-            token peek = file.peekToken();
-            if(peek.is(token::braceOpen)){
-                string nameStr = tok.value;
-                if(!languageService.isObjectType(nameStr)){
-                    classDef& stub = languageService.registerClass(nameStr, false);
-                    stub.isPrePassStub = true;
-                    stub.isEmitterClass = true;
-                    stub.isGlobalEmitterObject = true;
-                }
-                preScanSkipBody();
-                continue;
-            }
+            if(preScanGlobalEmitterObject(tok)) continue;
         }
 
         // `alias` is consumed by parseQualifiers above (sets q.isAlias) — also accept a
@@ -813,482 +1485,17 @@ void bglParser::preScanGlobalLoop(){
         if(tok.is("alias")) { isAliasClass = true; tok = file.getToken(); } // consume 'class'
 
         // class declaration
-        if(tok.is(token::classDeclaration)){
-            token nameTok = file.getToken();
-            string nameStr = nameTok.value;
-            classDef* cls = nullptr;
-            if(!languageService.isObjectType(nameStr)){
-                classDef& stub = languageService.registerClass(nameStr, isExtern);
-                stub.isPrePassStub = true;
-                if(isEmitter)     stub.isEmitterClass = true;
-                if(isAliasClass)  stub.isAlias = true;
-                cls = &stub;
-            } else {
-                cls = languageService.findClass(nameStr);
-            }
-            // Type parameter clause: `class Foo<T> {…}` — store names on the classDef
-            // stub. Not registered as global types (would collide with same-named
-            // instances). Member signatures parse T as identifier-typed; substitution
-            // at method-lookup time replaces T with the use-site binding.
-            if(file.peekToken().is("<")){
-                file.getToken(); // consume '<'
-                while(true){
-                    token paramTok = file.getToken();
-                    if(paramTok.is(eTokenType::identifier) || paramTok.isDataType()){
-                        string paramName = paramTok.value;
-                        if(cls != nullptr) cls->typeParameters.push_back(paramName);
-                    }
-                    token sep = file.getToken();
-                    if(sep.value == ">") break;
-                    if(!sep.is(token::comma)) break; // malformed — let main pass produce the diagnostic
-                }
-            }
-            // Skip past any inheritance clause to find '{'
-            { token t = file.getToken();
-              while(!t.is(token::braceOpen) && !t.is(token::endStatement) && !t.is(eTokenType::eof))
-                  t = file.getToken();
-              if(t.is(token::braceOpen)) {
-                  // Walk the class body at token level looking for top-level `static TYPE NAME`
-                  // declarations, registering them as member stubs. Any nested `{ ... }` block
-                  // (method bodies, emitter bodies, initializer blocks) is consumed as raw text
-                  // via getRawTextThroughClosingBrace() because it may contain ##, $self, etc.
-                  // that would confuse the tokenizer.
-                  token bt = file.getToken();
-                  while(!bt.is(token::braceClose) && !bt.is(eTokenType::eof)){
-                      if(bt.is(token::braceOpen)){
-                          file.getRawTextThroughClosingBrace();
-                          bt = file.getToken();
-                          continue;
-                      }
-                      // `hide <member>[.operator <op>][(types)];` — access-control directive, not a
-                      // member. Consume it so pre-scan doesn't register a bogus `hide`-typed member
-                      // that would shadow the real inherited member. Recorded in the main pass.
-                      if(bt.is("hide") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType))){
-                          preScanSkipToSemicolon();
-                          bt = file.getToken();
-                          continue;
-                      }
-                      if(bt.is("static") && cls != nullptr){
-                          // static TYPE NAME [= expr] ;
-                          token typeTok = file.getToken();
-                          token memberName = file.getToken();
-                          // Only a real static VARIABLE gets a stub. `static int helper(int v)`
-                          // and `static bool operator ==(...)` are methods — they emit as free
-                          // routines, and stubbing them as variables produced a `global` that
-                          // collided with the routine's own name.
-                          token afterName = file.peekToken();
-                          bool isStaticVar = typeTok.isDataType()
-                                          && memberName.is(eTokenType::identifier)
-                                          && !memberName.is("operator")
-                                          && (afterName.is(token::assignment)
-                                              || afterName.is(token::endStatement));
-                          if(isStaticVar){
-                              bool exists = false;
-                              for(typeMember* m : cls->members)
-                                  if(m->name == memberName.value){ exists = true; break; }
-                              if(!exists){
-                                  variableDeclaration& vd = *(new variableDeclaration());
-                                  vd.name = memberName.value;
-                                  vd.type.name = typeTok.value;
-                                  vd.isStatic = true;
-                                  vd.isPrePassStub = true;
-                                  cls->members.push_back(&vd);
-                              }
-                          }
-                          // Skip to ';' — but if we hit a '{' (an init block), consume it raw
-                          token s = file.getToken();
-                          while(!s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
-                              if(s.is(token::braceOpen)) { file.getRawTextThroughClosingBrace(); break; }
-                              s = file.getToken();
-                          }
-                          if(s.is(token::braceClose)) break;
-                          bt = file.getToken();
-                          continue;
-                      }
-                      // Method or property stub: [emitter] [replace] [default] TYPE NAME (...) | TYPE NAME [= ...] ;
-                      // Register a stub (functionDef for methods, variableDeclaration for properties)
-                      // so source-order is preserved when main parse fills them in. Without property
-                      // stubs, pre-scan adds method stubs first and main parse appends properties
-                      // last, scrambling the emission order relative to source.
-                      if(cls != nullptr && (bt.isDataType() || bt.is(eTokenType::identifier) || bt.is("inline"))){
-                          // Skip optional member-modifier keywords. `inline` is TRACKED (not just
-                          // skipped): a property stub must carry isInline so braceArgHints recognizes
-                          // the class as inline-constructible (`Type{ … }` / bare `{ … }` args) even
-                          // when the class is only a pre-scan stub at the use site — i.e. defined
-                          // AFTER the #include that uses it. Order-independence requires the stub to
-                          // carry the full signature, not just the name.
-                          bool sawEmitter = false;
-                          bool sawInline  = false;
-                          while(bt.is("emitter") || bt.is("replace") || bt.is("default") || bt.is("explicit") || bt.is("ref") || bt.is("inline")){
-                              if(bt.is("emitter")) sawEmitter = true;
-                              if(bt.is("inline"))  sawInline  = true;
-                              bt = file.getToken();
-                          }
-                          if(bt.isDataType() || bt.is(eTokenType::identifier)){
-                              token typeTok = bt;
-                              token afterType = file.getToken();
-                              // Operator declarations — register a stub so forward references resolve.
-                              // The full-pass name conventions are mirrored here (see bglParser.cpp:2244+):
-                              //   operator(<>)        → "operator()"
-                              //   operator[]          → "[]"      (read)
-                              //   operator[]=         → "[]="     (write)
-                              //   operator switch     → "switch"
-                              //   operator auto       → "auto"
-                              //   operator <symbol>   → "<symbol>" (e.g. "<", "==", "+")
-                              //   operator id<sym>    → "id<sym>" (e.g. "prefix++")
-                              //   operator ?          → "?"
-                              if(afterType.value == "operator"){
-                                  token opTok = file.getToken();
-                                  string opName;
-                                  if(opTok.is(token::parenOpen)){
-                                      opName = "operator()";
-                                      // ( already consumed — drain params
-                                      int depth = 1;
-                                      while(depth > 0){ token p = file.getToken(); if(p.is(eTokenType::eof)) break; if(p.is(token::parenOpen)) depth++; else if(p.is(token::parenClose)) depth--; }
-                                  } else if(opTok.is(token::bracketOpen)){
-                                      file.getToken();                 // ]
-                                      token maybeAssign = file.getToken();
-                                      if(maybeAssign.is(token::assignment)) opName = "[]=";
-                                      else                                  opName = "[]";
-                                  } else if(opTok.is("switch") || opTok.is("auto")){
-                                      opName = opTok.value;
-                                  } else if(opTok.is(eTokenType::identifier)){
-                                      token opSym = file.getToken();
-                                      opName = opTok.value + opSym.value;
-                                  } else if(opTok.is("?")){
-                                      opName = "?";
-                                  } else {
-                                      opName = opTok.value;
-                                  }
-                                  // Register the stub, capturing its parameter list so forward
-                                  // overload / copy-init resolution (which matches on param TYPES —
-                                  // e.g. finding `operator=(bglSize)` for a `bglSize` RHS) works even
-                                  // when the class is used before it is main-parsed. Name-only stubs
-                                  // silently failed those matches, breaking order-independence.
-                                  functionDef* opStub = nullptr;
-                                  bool exists = false;
-                                  for(typeMember* m : cls->members)
-                                      if(m->name == opName){ exists = true; break; }
-                                  if(!exists){
-                                      functionDef& fd = *(new functionDef());
-                                      fd.name = opName;
-                                      fd.returnType.name = typeTok.value;
-                                      fd.isEmitter = sawEmitter;
-                                      fd.isPrePassStub = true;
-                                      cls->members.push_back(&fd);
-                                      opStub = &fd;
-                                  }
-                                  // Capture the parameter list if present (`operator = (bglSize s)`).
-                                  if(file.peekToken().is(token::parenOpen)){
-                                      file.getToken();  // consume '('
-                                      vector<paramDef*> ps;
-                                      preScanCaptureParams(ps);
-                                      if(opStub) opStub->params = ps;
-                                  }
-                                  // Drain to end of declaration (body or ;)
-                                  token s = file.getToken();
-                                  while(!s.is(token::braceOpen) && !s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
-                                      s = file.getToken();
-                                  }
-                                  if(s.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
-                                  if(s.is(token::braceClose)) break;
-                                  bt = file.getToken();
-                                  continue;
-                              }
-                              if(afterType.is(eTokenType::identifier) && file.peekToken().is(token::parenOpen)){
-                                  // Method declaration — register functionDef stub, capturing params
-                                  // so forward overload resolution has the signature (order-independence).
-                                  string mname = afterType.value;
-                                  functionDef* mStub = nullptr;
-                                  bool exists = false;
-                                  for(typeMember* m : cls->members)
-                                      if(m->name == mname){ exists = true; break; }
-                                  if(!exists){
-                                      functionDef& fd = *(new functionDef());
-                                      fd.name = mname;
-                                      fd.returnType.name = typeTok.value;
-                                      fd.isEmitter = sawEmitter;
-                                      fd.isPrePassStub = true;
-                                      cls->members.push_back(&fd);
-                                      mStub = &fd;
-                                  }
-                                  // Consume params (capturing types) then the body
-                                  file.getToken(); // '('
-                                  { vector<paramDef*> ps; preScanCaptureParams(ps); if(mStub) mStub->params = ps; }
-                                  token bodyOrSemi = file.getToken();
-                                  if(bodyOrSemi.is(token::braceOpen)){
-                                      // Capture an EMITTER body so a call resolved before this class is
-                                      // main-pass-parsed can still expand it (order-independence): emitter
-                                      // calls paste the body inline, so a bodyless stub emits nothing. The
-                                      // main pass replaces this stub (replaceStubMember), leaving normal
-                                      // emission unchanged — the body only matters for use-before-definition.
-                                      string rawBody = file.getRawTextThroughClosingBrace(/*isI6Content=*/sawEmitter);
-                                      if(sawEmitter && mStub){ i6Block* blk = new i6Block(); blk->i6Body = rawBody; mStub->body = blk; }
-                                  }
-                                  bt = file.getToken();
-                                  continue;
-                              }
-                              if(afterType.is(eTokenType::identifier)){
-                                  // Property declaration — register variableDeclaration stub
-                                  string pname = afterType.value;
-                                  bool exists = false;
-                                  for(typeMember* m : cls->members)
-                                      if(m->name == pname){ exists = true; break; }
-                                  if(!exists){
-                                      variableDeclaration& vd = *(new variableDeclaration());
-                                      vd.name = pname;
-                                      vd.type.name = typeTok.value;
-                                      vd.isInline = sawInline;   // carry inline so braceArgHints treats the class as inline-constructible pre-main-pass
-                                      vd.isPrePassStub = true;
-                                      cls->members.push_back(&vd);
-                                  }
-                                  // Skip to ';' — handle initializer, brace block, or bare decl
-                                  token s = file.getToken();
-                                  while(!s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
-                                      if(s.is(token::braceOpen)) { file.getRawTextThroughClosingBrace(); break; }
-                                      s = file.getToken();
-                                  }
-                                  if(s.is(token::braceClose)) break;
-                                  bt = file.getToken();
-                                  continue;
-                              }
-                              // Not a method or property — fall through
-                              bt = afterType;
-                              continue;
-                          }
-                      }
-                      bt = file.getToken();
-                  }
-              }
-            }
-            continue;
-        }
+        if(tok.is(token::classDeclaration)){ preScanClassHead(isExtern, isEmitter, isAliasClass); continue; }
 
         // enum / bnum declaration
-        if(tok.is(token::enumDeclaration) || tok.is(token::bnumDeclaration)){
-            bool isBnum = tok.is(token::bnumDeclaration);
-            token nameTok = file.getToken();
-            string nameStr = nameTok.value;
-            if(!languageService.isObjectType(nameStr)){
-                enumDef& newEnum = languageService.registerEnum(nameStr, isExtern);
-                newEnum.isPrePassStub = true;
-                newEnum.isBnum = isBnum;
-                // Optional shared-base clause: `bnum Name : Base { ... }` — only valid for bnums.
-                // Base grouping allows sibling bnums to combine via `|` (see spec). The base
-                // also relaxes the power-of-2 constraint (children occupy packed sub-fields).
-                if(file.peekToken().is(":")){
-                    file.getToken(); // consume ':'
-                    token baseTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                    if(!isBnum)
-                        parsingError(format("enum '{0}': shared-base inheritance is only valid for bnum declarations", nameStr));
-                    enumDef* base = languageService.findEnum(baseTok.value);
-                    if(!base || !base->isBnum)
-                        parsingError(format("bnum '{0}': base '{1}' is not a declared bnum", nameStr, baseTok.originalValue));
-                    newEnum.baseBnum = base;
-                }
-                bool hasBase = newEnum.baseBnum != nullptr;
-                file.getToken(); // consume '{'
-                token t = file.getToken();
-                int val = 1;
-                while(t.isNot(token::braceClose) && t.isNot(eTokenType::eof)){
-                    // Emitter method member — capture into the enum's companion (order-independence).
-                    if(t.is("emitter")){
-                        preScanEnumEmitterMember(newEnum);
-                        t = file.getToken();
-                        if(t.is(token::comma)) t = file.getToken();
-                        continue;
-                    }
-                    // Misplaced member (static/const/… method): skip so the main pass diagnoses it.
-                    if(isEnumMemberQualifier(t)){
-                        preScanSkipEnumMemberBody();
-                        t = file.getToken();
-                        if(t.is(token::comma)) t = file.getToken();
-                        continue;
-                    }
-                    enumValueDef& ev = *(new enumValueDef());
-                    ev.name = t.value;
-                    ev.displayName = t.originalValue;
-                    ev.docComment = t.docComment;
-                    t = file.getToken({token::braceClose, token::comma, token::assignment});
-                    if(t.is(token::assignment)){
-                        bool negate = false;
-                        if(file.peekToken().is("-")){ file.getToken(); negate = true; }
-                        token numTok = file.getToken(eTokenType::integer);
-                        val = stoi(numTok.value);
-                        if(negate) val = -val;
-                        if(isBnum && negate)
-                            parsingError(format("bnum '{0}': negative value {1} is not allowed", nameStr, val));
-                        // Power-of-2 check is relaxed for bnums with a shared base — children
-                        // of a packed composite may occupy sub-fields with non-power-of-2 patterns.
-                        if(isBnum && !hasBase && val != 0 && (val & (val - 1)) != 0)
-                            parsingError(format("bnum '{0}': explicit value {1} is not a power of 2", nameStr, val));
-                        t = file.getToken({token::braceClose, token::comma});
-                    }
-                    ev.value = val;
-                    if(isBnum) val <<= 1; else val++;
-                    newEnum.namedValues.push_back(&ev);
-                    if(t.is(token::comma)) t = file.getToken();
-                }
-            } else {
-                preScanSkipBody(); // already registered — just skip the body
-            }
-            continue;
-        }
+        if(tok.is(token::enumDeclaration) || tok.is(token::bnumDeclaration)){ preScanEnum(tok, isExtern); continue; }
 
         // object keyword: 'object Name { }' is an objectDef; 'object Name;' / 'extern object Name;' is a variable stub.
         // A '(' after the name means it's a FUNCTION returning object (`object getW(){…}`), NOT an
         // object/variable decl — exclude it so it falls through to the routine-stub path below.
         if(!isEmitter && ((tok.is("object") && !file.peekToken(2).is(token::parenOpen))
              || (tok.isDataType() && file.peekToken(1).is(eTokenType::identifier)
-             && (file.peekToken(2).is(token::braceOpen) || file.peekToken(2).is(":"))))){
-            // Could be: object Name { }, ClassName Name { }, or ClassName Name : Parent { }
-            string classType = tok.value;
-            token nameTok = file.getToken();
-            string nameStr = nameTok.value;
-            transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
-            // Check if class is verb-derived — create verbObjectDef instead of objectDef
-            bool isVerbType = false;
-            {   function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
-                    if(!c) return false;
-                    if(c->name == "verb") return true;
-                    for(classDef* b : c->baseClasses) if(checkVerb(b)) return true;
-                    return false;
-                };
-                if(auto* cls = languageService.findClass(classType))
-                    isVerbType = checkVerb(cls);
-            }
-            token peek = file.peekToken();
-            if(peek.is(token::braceOpen) || peek.is(":")){ // object body
-                objectDef* objStub = nullptr;
-                if(!languageService.isObjectType(nameStr)){
-                    if(isVerbType){
-                        verbObjectDef& vs = languageService.registerVerbObject(nameTok.value, isExtern);
-                        vs.isPrePassStub = true;
-                        objStub = &vs;
-                    } else {
-                        objStub = &languageService.registerObject(nameStr, isExtern);
-                        objStub->isPrePassStub = true;
-                    }
-                    // Set objectClass from the declared type so forward references resolve correctly
-                    if(classType != "object")
-                        if(auto* cls = languageService.findClass(classType))
-                            objStub->objectClass = cls;
-                } else {
-                    // Already registered — find it
-                    if(auto* od = languageService.findGlobalAs<objectDef>(nameStr)) objStub = od;
-                }
-                // Skip inheritance clause to reach '{'
-                { token t = file.getToken();
-                  while(!t.is(token::braceOpen) && !t.is(eTokenType::eof)) t = file.getToken(); }
-                // Scan body for member stubs: look for type name ( patterns → register as method stubs
-                if(objStub != nullptr){
-                    token t = file.getToken();
-                    while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
-                        bool memberIsEmitter = false;
-                        if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
-                        if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
-                        if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
-                        if(t.isDataType()){
-                            preScanConsumeGenericSuffix(t);
-                            token memberName = file.getToken();
-                            token afterName = file.getToken();
-                            if(afterName.is(token::parenOpen)){
-                                // Method: register a stub
-                                functionDef& fd = *(new functionDef());
-                                fd.name = memberName.value;
-                                fd.returnType = languageService.getType(t.value);
-                                fd.isEmitter = memberIsEmitter;
-                                fd.isPrePassStub = true;
-                                preScanCaptureParams(fd.params);
-                                token bodyStart = file.getToken();
-                                if(bodyStart.is(token::braceOpen))
-                                    file.getRawTextThroughClosingBrace();
-                                // Only add if not already registered
-                                bool exists = false;
-                                for(typeMember* m : objStub->members)
-                                    if(m->name == fd.name){ exists = true; break; }
-                                if(!exists) objStub->members.push_back(&fd);
-                            } else {
-                                // Property — register a stub so forward references from sibling
-                                // methods resolve correctly. Without this, a method declared above
-                                // a property would not find the property in currentObject->members
-                                // during full-pass body parsing, fall through to file-scope, and
-                                // resolve against an unrelated enum value or global with the same
-                                // name (compiler can't disambiguate; the user's intent of self.X
-                                // is silently swapped for the file-scope hit).
-                                // Skip emitters (e.g. `emitter int wordsize {WORDSIZE}`) — those
-                                // look like a property shape without parens but are value-emitters
-                                // that the full pass installs differently.
-                                if(!memberIsEmitter){
-                                    variableDeclaration& vd = *(new variableDeclaration());
-                                    vd.name = memberName.value;
-                                    vd.displayName = memberName.originalValue;
-                                    vd.type = languageService.getType(t.value);
-                                    vd.isPrePassStub = true;
-                                    bool exists = false;
-                                    for(typeMember* m : objStub->members)
-                                        if(m->name == vd.name){ exists = true; break; }
-                                    if(!exists) objStub->members.push_back(&vd);
-                                }
-                                // Skip the rest of the declaration up to AND INCLUDING the
-                                // terminating ';' (or until the object's closing '}'). If we
-                                // left a stray ';' as the next outer token, the outer loop's
-                                // else-branch would feed it to preScanSkipToSemicolon, which
-                                // then scans into the following statement looking for the
-                                // *next* ';' — silently swallowing the next method body and
-                                // its trailing property.
-                                while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
-                                    if(afterName.is(token::braceOpen)){
-                                        file.getRawTextThroughClosingBrace();
-                                        // After consuming the {...}, continue reading until ';'
-                                        // (or '}') so the trailing ';' doesn't leak to the outer loop.
-                                        afterName = file.getToken();
-                                        continue;
-                                    }
-                                    afterName = file.getToken();
-                                }
-                                if(afterName.is(token::braceClose)) break;
-                            }
-                        } else if(t.is("#i6")){
-                            // Raw I6 block inside object — skip
-                            token b = file.getToken();
-                            if(b.is(token::braceOpen)) file.getRawTextThroughClosingBrace();
-                        } else {
-                            // Inherited member or unknown — skip to ;
-                            preScanSkipToSemicolon();
-                        }
-                        t = file.getToken();
-                    }
-                } else {
-                    file.getRawTextThroughClosingBrace();
-                }
-            } else {
-                // extern ClassName Name; or ClassName Name = ...; — variable or object stub
-                if(isVerbType){
-                    // extern verb-derived: register as verb object
-                    bool alreadyReg = false;
-                    for(verbObjectDef* v : languageService.verbs)
-                        if(v->name == nameStr){ alreadyReg = true; break; }
-                    if(!alreadyReg){
-                        verbObjectDef& vs = languageService.registerVerbObject(nameTok.value, isExtern);
-                        vs.isPrePassStub = true;
-                    }
-                } else {
-                    bool alreadyReg = false;
-                    if(auto* vd = languageService.findGlobalAs<variableDeclaration>(nameStr)) alreadyReg = true;
-                    if(!alreadyReg){
-                        variableDeclaration& stub = *(new variableDeclaration());
-                        stub.name = nameStr;
-                        stub.type.name = "object";
-                        stub.isPrePassStub = true;
-                        stub.isExternal = isExtern;
-                        languageService.globals.push_back(&stub);
-                    }
-                }
-                preScanSkipToSemicolon();
-            }
-            continue;
-        }
+             && (file.peekToken(2).is(token::braceOpen) || file.peekToken(2).is(":"))))){ preScanObject(tok, isExtern); continue; }
 
         // grammar, attribute, beguilerSettings — skip
         if(tok.is("grammar") || tok.value == "beguilerSettings"){
@@ -1296,201 +1503,17 @@ void bglParser::preScanGlobalLoop(){
             preScanSkipBody();
             continue;
         }
-        if(tok.is("property")){
-            // Same reservation the `attribute` branch makes below, and for the same reason: without
-            // a stub at this source position the declaration is appended to globals at main-parse
-            // time, landing AFTER the pre-scanned classes. I6 then sees the class create the
-            // property as an individual property and rejects the later `Property` directive
-            // ("is a name already in use"). The untyped form `property foo;` came through the
-            // generic TYPE NAME path above; the typed forms (`property var foo;`,
-            // `property rawArray<T> foo;`) do not, because the token after `property` is a type.
-            // The property NAME is the last token before the ';' in every form.
-            token last, t = file.getToken();
-            while(t.isNot(token::endStatement) && t.isNot(eTokenType::eof)){ last = t; t = file.getToken(); }
-            string nameStr = last.value;
-            transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
-            bool alreadyReg = false;
-            for(typeDef* g : languageService.globals)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                    if(vd->name == nameStr && vd->type.name == "property"){ alreadyReg = true; break; }
-            if(!alreadyReg && !nameStr.empty()){
-                variableDeclaration& stub = *(new variableDeclaration());
-                stub.name = nameStr;
-                stub.type.name = "property";
-                stub.isPrePassStub = true;
-                stub.isExternal = isExtern;
-                languageService.globals.push_back(&stub);
-            }
-            continue;
-        }
-        if(tok.is("attribute")){
-            // Register a stub at this source position so the main-parse emitter can see the
-            // attribute's declaration index. Without this, `extern attribute light;` gets
-            // appended to globals at main-parse time (after class pre-scan stubs), which
-            // breaks source-order dependency checks for `has light` clauses.
-            token nameTok = file.getToken();
-            string nameStr = nameTok.value;
-            transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
-            bool alreadyReg = false;
-            for(typeDef* g : languageService.globals)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                    if(vd->name == nameStr && vd->type.name == "attribute"){ alreadyReg = true; break; }
-            if(!alreadyReg){
-                variableDeclaration& stub = *(new variableDeclaration());
-                stub.name = nameStr;
-                stub.type.name = "attribute";
-                stub.isPrePassStub = true;
-                stub.isExternal = isExtern;
-                languageService.globals.push_back(&stub);
-            }
-            preScanSkipToSemicolon();
-            continue;
-        }
+        if(tok.is("property")){ preScanProperty(isExtern); continue; }
+        if(tok.is("attribute")){ preScanAttribute(isExtern); continue; }
 
         // Named union declaration: `union Name = A | B [ { … } | ; ]`. Register Name as an emitter
         // class stub (forward references + so it isn't mis-scanned as a `union`-typed global var,
         // which would leak a stray `global name;`). Skip the `= members` and any `{ … }` body — the
         // main pass parses them.
-        if(tok.is("union") && !tok.isDataType()){
-            token nameTok = file.getToken();
-            if(nameTok.is(eTokenType::identifier) || nameTok.isDataType()){
-                if(!languageService.isObjectType(nameTok.value)){
-                    classDef& stub = languageService.registerClass(nameTok.value, false);
-                    stub.isPrePassStub  = true;
-                    stub.isEmitterClass = true;
-                }
-                token t = file.getToken();                       // '=' (or bail)
-                while(!t.is(token::endStatement) && !t.is(token::braceOpen) && !t.is(eTokenType::eof))
-                    t = file.getToken();                          // skip the member list up to ';' or '{'
-                if(t.is(token::braceOpen)){                        // skip the balanced body
-                    int depth = 1;
-                    while(depth > 0){
-                        token b = file.getToken();
-                        if(b.is(token::braceOpen)) depth++;
-                        else if(b.is(token::braceClose)) depth--;
-                        else if(b.is(eTokenType::eof)) break;
-                    }
-                }
-            }
-            continue;
-        }
+        if(tok.is("union") && !tok.isDataType()){ preScanUnion(); continue; }
 
         // Data type declaration: function, typed object, or global variable
-        if(tok.is(eTokenType::dataType) || tok.is(eTokenType::identifier)){
-            string typeName = tok.value;
-            preScanConsumeGenericSuffix(tok);
-            // Consume a dotted namespace type path: identifier.identifier.identifier …
-            // Without this, a decl like `bgl.glulx.window winStatus;` never registers a stub,
-            // so the variable gets appended to `globals` at the END of main-parse registration,
-            // causing it to be emitted after its uses (I6 "Variable must be defined before use").
-            while(file.peekToken().is(token::period)){
-                token seg = file.peekToken(2);
-                if(!seg.is(eTokenType::identifier) && !seg.is(eTokenType::dataType)) break;
-                file.getToken(); file.getToken();
-                typeName += "." + seg.value;
-            }
-            token nameTok = file.getToken();
-            if(!nameTok.is(eTokenType::identifier)){ preScanSkipToSemicolon(); continue; }
-            string nameStr = nameTok.value;
-            transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
-
-            // Optional ': ClassName' for typed object declarations
-            token sym = file.getToken();
-            if(sym.is(":")){
-                file.getToken(); // class name
-                sym = file.getToken(); // should be '{'
-            }
-
-            if(sym.is(token::parenOpen)){
-                // Function declaration — register stub with return type.
-                // We dedup by full signature (name + param types) rather than name
-                // alone, so each overload of an overloaded function (e.g. print(int)
-                // vs print(string) vs print(stringLiteral)) gets its own stub. Without
-                // this, only the first overload was registered and resolveGlobalCall
-                // would reject calls whose arg types matched a later overload.
-                functionDef& stub = *(new functionDef());
-                stub.name = nameStr;
-                stub.returnType.name = typeName;
-                stub.isEmitter = isEmitter;
-                stub.isPrePassStub = true;
-                preScanCaptureParams(stub.params);
-                bool alreadyReg = false;
-                for(typeDef* g : languageService.globals){
-                    auto* fd = dynamic_cast<functionDef*>(g);
-                    if(fd == nullptr || fd->name != nameStr) continue;
-                    if(fd->params.size() != stub.params.size()) continue;
-                    bool sameSig = true;
-                    for(size_t i = 0; i < fd->params.size(); i++){
-                        if(fd->params[i]->type.name != stub.params[i]->type.name){
-                            sameSig = false; break;
-                        }
-                    }
-                    if(sameSig){ alreadyReg = true; break; }
-                }
-                functionDef* stubPtr = nullptr;
-                if(!alreadyReg){
-                    languageService.globals.push_back(&stub);
-                    stubPtr = &stub;
-                }
-                token peek = file.peekToken();
-                if(peek.is(token::braceOpen)){
-                    // For emitter functions, capture the body during prescan so forward
-                    // calls inside the same .inf island (where the stub remains in globals)
-                    // can inline correctly. Without this, the stub has a null body and the
-                    // call site falls back to verbatim emission. Main pass will replace the
-                    // stub with a fresh functionDef when it processes the actual declaration.
-                    if(stubPtr != nullptr && isEmitter){
-                        file.getToken(); // consume '{'
-                        i6Block* body = new i6Block();
-                        body->i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
-                        stubPtr->body = body;
-                    } else preScanSkipBody();
-                } else preScanSkipToSemicolon();
-            } else if(sym.is(token::braceOpen) && isEmitter){
-                // Emitter value: emitter Type name { body } — register stub, skip body
-                bool alreadyReg = false;
-                if(auto* fd = languageService.findGlobalAs<functionDef>(nameStr)) alreadyReg = true;
-                if(!alreadyReg){
-                    functionDef& stub = *(new functionDef());
-                    stub.name = nameStr;
-                    stub.returnType.name = typeName;
-                    stub.isEmitter = true;
-                    stub.isValueEmitter = true;
-                    stub.isPrePassStub = true;
-                    languageService.globals.push_back(&stub);
-                }
-                file.getRawTextThroughClosingBrace();
-            } else if(sym.is(token::braceOpen)){
-                // Type-named object: Room myRoom { }
-                if(!languageService.isObjectType(nameStr)){
-                    objectDef& stub = languageService.registerObject(nameStr, isExtern);
-                    stub.isPrePassStub = true;
-                    // Record the declared class so forward references resolve correctly
-                    if(!typeName.empty() && typeName != "object"){
-                        classDef* cls = languageService.findClass(typeName);
-                        if(cls != nullptr) stub.objectClass = cls;
-                    }
-                }
-                preScanSkipBodyContents();
-            } else if(sym.is(token::endStatement) || sym.is(token::assignment) ||
-                      sym.is(token::bracketOpen)){
-                // Global variable declaration
-                bool alreadyReg = false;
-                if(auto* vd = languageService.findGlobalAs<variableDeclaration>(nameStr)) alreadyReg = true;
-                if(!alreadyReg){
-                    variableDeclaration& stub = *(new variableDeclaration());
-                    stub.name = nameStr;
-                    stub.type.name = typeName;
-                    stub.isPrePassStub = true;
-                    stub.isExternal = isExtern;
-                    languageService.globals.push_back(&stub);
-                }
-                if(sym.isNot(token::endStatement)) preScanSkipToSemicolon();
-            } else {
-                preScanSkipToSemicolon();
-            }
-            continue;
-        }
+        if(tok.is(eTokenType::dataType) || tok.is(eTokenType::identifier)){ preScanTypedDecl(tok, isExtern, isEmitter); continue; }
 
         // Anything else — skip to next semicolon or brace block
         preScanSkipToSemicolon();

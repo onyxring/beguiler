@@ -352,84 +352,665 @@ void bglParser::skipConditionalBlock(abstractObject& ctx){
     }
 }
 
+// Shared tail of processDirective: the directive was recognized by no case (or a case bailed out).
+bool bglParser::processDirectiveUnrecognized(token directive){
+    // ##VerbName is an I6 action-constant syntax that Beguile handles automatically.
+    if(directive.value.rfind("##", 0) == 0){
+        string verbName = directive.value.substr(2);
+        return parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
+    }
+    return parsingError("Unrecognized directive '" + directive.value + "'.");
+}
+
+// #include — resolve and parse a .bgl include: quoted path (source dir + includePaths) or <name> (recursive beguiLib search).
+bool bglParser::directiveInclude(token directive, abstractObject& contextObj){
+    token next = file.getToken();
+    // Optional include: #include ?"file" or #include ?<file> — skip silently if not found
+    bool isOptional = false;
+    if(next.is("?")){
+        isOptional = true;
+        next = file.getToken();
+    }
+    if(next.isString()){
+        // Quoted form: search source dir + bglIncludePaths for a .bgl file
+        string includeName = next.value;
+        if(includeName.size() >= 2 && includeName.front()=='"' && includeName.back()=='"')
+            includeName = includeName.substr(1, includeName.size()-2);
+        if(includeNameSpansLines(includeName)){
+            parsingError("#include \"...\": missing closing '\"' — the include filename must be on one line.");
+            return processDirectiveUnrecognized(directive);
+        }
+        filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
+        string resolved = resolveIncludePath(includeName, ".bgl", curDir, beguilerSettings.includePaths);
+        if(!resolved.empty())
+            parseFile(resolved);
+        else if(!isOptional)
+            parsingError(format("#include: file '{0}' not found", includeName));
+    } else if(next.is("<")){
+        // Angle-bracket form: search lib path for sub-paths like <bindings/i6StandardLibrary>
+        string includeName;
+        // A library include name is always on ONE line. Guard against a missing '>': without
+        // this the scan runs to EOF (or a stray '>' — e.g. inside a later `array<var>`),
+        // swallowing the whole file as a bogus filename and blaming a line far from the typo.
+        int includeLine = file.currentLocation().line;   // line of the `<`
+        bool unterminated = false;
+        token t = file.getToken();
+        while(!t.is(">") && !t.is(eTokenType::eof)){
+            if(file.currentLocation().line > includeLine){ unterminated = true; break; }
+            includeName += t.originalValue.empty() ? t.value : t.originalValue;
+            t = file.getToken();
+        }
+        if(t.is(eTokenType::eof)) unterminated = true;
+        if(unterminated){
+            parsingError(format("#include <{0}…>: missing closing '>'. A library include name "
+                                "must be on one line — add the '>'.", includeName));
+            return processDirectiveUnrecognized(directive);   // stop this directive (don't search for a garbage filename)
+        }
+        // Recursive lib search: `<name>` finds name.bgl anywhere under beguiLib (files first,
+        // subfolders alphabetically, depth-first); a `sub/name` prefix constrains the match to
+        // a trailing parent-folder chain. So the `bindings/…` prefix is optional.
+        filesystem::path libPath = findLibIncludeRecursive(settings.libPath, includeName);
+        if(!libPath.empty()){
+            parseFile(libPath.string());
+            // Flag triggers keyed on the RESOLVED file's base name (so `<array>` and, say,
+            // `<extensions/array>` both fire the same setup). Beguile is case-insensitive.
+            string ciInclude = libPath.stem().string();
+            transform(ciInclude.begin(), ciInclude.end(), ciInclude.begin(), ::tolower);
+            if(ciInclude == "array"){
+                languageService.arrayInUse = true;
+            }
+            else if(ciInclude == "linq"){
+                // <linq> #include <array> internally (sets arrayInUse); this flag gates
+                // the LINQ-only bits (e.g. the _BGL_LINQ_SCRATCH_SIZE constant).
+                languageService.linqInUse = true;
+            }
+            else if(ciInclude == "bglworld"){
+                languageService.worldInUse = true;
+            }
+            else if(ciInclude == "buf"){
+                languageService.bufInUse = true;
+            }
+        }
+        else if(!isOptional)
+            parsingError(format("#include: file '<{0}>' not found", includeName));
+    }
+    return false;
+}
+
+// #startup — collect a raw I6 body for emission inside bglInit(), deduplicated per source file.
+bool bglParser::directiveStartup(token directive, abstractObject& contextObj){
+    // Collect the raw I6 body for emission inside bglInit().
+    // Deduplicated per source file so re-including a file doesn't register its blocks twice.
+    string curFile = filesystem::absolute(file.currentLocation().file).string();
+    file.getToken(token::braceOpen);
+    string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+    if(!startupFiles.count(curFile)){
+        startupFiles.insert(curFile);
+        languageService.startupBlocks.push_back(body);
+    }
+    return false;
+}
+
+// #using — import a class or object's members into the current file's scope, walking any dotted path.
+bool bglParser::directiveUsing(token directive, abstractObject& contextObj){
+    // Import a class or object's members into the current file's scope.
+    //   #using Class        — classes' members become visible
+    //   #using object       — object's own members become visible (may include aliases)
+    //   #using a.b.c        — walk the dot-path, resolving alias members along the way,
+    //                         import the final class or object's members
+    token first = file.getToken();
+    string displayPath = first.originalValue.empty() ? first.value : first.originalValue;
+    string curName = first.value;  // lowercased
+    classDef*  curCls = languageService.findClass(curName);
+    objectDef* curObj = nullptr;
+    if(!curCls) {
+        if(auto* od = languageService.findGlobalAs<objectDef>(curName)) curObj = od;
+    }
+    if(!curCls && !curObj){
+        parsingWarning(format("#using '{0}': not a declared class or object; directive ignored", displayPath));
+        return false;
+    }
+    // Walk dotted path: at each `.member`, look up member on current scope and redirect
+    while(file.peekToken().is(token::period)){
+        file.getToken(); // consume '.'
+        token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        string memberName = memberTok.value;
+        displayPath += "." + (memberTok.originalValue.empty() ? memberTok.value : memberTok.originalValue);
+        // Find the member in the current scope
+        typeMember* found = nullptr;
+        if(curCls) for(typeMember* m : curCls->members) if(m->name == memberName){ found = m; break; }
+        if(!found && curObj) for(typeMember* m : curObj->members) if(m->name == memberName){ found = m; break; }
+        if(!found){
+            parsingWarning(format("#using '{0}': member not found; directive ignored", displayPath));
+            return false;
+        }
+        // Only variable declarations (type references, including alias members) can be traversed
+        auto* vd = dynamic_cast<variableDeclaration*>(found);
+        if(!vd){
+            parsingWarning(format("#using '{0}': '{1}' is not a type reference; directive ignored", displayPath, memberName));
+            return false;
+        }
+        // Follow the member — could resolve to a class (alias target) or an object.
+        // For auto members on non-emitter objects, the declared type may be "object"
+        // (base class) rather than the specific target. Use the initializer expression
+        // name to find the actual target first, then fall back to the type name.
+        string nextType = vd->type.name;
+        string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+        classDef*  nextCls = nullptr;
+        objectDef* nextObj = nullptr;
+        // Try initializer name first (most specific)
+        if(!initName.empty()){
+            nextCls = languageService.findClass(initName);
+            if(!nextCls)
+                if(auto* od = languageService.findGlobalAs<objectDef>(initName)) nextObj = od;
+        }
+        // Fall back to declared type name
+        if(!nextCls && !nextObj){
+            nextCls = languageService.findClass(nextType);
+            if(!nextCls)
+                if(auto* od = languageService.findGlobalAs<objectDef>(nextType)) nextObj = od;
+        }
+        if(!nextCls && !nextObj){
+            parsingWarning(format("#using '{0}': '{1}' has type '{2}' which is not importable; directive ignored",
+                displayPath, memberName, nextType));
+            return false;
+        }
+        curCls = nextCls;
+        curObj = nextObj;
+    }
+    // Import the final scope
+    if(curCls) usingImports.push_back(curCls);
+    else if(curObj) usingObjectImports.push_back(curObj);
+    return false;
+}
+
+// #emitfirst — register a raw I6 block for emission ahead of everything else.
+bool bglParser::directiveEmitFirst(token directive, abstractObject& contextObj){
+    // Additive: every #emitfirst block contributes. Re-include cycles are protected
+    // by `#once` (each BLR file that uses #emitfirst declares #once at the top), so
+    // we don't dedup at this level. Multiple #emitfirst blocks in the same file —
+    // common for .inf-mode with many #bgl islands — all register.
+    //
+    // `##beguilerSettings.<key>` references inside the raw I6 body are expanded to
+    // compile-time literals at parse time (see substituteBeguilerSettingsRefs).
+    file.getToken(token::braceOpen);
+    string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+    languageService.emitFirstBlocks.push_back(substituteBeguilerSettingsRefs(body));
+    return false;
+}
+
+// #emitlast — register a raw I6 block for emission after everything else.
+bool bglParser::directiveEmitLast(token directive, abstractObject& contextObj){
+    // Same additive policy as #emitfirst; same ##beguilerSettings.<key> expansion.
+    file.getToken(token::braceOpen);
+    string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+    languageService.emitLastBlocks.push_back(substituteBeguilerSettingsRefs(body));
+    return false;
+}
+
+// #storedemitfirst — register a NAMED emit-first block, emitted only when ##triggerEmitter names it.
+bool bglParser::directiveStoredEmitFirst(token directive, abstractObject& contextObj){
+    // Named, deferred emit-first block. Not emitted unless a corresponding
+    // ##triggerEmitter <name> annotation (in a __builtins.i6b template header
+    // or a Beguile emitter body) fires during emission. Same ##beguilerSettings.<key>
+    // expansion as #emitfirst. Re-registration with the same name is overwrite
+    // (latest wins) — `#once` on BLR files prevents accidental shadowing within
+    // a single BLR include.
+    token nameTok = file.getToken(eTokenType::identifier);
+    string name = nameTok.value;       // already lowercase (Beguile lexer)
+    file.getToken(token::braceOpen);
+    string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+    languageService.storedEmitFirstBlocks[name] = substituteBeguilerSettingsRefs(body);
+    return false;
+}
+
+// #storedemitlast — register a NAMED emit-last block, emitted only when ##triggerEmitter names it.
+bool bglParser::directiveStoredEmitLast(token directive, abstractObject& contextObj){
+    // Same semantics as #storedEmitFirst but resolves at the emit-last position.
+    token nameTok = file.getToken(eTokenType::identifier);
+    string name = nameTok.value;
+    file.getToken(token::braceOpen);
+    string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+    languageService.storedEmitLastBlocks[name] = substituteBeguilerSettingsRefs(body);
+    return false;
+}
+
+// #includei6 — emit an I6 `#include "...";`, resolving the path unless the raw @"..." form is used.
+bool bglParser::directiveIncludeI6(token directive, abstractObject& contextObj){
+    // Optional: #includeI6 ?"file" — skip silently if not found
+    bool i6Optional = false;
+    if(file.peekToken().is("?")){
+        file.getToken(); // consume '?'
+        i6Optional = true;
+    }
+    token filename = file.getToken({eTokenType::quote, eTokenType::rawQuote});
+    string innerPath = filename.value;
+    if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
+        innerPath = innerPath.substr(1, innerPath.size()-2);
+    if(includeNameSpansLines(innerPath)){
+        parsingError("#includeI6: missing closing '\"' — the include filename must be on one line.");
+        return false;
+    }
+    string emitPath;
+    if(filename.is(eTokenType::rawQuote)){
+        // Raw form `#includeI6 @"..."` — emit verbatim, no resolution, no
+        // existence check, no separator rewrite. The author is telling us
+        // exactly what string to hand to I6.
+        emitPath = "\"" + innerPath + "\"";
+    } else {
+        // Resolve the file: search source dir + bglIncludePaths + i6IncludePaths (fallback)
+        filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
+        string resolved = resolveIncludePath(innerPath, "", curDir, beguilerSettings.includePaths);
+        if(resolved.empty()){
+            // Also try with .h extension
+            resolved = resolveIncludePath(innerPath, ".h", curDir, beguilerSettings.includePaths);
+        }
+        if(resolved.empty()){
+            if(!i6Optional)
+                parsingError(format("#includeI6: file '{0}' not found", innerPath));
+            return false;
+        }
+        // Emit with the resolved absolute path
+        emitPath = "\"" + rewritePathSeps(resolved) + "\"";
+    }
+    string nodeText = format("#include {0};", emitPath);
+    // Claim the pre-scan stub if present (preserves source ordering in output)
+    bool claimed = false;
+    for(typeDef* g : languageService.globals){
+        if(auto* raw = dynamic_cast<i6RawNode*>(g)){
+            if(raw->isPrePassStub && raw->text.find("#include") == 0){
+                // Match by the original filename since the stub was registered with the unresolved path
+                string stubPath = raw->text;
+                size_t q1 = stubPath.find('"'), q2 = stubPath.rfind('"');
+                if(q1 != string::npos && q2 > q1){
+                    string stubFile = stubPath.substr(q1+1, q2-q1-1);
+                    // Match if the stub filename ends with the original include name.
+                    // Raw `@"..."` stubs were stored verbatim, so skip the sep rewrite
+                    // — applying it would mismatch e.g. `foo\bar` vs `foo/bar`.
+                    string matchKey = filename.is(eTokenType::rawQuote) ? innerPath : rewritePathSeps(innerPath);
+                    if(stubFile.find(matchKey) != string::npos){
+                        raw->text = nodeText;
+                        raw->isPrePassStub = false;
+                        claimed = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if(!claimed){
+        i6RawNode& node = *(new i6RawNode());
+        node.text = nodeText;
+        languageService.globals.push_back(&node);
+    }
+    return false;
+}
+
+// #i6replace — emit I6 `Replace Routine [Saved];` through the emit-first stream so it outranks every include.
+bool bglParser::directiveI6Replace(token directive, abstractObject& contextObj){
+    // #i6replace RoutineName [SavedName];
+    //
+    // Emits I6 `Replace RoutineName [SavedName];`. `Replace` must appear before the
+    // library that first defines the routine, so — unlike a bare `#i6 replace X;`
+    // (which lands verbatim at its source position) — this directive routes through the
+    // emit-first stream so it is hoisted above ALL includes and definitions. The author
+    // can therefore write `#i6replace` anywhere and the replacement always takes effect.
+    //
+    // Routine names are emitted in their original case (I6 identifiers are case-sensitive);
+    // the optional second name is I6's rename-the-original form, so the replaced routine's
+    // library definition remains callable under SavedName.
+    //
+    // Operands are scanned on THIS LINE ONLY: the raw rest-of-line is read to the next
+    // newline, then trimmed at a `//` comment and at the terminating `;`. This keeps the
+    // scan line-bounded — a no-semicolon form can't reach across the newline and swallow
+    // the next statement's first identifier as the saved-original name. Reading raw text
+    // also preserves the operands' original case for the case-sensitive I6 identifiers.
+    string line;
+    { char c = file.readChar();
+      while(c != '\n' && c != EOF){ line += c; c = file.readChar(); } }
+    { size_t sl = line.find("//"); if(sl != string::npos) line.erase(sl); }   // strip trailing // comment
+    { size_t sc = line.find(';');  if(sc != string::npos) line.erase(sc); }   // operands end at ';'
+    vector<string> names;
+    for(size_t i = 0; i < line.size(); ){
+        while(i < line.size() && isspace((unsigned char)line[i])) i++;
+        size_t s = i;
+        while(i < line.size() && !isspace((unsigned char)line[i])) i++;
+        if(i > s) names.push_back(line.substr(s, i - s));
+    }
+    if(names.empty())
+        return parsingError("#i6replace expects a routine name (e.g. `#i6replace GameEpilogue;`)");
+    if(names.size() > 2)
+        return parsingError("#i6replace expects a routine name and an optional saved-original name — got extra tokens");
+    string replaceLine = "Replace " + names[0];
+    if(names.size() == 2) replaceLine += " " + names[1];
+    replaceLine += ";";
+    languageService.emitFirstBlocks.push_back(replaceLine);
+    return false;
+}
+
+// #define / #redef — define a preprocessor symbol; #define rejects a redefinition, #redef overwrites.
+bool bglParser::directiveDefine(token directive, abstractObject& contextObj){
+    bool isRedef = directive.is("#redef");
+    token sym = file.getToken(eTokenType::identifier);
+    // optional value on the same line — skip horizontal whitespace only (not newlines)
+    while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
+    token val = file.getBasicToken(true);
+    string valStr;
+    if(val.isNot("\n") && val.isNot(eTokenType::eof)){
+        valStr = val.value;
+        // consume rest of line
+        token rest = file.getBasicToken(true);
+        while(rest.isNot("\n") && rest.isNot(eTokenType::eof)) rest = file.getBasicToken(true);
+    }
+    // A `#declare`d symbol is immutable — neither form may touch it.
+    if(declaredSymbols.count(sym.value))
+        parsingError(format("'{0} {1}' cannot redefine '{1}': it was declared with '#declare' (immutable)", directive.value, sym.value));
+    // `#define` errors if the symbol is already defined; `#redef` overwrites silently.
+    if(!isRedef && definedSymbols.count(sym.value))
+        parsingError(format("'#define {0}' redefines a symbol that is already defined; use '#redef {0}' to intentionally redefine it", sym.value));
+    definedSymbols[sym.value] = valStr;
+    return false;
+}
+
+// #declare — order-independent, immutable define, hoisted by the pre-scan and visible to every #if.
+bool bglParser::directiveDeclare(token directive, abstractObject& contextObj){
+    // Order-independent, immutable define: visible to every `#if` regardless of where it
+    // appears (hoisted from the pre-scan). Value is optional (bare = boolean flag). Already
+    // collected by the pre-scan; re-declaring with a different value, or shadowing a #define,
+    // is an error.
+    token sym = file.getToken(eTokenType::identifier);
+    while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
+    token val = file.getBasicToken(true);
+    string valStr;
+    if(val.isNot("\n") && val.isNot(eTokenType::eof)){
+        valStr = val.value;
+        token rest = file.getBasicToken(true);
+        while(rest.isNot("\n") && rest.isNot(eTokenType::eof)) rest = file.getBasicToken(true);
+    }
+    auto existing = declaredSymbols.find(sym.value);
+    if(existing != declaredSymbols.end() && existing->second != valStr)
+        parsingError(format("'#declare {0}' conflicts with an earlier '#declare {0}' of a different value", sym.value));
+    declaredSymbols[sym.value] = valStr;
+    definedSymbols[sym.value]  = valStr;
+    return false;
+}
+
+// #if — evaluate the condition text and either skip the block or hand off a directive the scan stopped on.
+bool bglParser::directiveIf(token directive, abstractObject& contextObj){
+    // Collect condition text up to end of line, optional `;` no-op, EOF, or the
+    // start of the next #-directive. Single-line forms like `#if cond; …; #endif`
+    // and `#if cond #includeI6 … #endif` both parse correctly. When stopping on
+    // a #-directive, hand it off to processDirective recursively.
+    string condText;
+    token t = file.getBasicToken(true);
+    bool stoppedOnDirective = false;
+    while(t.isNot("\n") && t.isNot(";") && t.isNot(eTokenType::eof)){
+        if(!t.value.empty() && t.value[0] == '#'){ stoppedOnDirective = true; break; }
+        condText += t.value;
+        t = file.getBasicToken(true);
+    }
+    if(!evaluateCondition(condText))
+        skipConditionalBlock(contextObj);
+    else if(stoppedOnDirective)
+        processDirective(t, contextObj);
+    return false;
+}
+
+// #elif — reached only when a prior branch was true, so skip to the matching #endif.
+bool bglParser::directiveElif(token directive, abstractObject& contextObj){
+    // reached here only when a prior #if branch was TRUE — skip to #endif
+    int startLine1 = directive.src.line + 1;  // first line after the #elif directive
+    int depth = 1;
+    int endLine1 = startLine1;
+    while(depth > 0){
+        token t = file.getToken();
+        if(t.is(eTokenType::eof)) { parsingError("Unexpected end of file inside #elif block."); return false; }
+        if(t.is("#if"))    depth++;
+        if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
+    }
+    recordInactiveRange(startLine1, endLine1);
+    return false;
+}
+
+// #else — reached only when a prior branch was true, so skip to the matching #endif.
+bool bglParser::directiveElse(token directive, abstractObject& contextObj){
+    // reached here only when a prior #if/#elif branch was TRUE — skip to #endif
+    int startLine1 = directive.src.line + 1;  // first line after the #else directive
+    int depth = 1;
+    int endLine1 = startLine1;
+    while(depth > 0){
+        token t = file.getToken();
+        if(t.is(eTokenType::eof)) { parsingError("Unexpected end of file inside #else block."); return false; }
+        if(t.is("#if"))    depth++;
+        if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
+    }
+    recordInactiveRange(startLine1, endLine1);
+    return false;
+}
+
+// ##else — reached only when the preceding ##ifdef/##ifndef branch was true, so skip to ##endif.
+bool bglParser::directiveBglElse(token directive, abstractObject& contextObj){
+    // reached only when the preceding ##ifdef/##ifndef branch was TRUE — skip to ##endif
+    int depth = 1;
+    while(depth > 0){
+        token t = file.getToken();
+        if(t.is(eTokenType::eof)) { parsingError("Unexpected end of file inside ##else block."); return false; }
+        if(t.is("##ifdef") || t.is("##ifndef")) depth++;
+        if(t.is("##endif")) depth--;
+    }
+    return false;
+}
+
+// Install an i6RawNode at the current context: into the function body when one exists, otherwise
+// into globals, claiming the pre-scan placeholder whose source location matches so source order
+// is preserved.
+void bglParser::installI6Node(i6RawNode* node, statementBlock* body, const sourceLocation& i6DirLoc){
+    node->isI6Island = true;   // genuine user #i6{} island (verbatim raw I6)
+    if(body != nullptr){
+        body->statements.push_back(node);
+    } else {
+        // Claim the pre-scan placeholder whose SOURCE LOCATION matches this directive.
+        // Matching by location (not "first unclaimed") prevents an earlier-parsed #i6 —
+        // one the pre-scanner skipped because it sat behind a `#if` whose condition was
+        // `#define`d later in the file — from stealing this block's slot and displacing
+        // it to the end (which silently mis-ordered raw I6 such as `#i6 replace X;`).
+        // Fall back to appending (never first-unclaimed): the only unmatched case is a
+        // block the pre-scanner skipped, which has no reserved slot to claim.
+        bool claimed = false;
+        for(size_t i = 0; i < languageService.globals.size(); i++){
+            if(auto* raw = dynamic_cast<i6RawNode*>(languageService.globals[i])){
+                if(raw->isPrePassStub && raw->text == "#i6_placeholder"
+                   && raw->src.file == i6DirLoc.file && raw->src.line == i6DirLoc.line){
+                    languageService.globals[i] = node;
+                    claimed = true;
+                    break;
+                }
+            }
+        }
+        if(!claimed) languageService.globals.push_back(node);
+    }
+}
+
+// #i6 single-line form (`#i6 <rest of line>`): the raw text to end of line becomes one i6RawNode.
+bool bglParser::directiveI6SingleLine(token t, statementBlock* body, const sourceLocation& i6DirLoc){
+    // Single-line variant: read raw chars to end of line. No #bgl support here —
+    // a single-line I6 statement is too small to need it.
+    i6RawNode* node = new i6RawNode();
+    node->src = file.currentLocation();
+    node->text = t.value;
+    char c = file.readChar();
+    while(c != '\n' && c != EOF){ node->text += c; c = file.readChar(); }
+    installI6Node(node, body, i6DirLoc);
+    return false;
+}
+
+// #i6 block form (`#i6 { ... }`): alternating raw-I6 chunks and embedded #bgl{} regions, appended to
+// the enclosing function body or accumulated into one composite node at global scope.
+bool bglParser::directiveI6Block(statementBlock* body, abstractObject& contextObj, const sourceLocation& i6DirLoc){
+    // Multi-line block: alternate between raw-I6 chunks and embedded #bgl{} regions.
+    // Each #bgl{} is parsed as Beguile statements (code-block mode — declarations
+    // disallowed) and appended in source order, so the emission preserves the natural
+    // interleaving between raw I6 and Beguile.
+    //
+    // Inside a function body, raw chunks become i6RawNodes and bgl statements push
+    // directly into body->statements. At global scope, both are accumulated into a
+    // single composite i6RawNode whose `parts` vector preserves the interleaving for
+    // emit-time rendering — Beguile statements assume a code-block context, so we
+    // synthesize one (lambdaOuterFunc / activeBlockStack) for the duration of the parse.
+    i6RawNode* compositeNode = nullptr;
+    functionDef* synthFunc = nullptr;
+    statementBlock* synthBody = nullptr;
+    if(body == nullptr){
+        compositeNode = new i6RawNode();
+        synthFunc = new functionDef();
+        synthFunc->name = "__bgl_inline_block";
+        synthBody = new statementBlock();
+        synthFunc->body = synthBody;
+        openCompileContext(eCompileContext::codeBlock, synthBody);
+    }
+    string accumulatedRaw;  // accumulating raw text between/around #bgl statements (global scope)
+    sourceLocation accumulatedRawSrc;  // src of the FIRST char of accumulatedRaw (preserved across appends)
+    int depth = 1;
+    while(depth > 0){
+        eBglDirective directive = eBglDirective::NotFound;
+        // Capture source position before reading the raw segment so the resulting
+        // i6RawNode's `src` reflects where this chunk begins in the .bgl file. Used
+        // by the emitter to anchor per-source-line entries in the source map, so I6
+        // diagnostics inside the raw block remap accurately to the .bgl line.
+        sourceLocation segStart = file.currentLocation();
+        string segment = file.getRawTextUntilCloseOrBgl(directive, depth, depth);
+        if(body != nullptr){
+            if(!segment.empty()){
+                i6RawNode* node = new i6RawNode();
+                node->src = segStart;
+                node->text = segment;
+                installI6Node(node, body, i6DirLoc);
+            }
+        } else {
+            if(accumulatedRaw.empty()) accumulatedRawSrc = segStart;
+            accumulatedRaw += segment;
+        }
+        if(directive != eBglDirective::NotFound){
+            // Slice 1: all three directives (#bgl / #bglDecl / #bglStmt) route to the
+            // existing loose-statement parser inside `#i6{}` regions of `.bgl` files.
+            // TODO (later slice): decide whether `#bglDecl` is even valid here, since
+            // file-scope declarations belong outside the surrounding `#i6{}` block.
+            (void)directive;
+            statementBlock* targetBody = body != nullptr ? body : synthBody;
+            // Two forms (matching #i6):
+            //   #bgl{ stmts… }  — multi-line, terminated by matching `}`
+            //   #bgl stmt;…     — single-line, terminated by newline
+            // The single-line form must have its `{` (if any) on the same source line
+            // as `#bgl`; a newline before any non-whitespace puts us into single-line.
+            string bglContent;
+            sourceLocation hereLoc = file.currentLocation();
+            bool isMultiLine = false;
+            {
+                // Skip space/tab on the same line, looking for `{`. Don't cross newlines.
+                while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
+                if(file.peekChar() == '{'){
+                    file.readChar();
+                    isMultiLine = true;
+                }
+            }
+            if(isMultiLine){
+                // We consumed the `{` ourselves, so balance braceDepth for the
+                // decrement that getRawTextThroughClosingBrace will perform.
+                file.braceDepth++;
+                bglContent = file.getRawTextThroughClosingBrace();
+            } else {
+                // Single-line: read raw chars to end of line. The newline itself is
+                // part of the surrounding I6 stream, so don't consume it here.
+                char c = file.peekChar();
+                while(c != '\n' && c != (char)EOF){
+                    file.readChar();
+                    bglContent += c;
+                    c = file.peekChar();
+                }
+            }
+            // Sub-parse via an in-memory stream so getToken() drives Beguile parsing
+            // over the bgl content with normal line tracking. Skip whitespace and
+            // check for stream EOF before calling into getToken — the lexer treats a
+            // raw EOF inside a non-global compile context as an error, but in our
+            // case end-of-bgl-content is a normal terminator.
+            abstractObject& subContext = (compositeNode != nullptr) ? *(abstractObject*)synthFunc : contextObj;
+            size_t stmtCountBefore = targetBody->statements.size();
+            // Use the original file path verbatim so editor click-to-navigate works
+            // on errors fired during the sub-parse. The virtual stream's startLine
+            // is the source line of `#bgl`, so reported line numbers map back correctly.
+            file.openText(bglContent, hereLoc.file, hereLoc.line);
+            bool savedLoose = looseIdentifierMode;
+            looseIdentifierMode = true;
+            try {
+                while(true){
+                    file.bleedSpaces();
+                    if(file.peekChar() == (char)EOF) break;
+                    token nt = file.getToken();
+                    if(nt.is(eTokenType::eof)) break;
+                    // processStatementDispatch returns true when it consumes a stray
+                    // `}` — shouldn't happen in well-formed bgl content, but guard anyway.
+                    if(processStatementDispatch(nt, subContext)) break;
+                }
+            } catch(...) { looseIdentifierMode = savedLoose; file.close(); throw; }
+            looseIdentifierMode = savedLoose;
+            file.close();
+            // Global-scope: move newly-parsed statements into the composite node's
+            // parts list, attaching the accumulated raw text in front of the first.
+            if(compositeNode != nullptr){
+                bool firstStatement = true;
+                for(size_t i = stmtCountBefore; i < targetBody->statements.size(); i++){
+                    statement* s = targetBody->statements[i];
+                    string lead = firstStatement ? accumulatedRaw : "";
+                    sourceLocation leadSrc = firstStatement ? accumulatedRawSrc : sourceLocation{};
+                    compositeNode->parts.push_back({lead, s, leadSrc});
+                    firstStatement = false;
+                }
+                if(firstStatement){
+                    // No statements were parsed — nothing to anchor accumulatedRaw to;
+                    // it will be picked up by the next iteration's segment handling.
+                } else {
+                    accumulatedRaw.clear();
+                    accumulatedRawSrc = {};
+                }
+                // Drop them from synthBody so the next sub-parse starts fresh.
+                targetBody->statements.resize(stmtCountBefore);
+            }
+        }
+    }
+    // Global-scope: install the composite node, with any trailing raw text appended.
+    if(compositeNode != nullptr){
+        closeCompileContext(eCompileContext::codeBlock);
+        if(!accumulatedRaw.empty()){
+            if(compositeNode->parts.empty()){
+                compositeNode->text = accumulatedRaw;
+                compositeNode->src = accumulatedRawSrc;
+            } else {
+                compositeNode->parts.push_back({accumulatedRaw, nullptr, accumulatedRawSrc});
+            }
+        }
+        installI6Node(compositeNode, body, i6DirLoc);
+    }
+    return false;
+}
+
+// #i6 — raw I6 escape hatch, in either its single-line or its `{ ... }` block form.
+bool bglParser::directiveI6(token directive, abstractObject& contextObj){
+    functionDef* func = dynamic_cast<functionDef*>(&contextObj);
+    statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+    // Location of this #i6 directive (captured right after the `#i6` token, matching where
+    // the pre-scanner stamps the placeholder's src) — used to claim the correct slot.
+    sourceLocation i6DirLoc = file.currentLocation();
+    token t = file.getToken();
+    if(!t.is(token::braceOpen))
+        return directiveI6SingleLine(t, body, i6DirLoc);
+    return directiveI6Block(body, contextObj, i6DirLoc);
+}
+
 bool bglParser::processDirective(token directive, abstractObject& contextObj){
 
     token tok;
     switch(directive.chk()){
-        case chk("#include"):{
-            token next = file.getToken();
-            // Optional include: #include ?"file" or #include ?<file> — skip silently if not found
-            bool isOptional = false;
-            if(next.is("?")){
-                isOptional = true;
-                next = file.getToken();
-            }
-            if(next.isString()){
-                // Quoted form: search source dir + bglIncludePaths for a .bgl file
-                string includeName = next.value;
-                if(includeName.size() >= 2 && includeName.front()=='"' && includeName.back()=='"')
-                    includeName = includeName.substr(1, includeName.size()-2);
-                if(includeNameSpansLines(includeName)){
-                    parsingError("#include \"...\": missing closing '\"' — the include filename must be on one line.");
-                    break;
-                }
-                filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
-                string resolved = resolveIncludePath(includeName, ".bgl", curDir, beguilerSettings.includePaths);
-                if(!resolved.empty())
-                    parseFile(resolved);
-                else if(!isOptional)
-                    parsingError(format("#include: file '{0}' not found", includeName));
-            } else if(next.is("<")){
-                // Angle-bracket form: search lib path for sub-paths like <bindings/i6StandardLibrary>
-                string includeName;
-                // A library include name is always on ONE line. Guard against a missing '>': without
-                // this the scan runs to EOF (or a stray '>' — e.g. inside a later `array<var>`),
-                // swallowing the whole file as a bogus filename and blaming a line far from the typo.
-                int includeLine = file.currentLocation().line;   // line of the `<`
-                bool unterminated = false;
-                token t = file.getToken();
-                while(!t.is(">") && !t.is(eTokenType::eof)){
-                    if(file.currentLocation().line > includeLine){ unterminated = true; break; }
-                    includeName += t.originalValue.empty() ? t.value : t.originalValue;
-                    t = file.getToken();
-                }
-                if(t.is(eTokenType::eof)) unterminated = true;
-                if(unterminated){
-                    parsingError(format("#include <{0}…>: missing closing '>'. A library include name "
-                                        "must be on one line — add the '>'.", includeName));
-                    break;   // stop this directive (don't search for a garbage filename)
-                }
-                // Recursive lib search: `<name>` finds name.bgl anywhere under beguiLib (files first,
-                // subfolders alphabetically, depth-first); a `sub/name` prefix constrains the match to
-                // a trailing parent-folder chain. So the `bindings/…` prefix is optional.
-                filesystem::path libPath = findLibIncludeRecursive(settings.libPath, includeName);
-                if(!libPath.empty()){
-                    parseFile(libPath.string());
-                    // Flag triggers keyed on the RESOLVED file's base name (so `<array>` and, say,
-                    // `<extensions/array>` both fire the same setup). Beguile is case-insensitive.
-                    string ciInclude = libPath.stem().string();
-                    transform(ciInclude.begin(), ciInclude.end(), ciInclude.begin(), ::tolower);
-                    if(ciInclude == "array"){
-                        languageService.arrayInUse = true;
-                    }
-                    else if(ciInclude == "linq"){
-                        // <linq> #include <array> internally (sets arrayInUse); this flag gates
-                        // the LINQ-only bits (e.g. the _BGL_LINQ_SCRATCH_SIZE constant).
-                        languageService.linqInUse = true;
-                    }
-                    else if(ciInclude == "bglworld"){
-                        languageService.worldInUse = true;
-                    }
-                    else if(ciInclude == "buf"){
-                        languageService.bufInUse = true;
-                    }
-                }
-                else if(!isOptional)
-                    parsingError(format("#include: file '<{0}>' not found", includeName));
-            }
-            return false;
-            break;
-        }
+        case chk("#include"): return directiveInclude(directive, contextObj);
         case chk("#once"):{
             // Register the current file so that any future #include of it is silently skipped.
             string curFile = filesystem::canonical(filesystem::absolute(file.currentLocation().file)).string();
@@ -437,486 +1018,18 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             return false;
             break;
         }
-        case chk("#startup"):{
-            // Collect the raw I6 body for emission inside bglInit().
-            // Deduplicated per source file so re-including a file doesn't register its blocks twice.
-            string curFile = filesystem::absolute(file.currentLocation().file).string();
-            file.getToken(token::braceOpen);
-            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
-            if(!startupFiles.count(curFile)){
-                startupFiles.insert(curFile);
-                languageService.startupBlocks.push_back(body);
-            }
-            return false;
-            break;
-        }
-        case chk("#using"):{
-            // Import a class or object's members into the current file's scope.
-            //   #using Class        — classes' members become visible
-            //   #using object       — object's own members become visible (may include aliases)
-            //   #using a.b.c        — walk the dot-path, resolving alias members along the way,
-            //                         import the final class or object's members
-            token first = file.getToken();
-            string displayPath = first.originalValue.empty() ? first.value : first.originalValue;
-            string curName = first.value;  // lowercased
-            classDef*  curCls = languageService.findClass(curName);
-            objectDef* curObj = nullptr;
-            if(!curCls) {
-                if(auto* od = languageService.findGlobalAs<objectDef>(curName)) curObj = od;
-            }
-            if(!curCls && !curObj){
-                parsingWarning(format("#using '{0}': not a declared class or object; directive ignored", displayPath));
-                return false;
-            }
-            // Walk dotted path: at each `.member`, look up member on current scope and redirect
-            while(file.peekToken().is(token::period)){
-                file.getToken(); // consume '.'
-                token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                string memberName = memberTok.value;
-                displayPath += "." + (memberTok.originalValue.empty() ? memberTok.value : memberTok.originalValue);
-                // Find the member in the current scope
-                typeMember* found = nullptr;
-                if(curCls) for(typeMember* m : curCls->members) if(m->name == memberName){ found = m; break; }
-                if(!found && curObj) for(typeMember* m : curObj->members) if(m->name == memberName){ found = m; break; }
-                if(!found){
-                    parsingWarning(format("#using '{0}': member not found; directive ignored", displayPath));
-                    return false;
-                }
-                // Only variable declarations (type references, including alias members) can be traversed
-                auto* vd = dynamic_cast<variableDeclaration*>(found);
-                if(!vd){
-                    parsingWarning(format("#using '{0}': '{1}' is not a type reference; directive ignored", displayPath, memberName));
-                    return false;
-                }
-                // Follow the member — could resolve to a class (alias target) or an object.
-                // For auto members on non-emitter objects, the declared type may be "object"
-                // (base class) rather than the specific target. Use the initializer expression
-                // name to find the actual target first, then fall back to the type name.
-                string nextType = vd->type.name;
-                string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
-                classDef*  nextCls = nullptr;
-                objectDef* nextObj = nullptr;
-                // Try initializer name first (most specific)
-                if(!initName.empty()){
-                    nextCls = languageService.findClass(initName);
-                    if(!nextCls)
-                        if(auto* od = languageService.findGlobalAs<objectDef>(initName)) nextObj = od;
-                }
-                // Fall back to declared type name
-                if(!nextCls && !nextObj){
-                    nextCls = languageService.findClass(nextType);
-                    if(!nextCls)
-                        if(auto* od = languageService.findGlobalAs<objectDef>(nextType)) nextObj = od;
-                }
-                if(!nextCls && !nextObj){
-                    parsingWarning(format("#using '{0}': '{1}' has type '{2}' which is not importable; directive ignored",
-                        displayPath, memberName, nextType));
-                    return false;
-                }
-                curCls = nextCls;
-                curObj = nextObj;
-            }
-            // Import the final scope
-            if(curCls) usingImports.push_back(curCls);
-            else if(curObj) usingObjectImports.push_back(curObj);
-            return false;
-        }
-        case chk("#emitfirst"):{
-            // Additive: every #emitfirst block contributes. Re-include cycles are protected
-            // by `#once` (each BLR file that uses #emitfirst declares #once at the top), so
-            // we don't dedup at this level. Multiple #emitfirst blocks in the same file —
-            // common for .inf-mode with many #bgl islands — all register.
-            //
-            // `##beguilerSettings.<key>` references inside the raw I6 body are expanded to
-            // compile-time literals at parse time (see substituteBeguilerSettingsRefs).
-            file.getToken(token::braceOpen);
-            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
-            languageService.emitFirstBlocks.push_back(substituteBeguilerSettingsRefs(body));
-            return false;
-            break;
-        }
-        case chk("#emitlast"):{
-            // Same additive policy as #emitfirst; same ##beguilerSettings.<key> expansion.
-            file.getToken(token::braceOpen);
-            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
-            languageService.emitLastBlocks.push_back(substituteBeguilerSettingsRefs(body));
-            return false;
-            break;
-        }
-        case chk("#storedemitfirst"):{
-            // Named, deferred emit-first block. Not emitted unless a corresponding
-            // ##triggerEmitter <name> annotation (in a __builtins.i6b template header
-            // or a Beguile emitter body) fires during emission. Same ##beguilerSettings.<key>
-            // expansion as #emitfirst. Re-registration with the same name is overwrite
-            // (latest wins) — `#once` on BLR files prevents accidental shadowing within
-            // a single BLR include.
-            token nameTok = file.getToken(eTokenType::identifier);
-            string name = nameTok.value;       // already lowercase (Beguile lexer)
-            file.getToken(token::braceOpen);
-            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
-            languageService.storedEmitFirstBlocks[name] = substituteBeguilerSettingsRefs(body);
-            return false;
-            break;
-        }
-        case chk("#storedemitlast"):{
-            // Same semantics as #storedEmitFirst but resolves at the emit-last position.
-            token nameTok = file.getToken(eTokenType::identifier);
-            string name = nameTok.value;
-            file.getToken(token::braceOpen);
-            string body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
-            languageService.storedEmitLastBlocks[name] = substituteBeguilerSettingsRefs(body);
-            return false;
-            break;
-        }
-        case chk("#includei6"):{
-            // Optional: #includeI6 ?"file" — skip silently if not found
-            bool i6Optional = false;
-            if(file.peekToken().is("?")){
-                file.getToken(); // consume '?'
-                i6Optional = true;
-            }
-            token filename = file.getToken({eTokenType::quote, eTokenType::rawQuote});
-            string innerPath = filename.value;
-            if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
-                innerPath = innerPath.substr(1, innerPath.size()-2);
-            if(includeNameSpansLines(innerPath)){
-                parsingError("#includeI6: missing closing '\"' — the include filename must be on one line.");
-                return false;
-            }
-            string emitPath;
-            if(filename.is(eTokenType::rawQuote)){
-                // Raw form `#includeI6 @"..."` — emit verbatim, no resolution, no
-                // existence check, no separator rewrite. The author is telling us
-                // exactly what string to hand to I6.
-                emitPath = "\"" + innerPath + "\"";
-            } else {
-                // Resolve the file: search source dir + bglIncludePaths + i6IncludePaths (fallback)
-                filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
-                string resolved = resolveIncludePath(innerPath, "", curDir, beguilerSettings.includePaths);
-                if(resolved.empty()){
-                    // Also try with .h extension
-                    resolved = resolveIncludePath(innerPath, ".h", curDir, beguilerSettings.includePaths);
-                }
-                if(resolved.empty()){
-                    if(!i6Optional)
-                        parsingError(format("#includeI6: file '{0}' not found", innerPath));
-                    return false;
-                }
-                // Emit with the resolved absolute path
-                emitPath = "\"" + rewritePathSeps(resolved) + "\"";
-            }
-            string nodeText = format("#include {0};", emitPath);
-            // Claim the pre-scan stub if present (preserves source ordering in output)
-            bool claimed = false;
-            for(typeDef* g : languageService.globals){
-                if(auto* raw = dynamic_cast<i6RawNode*>(g)){
-                    if(raw->isPrePassStub && raw->text.find("#include") == 0){
-                        // Match by the original filename since the stub was registered with the unresolved path
-                        string stubPath = raw->text;
-                        size_t q1 = stubPath.find('"'), q2 = stubPath.rfind('"');
-                        if(q1 != string::npos && q2 > q1){
-                            string stubFile = stubPath.substr(q1+1, q2-q1-1);
-                            // Match if the stub filename ends with the original include name.
-                            // Raw `@"..."` stubs were stored verbatim, so skip the sep rewrite
-                            // — applying it would mismatch e.g. `foo\bar` vs `foo/bar`.
-                            string matchKey = filename.is(eTokenType::rawQuote) ? innerPath : rewritePathSeps(innerPath);
-                            if(stubFile.find(matchKey) != string::npos){
-                                raw->text = nodeText;
-                                raw->isPrePassStub = false;
-                                claimed = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            if(!claimed){
-                i6RawNode& node = *(new i6RawNode());
-                node.text = nodeText;
-                languageService.globals.push_back(&node);
-            }
-            return false;
-        }
-        case chk("#i6"):{
-            functionDef* func = dynamic_cast<functionDef*>(&contextObj);
-            statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
-            // Location of this #i6 directive (captured right after the `#i6` token, matching where
-            // the pre-scanner stamps the placeholder's src) — used to claim the correct slot.
-            sourceLocation i6DirLoc = file.currentLocation();
-            // Helper: install an i6RawNode at the current context — into the function body
-            // when one exists, otherwise into globals (claiming the pre-scan placeholder so
-            // source order is preserved).
-            auto installI6Node = [&](i6RawNode* node){
-                node->isI6Island = true;   // genuine user #i6{} island (verbatim raw I6)
-                if(body != nullptr){
-                    body->statements.push_back(node);
-                } else {
-                    // Claim the pre-scan placeholder whose SOURCE LOCATION matches this directive.
-                    // Matching by location (not "first unclaimed") prevents an earlier-parsed #i6 —
-                    // one the pre-scanner skipped because it sat behind a `#if` whose condition was
-                    // `#define`d later in the file — from stealing this block's slot and displacing
-                    // it to the end (which silently mis-ordered raw I6 such as `#i6 replace X;`).
-                    // Fall back to appending (never first-unclaimed): the only unmatched case is a
-                    // block the pre-scanner skipped, which has no reserved slot to claim.
-                    bool claimed = false;
-                    for(size_t i = 0; i < languageService.globals.size(); i++){
-                        if(auto* raw = dynamic_cast<i6RawNode*>(languageService.globals[i])){
-                            if(raw->isPrePassStub && raw->text == "#i6_placeholder"
-                               && raw->src.file == i6DirLoc.file && raw->src.line == i6DirLoc.line){
-                                languageService.globals[i] = node;
-                                claimed = true;
-                                break;
-                            }
-                        }
-                    }
-                    if(!claimed) languageService.globals.push_back(node);
-                }
-            };
-
-            token t = file.getToken();
-            if(!t.is(token::braceOpen)){
-                // Single-line variant: read raw chars to end of line. No #bgl support here —
-                // a single-line I6 statement is too small to need it.
-                i6RawNode* node = new i6RawNode();
-                node->src = file.currentLocation();
-                node->text = t.value;
-                char c = file.readChar();
-                while(c != '\n' && c != EOF){ node->text += c; c = file.readChar(); }
-                installI6Node(node);
-                return false;
-            }
-
-            // Multi-line block: alternate between raw-I6 chunks and embedded #bgl{} regions.
-            // Each #bgl{} is parsed as Beguile statements (code-block mode — declarations
-            // disallowed) and appended in source order, so the emission preserves the natural
-            // interleaving between raw I6 and Beguile.
-            //
-            // Inside a function body, raw chunks become i6RawNodes and bgl statements push
-            // directly into body->statements. At global scope, both are accumulated into a
-            // single composite i6RawNode whose `parts` vector preserves the interleaving for
-            // emit-time rendering — Beguile statements assume a code-block context, so we
-            // synthesize one (lambdaOuterFunc / activeBlockStack) for the duration of the parse.
-            i6RawNode* compositeNode = nullptr;
-            functionDef* synthFunc = nullptr;
-            statementBlock* synthBody = nullptr;
-            if(body == nullptr){
-                compositeNode = new i6RawNode();
-                synthFunc = new functionDef();
-                synthFunc->name = "__bgl_inline_block";
-                synthBody = new statementBlock();
-                synthFunc->body = synthBody;
-                openCompileContext(eCompileContext::codeBlock, synthBody);
-            }
-            string accumulatedRaw;  // accumulating raw text between/around #bgl statements (global scope)
-            sourceLocation accumulatedRawSrc;  // src of the FIRST char of accumulatedRaw (preserved across appends)
-            int depth = 1;
-            while(depth > 0){
-                eBglDirective directive = eBglDirective::NotFound;
-                // Capture source position before reading the raw segment so the resulting
-                // i6RawNode's `src` reflects where this chunk begins in the .bgl file. Used
-                // by the emitter to anchor per-source-line entries in the source map, so I6
-                // diagnostics inside the raw block remap accurately to the .bgl line.
-                sourceLocation segStart = file.currentLocation();
-                string segment = file.getRawTextUntilCloseOrBgl(directive, depth, depth);
-                if(body != nullptr){
-                    if(!segment.empty()){
-                        i6RawNode* node = new i6RawNode();
-                        node->src = segStart;
-                        node->text = segment;
-                        installI6Node(node);
-                    }
-                } else {
-                    if(accumulatedRaw.empty()) accumulatedRawSrc = segStart;
-                    accumulatedRaw += segment;
-                }
-                if(directive != eBglDirective::NotFound){
-                    // Slice 1: all three directives (#bgl / #bglDecl / #bglStmt) route to the
-                    // existing loose-statement parser inside `#i6{}` regions of `.bgl` files.
-                    // TODO (later slice): decide whether `#bglDecl` is even valid here, since
-                    // file-scope declarations belong outside the surrounding `#i6{}` block.
-                    (void)directive;
-                    statementBlock* targetBody = body != nullptr ? body : synthBody;
-                    // Two forms (matching #i6):
-                    //   #bgl{ stmts… }  — multi-line, terminated by matching `}`
-                    //   #bgl stmt;…     — single-line, terminated by newline
-                    // The single-line form must have its `{` (if any) on the same source line
-                    // as `#bgl`; a newline before any non-whitespace puts us into single-line.
-                    string bglContent;
-                    sourceLocation hereLoc = file.currentLocation();
-                    bool isMultiLine = false;
-                    {
-                        // Skip space/tab on the same line, looking for `{`. Don't cross newlines.
-                        while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
-                        if(file.peekChar() == '{'){
-                            file.readChar();
-                            isMultiLine = true;
-                        }
-                    }
-                    if(isMultiLine){
-                        // We consumed the `{` ourselves, so balance braceDepth for the
-                        // decrement that getRawTextThroughClosingBrace will perform.
-                        file.braceDepth++;
-                        bglContent = file.getRawTextThroughClosingBrace();
-                    } else {
-                        // Single-line: read raw chars to end of line. The newline itself is
-                        // part of the surrounding I6 stream, so don't consume it here.
-                        char c = file.peekChar();
-                        while(c != '\n' && c != (char)EOF){
-                            file.readChar();
-                            bglContent += c;
-                            c = file.peekChar();
-                        }
-                    }
-                    // Sub-parse via an in-memory stream so getToken() drives Beguile parsing
-                    // over the bgl content with normal line tracking. Skip whitespace and
-                    // check for stream EOF before calling into getToken — the lexer treats a
-                    // raw EOF inside a non-global compile context as an error, but in our
-                    // case end-of-bgl-content is a normal terminator.
-                    abstractObject& subContext = (compositeNode != nullptr) ? *(abstractObject*)synthFunc : contextObj;
-                    size_t stmtCountBefore = targetBody->statements.size();
-                    // Use the original file path verbatim so editor click-to-navigate works
-                    // on errors fired during the sub-parse. The virtual stream's startLine
-                    // is the source line of `#bgl`, so reported line numbers map back correctly.
-                    file.openText(bglContent, hereLoc.file, hereLoc.line);
-                    bool savedLoose = looseIdentifierMode;
-                    looseIdentifierMode = true;
-                    try {
-                        while(true){
-                            file.bleedSpaces();
-                            if(file.peekChar() == (char)EOF) break;
-                            token nt = file.getToken();
-                            if(nt.is(eTokenType::eof)) break;
-                            // processStatementDispatch returns true when it consumes a stray
-                            // `}` — shouldn't happen in well-formed bgl content, but guard anyway.
-                            if(processStatementDispatch(nt, subContext)) break;
-                        }
-                    } catch(...) { looseIdentifierMode = savedLoose; file.close(); throw; }
-                    looseIdentifierMode = savedLoose;
-                    file.close();
-                    // Global-scope: move newly-parsed statements into the composite node's
-                    // parts list, attaching the accumulated raw text in front of the first.
-                    if(compositeNode != nullptr){
-                        bool firstStatement = true;
-                        for(size_t i = stmtCountBefore; i < targetBody->statements.size(); i++){
-                            statement* s = targetBody->statements[i];
-                            string lead = firstStatement ? accumulatedRaw : "";
-                            sourceLocation leadSrc = firstStatement ? accumulatedRawSrc : sourceLocation{};
-                            compositeNode->parts.push_back({lead, s, leadSrc});
-                            firstStatement = false;
-                        }
-                        if(firstStatement){
-                            // No statements were parsed — nothing to anchor accumulatedRaw to;
-                            // it will be picked up by the next iteration's segment handling.
-                        } else {
-                            accumulatedRaw.clear();
-                            accumulatedRawSrc = {};
-                        }
-                        // Drop them from synthBody so the next sub-parse starts fresh.
-                        targetBody->statements.resize(stmtCountBefore);
-                    }
-                }
-            }
-            // Global-scope: install the composite node, with any trailing raw text appended.
-            if(compositeNode != nullptr){
-                closeCompileContext(eCompileContext::codeBlock);
-                if(!accumulatedRaw.empty()){
-                    if(compositeNode->parts.empty()){
-                        compositeNode->text = accumulatedRaw;
-                        compositeNode->src = accumulatedRawSrc;
-                    } else {
-                        compositeNode->parts.push_back({accumulatedRaw, nullptr, accumulatedRawSrc});
-                    }
-                }
-                installI6Node(compositeNode);
-            }
-            return false;
-            break;
-        }
-        case chk("#i6replace"):{
-            // #i6replace RoutineName [SavedName];
-            //
-            // Emits I6 `Replace RoutineName [SavedName];`. `Replace` must appear before the
-            // library that first defines the routine, so — unlike a bare `#i6 replace X;`
-            // (which lands verbatim at its source position) — this directive routes through the
-            // emit-first stream so it is hoisted above ALL includes and definitions. The author
-            // can therefore write `#i6replace` anywhere and the replacement always takes effect.
-            //
-            // Routine names are emitted in their original case (I6 identifiers are case-sensitive);
-            // the optional second name is I6's rename-the-original form, so the replaced routine's
-            // library definition remains callable under SavedName.
-            //
-            // Operands are scanned on THIS LINE ONLY: the raw rest-of-line is read to the next
-            // newline, then trimmed at a `//` comment and at the terminating `;`. This keeps the
-            // scan line-bounded — a no-semicolon form can't reach across the newline and swallow
-            // the next statement's first identifier as the saved-original name. Reading raw text
-            // also preserves the operands' original case for the case-sensitive I6 identifiers.
-            string line;
-            { char c = file.readChar();
-              while(c != '\n' && c != EOF){ line += c; c = file.readChar(); } }
-            { size_t sl = line.find("//"); if(sl != string::npos) line.erase(sl); }   // strip trailing // comment
-            { size_t sc = line.find(';');  if(sc != string::npos) line.erase(sc); }   // operands end at ';'
-            vector<string> names;
-            for(size_t i = 0; i < line.size(); ){
-                while(i < line.size() && isspace((unsigned char)line[i])) i++;
-                size_t s = i;
-                while(i < line.size() && !isspace((unsigned char)line[i])) i++;
-                if(i > s) names.push_back(line.substr(s, i - s));
-            }
-            if(names.empty())
-                return parsingError("#i6replace expects a routine name (e.g. `#i6replace GameEpilogue;`)");
-            if(names.size() > 2)
-                return parsingError("#i6replace expects a routine name and an optional saved-original name — got extra tokens");
-            string replaceLine = "Replace " + names[0];
-            if(names.size() == 2) replaceLine += " " + names[1];
-            replaceLine += ";";
-            languageService.emitFirstBlocks.push_back(replaceLine);
-            return false;
-            break;
-        }
+        case chk("#startup"): return directiveStartup(directive, contextObj);
+        case chk("#using"): return directiveUsing(directive, contextObj);
+        case chk("#emitfirst"): return directiveEmitFirst(directive, contextObj);
+        case chk("#emitlast"): return directiveEmitLast(directive, contextObj);
+        case chk("#storedemitfirst"): return directiveStoredEmitFirst(directive, contextObj);
+        case chk("#storedemitlast"): return directiveStoredEmitLast(directive, contextObj);
+        case chk("#includei6"): return directiveIncludeI6(directive, contextObj);
+        case chk("#i6"): return directiveI6(directive, contextObj);
+        case chk("#i6replace"): return directiveI6Replace(directive, contextObj);
         case chk("#define"):
-        case chk("#redef"):{
-            bool isRedef = directive.is("#redef");
-            token sym = file.getToken(eTokenType::identifier);
-            // optional value on the same line — skip horizontal whitespace only (not newlines)
-            while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
-            token val = file.getBasicToken(true);
-            string valStr;
-            if(val.isNot("\n") && val.isNot(eTokenType::eof)){
-                valStr = val.value;
-                // consume rest of line
-                token rest = file.getBasicToken(true);
-                while(rest.isNot("\n") && rest.isNot(eTokenType::eof)) rest = file.getBasicToken(true);
-            }
-            // A `#declare`d symbol is immutable — neither form may touch it.
-            if(declaredSymbols.count(sym.value))
-                parsingError(format("'{0} {1}' cannot redefine '{1}': it was declared with '#declare' (immutable)", directive.value, sym.value));
-            // `#define` errors if the symbol is already defined; `#redef` overwrites silently.
-            if(!isRedef && definedSymbols.count(sym.value))
-                parsingError(format("'#define {0}' redefines a symbol that is already defined; use '#redef {0}' to intentionally redefine it", sym.value));
-            definedSymbols[sym.value] = valStr;
-            return false;
-        }
-        case chk("#declare"):{
-            // Order-independent, immutable define: visible to every `#if` regardless of where it
-            // appears (hoisted from the pre-scan). Value is optional (bare = boolean flag). Already
-            // collected by the pre-scan; re-declaring with a different value, or shadowing a #define,
-            // is an error.
-            token sym = file.getToken(eTokenType::identifier);
-            while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
-            token val = file.getBasicToken(true);
-            string valStr;
-            if(val.isNot("\n") && val.isNot(eTokenType::eof)){
-                valStr = val.value;
-                token rest = file.getBasicToken(true);
-                while(rest.isNot("\n") && rest.isNot(eTokenType::eof)) rest = file.getBasicToken(true);
-            }
-            auto existing = declaredSymbols.find(sym.value);
-            if(existing != declaredSymbols.end() && existing->second != valStr)
-                parsingError(format("'#declare {0}' conflicts with an earlier '#declare {0}' of a different value", sym.value));
-            declaredSymbols[sym.value] = valStr;
-            definedSymbols[sym.value]  = valStr;
-            return false;
-        }
+        case chk("#redef"): return directiveDefine(directive, contextObj);
+        case chk("#declare"): return directiveDeclare(directive, contextObj);
         case chk("#undef"):{
             token sym = file.getToken(eTokenType::identifier);
             if(declaredSymbols.count(sym.value))
@@ -924,53 +1037,9 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             definedSymbols.erase(sym.value);
             return false;
         }
-        case chk("#if"):{
-            // Collect condition text up to end of line, optional `;` no-op, EOF, or the
-            // start of the next #-directive. Single-line forms like `#if cond; …; #endif`
-            // and `#if cond #includeI6 … #endif` both parse correctly. When stopping on
-            // a #-directive, hand it off to processDirective recursively.
-            string condText;
-            token t = file.getBasicToken(true);
-            bool stoppedOnDirective = false;
-            while(t.isNot("\n") && t.isNot(";") && t.isNot(eTokenType::eof)){
-                if(!t.value.empty() && t.value[0] == '#'){ stoppedOnDirective = true; break; }
-                condText += t.value;
-                t = file.getBasicToken(true);
-            }
-            if(!evaluateCondition(condText))
-                skipConditionalBlock(contextObj);
-            else if(stoppedOnDirective)
-                processDirective(t, contextObj);
-            return false;
-        }
-        case chk("#elif"):{
-            // reached here only when a prior #if branch was TRUE — skip to #endif
-            int startLine1 = directive.src.line + 1;  // first line after the #elif directive
-            int depth = 1;
-            int endLine1 = startLine1;
-            while(depth > 0){
-                token t = file.getToken();
-                if(t.is(eTokenType::eof)) { parsingError("Unexpected end of file inside #elif block."); return false; }
-                if(t.is("#if"))    depth++;
-                if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
-            }
-            recordInactiveRange(startLine1, endLine1);
-            return false;
-        }
-        case chk("#else"):{
-            // reached here only when a prior #if/#elif branch was TRUE — skip to #endif
-            int startLine1 = directive.src.line + 1;  // first line after the #else directive
-            int depth = 1;
-            int endLine1 = startLine1;
-            while(depth > 0){
-                token t = file.getToken();
-                if(t.is(eTokenType::eof)) { parsingError("Unexpected end of file inside #else block."); return false; }
-                if(t.is("#if"))    depth++;
-                if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
-            }
-            recordInactiveRange(startLine1, endLine1);
-            return false;
-        }
+        case chk("#if"): return directiveIf(directive, contextObj);
+        case chk("#elif"): return directiveElif(directive, contextObj);
+        case chk("#else"): return directiveElse(directive, contextObj);
         case chk("#endif"):{
             // consumed as a no-op (skipConditionalBlock handles it, but a stray #endif is harmless)
             return false;
@@ -989,17 +1058,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                 skipBglConditionalBlock(contextObj);
             return false;
         }
-        case chk("##else"):{
-            // reached only when the preceding ##ifdef/##ifndef branch was TRUE — skip to ##endif
-            int depth = 1;
-            while(depth > 0){
-                token t = file.getToken();
-                if(t.is(eTokenType::eof)) { parsingError("Unexpected end of file inside ##else block."); return false; }
-                if(t.is("##ifdef") || t.is("##ifndef")) depth++;
-                if(t.is("##endif")) depth--;
-            }
-            return false;
-        }
+        case chk("##else"): return directiveBglElse(directive, contextObj);
         case chk("##endif"):{
             // consumed as a no-op (skipBglConditionalBlock handles it)
             return false;
@@ -1032,12 +1091,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             throw exitFileSignal{};
         }
     }
-    // ##VerbName is an I6 action-constant syntax that Beguile handles automatically.
-    if(directive.value.rfind("##", 0) == 0){
-        string verbName = directive.value.substr(2);
-        return parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
-    }
-    return parsingError("Unrecognized directive '" + directive.value + "'.");
+    return processDirectiveUnrecognized(directive);
 }
 
 // ===============================================================================
