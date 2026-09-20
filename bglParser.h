@@ -275,6 +275,19 @@ class bglParser {
         bool processWhile(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processDo(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processFor(vector<token>& t, Qualifiers& q, abstractObject& c);
+        // --- processFor helpers: one per loop form, each parses its own body and appends the loop ---
+        // C-style `for(init; cond; incr)`. loopVarName is the init identifier the caller consumed
+        // (seeds the init text, tracked as an in-scope loop var); "" when the init starts otherwise.
+        bool processForCStyle(const std::string& loopVarName, const sourceLocation& stmtLoc,
+                              class functionDef* func, class statementBlock* body);
+        // `for(T x in {a, b, c})` from its opening brace; elemVarType may be "auto" (inferred from
+        // the first element). Iterates the shared word-based scratch buffer.
+        bool processForInLiteralList(const std::string& elemVarName, std::string elemVarType,
+                                     const sourceLocation& stmtLoc, class functionDef* func, class statementBlock* body);
+        // `for(T x in expr)`: the `1 to 10` range form, arrays, `obj.children` and <string>
+        // containers; elemVarType may be "auto" (inferred from the container's element type).
+        bool processForIn(const std::string& elemVarName, std::string elemVarType,
+                          const sourceLocation& stmtLoc, class functionDef* func, class statementBlock* body);
         bool processSwitch(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processTry(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processThrow(vector<token>& t, Qualifiers& q, abstractObject& c);
@@ -367,6 +380,35 @@ class bglParser {
         bool processEmitterValueDeclaration(token typeTok, token nameTok);
         bool processRoutineDeclaration(token, token, abstractObject& = emptyContainer, bool = false, bool = false, bool = false, bool = false, bool = false);
         bool processVariableDeclaration(token typeTok, token nameTok, token symbol, abstractObject& = emptyContainer, bool isExtern = false, bool isConst = false, string i6alias = "", bool isRef = false, bool isSuperposed = false, bool isAdditive = false);
+        // --- processVariableDeclaration phases, in the order processVariableDeclaration runs them ---
+        // Warns when a local's name shadows a global, a class/object member or a capturable outer
+        // variable; errors on a duplicate in the same scope. No-op at file scope.
+        void checkLocalVariableShadowing(const class variableDeclaration& varDecl, class functionDef* func, class statementBlock* body);
+        // File-scope `Type name = {…}` / `= Type{…}` on an object-backed class: bakes the fields into
+        // the object `name` and consumes the ';'. True when folded — the object IS the declaration.
+        bool foldInlineObjectAggregateDeclaration(token dataType, token variableName, token first,
+                                                  class functionDef* func, class statementBlock* body);
+        // Resolves an `auto` declaration's type from the initializer (honouring `operator auto()`) and
+        // updates dataType for downstream checks. No-op when the declaration is not `auto`.
+        void inferAutoVariableType(class variableDeclaration& varDecl, token& dataType, bool isAuto, class expression* rhs);
+        // Checks the initializer against the declared class type's operator= signatures, capturing an
+        // emitter body (or a synthesized `_opeq` dispatch), else the RHS conversion `operator()`.
+        void checkVariableInitializerAssignable(class variableDeclaration& varDecl, token dataType,
+                                                class expression* rhs, bool isRef);
+        // Parses the `= …` / `:= …` initializer onto varDecl (aggregate fold, `{…}` list, interpolated
+        // string, or expression). True when the declaration was folded away and is fully handled.
+        bool parseVariableInitializer(class variableDeclaration& varDecl, token& dataType, token variableName,
+                                      token symbol, bool isAuto, bool isRef, class functionDef* func, class statementBlock* body);
+        // Gives a qualifying class-typed local a global backing instance for value-semantics
+        // operator= to dispatch against, pointing varDecl.i6name at it.
+        void synthesizeClassLocalBacking(class variableDeclaration& varDecl, bool isExternal, bool isConst,
+                                         bool isRef, class functionDef* func, class statementBlock* body);
+        // Places the declaration in the enclosing body or the global registry; for a local also injects
+        // the type's init emitter ahead of it and registers its deinit emitter as a cleanup.
+        void registerVariableDeclaration(class variableDeclaration& varDecl, bool isConst, class functionDef* func, class statementBlock* body);
+        // File-scope counterpart: records the type's init emitter — and the operator= emitter applying
+        // any declared value — in languageService.globalInits for the bglInit routine.
+        void recordGlobalVariableInit(class variableDeclaration& varDecl, bool isConst, class functionDef* func, class statementBlock* body);
         bool processArrayDeclaration(token, token, string, token, abstractObject& = emptyContainer, bool = false, bool isSuperposed = false);
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
         bool processGrammarDeclaration(token nameOverride=token());

@@ -451,74 +451,9 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
 //--      int myParam=5) 
 //--      int myParam=5, ...
 
-bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst, string i6alias, bool isRef, bool isSuperposed, bool isAdditive){
-    // Ban bare `array` as a type — every array variable must declare its element type.
-    // `array<T>` / `array<char>` are handled earlier via processArrayDeclaration and never
-    // reach here as a plain variable declaration.
-    if(dataType.value == "array")
-        parsingError("bare 'array' is not a valid type — declare the element type: array<T>");
-    // Extern Type name ; where Type is verb-derived → route to object declaration (verb instance)
-    if(isExternal && symbol.is(token::endStatement)){
-        bool verbDerived = false;
-        if(classDef* cls = languageService.findClass(dataType.value)){
-            function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
-                if(!c) return false;
-                if(c->name == "verb") return true;
-                for(classDef* b : c->baseClasses) if(checkVerb(b)) return true;
-                return false;
-            };
-            verbDerived = checkVerb(cls);
-        }
-        if(verbDerived)
-            return processObjectDeclaration(dataType, variableName, true, "", "", false);
-    }
-    variableDeclaration& varDecl = *new variableDeclaration();
-    varDecl.src = file.currentLocation();
-    varDecl.name=(string) variableName;
-    varDecl.displayName = variableName.originalValue;
-    if(!dataType.docComment.empty())          varDecl.docComment = dataType.docComment;
-    else if(!variableName.docComment.empty()) varDecl.docComment = variableName.docComment;
-    varDecl.type=languageService.getType((string) dataType);
-    if(!i6alias.empty()) varDecl.i6name = i6alias;
-    varDecl.isExternal=isExternal;
-    varDecl.isConst=isConst;
-    varDecl.isRefLocal=isRef;
-    varDecl.isSuperposed=isSuperposed;
-    varDecl.isAdditive=isAdditive;
-    // `additive` marks an I6 property slot as accumulating across the class hierarchy, so it is
-    // meaningful only on a `property` declaration — never on a member or a value type.
-    //
-    // On an OWNED property it is a directive (`Property additive foo;`). On an `extern` one it is a
-    // declaration of fact: I6 already declared the property additive, so nothing is emitted, and the
-    // marker exists only so the compiler can warn when a single-word member is bound to one. Which
-    // properties are additive is library-specific — `name` from the compiler itself, `before`/`after`
-    // /`life` and kin from the standard library — so that knowledge lives in the bindings.
-    if(isAdditive && varDecl.type.name != "property")
-        parsingError("'additive' is only valid on a property declaration (e.g. `additive property foo;`)");
-    // For func<...> types, getType returns the base "func" type. Set the full parameterized name.
-    {
-        string dtLower = (string)dataType;
-        transform(dtLower.begin(), dtLower.end(), dtLower.begin(), ::tolower);
-        if(dtLower.rfind("func<", 0) == 0) varDecl.type.name = dtLower;
-    }
-
-    functionDef* func = dynamic_cast<functionDef*>(&contextObj);
-    statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
-
-    // `ref` is only valid on function-local declarations: it overrides the default
-    // value-semantics dispatch for a single variable, opting into reference (pointer-
-    // alias) semantics. Globals don't need it — file-scope class-typed variables are
-    // already real I6 objects with operator= dispatch. Combining with `const`, `extern`,
-    // or other qualifiers doesn't make sense.
-    if(isRef){
-        if(func == nullptr)
-            parsingError("'ref' is only valid on local variable declarations");
-        if(isConst)
-            parsingError("'ref' cannot be combined with 'const'");
-        if(isExternal)
-            parsingError("'ref' cannot be combined with 'extern'");
-    }
-
+// Warns on a local declaration whose name shadows a global, a class/object member or a capturable
+// outer variable, and errors on a duplicate in the same scope. No-op at file scope.
+void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, functionDef* func, statementBlock* body){
     // Disallow local variable names that shadow a global, a class member, or an object member;
     // also disallow duplicate declarations within the same scope.
     if(func != nullptr){
@@ -581,23 +516,195 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             }
         }
     }
+}
 
-    bool isAuto = (dataType.value == "auto");
-    if(isAuto && symbol.value != token::assignment && symbol.value != token::bindAssignment)
-        parsingError("'auto' requires an initializer to infer the type");
+// `Type name = {…}` / `Type name = Type{…}` at FILE SCOPE on an object-backed class: bakes the
+// fields straight into the object `name` (§6.2.1) and consumes the trailing ';'. Returns true when
+// it folded — the object then IS the declaration. False leaves the tokens for the initializer paths.
+bool bglParser::foldInlineObjectAggregateDeclaration(token dataType, token variableName, token first,
+                                                     functionDef* func, statementBlock* body){
+        classDef* declCls = getDispatchClass((string)dataType);
+        if(declCls != nullptr && inheritsFromObject(declCls)){
+            classDef* rhsCls = nullptr;
+            bool bareBrace = first.is(token::braceOpen);
+            bool explicitBrace = (first.is(eTokenType::dataType) || first.is(eTokenType::identifier))
+                                 && (rhsCls = getDispatchClass(first.value)) != nullptr
+                                 && file.peekToken().is(token::braceOpen);
+            if(bareBrace || explicitBrace){
+                classDef* bakeCls = bareBrace ? declCls : rhsCls;
+                // An explicit RHS type must be assignment-compatible (the declared type or a subclass).
+                if(explicitBrace && bakeCls != declCls){
+                    function<bool(classDef*)> isA = [&](classDef* c)->bool{
+                        if(!c) return false;
+                        if(c == declCls || c->name == declCls->name) return true;
+                        for(classDef* b : c->baseClasses) if(isA(b)) return true;
+                        return false;
+                    };
+                    if(!isA(bakeCls))
+                        parsingError(format("'{0} {1} = {2}{{...}}': inline object type '{2}' is not compatible with declared type '{0}'",
+                                            (string)dataType, (string)variableName, first.value));
+                }
+                if(explicitBrace) file.getToken(token::braceOpen);   // consume '{' (bare: `first` is it)
+                // The pre-pass saw the `=` and registered `name` as a class-typed variable stub;
+                // drop it so the folded object below is the sole declaration of `name` (otherwise
+                // both an empty `rule name;` and the baked `rule name with …` would be emitted).
+                {
+                    string lname = (string)variableName;
+                    transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
+                    auto& gl = languageService.globals;
+                    gl.erase(std::remove_if(gl.begin(), gl.end(), [&](typeDef* g){
+                        auto* vd = dynamic_cast<variableDeclaration*>(g);
+                        return vd && vd->name == lname && vd->isPrePassStub;
+                    }), gl.end());
+                }
+                bakeInlineObjectAggregate(bakeCls, bareBrace ? (string)dataType : first.value,
+                                          (string)variableName, func, body);
+                file.getToken(token::endStatement);   // consume trailing ';'
+                return true;    // the object IS the declaration — no variable/assignment emitted
+            }
+        }
+    return false;
+}
 
-    // A `ref` slot is only ever populated by binding — it names an instance owned elsewhere and
-    // has no storage of its own to copy into. `=` on one reads as a copy and is rejected so the
-    // two never look alike; `:=` is required everywhere, declaration included.
-    if(isRef && symbol.value == token::assignment)
-        parsingError(format("'ref {0} {1} = …': a 'ref' declaration binds a reference, so it takes "
-                            "the reference binding operator. Write 'ref {0} {1} := …' instead.",
-                            (string)dataType, (string)variableName));
-    if(!isRef && symbol.value == token::bindAssignment)
-        parsingError(format("'{0} {1} := …': the reference binding operator is only valid on a 'ref' "
-                            "declaration. Write 'ref {0} {1} := …' to bind, or '=' to copy.",
-                            (string)dataType, (string)variableName));
+// For an `auto` declaration, resolves the variable's type from the initializer expression (via the
+// RHS type's `operator auto()` when it has one) and updates dataType for downstream checks. No-op
+// when the declaration is not `auto`.
+void bglParser::inferAutoVariableType(variableDeclaration& varDecl, token& dataType, bool isAuto, expression* rhs){
+    // auto type inference: resolve type from RHS, checking operator auto() for type promotion
+    if(isAuto && rhs != nullptr && !rhs->resolvedType.empty()){
+        string inferredType = rhs->resolvedType;
+        // Check if the RHS type has operator auto() — use its return type instead
+        classDef* rhsCls = languageService.findClass(inferredType);
+        if(rhsCls){
+            for(typeMember* m : rhsCls->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->name == "auto"){ inferredType = fd->returnType.name; break; }
+        }
+        varDecl.type = languageService.getType(inferredType);
+        if(varDecl.type.name.empty()) varDecl.type.name = inferredType;
+        dataType.value = inferredType;  // update for downstream type checks
+    } else if(isAuto){
+        parsingError("Cannot infer type from initializer expression");
+    }
+}
 
+// Verifies the initializer expression is accepted by one of the declared class type's operator=
+// signatures, capturing an emitter body (or synthesizing a non-emitter `_opeq` dispatch) into
+// varDecl, and falling back to the RHS type's conversion `operator()` emitter.
+void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl, token dataType,
+                                                   expression* rhs, bool isRef){
+    //type check: if the declared type is a class, verify the assigned value is accepted by one of its operator= signatures.
+    // `ref` locals opt out of all operator= dispatch — they're plain pointer-alias.
+    // getDispatchClass (not getType) so a template-typed LHS (`array<int> keep = chain;`)
+    // reaches operator= dispatch — this is the primary array copy-on-assign capture form.
+    classDef* classType=getDispatchClass((string)dataType);
+    if(classType != nullptr && rhs != nullptr && !isRef){
+        string valueTypeName = rhs->resolvedType;
+        if(!valueTypeName.empty()){
+            // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all.
+            // Always run findMemberInHierarchy so we can capture the emitter body if found.
+            functionDef* assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
+                auto* fn = dynamic_cast<functionDef*>(m);
+                return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name==valueTypeName;
+            }));
+            if(!assignOp) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
+                auto* fn = dynamic_cast<functionDef*>(m);
+                return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name=="var";
+            }));
+            // Template-aware match: param and RHS resolving to the same dispatch class
+            // (e.g. operator=(array<T>) for an array<int> RHS). Mirrors the assignment-
+            // statement path — backs `array<int> keep = chain;` copy-on-assign.
+            if(!assignOp){
+                classDef* valCls = getDispatchClass(valueTypeName);
+                if(valCls != nullptr) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
+                    auto* fn = dynamic_cast<functionDef*>(m);
+                    return fn && fn->name=="=" && fn->params.size()==1
+                           && getDispatchClass(fn->params[0]->type.name) == valCls;
+                }));
+                // Note: the declaration-init path has no upcast pass, so an array<char>
+                // (byteArray) RHS never matches array<T>'s copy operator= here (byteArray's
+                // dispatch class != array). It falls through to pointer-alias — safe (no word
+                // copy, no corruption), consistent with char arrays being ephemeral for now.
+            }
+            bool found = assignOp != nullptr || isTypeCompatible(valueTypeName, (string)dataType);
+            // If operator= is an emitter, capture its body so the emitter uses it instead of plain assignment
+            // Skip if RHS contains $target — the opcode handles its own store
+            if(assignOp && assignOp->isEmitter && rhs->text().find("$target") == string::npos){
+                if(auto* blk = dynamic_cast<i6Block*>(assignOp->body)){
+                    varDecl.initEmitterBody  = processBglConditionals(blk->i6Body);
+                    varDecl.initEmitterParam = assignOp->params[0]->name;
+                    // Pre-substitute $class — the declared LHS type. Mirrors the
+                    // assignment-statement path; $self/$target stay deferred to emit time.
+                    varDecl.initEmitterBody = i6Emitter::replaceWord(varDecl.initEmitterBody, "$class", classType->i6Name());
+                }
+            }
+            // Non-emitter operator=: mirror the assignment-statement dispatch
+            // (bglParser.cpp resolveEmitter, non-emitter branch). Synthesize a
+            // one-line dispatch body that calls the mangled `_opeq` routine
+            // exactly once with the RHS as its argument. Without this, declarations
+            // like `Window w = factory();` fell through to plain pointer-assign
+            // even when the user had defined a copy operator on the class.
+            //
+            // Gated on `classHasStoredFields && !inheritsFromObject` to match the
+            // backing-synthesis predicate: tree-citizen classes (`: object`) use
+            // reference semantics for locals — there's no per-local backing object
+            // to dispatch operator= on, so the call would target `nothing` and
+            // silently fail at runtime. Plain classes with stored fields DO have
+            // synthesized backing, so dispatch lands correctly.
+            //
+            // A pre-scan stub operator= is ACCEPTED here (order-independence): when the
+            // class is defined after the use site it's only a stub at emit time, but the
+            // stub carries the operator's param types (pre-scan) and its dispatch name is
+            // the mangled `_opeq` the real definition will emit — so `$target._opeq(rhs)`
+            // resolves at link time. `!params.empty()` directly guards the params[0] access,
+            // so a stub need not be excluded wholesale.
+            else if(assignOp && !assignOp->isEmitter && !assignOp->params.empty()
+                      && classHasStoredFields(classType) && !isReferenceBacked(classType)){
+                if(assignOp->i6name.empty()) assignOp->i6name = mangleOperatorName(assignOp->name);
+                string paramName = assignOp->params[0]->name;
+                varDecl.initEmitterBody  = format("$target.{0}(${1});", assignOp->i6name, paramName);
+                varDecl.initEmitterParam = paramName;
+            }
+            // Mirror the assignment-statement check: TypeCompatible fallback with no
+            // operator= on a stored-field, non-tree-citizen class would emit silent
+            // pointer-assign and surprise the user expecting value-semantics.
+            if(found && assignOp == nullptr && classHasStoredFields(classType) && !isReferenceBacked(classType))
+                parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to initialise with. "
+                                    "Declare 'operator =' on the class to define them; bind a reference instead "
+                                    "(`ref {0} x := …`); or inherit from '_bglObject' (reference) / 'object' "
+                                    "(world-tree reference) for reference semantics.",
+                    typeDisplayName((string)dataType)));
+            if(!found){
+                // Fallback: check if RHS type has emitter DeclaredType operator(){}
+                classDef* rhsCls = languageService.findClass(valueTypeName);
+                if(rhsCls != nullptr)
+                    if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
+                        auto* opFn = dynamic_cast<functionDef*>(m);
+                        return opFn && opFn->name=="operator()" && opFn->params.empty() && opFn->isEmitter && !opFn->isExplicit
+                               && opFn->returnType.name==(string)dataType && dynamic_cast<i6Block*>(opFn->body)!=nullptr;
+                    })){
+                        auto* opFn = dynamic_cast<functionDef*>(m);
+                        auto* blk = dynamic_cast<i6Block*>(opFn->body);
+                        string b = processBglConditionals(blk->i6Body);
+                        string argText = rhs->text();
+                        size_t pos = 0;
+                        while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
+                        rhs->tokens.clear();
+                        rhs->tokens.push_back(b);
+                        rhs->resolvedType = (string)dataType;
+                        found = true;
+                    }
+            }
+            if(!found) parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'", typeDisplayName(valueTypeName), typeDisplayName((string)dataType)));
+        }
+    }
+}
+
+// Parses the `= …` / `:= …` initializer onto varDecl: the file-scope inline-aggregate fold, a `{…}`
+// initializer list, an interpolated string literal, or a general expression (with `auto` inference
+// and operator= checking). Returns true when the declaration was folded away and is fully handled.
+bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& dataType, token variableName,
+                                         token symbol, bool isAuto, bool isRef, functionDef* func, statementBlock* body){
     if(symbol.value==token::assignment || symbol.value==token::bindAssignment){
         token first = file.getToken();
         // Inline-aggregate folding: for a FILE-SCOPE object-backed class variable, `Type name = {...}`
@@ -606,46 +713,8 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
         // and an invalid `Type name = _bglanon`. Value/collection classes are NOT object-backed (they
         // take an init-list operator=), so they fall through to the initializer-list path below.
         if(func == nullptr){
-            classDef* declCls = getDispatchClass((string)dataType);
-            if(declCls != nullptr && inheritsFromObject(declCls)){
-                classDef* rhsCls = nullptr;
-                bool bareBrace = first.is(token::braceOpen);
-                bool explicitBrace = (first.is(eTokenType::dataType) || first.is(eTokenType::identifier))
-                                     && (rhsCls = getDispatchClass(first.value)) != nullptr
-                                     && file.peekToken().is(token::braceOpen);
-                if(bareBrace || explicitBrace){
-                    classDef* bakeCls = bareBrace ? declCls : rhsCls;
-                    // An explicit RHS type must be assignment-compatible (the declared type or a subclass).
-                    if(explicitBrace && bakeCls != declCls){
-                        function<bool(classDef*)> isA = [&](classDef* c)->bool{
-                            if(!c) return false;
-                            if(c == declCls || c->name == declCls->name) return true;
-                            for(classDef* b : c->baseClasses) if(isA(b)) return true;
-                            return false;
-                        };
-                        if(!isA(bakeCls))
-                            parsingError(format("'{0} {1} = {2}{{...}}': inline object type '{2}' is not compatible with declared type '{0}'",
-                                                (string)dataType, (string)variableName, first.value));
-                    }
-                    if(explicitBrace) file.getToken(token::braceOpen);   // consume '{' (bare: `first` is it)
-                    // The pre-pass saw the `=` and registered `name` as a class-typed variable stub;
-                    // drop it so the folded object below is the sole declaration of `name` (otherwise
-                    // both an empty `rule name;` and the baked `rule name with …` would be emitted).
-                    {
-                        string lname = (string)variableName;
-                        transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
-                        auto& gl = languageService.globals;
-                        gl.erase(std::remove_if(gl.begin(), gl.end(), [&](typeDef* g){
-                            auto* vd = dynamic_cast<variableDeclaration*>(g);
-                            return vd && vd->name == lname && vd->isPrePassStub;
-                        }), gl.end());
-                    }
-                    bakeInlineObjectAggregate(bakeCls, bareBrace ? (string)dataType : first.value,
-                                              (string)variableName, func, body);
-                    file.getToken(token::endStatement);   // consume trailing ';'
-                    return false;   // the object IS the declaration — no variable/assignment emitted
-                }
-            }
+            if(foldInlineObjectAggregateDeclaration(dataType, variableName, first, func, body))
+                return true;   // folded into the object declaration — nothing more to build
         }
         if(first.is(token::braceOpen)){
             // initializer list: { expr, expr, ... }
@@ -717,135 +786,18 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             currentExpectedType = savedExpected;
             varDecl.declaredExpressionValue = rhs;
 
-            // auto type inference: resolve type from RHS, checking operator auto() for type promotion
-            if(isAuto && rhs != nullptr && !rhs->resolvedType.empty()){
-                string inferredType = rhs->resolvedType;
-                // Check if the RHS type has operator auto() — use its return type instead
-                classDef* rhsCls = languageService.findClass(inferredType);
-                if(rhsCls){
-                    for(typeMember* m : rhsCls->members)
-                        if(auto* fd = dynamic_cast<functionDef*>(m))
-                            if(fd->name == "auto"){ inferredType = fd->returnType.name; break; }
-                }
-                varDecl.type = languageService.getType(inferredType);
-                if(varDecl.type.name.empty()) varDecl.type.name = inferredType;
-                dataType.value = inferredType;  // update for downstream type checks
-            } else if(isAuto){
-                parsingError("Cannot infer type from initializer expression");
-            }
+            inferAutoVariableType(varDecl, dataType, isAuto, rhs);
 
-            //type check: if the declared type is a class, verify the assigned value is accepted by one of its operator= signatures.
-            // `ref` locals opt out of all operator= dispatch — they're plain pointer-alias.
-            // getDispatchClass (not getType) so a template-typed LHS (`array<int> keep = chain;`)
-            // reaches operator= dispatch — this is the primary array copy-on-assign capture form.
-            classDef* classType=getDispatchClass((string)dataType);
-            if(classType != nullptr && rhs != nullptr && !isRef){
-                string valueTypeName = rhs->resolvedType;
-                if(!valueTypeName.empty()){
-                    // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all.
-                    // Always run findMemberInHierarchy so we can capture the emitter body if found.
-                    functionDef* assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
-                        auto* fn = dynamic_cast<functionDef*>(m);
-                        return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name==valueTypeName;
-                    }));
-                    if(!assignOp) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
-                        auto* fn = dynamic_cast<functionDef*>(m);
-                        return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name=="var";
-                    }));
-                    // Template-aware match: param and RHS resolving to the same dispatch class
-                    // (e.g. operator=(array<T>) for an array<int> RHS). Mirrors the assignment-
-                    // statement path — backs `array<int> keep = chain;` copy-on-assign.
-                    if(!assignOp){
-                        classDef* valCls = getDispatchClass(valueTypeName);
-                        if(valCls != nullptr) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
-                            auto* fn = dynamic_cast<functionDef*>(m);
-                            return fn && fn->name=="=" && fn->params.size()==1
-                                   && getDispatchClass(fn->params[0]->type.name) == valCls;
-                        }));
-                        // Note: the declaration-init path has no upcast pass, so an array<char>
-                        // (byteArray) RHS never matches array<T>'s copy operator= here (byteArray's
-                        // dispatch class != array). It falls through to pointer-alias — safe (no word
-                        // copy, no corruption), consistent with char arrays being ephemeral for now.
-                    }
-                    bool found = assignOp != nullptr || isTypeCompatible(valueTypeName, (string)dataType);
-                    // If operator= is an emitter, capture its body so the emitter uses it instead of plain assignment
-                    // Skip if RHS contains $target — the opcode handles its own store
-                    if(assignOp && assignOp->isEmitter && rhs->text().find("$target") == string::npos){
-                        if(auto* blk = dynamic_cast<i6Block*>(assignOp->body)){
-                            varDecl.initEmitterBody  = processBglConditionals(blk->i6Body);
-                            varDecl.initEmitterParam = assignOp->params[0]->name;
-                            // Pre-substitute $class — the declared LHS type. Mirrors the
-                            // assignment-statement path; $self/$target stay deferred to emit time.
-                            varDecl.initEmitterBody = i6Emitter::replaceWord(varDecl.initEmitterBody, "$class", classType->i6Name());
-                        }
-                    }
-                    // Non-emitter operator=: mirror the assignment-statement dispatch
-                    // (bglParser.cpp resolveEmitter, non-emitter branch). Synthesize a
-                    // one-line dispatch body that calls the mangled `_opeq` routine
-                    // exactly once with the RHS as its argument. Without this, declarations
-                    // like `Window w = factory();` fell through to plain pointer-assign
-                    // even when the user had defined a copy operator on the class.
-                    //
-                    // Gated on `classHasStoredFields && !inheritsFromObject` to match the
-                    // backing-synthesis predicate: tree-citizen classes (`: object`) use
-                    // reference semantics for locals — there's no per-local backing object
-                    // to dispatch operator= on, so the call would target `nothing` and
-                    // silently fail at runtime. Plain classes with stored fields DO have
-                    // synthesized backing, so dispatch lands correctly.
-                    //
-                    // A pre-scan stub operator= is ACCEPTED here (order-independence): when the
-                    // class is defined after the use site it's only a stub at emit time, but the
-                    // stub carries the operator's param types (pre-scan) and its dispatch name is
-                    // the mangled `_opeq` the real definition will emit — so `$target._opeq(rhs)`
-                    // resolves at link time. `!params.empty()` directly guards the params[0] access,
-                    // so a stub need not be excluded wholesale.
-                    else if(assignOp && !assignOp->isEmitter && !assignOp->params.empty()
-                              && classHasStoredFields(classType) && !isReferenceBacked(classType)){
-                        if(assignOp->i6name.empty()) assignOp->i6name = mangleOperatorName(assignOp->name);
-                        string paramName = assignOp->params[0]->name;
-                        varDecl.initEmitterBody  = format("$target.{0}(${1});", assignOp->i6name, paramName);
-                        varDecl.initEmitterParam = paramName;
-                    }
-                    // Mirror the assignment-statement check: TypeCompatible fallback with no
-                    // operator= on a stored-field, non-tree-citizen class would emit silent
-                    // pointer-assign and surprise the user expecting value-semantics.
-                    if(found && assignOp == nullptr && classHasStoredFields(classType) && !isReferenceBacked(classType))
-                        parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to initialise with. "
-                                            "Declare 'operator =' on the class to define them; bind a reference instead "
-                                            "(`ref {0} x := …`); or inherit from '_bglObject' (reference) / 'object' "
-                                            "(world-tree reference) for reference semantics.",
-                            typeDisplayName((string)dataType)));
-                    if(!found){
-                        // Fallback: check if RHS type has emitter DeclaredType operator(){}
-                        classDef* rhsCls = languageService.findClass(valueTypeName);
-                        if(rhsCls != nullptr)
-                            if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
-                                auto* opFn = dynamic_cast<functionDef*>(m);
-                                return opFn && opFn->name=="operator()" && opFn->params.empty() && opFn->isEmitter && !opFn->isExplicit
-                                       && opFn->returnType.name==(string)dataType && dynamic_cast<i6Block*>(opFn->body)!=nullptr;
-                            })){
-                                auto* opFn = dynamic_cast<functionDef*>(m);
-                                auto* blk = dynamic_cast<i6Block*>(opFn->body);
-                                string b = processBglConditionals(blk->i6Body);
-                                string argText = rhs->text();
-                                size_t pos = 0;
-                                while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
-                                rhs->tokens.clear();
-                                rhs->tokens.push_back(b);
-                                rhs->resolvedType = (string)dataType;
-                                found = true;
-                            }
-                    }
-                    if(!found) parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'", typeDisplayName(valueTypeName), typeDisplayName((string)dataType)));
-                }
-            }
+            checkVariableInitializerAssignable(varDecl, dataType, rhs, isRef);
         }
     }
+    return false;
+}
 
-    // Flush ternary-lowering injections before the variable declaration that uses _bgl_temp
-    for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
-    pendingInjections.clear();
-
+// A class-typed function local needs a global backing instance for value-semantics operator= to
+// dispatch against; synthesizes one and points varDecl.i6name at it when the class qualifies.
+void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool isExternal, bool isConst,
+                                            bool isRef, functionDef* func, statementBlock* body){
     // Class-typed function locals need backing storage for value-semantics assignment to
     // dispatch correctly. A bare int local slot can't be the target of `operator=` —
     // `localA._opeq(rhs)` would dispatch against the slot's int contents (initially 0 =
@@ -875,7 +827,11 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             varDecl.isClassLocalWithBacking = true;
         }
     }
+}
 
+// Places the finished declaration into the enclosing body (local) or the global registry, then for a
+// local injects the type's init emitter ahead of it and registers its deinit emitter as a cleanup.
+void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool isConst, functionDef* func, statementBlock* body){
     if(body != nullptr)
         body->statements.push_back(&varDecl);
     else
@@ -915,7 +871,11 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             }
         }
     }
+}
 
+// File-scope counterpart: records the type's init emitter — and, when the declaration has a value,
+// the operator= emitter that applies it — in languageService.globalInits for the bglInit routine.
+void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isConst, functionDef* func, statementBlock* body){
     // Global scope: record init body in globalInits for bglInit
     if(!isConst && body == nullptr && func == nullptr){
         classDef* cls = languageService.findClass(varDecl.type.name);
@@ -969,6 +929,106 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             }
         }
     }
+}
+
+bool bglParser::processVariableDeclaration(token dataType, token variableName, token symbol, abstractObject& contextObj, bool isExternal, bool isConst, string i6alias, bool isRef, bool isSuperposed, bool isAdditive){
+    // Ban bare `array` as a type — every array variable must declare its element type.
+    // `array<T>` / `array<char>` are handled earlier via processArrayDeclaration and never
+    // reach here as a plain variable declaration.
+    if(dataType.value == "array")
+        parsingError("bare 'array' is not a valid type — declare the element type: array<T>");
+    // Extern Type name ; where Type is verb-derived → route to object declaration (verb instance)
+    if(isExternal && symbol.is(token::endStatement)){
+        bool verbDerived = false;
+        if(classDef* cls = languageService.findClass(dataType.value)){
+            function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
+                if(!c) return false;
+                if(c->name == "verb") return true;
+                for(classDef* b : c->baseClasses) if(checkVerb(b)) return true;
+                return false;
+            };
+            verbDerived = checkVerb(cls);
+        }
+        if(verbDerived)
+            return processObjectDeclaration(dataType, variableName, true, "", "", false);
+    }
+    variableDeclaration& varDecl = *new variableDeclaration();
+    varDecl.src = file.currentLocation();
+    varDecl.name=(string) variableName;
+    varDecl.displayName = variableName.originalValue;
+    if(!dataType.docComment.empty())          varDecl.docComment = dataType.docComment;
+    else if(!variableName.docComment.empty()) varDecl.docComment = variableName.docComment;
+    varDecl.type=languageService.getType((string) dataType);
+    if(!i6alias.empty()) varDecl.i6name = i6alias;
+    varDecl.isExternal=isExternal;
+    varDecl.isConst=isConst;
+    varDecl.isRefLocal=isRef;
+    varDecl.isSuperposed=isSuperposed;
+    varDecl.isAdditive=isAdditive;
+    // `additive` marks an I6 property slot as accumulating across the class hierarchy, so it is
+    // meaningful only on a `property` declaration — never on a member or a value type.
+    //
+    // On an OWNED property it is a directive (`Property additive foo;`). On an `extern` one it is a
+    // declaration of fact: I6 already declared the property additive, so nothing is emitted, and the
+    // marker exists only so the compiler can warn when a single-word member is bound to one. Which
+    // properties are additive is library-specific — `name` from the compiler itself, `before`/`after`
+    // /`life` and kin from the standard library — so that knowledge lives in the bindings.
+    if(isAdditive && varDecl.type.name != "property")
+        parsingError("'additive' is only valid on a property declaration (e.g. `additive property foo;`)");
+    // For func<...> types, getType returns the base "func" type. Set the full parameterized name.
+    {
+        string dtLower = (string)dataType;
+        transform(dtLower.begin(), dtLower.end(), dtLower.begin(), ::tolower);
+        if(dtLower.rfind("func<", 0) == 0) varDecl.type.name = dtLower;
+    }
+
+    functionDef* func = dynamic_cast<functionDef*>(&contextObj);
+    statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+
+    // `ref` is only valid on function-local declarations: it overrides the default
+    // value-semantics dispatch for a single variable, opting into reference (pointer-
+    // alias) semantics. Globals don't need it — file-scope class-typed variables are
+    // already real I6 objects with operator= dispatch. Combining with `const`, `extern`,
+    // or other qualifiers doesn't make sense.
+    if(isRef){
+        if(func == nullptr)
+            parsingError("'ref' is only valid on local variable declarations");
+        if(isConst)
+            parsingError("'ref' cannot be combined with 'const'");
+        if(isExternal)
+            parsingError("'ref' cannot be combined with 'extern'");
+    }
+
+    checkLocalVariableShadowing(varDecl, func, body);
+
+    bool isAuto = (dataType.value == "auto");
+    if(isAuto && symbol.value != token::assignment && symbol.value != token::bindAssignment)
+        parsingError("'auto' requires an initializer to infer the type");
+
+    // A `ref` slot is only ever populated by binding — it names an instance owned elsewhere and
+    // has no storage of its own to copy into. `=` on one reads as a copy and is rejected so the
+    // two never look alike; `:=` is required everywhere, declaration included.
+    if(isRef && symbol.value == token::assignment)
+        parsingError(format("'ref {0} {1} = …': a 'ref' declaration binds a reference, so it takes "
+                            "the reference binding operator. Write 'ref {0} {1} := …' instead.",
+                            (string)dataType, (string)variableName));
+    if(!isRef && symbol.value == token::bindAssignment)
+        parsingError(format("'{0} {1} := …': the reference binding operator is only valid on a 'ref' "
+                            "declaration. Write 'ref {0} {1} := …' to bind, or '=' to copy.",
+                            (string)dataType, (string)variableName));
+
+    if(parseVariableInitializer(varDecl, dataType, variableName, symbol, isAuto, isRef, func, body))
+        return false;   // folded into an object declaration — no variable emitted
+
+    // Flush ternary-lowering injections before the variable declaration that uses _bgl_temp
+    for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+    pendingInjections.clear();
+
+    synthesizeClassLocalBacking(varDecl, isExternal, isConst, isRef, func, body);
+
+    registerVariableDeclaration(varDecl, isConst, func, body);
+
+    recordGlobalVariableInit(varDecl, isConst, func, body);
 
     return false;
 }

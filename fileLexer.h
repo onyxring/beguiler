@@ -83,6 +83,17 @@ class fileLexer{
         // List-initialization prefers an initializer_list overload, which settles it.
         token getToken(std::initializer_list<std::string>);
         token getToken();
+    private:
+        // --- getToken() phases: the comment/doc-comment sweep, then one per composite token class ---
+        // Reads basic tokens until a non-comment arrives, capturing doc comments onto it.
+        void readTokenSkippingComments(token& retval);
+        // Completes a `#`-prefixed token into a `#name` / `##name` directive token.
+        token lexDirectiveToken(token retval);
+        // Completes a `'`-prefixed token into a single-character literal (escapes, accents).
+        token lexCharLiteralToken(token retval);
+        // Tries to complete a `.`-prefixed token into a dictionary word; false restores the stream.
+        bool tryLexDictionaryWordToken(token& retval);
+    public:
         token peekToken();
         token peekToken(int);
         void  pushBackCloseAngle(const token& doubled); // split a ">>": deliver one ">" now, stash the other

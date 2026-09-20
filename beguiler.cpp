@@ -260,8 +260,9 @@ void beguiler::extractBlorbSettings(const string& filename) {
     parser.declareSymbol("generateblorb", beguilerSettings.blorbEnabled ? "true" : "false");
 }
 
-bool beguiler::go(int argc, char* argv[]) {
-
+// Runs the language server instead of a compile when --lsp is on the command line, seeding it
+// with the library path and any -includepaths= entries. True when it ran; the compile is skipped.
+bool beguiler::tryRunLspServer(int argc, char* argv[]) {
     // LSP mode: run as language server instead of compiler
     for(int i = 1; i < argc; i++)
         if(string(argv[i]) == "--lsp") {
@@ -294,12 +295,15 @@ bool beguiler::go(int argc, char* argv[]) {
                 }
             }
             lsp.run();
-            return false;
+            return true;
         }
 
-   cout << "Beguiler 0.1b : The Beguile-Inform6 Transpiler (" << __DATE__ << ")" << endl;
-    if(parseArgs(argc, argv)) return true;
+    return false;
+}
 
+// Pre-scan pass over the source, before the parser loads anything: reads its blorb settings and
+// (for .inf mode) its `!%` ICL target, then runs the phase 1 asset scan that writes _blorbAssets.bgl.
+void beguiler::preScanSourceSettings(CompileJob& job) {
     // Pre-scan for blorb settings so asset scan can run before preScanFile
     extractBlorbSettings(settings.inFile);
 
@@ -308,8 +312,8 @@ bool beguiler::go(int argc, char* argv[]) {
     extractInfTargetFromIcl(settings.inFile);
 
     // Phase 1: asset scan — runs before preScanFile so _blorbAssets.bgl exists during parse
-    Blorb blorb;
-    vector<BlorbAsset> blorbAssets;
+    Blorb& blorb = job.blorb;
+    vector<BlorbAsset>& blorbAssets = job.blorbAssets;
     if(beguilerSettings.blorbEnabled) {
         fs::path srcDir = fs::path(settings.inFile).parent_path();
         string assetDir = beguilerSettings.blorbAssetPath.empty()
@@ -321,10 +325,20 @@ bool beguiler::go(int argc, char* argv[]) {
         string enumFile = (srcDir / "_blorbAssets.bgl").string();
         blorb.writeEnumFile(blorbAssets, enumFile, fs::path(settings.inFile).filename().string());
     }
+}
 
+// The two parse passes over the source: the pre-scan that registers type/object stubs, then the
+// main pass. True on a parse error.
+bool beguiler::parseSource() {
     parser.preScanFile(settings.inFile);  // pass 1: register all type/object stubs for forward-reference resolution
     if(parser.parseFile(settings.inFile)) return true;
 
+    return false;
+}
+
+// Whole-program checks and mangling passes that need the finished parse tree, then the
+// beguilerSettings schema defaults and the fallbacks for anything still unset.
+void beguiler::runPostParseChecks() {
     // .inf-mode cross-language collision check (no-op for .bgl-mode; gated on infHeader/Trailer).
     parser.detectInfModeI6Collisions();
 
@@ -347,7 +361,11 @@ bool beguiler::go(int argc, char* argv[]) {
     if(beguilerSettings.linqScratchSize == -1) beguilerSettings.linqScratchSize = 32;
     if(beguilerSettings.worldBufSize    == -1) beguilerSettings.worldBufSize    = 128;
     if(beguilerSettings.forInScratchSize == -1) beguilerSettings.forInScratchSize = 31;
+}
 
+// When blorb packaging is on and no IFID was supplied, derives one deterministically from the
+// source's identity and persists it to _blorbAssets.bgl so it is stable across builds.
+void beguiler::generateBlorbIfid() {
     // IFID: may already be set from user's #beguilerSettings or from _blorbAssets.bgl.
     // If still empty and blorb is enabled, generate deterministically from source identity
     // and persist to _blorbAssets.bgl for stability across builds.
@@ -386,7 +404,11 @@ bool beguiler::go(int argc, char* argv[]) {
             out << ifidBlock << existing;
         }
     }
+}
 
+// Resolves settings.informName / settings.informPath — the I6 binary to hand off to — from the
+// CLI flag, #beguilerSettings, or the binary-adjacent default, with the dev-tree fallback.
+void beguiler::resolveInformBinary(char* argv[]) {
     // Resolve the I6 binary.  Precedence (highest to lowest):
     //   1. CLI -inform=name   (settings.informName non-empty)
     //   2. #beguilerSettings informPath = "..."  (full path from file)
@@ -415,7 +437,13 @@ bool beguiler::go(int argc, char* argv[]) {
             }
         }
     }
+}
 
+// Resolves the output directory (creating it), the transpiled .inf path and the story file path,
+// and records the source and output paths on the job for the later stages.
+void beguiler::resolveOutputPaths(CompileJob& job) {
+    fs::path& srcPath = job.srcPath;
+    fs::path& outDir  = job.outDir;
     // Merge beguilerSettings outputPath into settings (CLI -o wins)
     if(settings.outputPath.empty() && !beguilerSettings.outputPath.empty())
         settings.outputPath = beguilerSettings.outputPath;
@@ -427,8 +455,8 @@ bool beguiler::go(int argc, char* argv[]) {
     // temp files here rather than beside the source is what stops the source folder from
     // filling with `.transpiled.inf` / `.bgldbg` clutter. (outputPath is defaulted to
     // "output" just above, so it is never empty here.)
-    fs::path srcPath(settings.inFile);
-    fs::path outDir = fs::path(settings.outputPath).is_absolute() ? fs::path(settings.outputPath)
+    srcPath = fs::path(settings.inFile);
+    outDir = fs::path(settings.outputPath).is_absolute() ? fs::path(settings.outputPath)
                     : srcPath.parent_path() / fs::path(settings.outputPath);
     if(!fs::exists(outDir))
         fs::create_directories(outDir);
@@ -447,7 +475,13 @@ bool beguiler::go(int argc, char* argv[]) {
         else if(t == "z8") extension = "z8";
         settings.outFile = (outDir / (srcPath.stem().string() + "." + extension)).string();
     }
+}
 
+// Writes the transpiled .inf, then verifies no raw property-class member access survived into the
+// emitted I6, and writes the .bgldbg bundle in debug mode. True on a write failure or a raw access.
+bool beguiler::emitOutput(CompileJob& job) {
+    const fs::path& srcPath = job.srcPath;
+    const fs::path& outDir  = job.outDir;
     if(writeFile(settings.tmpFile)) return true;
 
     // ── property-class dispatch invariant (generic; forbidden names derived from the BLR) ────────
@@ -502,6 +536,235 @@ bool beguiler::go(int argc, char* argv[]) {
         emitter.writeDebugBundle((outDir / (srcPath.filename().string() + ".bgldbg")).string());
     }
 
+    return false;
+}
+
+// Opt-in `economy` text abbreviations: computes optimal I6 abbreviations with a throwaway -u
+// pre-pass, injects them at the top of the .inf and adds -e. Best-effort; a failure just compiles
+// normally, and an author's own Abbreviate directives disable it.
+void beguiler::applyEconomyAbbreviations() {
+    // Opt-in auto text abbreviations (#beguilerSettings.economy). Compute optimal I6
+    // abbreviations with a throwaway `-u` pre-pass, inject them at the top of the .inf
+    // (before any string), and compile the real pass with `-e` (economy). We NEVER override
+    // an author's own Abbreviate directives — if the source already defines any, we skip.
+    // Best-effort: any failure just falls through to a normal compile.
+    if(beguilerSettings.economy){
+        bool userAbbrevs = false;
+        {   ifstream inf(settings.tmpFile); string ln;
+            while(getline(inf, ln)){
+                size_t s = ln.find_first_not_of(" \t");
+                if(s == string::npos) continue;
+                // I6 directives are case-insensitive and Beguile lowercases emitted #i6 text,
+                // so match "abbreviate " case-insensitively.
+                string head = ln.substr(s, 11);
+                transform(head.begin(), head.end(), head.begin(), ::tolower);
+                if(head == "abbreviate "){ userAbbrevs = true; break; }
+            }
+        }
+        if(userAbbrevs){
+            cout << "[economy] author Abbreviate directives found — leaving text handling to you." << endl;
+        } else {
+            // 1. Compute optimal abbreviations (a -u compile prints them; discard its output file).
+            string uOut = settings.tmpFile + ".econ.tmp";
+            string uCmd = settings.informPath + " -u " + settings.tmpFile + " " + uOut + " 2>&1";
+            vector<string> abbrevs;
+            if(FILE* up = popen(uCmd.c_str(), "r")){
+                char b[4096];
+                while(fgets(b, sizeof(b), up)){
+                    string l(b);
+                    if(l.compare(0, 11, "Abbreviate ") == 0){
+                        while(!l.empty() && (l.back()=='\n' || l.back()=='\r')) l.pop_back();
+                        abbrevs.push_back(l);
+                    }
+                }
+                pclose(up);
+            }
+            remove(uOut.c_str());
+            // 2. Inject them after the leading `!%` ICL block (earliest point, before any string).
+            if(!abbrevs.empty()){
+                ifstream inf(settings.tmpFile);
+                vector<string> lines; string ln;
+                while(getline(inf, ln)) lines.push_back(ln);
+                inf.close();
+                ofstream outf(settings.tmpFile);
+                bool injected = false;
+                for(size_t i = 0; i < lines.size(); i++){
+                    if(!injected){
+                        size_t s = lines[i].find_first_not_of(" \t");
+                        bool isIcl = (s != string::npos && lines[i].compare(s, 2, "!%") == 0);
+                        bool blank = (s == string::npos);
+                        if(!isIcl && !blank){
+                            for(auto& a : abbrevs) outf << a << "\n";
+                            injected = true;
+                        }
+                    }
+                    outf << lines[i] << "\n";
+                }
+                if(!injected) for(auto& a : abbrevs) outf << a << "\n";
+                outf.close();
+                settings.switches += " -e";
+                cout << "[economy] injected " << abbrevs.size() << " optimal abbreviations; compiling with -e." << endl;
+            }
+        }
+    }
+}
+
+// Runs the I6 compiler over the transpiled .inf, rewriting its diagnostics back to .bgl source
+// locations and filtering BLR-internal warnings, then relocates gameinfo.dbg. True on failure.
+bool beguiler::runInform6() {
+    string debugSwitch = settings.debugMode ? " -k" : "";  // -k: write debug info to gameinfo.dbg
+    string i6Cmd = settings.informPath + debugSwitch + " " + settings.switches + " " +
+                   settings.tmpFile + " " + settings.outFile;
+    cout << i6Cmd << endl << endl;
+    cout.flush(); cerr.flush();
+
+    // Run I6 via popen and rewrite its diagnostics so .inf line numbers map back to .bgl
+    // sources. The source map (i6Line → bglFile + bglLine) is built during emission and
+    // lives on the emitter regardless of --debug. Lines that don't match I6's diagnostic
+    // pattern pass through verbatim.
+    auto resolveBglSource = [&](int i6Line, string& outFile, int& outLine) -> bool {
+        // sourceMap is appended in emission order (ascending by i6Line). Find the last
+        // entry whose i6Line is <= the target — that gives the most-specific source for
+        // any line that falls inside an emitted block.
+        bool found = false;
+        for(auto& [il, bf, bl] : emitter.sourceMap){
+            if(il > i6Line) break;
+            outFile = bf; outLine = bl;
+            found = true;
+        }
+        return found;
+    };
+    // True if a back-mapped source path lives inside the runtime library (BLR).
+    auto isBlrSource = [&](const string& f) -> bool {
+        if(f.empty() || settings.libPath.empty()) return false;
+        std::error_code ec;
+        string src = fs::weakly_canonical(f, ec).string();
+        string lib = fs::weakly_canonical(settings.libPath, ec).string();
+        return !lib.empty() && src.rfind(lib, 0) == 0;
+    };
+    // Format: `<file>(<line>): <Severity>: ...` (note: I6 may emit double spaces after `:`).
+    regex i6DiagRe(R"(^(.+\.inf)\((\d+)\):\s+(Error|Warning|Fatal error):\s+(.*)$)");
+
+    // Capture stderr too so I6 errors come through (I6 mostly writes to stdout, but be safe).
+    string popenCmd = i6Cmd + " 2>&1";
+    FILE* pipe = popen(popenCmd.c_str(), "r");
+    if(!pipe){
+        cerr << "Error running I6!" << endl;
+        return true;
+    }
+    char buf[4096];
+    bool sawError = false;
+    int i6WarnHidden = 0;   // count of BLR-internal I6 warnings filtered from display
+    while(fgets(buf, sizeof(buf), pipe)){
+        string line(buf);
+        // Strip trailing newline for processing; restore on output.
+        while(!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
+        smatch m;
+        if(regex_match(line, m, i6DiagRe)){
+            string infFile = m[1];
+            int infLine   = stoi(m[2]);
+            string severity = m[3];
+            string message  = m[4];
+            bool isError = (severity == "Error" || severity == "Fatal error");
+            string bglFile; int bglLine = 0;
+            bool mapped = resolveBglSource(infLine, bglFile, bglLine);
+            // Suppress WARNINGS that map into the runtime library (BLR): they concern
+            // the compiler's own infrastructure (unused housekeeping globals, unreachable
+            // library-routine fallthroughs, and the like), which the user cannot act on.
+            // Also catch warnings that name a `_bgl` symbol even when unmapped (they are
+            // emitted before any source-map entry, e.g. a housekeeping constant at the top
+            // of the file). Errors are always shown, wherever they map.
+            string lowerMsg = message;
+            transform(lowerMsg.begin(), lowerMsg.end(), lowerMsg.begin(), ::tolower);
+            bool blrSymbol = lowerMsg.find("\"_bgl") != string::npos;
+            if(!isError && ((mapped && isBlrSource(bglFile)) || blrSymbol)){ i6WarnHidden++; continue; }
+            // ERROR uppercase / warning lowercase — the visual contrast surfaces
+            // severity at a glance. Fatal errors collapse to ERROR for tooling consistency.
+            string sevTag = isError ? "ERROR" : "warning";
+            if(isError) sawError = true;
+            cout << infFile << ":" << infLine << ":1: " << sevTag << ": " << message << "\n";
+            if(mapped)
+                cout << "  ↳ " << bglFile << ":" << bglLine << ":1\n";  // ↳
+            // Unmappable .inf lines simply omit the continuation — the absence is
+            // self-evident next to mapped errors that have one.
+        } else {
+            // Reconcile I6's warning-count summary with what was actually shown, since
+            // BLR-internal warnings were filtered out above.
+            smatch sm;
+            static const regex i6WarnSummary(R"(^Compiled with (\d+) warnings?(.*)$)");
+            if(!sawError && i6WarnHidden > 0 && regex_match(line, sm, i6WarnSummary)){
+                int shown = stoi(sm[1]) - i6WarnHidden;
+                if(shown < 0) shown = 0;
+                if(shown == 0) cout << "Compiled with no warnings" << string(sm[2]) << "\n";
+                else           cout << "Compiled with " << shown << (shown==1 ? " warning" : " warnings") << string(sm[2]) << "\n";
+            } else {
+                cout << line << "\n";
+            }
+        }
+    }
+    int rc = pclose(pipe);
+    if(rc != 0 || sawError){
+        cerr << "Error running I6!" << endl;
+        return true;
+    }
+    // -k writes gameinfo.dbg to cwd; move it alongside the other debug files
+    if(settings.debugMode){
+        fs::path dbgDest = fs::path(settings.tmpFile).parent_path() / (fs::path(settings.tmpFile).filename().string() + ".dbg");
+        fs::rename("gameinfo.dbg", dbgDest);
+    }
+
+    return false;
+}
+
+// Phase 2: packages the story file and the scanned assets into a .gblorb/.zblorb alongside it,
+// carrying the #beguilerSettings bibliographic metadata. No-op when blorb packaging is off.
+void beguiler::buildBlorb(CompileJob& job) {
+    Blorb& blorb = job.blorb;
+    vector<BlorbAsset>& blorbAssets = job.blorbAssets;
+    // Phase 2: blorb packaging
+    if(beguilerSettings.blorbEnabled) {
+        fs::path outPath(settings.outFile);
+        bool isGlulx = (beguilerSettings.target == "glulx");
+        string ext = isGlulx ? ".gblorb" : ".zblorb";
+        string blorbOut = (outPath.parent_path() / (outPath.stem().string() + ext)).string();
+        Blorb::Metadata meta;
+        meta.ifid           = beguilerSettings.ifid;
+        meta.title          = beguilerSettings.title;
+        meta.author         = beguilerSettings.author;
+        meta.headline       = beguilerSettings.headline;
+        meta.genre          = beguilerSettings.genre;
+        meta.description    = beguilerSettings.description;
+        meta.language       = beguilerSettings.language;
+        meta.series         = beguilerSettings.series;
+        meta.seriesNumber   = beguilerSettings.seriesNumber;
+        meta.firstPublished = beguilerSettings.firstPublished;
+        meta.forgiveness    = beguilerSettings.forgiveness;
+        blorb.build(settings.outFile, blorbOut, blorbAssets, "", isGlulx, meta);
+    }
+}
+
+bool beguiler::go(int argc, char* argv[]) {
+
+    if(tryRunLspServer(argc, argv)) return false;
+
+   cout << "Beguiler 0.1b : The Beguile-Inform6 Transpiler (" << __DATE__ << ")" << endl;
+    if(parseArgs(argc, argv)) return true;
+
+    CompileJob job;
+    preScanSourceSettings(job);
+
+    if(parseSource()) return true;
+
+    runPostParseChecks();
+
+    generateBlorbIfid();
+
+    resolveInformBinary(argv);
+
+    resolveOutputPaths(job);
+
+    if(emitOutput(job)) return true;
+
     cout<<"Compilation successful. ";
     if(settings.informName=="none"){
         cout<<"Skipping I6 handoff."<<endl;
@@ -509,192 +772,11 @@ bool beguiler::go(int argc, char* argv[]) {
     }else{
         cout<<"Handing off to I6..."<<endl;
 
-        // Opt-in auto text abbreviations (#beguilerSettings.economy). Compute optimal I6
-        // abbreviations with a throwaway `-u` pre-pass, inject them at the top of the .inf
-        // (before any string), and compile the real pass with `-e` (economy). We NEVER override
-        // an author's own Abbreviate directives — if the source already defines any, we skip.
-        // Best-effort: any failure just falls through to a normal compile.
-        if(beguilerSettings.economy){
-            bool userAbbrevs = false;
-            {   ifstream inf(settings.tmpFile); string ln;
-                while(getline(inf, ln)){
-                    size_t s = ln.find_first_not_of(" \t");
-                    if(s == string::npos) continue;
-                    // I6 directives are case-insensitive and Beguile lowercases emitted #i6 text,
-                    // so match "abbreviate " case-insensitively.
-                    string head = ln.substr(s, 11);
-                    transform(head.begin(), head.end(), head.begin(), ::tolower);
-                    if(head == "abbreviate "){ userAbbrevs = true; break; }
-                }
-            }
-            if(userAbbrevs){
-                cout << "[economy] author Abbreviate directives found — leaving text handling to you." << endl;
-            } else {
-                // 1. Compute optimal abbreviations (a -u compile prints them; discard its output file).
-                string uOut = settings.tmpFile + ".econ.tmp";
-                string uCmd = settings.informPath + " -u " + settings.tmpFile + " " + uOut + " 2>&1";
-                vector<string> abbrevs;
-                if(FILE* up = popen(uCmd.c_str(), "r")){
-                    char b[4096];
-                    while(fgets(b, sizeof(b), up)){
-                        string l(b);
-                        if(l.compare(0, 11, "Abbreviate ") == 0){
-                            while(!l.empty() && (l.back()=='\n' || l.back()=='\r')) l.pop_back();
-                            abbrevs.push_back(l);
-                        }
-                    }
-                    pclose(up);
-                }
-                remove(uOut.c_str());
-                // 2. Inject them after the leading `!%` ICL block (earliest point, before any string).
-                if(!abbrevs.empty()){
-                    ifstream inf(settings.tmpFile);
-                    vector<string> lines; string ln;
-                    while(getline(inf, ln)) lines.push_back(ln);
-                    inf.close();
-                    ofstream outf(settings.tmpFile);
-                    bool injected = false;
-                    for(size_t i = 0; i < lines.size(); i++){
-                        if(!injected){
-                            size_t s = lines[i].find_first_not_of(" \t");
-                            bool isIcl = (s != string::npos && lines[i].compare(s, 2, "!%") == 0);
-                            bool blank = (s == string::npos);
-                            if(!isIcl && !blank){
-                                for(auto& a : abbrevs) outf << a << "\n";
-                                injected = true;
-                            }
-                        }
-                        outf << lines[i] << "\n";
-                    }
-                    if(!injected) for(auto& a : abbrevs) outf << a << "\n";
-                    outf.close();
-                    settings.switches += " -e";
-                    cout << "[economy] injected " << abbrevs.size() << " optimal abbreviations; compiling with -e." << endl;
-                }
-            }
-        }
+        applyEconomyAbbreviations();
 
-        string debugSwitch = settings.debugMode ? " -k" : "";  // -k: write debug info to gameinfo.dbg
-        string i6Cmd = settings.informPath + debugSwitch + " " + settings.switches + " " +
-                       settings.tmpFile + " " + settings.outFile;
-        cout << i6Cmd << endl << endl;
-        cout.flush(); cerr.flush();
+        if(runInform6()) return true;
 
-        // Run I6 via popen and rewrite its diagnostics so .inf line numbers map back to .bgl
-        // sources. The source map (i6Line → bglFile + bglLine) is built during emission and
-        // lives on the emitter regardless of --debug. Lines that don't match I6's diagnostic
-        // pattern pass through verbatim.
-        auto resolveBglSource = [&](int i6Line, string& outFile, int& outLine) -> bool {
-            // sourceMap is appended in emission order (ascending by i6Line). Find the last
-            // entry whose i6Line is <= the target — that gives the most-specific source for
-            // any line that falls inside an emitted block.
-            bool found = false;
-            for(auto& [il, bf, bl] : emitter.sourceMap){
-                if(il > i6Line) break;
-                outFile = bf; outLine = bl;
-                found = true;
-            }
-            return found;
-        };
-        // True if a back-mapped source path lives inside the runtime library (BLR).
-        auto isBlrSource = [&](const string& f) -> bool {
-            if(f.empty() || settings.libPath.empty()) return false;
-            std::error_code ec;
-            string src = fs::weakly_canonical(f, ec).string();
-            string lib = fs::weakly_canonical(settings.libPath, ec).string();
-            return !lib.empty() && src.rfind(lib, 0) == 0;
-        };
-        // Format: `<file>(<line>): <Severity>: ...` (note: I6 may emit double spaces after `:`).
-        regex i6DiagRe(R"(^(.+\.inf)\((\d+)\):\s+(Error|Warning|Fatal error):\s+(.*)$)");
-
-        // Capture stderr too so I6 errors come through (I6 mostly writes to stdout, but be safe).
-        string popenCmd = i6Cmd + " 2>&1";
-        FILE* pipe = popen(popenCmd.c_str(), "r");
-        if(!pipe){
-            cerr << "Error running I6!" << endl;
-            return true;
-        }
-        char buf[4096];
-        bool sawError = false;
-        int i6WarnHidden = 0;   // count of BLR-internal I6 warnings filtered from display
-        while(fgets(buf, sizeof(buf), pipe)){
-            string line(buf);
-            // Strip trailing newline for processing; restore on output.
-            while(!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
-            smatch m;
-            if(regex_match(line, m, i6DiagRe)){
-                string infFile = m[1];
-                int infLine   = stoi(m[2]);
-                string severity = m[3];
-                string message  = m[4];
-                bool isError = (severity == "Error" || severity == "Fatal error");
-                string bglFile; int bglLine = 0;
-                bool mapped = resolveBglSource(infLine, bglFile, bglLine);
-                // Suppress WARNINGS that map into the runtime library (BLR): they concern
-                // the compiler's own infrastructure (unused housekeeping globals, unreachable
-                // library-routine fallthroughs, and the like), which the user cannot act on.
-                // Also catch warnings that name a `_bgl` symbol even when unmapped (they are
-                // emitted before any source-map entry, e.g. a housekeeping constant at the top
-                // of the file). Errors are always shown, wherever they map.
-                string lowerMsg = message;
-                transform(lowerMsg.begin(), lowerMsg.end(), lowerMsg.begin(), ::tolower);
-                bool blrSymbol = lowerMsg.find("\"_bgl") != string::npos;
-                if(!isError && ((mapped && isBlrSource(bglFile)) || blrSymbol)){ i6WarnHidden++; continue; }
-                // ERROR uppercase / warning lowercase — the visual contrast surfaces
-                // severity at a glance. Fatal errors collapse to ERROR for tooling consistency.
-                string sevTag = isError ? "ERROR" : "warning";
-                if(isError) sawError = true;
-                cout << infFile << ":" << infLine << ":1: " << sevTag << ": " << message << "\n";
-                if(mapped)
-                    cout << "  ↳ " << bglFile << ":" << bglLine << ":1\n";  // ↳
-                // Unmappable .inf lines simply omit the continuation — the absence is
-                // self-evident next to mapped errors that have one.
-            } else {
-                // Reconcile I6's warning-count summary with what was actually shown, since
-                // BLR-internal warnings were filtered out above.
-                smatch sm;
-                static const regex i6WarnSummary(R"(^Compiled with (\d+) warnings?(.*)$)");
-                if(!sawError && i6WarnHidden > 0 && regex_match(line, sm, i6WarnSummary)){
-                    int shown = stoi(sm[1]) - i6WarnHidden;
-                    if(shown < 0) shown = 0;
-                    if(shown == 0) cout << "Compiled with no warnings" << string(sm[2]) << "\n";
-                    else           cout << "Compiled with " << shown << (shown==1 ? " warning" : " warnings") << string(sm[2]) << "\n";
-                } else {
-                    cout << line << "\n";
-                }
-            }
-        }
-        int rc = pclose(pipe);
-        if(rc != 0 || sawError){
-            cerr << "Error running I6!" << endl;
-            return true;
-        }
-        // -k writes gameinfo.dbg to cwd; move it alongside the other debug files
-        if(settings.debugMode){
-            fs::path dbgDest = fs::path(settings.tmpFile).parent_path() / (fs::path(settings.tmpFile).filename().string() + ".dbg");
-            fs::rename("gameinfo.dbg", dbgDest);
-        }
-
-        // Phase 2: blorb packaging
-        if(beguilerSettings.blorbEnabled) {
-            fs::path outPath(settings.outFile);
-            bool isGlulx = (beguilerSettings.target == "glulx");
-            string ext = isGlulx ? ".gblorb" : ".zblorb";
-            string blorbOut = (outPath.parent_path() / (outPath.stem().string() + ext)).string();
-            Blorb::Metadata meta;
-            meta.ifid           = beguilerSettings.ifid;
-            meta.title          = beguilerSettings.title;
-            meta.author         = beguilerSettings.author;
-            meta.headline       = beguilerSettings.headline;
-            meta.genre          = beguilerSettings.genre;
-            meta.description    = beguilerSettings.description;
-            meta.language       = beguilerSettings.language;
-            meta.series         = beguilerSettings.series;
-            meta.seriesNumber   = beguilerSettings.seriesNumber;
-            meta.firstPublished = beguilerSettings.firstPublished;
-            meta.forgiveness    = beguilerSettings.forgiveness;
-            blorb.build(settings.outFile, blorbOut, blorbAssets, "", isGlulx, meta);
-        }
+        buildBlorb(job);
     }
 
     cout<<endl;

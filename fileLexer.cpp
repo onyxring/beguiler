@@ -820,13 +820,9 @@ sourceLocation fileLexer::currentLocation(){
     
     Note: comment tokens are discarded, whether single line or multiline comments 
 */
-token fileLexer::getToken(){
-    // Deliver a ">" stashed by pushBackCloseAngle (from splitting a ">>") before
-    // touching the stream.
-    if(hasPendingToken){ hasPendingToken = false; return pendingToken; }
-    token next;
-    token retval;
-
+// Pulls basic tokens until a non-comment one arrives, accumulating `///` and `/** */` doc
+// comments into pendingDocComment and attaching them to that token (a blank line orphans them).
+void fileLexer::readTokenSkippingComments(token& retval){
     // Doc-comment capture (`///` line form, `/** */` block form):
     // Comments are normally discarded, but doc-comments are accumulated into `pendingDocComment`
     // and attached to the next non-comment token. A blank line between accumulated docs and the
@@ -910,165 +906,167 @@ token fileLexer::getToken(){
             pendingDocLastLine = -1;
         }
     }
+}
 
-    if(retval.isOneOf({eTokenType::eof, eTokenType::quote, eTokenType::rawQuote, eTokenType::charLiteral})){ prevTokenType = retval.tokenType; return retval; } //just return tokens which we know we can't expand
-
-    // normalize to lowercase for case-insensitive parsing (string literals excluded above)
-    retval.originalValue = retval.value; // save pre-lowercase value for case-sensitive I6 emission
-    transform(retval.value.begin(), retval.value.end(), retval.value.begin(), ::tolower);
-
-    //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones
-    if(retval.is("#")){
-        if(peekChar() == '#'){
-            // ## prefix — Beguile compile-time directive (evaluated by the transpiler, not passed to I6)
-            readChar(); // consume second '#'
-            next=getBasicToken(true);
-            if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid Beguile directive name '"+next.value+"'.");
-            transform(next.value.begin(), next.value.end(), next.value.begin(), ::tolower);
-            retval.value = "##" + next.value;
-            retval.tokenType=eTokenType::directive;
-            prevTokenType = eTokenType::directive;
-            retval.src = currentLocation();
-            return retval;
-        }
-        next=getBasicToken(true); //to make sense, this MUST be a name directly connected to the # with no whitespaces in between
-        if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid directive name '"+next.value+"'.");
+// Completes a `#`-prefixed token into a directive token: `#name` (I6/Beguile directive) or
+// `##name` (compile-time directive evaluated by the transpiler, never passed to I6).
+token fileLexer::lexDirectiveToken(token retval){
+    token next;
+    if(peekChar() == '#'){
+        // ## prefix — Beguile compile-time directive (evaluated by the transpiler, not passed to I6)
+        readChar(); // consume second '#'
+        next=getBasicToken(true);
+        if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid Beguile directive name '"+next.value+"'.");
         transform(next.value.begin(), next.value.end(), next.value.begin(), ::tolower);
-        retval.value+=next.value;
+        retval.value = "##" + next.value;
         retval.tokenType=eTokenType::directive;
         prevTokenType = eTokenType::directive;
         retval.src = currentLocation();
         return retval;
     }
+    next=getBasicToken(true); //to make sense, this MUST be a name directly connected to the # with no whitespaces in between
+    if(!next.isValidIdentifier()) parser.parsingError("Encountered invalid directive name '"+next.value+"'.");
+    transform(next.value.begin(), next.value.end(), next.value.begin(), ::tolower);
+    retval.value+=next.value;
+    retval.tokenType=eTokenType::directive;
+    prevTokenType = eTokenType::directive;
+    retval.src = currentLocation();
+    return retval;
+}
 
+// Completes a `'`-prefixed token into a single-character literal, resolving escapes and the
+// diacritical accent shorthands to their ZSCII codes.
+token fileLexer::lexCharLiteralToken(token retval){
     // Character literals: 'x'  (single character, with escape support)
     // Supports: \n \' \\ \NNN (ZSCII numeric) and diacritical accents:
     //   \^a \:u \'e \`a \~n \/o \cc \oa \ae \AE \OE \oe \th \et
-    if(retval.is("'")){
-        char c = peekChar(); readChar();
-        string charVal;
-        if(c == '\\'){
-            c = peekChar(); readChar();
-            if     (c == 'n')  charVal += '^';   // \n -> ^ (I6 newline)
-            else if(c == '\\') charVal += '\\';  // \\ -> backslash
-            else if(c == '$'){
-                // Hex escape: \$XX — character code in hexadecimal; emit as raw integer
-                string hex;
-                while(isxdigit(peekChar())){ hex += peekChar(); readChar(); }
-                if(hex.empty()) parser.parsingError("Expected hex digits after \\$ in character literal");
-                charVal += to_string(stoi(hex, nullptr, 16));
-            }
-            else if(isdigit(c)){
-                // Numeric escape: \NNN — ZSCII character code; emit as raw integer for I6 expressions
-                charVal += c;
-                while(isdigit(peekChar())){ charVal += peekChar(); readChar(); }
-            }
-            // ── Diacritical accent shorthands → ZSCII numeric codes ──
-            // Char literals are used in I6 expressions where @:a syntax is invalid;
-            // convert to numeric ZSCII codes so they emit as bare integers.
-            // Note: \' for acute accent is checked BEFORE literal quote fallback.
-            else if(c == '\'' && string("aeiouy").find(peekChar()) != string::npos) {
-                // acute lowercase: á169 é170 í171 ó172 ú173 ý174
-                static map<char,int> acute = {{'a',169},{'e',170},{'i',171},{'o',172},{'u',173},{'y',174}};
-                charVal += to_string(acute[readChar()]);
-            }
-            else if(c == '\'' && string("AEIOUY").find(peekChar()) != string::npos) {
-                // acute uppercase: Á175 É176 Í177 Ó178 Ú179 Ý180
-                static map<char,int> acute = {{'A',175},{'E',176},{'I',177},{'O',178},{'U',179},{'Y',180}};
-                charVal += to_string(acute[readChar()]);
-            }
-            else if(c == '\'') charVal += '\'';  // \' -> literal quote (only if not followed by vowel)
-            else if(c == ':' && string("aeiouy").find(peekChar()) != string::npos) {
-                // diaeresis lowercase: ä155 ö156 ü157 ë164 ï165 ÿ166
-                static map<char,int> diaer = {{'a',155},{'o',156},{'u',157},{'e',164},{'i',165},{'y',166}};
-                charVal += to_string(diaer[readChar()]);
-            }
-            else if(c == ':' && string("AEIOUY").find(peekChar()) != string::npos) {
-                // diaeresis uppercase: Ä158 Ö159 Ü160 Ë167 Ï168
-                static map<char,int> diaer = {{'A',158},{'O',159},{'U',160},{'E',167},{'I',168}};
-                charVal += to_string(diaer[readChar()]);
-            }
-            else if(c == '^' && string("aeiou").find(peekChar()) != string::npos) {
-                // circumflex lowercase: â191 ê192 î193 ô194 û195
-                static map<char,int> circ = {{'a',191},{'e',192},{'i',193},{'o',194},{'u',195}};
-                charVal += to_string(circ[readChar()]);
-            }
-            else if(c == '^' && string("AEIOU").find(peekChar()) != string::npos) {
-                // circumflex uppercase: Â196 Ê197 Î198 Ô199 Û200
-                static map<char,int> circ = {{'A',196},{'E',197},{'I',198},{'O',199},{'U',200}};
-                charVal += to_string(circ[readChar()]);
-            }
-            else if(c == '`' && string("aeiou").find(peekChar()) != string::npos) {
-                // grave lowercase: à181 è182 ì183 ò184 ù185
-                static map<char,int> grave = {{'a',181},{'e',182},{'i',183},{'o',184},{'u',185}};
-                charVal += to_string(grave[readChar()]);
-            }
-            else if(c == '`' && string("AEIOU").find(peekChar()) != string::npos) {
-                // grave uppercase: À186 È187 Ì188 Ò189 Ù190
-                static map<char,int> grave = {{'A',186},{'E',187},{'I',188},{'O',189},{'U',190}};
-                charVal += to_string(grave[readChar()]);
-            }
-            else if(c == '~' && string("ano").find(peekChar()) != string::npos) {
-                // tilde lowercase: ã205 ñ206 õ207
-                static map<char,int> tild = {{'a',205},{'n',206},{'o',207}};
-                charVal += to_string(tild[readChar()]);
-            }
-            else if(c == '~' && string("ANO").find(peekChar()) != string::npos) {
-                // tilde uppercase: Ã208 Ñ209 Õ210
-                static map<char,int> tild = {{'A',208},{'N',209},{'O',210}};
-                charVal += to_string(tild[readChar()]);
-            }
-            else if(c == '/' && peekChar()=='o') { readChar(); charVal += "203"; }  // ø
-            else if(c == '/' && peekChar()=='O') { readChar(); charVal += "204"; }  // Ø
-            else if(c == 'c' && peekChar()=='c') { readChar(); charVal += "213"; }  // ç
-            else if(c == 'c' && peekChar()=='C') { readChar(); charVal += "214"; }  // Ç
-            else if(c == 'o' && peekChar()=='a') { readChar(); charVal += "201"; }  // å
-            else if(c == 'o' && peekChar()=='A') { readChar(); charVal += "202"; }  // Å
-            else if(c == 'a' && peekChar()=='e') { readChar(); charVal += "211"; }  // æ
-            else if(c == 'A' && peekChar()=='E') { readChar(); charVal += "212"; }  // Æ
-            else if(c == 'O' && peekChar()=='E') { readChar(); charVal += "221"; }  // Œ
-            else if(c == 'o' && peekChar()=='e') { readChar(); charVal += "220"; }  // œ
-            else if(c == 't' && peekChar()=='h') { readChar(); charVal += "215"; }  // þ
-            else if(c == 'T' && peekChar()=='H') { readChar(); charVal += "217"; }  // Þ
-            else if(c == 'e' && peekChar()=='t') { readChar(); charVal += "216"; }  // ð
-            else if(c == 'E' && peekChar()=='T') { readChar(); charVal += "218"; }  // Ð
-            else             { charVal += '\\'; charVal += c; } // unknown: pass through
-        } else if((unsigned char)c >= 0x80){
-            // Non-ASCII: decode UTF-8 (or Latin-1) and look up ZSCII code
-            uint32_t codepoint = decodeUtf8((unsigned char)c, [&](){ return readChar(); }, [&](){ return peekChar(); });
-            auto it = unicodeToZscii.find(codepoint);
-            if(it != unicodeToZscii.end())
-                charVal += to_string(it->second.code);
-            else {
-                char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "%04X", codepoint);
-                parser.parsingError(format("Unsupported Unicode character U+{0} in character literal", string(hexBuf)));
-            }
-        } else {
+    char c = peekChar(); readChar();
+    string charVal;
+    if(c == '\\'){
+        c = peekChar(); readChar();
+        if     (c == 'n')  charVal += '^';   // \n -> ^ (I6 newline)
+        else if(c == '\\') charVal += '\\';  // \\ -> backslash
+        else if(c == '$'){
+            // Hex escape: \$XX — character code in hexadecimal; emit as raw integer
+            string hex;
+            while(isxdigit(peekChar())){ hex += peekChar(); readChar(); }
+            if(hex.empty()) parser.parsingError("Expected hex digits after \\$ in character literal");
+            charVal += to_string(stoi(hex, nullptr, 16));
+        }
+        else if(isdigit(c)){
+            // Numeric escape: \NNN — ZSCII character code; emit as raw integer for I6 expressions
             charVal += c;
+            while(isdigit(peekChar())){ charVal += peekChar(); readChar(); }
         }
-        // consume closing '
-        // A char literal holds exactly ONE character, so the closing quote must be here. If it
-        // is not, the source is I6's dictionary-word form (`'sword'`), which Beguile does not
-        // share: the lexer would otherwise take `'s'` as the literal and leave `word'` to be read
-        // as an identifier, emitting `'s'word` — text I6 rejects. Beguile spells a dictionary
-        // word `.sword` (`..swords` for the plural form).
-        if(peekChar() != '\''){
-            string rest;
-            while(peekChar() != '\'' && peekChar() != '\n' && peekChar() != 0 && rest.size() < 32)
-                rest += readChar();
-            if(peekChar() == '\'') readChar();
-            parser.parsingError(format("'{0}{1}' is not a valid character literal — a character literal "
-                "holds a single character (e.g. 'a'). Inform 6's dictionary-word form is not Beguile "
-                "syntax: write the dictionary word as .{0}{1} (or ..{0}{1} for the plural form).",
-                charVal, rest));
+        // ── Diacritical accent shorthands → ZSCII numeric codes ──
+        // Char literals are used in I6 expressions where @:a syntax is invalid;
+        // convert to numeric ZSCII codes so they emit as bare integers.
+        // Note: \' for acute accent is checked BEFORE literal quote fallback.
+        else if(c == '\'' && string("aeiouy").find(peekChar()) != string::npos) {
+            // acute lowercase: á169 é170 í171 ó172 ú173 ý174
+            static map<char,int> acute = {{'a',169},{'e',170},{'i',171},{'o',172},{'u',173},{'y',174}};
+            charVal += to_string(acute[readChar()]);
         }
-        else readChar();
-        retval.value = charVal;
-        retval.tokenType = eTokenType::charLiteral;
-        prevTokenType = eTokenType::charLiteral;
-        return retval;
+        else if(c == '\'' && string("AEIOUY").find(peekChar()) != string::npos) {
+            // acute uppercase: Á175 É176 Í177 Ó178 Ú179 Ý180
+            static map<char,int> acute = {{'A',175},{'E',176},{'I',177},{'O',178},{'U',179},{'Y',180}};
+            charVal += to_string(acute[readChar()]);
+        }
+        else if(c == '\'') charVal += '\'';  // \' -> literal quote (only if not followed by vowel)
+        else if(c == ':' && string("aeiouy").find(peekChar()) != string::npos) {
+            // diaeresis lowercase: ä155 ö156 ü157 ë164 ï165 ÿ166
+            static map<char,int> diaer = {{'a',155},{'o',156},{'u',157},{'e',164},{'i',165},{'y',166}};
+            charVal += to_string(diaer[readChar()]);
+        }
+        else if(c == ':' && string("AEIOUY").find(peekChar()) != string::npos) {
+            // diaeresis uppercase: Ä158 Ö159 Ü160 Ë167 Ï168
+            static map<char,int> diaer = {{'A',158},{'O',159},{'U',160},{'E',167},{'I',168}};
+            charVal += to_string(diaer[readChar()]);
+        }
+        else if(c == '^' && string("aeiou").find(peekChar()) != string::npos) {
+            // circumflex lowercase: â191 ê192 î193 ô194 û195
+            static map<char,int> circ = {{'a',191},{'e',192},{'i',193},{'o',194},{'u',195}};
+            charVal += to_string(circ[readChar()]);
+        }
+        else if(c == '^' && string("AEIOU").find(peekChar()) != string::npos) {
+            // circumflex uppercase: Â196 Ê197 Î198 Ô199 Û200
+            static map<char,int> circ = {{'A',196},{'E',197},{'I',198},{'O',199},{'U',200}};
+            charVal += to_string(circ[readChar()]);
+        }
+        else if(c == '`' && string("aeiou").find(peekChar()) != string::npos) {
+            // grave lowercase: à181 è182 ì183 ò184 ù185
+            static map<char,int> grave = {{'a',181},{'e',182},{'i',183},{'o',184},{'u',185}};
+            charVal += to_string(grave[readChar()]);
+        }
+        else if(c == '`' && string("AEIOU").find(peekChar()) != string::npos) {
+            // grave uppercase: À186 È187 Ì188 Ò189 Ù190
+            static map<char,int> grave = {{'A',186},{'E',187},{'I',188},{'O',189},{'U',190}};
+            charVal += to_string(grave[readChar()]);
+        }
+        else if(c == '~' && string("ano").find(peekChar()) != string::npos) {
+            // tilde lowercase: ã205 ñ206 õ207
+            static map<char,int> tild = {{'a',205},{'n',206},{'o',207}};
+            charVal += to_string(tild[readChar()]);
+        }
+        else if(c == '~' && string("ANO").find(peekChar()) != string::npos) {
+            // tilde uppercase: Ã208 Ñ209 Õ210
+            static map<char,int> tild = {{'A',208},{'N',209},{'O',210}};
+            charVal += to_string(tild[readChar()]);
+        }
+        else if(c == '/' && peekChar()=='o') { readChar(); charVal += "203"; }  // ø
+        else if(c == '/' && peekChar()=='O') { readChar(); charVal += "204"; }  // Ø
+        else if(c == 'c' && peekChar()=='c') { readChar(); charVal += "213"; }  // ç
+        else if(c == 'c' && peekChar()=='C') { readChar(); charVal += "214"; }  // Ç
+        else if(c == 'o' && peekChar()=='a') { readChar(); charVal += "201"; }  // å
+        else if(c == 'o' && peekChar()=='A') { readChar(); charVal += "202"; }  // Å
+        else if(c == 'a' && peekChar()=='e') { readChar(); charVal += "211"; }  // æ
+        else if(c == 'A' && peekChar()=='E') { readChar(); charVal += "212"; }  // Æ
+        else if(c == 'O' && peekChar()=='E') { readChar(); charVal += "221"; }  // Œ
+        else if(c == 'o' && peekChar()=='e') { readChar(); charVal += "220"; }  // œ
+        else if(c == 't' && peekChar()=='h') { readChar(); charVal += "215"; }  // þ
+        else if(c == 'T' && peekChar()=='H') { readChar(); charVal += "217"; }  // Þ
+        else if(c == 'e' && peekChar()=='t') { readChar(); charVal += "216"; }  // ð
+        else if(c == 'E' && peekChar()=='T') { readChar(); charVal += "218"; }  // Ð
+        else             { charVal += '\\'; charVal += c; } // unknown: pass through
+    } else if((unsigned char)c >= 0x80){
+        // Non-ASCII: decode UTF-8 (or Latin-1) and look up ZSCII code
+        uint32_t codepoint = decodeUtf8((unsigned char)c, [&](){ return readChar(); }, [&](){ return peekChar(); });
+        auto it = unicodeToZscii.find(codepoint);
+        if(it != unicodeToZscii.end())
+            charVal += to_string(it->second.code);
+        else {
+            char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "%04X", codepoint);
+            parser.parsingError(format("Unsupported Unicode character U+{0} in character literal", string(hexBuf)));
+        }
+    } else {
+        charVal += c;
     }
+    // consume closing '
+    // A char literal holds exactly ONE character, so the closing quote must be here. If it
+    // is not, the source is I6's dictionary-word form (`'sword'`), which Beguile does not
+    // share: the lexer would otherwise take `'s'` as the literal and leave `word'` to be read
+    // as an identifier, emitting `'s'word` — text I6 rejects. Beguile spells a dictionary
+    // word `.sword` (`..swords` for the plural form).
+    if(peekChar() != '\''){
+        string rest;
+        while(peekChar() != '\'' && peekChar() != '\n' && peekChar() != 0 && rest.size() < 32)
+            rest += readChar();
+        if(peekChar() == '\'') readChar();
+        parser.parsingError(format("'{0}{1}' is not a valid character literal — a character literal "
+            "holds a single character (e.g. 'a'). Inform 6's dictionary-word form is not Beguile "
+            "syntax: write the dictionary word as .{0}{1} (or ..{0}{1} for the plural form).",
+            charVal, rest));
+    }
+    else readChar();
+    retval.value = charVal;
+    retval.tokenType = eTokenType::charLiteral;
+    prevTokenType = eTokenType::charLiteral;
+    return retval;
+}
 
+// Tries to complete a `.`-prefixed token into a dictionary-word literal (`.word` / `..words`).
+// True when it produced one; false leaves retval and the stream exactly as they were.
+bool fileLexer::tryLexDictionaryWordToken(token& retval){
     // Dictionary word literals: .word (singular) and ..word (plural)
     // Not recognised after an identifier, data type, or closing paren/bracket (dot-access on expression).
     bool prevIsExprEnd = (prevTokenType == eTokenType::identifier || prevTokenType == eTokenType::dataType
@@ -1129,7 +1127,7 @@ token fileLexer::getToken(){
                 retval.tokenType = eTokenType::dictionaryWord;
                 retval.isPlural = true;
                 prevTokenType = eTokenType::dictionaryWord;
-                return retval;
+                return true;
             }
             currentStream()->seekg(savepos); // not a plural dict word; restore stream
         } else if(isalpha(c1)){
@@ -1137,9 +1135,33 @@ token fileLexer::getToken(){
             retval.tokenType = eTokenType::dictionaryWord;
             retval.isPlural = false;
             prevTokenType = eTokenType::dictionaryWord;
-            return retval;
+            return true;
         }
     }
+
+    return false;
+}
+
+token fileLexer::getToken(){
+    // Deliver a ">" stashed by pushBackCloseAngle (from splitting a ">>") before
+    // touching the stream.
+    if(hasPendingToken){ hasPendingToken = false; return pendingToken; }
+    token retval;
+
+    readTokenSkippingComments(retval);
+
+    if(retval.isOneOf({eTokenType::eof, eTokenType::quote, eTokenType::rawQuote, eTokenType::charLiteral})){ prevTokenType = retval.tokenType; return retval; } //just return tokens which we know we can't expand
+
+    // normalize to lowercase for case-insensitive parsing (string literals excluded above)
+    retval.originalValue = retval.value; // save pre-lowercase value for case-sensitive I6 emission
+    transform(retval.value.begin(), retval.value.end(), retval.value.begin(), ::tolower);
+
+    //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones
+    if(retval.is("#")) return lexDirectiveToken(retval);
+
+    if(retval.is("'")) return lexCharLiteralToken(retval);
+
+    if(tryLexDictionaryWordToken(retval)) return retval;
     
     // Reject C-style hex literals explicitly. A token that starts with "0x" or "0X" is almost
     // certainly an attempt to write a hex literal in C notation; Beguile uses the I6 convention

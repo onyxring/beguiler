@@ -287,344 +287,150 @@ bool bglParser::processWhile(vector<token>& t, Qualifiers&, abstractObject& ctx)
     return false;
 }
 
-bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
-    if(getCurrentCompileContext() == eCompileContext::global)
-        parsingError("'for' is not valid at global scope");
-    functionDef* func = dynamic_cast<functionDef*>(&ctx);
-    statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
-    sourceLocation stmtLoc = file.currentLocation();
-    // Caller already consumed "for" "("
+// Parses the C-style `for(init; cond; incr)` tail, its body, and appends the loop to `body`.
+// `loopVarName` is the init identifier the caller already consumed — it seeds the init text and
+// is tracked as an in-scope loop variable; empty when the init starts with anything else.
+bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLocation& stmtLoc,
+                                 class functionDef* func, class statementBlock* body) {
+    forStatement& forStmt = *(new forStatement());
+    forStmt.src = stmtLoc;
+    string initText = loopVarName;
+    token tt = file.getToken();
+    while(tt.isNot(token::endStatement)){
+        if(!initText.empty()) initText += " ";
+        initText += tt.value;
+        tt = file.getToken();
+    }
+    forStmt.initText = initText;
+    forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
+    for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+    pendingInjections.clear();
+    expression* incrExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
+    vector<statement*> incrInjections = pendingInjections;
+    pendingInjections.clear();
+    string incrText = incrExpr ? incrExpr->text() : "";
+    if(!incrInjections.empty()) forStmt.incrementText = "";
+    else forStmt.incrementText = incrText;
+    forStmt.body = new statementBlock();
+    functionDef forCtx;
+    if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
+    forCtx.body = forStmt.body;
+    token next = file.getToken();
+    if(!loopVarName.empty()) currentLoopVars.insert(loopVarName); loopDepth++;
+    if(next.is(token::braceOpen)){
+        openCompileContext(eCompileContext::codeBlock, forStmt.body);
+        while(processNextStatement(forCtx) == false){}
+        closeCompileContext(eCompileContext::codeBlock);
+    } else {
+        processStatementDispatch(next, forCtx);
+    }
+    // If ternary in increment: append injections + increment as last body statements
+    if(!incrInjections.empty()){
+        for(statement* inj : incrInjections) forStmt.body->statements.push_back(inj);
+        i6RawNode* incrStmt = new i6RawNode();
+        incrStmt->text = incrText + ";";
+        forStmt.body->statements.push_back(incrStmt);
+    }
+    loopDepth--; if(!loopVarName.empty()) currentLoopVars.erase(loopVarName);
+    if(body != nullptr) body->statements.push_back(&forStmt);
+    return false;
+}
 
-    bool isForIn = false;
-    string elemVarName, elemVarType;
+// Parses the inline-initializer-list for-in, `for(T x in {a, b, c})`, from its opening brace
+// (the caller has consumed "in" and peeked the brace). `elemVarType` may be "auto", inferred here
+// from the first element. The elements are iterated out of the shared word-based scratch buffer.
+bool bglParser::processForInLiteralList(const std::string& elemVarName, std::string elemVarType,
+                                        const sourceLocation& stmtLoc, class functionDef* func, class statementBlock* body) {
+    file.getToken(); // consume '{'
+    vector<expression*> elements;
+    token et = file.getToken();
+    while(!et.is(token::braceClose) && !et.is(eTokenType::eof)){
+        expression* elem = parseExpression(et, {",", token::braceClose}, func, body);
+        elements.push_back(elem);
+        if(elem->terminator == token::braceClose) break;
+        et = file.getToken();
+    }
+    file.getToken(token::parenClose);
 
-    token peek = file.peekToken();
-    if(peek.isDataType()){
-        token typeTok = file.getToken(eTokenType::dataType);
-        if(typeTok.value == "func") typeTok.value = parseFuncType();  // func<...> loop var type
-        else if(typeTok.value == "array" || typeTok.value == "rawarray") typeTok.value = parseArrayTypeTail(typeTok.value);  // array<...> / array<array<T>> loop var
+    string arrName = format("_bglfia{0}", forInCounter++);
+    variableDeclaration& tmpDecl = *(new variableDeclaration());
+    tmpDecl.name = arrName;
+    tmpDecl.type = languageService.getType("var");
+    tmpDecl.isSynthetic = true;   // for-in array temp — compiler-generated, hidden in the debugger
+    if(body != nullptr) body->statements.push_back(&tmpDecl);
 
-        // Accept both identifier and dataType for the loop variable name. A dataType here means
-        // the user chose a name that collides with a registered class (e.g. 'Counter'); the
-        // shadow check below produces a cleaner error than a raw token-type mismatch.
-        token nameTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
-        // Shadow check: disallow loop variable names that collide with a global, a class member,
-        // or an object member. Matches the parameter/local-variable shadow checks elsewhere.
-        auto checkShadow = [&](const string& name) {
-            for(typeDef* g : languageService.globals)
-                if(g->name == name){
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
-                        const string& t = vd->type.name;
-                        if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
-                    }
-                    parsingWarning("Loop variable '" + name + "' shadows global of the same name; the global is unreachable from this loop body.");
-                }
-            if(currentClass != nullptr){
-                for(typeMember* m : currentClass->members)
-                    if(m->name == name)
-                        parsingWarning("Loop variable '" + name + "' shadows a member of class '" + currentClass->name + "'.");
-                // Walk base class hierarchy for inherited members (vars and functions) — warning only
-                function<void(classDef*)> checkBases = [&](classDef* c){
-                    for(typeMember* m : c->members)
-                        if(m->name == name)
-                            if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
-                                parsingWarning("Loop variable '" + name + "' shadows inherited member '" + name + "' from class '" + c->dName() + "'.");
-                    for(classDef* base : c->baseClasses) checkBases(base);
-                };
-                for(classDef* base : currentClass->baseClasses) checkBases(base);
-            }
-            if(currentObject != nullptr)
-                for(typeMember* m : currentObject->members)
-                    if(m->name == name)
-                        parsingWarning("Loop variable '" + name + "' shadows a member of object '" + currentObject->name + "'.");
-        };
-        checkShadow(nameTok.value);
-        if(file.peekToken().is("in")){
-            isForIn = true;
-            elemVarName = nameTok.value;
-            elemVarType = typeTok.value;
-            bool alreadyDeclared = false;
-            if(body != nullptr)
-                for(statement* s : body->statements)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == elemVarName){
-                            if(vd->type.name != elemVarType)
-                                parsingError(format("Loop variable '{0}' redeclared with different type '{1}' (was '{2}')",
-                                    elemVarName, elemVarType, vd->type.name));
-                            alreadyDeclared = true;
-                            break;
-                        }
-            if(!alreadyDeclared){
-                variableDeclaration& elemDecl = *(new variableDeclaration());
-                elemDecl.name = elemVarName;
-                elemDecl.type = languageService.getType(elemVarType);
-                // getType returns the base type for templated names (func<…>/array<…>); keep the
-                // full parameterized name so the loop var is recognized as callable (func) or as a
-                // typed array (subscript/length/element-type resolution).
-                if(elemDecl.type.name.empty() || elemVarType.rfind("func<", 0) == 0
-                   || elemVarType.rfind("array<", 0) == 0 || elemVarType.rfind("rawarray<", 0) == 0)
-                    elemDecl.type.name = elemVarType;
-                if(body != nullptr) body->statements.push_back(&elemDecl);
-            }
-        } else {
-            // C-style for with typed init
-            bool alreadyDeclared = false;
-            if(body != nullptr)
-                for(statement* s : body->statements)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == nameTok.value){
-                            if(vd->type.name != typeTok.value)
-                                parsingError(format("Loop variable '{0}' redeclared with different type '{1}' (was '{2}')",
-                                    nameTok.value, typeTok.value, vd->type.name));
-                            alreadyDeclared = true;
-                            break;
-                        }
-            if(!alreadyDeclared){
-                variableDeclaration& loopVar = *(new variableDeclaration());
-                loopVar.name = nameTok.value;
-                loopVar.type = languageService.getType(typeTok.value);
-                if(body != nullptr) body->statements.push_back(&loopVar);
-            }
-            forStatement& forStmt = *(new forStatement());
-            forStmt.src = stmtLoc;
-            string initText = nameTok.value;
-            token tt = file.getToken();
-            while(tt.isNot(token::endStatement)){
-                if(!initText.empty()) initText += " ";
-                initText += tt.value;
-                tt = file.getToken();
-            }
-            forStmt.initText = initText;
-            forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
-            for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
-            pendingInjections.clear();
-            expression* incrExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
-            vector<statement*> incrInjections = pendingInjections;
-            pendingInjections.clear();
-            string incrText = incrExpr ? incrExpr->text() : "";
-            if(!incrInjections.empty()) forStmt.incrementText = "";
-            else forStmt.incrementText = incrText;
-            forStmt.body = new statementBlock();
-            functionDef forCtx;
-            if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
-            forCtx.body = forStmt.body;
-            token next = file.getToken();
-            currentLoopVars.insert(nameTok.value); loopDepth++;
-            if(next.is(token::braceOpen)){
-                openCompileContext(eCompileContext::codeBlock, forStmt.body);
-                while(processNextStatement(forCtx) == false){}
-                closeCompileContext(eCompileContext::codeBlock);
-            } else {
-                processStatementDispatch(next, forCtx);
-            }
-            // If ternary in increment: append injections + increment as last body statements
-            if(!incrInjections.empty()){
-                for(statement* inj : incrInjections) forStmt.body->statements.push_back(inj);
-                i6RawNode* incrStmt = new i6RawNode();
-                incrStmt->text = incrText + ";";
-                forStmt.body->statements.push_back(incrStmt);
-            }
-            loopDepth--; currentLoopVars.erase(nameTok.value);
-            if(body != nullptr) body->statements.push_back(&forStmt);
-            return false;
-        }
-    } else if(peek.is(eTokenType::identifier)){
-        token nameTok = file.getToken(eTokenType::identifier);
-        if(file.peekToken().is("in")){
-            isForIn = true;
-            elemVarName = nameTok.value;
-            if(func != nullptr)
-                for(paramDef* p : func->params)
-                    if(p->name == elemVarName){ elemVarType = p->type.name; break; }
-            if(elemVarType.empty() && body != nullptr)
-                for(statement* s : body->statements)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == elemVarName){ elemVarType = vd->type.name; break; }
-            if(elemVarType.empty())
-                if(auto* vd = languageService.findGlobalAs<variableDeclaration>(elemVarName)) elemVarType = vd->type.name;
-            if(elemVarType.empty())
-                parsingError(format("'for in': iteration variable '{0}' is not declared", elemVarName));
-        } else {
-            // C-style for — nameTok was the first init token
-            forStatement& forStmt = *(new forStatement());
-            forStmt.src = stmtLoc;
-            string initText = nameTok.value;
-            token tt = file.getToken();
-            while(tt.isNot(token::endStatement)){
-                if(!initText.empty()) initText += " ";
-                initText += tt.value;
-                tt = file.getToken();
-            }
-            forStmt.initText = initText;
-            forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
-            for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
-            pendingInjections.clear();
-            expression* incrExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
-            vector<statement*> incrInjections = pendingInjections;
-            pendingInjections.clear();
-            string incrText = incrExpr ? incrExpr->text() : "";
-            if(!incrInjections.empty()) forStmt.incrementText = "";
-            else forStmt.incrementText = incrText;
-            forStmt.body = new statementBlock();
-            functionDef forCtx;
-            if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
-            forCtx.body = forStmt.body;
-            token next = file.getToken();
-            currentLoopVars.insert(nameTok.value); loopDepth++;
-            if(next.is(token::braceOpen)){
-                openCompileContext(eCompileContext::codeBlock, forStmt.body);
-                while(processNextStatement(forCtx) == false){}
-                closeCompileContext(eCompileContext::codeBlock);
-            } else {
-                processStatementDispatch(next, forCtx);
-            }
-            // If ternary in increment: append injections + increment as last body statements
-            if(!incrInjections.empty()){
-                for(statement* inj : incrInjections) forStmt.body->statements.push_back(inj);
-                i6RawNode* incrStmt = new i6RawNode();
-                incrStmt->text = incrText + ";";
-                forStmt.body->statements.push_back(incrStmt);
-            }
-            loopDepth--; currentLoopVars.erase(nameTok.value);
-            if(body != nullptr) body->statements.push_back(&forStmt);
-            return false;
+    string counterName = format("_bglfi{0}", forInCounter++);
+    variableDeclaration& counterDecl = *(new variableDeclaration());
+    counterDecl.name = counterName;
+    counterDecl.type = languageService.getType("var");
+    counterDecl.isSynthetic = true;   // for-in counter temp — compiler-generated, hidden in the debugger
+    if(body != nullptr) body->statements.push_back(&counterDecl);
+
+    if(elemVarType == "auto" && !elements.empty() && !elements[0]->resolvedType.empty()){
+        elemVarType = elements[0]->resolvedType;
+        classDef* elemCls = languageService.findClass(elemVarType);
+        if(elemCls)
+            for(typeMember* m : elemCls->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m))
+                    if(fd->name == "auto"){ elemVarType = fd->returnType.name; break; }
+        if(body != nullptr)
+            for(statement* s : body->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                    if(vd->name == elemVarName){ vd->type = languageService.getType(elemVarType); break; }
+    } else if(elemVarType == "auto"){
+        elemVarType = "var";
+    } else if(elemVarType != "var" && !elements.empty()){
+        for(size_t i = 0; i < elements.size(); i++){
+            string et = elements[i]->resolvedType;
+            if(!et.empty() && !isTypeCompatible(et, elemVarType))
+                parsingError(format("'for in': inline list element {0} has type '{1}', incompatible with loop variable type '{2}'",
+                    i, et, elemVarType));
         }
     }
 
-    if(!isForIn){
-        // C-style for — init starts with non-identifier or empty
-        forStatement& forStmt = *(new forStatement());
-        forStmt.src = stmtLoc;
-        string initText;
-        token tt = file.getToken();
-        while(tt.isNot(token::endStatement)){
-            if(!initText.empty()) initText += " ";
-            initText += tt.value;
-            tt = file.getToken();
-        }
-        forStmt.initText = initText;
-        forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
-        for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
-        pendingInjections.clear();
-        expression* incrExpr = parseExpression(file.getToken(), {token::parenClose}, func, body);
-        vector<statement*> incrInjections = pendingInjections;
-        pendingInjections.clear();
-        string incrText = incrExpr ? incrExpr->text() : "";
-        if(!incrInjections.empty()) forStmt.incrementText = "";
-        else forStmt.incrementText = incrText;
-        forStmt.body = new statementBlock();
-        functionDef forCtx;
-        if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
-        forCtx.body = forStmt.body;
-        token next = file.getToken();
-        loopDepth++;
-        if(next.is(token::braceOpen)){
-            openCompileContext(eCompileContext::codeBlock, forStmt.body);
-            while(processNextStatement(forCtx) == false){}
-            closeCompileContext(eCompileContext::codeBlock);
-        } else {
-            processStatementDispatch(next, forCtx);
-        }
-        if(!incrInjections.empty()){
-            for(statement* inj : incrInjections) forStmt.body->statements.push_back(inj);
-            i6RawNode* incrStmt = new i6RawNode();
-            incrStmt->text = incrText + ";";
-            forStmt.body->statements.push_back(incrStmt);
-        }
-        loopDepth--;
-        if(body != nullptr) body->statements.push_back(&forStmt);
-        return false;
+    languageService.forInScratchInUse = true;   // gates the _BGL_FORIN_SCRATCH_CAP constant + scratchSupport block
+    forInStatement& fi = *(new forInStatement());
+    fi.src = stmtLoc;
+    fi.elementVar = elemVarName;
+    fi.arrayVar   = arrName;
+    fi.counterVar = counterName;
+    // Inline-list for-in always iterates the word-based scratch buffer
+    // (_bglScratchStack), regardless of element type — char values are stored
+    // and read as words there. So the word template is correct even for
+    // `for(char c in {'a','b'})`; the byte template would misread the scratch.
+    fi.isByteArray = false;
+    fi.inlineElements = elements;
+    fi.body = new statementBlock();
+    functionDef forCtx;
+    if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
+    forCtx.body = fi.body;
+    paramDef& elemParam = *(new paramDef());
+    elemParam.name = elemVarName;
+    elemParam.type = languageService.getType(elemVarType);
+    // getType returns the base "func" type for func<...>; keep the full parameterized
+    // name so a func-typed loop var is recognized as callable (e.g. `for(func<E> r ...) r()`).
+    if(elemVarType.rfind("func<", 0) == 0) elemParam.type.name = elemVarType;
+    forCtx.params.push_back(&elemParam);
+    token next = file.getToken();
+    currentLoopVars.insert(elemVarName); loopDepth++;
+    if(next.is(token::braceOpen)){
+        openCompileContext(eCompileContext::codeBlock, fi.body);
+        while(processNextStatement(forCtx) == false){}
+        closeCompileContext(eCompileContext::codeBlock);
+    } else {
+        processStatementDispatch(next, forCtx);
     }
+    loopDepth--; currentLoopVars.erase(elemVarName);
+    if(body != nullptr) body->statements.push_back(&fi);
+    return false;
+}
 
-    // for-in shared (Form 1 and Form 2)
-    file.getToken("in");
-
-    // Inline initializer list: for(int j in {1, 2, 3})
-    if(file.peekToken(1).is(token::braceOpen)){
-        file.getToken(); // consume '{'
-        vector<expression*> elements;
-        token et = file.getToken();
-        while(!et.is(token::braceClose) && !et.is(eTokenType::eof)){
-            expression* elem = parseExpression(et, {",", token::braceClose}, func, body);
-            elements.push_back(elem);
-            if(elem->terminator == token::braceClose) break;
-            et = file.getToken();
-        }
-        file.getToken(token::parenClose);
-
-        string arrName = format("_bglfia{0}", forInCounter++);
-        variableDeclaration& tmpDecl = *(new variableDeclaration());
-        tmpDecl.name = arrName;
-        tmpDecl.type = languageService.getType("var");
-        tmpDecl.isSynthetic = true;   // for-in array temp — compiler-generated, hidden in the debugger
-        if(body != nullptr) body->statements.push_back(&tmpDecl);
-
-        string counterName = format("_bglfi{0}", forInCounter++);
-        variableDeclaration& counterDecl = *(new variableDeclaration());
-        counterDecl.name = counterName;
-        counterDecl.type = languageService.getType("var");
-        counterDecl.isSynthetic = true;   // for-in counter temp — compiler-generated, hidden in the debugger
-        if(body != nullptr) body->statements.push_back(&counterDecl);
-
-        if(elemVarType == "auto" && !elements.empty() && !elements[0]->resolvedType.empty()){
-            elemVarType = elements[0]->resolvedType;
-            classDef* elemCls = languageService.findClass(elemVarType);
-            if(elemCls)
-                for(typeMember* m : elemCls->members)
-                    if(auto* fd = dynamic_cast<functionDef*>(m))
-                        if(fd->name == "auto"){ elemVarType = fd->returnType.name; break; }
-            if(body != nullptr)
-                for(statement* s : body->statements)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                        if(vd->name == elemVarName){ vd->type = languageService.getType(elemVarType); break; }
-        } else if(elemVarType == "auto"){
-            elemVarType = "var";
-        } else if(elemVarType != "var" && !elements.empty()){
-            for(size_t i = 0; i < elements.size(); i++){
-                string et = elements[i]->resolvedType;
-                if(!et.empty() && !isTypeCompatible(et, elemVarType))
-                    parsingError(format("'for in': inline list element {0} has type '{1}', incompatible with loop variable type '{2}'",
-                        i, et, elemVarType));
-            }
-        }
-
-        languageService.forInScratchInUse = true;   // gates the _BGL_FORIN_SCRATCH_CAP constant + scratchSupport block
-        forInStatement& fi = *(new forInStatement());
-        fi.src = stmtLoc;
-        fi.elementVar = elemVarName;
-        fi.arrayVar   = arrName;
-        fi.counterVar = counterName;
-        // Inline-list for-in always iterates the word-based scratch buffer
-        // (_bglScratchStack), regardless of element type — char values are stored
-        // and read as words there. So the word template is correct even for
-        // `for(char c in {'a','b'})`; the byte template would misread the scratch.
-        fi.isByteArray = false;
-        fi.inlineElements = elements;
-        fi.body = new statementBlock();
-        functionDef forCtx;
-        if(func != nullptr){ forCtx.returnType = func->returnType; forCtx.params = func->params; }
-        forCtx.body = fi.body;
-        paramDef& elemParam = *(new paramDef());
-        elemParam.name = elemVarName;
-        elemParam.type = languageService.getType(elemVarType);
-        // getType returns the base "func" type for func<...>; keep the full parameterized
-        // name so a func-typed loop var is recognized as callable (e.g. `for(func<E> r ...) r()`).
-        if(elemVarType.rfind("func<", 0) == 0) elemParam.type.name = elemVarType;
-        forCtx.params.push_back(&elemParam);
-        token next = file.getToken();
-        currentLoopVars.insert(elemVarName); loopDepth++;
-        if(next.is(token::braceOpen)){
-            openCompileContext(eCompileContext::codeBlock, fi.body);
-            while(processNextStatement(forCtx) == false){}
-            closeCompileContext(eCompileContext::codeBlock);
-        } else {
-            processStatementDispatch(next, forCtx);
-        }
-        loopDepth--; currentLoopVars.erase(elemVarName);
-        if(body != nullptr) body->statements.push_back(&fi);
-        return false;
-    }
-
+// Parses the container form of for-in — `for(T x in expr)` — after the caller has consumed "in":
+// the `1 to 10` range form, arrays (local/global/object member/parameter), `obj.children` world-
+// tree iteration and <string> containers. `elemVarType` may be "auto", inferred from the element
+// type of the container.
+bool bglParser::processForIn(const std::string& elemVarName, std::string elemVarType,
+                             const sourceLocation& stmtLoc, class functionDef* func, class statementBlock* body) {
     // Range for-in: for(int i in 1 to 10)
     expression* arrExpr = parseExpression(file.getToken(), {token::parenClose, "to"}, func, body);
     if(arrExpr->terminator == "to"){
@@ -804,6 +610,144 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     loopDepth--; currentLoopVars.erase(elemVarName);
     if(body != nullptr) body->statements.push_back(&fi);
     return false;
+}
+
+bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
+    if(getCurrentCompileContext() == eCompileContext::global)
+        parsingError("'for' is not valid at global scope");
+    functionDef* func = dynamic_cast<functionDef*>(&ctx);
+    statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+    sourceLocation stmtLoc = file.currentLocation();
+    // Caller already consumed "for" "("
+
+    bool isForIn = false;
+    string elemVarName, elemVarType;
+
+    token peek = file.peekToken();
+    if(peek.isDataType()){
+        token typeTok = file.getToken(eTokenType::dataType);
+        if(typeTok.value == "func") typeTok.value = parseFuncType();  // func<...> loop var type
+        else if(typeTok.value == "array" || typeTok.value == "rawarray") typeTok.value = parseArrayTypeTail(typeTok.value);  // array<...> / array<array<T>> loop var
+
+        // Accept both identifier and dataType for the loop variable name. A dataType here means
+        // the user chose a name that collides with a registered class (e.g. 'Counter'); the
+        // shadow check below produces a cleaner error than a raw token-type mismatch.
+        token nameTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        // Shadow check: disallow loop variable names that collide with a global, a class member,
+        // or an object member. Matches the parameter/local-variable shadow checks elsewhere.
+        auto checkShadow = [&](const string& name) {
+            for(typeDef* g : languageService.globals)
+                if(g->name == name){
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+                        const string& t = vd->type.name;
+                        if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
+                    }
+                    parsingWarning("Loop variable '" + name + "' shadows global of the same name; the global is unreachable from this loop body.");
+                }
+            if(currentClass != nullptr){
+                for(typeMember* m : currentClass->members)
+                    if(m->name == name)
+                        parsingWarning("Loop variable '" + name + "' shadows a member of class '" + currentClass->name + "'.");
+                // Walk base class hierarchy for inherited members (vars and functions) — warning only
+                function<void(classDef*)> checkBases = [&](classDef* c){
+                    for(typeMember* m : c->members)
+                        if(m->name == name)
+                            if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
+                                parsingWarning("Loop variable '" + name + "' shadows inherited member '" + name + "' from class '" + c->dName() + "'.");
+                    for(classDef* base : c->baseClasses) checkBases(base);
+                };
+                for(classDef* base : currentClass->baseClasses) checkBases(base);
+            }
+            if(currentObject != nullptr)
+                for(typeMember* m : currentObject->members)
+                    if(m->name == name)
+                        parsingWarning("Loop variable '" + name + "' shadows a member of object '" + currentObject->name + "'.");
+        };
+        checkShadow(nameTok.value);
+        if(file.peekToken().is("in")){
+            isForIn = true;
+            elemVarName = nameTok.value;
+            elemVarType = typeTok.value;
+            bool alreadyDeclared = false;
+            if(body != nullptr)
+                for(statement* s : body->statements)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == elemVarName){
+                            if(vd->type.name != elemVarType)
+                                parsingError(format("Loop variable '{0}' redeclared with different type '{1}' (was '{2}')",
+                                    elemVarName, elemVarType, vd->type.name));
+                            alreadyDeclared = true;
+                            break;
+                        }
+            if(!alreadyDeclared){
+                variableDeclaration& elemDecl = *(new variableDeclaration());
+                elemDecl.name = elemVarName;
+                elemDecl.type = languageService.getType(elemVarType);
+                // getType returns the base type for templated names (func<…>/array<…>); keep the
+                // full parameterized name so the loop var is recognized as callable (func) or as a
+                // typed array (subscript/length/element-type resolution).
+                if(elemDecl.type.name.empty() || elemVarType.rfind("func<", 0) == 0
+                   || elemVarType.rfind("array<", 0) == 0 || elemVarType.rfind("rawarray<", 0) == 0)
+                    elemDecl.type.name = elemVarType;
+                if(body != nullptr) body->statements.push_back(&elemDecl);
+            }
+        } else {
+            // C-style for with typed init
+            bool alreadyDeclared = false;
+            if(body != nullptr)
+                for(statement* s : body->statements)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == nameTok.value){
+                            if(vd->type.name != typeTok.value)
+                                parsingError(format("Loop variable '{0}' redeclared with different type '{1}' (was '{2}')",
+                                    nameTok.value, typeTok.value, vd->type.name));
+                            alreadyDeclared = true;
+                            break;
+                        }
+            if(!alreadyDeclared){
+                variableDeclaration& loopVar = *(new variableDeclaration());
+                loopVar.name = nameTok.value;
+                loopVar.type = languageService.getType(typeTok.value);
+                if(body != nullptr) body->statements.push_back(&loopVar);
+            }
+            return processForCStyle(nameTok.value, stmtLoc, func, body);
+        }
+    } else if(peek.is(eTokenType::identifier)){
+        token nameTok = file.getToken(eTokenType::identifier);
+        if(file.peekToken().is("in")){
+            isForIn = true;
+            elemVarName = nameTok.value;
+            if(func != nullptr)
+                for(paramDef* p : func->params)
+                    if(p->name == elemVarName){ elemVarType = p->type.name; break; }
+            if(elemVarType.empty() && body != nullptr)
+                for(statement* s : body->statements)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == elemVarName){ elemVarType = vd->type.name; break; }
+            if(elemVarType.empty())
+                if(auto* vd = languageService.findGlobalAs<variableDeclaration>(elemVarName)) elemVarType = vd->type.name;
+            if(elemVarType.empty())
+                parsingError(format("'for in': iteration variable '{0}' is not declared", elemVarName));
+        } else {
+            // C-style for — nameTok was the first init token
+            return processForCStyle(nameTok.value, stmtLoc, func, body);
+        }
+    }
+
+    if(!isForIn){
+        // C-style for — init starts with non-identifier or empty
+        return processForCStyle("", stmtLoc, func, body);
+    }
+
+    // for-in shared (Form 1 and Form 2)
+    file.getToken("in");
+
+    // Inline initializer list: for(int j in {1, 2, 3})
+    if(file.peekToken(1).is(token::braceOpen)){
+        return processForInLiteralList(elemVarName, elemVarType, stmtLoc, func, body);
+    }
+
+    return processForIn(elemVarName, elemVarType, stmtLoc, func, body);
 }
 
 bool bglParser::processDo(vector<token>& t, Qualifiers&, abstractObject& ctx) {
