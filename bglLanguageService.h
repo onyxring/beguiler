@@ -59,6 +59,22 @@ class bglLanguageService{
     bglLanguageService();
         void reset();  // clear all state and re-register base types (for LSP re-parse)
         typeDef& getType(string);
+
+        // First entry in `globals` whose `name` matches exactly (no case folding); nullptr if none.
+        typeDef* findGlobal(const std::string& name);
+        // First entry in `globals` matching `name` AND castable to T; scans past a same-named
+        // entry of a different type. nullptr if none.
+        template<class T> T* findGlobalAs(const std::string& name){
+            for(typeDef* g : globals)
+                if(g->name == name)
+                    if(T* t = dynamic_cast<T*>(g)) return t;
+            return nullptr;
+        }
+        // getType(name) narrowed to a class/enum/object-instance definition; nullptr if the name
+        // is unknown or names a different kind of type.
+        classDef*  findClass(const std::string& name){ return dynamic_cast<classDef*>(&getType(name)); }
+        enumDef*   findEnum(const std::string& name){ return dynamic_cast<enumDef*>(&getType(name)); }
+        objectDef* findObjectType(const std::string& name){ return dynamic_cast<objectDef*>(&getType(name)); }
         // True when `name` is a property Inform 6 treats as ADDITIVE, so its contributions
         // accumulate instead of replacing. Declared by `additive property` / `extern additive
         // property` (the core BLR declares `name`, which the I6 compiler itself makes additive).

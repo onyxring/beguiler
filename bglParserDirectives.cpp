@@ -459,12 +459,10 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             token first = file.getToken();
             string displayPath = first.originalValue.empty() ? first.value : first.originalValue;
             string curName = first.value;  // lowercased
-            classDef*  curCls = dynamic_cast<classDef*>(&languageService.getType(curName));
+            classDef*  curCls = languageService.findClass(curName);
             objectDef* curObj = nullptr;
             if(!curCls) {
-                for(typeDef* g : languageService.globals)
-                    if(auto* od = dynamic_cast<objectDef*>(g))
-                        if(od->name == curName){ curObj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(curName)) curObj = od;
             }
             if(!curCls && !curObj){
                 parsingWarning(format("#using '{0}': not a declared class or object; directive ignored", displayPath));
@@ -500,19 +498,15 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
                 objectDef* nextObj = nullptr;
                 // Try initializer name first (most specific)
                 if(!initName.empty()){
-                    nextCls = dynamic_cast<classDef*>(&languageService.getType(initName));
+                    nextCls = languageService.findClass(initName);
                     if(!nextCls)
-                        for(typeDef* g : languageService.globals)
-                            if(auto* od = dynamic_cast<objectDef*>(g))
-                                if(od->name == initName){ nextObj = od; break; }
+                        if(auto* od = languageService.findGlobalAs<objectDef>(initName)) nextObj = od;
                 }
                 // Fall back to declared type name
                 if(!nextCls && !nextObj){
-                    nextCls = dynamic_cast<classDef*>(&languageService.getType(nextType));
+                    nextCls = languageService.findClass(nextType);
                     if(!nextCls)
-                        for(typeDef* g : languageService.globals)
-                            if(auto* od = dynamic_cast<objectDef*>(g))
-                                if(od->name == nextType){ nextObj = od; break; }
+                        if(auto* od = languageService.findGlobalAs<objectDef>(nextType)) nextObj = od;
                 }
                 if(!nextCls && !nextObj){
                     parsingWarning(format("#using '{0}': '{1}' has type '{2}' which is not importable; directive ignored",
@@ -1057,7 +1051,7 @@ bool bglParser::processBeguilerSettings(){
     beguilerSettingsDef& cfg = beguilerSettings;
 
     // Look up the schema class for property name/type validation
-    classDef* schema = dynamic_cast<classDef*>(&languageService.getType("beguilerSettingstype"));
+    classDef* schema = languageService.findClass("beguilerSettingstype");
 
     file.getToken(token::braceOpen);
     token tok = file.getToken();
@@ -1264,7 +1258,7 @@ bool bglParser::processBeguilerSettings(){
 // that were never set by a #beguilerSettings block.  Called once after all parsing is done.
 void bglParser::applySchemaDefaults(){
     beguilerSettingsDef& cfg = beguilerSettings;
-    classDef* schema = dynamic_cast<classDef*>(&languageService.getType("beguilerSettingstype"));
+    classDef* schema = languageService.findClass("beguilerSettingstype");
     if(!schema) return;
 
     for(typeMember* m : schema->members){

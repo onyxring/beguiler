@@ -139,6 +139,12 @@ typeDef& bglLanguageService::getType(string name){
     return emptyTDef;
 }
 
+typeDef* bglLanguageService::findGlobal(const std::string& name){
+    for(typeDef* g : globals)
+        if(g->name == name) return g;
+    return nullptr;
+}
+
 // Format a source location for "originally defined at ..." messages.
 static string fmtSrc(const sourceLocation& src){
     if(src.file.empty()) return "unknown location";
@@ -185,15 +191,6 @@ bool bglLanguageService::isKnownClassName(const string& name) const {
     return false;
 }
 
-// Find a global variable by name (case-insensitive). Returns nullptr if not found.
-static variableDeclaration* findGlobal(vector<typeDef*>& globals, const string& lowerName){
-    for(typeDef* g : globals){
-        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-            if(vd->name == lowerName) return vd;
-    }
-    return nullptr;
-}
-
 typeDef& bglLanguageService::registerType(string name){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name))
@@ -208,7 +205,7 @@ typeDef& bglLanguageService::registerType(string name){
 enumDef& bglLanguageService::registerEnum(string name, bool isExternal, string dspName){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)){
-        enumDef* existing = dynamic_cast<enumDef*>(&getType(name));
+        enumDef* existing = findEnum(name);
         if(existing && existing->isPrePassStub){
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
@@ -233,7 +230,7 @@ enumDef& bglLanguageService::registerEnum(string name, bool isExternal, string d
 classDef& bglLanguageService::registerClass(string name, bool isExternal, string dspName){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)){
-        classDef* existing = dynamic_cast<classDef*>(&getType(name));
+        classDef* existing = findClass(name);
         if(existing && existing->isPrePassStub){
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
@@ -258,7 +255,7 @@ classDef& bglLanguageService::registerClass(string name, bool isExternal, string
 objectDef& bglLanguageService::registerObject(string name, bool isExternal, string dspName){
     transform(name.begin(), name.end(), name.begin(), ::tolower);
     if(isObjectType(name)){
-        objectDef* existing = dynamic_cast<objectDef*>(&getType(name));
+        objectDef* existing = findObjectType(name);
         if(existing && existing->isPrePassStub){
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
@@ -288,7 +285,7 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
     // Exception: verb-typed globals are exempt from collision checks against any other global
     // because I6 action routines are accessed as ##VerbName and live in a completely separate
     // I6 namespace from regular globals (e.g. 'score' int vs 'Score' verb, 'open' attr vs 'Open' verb).
-    if(variableDeclaration* existing = findGlobal(globals, lowerName)){
+    if(variableDeclaration* existing = findGlobalAs<variableDeclaration>(lowerName)){
         string existingType = existing->type.name;
         string newType      = varDef.type.name;
         bool eitherIsVerb   = (existingType == "verb" || newType == "verb");
@@ -326,7 +323,7 @@ verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExtern
             v->isPrePassStub = false;
             v->isExternal = isExternal;
             v->src = parser.file.currentLocation();
-            if(classDef* vc = dynamic_cast<classDef*>(&getType("verb")))
+            if(classDef* vc = findClass("verb"))
                 v->objectClass = vc;
             // Re-push to globals if the pre-scan removed it (.inf-mode islands erase
             // their pre-scan additions; main pass re-pushes here at the correct
@@ -340,7 +337,7 @@ verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExtern
     vd.name = lower;
     vd.isExternal = isExternal;
     vd.src = parser.file.currentLocation();
-    if(classDef* vc = dynamic_cast<classDef*>(&getType("verb")))
+    if(classDef* vc = findClass("verb"))
         vd.objectClass = vc;
     verbs.push_back(&vd);
     if(!isExternal) globals.push_back(&vd);
@@ -348,7 +345,7 @@ verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExtern
 }
 
 int bglLanguageService::getClassFieldIntDefault(const string& className, const string& fieldName, int fallback){
-    classDef* cd = dynamic_cast<classDef*>(&getType(className));
+    classDef* cd = findClass(className);
     if(!cd) return fallback;
     for(typeMember* m : cd->members){
         auto* vd = dynamic_cast<variableDeclaration*>(m);

@@ -527,9 +527,7 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
 void bglParser::drainDeferredObjectExtends(){
     for(const DeferredObjectExtend& de : deferredObjectExtends){
         objectDef* obj = nullptr;
-        for(typeDef* g : languageService.globals)
-            if(auto* od = dynamic_cast<objectDef*>(g))
-                if(od->name == de.objName){ obj = od; break; }
+        if(auto* od = languageService.findGlobalAs<objectDef>(de.objName)) obj = od;
         if(obj == nullptr) continue;   // still unknown — the main pass will report it (old skip behavior)
         // Wrap the captured inner body back in braces so the member loop opens it as usual.
         file.openText("{" + de.body + "}", de.virtualName, de.startLine);
@@ -632,7 +630,7 @@ void bglParser::preScanGlobalLoop(){
                 bool isBnum = tok.is(token::bnumDeclaration) || tok.value == "bnum";
                 token nameTok = file.getToken();
                 string nameStr = nameTok.value;
-                enumDef* ex = dynamic_cast<enumDef*>(&languageService.getType(nameStr));
+                enumDef* ex = languageService.findEnum(nameStr);
                 if(ex != nullptr){   // a pre-scan stub is fine — it just means forward-declared
                     // Continue auto-numbering from the current max; explicit `= N` overrides.
                     int val = 1;
@@ -679,9 +677,7 @@ void bglParser::preScanGlobalLoop(){
             // to resolve in the full pass when the caller is declared above the callee.
             if((tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration)){
                 objectDef* obj = nullptr;
-                for(typeDef* g : languageService.globals)
-                    if(auto* od = dynamic_cast<objectDef*>(g))
-                        if(od->name == tok.value){ obj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(tok.value)) obj = od;
                 if(obj == nullptr){
                     // Forward `extend <obj>` — target not declared yet at this source position (e.g.
                     // a platform-core `extend bgl {...}` included before `object bgl`). Capture the
@@ -705,7 +701,7 @@ void bglParser::preScanGlobalLoop(){
             if(tok.is("extern")) tok = file.getToken(); // consume "extern", now tok = "class"
             if(tok.is(token::classDeclaration)) tok = file.getToken(); // consume "class", now tok = name
             token nameTok = tok;
-            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(nameTok.value));
+            classDef* cls = languageService.findClass(nameTok.value);
             if(cls != nullptr){
                 // Skip inheritance clause if present
                 token t = file.getToken();
@@ -829,7 +825,7 @@ void bglParser::preScanGlobalLoop(){
                 if(isAliasClass)  stub.isAlias = true;
                 cls = &stub;
             } else {
-                cls = dynamic_cast<classDef*>(&languageService.getType(nameStr));
+                cls = languageService.findClass(nameStr);
             }
             // Type parameter clause: `class Foo<T> {…}` — store names on the classDef
             // stub. Not registered as global types (would collide with same-named
@@ -1086,7 +1082,7 @@ void bglParser::preScanGlobalLoop(){
                     token baseTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
                     if(!isBnum)
                         parsingError(format("enum '{0}': shared-base inheritance is only valid for bnum declarations", nameStr));
-                    enumDef* base = dynamic_cast<enumDef*>(&languageService.getType(baseTok.value));
+                    enumDef* base = languageService.findEnum(baseTok.value);
                     if(!base || !base->isBnum)
                         parsingError(format("bnum '{0}': base '{1}' is not a declared bnum", nameStr, baseTok.originalValue));
                     newEnum.baseBnum = base;
@@ -1159,7 +1155,7 @@ void bglParser::preScanGlobalLoop(){
                     for(classDef* b : c->baseClasses) if(checkVerb(b)) return true;
                     return false;
                 };
-                if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(classType)))
+                if(auto* cls = languageService.findClass(classType))
                     isVerbType = checkVerb(cls);
             }
             token peek = file.peekToken();
@@ -1176,13 +1172,11 @@ void bglParser::preScanGlobalLoop(){
                     }
                     // Set objectClass from the declared type so forward references resolve correctly
                     if(classType != "object")
-                        if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(classType)))
+                        if(auto* cls = languageService.findClass(classType))
                             objStub->objectClass = cls;
                 } else {
                     // Already registered — find it
-                    for(typeDef* g : languageService.globals)
-                        if(auto* od = dynamic_cast<objectDef*>(g))
-                            if(od->name == nameStr){ objStub = od; break; }
+                    if(auto* od = languageService.findGlobalAs<objectDef>(nameStr)) objStub = od;
                 }
                 // Skip inheritance clause to reach '{'
                 { token t = file.getToken();
@@ -1282,9 +1276,7 @@ void bglParser::preScanGlobalLoop(){
                     }
                 } else {
                     bool alreadyReg = false;
-                    for(typeDef* g : languageService.globals)
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                            if(vd->name == nameStr){ alreadyReg = true; break; }
+                    if(auto* vd = languageService.findGlobalAs<variableDeclaration>(nameStr)) alreadyReg = true;
                     if(!alreadyReg){
                         variableDeclaration& stub = *(new variableDeclaration());
                         stub.name = nameStr;
@@ -1458,9 +1450,7 @@ void bglParser::preScanGlobalLoop(){
             } else if(sym.is(token::braceOpen) && isEmitter){
                 // Emitter value: emitter Type name { body } — register stub, skip body
                 bool alreadyReg = false;
-                for(typeDef* g : languageService.globals)
-                    if(auto* fd = dynamic_cast<functionDef*>(g))
-                        if(fd->name == nameStr){ alreadyReg = true; break; }
+                if(auto* fd = languageService.findGlobalAs<functionDef>(nameStr)) alreadyReg = true;
                 if(!alreadyReg){
                     functionDef& stub = *(new functionDef());
                     stub.name = nameStr;
@@ -1478,7 +1468,7 @@ void bglParser::preScanGlobalLoop(){
                     stub.isPrePassStub = true;
                     // Record the declared class so forward references resolve correctly
                     if(!typeName.empty() && typeName != "object"){
-                        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(typeName));
+                        classDef* cls = languageService.findClass(typeName);
                         if(cls != nullptr) stub.objectClass = cls;
                     }
                 }
@@ -1487,9 +1477,7 @@ void bglParser::preScanGlobalLoop(){
                       sym.is(token::bracketOpen)){
                 // Global variable declaration
                 bool alreadyReg = false;
-                for(typeDef* g : languageService.globals)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                        if(vd->name == nameStr){ alreadyReg = true; break; }
+                if(auto* vd = languageService.findGlobalAs<variableDeclaration>(nameStr)) alreadyReg = true;
                 if(!alreadyReg){
                     variableDeclaration& stub = *(new variableDeclaration());
                     stub.name = nameStr;

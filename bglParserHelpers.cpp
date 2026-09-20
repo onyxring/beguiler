@@ -277,8 +277,6 @@ bool isConstVariable(const string& name, functionDef* func, statementBlock* body
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                     if(vd->name == name) return vd->isConst;
     }
-    for(typeDef* g : languageService.globals)
-        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-            if(vd->name == name) return vd->isConst;
+    if(auto* vd = languageService.findGlobalAs<variableDeclaration>(name)) return vd->isConst;
     return false;
 }

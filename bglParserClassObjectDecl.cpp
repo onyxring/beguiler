@@ -123,7 +123,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     token nameTok = nameOverride.tokenType != eTokenType::unknown ? nameOverride : file.getToken({eTokenType::identifier, eTokenType::dataType});
     classDef* classPtr = nullptr;
     if(isExtend){
-        classPtr = dynamic_cast<classDef*>(&languageService.getType((string)nameTok));
+        classPtr = languageService.findClass((string)nameTok);
         if(classPtr == nullptr) parsingError(format("extend class '{0}': no previously defined class with that name", (string)nameTok));
     } else {
         //create an empty class definition object and register it immediately, so that we can refer to this type within its own definition (e.g. comparison operators)
@@ -253,14 +253,14 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     if(tok.is("for")){
         // alias class single-parent clause
         token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
-        classDef* parent = dynamic_cast<classDef*>(&languageService.getType(parentTok.value));
+        classDef* parent = languageService.findClass(parentTok.value);
         if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
         else { checkInheritanceCycle(parent, parentTok.originalValue); newClass.baseClasses.push_back(parent); }
         tok = file.getToken();
     } else if(tok.is(":")){
         do {
             token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
-            classDef* parent = dynamic_cast<classDef*>(&languageService.getType(parentTok.value));
+            classDef* parent = languageService.findClass(parentTok.value);
             if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
             else { checkInheritanceCycle(parent, parentTok.originalValue); newClass.baseClasses.push_back(parent); }
             tok = file.getToken();
@@ -688,14 +688,14 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
                     if(!tok.is(token::assignment))
                         parsingError(format("'auto' alias member '{0}' requires an initializer to infer the type", (string)name));
                     token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                    classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(rhs.value));
+                    classDef* rhsCls = languageService.findClass(rhs.value);
                     if(!rhsCls)
                         parsingError(format("'auto' alias member '{0}': '{1}' is not a declared class",
                             (string)name, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
                     aliasTypeName = rhs.value;
                     tok = file.getToken();  // consume ;
                 }
-                classDef* aliasCls = dynamic_cast<classDef*>(&languageService.getType(aliasTypeName));
+                classDef* aliasCls = languageService.findClass(aliasTypeName);
                 if(!aliasCls)
                     parsingError(format("Emitter class '{0}' only supports emitter functions, emitter values, and class alias members; '{1}' is not a class",
                         newClass.dName(), aliasTypeName));
@@ -917,7 +917,7 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             // the class registered in the type system but wouldn't emit. Insert it into `globals`
             // BEFORE the enclosing object (which is already in `globals`, mid-parse), so the I6 `Class`
             // directive precedes the backing instance the emitter bakes for this member.
-            if(auto* accCls = dynamic_cast<classDef*>(&languageService.getType(anon))){
+            if(auto* accCls = languageService.findClass(anon)){
                 // A one-off accessor class tied to this single host member: superposed, so its I6
                 // `Class` directive is withheld from source-order emit and materializes only when a
                 // backing instance is baked (in the host's create+populate). If the host object is
@@ -966,7 +966,7 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             expectedElemType = typeName.substr(6, typeName.size() - 7);
         // Fallback: infer from the class's single-param method
         if(expectedElemType.empty()){
-            classDef* listClass = dynamic_cast<classDef*>(&languageService.getType(typeName));
+            classDef* listClass = languageService.findClass(typeName);
             if(listClass != nullptr)
                 for(typeMember* m : listClass->members)
                     if(auto* fd = dynamic_cast<functionDef*>(m))
@@ -1556,7 +1556,7 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
     };
     searchClass(obj.objectClass);
     if(propTypeName.empty()){
-        classDef* baseObj = dynamic_cast<classDef*>(&languageService.getType("object"));
+        classDef* baseObj = languageService.findClass("object");
         searchClass(baseObj);
     }
     if(propTypeName.empty())
@@ -1977,7 +1977,7 @@ bool bglParser::processUnionDeclaration(Qualifiers& q){
         // then attach the union member list.
         processClassDeclaration(nameTok, /*isExternal*/false, /*isExtend*/false,
                                 /*isEmitterClass*/true, /*isAlias*/false, nameTok);
-        if(auto* cls = dynamic_cast<classDef*>(&languageService.getType((string)nameTok)))
+        if(auto* cls = languageService.findClass((string)nameTok))
             cls->unionMembers = members;
         return false;
     }
@@ -1989,7 +1989,7 @@ bool bglParser::processUnionDeclaration(Qualifiers& q){
 // (or is already a structural `A|B` form). Lets isTypeCompatible treat a named union transparently.
 std::string bglParser::unionExpansionOf(const std::string& typeName){
     if(isUnionType(typeName)) return "";   // already structural
-    auto* cls = dynamic_cast<classDef*>(&languageService.getType(typeName));
+    auto* cls = languageService.findClass(typeName);
     if(cls && cls->isUnion()) return cls->unionExpansion();
     return "";
 }
@@ -2010,7 +2010,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
                 if(checkVerbBase(base)) return true;
             return false;
         };
-        if(classDef* cls = dynamic_cast<classDef*>(&languageService.getType(resolvedClassName)))
+        if(classDef* cls = languageService.findClass(resolvedClassName))
             isVerbDerived = checkVerbBase(cls);
     }
 
@@ -2033,7 +2033,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     if(!objectType.docComment.empty())   newObj.docComment = objectType.docComment;
     else if(!name.docComment.empty())    newObj.docComment = name.docComment;
     if(!resolvedClassName.empty()){
-        if(classDef* cls = dynamic_cast<classDef*>(&languageService.getType(resolvedClassName)))
+        if(classDef* cls = languageService.findClass(resolvedClassName))
             newObj.objectClass = cls;
         else if(!className.empty())
             parsingError(format("Unknown class '{0}' in object declaration", className));
@@ -2239,7 +2239,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
                 token aliasName = file.getToken({eTokenType::identifier, eTokenType::dataType});
                 file.getToken(token::assignment);
                 token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(rhs.value));
+                classDef* rhsCls = languageService.findClass(rhs.value);
                 if(!rhsCls)
                     parsingError(format("'auto' alias member '{0}': '{1}' is not a declared class",
                         (string)aliasName, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
@@ -2452,17 +2452,13 @@ bool bglParser::processObjectExtension(token nameTok){
     for(verbObjectDef* v : languageService.verbs)
         if(v->name == lower){ obj = v; vod = v; break; }
     if(!obj){
-        for(typeDef* g : languageService.globals)
-            if(auto* od = dynamic_cast<objectDef*>(g))
-                if(od->name == lower){ obj = od; break; }
+        if(auto* od = languageService.findGlobalAs<objectDef>(lower)) obj = od;
     }
     // Not a verb or object — a previously-declared array? Route to the declarative
     // build-time array editor (inject / remove / move).
     if(!obj){
-        for(typeDef* g : languageService.globals)
-            if(auto* arr = dynamic_cast<arrayDeclaration*>(g))
-                if(arr->name == lower)
-                    return processArrayExtension(arr);
+        if(auto* arr = languageService.findGlobalAs<arrayDeclaration>(lower))
+            return processArrayExtension(arr);
     }
     if(!obj)
         parsingError(format("extend '{0}': no previously declared object or array with that name",
@@ -2547,7 +2543,7 @@ bool bglParser::processObjectExtension(token nameTok){
                 token aliasName = file.getToken({eTokenType::identifier, eTokenType::dataType});
                 file.getToken(token::assignment);
                 token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(rhs.value));
+                classDef* rhsCls = languageService.findClass(rhs.value);
                 if(!rhsCls)
                     parsingError(format("'emitter auto' alias member '{0}': '{1}' is not a declared class "
                         "(use `alias {0} = {1};` for an object)",

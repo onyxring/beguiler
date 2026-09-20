@@ -1141,7 +1141,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
             {
                 token p1c = file.peekToken(1);
                 if(p1c.is(eTokenType::identifier) && file.peekToken(2).is(token::parenClose)
-                   && dynamic_cast<objectDef*>(&languageService.getType(p1c.value)) != nullptr){
+                   && languageService.findObjectType(p1c.value) != nullptr){
                     token p3c = file.peekToken(3);
                     bool operandFollows = p3c.is(eTokenType::identifier) || p3c.is(eTokenType::dataType)
                         || p3c.is(eTokenType::integer) || p3c.is(eTokenType::quote) || p3c.is(eTokenType::rawQuote)
@@ -1537,9 +1537,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     if(!isSelfCall && currentClass != nullptr){
                         // Check if name also exists as a global function — if so, defer to global resolution
                         bool isGlobalFunc = false;
-                        for(typeDef* g : languageService.globals)
-                            if(auto* fd = dynamic_cast<functionDef*>(g))
-                                if(fd->name == callName){ isGlobalFunc = true; break; }
+                        if(auto* fd = languageService.findGlobalAs<functionDef>(callName)) isGlobalFunc = true;
                         if(!isGlobalFunc){
                             function<bool(classDef*)> searchHierarchy = [&](classDef* c) -> bool {
                                 for(typeMember* m : c->members)
@@ -1865,7 +1863,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(classDef* rc = getDispatchClass(objType))
                             isRealMember = findMemberInHierarchy(rc, [&](typeMember* m){ return m->name == methName; }) != nullptr;
                         if(!isRealMember)
-                            if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(objType)))
+                            if(auto* od = languageService.findObjectType(objType))
                                 for(typeMember* m : od->members)
                                     if(m->name == methName){ isRealMember = true; break; }
                         if(!isRealMember && isPropertyValuedLocal(methName, func, body)){
@@ -2157,8 +2155,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // alias's target canonical name so `ui.statusBar.…` redirects exactly like
                         // fully-qualified `bgl.ui.statusBar.…`. Gated: a param/local of the same
                         // name still wins.
-                        if(dynamic_cast<classDef*>(&languageService.getType(cur.value)) == nullptr
-                           && dynamic_cast<objectDef*>(&languageService.getType(cur.value)) == nullptr){
+                        if(languageService.findClass(cur.value) == nullptr
+                           && languageService.findObjectType(cur.value) == nullptr){
                             bool shadowed = false;
                             if(func != nullptr) for(paramDef* p : func->params) if(p->name == cur.value){ shadowed = true; break; }
                             if(!shadowed && body != nullptr) for(statement* s : body->statements)
@@ -2170,12 +2168,12 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                             if(avd->name == cur.value){
                                                 string tgt = avd->declaredExpressionValue ? avd->declaredExpressionValue->text() : avd->type.name;
                                                 if(!tgt.empty()
-                                                   && (dynamic_cast<classDef*>(&languageService.getType(tgt)) != nullptr
-                                                       || dynamic_cast<objectDef*>(&languageService.getType(tgt)) != nullptr))
+                                                   && (languageService.findClass(tgt) != nullptr
+                                                       || languageService.findObjectType(tgt) != nullptr))
                                                     cur.value = tgt;
                                             }
                         }
-                        bool isEnum = dynamic_cast<enumDef*>(&languageService.getType(cur.value)) != nullptr;
+                        bool isEnum = languageService.findEnum(cur.value) != nullptr;
                         classDef* maybeCls = getDispatchClass(cur.value);
                         bool isStaticAccess = false;
                         if(maybeCls != nullptr){
@@ -2212,7 +2210,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(!isStaticAccess && maybeCls != nullptr)
                             isValueEmitterAccess = tryInlineValueEmitter(maybeCls->members);
                         if(!isStaticAccess && !isValueEmitterAccess){
-                            objectDef* maybeObj = dynamic_cast<objectDef*>(&languageService.getType(cur.value));
+                            objectDef* maybeObj = languageService.findObjectType(cur.value);
                             if(maybeObj != nullptr)
                                 isValueEmitterAccess = tryInlineValueEmitter(maybeObj->members);
                         }
@@ -2233,7 +2231,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         }
                         // Alias member on object instance: same redirect as the class case
                         if(!isStaticAccess && !isValueEmitterAccess && !isAliasMember){
-                            objectDef* instObj = dynamic_cast<objectDef*>(&languageService.getType(cur.value));
+                            objectDef* instObj = languageService.findObjectType(cur.value);
                             if(instObj != nullptr){
                                 for(typeMember* m : instObj->members)
                                     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -2254,7 +2252,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // object, OR whose declared type is an emitter class. Plain value-typed
                         // properties (int x; string s;) fall through to normal property handling.
                         if(!isStaticAccess && !isValueEmitterAccess && !isAliasMember){
-                            objectDef* instObj = dynamic_cast<objectDef*>(&languageService.getType(cur.value));
+                            objectDef* instObj = languageService.findObjectType(cur.value);
                             if(instObj != nullptr){
                                 for(typeMember* m : instObj->members)
                                     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -2272,9 +2270,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                                             string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
                                             objectDef* target = nullptr;
                                             if(!initName.empty())
-                                                for(typeDef* g : languageService.globals)
-                                                    if(auto* od = dynamic_cast<objectDef*>(g))
-                                                        if(od->name == initName){ target = od; break; }
+                                                if(auto* od = languageService.findGlobalAs<objectDef>(initName)) target = od;
                                             if(target){
                                                 cur.value = target->name;
                                                 cur.tokenType = eTokenType::identifier;
@@ -2303,7 +2299,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(isEnum){
                             if(expr->resolvedType.empty()) expr->resolvedType = cur.value;
                             // Inline the integer value (extern enums emit the name — I6 keyword).
-                            auto* ed = dynamic_cast<enumDef*>(&languageService.getType(cur.value));
+                            auto* ed = languageService.findEnum(cur.value);
                             if(ed && !ed->isExternal){
                                 int v = 0; bool found = false;
                                 for(enumValueDef* ev : ed->namedValues)
@@ -2457,7 +2453,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         if(term == "?"){ qIsTerminator = true; break; }
                 string varName = cur.value;
                 string varType = resolveIdentifierType(varName, func, body);
-                classDef* cls = !varType.empty() ? dynamic_cast<classDef*>(&languageService.getType(varType)) : nullptr;
+                classDef* cls = !varType.empty() ? languageService.findClass(varType) : nullptr;
                 functionDef* queryFn = nullptr;
                 if(cls != nullptr && !qIsTerminator)
                     queryFn = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [](typeMember* m){
@@ -2594,7 +2590,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         // ─── BINARY OPERATOR: emitter dispatch via applyBinaryOperator() ─
         else if(cur.is(eTokenType::oper)){
             if(!expr->resolvedType.empty()){
-                classDef* cls = dynamic_cast<classDef*>(&languageService.getType(expr->resolvedType));
+                classDef* cls = languageService.findClass(expr->resolvedType);
                 // Set expected type for the RHS so name resolution can disambiguate. Applies to
                 // both classDef and enumDef LHS — most binary operators take same-type RHS.
                 // The parseExpression-level RAII guard restores on exit; no manual restore here.
@@ -2603,7 +2599,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     string opName = cur.value;
                     // Peek at RHS
                     applyBinaryOperator(expr, opName, cls, terminators, parenDepth, getNext, prefetched, func, body);
-                } else if(auto* lhsEnum = dynamic_cast<enumDef*>(&languageService.getType(expr->resolvedType));
+                } else if(auto* lhsEnum = languageService.findEnum(expr->resolvedType);
                           lhsEnum && lhsEnum->isBnum && (cur.value == "|" || cur.value == "&" || cur.value == "^")){
                     // bnum bitwise composition: RHS must be a bnum sharing a common base, the
                     // same bnum, or int. Result type is the shared base (or LHS if same/child).
@@ -2630,7 +2626,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     else parsingError(format("Unexpected token '{0}' after bnum '{1}'", rhs.value, opName));
 
                     // Validate RHS and compute result type
-                    enumDef* rhsEnum = dynamic_cast<enumDef*>(&languageService.getType(rhsType));
+                    enumDef* rhsEnum = languageService.findEnum(rhsType);
                     string resultType = expr->resolvedType;
                     auto ancestorOrSelf = [](enumDef* a, enumDef* b) -> enumDef* {
                         // Return a common ancestor (including equality) of two bnums, else nullptr.
@@ -2713,7 +2709,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     // cast/chain reaches them just like direct `library.shelves` does. Then fall
                     // back to the class hierarchy for shared members.
                     typeMember* pm = nullptr;
-                    if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(expr->resolvedType)))
+                    if(auto* od = languageService.findObjectType(expr->resolvedType))
                         for(typeMember* m : od->members)
                             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                                 if(vd->name == member.value){ pm = m; break; }
@@ -3051,7 +3047,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                         // runtime value may still be -1 (unset). Fall back to the schema-declared
                         // default so #beguilerSettings.X at parse time resolves consistently with
                         // what the final ICL emission will use.
-                        classDef* schema = dynamic_cast<classDef*>(&languageService.getType("beguilerSettingstype"));
+                        classDef* schema = languageService.findClass("beguilerSettingstype");
                         if(schema){
                             for(typeMember* m : schema->members){
                                 auto* vd = dynamic_cast<variableDeclaration*>(m);

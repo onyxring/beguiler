@@ -599,7 +599,7 @@ void bglParser::recordObjectMemberInits(){
         for(variableDeclaration* vd : members){
             if(vd == nullptr || vd->isStatic || vd->isConst || vd->isExternal) continue;
             if(vd->isRefLocal) continue;                  // a ref member owns nothing to initialise
-            auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+            auto* cls = languageService.findClass(vd->type.name);
             if(cls == nullptr) continue;
             string path = basePath + "." + (vd->i6name.empty() ? vd->dName() : vd->i6name);
             functionDef* initFn = nullptr;
@@ -705,7 +705,7 @@ void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& clas
     if(funcDef.isExternal) return;
 
     for(paramDef* p : funcDef.params){
-        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(p->type.name));
+        classDef* cls = languageService.findClass(p->type.name);
         if(!cls) continue;
         if(!cls->isByVal) continue;  // class-level opt-in is the gate
 
@@ -1595,7 +1595,7 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
     // `extend <unionName> { … }` — attach members to a named union. It's an emitter class under
     // the hood, so route to the class-extend path (which appends members) rather than the object one.
     if(q.isExtend && !q.isExtern && (tok.is(eTokenType::identifier) || tok.isDataType()) && !tok.is(token::classDeclaration)){
-        auto* uc = dynamic_cast<classDef*>(&languageService.getType((string)tok));
+        auto* uc = languageService.findClass((string)tok);
         if(uc && uc->isUnion())
             return processClassDeclaration(tok, false, /*isExtend*/true, /*isEmitterClass*/true, false, tok);
     }

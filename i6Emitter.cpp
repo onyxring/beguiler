@@ -339,7 +339,7 @@ void i6Emitter::emitParamCopyIns(functionDef* fd, const string& indent){
     if(!fd) return;
     for(paramDef* p : fd->params){
         if(!p->isClassParamWithBacking) continue;
-        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(p->type.name));
+        classDef* cls = languageService.findClass(p->type.name);
         if(!cls) continue;
         functionDef* assignOp = nullptr;
         function<void(classDef*)> findOp = [&](classDef* c){
@@ -857,7 +857,7 @@ void i6Emitter::writeDebugBundle(const string& path){
         if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
             if(!vd->isExternal) continue;
             // Extern variables of object type — emit as object so debugger can expand
-            if(dynamic_cast<objectDef*>(&languageService.getType(vd->type.name)) != nullptr
+            if(languageService.findObjectType(vd->type.name) != nullptr
                || vd->type.name == "object")
                 f << vd->name << "\t" << vd->name << "\tobject\n";
             else
@@ -1154,9 +1154,7 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // the top — the no-Beguile-content fast path.)
     {
         sourceLocation bglInitSrc;
-        for(typeDef* g : languageService.globals)
-            if(auto* fd = dynamic_cast<functionDef*>(g))
-                if(fd->name == "bglinit"){ bglInitSrc = fd->src; break; }
+        if(auto* fd = languageService.findGlobalAs<functionDef>("bglinit")) bglInitSrc = fd->src;
         if(!bglInitSrc.file.empty() && bglInitSrc.line > 0)
             pushSourceMap(currentLine() + 1, bglInitSrc.file, bglInitSrc.line);
     }
@@ -1231,7 +1229,7 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
             if(dynamic_cast<arrayDeclaration*>(vd)) return nullptr;
             if(vd->type.name == "attribute" || vd->type.name == "attributelist") return nullptr;
             if(vd->type.name == "property") return nullptr;
-            auto* cd = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+            auto* cd = languageService.findClass(vd->type.name);
             if(!cd || cd->isEmitterClass || cd->isAlias || cd->isExternal) return nullptr;
             // Only user classes with stored members require class-before-instance ordering.
             for(typeMember* m : cd->members){
@@ -1863,7 +1861,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     if(body != nullptr){
         for(variableDeclaration* vd : locals){
             if(!vd->isClassLocalWithBacking) continue;
-            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+            classDef* cls = languageService.findClass(vd->type.name);
             if(!cls) continue;
             function<void(classDef*)> zeroFields = [&](classDef* c){
                 if(!c) return;
@@ -1936,7 +1934,7 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
         string name = spillName(arr->name);
         if(languageService.arrayInUse && !arr->isRaw){
             out << format("{0}{1} = _bglArrayLocalAlloc({2});\n", indent, name, count);
-            std::string dtor = findStaticDeinit(dynamic_cast<classDef*>(&languageService.getType(arr->elementType)));
+            std::string dtor = findStaticDeinit(languageService.findClass(arr->elementType));
             if(!dtor.empty())
                 fn->cleanups.push_back({arr->name, format("_bglArray.freeAll({0}, 0, {1});", name, dtor)});
             fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count + 3)});
@@ -2436,7 +2434,7 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
             string rt = seg.expr->resolvedType;
             string exprStr = exprText(seg.expr);
 
-            classDef* cls = dynamic_cast<classDef*>(&languageService.getType(rt));
+            classDef* cls = languageService.findClass(rt);
             if(cls != nullptr){
                 functionDef* printFn = nullptr;
                 std::function<void(classDef*)> findPrint = [&](classDef* c){
@@ -2562,7 +2560,7 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
         if(vd->type.name == "attributelist") continue;
         if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue;
         // Field type must be a real, statically-instantiable class
-        classDef* fieldCls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+        classDef* fieldCls = languageService.findClass(vd->type.name);
         if(!fieldCls || fieldCls->isEmitterClass || fieldCls->isAlias || fieldCls->isExternal) continue;
         // Skip if already on the instantiation path — same-class fields and any indirect cycles
         // are deliberately left at default (references owned elsewhere).
@@ -2800,7 +2798,7 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
     }
     if(emitAsObjectInstance){
         string typeName = varNode->type.name;
-        classDef* instCls = dynamic_cast<classDef*>(&languageService.getType(typeName));
+        classDef* instCls = languageService.findClass(typeName);
         if(instCls) typeName = instCls->i6Name();
         // Synthesize backing globals for class-typed fields so that operator= and
         // member-access on those fields write into a real instance, not object 0.
@@ -2929,7 +2927,7 @@ void i6Emitter::emitObject(objectDef* obj){
             // that the first bind throws away, and would make an unbound slot indistinguishable
             // from a bound one. Matches synthesizeFieldBackings, which already skips them.
             if(vd->isRefLocal) return;
-            auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+            auto* cls = languageService.findClass(vd->type.name);
             if(!cls || cls->name == "object" || cls->name == "_bglobject") return;
             if(inheritsObj(cls)) return;                            // world-tree reference, not owned
             // Bake a backing instance when the member needs one to be a live object: it has stored
@@ -3285,7 +3283,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
     auto ownedClass = [&](variableDeclaration* vd) -> classDef* {
         if(!vd || vd->isExternal || vd->isStatic || vd->name == "parent") return nullptr;
         if(vd->type.name.empty() || vd->declaredExpressionValue) return nullptr;
-        auto* cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+        auto* cls = languageService.findClass(vd->type.name);
         if(!cls || cls->name == "object" || cls->name == "_bglobject" || inheritsObj(cls)) return nullptr;
         for(typeMember* cm : cls->members){
             if(auto* cvd = dynamic_cast<variableDeclaration*>(cm))

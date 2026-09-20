@@ -121,7 +121,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
     // pass finds a populated enum and drains the body below — same two-pass shape as a fresh enum.
     enumDef* enumPtr;
     if(isExtend){
-        enumPtr = dynamic_cast<enumDef*>(&languageService.getType(name.value));
+        enumPtr = languageService.findEnum(name.value);
         if(enumPtr == nullptr)
             parsingError(format("extend enum '{0}': no previously declared enum with that name", (string)name));
         if(enumPtr->isBnum != isBnum)
@@ -141,7 +141,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
         token baseTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
         if(!isBnum)
             parsingError(format("enum '{0}': shared-base inheritance is only valid for bnum declarations", newEnum.dName()));
-        enumDef* base = dynamic_cast<enumDef*>(&languageService.getType(baseTok.value));
+        enumDef* base = languageService.findEnum(baseTok.value);
         if(!base || !base->isBnum)
             parsingError(format("bnum '{0}': base '{1}' is not a declared bnum", newEnum.dName(), baseTok.originalValue));
         newEnum.baseBnum = base;
@@ -460,7 +460,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // Extern Type name ; where Type is verb-derived → route to object declaration (verb instance)
     if(isExternal && symbol.is(token::endStatement)){
         bool verbDerived = false;
-        if(classDef* cls = dynamic_cast<classDef*>(&languageService.getType(dataType.value))){
+        if(classDef* cls = languageService.findClass(dataType.value)){
             function<bool(classDef*)> checkVerb = [&](classDef* c) -> bool {
                 if(!c) return false;
                 if(c->name == "verb") return true;
@@ -668,7 +668,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                 expectedElemType = dtStr.substr(6, dtStr.size() - 7);
             // Fallback: infer from the class's single-param method
             if(expectedElemType.empty()){
-                classDef* listClass = dynamic_cast<classDef*>(&languageService.getType(dtStr));
+                classDef* listClass = languageService.findClass(dtStr);
                 if(listClass != nullptr)
                     for(typeMember* m : listClass->members)
                         if(auto* fd = dynamic_cast<functionDef*>(m))
@@ -692,7 +692,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             rhs->resolvedType = "interpolatedstringliteral";
             varDecl.declaredExpressionValue = rhs;
             // Emitter lookup for operator=(interpolatedstringliteral)
-            classDef* classType=dynamic_cast<classDef*>(&languageService.getType((string)dataType));
+            classDef* classType=languageService.findClass((string)dataType);
             if(classType != nullptr){
                 functionDef* assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
                     auto* fn = dynamic_cast<functionDef*>(m);
@@ -721,7 +721,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             if(isAuto && rhs != nullptr && !rhs->resolvedType.empty()){
                 string inferredType = rhs->resolvedType;
                 // Check if the RHS type has operator auto() — use its return type instead
-                classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(inferredType));
+                classDef* rhsCls = languageService.findClass(inferredType);
                 if(rhsCls){
                     for(typeMember* m : rhsCls->members)
                         if(auto* fd = dynamic_cast<functionDef*>(m))
@@ -817,7 +817,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                             typeDisplayName((string)dataType)));
                     if(!found){
                         // Fallback: check if RHS type has emitter DeclaredType operator(){}
-                        classDef* rhsCls = dynamic_cast<classDef*>(&languageService.getType(valueTypeName));
+                        classDef* rhsCls = languageService.findClass(valueTypeName);
                         if(rhsCls != nullptr)
                             if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
                                 auto* opFn = dynamic_cast<functionDef*>(m);
@@ -861,7 +861,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // for plain classes without operator= — this synthesis covers the happy path where
     // operator= exists and the user expects per-local independent state.
     if(func != nullptr && body != nullptr && !isExternal && !isConst && !isRef){
-        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(varDecl.type.name));
+        classDef* cls = languageService.findClass(varDecl.type.name);
         if(cls && !cls->isEmitterClass && !cls->isAlias && !cls->isExternal
                  && classHasStoredFields(cls) && !isReferenceBacked(cls)){
             string backingName = "_bglLocal_" + func->name + "_" + varDecl.name;
@@ -889,7 +889,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // immediately overwrites (a leak), and running deinit would FREE THE REFERENT, handing
     // another owner's instance back to the pool for the next allocation to reuse.
     if(!isConst && body != nullptr && func != nullptr && !varDecl.isRefLocal){
-        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(varDecl.type.name));
+        classDef* cls = languageService.findClass(varDecl.type.name);
         if(cls != nullptr){
             for(typeMember* m : cls->members){
                 functionDef* fn = dynamic_cast<functionDef*>(m);
@@ -918,7 +918,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
 
     // Global scope: record init body in globalInits for bglInit
     if(!isConst && body == nullptr && func == nullptr){
-        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(varDecl.type.name));
+        classDef* cls = languageService.findClass(varDecl.type.name);
         if(cls != nullptr){
             for(typeMember* m : cls->members){
                 functionDef* fn = dynamic_cast<functionDef*>(m);
@@ -1188,7 +1188,7 @@ bool bglParser::processGrammarDeclaration(token nameOverride){
 
 bool bglParser::processGrammarObjectDeclaration(const string& grammarName){
     // Resolve grammarTable class for type inference
-    classDef* gtClass = dynamic_cast<classDef*>(&languageService.getType("grammarrulelist"));
+    classDef* gtClass = languageService.findClass("grammarrulelist");
 
     // Create a grammarRuleListDecl to hold all the rules
     grammarRuleListDecl& gtd = *(new grammarRuleListDecl());
@@ -1450,9 +1450,7 @@ grammarLine bglParser::parseGrammarLineContent(){
                 token routine = file.getToken({eTokenType::identifier, eTokenType::dataType});
                 file.getToken(")");  // consume ')'
                 functionDef* rfd = nullptr;
-                for(typeDef* g : languageService.globals)
-                    if(auto* fd = dynamic_cast<functionDef*>(g))
-                        if(fd->name == routine.value){ rfd = fd; break; }
+                if(auto* fd = languageService.findGlobalAs<functionDef>(routine.value)) rfd = fd;
                 if(!rfd)
                     parsingError(format("'{0}' in '{1}({0})' does not name a declared global function", routine.value, display));
                 if(rfd->returnType.name != "bool" && rfd->returnType.name != "ebool")

@@ -1227,8 +1227,7 @@ LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, const s
         out.declSrc = ed->src;
         return out;
     }
-    for(typeDef* g : languageService.globals) {
-        if(g->name != loweredName) continue;
+    if(typeDef* g = languageService.findGlobal(loweredName)) {
         out.kind = LspSymbolRef::Global;
         if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
             out.typeName = vd->type.name;
@@ -1345,7 +1344,7 @@ json LspServer::handleHover(const json& params) {
     // The block isn't a real AST node, so the regular resolver won't find these. Handle it here
     // so hover on property names (LHS of assignment inside the block) shows the declared type.
     if(ownerName.empty() && isInBeguilerSettingsBlock(uri, line, col)) {
-        classDef* schema = dynamic_cast<classDef*>(&languageService.getType("beguilersettingstype"));
+        classDef* schema = languageService.findClass("beguilersettingstype");
         if(schema) {
             for(typeMember* m : schema->members) {
                 if(m->name != lower) continue;
@@ -1359,7 +1358,7 @@ json LspServer::handleHover(const json& params) {
             if(typeInfo.empty()) {
                 string enumTypeName = languageService.getEnumType(lower);
                 if(!enumTypeName.empty()) {
-                    if(auto* ed = dynamic_cast<enumDef*>(&languageService.getType(enumTypeName))) {
+                    if(auto* ed = languageService.findEnum(enumTypeName)) {
                         for(enumValueDef* ev : ed->namedValues)
                             if(ev->name == lower) {
                                 typeInfo = (ed->displayName.empty() ? ed->name : ed->displayName) + " " +
@@ -1393,25 +1392,20 @@ json LspServer::handleHover(const json& params) {
             if(auto* cd = dynamic_cast<classDef*>(&td)) cls = cd;
         }
         if(!cls) {
-            for(typeDef* g : languageService.globals)
-                if(auto* od = dynamic_cast<objectDef*>(g))
-                    if(od->name == ownerLower) { cls = od->objectClass; break; }
+            if(auto* od = languageService.findGlobalAs<objectDef>(ownerLower)) cls = od->objectClass;
         }
         if(!cls) {
-            for(typeDef* g : languageService.globals)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                    if(vd->name == ownerLower) {
-                        typeDef& td = languageService.getType(vd->type.name);
-                        cls = dynamic_cast<classDef*>(&td);
-                        if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;
-                        break;
-                    }
+            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(ownerLower)) {
+                typeDef& td = languageService.getType(vd->type.name);
+                cls = dynamic_cast<classDef*>(&td);
+                if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;
+            }
         }
         // A bare enum VALUE receiver (e.g. `north.bump()`): resolve its enum, hover via the companion.
         if(!cls) {
             string et = languageService.getEnumType(ownerLower);
             if(!et.empty())
-                if(auto* e = dynamic_cast<enumDef*>(&languageService.getType(et))) cls = e->companion;
+                if(auto* e = languageService.findEnum(et)) cls = e->companion;
         }
 
         // Search class hierarchy for the member
@@ -1457,9 +1451,7 @@ json LspServer::handleHover(const json& params) {
                 // Multi-level: walk the chain
                 string head = ownerLower.substr(0, ownerDot);
                 string rest = ownerLower.substr(ownerDot + 1);
-                for(typeDef* g : languageService.globals)
-                    if(auto* od = dynamic_cast<objectDef*>(g))
-                        if(od->name == head){ nsObj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(head)) nsObj = od;
                 while(nsObj && !rest.empty()){
                     ownerDot = rest.find('.');
                     string seg = (ownerDot == string::npos) ? rest : rest.substr(0, ownerDot);
@@ -1471,13 +1463,9 @@ json LspServer::handleHover(const json& params) {
                         if(!vd || vd->name != seg) continue;
                         string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
                         if(!initName.empty())
-                            for(typeDef* g : languageService.globals)
-                                if(auto* od = dynamic_cast<objectDef*>(g))
-                                    if(od->name == initName){ next = od; break; }
+                            if(auto* od = languageService.findGlobalAs<objectDef>(initName)) next = od;
                         if(!next)
-                            for(typeDef* g : languageService.globals)
-                                if(auto* od = dynamic_cast<objectDef*>(g))
-                                    if(od->name == vd->type.name){ next = od; break; }
+                            if(auto* od = languageService.findGlobalAs<objectDef>(vd->type.name)) next = od;
                         // Alias may target a CLASS (e.g. `emitter auto asm = bglOpCodes`) — capture it.
                         if(!next)
                             for(string cand : { initName, vd->type.name }){
@@ -1493,9 +1481,7 @@ json LspServer::handleHover(const json& params) {
                 }
             } else {
                 // Single-level: direct object lookup
-                for(typeDef* g : languageService.globals)
-                    if(auto* od = dynamic_cast<objectDef*>(g))
-                        if(od->name == ownerLower){ nsObj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(ownerLower)) nsObj = od;
             }
             if(nsObj){
                 for(typeMember* m : nsObj->members){
@@ -1559,8 +1545,7 @@ json LspServer::handleHover(const json& params) {
                            (ed->displayName.empty() ? ed->name : ed->displayName);
                 if(ed->isExternal) typeInfo = "extern " + typeInfo;
             } else {
-                for(typeDef* g : languageService.globals) {
-                    if(g->name != lower) continue;
+                if(typeDef* g = languageService.findGlobal(lower)) {
                     if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
                         typeInfo = typeDisplay(vd->type.name) + " " +
                                    (vd->displayName.empty() ? vd->name : vd->displayName);
@@ -1578,7 +1563,6 @@ json LspServer::handleHover(const json& params) {
                         typeInfo = typeDisplay(od->objectClass ? od->objectClass->name : "object") + " " +
                                    (od->displayName.empty() ? od->name : od->displayName);
                     }
-                    break;
                 }
             }
         }
@@ -1596,7 +1580,7 @@ json LspServer::handleHover(const json& params) {
             if(!enumType.empty()) {
                 typeInfo = enumType + "." + word;
                 // Pull doc-comment from the specific value
-                if(auto* ed = dynamic_cast<enumDef*>(&languageService.getType(enumType)))
+                if(auto* ed = languageService.findEnum(enumType))
                     for(enumValueDef* ev : ed->namedValues)
                         if(ev->name == lower){ docComment = ev->docComment; break; }
             }
@@ -1662,9 +1646,7 @@ vector<objectDef*> LspServer::activeUsingNamespaces(const string& docText, int l
         string head = (dot == string::npos) ? path : path.substr(0, dot);
         string rest = (dot == string::npos) ? "" : path.substr(dot + 1);
         objectDef* curObj = nullptr;
-        for(typeDef* g : languageService.globals)
-            if(auto* od = dynamic_cast<objectDef*>(g))
-                if(od->name == head){ curObj = od; break; }
+        if(auto* od = languageService.findGlobalAs<objectDef>(head)) curObj = od;
         while(curObj && !rest.empty()){
             dot = rest.find('.');
             string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
@@ -1675,13 +1657,9 @@ vector<objectDef*> LspServer::activeUsingNamespaces(const string& docText, int l
                 if(!vd || vd->name != seg) continue;
                 string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
                 if(!initName.empty())
-                    for(typeDef* g : languageService.globals)
-                        if(auto* od = dynamic_cast<objectDef*>(g))
-                            if(od->name == initName){ next = od; break; }
+                    if(auto* od = languageService.findGlobalAs<objectDef>(initName)) next = od;
                 if(!next)
-                    for(typeDef* g : languageService.globals)
-                        if(auto* od = dynamic_cast<objectDef*>(g))
-                            if(od->name == vd->type.name){ next = od; break; }
+                    if(auto* od = languageService.findGlobalAs<objectDef>(vd->type.name)) next = od;
                 break;
             }
             curObj = next;
@@ -1711,19 +1689,15 @@ vector<paramDef*> LspServer::resolveCalleeParams(const string& uri, int line,
         classDef* cls = nullptr;
         LspSymbolRef ownerRef = resolveSymbol(uri, line, objLower);
         if(ownerRef.kind == LspSymbolRef::Local || ownerRef.kind == LspSymbolRef::Parameter)
-            cls = dynamic_cast<classDef*>(&languageService.getType(ownerRef.typeName));
+            cls = languageService.findClass(ownerRef.typeName);
         if(!cls) {
             typeDef& td = languageService.getType(objLower);
             if(auto* cd = dynamic_cast<classDef*>(&td)) cls = cd;
         }
         if(!cls)
-            for(typeDef* g : languageService.globals)
-                if(auto* od = dynamic_cast<objectDef*>(g))
-                    if(od->name == objLower) { cls = od->objectClass; break; }
+            if(auto* od = languageService.findGlobalAs<objectDef>(objLower)) cls = od->objectClass;
         if(!cls)
-            for(typeDef* g : languageService.globals)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                    if(vd->name == objLower) { cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name)); break; }
+            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(objLower)) cls = languageService.findClass(vd->type.name);
 
         function<void(classDef*)> findMethods = [&](classDef* c) {
             if(!c) return;
@@ -2292,25 +2266,20 @@ json LspServer::handleCompletion(const json& params) {
             if(!cls) ed = dynamic_cast<enumDef*>(&td);   // the enum TYPE name → list its values
         }
         if(!cls && !ed) {
-            for(typeDef* g : languageService.globals)
-                if(auto* od = dynamic_cast<objectDef*>(g))
-                    if(od->name == lower) { cls = od->objectClass; break; }
+            if(auto* od = languageService.findGlobalAs<objectDef>(lower)) cls = od->objectClass;
         }
         if(!cls && !ed) {
-            for(typeDef* g : languageService.globals)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                    if(vd->name == lower) {
-                        typeDef& td = languageService.getType(vd->type.name);
-                        cls = dynamic_cast<classDef*>(&td);
-                        if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;  // enum var → methods
-                        break;
-                    }
+            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(lower)) {
+                typeDef& td = languageService.getType(vd->type.name);
+                cls = dynamic_cast<classDef*>(&td);
+                if(!cls) if(auto* e = dynamic_cast<enumDef*>(&td)) cls = e->companion;  // enum var → methods
+            }
         }
         // A bare enum VALUE (e.g. `north.`) completes the enum's emitter methods via its companion.
         if(!cls && !ed) {
             string et = languageService.getEnumType(lower);
             if(!et.empty())
-                if(auto* e = dynamic_cast<enumDef*>(&languageService.getType(et))) cls = e->companion;
+                if(auto* e = languageService.findEnum(et)) cls = e->companion;
         }
 
         // Namespace object resolution: walk dotted path to find the target object
@@ -2322,9 +2291,7 @@ json LspServer::handleCompletion(const json& params) {
             if(dot != string::npos){
                 string head = lower.substr(0, dot);
                 string rest = lower.substr(dot + 1);
-                for(typeDef* g : languageService.globals)
-                    if(auto* od = dynamic_cast<objectDef*>(g))
-                        if(od->name == head){ nsObj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(head)) nsObj = od;
                 while(nsObj && !rest.empty()){
                     dot = rest.find('.');
                     string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
@@ -2336,13 +2303,9 @@ json LspServer::handleCompletion(const json& params) {
                         if(!vd || vd->name != seg) continue;
                         string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
                         if(!initName.empty())
-                            for(typeDef* g : languageService.globals)
-                                if(auto* od = dynamic_cast<objectDef*>(g))
-                                    if(od->name == initName){ next = od; break; }
+                            if(auto* od = languageService.findGlobalAs<objectDef>(initName)) next = od;
                         if(!next)
-                            for(typeDef* g : languageService.globals)
-                                if(auto* od = dynamic_cast<objectDef*>(g))
-                                    if(od->name == vd->type.name){ next = od; break; }
+                            if(auto* od = languageService.findGlobalAs<objectDef>(vd->type.name)) next = od;
                         // The alias may resolve to a CLASS rather than an object — e.g.
                         // `extend bgl { emitter auto asm = bglOpCodes; }`, where bglOpCodes is an
                         // emitter class. The object-only search above misses it, so completing
@@ -2362,9 +2325,7 @@ json LspServer::handleCompletion(const json& params) {
                 }
             } else {
                 // Single segment — check if it's a global object
-                for(typeDef* g : languageService.globals)
-                    if(auto* od = dynamic_cast<objectDef*>(g))
-                        if(od->name == lower){ nsObj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(lower)) nsObj = od;
             }
             if(nsObj){
                 // Show namespace object's members: alias types, auto aliases, methods, properties
@@ -2438,21 +2399,18 @@ json LspServer::handleCompletion(const json& params) {
         collectMembers(cls);
 
         // Also collect instance-specific members if the prefix is a global object.
-        for(typeDef* g : languageService.globals)
-            if(auto* od = dynamic_cast<objectDef*>(g))
-                if(od->name == lower) {
-                    for(typeMember* m : od->members) {
-                        if(auto* fd = dynamic_cast<functionDef*>(m)) {
-                            string label = fd->displayName.empty() ? fd->name : fd->displayName;
-                            if(!fd->isValueEmitter) label += "(...)";
-                            items.push_back({{"label", label}, {"kind", 2}, {"detail", fd->returnType.name}});
-                        } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
-                            string label = vd->displayName.empty() ? vd->name : vd->displayName;
-                            items.push_back({{"label", label}, {"kind", 6}, {"detail", vd->type.name}});
-                        }
-                    }
-                    break;
+        if(auto* od = languageService.findGlobalAs<objectDef>(lower)) {
+            for(typeMember* m : od->members) {
+                if(auto* fd = dynamic_cast<functionDef*>(m)) {
+                    string label = fd->displayName.empty() ? fd->name : fd->displayName;
+                    if(!fd->isValueEmitter) label += "(...)";
+                    items.push_back({{"label", label}, {"kind", 2}, {"detail", fd->returnType.name}});
+                } else if(auto* vd = dynamic_cast<variableDeclaration*>(m)) {
+                    string label = vd->displayName.empty() ? vd->name : vd->displayName;
+                    items.push_back({{"label", label}, {"kind", 6}, {"detail", vd->type.name}});
                 }
+            }
+        }
 
         return items;
     }
@@ -2779,7 +2737,7 @@ json LspServer::handleCompletion(const json& params) {
 
     // ── Phases 2 & 3: #beguilerSettings block ─────────────────────────────
     if(insideBsBlock) {
-        classDef* schema = dynamic_cast<classDef*>(&languageService.getType("beguilersettingstype"));
+        classDef* schema = languageService.findClass("beguilersettingstype");
         if(!schema) return json::array();  // type not registered (shouldn't happen)
 
         // Phase 2: enum RHS context — `property = |` resolves the property's type and offers
@@ -2809,7 +2767,7 @@ json LspServer::handleCompletion(const json& params) {
                 if(m->name == lowerProp)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(m)) { propType = vd->type.name; break; }
             if(propType.empty()) return json::array();
-            auto* ed = dynamic_cast<enumDef*>(&languageService.getType(propType));
+            auto* ed = languageService.findEnum(propType);
             if(!ed) return nullptr;  // primitive (string, int, bool) — let client fall back
             json items = json::array();
             for(enumValueDef* ev : ed->namedValues) {
@@ -2913,9 +2871,7 @@ json LspServer::handleCompletion(const json& params) {
                 string head = (dot == string::npos) ? path : path.substr(0, dot);
                 string rest = (dot == string::npos) ? "" : path.substr(dot + 1);
                 objectDef* curObj = nullptr;
-                for(typeDef* g : languageService.globals)
-                    if(auto* od = dynamic_cast<objectDef*>(g))
-                        if(od->name == head){ curObj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(head)) curObj = od;
                 while(curObj && !rest.empty()){
                     dot = rest.find('.');
                     string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
@@ -2926,13 +2882,9 @@ json LspServer::handleCompletion(const json& params) {
                         if(!vd || vd->name != seg) continue;
                         string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
                         if(!initName.empty())
-                            for(typeDef* g : languageService.globals)
-                                if(auto* od = dynamic_cast<objectDef*>(g))
-                                    if(od->name == initName){ next = od; break; }
+                            if(auto* od = languageService.findGlobalAs<objectDef>(initName)) next = od;
                         if(!next)
-                            for(typeDef* g : languageService.globals)
-                                if(auto* od = dynamic_cast<objectDef*>(g))
-                                    if(od->name == vd->type.name){ next = od; break; }
+                            if(auto* od = languageService.findGlobalAs<objectDef>(vd->type.name)) next = od;
                         break;
                     }
                     curObj = next;
@@ -2965,7 +2917,7 @@ json LspServer::handleCompletion(const json& params) {
                 }
                 // Fall back to class target (emitter class etc.)
                 if(path.find('.') == string::npos){
-                    if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(path))){
+                    if(auto* cls = languageService.findClass(path)){
                         for(typeMember* m : cls->members){
                             if(auto* fd = dynamic_cast<functionDef*>(m)){
                                 if(fd->isPrePassStub) continue;
@@ -3049,7 +3001,7 @@ json LspServer::handleDefinition(const json& params) {
         string ownerLower = ownerName;
         transform(ownerLower.begin(), ownerLower.end(), ownerLower.begin(), ::tolower);
         LspSymbolRef ownerRef = resolveSymbol(uri, line, ownerLower);
-        classDef* cls = dynamic_cast<classDef*>(&languageService.getType(ownerRef.typeName));
+        classDef* cls = languageService.findClass(ownerRef.typeName);
         if(!cls) {
             typeDef& td = languageService.getType(ownerLower);
             cls = dynamic_cast<classDef*>(&td);
@@ -3075,9 +3027,7 @@ json LspServer::handleDefinition(const json& params) {
             if(dot != string::npos){
                 string head = ownerLower.substr(0, dot);
                 string rest = ownerLower.substr(dot + 1);
-                for(typeDef* g : languageService.globals)
-                    if(auto* od = dynamic_cast<objectDef*>(g))
-                        if(od->name == head){ nsObj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(head)) nsObj = od;
                 while(nsObj && !rest.empty()){
                     dot = rest.find('.');
                     string seg = (dot == string::npos) ? rest : rest.substr(0, dot);
@@ -3089,13 +3039,9 @@ json LspServer::handleDefinition(const json& params) {
                         if(!vd || vd->name != seg) continue;
                         string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
                         if(!initName.empty())
-                            for(typeDef* g : languageService.globals)
-                                if(auto* od = dynamic_cast<objectDef*>(g))
-                                    if(od->name == initName){ next = od; break; }
+                            if(auto* od = languageService.findGlobalAs<objectDef>(initName)) next = od;
                         if(!next)
-                            for(typeDef* g : languageService.globals)
-                                if(auto* od = dynamic_cast<objectDef*>(g))
-                                    if(od->name == vd->type.name){ next = od; break; }
+                            if(auto* od = languageService.findGlobalAs<objectDef>(vd->type.name)) next = od;
                         // Alias may target a CLASS (e.g. `emitter auto asm = bglOpCodes`) — capture it.
                         if(!next)
                             for(string cand : { initName, vd->type.name }){
@@ -3110,9 +3056,7 @@ json LspServer::handleDefinition(const json& params) {
                     nsObj = next;
                 }
             } else {
-                for(typeDef* g : languageService.globals)
-                    if(auto* od = dynamic_cast<objectDef*>(g))
-                        if(od->name == ownerLower){ nsObj = od; break; }
+                if(auto* od = languageService.findGlobalAs<objectDef>(ownerLower)) nsObj = od;
             }
             if(nsObj){
                 for(typeMember* m : nsObj->members){
@@ -3122,7 +3066,7 @@ json LspServer::handleDefinition(const json& params) {
                         // (e.g. `class glulxWindow`) over the alias line itself. Fall back to the
                         // alias declaration if the target class has no source location.
                         if(vd->isAlias){
-                            if(auto* tc = dynamic_cast<classDef*>(&languageService.getType(vd->type.name)))
+                            if(auto* tc = languageService.findClass(vd->type.name))
                                 if(!tc->src.file.empty()){ src = tc->src; break; }
                         }
                         src = vd->src;
@@ -3436,23 +3380,17 @@ json LspServer::handleSignatureHelp(const json& params) {
         // Check enclosing function scope first (locals/parameters)
         LspSymbolRef ownerRef = resolveSymbol(uri, line, objLower);
         if(ownerRef.kind == LspSymbolRef::Local || ownerRef.kind == LspSymbolRef::Parameter)
-            cls = dynamic_cast<classDef*>(&languageService.getType(ownerRef.typeName));
+            cls = languageService.findClass(ownerRef.typeName);
         if(!cls) {
             typeDef& td = languageService.getType(objLower);
             if(auto* cd = dynamic_cast<classDef*>(&td)) cls = cd;
         }
         if(!cls) {
-            for(typeDef* g : languageService.globals)
-                if(auto* od = dynamic_cast<objectDef*>(g))
-                    if(od->name == objLower) { cls = od->objectClass; break; }
+            if(auto* od = languageService.findGlobalAs<objectDef>(objLower)) cls = od->objectClass;
         }
         if(!cls) {
-            for(typeDef* g : languageService.globals)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
-                    if(vd->name == objLower) {
-                        cls = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
-                        break;
-                    }
+            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(objLower))
+                cls = languageService.findClass(vd->type.name);
         }
 
         // Walk class hierarchy for matching methods
@@ -3767,14 +3705,11 @@ int LspServer::classifyWord(const string& word) const {
     if(!languageService.getEnumType(lower).empty()) return stEnumMember;
 
     // Check globals
-    for(typeDef* g : languageService.globals) {
-        if(g->name == lower) {
-            if(dynamic_cast<functionDef*>(g)) return stFunction;
-            if(dynamic_cast<objectDef*>(g)) return stVariable;
-            if(dynamic_cast<verbObjectDef*>(g)) return stVariable;
-            if(dynamic_cast<variableDeclaration*>(g)) return stVariable;
-            break;
-        }
+    if(typeDef* g = languageService.findGlobal(lower)) {
+        if(dynamic_cast<functionDef*>(g)) return stFunction;
+        if(dynamic_cast<objectDef*>(g)) return stVariable;
+        if(dynamic_cast<verbObjectDef*>(g)) return stVariable;
+        if(dynamic_cast<variableDeclaration*>(g)) return stVariable;
     }
 
     // Check verbs
@@ -3878,7 +3813,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
 
     // Collect beguilerSettingsType member names (lowercased) for property tokenization
     std::set<string> bsMemberNames;
-    if(auto* schema = dynamic_cast<classDef*>(&languageService.getType("beguilersettingstype")))
+    if(auto* schema = languageService.findClass("beguilersettingstype"))
         for(typeMember* m : schema->members) bsMemberNames.insert(m->name);
 
     // Pre-scan instance/class body ranges so bare identifiers inside them can be resolved as
@@ -4019,8 +3954,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
     std::map<string,std::pair<classDef*,objectDef*>> usingMemberType;
     {
         auto objByName = [&](const string& nm) -> objectDef* {
-            for(typeDef* g : languageService.globals)
-                if(auto* od = dynamic_cast<objectDef*>(g)) if(od->name == nm) return od;
+            if(auto* od = languageService.findGlobalAs<objectDef>(nm)) return od;
             for(typeDef* t : languageService.objectInstances)
                 if(auto* od = dynamic_cast<objectDef*>(t)) if(od->name == nm) return od;
             return nullptr;
@@ -4058,7 +3992,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
                 objectDef* target = initName.empty() ? nullptr : objByName(initName);
                 if(!target) target = objByName(vd->type.name);
                 if(target) usingMemberType[vd->name] = {target->objectClass, target};
-                else if(auto* cd = dynamic_cast<classDef*>(&languageService.getType(vd->type.name)))
+                else if(auto* cd = languageService.findClass(vd->type.name))
                     usingMemberType[vd->name] = {cd, nullptr};
             }
         };
@@ -4077,7 +4011,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
             if(objectDef* ns = walkObjectPath(path)) {
                 for(typeMember* m : ns->members) addMember(m);
             } else if(path.find('.') == string::npos) {
-                if(auto* cls = dynamic_cast<classDef*>(&languageService.getType(path)))
+                if(auto* cls = languageService.findClass(path))
                     for(typeMember* m : cls->members) addMember(m);
             }
         }
@@ -4116,7 +4050,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
                 return findInBlock(&tmp, member);
             }
             if(auto* vd = dynamic_cast<variableDeclaration*>(g)) {
-                auto* cd = dynamic_cast<classDef*>(&languageService.getType(vd->type.name));
+                auto* cd = languageService.findClass(vd->type.name);
                 if(cd) { InstanceBlockRange tmp{0,0,cd,nullptr}; return findInBlock(&tmp, member); }
             }
         }
