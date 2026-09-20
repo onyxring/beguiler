@@ -284,6 +284,38 @@ class bglParser {
 
         // Parser handler methods — called from grammar handlers and processNextStatement.
         bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool isByVal=false, bool allowNested=false, bool isSuperposed=false);
+        // --- processClassDeclaration / processObjectDeclaration / processObjectExtension helpers ---
+        // Parse the optional `<T, ...>` type-parameter clause of a class declaration; no-op if absent.
+        void parseClassTypeParameters(classDef& newClass, token nameTok, bool isExtend, bool isAlias);
+        // Parse the optional pool-size clause (`[N]`, or the extern marker `[]`). Always consumes one
+        // token first; leaves `tok` on the token following the clause.
+        void parseClassPoolSize(classDef& newClass, token& tok, token nameTok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias);
+        // Parse the inheritance clause (`for Parent` on an alias class, `: Base, ...` otherwise),
+        // rejecting cycles; leaves `tok` on the token following the clause.
+        void parseClassInheritance(classDef& newClass, token& tok, token nameTok, bool isAlias);
+        // Decode an `operator ...` member name into `name`; leaves `tok` on the symbol that follows it.
+        void parseOperatorMemberName(token& tok, token& name);
+        // Parse one method member of a class body (`tok` is its '('); true = member fully handled.
+        bool parseClassMethodMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExternal, bool isExtend);
+        // Parse one variable/alias member of a class body (`tok` is its '=' or ';'); true = handled.
+        bool parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend);
+        // Parse one member of a class body; on return `tok` is the next member's first token (or '}').
+        void parseClassMember(classDef& newClass, token& tok, bool isExternal, bool isExtend);
+        // Parse one member of an `extern object` body; on return `tok` is the next member's first token.
+        void parseExternObjectMember(objectDef& newObj, token& tok);
+        // Parse the whole body of an `extern object` / `extern verb` declaration.
+        void parseExternObjectBody(objectDef& newObj, verbObjectDef* vod);
+        // Parse one member of an object body; on return `tok` is the next member's first token (or '}').
+        void parseObjectMember(objectDef& newObj, token& tok);
+        // Parse one member of an `extend <object>` body; the last three arguments are the block-local
+        // verb-grammar state. On return `tok` is the next member's first token (or '}').
+        void parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok, token nameTok, bool isExternalObj, int& extendBlockPriority, int verbPriorityDefault, bool& extendHadReplaceGrammar);
+        // `grammar += { ... }` in an extend body: append the parsed lines to the object and the verb.
+        void extendGrammarRuleListAppend(objectDef& obj, const string& memberNameStr, verbObjectDef* vod, int blockPriority);
+        // `grammar -= { ... }` in an extend body: remove matching lines (or evict a whole extern word).
+        void extendGrammarRuleListRemove(objectDef& obj, const string& memberNameStr, verbObjectDef* vod, bool isExternalObj);
+        // `array<T> += / -= { ... }` in an extend body: edit the array member's baked initializer list.
+        void extendArrayCompoundAssignment(objectDef& obj, const string& memberNameStr, const string& op);
         // Parse a `hide <name>[.operator <op>][(operandTypes)];` directive inside a class body / extend
         // class, appending it to `cls.hiddenMembers`. 'hide' is the current token (still unconsumed).
         void parseHideDirective(classDef& cls);

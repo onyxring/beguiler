@@ -113,6 +113,697 @@ void bglParser::enforceHidden(classDef* receiverCls, const string& memberName,
 // ===============================================================================
 // Top-level: processClassDeclaration
 // ===============================================================================
+// Parse the optional `<T, …>` type-parameter clause of a class declaration, recording each
+// parameter on `newClass`; a no-op when the next token is not '<'.
+void bglParser::parseClassTypeParameters(classDef& newClass, token nameTok, bool isExtend, bool isAlias){
+    // Type parameter clause (optional, before pool/inheritance):
+    //   `class Foo<T> { … }` — declares T as a type parameter scoped to the class body.
+    //   Parameters are stored on the classDef but NOT registered globally — collisions
+    //   with same-named instances (e.g. `Temperature t;`) would otherwise occur. Member
+    //   signatures parse T as an identifier-typed token; substitution at method-lookup
+    //   time replaces T with the use-site binding before any type query runs.
+    //   Skipped on `extend class Foo<…>` — type parameters are part of the original decl.
+    if(file.peekToken().is("<")){
+        if(isExtend) parsingError(format("extend class '{0}': type parameters cannot be added by extend — they are part of the original declaration", (string)nameTok));
+        if(isAlias)  parsingError(format("alias class '{0}': type parameters are not supported on alias classes", (string)nameTok));
+        file.getToken(); // consume '<'
+        while(true){
+            token paramTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            // Don't double-add when claiming a pre-pass stub that already populated this list.
+            bool already = false;
+            for(const string& tp : newClass.typeParameters) if(tp == paramTok.value){ already = true; break; }
+            if(!already) newClass.typeParameters.push_back(paramTok.value);
+            token sep = file.getToken({token::comma, ">"});
+            if(sep.value == ">") break;
+        }
+    }
+}
+
+// Parse the optional pool-size clause (`[N]` or the extern marker `[]`). Always consumes the
+// token after the class name/type parameters; leaves `tok` on the token that follows the clause.
+void bglParser::parseClassPoolSize(classDef& newClass, token& tok, token nameTok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias){
+    // Pool size clause (optional, before any inheritance):
+    //   `class Foo[N]`              — sized pool, N statically-allocated instances (emit `Class Foo(N)`)
+    //   `extern class Foo[]`        — marker: I6-pooled type, size opaque to Beguile
+    //   `class Foo[N]` on emitter/alias — error (no I6 backing / type aliasing)
+    //   `extern class Foo[N]`       — error (size belongs to I6)
+    //   `extend class Foo[...]`     — error (pool size is part of original declaration)
+    tok = file.getToken();
+    if(tok.is(token::bracketOpen)){
+        token inner = file.getToken();
+        if(inner.is(token::bracketClose)){
+            // `[]` empty marker form
+            if(!isExternal)
+                parsingError(format("class '{0}': empty pool brackets '[]' are only valid on `extern class` (marker for an I6-defined pooled type)", (string)nameTok));
+            if(isExtend)
+                parsingError(format("extend class '{0}': pool brackets cannot be added by extend — pool status is part of the original declaration", (string)nameTok));
+            newClass.poolSize = -1; // extern marker
+        } else if(inner.is(eTokenType::integer) || inner.is(eTokenType::identifier)){
+            // `[N]` sized form — N may be an integer literal or an identifier referring to a
+            // `Default`/`Constant`-declared I6 constant. For identifiers, the Beguile parser
+            // can't resolve the numeric value (I6 owns the constant table), so we capture the
+            // identifier verbatim and let the I6 link step substitute. The numeric poolSize
+            // field is set to a positive sentinel so all "is this pooled?" checks downstream
+            // continue to work.
+            if(isExternal)
+                parsingError(format("extern class '{0}': pool size cannot be specified — extern declarations describe I6-defined types, and the I6 declaration owns the pool size. Use 'extern class {0}[]' as a marker that the type is pooled, or omit the brackets.", (string)nameTok));
+            if(isExtend)
+                parsingError(format("extend class '{0}': pool size cannot be modified — pool size is part of the original declaration's contract", (string)nameTok));
+            if(isEmitterClass)
+                parsingError(format("emitter class '{0}': pool size is not valid (emitter classes have no I6 backing for instances)", (string)nameTok));
+            if(isAlias)
+                parsingError(format("alias class '{0}': pool size is not valid (alias classes dissolve to another type)", (string)nameTok));
+            if(inner.is(eTokenType::integer)){
+                int n = stoi(inner.value);
+                if(n <= 0)
+                    parsingError(format("class '{0}': pool size must be a positive integer (got {1})", (string)nameTok, n));
+                newClass.poolSize = n;
+            } else {
+                newClass.poolSize    = 1;  // positive sentinel — "is pooled" downstream checks
+                newClass.poolSizeExpr = inner.value;
+            }
+            file.getToken(token::bracketClose);
+        } else {
+            parsingError(format("class '{0}': expected integer, identifier, or ']' after '[' in pool clause, got '{1}'", (string)nameTok, (string)inner));
+        }
+        tok = file.getToken();
+    }
+}
+
+// Parse the inheritance clause (`for Parent` on an alias class, `: Base, …` otherwise), rejecting
+// cycles, and leave `tok` on the token that follows it.
+void bglParser::parseClassInheritance(classDef& newClass, token& tok, token nameTok, bool isAlias){
+    // Inheritance clause:
+    //   alias class requires 'for Parent'
+    //   other classes use optional ': Parent [, Parent2 ...]'
+    if(isAlias && !tok.is("for"))
+        parsingError(format("'alias {0}' requires a parent class: use 'alias {0} for ParentClass'", (string)nameTok));
+    // Detect circular inheritance: walking `parent`'s ancestry must not reach newClass.
+    auto checkInheritanceCycle = [&](classDef* parent, const string& parentDisplay){
+        function<bool(classDef*, set<classDef*>&)> reachesSelf = [&](classDef* c, set<classDef*>& visited) -> bool {
+            if(!c || !visited.insert(c).second) return false;
+            if(c == &newClass) return true;
+            for(classDef* b : c->baseClasses) if(reachesSelf(b, visited)) return true;
+            return false;
+        };
+        set<classDef*> visited;
+        if(reachesSelf(parent, visited))
+            parsingError(format("class '{0}': circular inheritance — '{1}' transitively inherits from '{0}'",
+                                newClass.dName(), parentDisplay));
+    };
+    if(tok.is("for")){
+        // alias class single-parent clause
+        token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
+        classDef* parent = languageService.findClass(parentTok.value);
+        if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
+        else { checkInheritanceCycle(parent, parentTok.originalValue); newClass.baseClasses.push_back(parent); }
+        tok = file.getToken();
+    } else if(tok.is(":")){
+        do {
+            token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
+            classDef* parent = languageService.findClass(parentTok.value);
+            if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
+            else { checkInheritanceCycle(parent, parentTok.originalValue); newClass.baseClasses.push_back(parent); }
+            tok = file.getToken();
+        } while(tok.is(","));
+    }
+}
+
+// Decode an `operator …` member name into `name` (the already-consumed `operator` token) and
+// leave `tok` on the symbol that follows it — '(' for a method, ';' for the bodiless forms.
+void bglParser::parseOperatorMemberName(token& tok, token& name){
+    token opTok = file.getToken();
+    if(opTok.is(token::parenOpen)){
+        // conversion operator: emitter <type> operator()
+        name.value = "operator()";
+        tok = opTok; // the ( is already consumed; reuse it
+    } else if(opTok.is(token::bracketOpen)){
+        // subscript operator: operator[] (read) or operator[]= (write)
+        file.getToken(token::bracketClose);
+        token maybeAssign = file.getToken();
+        if(maybeAssign.is(token::assignment)){
+            name.value = "[]=";
+            tok = file.getToken(eTokenType::symbol);
+        } else {
+            name.value = "[]";
+            tok = maybeAssign;  // already consumed the next symbol
+        }
+    } else if(opTok.is("switch")){
+        // switch comparison operator: operator switch(type v)
+        name.value = "switch";
+        tok = file.getToken(eTokenType::symbol);
+    } else if(opTok.is("auto")){
+        // auto inference operator: operator auto() — return type only, no body
+        name.value = "auto";
+        tok = file.getToken(eTokenType::symbol);  // should be ( or ;
+    } else if(opTok.is(eTokenType::identifier)){
+        // qualified operator: e.g. "prefix++" — read qualifier then oper symbol
+        token opSym = file.getToken(eTokenType::oper);
+        name.value = opTok.value + opSym.value;  // e.g. "prefix++"
+        tok = file.getToken(eTokenType::symbol);
+    } else if(opTok.is("?")){
+        // unary query operator: operator ?()
+        name.value = "?";
+        tok = file.getToken(eTokenType::symbol);
+    } else {
+        // Validate the operator symbol against the overloadable set (spec §5.6.6).
+        // This also rejects valid operator tokens that are NOT overloadable
+        // (e.g. `?.`, `??`, `=>`), which asserting `oper` alone would let through.
+        static const string overloadableOps =
+            " = + - * / % == != =~ < > <= >= ?= && || & | ^ << >> "
+            "+= -= *= /= %= &= |= ^= <<= >>= ++ -- ! <=> ";
+        if(overloadableOps.find(" " + opTok.value + " ") == string::npos)
+            parsingError(format("'{0}' is not an overloadable operator. Overloadable operators are:"
+                "{1}and the special forms operator(), operator[], operator[]=, operator switch, "
+                "operator auto, and the ? query operator.", opTok.value, overloadableOps));
+        name = opTok;
+        tok=file.getToken(eTokenType::symbol);
+    }
+}
+
+// Parse one method member of a class body; `tok` is the '(' opening its parameter list.
+// Returns true when the member is fully handled and the member loop should move to the next.
+bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExternal, bool isExtend){
+    bool isReplace = q.isReplace;
+    bool isExplicitConversion = q.isExplicit;
+    bool isMemberStatic = q.isStatic;
+    bool isMemberSuperposed = q.isSuperposed;
+    functionDef& funcDef=*(new functionDef());
+    funcDef.name=(string) name; funcDef.displayName=name.originalValue;
+    funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
+    funcDef.returnType=languageService.getType((string) returnType);
+    funcDef.isEmitter=isEmitter;
+    funcDef.isExplicit=isExplicitConversion;
+    funcDef.isDefault=q.isDefault;
+    if(!returnType.docComment.empty())   funcDef.docComment = returnType.docComment;
+    else if(!name.docComment.empty())    funcDef.docComment = name.docComment;
+    // Non-emitter operator methods (name starts with a non-identifier char, e.g. `=`,
+    // `==`) need a mangled i6name so the emitted I6 property has a valid identifier.
+    // The free-function path does this at declaration (bglParserDecls.cpp); mirror it
+    // here so class operators are mangled at parse time too. This upholds the invariant
+    // documented at mangleOverloadSet() (bglParser.cpp) — that operator overloads carry
+    // an i6name by parse time — instead of relying solely on lazy call-site mangling,
+    // which leaves a declared-but-never-called operator emitting a bare `=` as its I6
+    // property name (invalid I6).
+    if(!isEmitter && !funcDef.name.empty()
+       && (funcDef.name == "operator()"
+           || (!isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')))
+        funcDef.i6name = mangleOperatorName(funcDef.name);
+    if(isExplicitConversion && funcDef.name != "operator()")
+        parsingError("'explicit' is only valid on conversion operators (operator())");
+    processParameterList(funcDef);
+    // Synthesize per-(class, method, param) backing globals for byVal-class params.
+    // Same machinery as the top-level call from processRoutineDeclaration; pass the
+    // enclosing class name as context so backings on same-named methods across
+    // classes don't collide.
+    synthesizeParamBackings(funcDef, newClass.dName());
+    // operator auto: no params, no body, max one per class
+    if(funcDef.name == "auto"){
+        if(!funcDef.params.empty())
+            parsingError("operator auto() cannot have parameters");
+        // Check for duplicate (ignore pre-pass stubs, which the full pass replaces)
+        for(typeMember* m : newClass.members)
+            if(auto* fd = dynamic_cast<functionDef*>(m))
+                if(fd->name == "auto" && !fd->isPrePassStub)
+                    parsingError(format("class '{0}' already has an operator auto()", newClass.dName()));
+        // Must be followed by ; (no body)
+        token afterAuto = file.getToken();
+        if(!afterAuto.is(token::endStatement))
+            parsingError("operator auto() cannot have a body — declare return type only");
+        newClass.members.push_back(&funcDef);
+        tok = file.getToken();
+        return true;
+    }
+    if(isEmitter && !funcDef.params.empty() && (funcDef.name == "init" || funcDef.name == "deinit"))
+        parsingError(format("Emitter '{0}' cannot accept parameters", funcDef.name));
+    if(isMemberStatic && q.isEmitter)
+        parsingError(format("'{0}': 'static' and 'emitter' cannot be combined — an emitter inlines at the call site and has no routine to make static", funcDef.name));
+    if(!isEmitter && (funcDef.name == "switch" || funcDef.name == "?"))
+        parsingError(format("operator {0}() must be declared as an emitter", funcDef.name));
+    // init/deinit are receiver lifecycle hooks and must inline — except a `static`
+    // deinit, which is the value form: it takes the element as a parameter and emits
+    // as a free routine, so generic code (array<T>) can hold its address and destroy
+    // a slot it has no receiver for. Same instance/static split as `operator ==`.
+    if(!isEmitter && !isMemberStatic && (funcDef.name == "init" || funcDef.name == "deinit"))
+        parsingError(format("'{0}' must be declared as an emitter", funcDef.name));
+    if(isMemberStatic && funcDef.name == "init")
+        parsingError("'init' cannot be 'static' — construction needs the receiver it is initialising");
+    if(isMemberStatic && funcDef.name == "deinit" && funcDef.params.size() != 1)
+        parsingError("a 'static deinit' takes exactly one parameter: the value to destroy");
+    funcDef.isStatic = isMemberStatic;
+    // Carry `superposed` onto the method. Only a STATIC method (emitted as a free routine
+    // via emitStaticClassRoutines→emitFunction) can honor it — the withhold/revive path
+    // lives in emitFunction. An instance method emits as a property routine on the class
+    // object and cannot be withheld/revived, so `superposed` there is inert. It's harmless
+    // (a no-op), so warn rather than error: the method still works, it just won't drop.
+    if(isMemberSuperposed && !isMemberStatic)
+        parsingWarning(format("'superposed' on method '{0}' has no effect without 'static'. "
+                              "An instance method emits as a property routine, which can't be "
+                              "withheld and revived on demand; write 'static superposed' (a "
+                              "free routine) for pay-only-if-used, or drop 'superposed'.", funcDef.name));
+    funcDef.isSuperposed = isMemberSuperposed;
+    if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter && !funcDef.isStatic){
+        // extern/alias class non-emitter INSTANCE methods not allowed: they would need to
+        // emit a property routine on a class Beguile does not own. A `static` method has no
+        // receiver, so it emits as a free routine and carries no such requirement — which is
+        // how a bare-word type (string, float) publishes a callable comparison.
+        parsingError(format("Non-emitter function '{0}' is not allowed in an extern or alias class "
+                            "(a 'static' method is allowed — it needs no instance)", funcDef.name));
+    } else if(funcDef.isEmitter && file.peekToken().is(token::endStatement)){
+        // Semicolon-terminated emitter: pass-through (value unchanged)
+        file.getToken(); // consume ';'
+        i6Block& rawblock=*(new i6Block());
+        rawblock.i6Body=" $self";
+        funcDef.body=&rawblock;
+    } else {
+        file.getToken(token::braceOpen); //consume the open brace;
+        if(funcDef.isEmitter){
+            i6Block& rawblock=*(new i6Block());
+            rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+            funcDef.body=&rawblock;
+        } else {
+            funcDef.body = new statementBlock();
+            functionDef* savedFunc = currentFunc;
+            currentFunc = &funcDef;
+            openCompileContext(eCompileContext::codeBlock, dynamic_cast<statementBlock*>(funcDef.body));
+            while(processNextStatement(funcDef) == false){}
+            closeCompileContext(eCompileContext::codeBlock);
+            currentFunc = savedFunc;
+            if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
+                parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
+        }
+    }
+    if(isExtend){
+        // find an existing member with the same name and parameter signature
+        // Pre-scan stubs match by name only (they have no params)
+        typeMember* existing = nullptr;
+        bool alreadyReplaced = false;
+        for(typeMember* m : newClass.members){
+            functionDef* fd = dynamic_cast<functionDef*>(m);
+            if(!fd || fd->name != funcDef.name) continue;
+            if(fd->isPrePassStub){ existing = m; break; }
+            if(fd->params.size() == funcDef.params.size()){
+                bool match = true;
+                for(size_t i=0; i<funcDef.params.size(); i++){
+                    if(fd->params[i]->type.name != funcDef.params[i]->type.name){ match=false; break; }
+                }
+                // operator(), operator[], and operator[]= can have multiple overloads with
+                // different return types; mirror the rule from the primary-class path so
+                // extend blocks can add conversion operators alongside existing ones.
+                if(match && fd->returnType.name != funcDef.returnType.name &&
+                       (funcDef.name == "operator()" || funcDef.name == "[]" || funcDef.name == "[]="))
+                    match = false;
+                if(match){ existing = m; break; }
+            }
+        }
+        // If the existing member is a pre-scan stub, replace it silently
+        if(existing){
+            auto* existFd = dynamic_cast<functionDef*>(existing);
+            if(existFd && existFd->isPrePassStub){
+                for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
+                    if(*it==existing){ *it = &funcDef; break; }
+                alreadyReplaced = true;
+            }
+        }
+        if(existing && !alreadyReplaced && !isReplace)
+            parsingError(format("extend class '{0}': member '{1}' is already defined; use 'replace' to override", newClass.dName(), funcDef.dName()));
+        if(!existing && isReplace)
+            parsingWarning(format("extend class '{0}': 'replace' specified but no existing member '{1}' found; treating as new definition", newClass.dName(), funcDef.dName()));
+        if(existing && !alreadyReplaced){
+            for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
+                if(*it==existing){ *it = &funcDef; break; }
+            alreadyReplaced = true;
+        }
+        if(alreadyReplaced){ tok = file.getToken(); return true; }
+    }
+    if(funcDef.isEmitter && funcDef.name == "_bglglobaldeclaration"){
+        // declaration emitter — store raw body on the class, not as a member
+        i6Block* body = dynamic_cast<i6Block*>(funcDef.body);
+        if(body) newClass.globalDeclarationBody = body->i6Body;
+    } else {
+        if(!isExtend){
+            // Silently replace pre-scan stubs (may have been seeded by an 'extend class' that
+            // appears later in the file — pre-scan pushes stubs into this class's member list).
+            if(replaceStubMember(newClass.members, funcDef)) { tok = file.getToken(); return true; }
+            bool replacedExisting = false;
+            for(size_t i = 0; i < newClass.members.size(); i++){
+                functionDef* fd = dynamic_cast<functionDef*>(newClass.members[i]);
+                if(fd && fd->name == funcDef.name && fd->params.size() == funcDef.params.size()){
+                    bool match = true;
+                    for(size_t j=0; j<funcDef.params.size(); j++)
+                        if(fd->params[j]->type.name != funcDef.params[j]->type.name){ match=false; break; }
+                    // operator(), operator[], and operator[]= can have multiple overloads with
+                    // different return types. operator() uses them for conversion operators;
+                    // operator[] / operator[]= use them for element-type-aware array subscripts
+                    // so the library can declare one overload per supported element type.
+                    if(match && fd->returnType.name != funcDef.returnType.name &&
+                           (funcDef.name == "operator()" || funcDef.name == "[]" || funcDef.name == "[]="))
+                        match = false;
+                    if(match){
+                        if(isReplace){
+                            newClass.members[i] = &funcDef;
+                            replacedExisting = true;
+                            break;
+                        }
+                        parsingError(format("class '{0}': method '{1}' with the same signature is already defined (originally at {2}:{3}); use 'replace' to override",
+                            newClass.dName(), funcDef.dName(), fd->src.file, fd->src.line));
+                    }
+                }
+            }
+            if(replacedExisting) { tok = file.getToken(); return true; }
+            // Check base class hierarchy for shadowed methods — warn if 'replace' not specified.
+            // A "shadow" requires matching signature (arity + param types). Same name but
+            // different arity or param types is an overload, not a shadow — no warning.
+            if(!isReplace && !funcDef.name.empty()){
+                string shadowedFrom;
+                bool shadowedIsDefault = false;
+                auto sigMatches = [&](functionDef* fd){
+                    if(fd->params.size() != funcDef.params.size()) return false;
+                    for(size_t j = 0; j < funcDef.params.size(); j++)
+                        if(fd->params[j]->type.name != funcDef.params[j]->type.name) return false;
+                    return true;
+                };
+                function<void(classDef*)> searchBases = [&](classDef* c){
+                    if(!shadowedFrom.empty()) return;
+                    for(typeMember* m : c->members)
+                        if(auto* fd = dynamic_cast<functionDef*>(m))
+                            if(fd->name == funcDef.name && sigMatches(fd)){
+                                shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault; return;
+                            }
+                    for(classDef* base : c->baseClasses) searchBases(base);
+                };
+                for(classDef* base : newClass.baseClasses) searchBases(base);
+                if(!shadowedFrom.empty() && !shadowedIsDefault)
+                    parsingWarning(format("class '{0}': method '{1}' shadows definition in base class '{2}'; use 'replace' to suppress this warning",
+                        newClass.dName(), funcDef.dName(), shadowedFrom));
+            }
+        }
+        newClass.members.push_back(&funcDef);
+    }
+    return false;
+}
+
+// Parse one variable (or emitter-class alias) member of a class body; `tok` is the '=' or ';'
+// following the member name. Returns true when the member is fully handled.
+bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend){
+    bool isReplace = q.isReplace;
+    bool isMemberConst = q.isConst;
+    bool isMemberStatic = q.isStatic;
+    // Emitter class: allow alias members (typed reference to another class) but not variable declarations
+    if(isEmitter || newClass.isEmitterClass){
+        string aliasTypeName = (string)returnType;
+        // auto inference: require = classReference to infer type
+        if(aliasTypeName == "auto"){
+            if(!tok.is(token::assignment))
+                parsingError(format("'auto' alias member '{0}' requires an initializer to infer the type", (string)name));
+            token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            classDef* rhsCls = languageService.findClass(rhs.value);
+            if(!rhsCls)
+                parsingError(format("'auto' alias member '{0}': '{1}' is not a declared class",
+                    (string)name, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
+            aliasTypeName = rhs.value;
+            tok = file.getToken();  // consume ;
+        }
+        classDef* aliasCls = languageService.findClass(aliasTypeName);
+        if(!aliasCls)
+            parsingError(format("Emitter class '{0}' only supports emitter functions, emitter values, and class alias members; '{1}' is not a class",
+                newClass.dName(), aliasTypeName));
+        // Alias member: register as a variableDeclaration with the class type
+        // No I6 backing — resolved at compile time for dot-access
+        variableDeclaration& aliasDef = *(new variableDeclaration());
+        aliasDef.name = (string)name;
+        aliasDef.type = languageService.getType(aliasTypeName);
+        aliasDef.isExternal = true;  // no I6 emission
+        if(tok.is(token::assignment) && aliasTypeName != "auto")
+            parsingError(format("Alias member '{0}' on emitter class cannot have an initializer; use 'auto' to infer type", (string)name));
+        // Consume ; if present
+        if(tok.isNot(token::endStatement))
+            parsingError(format("Expected ';' after alias member '{0}'", (string)name));
+        newClass.members.push_back(&aliasDef);
+        tok = file.getToken();
+        return true;
+    }
+    if(tok.isNot(token::endStatement) && tok.isNot(token::assignment))
+        parsingError(format("Expected '=' or ';' after member '{0}'", (string)name));
+    // Note: alias-class members may carry a default value (e.g. `int priority = 10;` on
+    // `class verb`). The value is a compile-time default consulted by the emitter when
+    // lifting the field from an instance body; it is not emitted as an I6 property.
+    variableDeclaration& varDef=*(new variableDeclaration());
+    varDef.name=(string) name;
+    varDef.displayName = name.originalValue;
+    varDef.src = name.src.line > 0 ? name.src : file.currentLocation();
+    varDef.type=languageService.getType((string) returnType);
+    if(((string)returnType).rfind("func<", 0) == 0) varDef.type.name = (string)returnType;  // keep parameterized func type
+    if(isMemberConst) varDef.isConst = true;
+    varDef.isStatic = isMemberStatic;
+    varDef.isInline = q.isInline;   // participates in positional inline construction (§6.2.1)
+    if(q.isTypeSealed) varDef.isTypeSealed = true;
+    varDef.isRefLocal = q.isRef;   // `ref` member: assignments are pointer-copy (opt out of operator=)
+    // A subclass re-declaring a base member that was marked `typesealed` keeps the sealed
+    // type (and gets a warning) — mirrors the object-instance rule in processMemberVariable.
+    {
+        typeMember* inh = findMemberInHierarchy(&newClass, [&](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            return vd && vd->name == varDef.name && vd->isTypeSealed;
+        });
+        if(auto* inhVd = inh ? dynamic_cast<variableDeclaration*>(inh) : nullptr){
+            if(varDef.type.name != inhVd->type.name){
+                parsingWarning(format("You've redefined '{0}' (which is typesealed as '{1}') to '{2}'. The retype will be ignored and stay '{1}'.",
+                    varDef.name, typeDisplayName(inhVd->type.name), typeDisplayName(varDef.type.name)));
+                // Lock the slot to the sealed type; the initializer below still validates against
+                // the written type (`returnType`), which has real value compatibility.
+                varDef.type = inhVd->type;
+                varDef.isTypeSealed = true;
+            }
+        }
+    }
+    if(!returnType.docComment.empty())   varDef.docComment = returnType.docComment;
+    else if(!name.docComment.empty())    varDef.docComment = name.docComment;
+    if(tok.is(token::assignment)){
+        token first = file.getToken();
+        if(first.is(token::braceOpen)){
+            // initializer list: { expr, expr, ... } with optional nesting
+            initializerList* list = new initializerList();
+            token t2 = file.getToken();
+            while(!t2.is(token::braceClose) && !t2.is(eTokenType::eof)){
+                if(t2.is(token::braceOpen)){
+                    initializerList* inner = new initializerList();
+                    token t3 = file.getToken();
+                    while(!t3.is(token::braceClose) && !t3.is(eTokenType::eof)){
+                        expression* elem = parseExpression(t3, {",", token::braceClose}, nullptr, nullptr);
+                        inner->elements.push_back(elem);
+                        if(elem->terminator == token::braceClose) break;
+                        t3 = file.getToken();
+                    }
+                    list->elements.push_back(inner);
+                    t2 = file.getToken({token::comma, token::braceClose});
+                    if(t2.is(token::braceClose)) break;
+                    t2 = file.getToken();
+                    continue;
+                }
+                expression* elem = parseExpression(t2, {",", token::braceClose}, nullptr, nullptr);
+                list->elements.push_back(elem);
+                if(elem->terminator == token::braceClose) break;
+                t2 = file.getToken();
+            }
+            file.getToken(token::endStatement);
+            // Element-type validation for inherited array members reassigned in this
+            // class body. Mirrors parsePropertyValue's check — `returnType` here is the
+            // full templated form (`array<dictionaryWord>`) when the inferred base member
+            // is an arrayDeclaration, so we can extract T and reject sibling/supertype
+            // values (e.g. `name = {.gadget, noun}` where `noun` is a grammarToken).
+            {
+                string rtStr = (string)returnType;
+                string expectedElemType;
+                if(rtStr.size() > 6 && rtStr.substr(0, 6) == "array<" && rtStr.back() == '>')
+                    expectedElemType = rtStr.substr(6, rtStr.size() - 7);
+                if(!expectedElemType.empty())
+                    for(size_t i = 0; i < list->elements.size(); i++){
+                        expression* elem = list->elements[i];
+                        if(elem->resolvedType.empty())
+                            parsingError(format("Undeclared identifier in initializer list (element {0})", i));
+                        else if(!isArrayElementCompatible(elem->resolvedType, expectedElemType))
+                            parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
+                        checkByteElementRange(elem, expectedElemType);
+                    }
+            }
+            varDef.declaredExpressionValue = list;
+        } else {
+            varDef.declaredExpressionValue = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+        }
+    }
+    if(isExtend){
+        typeMember* existing = nullptr;
+        for(typeMember* m : newClass.members){
+            variableDeclaration* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd && vd->name == varDef.name){ existing = m; break; }
+        }
+        if(existing && !isReplace)
+            parsingError(format("extend class '{0}': member '{1}' is already defined; use 'replace' to override", newClass.dName(), varDef.dName()));
+        if(!existing && isReplace)
+        if(existing)
+            for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
+                if(*it==existing){ newClass.members.erase(it); break; }
+    } else {
+        // Check for an existing stub from pre-scan (static member variables) and replace it.
+        bool replacedStub = false;
+        for(size_t i = 0; i < newClass.members.size(); i++){
+            if(auto* vd = dynamic_cast<variableDeclaration*>(newClass.members[i])){
+                if(vd->name == varDef.name){
+                    if(vd->isPrePassStub){
+                        newClass.members[i] = (typeMember*)&varDef;
+                        replacedStub = true;
+                    } else {
+                        parsingError(format("class '{0}': member '{1}' is already defined", newClass.dName(), varDef.dName()));
+                    }
+                    break;
+                }
+            }
+        }
+        if(!replacedStub) newClass.members.push_back((typeMember*)&varDef);
+        tok=file.getToken();
+        return true;
+    }
+    newClass.members.push_back((typeMember*)&varDef);
+    return false;
+}
+
+// Parse one member of a class body — a single iteration of the member loop. On entry `tok` is the
+// member's first token; on return it is the first token of the next member (or the closing '}').
+void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal, bool isExtend){
+    if(tok.is(eTokenType::eof))
+        parsingError(format("Unexpected end of file inside class '{0}' — missing closing '}}'", newClass.dName()));
+    // Conditional compilation between members. Needed for inline accessor objects — an
+    // `auto name = { … }` accessor is parsed as a nested class body, so a target guard like
+    //   #if TARGET_GLULX
+    //       int _win = 0;
+    //   #endif
+    // sitting among the member declarations must be honored here, not treated as a member.
+    // Route the #if/#elif/#else/#endif family through the shared directive handler, which
+    // evaluates the condition and skips dead branches against this class context; any other
+    // directive isn't a member form in a class body.
+    if(tok.is(eTokenType::directive)){
+        if(tok.is("#if") || tok.is("#elif") || tok.is("#else") || tok.is("#endif"))
+            processDirective(tok, newClass);
+        else
+            parsingError(format("Unsupported directive in class body: '{0}'", tok.value));
+        tok = file.getToken();
+        return;
+    }
+    // `hide <member>[.operator <op>][(types)];` — per-type access control for an inherited
+    // member. Recognised at member-start position; safe because no type is named `hide`, so a
+    // member declaration never begins with it. Applies to both subclass bodies and `extend class`.
+    if(tok.is("hide") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType))){
+        parseHideDirective(newClass);
+        tok = file.getToken();
+        return;
+    }
+    Qualifiers q = parseQualifiers(tok);
+    bool isEmitter = q.isEmitter;
+    bool isReplace = q.isReplace;
+    bool isOperator = false;
+    token returnType;
+    token name;
+    // emitter class: 'emitter' keyword is optional — all members are implicitly emitters
+    // Members of an emitter class are implicitly emitters — except a `static`, which is
+    // deliberately a real routine (no receiver, emitted free). That is how an emitter
+    // class can still publish something callable.
+    if(newClass.isEmitterClass && !isEmitter && !q.isStatic) isEmitter = true;
+    // Context-specific validation
+    if(q.isExtern && !isExtend)
+        parsingError("'extern' is not valid inside a class body (use on the class declaration itself)");
+    if(q.isExtend)
+        parsingError("'extend' is not valid inside a class body");
+    if(q.isAlias)
+        parsingError("'alias' is not valid inside a class body");
+    // array<T> member: same handler as object bodies.
+    // Class is never verb-derived, so no grammarRule downcast applies.
+    // `rawArray<T>` declares the same storage as `array<T>` but without Beguile's
+    // tracking layer — the plain I6 property array an I6 library expects to read as
+    // `obj.&prop-->n`. Both route through processArrayMember, which records which.
+    if((tok.is("array") || tok.is("rawarray")) && file.peekToken().is("<")){
+        processArrayMember(newClass.members, newClass.dName(), nullptr, &newClass, &q, tok.is("rawarray"));
+        tok = file.getToken();
+        return;
+    }
+    // Check for inherited member type inference: if the token is an identifier (not a data type)
+    // followed by '=' or ';', look up the member name in base classes to infer the type.
+    if(tok.is(eTokenType::identifier) && !tok.isDataType()){
+        token peek = file.peekToken(1);
+        if(peek.is(token::assignment) || peek.is(token::endStatement)){
+            string memberName = tok.value;
+            string inferredType;
+            // Search base classes for a member with this name. For arrayDeclaration members,
+            // reconstruct the full templated typeName (`array<dictionaryWord>`) so downstream
+            // element-type validation has the T to check against — `vd->type.name` alone is
+            // just `array` and loses the elementType.
+            for(classDef* base : newClass.baseClasses){
+                typeMember* m = base->findMember([&](typeMember* mm){
+                    auto* vd = dynamic_cast<variableDeclaration*>(mm);
+                    return vd != nullptr && vd->name == memberName;
+                });
+                if(m == nullptr) continue;
+                if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
+                    inferredType = "array<" + arr->elementType + ">";
+                else
+                    inferredType = dynamic_cast<variableDeclaration*>(m)->type.name;
+                break;
+            }
+            if(!inferredType.empty()){
+                // Inferred: treat tok as the member name, use the inherited type
+                returnType.value = inferredType;
+                returnType.tokenType = eTokenType::dataType;
+                name = tok;
+            } else {
+                tok.assertDataType(); // will error with a meaningful message
+                returnType = tok;
+                name = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            }
+        } else {
+            tok.assertDataType();
+            returnType = tok;
+            returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type
+            name = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        }
+    } else {
+        returnType=tok.assertDataType();
+        if(returnType.value == "func") returnType.value = parseFuncType();  // func<...> member type: consume its own <...>
+        returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type
+        name=file.getToken({eTokenType::identifier, eTokenType::dataType});
+    }
+    if(name.is("operator")){
+        isOperator=true;
+        parseOperatorMemberName(tok, name);
+    } else {
+        tok=file.getToken({eTokenType::symbol, eTokenType::oper});
+    }
+
+    if(tok.is(token::parenOpen))  { //this is a function
+        if(parseClassMethodMember(newClass, tok, name, returnType, q, isEmitter, isExternal, isExtend)) return;
+    }
+    else if(tok.is(token::braceOpen) && isEmitter && !isOperator){
+        // Emitter value in class body: emitter Type name { body }
+        functionDef& funcDef = *(new functionDef());
+        funcDef.name = (string)name; funcDef.displayName = name.originalValue;
+        funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
+        funcDef.returnType = languageService.getType((string)returnType);
+        funcDef.isEmitter = true;
+        funcDef.isValueEmitter = true;
+        funcDef.isDefault = q.isDefault;
+        funcDef.src = file.currentLocation();
+        i6Block& rawblock = *(new i6Block());
+        rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+        funcDef.body = &rawblock;
+        if(!replaceStubMember(newClass.members, funcDef))
+            newClass.members.push_back(&funcDef);
+    }
+    else{
+        if(isOperator==true) parsingError("Operators must be functions.");
+        if(parseClassVariableMember(newClass, tok, name, returnType, q, isEmitter, isExtend)) return;
+    }
+    tok=file.getToken();
+}
+
 bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool isByVal, bool allowNested, bool isSuperposed){
     // `allowNested` = synthesizing an inline accessor's anonymous class from inside an object body
     // (`auto name = { … }`); the class is still registered globally, it's just parsed nested. All
@@ -162,109 +853,9 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     currentClass = &newClass;
     openCompileContext(eCompileContext::objectDef);
 
-    // Type parameter clause (optional, before pool/inheritance):
-    //   `class Foo<T> { … }` — declares T as a type parameter scoped to the class body.
-    //   Parameters are stored on the classDef but NOT registered globally — collisions
-    //   with same-named instances (e.g. `Temperature t;`) would otherwise occur. Member
-    //   signatures parse T as an identifier-typed token; substitution at method-lookup
-    //   time replaces T with the use-site binding before any type query runs.
-    //   Skipped on `extend class Foo<…>` — type parameters are part of the original decl.
-    if(file.peekToken().is("<")){
-        if(isExtend) parsingError(format("extend class '{0}': type parameters cannot be added by extend — they are part of the original declaration", (string)nameTok));
-        if(isAlias)  parsingError(format("alias class '{0}': type parameters are not supported on alias classes", (string)nameTok));
-        file.getToken(); // consume '<'
-        while(true){
-            token paramTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
-            // Don't double-add when claiming a pre-pass stub that already populated this list.
-            bool already = false;
-            for(const string& tp : newClass.typeParameters) if(tp == paramTok.value){ already = true; break; }
-            if(!already) newClass.typeParameters.push_back(paramTok.value);
-            token sep = file.getToken({token::comma, ">"});
-            if(sep.value == ">") break;
-        }
-    }
-
-    // Pool size clause (optional, before any inheritance):
-    //   `class Foo[N]`              — sized pool, N statically-allocated instances (emit `Class Foo(N)`)
-    //   `extern class Foo[]`        — marker: I6-pooled type, size opaque to Beguile
-    //   `class Foo[N]` on emitter/alias — error (no I6 backing / type aliasing)
-    //   `extern class Foo[N]`       — error (size belongs to I6)
-    //   `extend class Foo[...]`     — error (pool size is part of original declaration)
-    tok = file.getToken();
-    if(tok.is(token::bracketOpen)){
-        token inner = file.getToken();
-        if(inner.is(token::bracketClose)){
-            // `[]` empty marker form
-            if(!isExternal)
-                parsingError(format("class '{0}': empty pool brackets '[]' are only valid on `extern class` (marker for an I6-defined pooled type)", (string)nameTok));
-            if(isExtend)
-                parsingError(format("extend class '{0}': pool brackets cannot be added by extend — pool status is part of the original declaration", (string)nameTok));
-            newClass.poolSize = -1; // extern marker
-        } else if(inner.is(eTokenType::integer) || inner.is(eTokenType::identifier)){
-            // `[N]` sized form — N may be an integer literal or an identifier referring to a
-            // `Default`/`Constant`-declared I6 constant. For identifiers, the Beguile parser
-            // can't resolve the numeric value (I6 owns the constant table), so we capture the
-            // identifier verbatim and let the I6 link step substitute. The numeric poolSize
-            // field is set to a positive sentinel so all "is this pooled?" checks downstream
-            // continue to work.
-            if(isExternal)
-                parsingError(format("extern class '{0}': pool size cannot be specified — extern declarations describe I6-defined types, and the I6 declaration owns the pool size. Use 'extern class {0}[]' as a marker that the type is pooled, or omit the brackets.", (string)nameTok));
-            if(isExtend)
-                parsingError(format("extend class '{0}': pool size cannot be modified — pool size is part of the original declaration's contract", (string)nameTok));
-            if(isEmitterClass)
-                parsingError(format("emitter class '{0}': pool size is not valid (emitter classes have no I6 backing for instances)", (string)nameTok));
-            if(isAlias)
-                parsingError(format("alias class '{0}': pool size is not valid (alias classes dissolve to another type)", (string)nameTok));
-            if(inner.is(eTokenType::integer)){
-                int n = stoi(inner.value);
-                if(n <= 0)
-                    parsingError(format("class '{0}': pool size must be a positive integer (got {1})", (string)nameTok, n));
-                newClass.poolSize = n;
-            } else {
-                newClass.poolSize    = 1;  // positive sentinel — "is pooled" downstream checks
-                newClass.poolSizeExpr = inner.value;
-            }
-            file.getToken(token::bracketClose);
-        } else {
-            parsingError(format("class '{0}': expected integer, identifier, or ']' after '[' in pool clause, got '{1}'", (string)nameTok, (string)inner));
-        }
-        tok = file.getToken();
-    }
-
-    // Inheritance clause:
-    //   alias class requires 'for Parent'
-    //   other classes use optional ': Parent [, Parent2 ...]'
-    if(isAlias && !tok.is("for"))
-        parsingError(format("'alias {0}' requires a parent class: use 'alias {0} for ParentClass'", (string)nameTok));
-    // Detect circular inheritance: walking `parent`'s ancestry must not reach newClass.
-    auto checkInheritanceCycle = [&](classDef* parent, const string& parentDisplay){
-        function<bool(classDef*, set<classDef*>&)> reachesSelf = [&](classDef* c, set<classDef*>& visited) -> bool {
-            if(!c || !visited.insert(c).second) return false;
-            if(c == &newClass) return true;
-            for(classDef* b : c->baseClasses) if(reachesSelf(b, visited)) return true;
-            return false;
-        };
-        set<classDef*> visited;
-        if(reachesSelf(parent, visited))
-            parsingError(format("class '{0}': circular inheritance — '{1}' transitively inherits from '{0}'",
-                                newClass.dName(), parentDisplay));
-    };
-    if(tok.is("for")){
-        // alias class single-parent clause
-        token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
-        classDef* parent = languageService.findClass(parentTok.value);
-        if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
-        else { checkInheritanceCycle(parent, parentTok.originalValue); newClass.baseClasses.push_back(parent); }
-        tok = file.getToken();
-    } else if(tok.is(":")){
-        do {
-            token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
-            classDef* parent = languageService.findClass(parentTok.value);
-            if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
-            else { checkInheritanceCycle(parent, parentTok.originalValue); newClass.baseClasses.push_back(parent); }
-            tok = file.getToken();
-        } while(tok.is(","));
-    }
+    parseClassTypeParameters(newClass, nameTok, isExtend, isAlias);
+    parseClassPoolSize(newClass, tok, nameTok, isExternal, isExtend, isEmitterClass, isAlias);
+    parseClassInheritance(newClass, tok, nameTok, isAlias);
     // `byVal class Foo : object` — contradictory: object-derived classes are tree
     // citizens (reference semantics via the world tree), and byVal is value semantics.
     // Walk bases transitively for the check.
@@ -288,555 +879,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     }
     tok.assert(token::braceOpen);
     tok=file.getToken();
-    while(tok.isNot(token::braceClose)){
-        if(tok.is(eTokenType::eof))
-            parsingError(format("Unexpected end of file inside class '{0}' — missing closing '}}'", newClass.dName()));
-        // Conditional compilation between members. Needed for inline accessor objects — an
-        // `auto name = { … }` accessor is parsed as a nested class body, so a target guard like
-        //   #if TARGET_GLULX
-        //       int _win = 0;
-        //   #endif
-        // sitting among the member declarations must be honored here, not treated as a member.
-        // Route the #if/#elif/#else/#endif family through the shared directive handler, which
-        // evaluates the condition and skips dead branches against this class context; any other
-        // directive isn't a member form in a class body.
-        if(tok.is(eTokenType::directive)){
-            if(tok.is("#if") || tok.is("#elif") || tok.is("#else") || tok.is("#endif"))
-                processDirective(tok, newClass);
-            else
-                parsingError(format("Unsupported directive in class body: '{0}'", tok.value));
-            tok = file.getToken();
-            continue;
-        }
-        // `hide <member>[.operator <op>][(types)];` — per-type access control for an inherited
-        // member. Recognised at member-start position; safe because no type is named `hide`, so a
-        // member declaration never begins with it. Applies to both subclass bodies and `extend class`.
-        if(tok.is("hide") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType))){
-            parseHideDirective(newClass);
-            tok = file.getToken();
-            continue;
-        }
-        Qualifiers q = parseQualifiers(tok);
-        bool isEmitter = q.isEmitter;
-        bool isReplace = q.isReplace;
-        bool isExplicitConversion = q.isExplicit;
-        bool isMemberConst = q.isConst;
-        bool isMemberStatic = q.isStatic;
-        bool isMemberSuperposed = q.isSuperposed;
-        bool isOperator = false;
-        token returnType;
-        token name;
-        // emitter class: 'emitter' keyword is optional — all members are implicitly emitters
-        // Members of an emitter class are implicitly emitters — except a `static`, which is
-        // deliberately a real routine (no receiver, emitted free). That is how an emitter
-        // class can still publish something callable.
-        if(newClass.isEmitterClass && !isEmitter && !q.isStatic) isEmitter = true;
-        // Context-specific validation
-        if(q.isExtern && !isExtend)
-            parsingError("'extern' is not valid inside a class body (use on the class declaration itself)");
-        if(q.isExtend)
-            parsingError("'extend' is not valid inside a class body");
-        if(q.isAlias)
-            parsingError("'alias' is not valid inside a class body");
-        // array<T> member: same handler as object bodies.
-        // Class is never verb-derived, so no grammarRule downcast applies.
-        // `rawArray<T>` declares the same storage as `array<T>` but without Beguile's
-        // tracking layer — the plain I6 property array an I6 library expects to read as
-        // `obj.&prop-->n`. Both route through processArrayMember, which records which.
-        if((tok.is("array") || tok.is("rawarray")) && file.peekToken().is("<")){
-            processArrayMember(newClass.members, newClass.dName(), nullptr, &newClass, &q, tok.is("rawarray"));
-            tok = file.getToken();
-            continue;
-        }
-        // Check for inherited member type inference: if the token is an identifier (not a data type)
-        // followed by '=' or ';', look up the member name in base classes to infer the type.
-        if(tok.is(eTokenType::identifier) && !tok.isDataType()){
-            token peek = file.peekToken(1);
-            if(peek.is(token::assignment) || peek.is(token::endStatement)){
-                string memberName = tok.value;
-                string inferredType;
-                // Search base classes for a member with this name. For arrayDeclaration members,
-                // reconstruct the full templated typeName (`array<dictionaryWord>`) so downstream
-                // element-type validation has the T to check against — `vd->type.name` alone is
-                // just `array` and loses the elementType.
-                for(classDef* base : newClass.baseClasses){
-                    typeMember* m = base->findMember([&](typeMember* mm){
-                        auto* vd = dynamic_cast<variableDeclaration*>(mm);
-                        return vd != nullptr && vd->name == memberName;
-                    });
-                    if(m == nullptr) continue;
-                    if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
-                        inferredType = "array<" + arr->elementType + ">";
-                    else
-                        inferredType = dynamic_cast<variableDeclaration*>(m)->type.name;
-                    break;
-                }
-                if(!inferredType.empty()){
-                    // Inferred: treat tok as the member name, use the inherited type
-                    returnType.value = inferredType;
-                    returnType.tokenType = eTokenType::dataType;
-                    name = tok;
-                } else {
-                    tok.assertDataType(); // will error with a meaningful message
-                    returnType = tok;
-                    name = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                }
-            } else {
-                tok.assertDataType();
-                returnType = tok;
-                returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type
-                name = file.getToken({eTokenType::identifier, eTokenType::dataType});
-            }
-        } else {
-            returnType=tok.assertDataType();
-            if(returnType.value == "func") returnType.value = parseFuncType();  // func<...> member type: consume its own <...>
-            returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type
-            name=file.getToken({eTokenType::identifier, eTokenType::dataType});
-        }
-        if(name.is("operator")){
-            isOperator=true;
-            token opTok = file.getToken();
-            if(opTok.is(token::parenOpen)){
-                // conversion operator: emitter <type> operator()
-                name.value = "operator()";
-                tok = opTok; // the ( is already consumed; reuse it
-            } else if(opTok.is(token::bracketOpen)){
-                // subscript operator: operator[] (read) or operator[]= (write)
-                file.getToken(token::bracketClose);
-                token maybeAssign = file.getToken();
-                if(maybeAssign.is(token::assignment)){
-                    name.value = "[]=";
-                    tok = file.getToken(eTokenType::symbol);
-                } else {
-                    name.value = "[]";
-                    tok = maybeAssign;  // already consumed the next symbol
-                }
-            } else if(opTok.is("switch")){
-                // switch comparison operator: operator switch(type v)
-                name.value = "switch";
-                tok = file.getToken(eTokenType::symbol);
-            } else if(opTok.is("auto")){
-                // auto inference operator: operator auto() — return type only, no body
-                name.value = "auto";
-                tok = file.getToken(eTokenType::symbol);  // should be ( or ;
-            } else if(opTok.is(eTokenType::identifier)){
-                // qualified operator: e.g. "prefix++" — read qualifier then oper symbol
-                token opSym = file.getToken(eTokenType::oper);
-                name.value = opTok.value + opSym.value;  // e.g. "prefix++"
-                tok = file.getToken(eTokenType::symbol);
-            } else if(opTok.is("?")){
-                // unary query operator: operator ?()
-                name.value = "?";
-                tok = file.getToken(eTokenType::symbol);
-            } else {
-                // Validate the operator symbol against the overloadable set (spec §5.6.6).
-                // This also rejects valid operator tokens that are NOT overloadable
-                // (e.g. `?.`, `??`, `=>`), which asserting `oper` alone would let through.
-                static const string overloadableOps =
-                    " = + - * / % == != =~ < > <= >= ?= && || & | ^ << >> "
-                    "+= -= *= /= %= &= |= ^= <<= >>= ++ -- ! <=> ";
-                if(overloadableOps.find(" " + opTok.value + " ") == string::npos)
-                    parsingError(format("'{0}' is not an overloadable operator. Overloadable operators are:"
-                        "{1}and the special forms operator(), operator[], operator[]=, operator switch, "
-                        "operator auto, and the ? query operator.", opTok.value, overloadableOps));
-                name = opTok;
-                tok=file.getToken(eTokenType::symbol);
-            }
-        } else {
-            tok=file.getToken({eTokenType::symbol, eTokenType::oper});
-        }
-
-        if(tok.is(token::parenOpen))  { //this is a function
-            functionDef& funcDef=*(new functionDef());
-            funcDef.name=(string) name; funcDef.displayName=name.originalValue;
-            funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
-            funcDef.returnType=languageService.getType((string) returnType);
-            funcDef.isEmitter=isEmitter;
-            funcDef.isExplicit=isExplicitConversion;
-            funcDef.isDefault=q.isDefault;
-            if(!returnType.docComment.empty())   funcDef.docComment = returnType.docComment;
-            else if(!name.docComment.empty())    funcDef.docComment = name.docComment;
-            // Non-emitter operator methods (name starts with a non-identifier char, e.g. `=`,
-            // `==`) need a mangled i6name so the emitted I6 property has a valid identifier.
-            // The free-function path does this at declaration (bglParserDecls.cpp); mirror it
-            // here so class operators are mangled at parse time too. This upholds the invariant
-            // documented at mangleOverloadSet() (bglParser.cpp) — that operator overloads carry
-            // an i6name by parse time — instead of relying solely on lazy call-site mangling,
-            // which leaves a declared-but-never-called operator emitting a bare `=` as its I6
-            // property name (invalid I6).
-            if(!isEmitter && !funcDef.name.empty()
-               && (funcDef.name == "operator()"
-                   || (!isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')))
-                funcDef.i6name = mangleOperatorName(funcDef.name);
-            if(isExplicitConversion && funcDef.name != "operator()")
-                parsingError("'explicit' is only valid on conversion operators (operator())");
-            processParameterList(funcDef);
-            // Synthesize per-(class, method, param) backing globals for byVal-class params.
-            // Same machinery as the top-level call from processRoutineDeclaration; pass the
-            // enclosing class name as context so backings on same-named methods across
-            // classes don't collide.
-            synthesizeParamBackings(funcDef, newClass.dName());
-            // operator auto: no params, no body, max one per class
-            if(funcDef.name == "auto"){
-                if(!funcDef.params.empty())
-                    parsingError("operator auto() cannot have parameters");
-                // Check for duplicate (ignore pre-pass stubs, which the full pass replaces)
-                for(typeMember* m : newClass.members)
-                    if(auto* fd = dynamic_cast<functionDef*>(m))
-                        if(fd->name == "auto" && !fd->isPrePassStub)
-                            parsingError(format("class '{0}' already has an operator auto()", newClass.dName()));
-                // Must be followed by ; (no body)
-                token afterAuto = file.getToken();
-                if(!afterAuto.is(token::endStatement))
-                    parsingError("operator auto() cannot have a body — declare return type only");
-                newClass.members.push_back(&funcDef);
-                tok = file.getToken();
-                continue;
-            }
-            if(isEmitter && !funcDef.params.empty() && (funcDef.name == "init" || funcDef.name == "deinit"))
-                parsingError(format("Emitter '{0}' cannot accept parameters", funcDef.name));
-            if(isMemberStatic && q.isEmitter)
-                parsingError(format("'{0}': 'static' and 'emitter' cannot be combined — an emitter inlines at the call site and has no routine to make static", funcDef.name));
-            if(!isEmitter && (funcDef.name == "switch" || funcDef.name == "?"))
-                parsingError(format("operator {0}() must be declared as an emitter", funcDef.name));
-            // init/deinit are receiver lifecycle hooks and must inline — except a `static`
-            // deinit, which is the value form: it takes the element as a parameter and emits
-            // as a free routine, so generic code (array<T>) can hold its address and destroy
-            // a slot it has no receiver for. Same instance/static split as `operator ==`.
-            if(!isEmitter && !isMemberStatic && (funcDef.name == "init" || funcDef.name == "deinit"))
-                parsingError(format("'{0}' must be declared as an emitter", funcDef.name));
-            if(isMemberStatic && funcDef.name == "init")
-                parsingError("'init' cannot be 'static' — construction needs the receiver it is initialising");
-            if(isMemberStatic && funcDef.name == "deinit" && funcDef.params.size() != 1)
-                parsingError("a 'static deinit' takes exactly one parameter: the value to destroy");
-            funcDef.isStatic = isMemberStatic;
-            // Carry `superposed` onto the method. Only a STATIC method (emitted as a free routine
-            // via emitStaticClassRoutines→emitFunction) can honor it — the withhold/revive path
-            // lives in emitFunction. An instance method emits as a property routine on the class
-            // object and cannot be withheld/revived, so `superposed` there is inert. It's harmless
-            // (a no-op), so warn rather than error: the method still works, it just won't drop.
-            if(isMemberSuperposed && !isMemberStatic)
-                parsingWarning(format("'superposed' on method '{0}' has no effect without 'static'. "
-                                      "An instance method emits as a property routine, which can't be "
-                                      "withheld and revived on demand; write 'static superposed' (a "
-                                      "free routine) for pay-only-if-used, or drop 'superposed'.", funcDef.name));
-            funcDef.isSuperposed = isMemberSuperposed;
-            if((isExternal || newClass.isExternal || newClass.isAlias) && !isEmitter && !funcDef.isStatic){
-                // extern/alias class non-emitter INSTANCE methods not allowed: they would need to
-                // emit a property routine on a class Beguile does not own. A `static` method has no
-                // receiver, so it emits as a free routine and carries no such requirement — which is
-                // how a bare-word type (string, float) publishes a callable comparison.
-                parsingError(format("Non-emitter function '{0}' is not allowed in an extern or alias class "
-                                    "(a 'static' method is allowed — it needs no instance)", funcDef.name));
-            } else if(funcDef.isEmitter && file.peekToken().is(token::endStatement)){
-                // Semicolon-terminated emitter: pass-through (value unchanged)
-                file.getToken(); // consume ';'
-                i6Block& rawblock=*(new i6Block());
-                rawblock.i6Body=" $self";
-                funcDef.body=&rawblock;
-            } else {
-                file.getToken(token::braceOpen); //consume the open brace;
-                if(funcDef.isEmitter){
-                    i6Block& rawblock=*(new i6Block());
-                    rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
-                    funcDef.body=&rawblock;
-                } else {
-                    funcDef.body = new statementBlock();
-                    functionDef* savedFunc = currentFunc;
-                    currentFunc = &funcDef;
-                    openCompileContext(eCompileContext::codeBlock, dynamic_cast<statementBlock*>(funcDef.body));
-                    while(processNextStatement(funcDef) == false){}
-                    closeCompileContext(eCompileContext::codeBlock);
-                    currentFunc = savedFunc;
-                    if(funcDef.returnType.name != "void" && !allPathsReturn(dynamic_cast<statementBlock*>(funcDef.body)))
-                        parsingError(format("Non-void routine '{0}' has no return statement", funcDef.name));
-                }
-            }
-            if(isExtend){
-                // find an existing member with the same name and parameter signature
-                // Pre-scan stubs match by name only (they have no params)
-                typeMember* existing = nullptr;
-                bool alreadyReplaced = false;
-                for(typeMember* m : newClass.members){
-                    functionDef* fd = dynamic_cast<functionDef*>(m);
-                    if(!fd || fd->name != funcDef.name) continue;
-                    if(fd->isPrePassStub){ existing = m; break; }
-                    if(fd->params.size() == funcDef.params.size()){
-                        bool match = true;
-                        for(size_t i=0; i<funcDef.params.size(); i++){
-                            if(fd->params[i]->type.name != funcDef.params[i]->type.name){ match=false; break; }
-                        }
-                        // operator(), operator[], and operator[]= can have multiple overloads with
-                        // different return types; mirror the rule from the primary-class path so
-                        // extend blocks can add conversion operators alongside existing ones.
-                        if(match && fd->returnType.name != funcDef.returnType.name &&
-                               (funcDef.name == "operator()" || funcDef.name == "[]" || funcDef.name == "[]="))
-                            match = false;
-                        if(match){ existing = m; break; }
-                    }
-                }
-                // If the existing member is a pre-scan stub, replace it silently
-                if(existing){
-                    auto* existFd = dynamic_cast<functionDef*>(existing);
-                    if(existFd && existFd->isPrePassStub){
-                        for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
-                            if(*it==existing){ *it = &funcDef; break; }
-                        alreadyReplaced = true;
-                    }
-                }
-                if(existing && !alreadyReplaced && !isReplace)
-                    parsingError(format("extend class '{0}': member '{1}' is already defined; use 'replace' to override", newClass.dName(), funcDef.dName()));
-                if(!existing && isReplace)
-                    parsingWarning(format("extend class '{0}': 'replace' specified but no existing member '{1}' found; treating as new definition", newClass.dName(), funcDef.dName()));
-                if(existing && !alreadyReplaced){
-                    for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
-                        if(*it==existing){ *it = &funcDef; break; }
-                    alreadyReplaced = true;
-                }
-                if(alreadyReplaced){ tok = file.getToken(); continue; }
-            }
-            if(funcDef.isEmitter && funcDef.name == "_bglglobaldeclaration"){
-                // declaration emitter — store raw body on the class, not as a member
-                i6Block* body = dynamic_cast<i6Block*>(funcDef.body);
-                if(body) newClass.globalDeclarationBody = body->i6Body;
-            } else {
-                if(!isExtend){
-                    // Silently replace pre-scan stubs (may have been seeded by an 'extend class' that
-                    // appears later in the file — pre-scan pushes stubs into this class's member list).
-                    if(replaceStubMember(newClass.members, funcDef)) { tok = file.getToken(); continue; }
-                    bool replacedExisting = false;
-                    for(size_t i = 0; i < newClass.members.size(); i++){
-                        functionDef* fd = dynamic_cast<functionDef*>(newClass.members[i]);
-                        if(fd && fd->name == funcDef.name && fd->params.size() == funcDef.params.size()){
-                            bool match = true;
-                            for(size_t j=0; j<funcDef.params.size(); j++)
-                                if(fd->params[j]->type.name != funcDef.params[j]->type.name){ match=false; break; }
-                            // operator(), operator[], and operator[]= can have multiple overloads with
-                            // different return types. operator() uses them for conversion operators;
-                            // operator[] / operator[]= use them for element-type-aware array subscripts
-                            // so the library can declare one overload per supported element type.
-                            if(match && fd->returnType.name != funcDef.returnType.name &&
-                                   (funcDef.name == "operator()" || funcDef.name == "[]" || funcDef.name == "[]="))
-                                match = false;
-                            if(match){
-                                if(isReplace){
-                                    newClass.members[i] = &funcDef;
-                                    replacedExisting = true;
-                                    break;
-                                }
-                                parsingError(format("class '{0}': method '{1}' with the same signature is already defined (originally at {2}:{3}); use 'replace' to override",
-                                    newClass.dName(), funcDef.dName(), fd->src.file, fd->src.line));
-                            }
-                        }
-                    }
-                    if(replacedExisting) { tok = file.getToken(); continue; }
-                    // Check base class hierarchy for shadowed methods — warn if 'replace' not specified.
-                    // A "shadow" requires matching signature (arity + param types). Same name but
-                    // different arity or param types is an overload, not a shadow — no warning.
-                    if(!isReplace && !funcDef.name.empty()){
-                        string shadowedFrom;
-                        bool shadowedIsDefault = false;
-                        auto sigMatches = [&](functionDef* fd){
-                            if(fd->params.size() != funcDef.params.size()) return false;
-                            for(size_t j = 0; j < funcDef.params.size(); j++)
-                                if(fd->params[j]->type.name != funcDef.params[j]->type.name) return false;
-                            return true;
-                        };
-                        function<void(classDef*)> searchBases = [&](classDef* c){
-                            if(!shadowedFrom.empty()) return;
-                            for(typeMember* m : c->members)
-                                if(auto* fd = dynamic_cast<functionDef*>(m))
-                                    if(fd->name == funcDef.name && sigMatches(fd)){
-                                        shadowedFrom = c->dName(); shadowedIsDefault = fd->isDefault; return;
-                                    }
-                            for(classDef* base : c->baseClasses) searchBases(base);
-                        };
-                        for(classDef* base : newClass.baseClasses) searchBases(base);
-                        if(!shadowedFrom.empty() && !shadowedIsDefault)
-                            parsingWarning(format("class '{0}': method '{1}' shadows definition in base class '{2}'; use 'replace' to suppress this warning",
-                                newClass.dName(), funcDef.dName(), shadowedFrom));
-                    }
-                }
-                newClass.members.push_back(&funcDef);
-            }
-        }
-        else if(tok.is(token::braceOpen) && isEmitter && !isOperator){
-            // Emitter value in class body: emitter Type name { body }
-            functionDef& funcDef = *(new functionDef());
-            funcDef.name = (string)name; funcDef.displayName = name.originalValue;
-            funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
-            funcDef.returnType = languageService.getType((string)returnType);
-            funcDef.isEmitter = true;
-            funcDef.isValueEmitter = true;
-            funcDef.isDefault = q.isDefault;
-            funcDef.src = file.currentLocation();
-            i6Block& rawblock = *(new i6Block());
-            rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
-            funcDef.body = &rawblock;
-            if(!replaceStubMember(newClass.members, funcDef))
-                newClass.members.push_back(&funcDef);
-        }
-        else{
-            if(isOperator==true) parsingError("Operators must be functions.");
-            // Emitter class: allow alias members (typed reference to another class) but not variable declarations
-            if(isEmitter || newClass.isEmitterClass){
-                string aliasTypeName = (string)returnType;
-                // auto inference: require = classReference to infer type
-                if(aliasTypeName == "auto"){
-                    if(!tok.is(token::assignment))
-                        parsingError(format("'auto' alias member '{0}' requires an initializer to infer the type", (string)name));
-                    token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                    classDef* rhsCls = languageService.findClass(rhs.value);
-                    if(!rhsCls)
-                        parsingError(format("'auto' alias member '{0}': '{1}' is not a declared class",
-                            (string)name, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
-                    aliasTypeName = rhs.value;
-                    tok = file.getToken();  // consume ;
-                }
-                classDef* aliasCls = languageService.findClass(aliasTypeName);
-                if(!aliasCls)
-                    parsingError(format("Emitter class '{0}' only supports emitter functions, emitter values, and class alias members; '{1}' is not a class",
-                        newClass.dName(), aliasTypeName));
-                // Alias member: register as a variableDeclaration with the class type
-                // No I6 backing — resolved at compile time for dot-access
-                variableDeclaration& aliasDef = *(new variableDeclaration());
-                aliasDef.name = (string)name;
-                aliasDef.type = languageService.getType(aliasTypeName);
-                aliasDef.isExternal = true;  // no I6 emission
-                if(tok.is(token::assignment) && aliasTypeName != "auto")
-                    parsingError(format("Alias member '{0}' on emitter class cannot have an initializer; use 'auto' to infer type", (string)name));
-                // Consume ; if present
-                if(tok.isNot(token::endStatement))
-                    parsingError(format("Expected ';' after alias member '{0}'", (string)name));
-                newClass.members.push_back(&aliasDef);
-                tok = file.getToken();
-                continue;
-            }
-            if(tok.isNot(token::endStatement) && tok.isNot(token::assignment))
-                parsingError(format("Expected '=' or ';' after member '{0}'", (string)name));
-            // Note: alias-class members may carry a default value (e.g. `int priority = 10;` on
-            // `class verb`). The value is a compile-time default consulted by the emitter when
-            // lifting the field from an instance body; it is not emitted as an I6 property.
-            variableDeclaration& varDef=*(new variableDeclaration());
-            varDef.name=(string) name;
-            varDef.displayName = name.originalValue;
-            varDef.src = name.src.line > 0 ? name.src : file.currentLocation();
-            varDef.type=languageService.getType((string) returnType);
-            if(((string)returnType).rfind("func<", 0) == 0) varDef.type.name = (string)returnType;  // keep parameterized func type
-            if(isMemberConst) varDef.isConst = true;
-            varDef.isStatic = isMemberStatic;
-            varDef.isInline = q.isInline;   // participates in positional inline construction (§6.2.1)
-            if(q.isTypeSealed) varDef.isTypeSealed = true;
-            varDef.isRefLocal = q.isRef;   // `ref` member: assignments are pointer-copy (opt out of operator=)
-            // A subclass re-declaring a base member that was marked `typesealed` keeps the sealed
-            // type (and gets a warning) — mirrors the object-instance rule in processMemberVariable.
-            {
-                typeMember* inh = findMemberInHierarchy(&newClass, [&](typeMember* m){
-                    auto* vd = dynamic_cast<variableDeclaration*>(m);
-                    return vd && vd->name == varDef.name && vd->isTypeSealed;
-                });
-                if(auto* inhVd = inh ? dynamic_cast<variableDeclaration*>(inh) : nullptr){
-                    if(varDef.type.name != inhVd->type.name){
-                        parsingWarning(format("You've redefined '{0}' (which is typesealed as '{1}') to '{2}'. The retype will be ignored and stay '{1}'.",
-                            varDef.name, typeDisplayName(inhVd->type.name), typeDisplayName(varDef.type.name)));
-                        // Lock the slot to the sealed type; the initializer below still validates against
-                        // the written type (`returnType`), which has real value compatibility.
-                        varDef.type = inhVd->type;
-                        varDef.isTypeSealed = true;
-                    }
-                }
-            }
-            if(!returnType.docComment.empty())   varDef.docComment = returnType.docComment;
-            else if(!name.docComment.empty())    varDef.docComment = name.docComment;
-            if(tok.is(token::assignment)){
-                token first = file.getToken();
-                if(first.is(token::braceOpen)){
-                    // initializer list: { expr, expr, ... } with optional nesting
-                    initializerList* list = new initializerList();
-                    token t2 = file.getToken();
-                    while(!t2.is(token::braceClose) && !t2.is(eTokenType::eof)){
-                        if(t2.is(token::braceOpen)){
-                            initializerList* inner = new initializerList();
-                            token t3 = file.getToken();
-                            while(!t3.is(token::braceClose) && !t3.is(eTokenType::eof)){
-                                expression* elem = parseExpression(t3, {",", token::braceClose}, nullptr, nullptr);
-                                inner->elements.push_back(elem);
-                                if(elem->terminator == token::braceClose) break;
-                                t3 = file.getToken();
-                            }
-                            list->elements.push_back(inner);
-                            t2 = file.getToken({token::comma, token::braceClose});
-                            if(t2.is(token::braceClose)) break;
-                            t2 = file.getToken();
-                            continue;
-                        }
-                        expression* elem = parseExpression(t2, {",", token::braceClose}, nullptr, nullptr);
-                        list->elements.push_back(elem);
-                        if(elem->terminator == token::braceClose) break;
-                        t2 = file.getToken();
-                    }
-                    file.getToken(token::endStatement);
-                    // Element-type validation for inherited array members reassigned in this
-                    // class body. Mirrors parsePropertyValue's check — `returnType` here is the
-                    // full templated form (`array<dictionaryWord>`) when the inferred base member
-                    // is an arrayDeclaration, so we can extract T and reject sibling/supertype
-                    // values (e.g. `name = {.gadget, noun}` where `noun` is a grammarToken).
-                    {
-                        string rtStr = (string)returnType;
-                        string expectedElemType;
-                        if(rtStr.size() > 6 && rtStr.substr(0, 6) == "array<" && rtStr.back() == '>')
-                            expectedElemType = rtStr.substr(6, rtStr.size() - 7);
-                        if(!expectedElemType.empty())
-                            for(size_t i = 0; i < list->elements.size(); i++){
-                                expression* elem = list->elements[i];
-                                if(elem->resolvedType.empty())
-                                    parsingError(format("Undeclared identifier in initializer list (element {0})", i));
-                                else if(!isArrayElementCompatible(elem->resolvedType, expectedElemType))
-                                    parsingError(format("Element {0} has type '{1}', expected '{2}'", i, elem->resolvedType, expectedElemType));
-                                checkByteElementRange(elem, expectedElemType);
-                            }
-                    }
-                    varDef.declaredExpressionValue = list;
-                } else {
-                    varDef.declaredExpressionValue = parseExpression(first, {token::endStatement}, nullptr, nullptr);
-                }
-            }
-            if(isExtend){
-                typeMember* existing = nullptr;
-                for(typeMember* m : newClass.members){
-                    variableDeclaration* vd = dynamic_cast<variableDeclaration*>(m);
-                    if(vd && vd->name == varDef.name){ existing = m; break; }
-                }
-                if(existing && !isReplace)
-                    parsingError(format("extend class '{0}': member '{1}' is already defined; use 'replace' to override", newClass.dName(), varDef.dName()));
-                if(!existing && isReplace)
-                if(existing)
-                    for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
-                        if(*it==existing){ newClass.members.erase(it); break; }
-            } else {
-                // Check for an existing stub from pre-scan (static member variables) and replace it.
-                bool replacedStub = false;
-                for(size_t i = 0; i < newClass.members.size(); i++){
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(newClass.members[i])){
-                        if(vd->name == varDef.name){
-                            if(vd->isPrePassStub){
-                                newClass.members[i] = (typeMember*)&varDef;
-                                replacedStub = true;
-                            } else {
-                                parsingError(format("class '{0}': member '{1}' is already defined", newClass.dName(), varDef.dName()));
-                            }
-                            break;
-                        }
-                    }
-                }
-                if(!replacedStub) newClass.members.push_back((typeMember*)&varDef);
-                tok=file.getToken();
-                continue;
-            }
-            newClass.members.push_back((typeMember*)&varDef);
-        }
-        tok=file.getToken();
-    }   
+    while(tok.isNot(token::braceClose)) parseClassMember(newClass, tok, isExternal, isExtend);
     //if...
     //file.getToken("emitter");
     //token retval=file.getToken(eTokenType::dataType);
@@ -1988,6 +2031,267 @@ std::string bglParser::unionExpansionOf(const std::string& typeName){
     return "";
 }
 
+// Parse one member of an `extern object` body — a single iteration of that body's member loop.
+// On entry `tok` is the member's first token; on return it is the next member's first token.
+void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
+    Qualifiers q = parseQualifiers(tok);
+    if(q.isEmitter){
+        // Emitter methods and emitter values are allowed on extern objects
+        token retType = tok;
+        token propName = file.getToken(eTokenType::identifier);
+        if(propName.is("operator")){
+            token opTok = file.getToken();
+            if(opTok.is(token::parenOpen)) propName.value = "operator()";
+            else if(opTok.is("?")) propName.value = "?";
+            else if(opTok.is("switch")) propName.value = "switch";
+            else { opTok.assert(eTokenType::oper); propName.value = opTok.value; }
+        }
+        functionDef& funcDef = *(new functionDef());
+        funcDef.name = (string)propName;
+        funcDef.returnType = languageService.getType((string)retType);
+        funcDef.isEmitter = true;
+        funcDef.isExplicit = q.isExplicit;
+        funcDef.isDefault = q.isDefault;
+        token sym = file.getToken();
+        bool funcHasParens = false;
+        if(sym.is(token::parenOpen)){ funcHasParens = true; processParameterList(funcDef); sym = file.getToken(); }
+        i6Block& rawblock = *(new i6Block());
+        if(sym.is(token::endStatement)) rawblock.i6Body = " $self";
+        else { rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true); if(!funcHasParens) funcDef.isValueEmitter = true; }
+        funcDef.body = &rawblock;
+        newObj.members.push_back((typeMember*)&funcDef);
+    } else if(tok.isDataType()){
+        // Type declaration or method stub on extern object
+        token propName = file.getToken({eTokenType::identifier, eTokenType::dataType});
+        token sym = file.getToken({token::endStatement, token::assignment, token::parenOpen});
+        if(sym.is(token::assignment)){
+            // Property with initializer — skip the value, issue error
+            token v = file.getToken();
+            while(!v.is(token::endStatement) && !v.is(token::braceClose) && !v.is(eTokenType::eof)) v = file.getToken();
+            parsingError(format("extern object '{0}': property '{1}' cannot have an initializer; extern objects are defined in I6",
+                newObj.dName(), propName.value));
+        }
+        if(sym.is(token::parenOpen)){
+            // Method declaration — register as functionDef for type checking
+            functionDef& funcDef = *(new functionDef());
+            funcDef.name = propName.value;
+            funcDef.returnType = languageService.getType(tok.value);
+            funcDef.isExternal = true;
+            processParameterList(funcDef);
+            // Body is not allowed on non-emitter methods in extern objects
+            token after = file.getToken();
+            if(after.is(token::braceOpen)){
+                file.getRawTextThroughClosingBrace();
+                parsingError(format("extern object '{0}': non-emitter method '{1}' cannot have a body; use 'emitter' or declare without a body",
+                    newObj.dName(), propName.value));
+            }
+            // else: after is ; — declaration stub, valid.
+            // Replace the pre-scan stub (registered without default-value info) with
+            // this fully-parsed funcDef so defaults/arity resolve at call sites; append
+            // if no stub exists (e.g. a second overload after the first claimed it).
+            if(!replaceStubMember(newObj.members, funcDef))
+                newObj.members.push_back((typeMember*)&funcDef);
+            tok = file.getToken();
+            return;
+        }
+        // Property without initializer — register for type checking. Replace the
+        // pre-scan stub (same name) so we don't leave a duplicate untyped member.
+        variableDeclaration& prop = *(new variableDeclaration());
+        prop.name = propName.value;
+        prop.type = languageService.getType(tok.value);
+        prop.isExternal = true;
+        bool propReplaced = false;
+        for(size_t i = 0; i < newObj.members.size(); i++)
+            if(newObj.members[i]->name == prop.name)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(newObj.members[i]))
+                    if(vd->isPrePassStub){ newObj.members[i] = &prop; propReplaced = true; break; }
+        if(!propReplaced) newObj.members.push_back((typeMember*)&prop);
+    } else if(tok.is(eTokenType::identifier) && tok.value == "grammar"){
+        // Extern verb body: `grammar = { {.w1|.w2|.w3, ...}, ... };` declares the dict
+        // words this verb claims at the I6 level. Identical syntax to non-extern verbs;
+        // the difference is purely emission: extern verbs never emit grammar (their I6
+        // grammar is defined externally), so only the trigger words (first dict word
+        // of each line plus |-alternation extras) are meaningful here. Pattern tokens
+        // after the trigger position are parsed (for syntax validation) but ignored;
+        // a warning is issued so the author knows they have no effect.
+        auto* vod = dynamic_cast<verbObjectDef*>(&newObj);
+        if(!vod)
+            parsingError(format("'grammar' is only valid inside a verb body (on '{0}')", newObj.dName()));
+        file.getToken(token::assignment);
+        vector<grammarLine> lines = parseGrammarLines();
+        string verbDisplayName = newObj.displayName.empty() ? newObj.name : newObj.displayName;
+        for(grammarLine& gl : lines){
+            if(!gl.patternTokens.empty())
+                parsingWarning(format("extern verb '{0}': pattern tokens after the trigger word(s) in `grammar = {{...}}` are ignored — extern verbs don't emit I6 grammar; only the dict words in the first position contribute to the verb's claimed-words list",
+                    verbDisplayName));
+            gl.targetVerb = verbDisplayName;
+            gl.isOwnLine = true;
+            vod->grammarLines.push_back(gl);
+        }
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+    } else {
+        parsingError(format("Unexpected '{0}' in extern object body", tok.value));
+    }
+    tok = file.getToken();
+}
+
+// Parse the body of an `extern object`/`extern verb` declaration: the dictionary-word verb
+// shorthand, then the member loop, then the global registration of a bodied extern object.
+void bglParser::parseExternObjectBody(objectDef& newObj, verbObjectDef* vod){
+    objectDef* savedObject = currentObject;
+    currentObject = &newObj;
+    openCompileContext(eCompileContext::objectDef);
+
+    // Syntax sweetener ("pretty lie") for extern verb claimed-words: when the body
+    // begins with a dictionary-word literal, the entire body is interpreted as the
+    // trigger-words section of a single grammar line. Desugars to the canonical form
+    // `extern verb V { grammar = { {.w1|.w2|.w3} }; }`. Triggers may be combined with
+    // `|`-alternation; no pattern tokens are allowed in this form (extern verbs don't
+    // emit grammar). The canonical body parsing path below handles all other cases.
+    if(file.peekToken().is(eTokenType::dictionaryWord)){
+        auto* vod = dynamic_cast<verbObjectDef*>(&newObj);
+        if(!vod)
+            parsingError(format("extern object '{0}': dictionary-word body shorthand is only valid on extern verbs", newObj.dName()));
+        grammarLine line;
+        token trigger = file.getToken(eTokenType::dictionaryWord);
+        line.verbWord = trigger.value;
+        while(file.peekToken().is("|")){
+            file.getToken();  // consume |
+            token alt = file.getToken(eTokenType::dictionaryWord);
+            line.additionalVerbWords.push_back(alt.value);
+        }
+        file.getToken(token::braceClose);
+        line.targetVerb = newObj.displayName.empty() ? newObj.name : newObj.displayName;
+        line.isOwnLine = true;
+        vod->grammarLines.push_back(line);
+        closeCompileContext(eCompileContext::objectDef);
+        currentObject = savedObject;
+        return;
+    }
+
+    token tok = file.getToken();
+    while(tok.isNot(token::braceClose) && tok.isNot(eTokenType::eof)){
+        parseExternObjectMember(newObj, tok);
+    }
+    // Make an extern object WITH a body referenceable as a global (e.g.
+    // playerCommands.pushCommand(...)). registerObject/rePushIfMissing deliberately keep
+    // externs out of `globals` (bare `extern object foo;` is a variableDeclaration on a
+    // separate path), so a bodied extern objectDef would otherwise be a type with no
+    // referenceable name → "Unknown variable". Verb-derived externs are excluded: they live
+    // in languageService.verbs and emit as grammar. emitObject() skips externs so no
+    // duplicate `Object` directive is emitted for these.
+    closeCompileContext(eCompileContext::objectDef);
+    currentObject = savedObject;
+    // Register (after restoring the outer context) so the check sees global scope, not the
+    // objectDef context opened for member parsing above.
+    if(getCurrentCompileContext() == eCompileContext::global && vod == nullptr){
+        if(find(languageService.globals.begin(), languageService.globals.end(),
+                (typeDef*)&newObj) == languageService.globals.end())
+            languageService.globals.push_back((typeDef*)&newObj);
+    }
+}
+
+// Parse one member of an object body — a single iteration of the member loop. On entry `tok` is
+// the member's first token; on return it is the first token of the next member (or '}').
+void bglParser::parseObjectMember(objectDef& newObj, token& tok){
+    if(tok.is(eTokenType::eof)) parsingError(format("Unexpected end of file inside object '{0}' — missing closing '}}'", newObj.dName()));
+    if(tok.is(eTokenType::directive)){
+        if(tok.is("#i6")) processI6InlineMember(newObj);
+        else parsingError(format("Unsupported directive in object body: '{0}'", tok.value));
+        tok = file.getToken();
+        return;
+    }
+    Qualifiers q = parseQualifiers(tok);
+    bool memberIsReplace = q.isReplace;
+    // Context-specific validation
+    if(q.isExtern)  parsingError("'extern' is not valid inside an object body");
+    if(q.isExtend)  parsingError("'extend' is not valid inside an object body");
+    if(q.isAlias){
+        parseAliasMember(tok, newObj.members, "object body");
+        tok = file.getToken();
+        return;
+    }
+    if(q.isConst)   parsingError("'const' is not valid inside an object body (use on the property type)");
+    if(q.isStatic)  parsingError("'static' is not valid inside an object body");
+    if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
+    if(q.isEmitter){
+        // `emitter array<T> name(...)` — route to processArrayMember which already
+        // handles emitter routines (via q->isEmitter). Without this dispatch, the
+        // emitter branch below would try to consume `<` as the propName identifier
+        // and fail. Mirrors the same routing done for non-emitter `array<T>` at the
+        // bottom of this loop.
+        if((tok.value == "array" || tok.value == "rawarray") && file.peekToken().is("<")){
+            processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray");
+            tok = file.getToken();
+            return;
+        }
+        // Alias member: `emitter auto name = ClassRef;` — compile-time indirection to another class.
+        // Supported on objects so namespace-like objects can expose emitter classes alongside real state.
+        if(tok.value == "auto"){
+            token aliasName = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            file.getToken(token::assignment);
+            token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            classDef* rhsCls = languageService.findClass(rhs.value);
+            if(!rhsCls)
+                parsingError(format("'auto' alias member '{0}': '{1}' is not a declared class",
+                    (string)aliasName, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
+            file.getToken(token::endStatement);
+            variableDeclaration& aliasDef = *(new variableDeclaration());
+            aliasDef.name = (string)aliasName;
+            aliasDef.type = languageService.getType(rhs.value);
+            aliasDef.isExternal = true;  // no I6 emission
+            newObj.members.push_back(&aliasDef);
+            tok = file.getToken();
+            return;
+        }
+        // emitter method inside object body — parse as raw I6 body
+        token retType = tok;
+        token propName = file.getToken(eTokenType::identifier);
+        if(propName.is("operator")){
+            token opTok = file.getToken();
+            if(opTok.is(token::parenOpen)) propName.value = "operator()";
+            else if(opTok.is("?")) propName.value = "?";
+            else if(opTok.is("switch")) propName.value = "switch";
+            else { opTok.assert(eTokenType::oper); propName.value = opTok.value; }
+        }
+        functionDef& funcDef = *(new functionDef());
+        funcDef.name = (string)propName;
+        funcDef.returnType = languageService.getType((string)retType);
+        funcDef.isEmitter = true;
+        funcDef.isExplicit = q.isExplicit;
+        funcDef.isDefault = q.isDefault;
+        if(q.isExplicit && funcDef.name != "operator()")
+            parsingError("'explicit' is only valid on conversion operators (operator())");
+        token sym = file.getToken();
+        bool hasParens = false;
+        if(sym.is(token::parenOpen)){
+            hasParens = true;
+            processParameterList(funcDef);
+            sym = file.getToken();
+        }
+        i6Block& rawblock = *(new i6Block());
+        if(sym.is(token::endStatement)){
+            // Semicolon-terminated emitter: pass-through
+            rawblock.i6Body = " $self";
+        } else {
+            // sym should be braceOpen
+            rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+            if(!hasParens) funcDef.isValueEmitter = true;
+        }
+        funcDef.body = &rawblock;
+        if(!replaceStubMember(newObj.members, funcDef))
+            newObj.members.push_back((typeMember*)&funcDef);
+    } else if(tok.value == "array" || tok.value == "rawarray")
+        processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray");
+    else if(tok.isDataType())
+        processTypedMember(newObj, tok, memberIsReplace, q.isRef);
+    else if(tok.is(eTokenType::identifier))
+        processInheritedMember(newObj, tok);
+    else
+        parsingError(format("Unexpected token '{0}' in object body", tok.value));
+    tok = file.getToken();
+}
+
 bool bglParser::processObjectDeclaration(token objectType, token name, bool isExternal, string className, string i6alias, bool hasBody, bool isEmitter, bool isSuperposed){
     // If emitter qualifier is set and body is present, this is an emitter value declaration
     if(isEmitter && hasBody) return processEmitterValueDeclaration(objectType, name);
@@ -2036,157 +2340,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     // Extern objects: parse body for type registration but validate members.
     // Only type declarations (no initializer) and emitters are allowed.
     if(isExternal){
-        if(hasBody){
-            objectDef* savedObject = currentObject;
-            currentObject = &newObj;
-            openCompileContext(eCompileContext::objectDef);
-
-            // Syntax sweetener ("pretty lie") for extern verb claimed-words: when the body
-            // begins with a dictionary-word literal, the entire body is interpreted as the
-            // trigger-words section of a single grammar line. Desugars to the canonical form
-            // `extern verb V { grammar = { {.w1|.w2|.w3} }; }`. Triggers may be combined with
-            // `|`-alternation; no pattern tokens are allowed in this form (extern verbs don't
-            // emit grammar). The canonical body parsing path below handles all other cases.
-            if(file.peekToken().is(eTokenType::dictionaryWord)){
-                auto* vod = dynamic_cast<verbObjectDef*>(&newObj);
-                if(!vod)
-                    parsingError(format("extern object '{0}': dictionary-word body shorthand is only valid on extern verbs", newObj.dName()));
-                grammarLine line;
-                token trigger = file.getToken(eTokenType::dictionaryWord);
-                line.verbWord = trigger.value;
-                while(file.peekToken().is("|")){
-                    file.getToken();  // consume |
-                    token alt = file.getToken(eTokenType::dictionaryWord);
-                    line.additionalVerbWords.push_back(alt.value);
-                }
-                file.getToken(token::braceClose);
-                line.targetVerb = newObj.displayName.empty() ? newObj.name : newObj.displayName;
-                line.isOwnLine = true;
-                vod->grammarLines.push_back(line);
-                closeCompileContext(eCompileContext::objectDef);
-                currentObject = savedObject;
-                return false;
-            }
-
-            token tok = file.getToken();
-            while(tok.isNot(token::braceClose) && tok.isNot(eTokenType::eof)){
-                Qualifiers q = parseQualifiers(tok);
-                if(q.isEmitter){
-                    // Emitter methods and emitter values are allowed on extern objects
-                    token retType = tok;
-                    token propName = file.getToken(eTokenType::identifier);
-                    if(propName.is("operator")){
-                        token opTok = file.getToken();
-                        if(opTok.is(token::parenOpen)) propName.value = "operator()";
-                        else if(opTok.is("?")) propName.value = "?";
-                        else if(opTok.is("switch")) propName.value = "switch";
-                        else { opTok.assert(eTokenType::oper); propName.value = opTok.value; }
-                    }
-                    functionDef& funcDef = *(new functionDef());
-                    funcDef.name = (string)propName;
-                    funcDef.returnType = languageService.getType((string)retType);
-                    funcDef.isEmitter = true;
-                    funcDef.isExplicit = q.isExplicit;
-                    funcDef.isDefault = q.isDefault;
-                    token sym = file.getToken();
-                    bool funcHasParens = false;
-                    if(sym.is(token::parenOpen)){ funcHasParens = true; processParameterList(funcDef); sym = file.getToken(); }
-                    i6Block& rawblock = *(new i6Block());
-                    if(sym.is(token::endStatement)) rawblock.i6Body = " $self";
-                    else { rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true); if(!funcHasParens) funcDef.isValueEmitter = true; }
-                    funcDef.body = &rawblock;
-                    newObj.members.push_back((typeMember*)&funcDef);
-                } else if(tok.isDataType()){
-                    // Type declaration or method stub on extern object
-                    token propName = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                    token sym = file.getToken({token::endStatement, token::assignment, token::parenOpen});
-                    if(sym.is(token::assignment)){
-                        // Property with initializer — skip the value, issue error
-                        token v = file.getToken();
-                        while(!v.is(token::endStatement) && !v.is(token::braceClose) && !v.is(eTokenType::eof)) v = file.getToken();
-                        parsingError(format("extern object '{0}': property '{1}' cannot have an initializer; extern objects are defined in I6",
-                            newObj.dName(), propName.value));
-                    }
-                    if(sym.is(token::parenOpen)){
-                        // Method declaration — register as functionDef for type checking
-                        functionDef& funcDef = *(new functionDef());
-                        funcDef.name = propName.value;
-                        funcDef.returnType = languageService.getType(tok.value);
-                        funcDef.isExternal = true;
-                        processParameterList(funcDef);
-                        // Body is not allowed on non-emitter methods in extern objects
-                        token after = file.getToken();
-                        if(after.is(token::braceOpen)){
-                            file.getRawTextThroughClosingBrace();
-                            parsingError(format("extern object '{0}': non-emitter method '{1}' cannot have a body; use 'emitter' or declare without a body",
-                                newObj.dName(), propName.value));
-                        }
-                        // else: after is ; — declaration stub, valid.
-                        // Replace the pre-scan stub (registered without default-value info) with
-                        // this fully-parsed funcDef so defaults/arity resolve at call sites; append
-                        // if no stub exists (e.g. a second overload after the first claimed it).
-                        if(!replaceStubMember(newObj.members, funcDef))
-                            newObj.members.push_back((typeMember*)&funcDef);
-                        tok = file.getToken();
-                        continue;
-                    }
-                    // Property without initializer — register for type checking. Replace the
-                    // pre-scan stub (same name) so we don't leave a duplicate untyped member.
-                    variableDeclaration& prop = *(new variableDeclaration());
-                    prop.name = propName.value;
-                    prop.type = languageService.getType(tok.value);
-                    prop.isExternal = true;
-                    bool propReplaced = false;
-                    for(size_t i = 0; i < newObj.members.size(); i++)
-                        if(newObj.members[i]->name == prop.name)
-                            if(auto* vd = dynamic_cast<variableDeclaration*>(newObj.members[i]))
-                                if(vd->isPrePassStub){ newObj.members[i] = &prop; propReplaced = true; break; }
-                    if(!propReplaced) newObj.members.push_back((typeMember*)&prop);
-                } else if(tok.is(eTokenType::identifier) && tok.value == "grammar"){
-                    // Extern verb body: `grammar = { {.w1|.w2|.w3, ...}, ... };` declares the dict
-                    // words this verb claims at the I6 level. Identical syntax to non-extern verbs;
-                    // the difference is purely emission: extern verbs never emit grammar (their I6
-                    // grammar is defined externally), so only the trigger words (first dict word
-                    // of each line plus |-alternation extras) are meaningful here. Pattern tokens
-                    // after the trigger position are parsed (for syntax validation) but ignored;
-                    // a warning is issued so the author knows they have no effect.
-                    auto* vod = dynamic_cast<verbObjectDef*>(&newObj);
-                    if(!vod)
-                        parsingError(format("'grammar' is only valid inside a verb body (on '{0}')", newObj.dName()));
-                    file.getToken(token::assignment);
-                    vector<grammarLine> lines = parseGrammarLines();
-                    string verbDisplayName = newObj.displayName.empty() ? newObj.name : newObj.displayName;
-                    for(grammarLine& gl : lines){
-                        if(!gl.patternTokens.empty())
-                            parsingWarning(format("extern verb '{0}': pattern tokens after the trigger word(s) in `grammar = {{...}}` are ignored — extern verbs don't emit I6 grammar; only the dict words in the first position contribute to the verb's claimed-words list",
-                                verbDisplayName));
-                        gl.targetVerb = verbDisplayName;
-                        gl.isOwnLine = true;
-                        vod->grammarLines.push_back(gl);
-                    }
-                    if(file.peekToken().is(token::endStatement)) file.getToken();
-                } else {
-                    parsingError(format("Unexpected '{0}' in extern object body", tok.value));
-                }
-                tok = file.getToken();
-            }
-            // Make an extern object WITH a body referenceable as a global (e.g.
-            // playerCommands.pushCommand(...)). registerObject/rePushIfMissing deliberately keep
-            // externs out of `globals` (bare `extern object foo;` is a variableDeclaration on a
-            // separate path), so a bodied extern objectDef would otherwise be a type with no
-            // referenceable name → "Unknown variable". Verb-derived externs are excluded: they live
-            // in languageService.verbs and emit as grammar. emitObject() skips externs so no
-            // duplicate `Object` directive is emitted for these.
-            closeCompileContext(eCompileContext::objectDef);
-            currentObject = savedObject;
-            // Register (after restoring the outer context) so the check sees global scope, not the
-            // objectDef context opened for member parsing above.
-            if(getCurrentCompileContext() == eCompileContext::global && vod == nullptr){
-                if(find(languageService.globals.begin(), languageService.globals.end(),
-                        (typeDef*)&newObj) == languageService.globals.end())
-                    languageService.globals.push_back((typeDef*)&newObj);
-            }
-        }
+        if(hasBody) parseExternObjectBody(newObj, vod);
         return false;
     }
 
@@ -2195,104 +2349,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     openCompileContext(eCompileContext::objectDef);
 
     token tok = file.getToken();
-    while(tok.isNot(token::braceClose)){
-        if(tok.is(eTokenType::eof)) parsingError(format("Unexpected end of file inside object '{0}' — missing closing '}}'", newObj.dName()));
-        if(tok.is(eTokenType::directive)){
-            if(tok.is("#i6")) processI6InlineMember(newObj);
-            else parsingError(format("Unsupported directive in object body: '{0}'", tok.value));
-            tok = file.getToken();
-            continue;
-        }
-        Qualifiers q = parseQualifiers(tok);
-        bool memberIsReplace = q.isReplace;
-        // Context-specific validation
-        if(q.isExtern)  parsingError("'extern' is not valid inside an object body");
-        if(q.isExtend)  parsingError("'extend' is not valid inside an object body");
-        if(q.isAlias){
-            parseAliasMember(tok, newObj.members, "object body");
-            tok = file.getToken();
-            continue;
-        }
-        if(q.isConst)   parsingError("'const' is not valid inside an object body (use on the property type)");
-        if(q.isStatic)  parsingError("'static' is not valid inside an object body");
-        if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
-        if(q.isEmitter){
-            // `emitter array<T> name(...)` — route to processArrayMember which already
-            // handles emitter routines (via q->isEmitter). Without this dispatch, the
-            // emitter branch below would try to consume `<` as the propName identifier
-            // and fail. Mirrors the same routing done for non-emitter `array<T>` at the
-            // bottom of this loop.
-            if((tok.value == "array" || tok.value == "rawarray") && file.peekToken().is("<")){
-                processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray");
-                tok = file.getToken();
-                continue;
-            }
-            // Alias member: `emitter auto name = ClassRef;` — compile-time indirection to another class.
-            // Supported on objects so namespace-like objects can expose emitter classes alongside real state.
-            if(tok.value == "auto"){
-                token aliasName = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                file.getToken(token::assignment);
-                token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                classDef* rhsCls = languageService.findClass(rhs.value);
-                if(!rhsCls)
-                    parsingError(format("'auto' alias member '{0}': '{1}' is not a declared class",
-                        (string)aliasName, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
-                file.getToken(token::endStatement);
-                variableDeclaration& aliasDef = *(new variableDeclaration());
-                aliasDef.name = (string)aliasName;
-                aliasDef.type = languageService.getType(rhs.value);
-                aliasDef.isExternal = true;  // no I6 emission
-                newObj.members.push_back(&aliasDef);
-                tok = file.getToken();
-                continue;
-            }
-            // emitter method inside object body — parse as raw I6 body
-            token retType = tok;
-            token propName = file.getToken(eTokenType::identifier);
-            if(propName.is("operator")){
-                token opTok = file.getToken();
-                if(opTok.is(token::parenOpen)) propName.value = "operator()";
-                else if(opTok.is("?")) propName.value = "?";
-                else if(opTok.is("switch")) propName.value = "switch";
-                else { opTok.assert(eTokenType::oper); propName.value = opTok.value; }
-            }
-            functionDef& funcDef = *(new functionDef());
-            funcDef.name = (string)propName;
-            funcDef.returnType = languageService.getType((string)retType);
-            funcDef.isEmitter = true;
-            funcDef.isExplicit = q.isExplicit;
-            funcDef.isDefault = q.isDefault;
-            if(q.isExplicit && funcDef.name != "operator()")
-                parsingError("'explicit' is only valid on conversion operators (operator())");
-            token sym = file.getToken();
-            bool hasParens = false;
-            if(sym.is(token::parenOpen)){
-                hasParens = true;
-                processParameterList(funcDef);
-                sym = file.getToken();
-            }
-            i6Block& rawblock = *(new i6Block());
-            if(sym.is(token::endStatement)){
-                // Semicolon-terminated emitter: pass-through
-                rawblock.i6Body = " $self";
-            } else {
-                // sym should be braceOpen
-                rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
-                if(!hasParens) funcDef.isValueEmitter = true;
-            }
-            funcDef.body = &rawblock;
-            if(!replaceStubMember(newObj.members, funcDef))
-                newObj.members.push_back((typeMember*)&funcDef);
-        } else if(tok.value == "array" || tok.value == "rawarray")
-            processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray");
-        else if(tok.isDataType())
-            processTypedMember(newObj, tok, memberIsReplace, q.isRef);
-        else if(tok.is(eTokenType::identifier))
-            processInheritedMember(newObj, tok);
-        else
-            parsingError(format("Unexpected token '{0}' in object body", tok.value));
-        tok = file.getToken();
-    }
+    while(tok.isNot(token::braceClose)) parseObjectMember(newObj, tok);
 
     closeCompileContext(eCompileContext::objectDef);
     currentObject = savedObject;
@@ -2435,6 +2492,239 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
 // ===============================================================================
 // extend object { ... } - add members to an existing object
 // ===============================================================================
+// Parse one member of an `extend <object>` body — a single iteration of that member loop. On entry
+// `tok` is the member's first token; on return it is the next member's first token (or '}').
+// `extendBlockPriority` / `extendHadReplaceGrammar` are the block-local verb-grammar state.
+void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok, token nameTok, bool isExternalObj, int& extendBlockPriority, int verbPriorityDefault, bool& extendHadReplaceGrammar){
+    if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside object — missing closing '}'");
+    if(tok.is(eTokenType::directive)){
+        if(tok.is("#i6")) processI6InlineMember(*obj);
+        else parsingError(format("Unsupported directive in extend body: '{0}'", tok.value));
+        tok = file.getToken();
+        return;
+    }
+    Qualifiers q = parseQualifiers(tok);
+    bool memberIsReplace = q.isReplace;
+    if(q.isExtern)  parsingError("'extern' is not valid inside an extend body");
+    if(q.isExtend)  parsingError("'extend' is not valid inside an extend body");
+    if(q.isAlias){
+        parseAliasMember(tok, obj->members, "extend body");
+        tok = file.getToken();
+        return;
+    }
+    if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
+    if(isExternalObj && !q.isEmitter){
+        // For extern objects, only compound assignment on collection members is allowed,
+        // plus a few block-local directives that don't actually mutate the extern object
+        // (e.g. verb extend's `priority = N;` is captured into extendBlockPriority and
+        // stamped onto added grammar lines — it never becomes a member on the extern verb).
+        bool isAllowed = false;
+        if(tok.isDataType()){
+            token peekName = file.peekToken();
+            token peekOp = file.peekToken(2);
+            if(peekOp.is("+=") || peekOp.is("-=")) isAllowed = true;
+        } else if(tok.is(eTokenType::identifier)){
+            token peekOp = file.peekToken();
+            if(peekOp.is("+=") || peekOp.is("-=")) isAllowed = true;
+            else if(vod != nullptr && tok.value == "priority" && peekOp.is(token::assignment))
+                isAllowed = true;  // block-local priority directive (see identifier branch below)
+            else if(vod != nullptr && tok.value == "grammar" && peekOp.is(token::assignment))
+                isAllowed = true;  // replace semantics: `grammar = { ... }` (see identifier branch below)
+            else if(tok.value == "synonyms" && peekOp.is(token::assignment))
+                isAllowed = true;  // `synonyms = { ... }` → I6 `Verb 'w' = 'anchor';` — recognized
+                                   // regardless of verb resolution; the handler below gives a
+                                   // targeted error if the extend target isn't a verb
+        }
+        if(!isAllowed)
+            parsingError(format("Cannot add members to extern object '{0}'; only compound assignment (+=) on collection members is allowed",
+                nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
+    }
+    if(q.isEmitter){
+        if(isExternalObj)
+            parsingError(format("Cannot add emitter methods to extern object '{0}'",
+                nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
+        // Alias member: `emitter auto name = ClassRef;` — compile-time indirection to
+        // another class. Mirrors the same case in the primary object-body parser so
+        // `extend bgl { emitter auto asm = bglOpCodes; }` works the same as declaring
+        // it inside the original `object bgl { ... }`.
+        // `emitter auto name = Class;` aliases an *emitter class* (all methods inlined, no runtime
+        // object). For a compile-time alias to a real *object* — no runtime property — use
+        // `alias name = objectInstance;` (see parseAliasMember) instead; `emitter` would be a
+        // misnomer there since the target is not an emitter.
+        if(tok.value == "auto"){
+            token aliasName = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            file.getToken(token::assignment);
+            token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            classDef* rhsCls = languageService.findClass(rhs.value);
+            if(!rhsCls)
+                parsingError(format("'emitter auto' alias member '{0}': '{1}' is not a declared class "
+                    "(use `alias {0} = {1};` for an object)",
+                    (string)aliasName, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
+            file.getToken(token::endStatement);
+            variableDeclaration& aliasDef = *(new variableDeclaration());
+            aliasDef.name = (string)aliasName;
+            aliasDef.type = languageService.getType(rhs.value);
+            aliasDef.isExternal = true;  // no I6 emission
+            obj->members.push_back(&aliasDef);
+            tok = file.getToken();
+            return;
+        }
+        token retType = tok;
+        token propName = file.getToken(eTokenType::identifier);
+        if(propName.is("operator")){
+            token opTok = file.getToken();
+            if(opTok.is(token::parenOpen)) propName.value = "operator()";
+            else if(opTok.is("?")) propName.value = "?";
+            else if(opTok.is("switch")) propName.value = "switch";
+            else { opTok.assert(eTokenType::oper); propName.value = opTok.value; }
+        }
+        functionDef& funcDef = *(new functionDef());
+        funcDef.name = (string)propName;
+        funcDef.returnType = languageService.getType((string)retType);
+        funcDef.isEmitter = true;
+        funcDef.isExplicit = q.isExplicit;
+        funcDef.isDefault = q.isDefault;
+        token sym = file.getToken();
+        bool hasParens = false;
+        if(sym.is(token::parenOpen)){ hasParens = true; processParameterList(funcDef); sym = file.getToken(); }
+        i6Block& rawblock = *(new i6Block());
+        if(sym.is(token::endStatement)) rawblock.i6Body = " $self";
+        else { rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true); if(!hasParens) funcDef.isValueEmitter = true; }
+        funcDef.body = &rawblock;
+        if(!replaceStubMember(obj->members, funcDef)){
+            bool replaced = false;
+            if(memberIsReplace){
+                for(size_t i = 0; i < obj->members.size(); i++)
+                    if(auto* fd = dynamic_cast<functionDef*>(obj->members[i]))
+                        if(fd->name == funcDef.name){ obj->members[i] = &funcDef; replaced = true; break; }
+            }
+            if(!replaced) obj->members.push_back((typeMember*)&funcDef);
+        }
+    } else if(tok.value == "array" || tok.value == "rawarray")
+        processArrayMember(obj->members, obj->dName(), dynamic_cast<verbObjectDef*>(obj), obj, &q, tok.value == "rawarray");
+    else if(tok.isDataType()){
+        // Check for += / -= compound assignment on a typed member
+        token peekName = file.peekToken();
+        token peekOp = file.peekToken(2);
+        if((peekOp.is("+=") || peekOp.is("-=")) && peekName.is(eTokenType::identifier)){
+            token memberName = file.getToken();
+            token op = file.getToken();
+            processExtendCompoundAssignment(*obj, memberName, op.value, vod, extendBlockPriority);
+        } else {
+            processTypedMember(*obj, tok, memberIsReplace, q.isRef);
+        }
+    }
+    else if(tok.is(eTokenType::identifier)){
+        // Check for += / -= compound assignment (inferred type)
+        token peekOp = file.peekToken();
+        if(peekOp.is("+=") || peekOp.is("-=")){
+            // In an `extend` body the grammar operators are explicit: `grammar += { ... }`
+            // appends, `grammar -= { ... }` removes (matching lines; warns if none match).
+            // Destructive whole-verb replacement is the separate `replace grammar = { ... }`.
+            // A bare `grammar = { ... }` is rejected below so an append/replace can't be
+            // silently confused. The grammarrulelist +=/-= logic lives in
+            // processExtendCompoundAssignment (which also rejects -= on extern verbs).
+            token op = file.getToken();
+            processExtendCompoundAssignment(*obj, tok, op.value, vod, extendBlockPriority);
+        } else if(vod != nullptr && tok.value == "priority" && peekOp.is(token::assignment)){
+            // Verb extend block: `priority = N;` is a block-local directive that sets the
+            // priority stamped onto subsequent `grammar +=` contributions. It is NOT a
+            // persistent member on the verb (which would conflict with multiple extend
+            // blocks at different priorities, all merging into the same verbObjectDef).
+            file.getToken(token::assignment);
+            token valTok = file.getToken();
+            int newPriority = extendBlockPriority;
+            try { newPriority = stoi(valTok.value); }
+            catch(...) { parsingError(format("priority: expected integer literal, got '{0}'", valTok.value)); }
+            if(extendHadReplaceGrammar && newPriority != verbPriorityDefault)
+                parsingError("priority is meaningless with `grammar = { ... }` (replace); remove one or set priority to the default");
+            extendBlockPriority = newPriority;
+            file.getToken(token::endStatement);
+        } else if(vod != nullptr && tok.value == "grammar" && peekOp.is(token::assignment)){
+            // In an `extend` body, only `replace grammar = { ... }` uses `=` (destructive
+            // whole-verb replace). A BARE `grammar = { ... }` is rejected: append is `+=`,
+            // remove is `-=`. This forces intent so an `=` can never silently append-or-replace
+            // (the reason `grammar =` append was retired). In a `verb` DECLARATION, `grammar =`
+            // remains the (only) form — that path is handled elsewhere, not here.
+            bool isReplace = memberIsReplace;
+            if(!isReplace)
+                parsingError("In an `extend` body, `grammar = { ... }` is not allowed. Use `grammar += { ... }` to append, `grammar -= { ... }` to remove, or `replace grammar = { ... }` to replace the whole verb.");
+            // Priority is meaningless under replace; if the user also set a non-default
+            // `priority = N;` in the same extend block, that's a contradiction.
+            if(extendBlockPriority != verbPriorityDefault)
+                parsingError("`replace grammar = { ... }` cannot be combined with a non-default `priority = N;` in the same extend block — priority is meaningless under replace");
+            file.getToken(token::assignment);
+            vector<grammarLine> lines = parseGrammarLines();
+            if(file.peekToken().is(token::endStatement)) file.getToken();
+            string inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
+
+            // Find or create the verb's "grammar" rule-list. Extern verbs are emitted via
+            // the globals-level grammarRuleListDecl (since emitVerbObject early-returns
+            // for extern); non-extern verbs pick the same lines up via vod->grammarLines.
+            grammarRuleListDecl* gtd = nullptr;
+            for(typeMember* m : obj->members)
+                if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+                    if(g->name == "grammar"){ gtd = g; break; }
+            if(!gtd){
+                gtd = new grammarRuleListDecl();
+                gtd->name = "grammar";
+                gtd->type = languageService.getType("grammarrulelist");
+                gtd->verbName = inferredVerb;
+                obj->members.push_back(gtd);
+                if(vod->isExternal) languageService.globals.push_back(gtd);
+            }
+            for(grammarLine& gl : lines){
+                gl.targetVerb    = inferredVerb;
+                gl.isOwnLine     = false;
+                gl.isReplaceMode = true;   // only the replace path reaches here now
+                gtd->grammarLines.push_back(gl);
+                vod->grammarLines.push_back(gl);
+            }
+            extendHadReplaceGrammar = true;
+        } else if(tok.value == "synonyms" && peekOp.is(token::assignment)){
+            // `synonyms = {.w1, .w2};` → I6 `Verb 'w1' 'w2' = 'anchor';`. The listed words become
+            // TRUE ALIASES of the anchor verb's grammar table (a later `Extend` on the verb flows
+            // to them automatically) — distinct from copying grammar lines. Works for extern
+            // (stdlib) and Beguile-native verbs; emitted as a globals-level node so it lands after
+            // the anchor's own `Verb` directive.
+            //
+            // Recognized in ANY extend body (not gated on verb resolution), so a `synonyms` line
+            // on a non-verb target gets a targeted error below instead of falling through to the
+            // misleading generic "'synonyms' is not a property …" message. The block is parsed
+            // (tokens consumed) regardless, to avoid a cascade of follow-on errors.
+            file.getToken(token::assignment);
+            file.getToken(token::braceOpen);
+            verbSynonymDecl& syn = *(new verbSynonymDecl());
+            syn.anchorVerb = vod ? vod->name : obj->name;   // primary word resolved at emit
+            if(!file.peekToken().is(token::braceClose)){
+                while(true){
+                    token w = file.getToken(eTokenType::dictionaryWord);
+                    string e; for(char ch : w.value) e += (ch == '\'') ? '^' : ch;
+                    string i6word;
+                    if(w.isPlural)         i6word = "'" + e + "//p'";
+                    else if(e.size() == 1) i6word = "'" + e + "//'";
+                    else                   i6word = "'" + e + "'";
+                    syn.synonymWords.push_back(i6word);
+                    token sep = file.getToken({token::comma, token::braceClose});
+                    if(sep.is(token::braceClose)) break;
+                }
+            }
+            if(file.peekToken().is(token::endStatement)) file.getToken();
+            if(vod == nullptr)
+                parsingError(format("`synonyms = {{ ... }}` is only valid when extending a verb — '{0}' is not a verb", obj->dName()));
+            else if(syn.synonymWords.empty())
+                parsingError("`synonyms = { ... }` requires at least one trigger word");
+            else
+                languageService.globals.push_back(&syn);
+        } else {
+            processInheritedMember(*obj, tok);
+        }
+    }
+    else
+        parsingError(format("Unexpected token '{0}' in extend body", tok.value));
+    tok = file.getToken();
+}
+
 bool bglParser::processObjectExtension(token nameTok){
     if(getCurrentCompileContext() != eCompileContext::global)
         parsingError("'extend' declarations are only allowed in global context");
@@ -2477,235 +2767,8 @@ bool bglParser::processObjectExtension(token nameTok){
                                            // out a later `priority = N;` set in the same block
 
     token tok = file.getToken();
-    while(tok.isNot(token::braceClose)){
-        if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside object — missing closing '}'");
-        if(tok.is(eTokenType::directive)){
-            if(tok.is("#i6")) processI6InlineMember(*obj);
-            else parsingError(format("Unsupported directive in extend body: '{0}'", tok.value));
-            tok = file.getToken();
-            continue;
-        }
-        Qualifiers q = parseQualifiers(tok);
-        bool memberIsReplace = q.isReplace;
-        if(q.isExtern)  parsingError("'extern' is not valid inside an extend body");
-        if(q.isExtend)  parsingError("'extend' is not valid inside an extend body");
-        if(q.isAlias){
-            parseAliasMember(tok, obj->members, "extend body");
-            tok = file.getToken();
-            continue;
-        }
-        if(q.isDefault) parsingError("'default' is only valid in class declarations, not object instances");
-        if(isExternalObj && !q.isEmitter){
-            // For extern objects, only compound assignment on collection members is allowed,
-            // plus a few block-local directives that don't actually mutate the extern object
-            // (e.g. verb extend's `priority = N;` is captured into extendBlockPriority and
-            // stamped onto added grammar lines — it never becomes a member on the extern verb).
-            bool isAllowed = false;
-            if(tok.isDataType()){
-                token peekName = file.peekToken();
-                token peekOp = file.peekToken(2);
-                if(peekOp.is("+=") || peekOp.is("-=")) isAllowed = true;
-            } else if(tok.is(eTokenType::identifier)){
-                token peekOp = file.peekToken();
-                if(peekOp.is("+=") || peekOp.is("-=")) isAllowed = true;
-                else if(vod != nullptr && tok.value == "priority" && peekOp.is(token::assignment))
-                    isAllowed = true;  // block-local priority directive (see identifier branch below)
-                else if(vod != nullptr && tok.value == "grammar" && peekOp.is(token::assignment))
-                    isAllowed = true;  // replace semantics: `grammar = { ... }` (see identifier branch below)
-                else if(tok.value == "synonyms" && peekOp.is(token::assignment))
-                    isAllowed = true;  // `synonyms = { ... }` → I6 `Verb 'w' = 'anchor';` — recognized
-                                       // regardless of verb resolution; the handler below gives a
-                                       // targeted error if the extend target isn't a verb
-            }
-            if(!isAllowed)
-                parsingError(format("Cannot add members to extern object '{0}'; only compound assignment (+=) on collection members is allowed",
-                    nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
-        }
-        if(q.isEmitter){
-            if(isExternalObj)
-                parsingError(format("Cannot add emitter methods to extern object '{0}'",
-                    nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
-            // Alias member: `emitter auto name = ClassRef;` — compile-time indirection to
-            // another class. Mirrors the same case in the primary object-body parser so
-            // `extend bgl { emitter auto asm = bglOpCodes; }` works the same as declaring
-            // it inside the original `object bgl { ... }`.
-            // `emitter auto name = Class;` aliases an *emitter class* (all methods inlined, no runtime
-            // object). For a compile-time alias to a real *object* — no runtime property — use
-            // `alias name = objectInstance;` (see parseAliasMember) instead; `emitter` would be a
-            // misnomer there since the target is not an emitter.
-            if(tok.value == "auto"){
-                token aliasName = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                file.getToken(token::assignment);
-                token rhs = file.getToken({eTokenType::identifier, eTokenType::dataType});
-                classDef* rhsCls = languageService.findClass(rhs.value);
-                if(!rhsCls)
-                    parsingError(format("'emitter auto' alias member '{0}': '{1}' is not a declared class "
-                        "(use `alias {0} = {1};` for an object)",
-                        (string)aliasName, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
-                file.getToken(token::endStatement);
-                variableDeclaration& aliasDef = *(new variableDeclaration());
-                aliasDef.name = (string)aliasName;
-                aliasDef.type = languageService.getType(rhs.value);
-                aliasDef.isExternal = true;  // no I6 emission
-                obj->members.push_back(&aliasDef);
-                tok = file.getToken();
-                continue;
-            }
-            token retType = tok;
-            token propName = file.getToken(eTokenType::identifier);
-            if(propName.is("operator")){
-                token opTok = file.getToken();
-                if(opTok.is(token::parenOpen)) propName.value = "operator()";
-                else if(opTok.is("?")) propName.value = "?";
-                else if(opTok.is("switch")) propName.value = "switch";
-                else { opTok.assert(eTokenType::oper); propName.value = opTok.value; }
-            }
-            functionDef& funcDef = *(new functionDef());
-            funcDef.name = (string)propName;
-            funcDef.returnType = languageService.getType((string)retType);
-            funcDef.isEmitter = true;
-            funcDef.isExplicit = q.isExplicit;
-            funcDef.isDefault = q.isDefault;
-            token sym = file.getToken();
-            bool hasParens = false;
-            if(sym.is(token::parenOpen)){ hasParens = true; processParameterList(funcDef); sym = file.getToken(); }
-            i6Block& rawblock = *(new i6Block());
-            if(sym.is(token::endStatement)) rawblock.i6Body = " $self";
-            else { rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true); if(!hasParens) funcDef.isValueEmitter = true; }
-            funcDef.body = &rawblock;
-            if(!replaceStubMember(obj->members, funcDef)){
-                bool replaced = false;
-                if(memberIsReplace){
-                    for(size_t i = 0; i < obj->members.size(); i++)
-                        if(auto* fd = dynamic_cast<functionDef*>(obj->members[i]))
-                            if(fd->name == funcDef.name){ obj->members[i] = &funcDef; replaced = true; break; }
-                }
-                if(!replaced) obj->members.push_back((typeMember*)&funcDef);
-            }
-        } else if(tok.value == "array" || tok.value == "rawarray")
-            processArrayMember(obj->members, obj->dName(), dynamic_cast<verbObjectDef*>(obj), obj, &q, tok.value == "rawarray");
-        else if(tok.isDataType()){
-            // Check for += / -= compound assignment on a typed member
-            token peekName = file.peekToken();
-            token peekOp = file.peekToken(2);
-            if((peekOp.is("+=") || peekOp.is("-=")) && peekName.is(eTokenType::identifier)){
-                token memberName = file.getToken();
-                token op = file.getToken();
-                processExtendCompoundAssignment(*obj, memberName, op.value, vod, extendBlockPriority);
-            } else {
-                processTypedMember(*obj, tok, memberIsReplace, q.isRef);
-            }
-        }
-        else if(tok.is(eTokenType::identifier)){
-            // Check for += / -= compound assignment (inferred type)
-            token peekOp = file.peekToken();
-            if(peekOp.is("+=") || peekOp.is("-=")){
-                // In an `extend` body the grammar operators are explicit: `grammar += { ... }`
-                // appends, `grammar -= { ... }` removes (matching lines; warns if none match).
-                // Destructive whole-verb replacement is the separate `replace grammar = { ... }`.
-                // A bare `grammar = { ... }` is rejected below so an append/replace can't be
-                // silently confused. The grammarrulelist +=/-= logic lives in
-                // processExtendCompoundAssignment (which also rejects -= on extern verbs).
-                token op = file.getToken();
-                processExtendCompoundAssignment(*obj, tok, op.value, vod, extendBlockPriority);
-            } else if(vod != nullptr && tok.value == "priority" && peekOp.is(token::assignment)){
-                // Verb extend block: `priority = N;` is a block-local directive that sets the
-                // priority stamped onto subsequent `grammar +=` contributions. It is NOT a
-                // persistent member on the verb (which would conflict with multiple extend
-                // blocks at different priorities, all merging into the same verbObjectDef).
-                file.getToken(token::assignment);
-                token valTok = file.getToken();
-                int newPriority = extendBlockPriority;
-                try { newPriority = stoi(valTok.value); }
-                catch(...) { parsingError(format("priority: expected integer literal, got '{0}'", valTok.value)); }
-                if(extendHadReplaceGrammar && newPriority != verbPriorityDefault)
-                    parsingError("priority is meaningless with `grammar = { ... }` (replace); remove one or set priority to the default");
-                extendBlockPriority = newPriority;
-                file.getToken(token::endStatement);
-            } else if(vod != nullptr && tok.value == "grammar" && peekOp.is(token::assignment)){
-                // In an `extend` body, only `replace grammar = { ... }` uses `=` (destructive
-                // whole-verb replace). A BARE `grammar = { ... }` is rejected: append is `+=`,
-                // remove is `-=`. This forces intent so an `=` can never silently append-or-replace
-                // (the reason `grammar =` append was retired). In a `verb` DECLARATION, `grammar =`
-                // remains the (only) form — that path is handled elsewhere, not here.
-                bool isReplace = memberIsReplace;
-                if(!isReplace)
-                    parsingError("In an `extend` body, `grammar = { ... }` is not allowed. Use `grammar += { ... }` to append, `grammar -= { ... }` to remove, or `replace grammar = { ... }` to replace the whole verb.");
-                // Priority is meaningless under replace; if the user also set a non-default
-                // `priority = N;` in the same extend block, that's a contradiction.
-                if(extendBlockPriority != verbPriorityDefault)
-                    parsingError("`replace grammar = { ... }` cannot be combined with a non-default `priority = N;` in the same extend block — priority is meaningless under replace");
-                file.getToken(token::assignment);
-                vector<grammarLine> lines = parseGrammarLines();
-                if(file.peekToken().is(token::endStatement)) file.getToken();
-                string inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
-
-                // Find or create the verb's "grammar" rule-list. Extern verbs are emitted via
-                // the globals-level grammarRuleListDecl (since emitVerbObject early-returns
-                // for extern); non-extern verbs pick the same lines up via vod->grammarLines.
-                grammarRuleListDecl* gtd = nullptr;
-                for(typeMember* m : obj->members)
-                    if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
-                        if(g->name == "grammar"){ gtd = g; break; }
-                if(!gtd){
-                    gtd = new grammarRuleListDecl();
-                    gtd->name = "grammar";
-                    gtd->type = languageService.getType("grammarrulelist");
-                    gtd->verbName = inferredVerb;
-                    obj->members.push_back(gtd);
-                    if(vod->isExternal) languageService.globals.push_back(gtd);
-                }
-                for(grammarLine& gl : lines){
-                    gl.targetVerb    = inferredVerb;
-                    gl.isOwnLine     = false;
-                    gl.isReplaceMode = true;   // only the replace path reaches here now
-                    gtd->grammarLines.push_back(gl);
-                    vod->grammarLines.push_back(gl);
-                }
-                extendHadReplaceGrammar = true;
-            } else if(tok.value == "synonyms" && peekOp.is(token::assignment)){
-                // `synonyms = {.w1, .w2};` → I6 `Verb 'w1' 'w2' = 'anchor';`. The listed words become
-                // TRUE ALIASES of the anchor verb's grammar table (a later `Extend` on the verb flows
-                // to them automatically) — distinct from copying grammar lines. Works for extern
-                // (stdlib) and Beguile-native verbs; emitted as a globals-level node so it lands after
-                // the anchor's own `Verb` directive.
-                //
-                // Recognized in ANY extend body (not gated on verb resolution), so a `synonyms` line
-                // on a non-verb target gets a targeted error below instead of falling through to the
-                // misleading generic "'synonyms' is not a property …" message. The block is parsed
-                // (tokens consumed) regardless, to avoid a cascade of follow-on errors.
-                file.getToken(token::assignment);
-                file.getToken(token::braceOpen);
-                verbSynonymDecl& syn = *(new verbSynonymDecl());
-                syn.anchorVerb = vod ? vod->name : obj->name;   // primary word resolved at emit
-                if(!file.peekToken().is(token::braceClose)){
-                    while(true){
-                        token w = file.getToken(eTokenType::dictionaryWord);
-                        string e; for(char ch : w.value) e += (ch == '\'') ? '^' : ch;
-                        string i6word;
-                        if(w.isPlural)         i6word = "'" + e + "//p'";
-                        else if(e.size() == 1) i6word = "'" + e + "//'";
-                        else                   i6word = "'" + e + "'";
-                        syn.synonymWords.push_back(i6word);
-                        token sep = file.getToken({token::comma, token::braceClose});
-                        if(sep.is(token::braceClose)) break;
-                    }
-                }
-                if(file.peekToken().is(token::endStatement)) file.getToken();
-                if(vod == nullptr)
-                    parsingError(format("`synonyms = {{ ... }}` is only valid when extending a verb — '{0}' is not a verb", obj->dName()));
-                else if(syn.synonymWords.empty())
-                    parsingError("`synonyms = { ... }` requires at least one trigger word");
-                else
-                    languageService.globals.push_back(&syn);
-            } else {
-                processInheritedMember(*obj, tok);
-            }
-        }
-        else
-            parsingError(format("Unexpected token '{0}' in extend body", tok.value));
-        tok = file.getToken();
-    }
+    while(tok.isNot(token::braceClose))
+        parseExtendMember(obj, vod, tok, nameTok, isExternalObj, extendBlockPriority, verbPriorityDefault, extendHadReplaceGrammar);
 
     closeCompileContext(eCompileContext::objectDef);
     currentObject = savedObject;
@@ -2738,6 +2801,204 @@ bool bglParser::processObjectExtension(token nameTok){
 }
 
 // Compound assignment (+= / -=) on an existing collection member inside an extend body.
+
+// `grammar += { … }` inside an extend body: parse the grammar lines and append them to the
+// object's grammarRuleListDecl (creating it if needed) and to the verb's line list.
+void bglParser::extendGrammarRuleListAppend(objectDef& obj, const string& memberNameStr, verbObjectDef* vod, int blockPriority){
+    // Parse grammar lines and append
+    vector<grammarLine> lines = parseGrammarLines();
+    string inferredVerb;
+    if(vod) inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
+
+    // Find or create the grammarRuleListDecl on the object
+    grammarRuleListDecl* gtd = nullptr;
+    for(typeMember* m : obj.members)
+        if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+            if(g->name == memberNameStr){ gtd = g; break; }
+    if(!gtd){
+        gtd = new grammarRuleListDecl();
+        gtd->name = memberNameStr;
+        gtd->type = languageService.getType("grammarrulelist");
+        gtd->verbName = inferredVerb;
+        obj.members.push_back(gtd);
+        if(vod && vod->isExternal) languageService.globals.push_back(gtd);
+    }
+    for(grammarLine& gl : lines){
+        gl.priority = blockPriority;
+        gl.isOwnLine = false;        // extend-block contribution, sorts against verb's anchor
+        grammarRuleDecl& rd = *(new grammarRuleDecl());
+        rd.name = memberNameStr;
+        rd.type = languageService.getType("grammarrule");
+        rd.line = gl;
+        rd.targetVerb = inferredVerb;
+        gtd->rules.push_back(&rd);
+        gl.targetVerb = inferredVerb;
+        gtd->grammarLines.push_back(gl);
+    }
+    if(vod)
+        vod->grammarLines.insert(vod->grammarLines.end(), gtd->grammarLines.end() - lines.size(), gtd->grammarLines.end());
+}
+
+// `grammar -= { … }` inside an extend body: remove matching grammar. A spec with no pattern is
+// word-level (evicts the whole word on an extern verb); a spec with a pattern removes that one line.
+void bglParser::extendGrammarRuleListRemove(objectDef& obj, const string& memberNameStr, verbObjectDef* vod, bool isExternalObj){
+    // -= : remove grammar. The GRAIN is set by how much of the line the spec names:
+    //   • WORD-LEVEL  `{.w}`        (no pattern)  → remove ALL of that word's grammar.
+    //   • LINE-LEVEL  `{.w, pat…}`  (with pattern) → remove the one exactly-matching line.
+    // (A single word is the only "match-many" form; partial-pattern prefix matching is
+    // deliberately NOT supported — see languageSpec / Verbs-Grammar for the rationale.)
+    //
+    // Removal is source-order: a `-=` only sees lines accumulated so far (base + earlier
+    // extends), so a later `+=` of the same line is unaffected. parseGrammarLines expands
+    // alternations, so each spec carries a single trigger word.
+    //
+    // On an EXTERN (library) verb the two grains behave very differently, because Beguile
+    // has only partial sight of a library verb:
+    //   • line-level  → can match only Beguile's OWN additions (isOwnLine == false); the
+    //     library's original patterns are opaque, so a spec naming one can't match and warns.
+    //   • word-level  → EVICTION. It doesn't need to see patterns: it records the word in
+    //     evictedExternWords, and the emitter lowers it to I6 `Extend only 'w' replace`,
+    //     which peels the whole word off the library verb (and lets a native verb reclaim it).
+    vector<grammarLine> toRemove = parseGrammarLines();
+
+    // Is `w` a trigger word this (extern) verb is known to claim? verbWords is populated at
+    // emit time, so at parse time we read the extern verb's own declared lines (isOwnLine) and
+    // its name (the bare-`extern verb V;` default). Used only for extern diagnostics/eviction.
+    auto externClaims = [&](const string& w) -> bool {
+        if(!vod) return false;
+        for(const grammarLine& gl : vod->grammarLines)
+            if(gl.isOwnLine && gl.verbWord == w) return true;
+        bool anyOwn = false;
+        for(const grammarLine& gl : vod->grammarLines) if(gl.isOwnLine){ anyOwn = true; break; }
+        return !anyOwn && w == vod->name;   // bare `extern verb V;` claims its own name
+    };
+    // Count Beguile-added lines (isOwnLine == false) for word `w`.
+    auto beguileAddedCount = [&](const string& w) -> int {
+        int n = 0;
+        if(vod) for(const grammarLine& gl : vod->grammarLines)
+            if(!gl.isOwnLine && gl.verbWord == w) n++;
+        return n;
+    };
+
+    for(const grammarLine& rem : toRemove){
+        bool wordLevel = rem.patternTokens.empty() && rem.additionalVerbWords.empty();
+        string vn = obj.displayName.empty() ? obj.name : obj.displayName;
+
+        // ---- EXTERN word-level: eviction via `Extend only 'w' replace` ----
+        if(wordLevel && isExternalObj){
+            bool claimed = externClaims(rem.verbWord);
+            int  added   = beguileAddedCount(rem.verbWord);
+            // Drop Beguile's own additions for this word — the eviction subsumes them.
+            if(vod)
+                vod->grammarLines.erase(
+                    remove_if(vod->grammarLines.begin(), vod->grammarLines.end(),
+                        [&](const grammarLine& gl){ return !gl.isOwnLine && gl.verbWord == rem.verbWord; }),
+                    vod->grammarLines.end());
+            for(typeMember* m : obj.members)
+                if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+                    if(g->name == memberNameStr)
+                        g->grammarLines.erase(
+                            remove_if(g->grammarLines.begin(), g->grammarLines.end(),
+                                [&](const grammarLine& gl){ return gl.verbWord == rem.verbWord; }),
+                            g->grammarLines.end());
+            if(claimed || added > 0)
+                languageService.evictedExternWords.insert(rem.verbWord);
+            else
+                parsingWarning(format("grammar -= on extern verb '{0}': '{1}' is not a word this verb claims and Beguile added no grammar for it, so nothing was evicted. Check the trigger word.", vn, rem.verbWord));
+            continue;
+        }
+
+        // ---- NATIVE word-level, or LINE-level (native or extern) ----
+        auto matchesSpec = [&](const grammarLine& gl){
+            // Extern line-level: only Beguile's OWN additions are matchable.
+            if(isExternalObj && gl.isOwnLine) return false;
+            if(gl.verbWord != rem.verbWord) return false;
+            if(wordLevel) return true;                              // whole word: ignore pattern
+            return gl.additionalVerbWords == rem.additionalVerbWords
+                && gl.patternTokens == rem.patternTokens
+                && gl.isReverse == rem.isReverse;
+        };
+        int matched = 0;
+        if(vod){
+            for(const grammarLine& gl : vod->grammarLines) if(matchesSpec(gl)) matched++;
+        } else {
+            for(typeMember* m : obj.members)
+                if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+                    if(g->name == memberNameStr)
+                        for(const grammarLine& gl : g->grammarLines) if(matchesSpec(gl)) matched++;
+        }
+        for(typeMember* m : obj.members)
+            if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
+                if(g->name == memberNameStr)
+                    g->grammarLines.erase(
+                        remove_if(g->grammarLines.begin(), g->grammarLines.end(),
+                            [&](const grammarLine& gl){ return matchesSpec(gl); }),
+                        g->grammarLines.end());
+        if(vod)
+            vod->grammarLines.erase(
+                remove_if(vod->grammarLines.begin(), vod->grammarLines.end(),
+                    [&](const grammarLine& gl){ return matchesSpec(gl); }),
+                vod->grammarLines.end());
+
+        if(matched == 0){
+            string patStr;
+            for(size_t i = 0; i < rem.patternTokens.size(); i++){ if(i) patStr += " "; patStr += rem.patternTokens[i]; }
+            if(patStr.empty()) patStr = "(no pattern)";
+            if(isExternalObj){
+                // Two-layer diagnostic: distinguish "opaque library grammar" (word IS claimed —
+                // point the user at word-level eviction) from a genuine typo (word not claimed).
+                if(externClaims(rem.verbWord))
+                    parsingWarning(format("grammar -= on extern verb '{0}': no Beguile-added grammar matches `'{1}' * {2}`. '{1}' is a library word whose own grammar Beguile can't see line-by-line — use `grammar -= {{ {{.{1}}} }}` to evict the whole word, or check your pattern.", vn, rem.verbWord, patStr));
+                else
+                    parsingWarning(format("grammar -= on extern verb '{0}': '{1}' is not a word this verb claims and Beguile added no grammar line `'{1}' * {2}`, so nothing was removed. Check the trigger word.", vn, rem.verbWord, patStr));
+            } else if(wordLevel){
+                parsingWarning(format("grammar -= on '{0}': no grammar for word `'{1}'` exists, so nothing was removed. Check the trigger word, or the order relative to the matching `grammar +=`.", vn, rem.verbWord));
+            } else {
+                parsingWarning(format("grammar -= on '{0}': no grammar line `'{1}' * {2}` exists, so nothing was removed. Check the trigger word and pattern, or the order relative to the matching `grammar +=`.", vn, rem.verbWord, patStr));
+            }
+        }
+    }
+}
+
+// `array<T> += / -= { … }` inside an extend body: parse the element list and add it to, or remove
+// it (by rendered text) from, the existing array member's baked initializer list.
+void bglParser::extendArrayCompoundAssignment(objectDef& obj, const string& memberNameStr, const string& op){
+    file.getToken(token::braceOpen);
+    initializerList* newElements = new initializerList();
+    token t = file.getToken();
+    while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+        expression* elem = parseExpression(t, {",", token::braceClose}, nullptr, nullptr);
+        newElements->elements.push_back(elem);
+        if(elem->terminator == token::braceClose) break;
+        t = file.getToken();
+    }
+    // Find existing array member
+    arrayDeclaration* arrMember = nullptr;
+    for(typeMember* m : obj.members)
+        if(auto* ad = dynamic_cast<arrayDeclaration*>(m))
+            if(ad->name == memberNameStr){ arrMember = ad; break; }
+    if(op == "+="){
+        if(arrMember){
+            auto* list = dynamic_cast<initializerList*>(arrMember->declaredExpressionValue);
+            if(!list){ list = new initializerList(); arrMember->declaredExpressionValue = list; }
+            for(expression* e : newElements->elements)
+                list->elements.push_back(e);
+        }
+    } else {
+        // -= : remove matching elements by text value
+        if(arrMember){
+            if(auto* list = dynamic_cast<initializerList*>(arrMember->declaredExpressionValue)){
+                for(expression* rem : newElements->elements){
+                    string remText = rem->text();
+                    list->elements.erase(
+                        remove_if(list->elements.begin(), list->elements.end(),
+                            [&](expression* e){ return e->text() == remText; }),
+                        list->elements.end());
+                }
+            }
+        }
+    }
+}
 
 void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName, const string& op, verbObjectDef* vod, int blockPriority){
     string memberNameStr = memberName.value;
@@ -2777,155 +3038,9 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
     // grammarRuleList += / -=
     if(memberType == "grammarrulelist"){
         if(op == "+="){
-            // Parse grammar lines and append
-            vector<grammarLine> lines = parseGrammarLines();
-            string inferredVerb;
-            if(vod) inferredVerb = vod->displayName.empty() ? vod->name : vod->displayName;
-
-            // Find or create the grammarRuleListDecl on the object
-            grammarRuleListDecl* gtd = nullptr;
-            for(typeMember* m : obj.members)
-                if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
-                    if(g->name == memberNameStr){ gtd = g; break; }
-            if(!gtd){
-                gtd = new grammarRuleListDecl();
-                gtd->name = memberNameStr;
-                gtd->type = languageService.getType("grammarrulelist");
-                gtd->verbName = inferredVerb;
-                obj.members.push_back(gtd);
-                if(vod && vod->isExternal) languageService.globals.push_back(gtd);
-            }
-            for(grammarLine& gl : lines){
-                gl.priority = blockPriority;
-                gl.isOwnLine = false;        // extend-block contribution, sorts against verb's anchor
-                grammarRuleDecl& rd = *(new grammarRuleDecl());
-                rd.name = memberNameStr;
-                rd.type = languageService.getType("grammarrule");
-                rd.line = gl;
-                rd.targetVerb = inferredVerb;
-                gtd->rules.push_back(&rd);
-                gl.targetVerb = inferredVerb;
-                gtd->grammarLines.push_back(gl);
-            }
-            if(vod)
-                vod->grammarLines.insert(vod->grammarLines.end(), gtd->grammarLines.end() - lines.size(), gtd->grammarLines.end());
+            extendGrammarRuleListAppend(obj, memberNameStr, vod, blockPriority);
         } else {
-            // -= : remove grammar. The GRAIN is set by how much of the line the spec names:
-            //   • WORD-LEVEL  `{.w}`        (no pattern)  → remove ALL of that word's grammar.
-            //   • LINE-LEVEL  `{.w, pat…}`  (with pattern) → remove the one exactly-matching line.
-            // (A single word is the only "match-many" form; partial-pattern prefix matching is
-            // deliberately NOT supported — see languageSpec / Verbs-Grammar for the rationale.)
-            //
-            // Removal is source-order: a `-=` only sees lines accumulated so far (base + earlier
-            // extends), so a later `+=` of the same line is unaffected. parseGrammarLines expands
-            // alternations, so each spec carries a single trigger word.
-            //
-            // On an EXTERN (library) verb the two grains behave very differently, because Beguile
-            // has only partial sight of a library verb:
-            //   • line-level  → can match only Beguile's OWN additions (isOwnLine == false); the
-            //     library's original patterns are opaque, so a spec naming one can't match and warns.
-            //   • word-level  → EVICTION. It doesn't need to see patterns: it records the word in
-            //     evictedExternWords, and the emitter lowers it to I6 `Extend only 'w' replace`,
-            //     which peels the whole word off the library verb (and lets a native verb reclaim it).
-            vector<grammarLine> toRemove = parseGrammarLines();
-
-            // Is `w` a trigger word this (extern) verb is known to claim? verbWords is populated at
-            // emit time, so at parse time we read the extern verb's own declared lines (isOwnLine) and
-            // its name (the bare-`extern verb V;` default). Used only for extern diagnostics/eviction.
-            auto externClaims = [&](const string& w) -> bool {
-                if(!vod) return false;
-                for(const grammarLine& gl : vod->grammarLines)
-                    if(gl.isOwnLine && gl.verbWord == w) return true;
-                bool anyOwn = false;
-                for(const grammarLine& gl : vod->grammarLines) if(gl.isOwnLine){ anyOwn = true; break; }
-                return !anyOwn && w == vod->name;   // bare `extern verb V;` claims its own name
-            };
-            // Count Beguile-added lines (isOwnLine == false) for word `w`.
-            auto beguileAddedCount = [&](const string& w) -> int {
-                int n = 0;
-                if(vod) for(const grammarLine& gl : vod->grammarLines)
-                    if(!gl.isOwnLine && gl.verbWord == w) n++;
-                return n;
-            };
-
-            for(const grammarLine& rem : toRemove){
-                bool wordLevel = rem.patternTokens.empty() && rem.additionalVerbWords.empty();
-                string vn = obj.displayName.empty() ? obj.name : obj.displayName;
-
-                // ---- EXTERN word-level: eviction via `Extend only 'w' replace` ----
-                if(wordLevel && isExternalObj){
-                    bool claimed = externClaims(rem.verbWord);
-                    int  added   = beguileAddedCount(rem.verbWord);
-                    // Drop Beguile's own additions for this word — the eviction subsumes them.
-                    if(vod)
-                        vod->grammarLines.erase(
-                            remove_if(vod->grammarLines.begin(), vod->grammarLines.end(),
-                                [&](const grammarLine& gl){ return !gl.isOwnLine && gl.verbWord == rem.verbWord; }),
-                            vod->grammarLines.end());
-                    for(typeMember* m : obj.members)
-                        if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
-                            if(g->name == memberNameStr)
-                                g->grammarLines.erase(
-                                    remove_if(g->grammarLines.begin(), g->grammarLines.end(),
-                                        [&](const grammarLine& gl){ return gl.verbWord == rem.verbWord; }),
-                                    g->grammarLines.end());
-                    if(claimed || added > 0)
-                        languageService.evictedExternWords.insert(rem.verbWord);
-                    else
-                        parsingWarning(format("grammar -= on extern verb '{0}': '{1}' is not a word this verb claims and Beguile added no grammar for it, so nothing was evicted. Check the trigger word.", vn, rem.verbWord));
-                    continue;
-                }
-
-                // ---- NATIVE word-level, or LINE-level (native or extern) ----
-                auto matchesSpec = [&](const grammarLine& gl){
-                    // Extern line-level: only Beguile's OWN additions are matchable.
-                    if(isExternalObj && gl.isOwnLine) return false;
-                    if(gl.verbWord != rem.verbWord) return false;
-                    if(wordLevel) return true;                              // whole word: ignore pattern
-                    return gl.additionalVerbWords == rem.additionalVerbWords
-                        && gl.patternTokens == rem.patternTokens
-                        && gl.isReverse == rem.isReverse;
-                };
-                int matched = 0;
-                if(vod){
-                    for(const grammarLine& gl : vod->grammarLines) if(matchesSpec(gl)) matched++;
-                } else {
-                    for(typeMember* m : obj.members)
-                        if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
-                            if(g->name == memberNameStr)
-                                for(const grammarLine& gl : g->grammarLines) if(matchesSpec(gl)) matched++;
-                }
-                for(typeMember* m : obj.members)
-                    if(auto* g = dynamic_cast<grammarRuleListDecl*>(m))
-                        if(g->name == memberNameStr)
-                            g->grammarLines.erase(
-                                remove_if(g->grammarLines.begin(), g->grammarLines.end(),
-                                    [&](const grammarLine& gl){ return matchesSpec(gl); }),
-                                g->grammarLines.end());
-                if(vod)
-                    vod->grammarLines.erase(
-                        remove_if(vod->grammarLines.begin(), vod->grammarLines.end(),
-                            [&](const grammarLine& gl){ return matchesSpec(gl); }),
-                        vod->grammarLines.end());
-
-                if(matched == 0){
-                    string patStr;
-                    for(size_t i = 0; i < rem.patternTokens.size(); i++){ if(i) patStr += " "; patStr += rem.patternTokens[i]; }
-                    if(patStr.empty()) patStr = "(no pattern)";
-                    if(isExternalObj){
-                        // Two-layer diagnostic: distinguish "opaque library grammar" (word IS claimed —
-                        // point the user at word-level eviction) from a genuine typo (word not claimed).
-                        if(externClaims(rem.verbWord))
-                            parsingWarning(format("grammar -= on extern verb '{0}': no Beguile-added grammar matches `'{1}' * {2}`. '{1}' is a library word whose own grammar Beguile can't see line-by-line — use `grammar -= {{ {{.{1}}} }}` to evict the whole word, or check your pattern.", vn, rem.verbWord, patStr));
-                        else
-                            parsingWarning(format("grammar -= on extern verb '{0}': '{1}' is not a word this verb claims and Beguile added no grammar line `'{1}' * {2}`, so nothing was removed. Check the trigger word.", vn, rem.verbWord, patStr));
-                    } else if(wordLevel){
-                        parsingWarning(format("grammar -= on '{0}': no grammar for word `'{1}'` exists, so nothing was removed. Check the trigger word, or the order relative to the matching `grammar +=`.", vn, rem.verbWord));
-                    } else {
-                        parsingWarning(format("grammar -= on '{0}': no grammar line `'{1}' * {2}` exists, so nothing was removed. Check the trigger word and pattern, or the order relative to the matching `grammar +=`.", vn, rem.verbWord, patStr));
-                    }
-                }
-            }
+            extendGrammarRuleListRemove(obj, memberNameStr, vod, isExternalObj);
         }
     }
     // attributeList: only `=` is supported. Use `attributes = {a, b, !c}` to
@@ -2941,41 +3056,7 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
     }
     // array<T> += / -=
     else if(memberType == "array"){
-        file.getToken(token::braceOpen);
-        initializerList* newElements = new initializerList();
-        token t = file.getToken();
-        while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
-            expression* elem = parseExpression(t, {",", token::braceClose}, nullptr, nullptr);
-            newElements->elements.push_back(elem);
-            if(elem->terminator == token::braceClose) break;
-            t = file.getToken();
-        }
-        // Find existing array member
-        arrayDeclaration* arrMember = nullptr;
-        for(typeMember* m : obj.members)
-            if(auto* ad = dynamic_cast<arrayDeclaration*>(m))
-                if(ad->name == memberNameStr){ arrMember = ad; break; }
-        if(op == "+="){
-            if(arrMember){
-                auto* list = dynamic_cast<initializerList*>(arrMember->declaredExpressionValue);
-                if(!list){ list = new initializerList(); arrMember->declaredExpressionValue = list; }
-                for(expression* e : newElements->elements)
-                    list->elements.push_back(e);
-            }
-        } else {
-            // -= : remove matching elements by text value
-            if(arrMember){
-                if(auto* list = dynamic_cast<initializerList*>(arrMember->declaredExpressionValue)){
-                    for(expression* rem : newElements->elements){
-                        string remText = rem->text();
-                        list->elements.erase(
-                            remove_if(list->elements.begin(), list->elements.end(),
-                                [&](expression* e){ return e->text() == remText; }),
-                            list->elements.end());
-                    }
-                }
-            }
-        }
+        extendArrayCompoundAssignment(obj, memberNameStr, op);
     }
     else {
         parsingError(format("Type '{0}' does not support {1} in extend body", memberType, op));
