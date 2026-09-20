@@ -1,10 +1,7 @@
 # Per-object build with compiler-generated header dependencies.
 #
-# The previous rule compiled every source in one command and depended on $(SOURCES)
-# alone, so headers were absent from the dependency graph entirely: editing a .h left
-# the binary considered up to date and `make` reported "Nothing to be done" while
-# silently keeping the old code. -MMD -MP makes the compiler emit a .d file per object
-# listing the headers it actually included, and those are pulled in below.
+# -MMD -MP records header dependencies per object so a header edit rebuilds dependents;
+# without them a .h is absent from the dependency graph and `make` keeps the stale binary.
 
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -O2 -Wno-deprecated-declarations

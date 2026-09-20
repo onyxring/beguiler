@@ -49,7 +49,7 @@ class typeMember:virtual public abstractObject{
 // A `hide` directive recorded on a subtype (or `extend class`): makes an INHERITED member (or one
 // operator on it) unreachable through this type's static surface. Front-end only — the underlying
 // routine still exists in I6, so a cast to a base that doesn't hide it reaches it (the sound "door").
-// See SilverBullet IF/Beguile/hide-members-scope.md.
+// See languageSpec.md §5.8 "Hiding Inherited Members — `hide`".
 struct hiddenMember {
     std::string memberName;              // the inherited member/method name (e.g. "height", "setColor")
     std::string operatorName;            // "" = hide the whole member; else the operator token (e.g. "=", "<=>")
@@ -70,7 +70,7 @@ class classDef:public typeDef{
         // is reference semantics (bare slot, mutations leak to caller). The marker is
         // class-identity-only: NOT inherited by subclasses, NOT propagated through
         // bases. Mutually exclusive with `extern`, `emitter`, `extend`, and inheriting
-        // from `object`. See [[project_class_typed_locals_gap]] (parameter section).
+        // from `object`. See languageSpec.md §5.2.6 "`byVal class` - Value-Semantic Class Parameters".
         bool isByVal = false;
         // `superposed` class: withhold the I6 `Class` directive from the source-order emit and let it
         // materialize only when a backing instance is baked for it (inside its host's create+populate,
@@ -274,7 +274,7 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         // so call-to-call state doesn't leak. Synthesis is gated on the LHS class having
         // stored fields AND not inheriting from `object` — tree-citizen classes keep
         // bare-int-slot semantics + reference-semantics via inherited operator=(object).
-        // See [[project_class_typed_locals_gap]].
+        // See languageSpec.md §9.2.1 "Class-Typed Locals and Reference Semantics".
         bool isClassLocalWithBacking = false;
         // `ref` local: the user opted in to reference semantics for this variable. Skip
         // backing synthesis, skip operator= dispatch on assignment, skip the no-operator=
@@ -464,7 +464,7 @@ class i6RawNode : public typeDef, public statement, public typeMember {
         // compiler-synthesized raw statement (loop increment, destroy call, spilled assignment, …).
         // The return-path analysis (allPathsReturn) treats a return-bearing island as a terminating
         // path, so a routine whose returns live inside opaque raw I6 doesn't demand a dead trailing
-        // return the way it used to.
+        // return.
         bool isI6Island = false;
 };
 

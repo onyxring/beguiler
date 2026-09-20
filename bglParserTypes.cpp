@@ -2,8 +2,8 @@
 // ===============================================================================
 // bglParserTypes.cpp - type/name resolution + method/call binding.
 //
-// Extracted from bglParser.cpp (Phase 2 of the refactor). All entry points are
-// member methods of bglParser; this file holds their definitions only.
+// All entry points are member methods of bglParser; this file holds their
+// definitions only.
 //
 // Type / name resolution (cluster E):
 //   resolveIdentifierType       - bare identifier -> type lookup (lexical scope)
@@ -2340,8 +2340,8 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
 // Canonicalize a parsed argument list against a resolved function signature.
 // Runs the three steps that every call site needs after resolution: named-argument reordering,
 // default-value fill, and source-type conversion via operator(). Keeping all three in one place
-// prevents the drift that historically let each caller forget one step (e.g. default fill missing
-// from the expression path, silently zeroing omitted args at runtime).
+// prevents the drift of a caller forgetting one step (e.g. default fill missing from the
+// expression path, silently zeroing omitted args at runtime).
 
 void bglParser::finalizeCallArgs(vector<expression*>& args, vector<string>& namedArgNames,
                                   vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
@@ -2900,8 +2900,7 @@ std::string bglParser::resolvePathType(std::string path, functionDef* func, stat
     // the current type (specific object instance, then object type, then class hierarchy) and
     // advance the current type to that member's declared type. The last segment's type is the
     // path's resolved type. Handles arbitrary nesting depth (bgl.utilities.buf.X → buf's type)
-    // via repeated single-hop walks; previously the code only ran one hop and returned "" for
-    // multi-segment tails.
+    // via repeated single-hop walks; a single hop would return "" for multi-segment tails.
     string lowerHead = head;
     transform(lowerHead.begin(), lowerHead.end(), lowerHead.begin(), ::tolower);
     string currentType = headType;

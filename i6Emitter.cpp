@@ -936,9 +936,9 @@ void i6Emitter::writeDebugBundle(const string& path){
             f << "  prop " << mv->name << " " << i6n << " " << tn << "\n";
         }
     }
-    // Routine locals — top-level functions, then class/object member methods. Method locals were
-    // previously omitted, so a method-local var (e.g. an `extend _bglUi` routine's rawArray buffer)
-    // showed untyped (a raw number) in the debugger. Member methods key on the .dbg routine name
+    // Routine locals — top-level functions, then class/object member methods. Method locals must
+    // be included too: without them a method-local var (e.g. an `extend _bglUi` routine's rawArray
+    // buffer) shows untyped (a raw number) in the debugger. Member methods key on the .dbg routine name
     // `<owner>.<method>` (e.g. `_bglUi.waitforkey`); routineTyped lookup is case-insensitive.
     for(typeDef* node : languageService.globals){
         if(auto* fd = dynamic_cast<functionDef*>(node)){
@@ -1054,7 +1054,7 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
                 // verbObjectDef is-a objectDef, so verbs land here too: scan ALL their member
                 // functions (the handler + any helpers). scanFd skips emitters, so the verb's
                 // perform()/operator== emitters are ignored automatically — no need to single out
-                // the handler by name (the old verb special-case scanned only doFunc).
+                // the handler by name.
                 for(typeMember* m : obj->members)
                     if(auto* fd = dynamic_cast<functionDef*>(m)) scanFd(fd);
         }
@@ -1374,7 +1374,7 @@ void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     // compile and version-check, via `#ifdef beguiler` / `#iftrue (beguiler >= NNNN)`. Mirrors
     // the Beguile-side `#if beguiler` symbol (= BEGUILER_VERSION, major*1000+minor*10+patch).
     // The empty self-reference `#Ifdef beguiler;#Endif;` marks the constant "used" so I6 won't
-    // warn when a game consumes none of it (the reason this was previously left I6-side-unemitted).
+    // warn when a game consumes none of it.
     // beguilerMajor/Minor/Patch stay #define-only — derivable from this one when needed.
     out << "Constant beguiler = " << BEGUILER_VERSION << ";\n";
     out << "#Ifdef beguiler;#Endif;\n";
@@ -1737,8 +1737,8 @@ void i6Emitter::emitClass(classDef* classNode){
                 // Per-call copy-in for byVal-class params on class/object member methods (same
                 // shape as top-level functions, just with a deeper indent).
                 emitParamCopyIns(fd, "        ");
-                // Allocate method-local arrays — previously SKIPPED here, so a method-local
-                // array<T>/rawArray<T>/array<char> was left as an unallocated null slot (a
+                // Allocate method-local arrays — without this a method-local
+                // array<T>/rawArray<T>/array<char> is left as an unallocated null slot (a
                 // rawArray<int> buffer handed to glk_select would crash). Frees run on every
                 // exit path via currentCleanups, mirroring emitFunction.
                 emitLocalArrayAllocs(fd, locals, body, "        ");
@@ -1902,8 +1902,7 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
     // matching free in fn->cleanups (run on every return path + fall-through). Sized `array<T>[N]`
     // and list `array<T> = {…}` both allocate here; the list form's element writes happen at the
     // declaration statement. rawArray<T> is a bare flat block; array<char> uses the byte layout.
-    // Shared by top-level functions and class/object member methods (methods previously skipped
-    // this entirely, leaving method-local arrays as unallocated null slots).
+    // Shared by top-level functions and class/object member methods.
     if(body == nullptr) return;
     for(variableDeclaration* vd : locals){
         auto* arr = dynamic_cast<arrayDeclaration*>(vd);
@@ -3082,8 +3081,7 @@ void i6Emitter::emitObject(objectDef* obj){
                 // collides with a used property name) that buildSpillMap just built. Emitting the
                 // raw display name here (while the body used the renamed form) left `_l_width`
                 // undeclared → "'=' applied to undeclared variable". Mirrors emitFunction/emitClass.
-                // (spillName == dName when there's no collision, so non-colliding methods are
-                // byte-identical to before — only the previously-broken collision case changes.)
+                // (spillName == dName when there's no collision.)
                 for(paramDef* p : fd->params)
                     if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
                         { out << sp << spillName(p->name); sp=" "; }
@@ -3440,7 +3438,7 @@ void i6Emitter::liftAllVerbCompileTimeFields(){
     // just produced: extern-claimed words seeded into declaredVerbWords, so extern-owned words are
     // excluded. A moved line keeps its priority and is marked non-own, so the resolver sorts it into
     // the owner's rule list by priority exactly as an in-verb contribution would — rule order (and
-    // thus runtime matching) is identical to the old Verb+Extend form.
+    // thus runtime matching) is identical to the unfolded Verb+Extend form.
     //
     // Excluded from folding:
     //   - extern/library-owned words (already in declaredVerbWords): Beguile does not own that I6

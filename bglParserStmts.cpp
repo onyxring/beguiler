@@ -2,10 +2,9 @@
 // ===============================================================================
 // bglParserStmts.cpp - statement-level parsing.
 //
-// Extracted from bglParser.cpp (Phase 4 of the refactor). Holds parsers for
-// individual statement forms plus the free-standing `processStatement` (which
-// handles assignments, function calls, and compound-op statements at the
-// expression level).
+// Holds parsers for individual statement forms plus the free-standing
+// `processStatement` (which handles assignments, function calls, and compound-op
+// statements at the expression level).
 //
 // Control-flow statements:
 //   processIf      processWhile     processFor      processDo
@@ -1536,12 +1535,12 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
         callStmt.args.push_back(indexExpr);
         callStmt.args.push_back(valExpr);
 
-        // A slot whose element type owns storage used to reject a bare text pointer and
-        // demand an explicit _bglStr.new(). It no longer needs to: a type that owns storage
-        // publishes `static operator =`, which setOwned hands the slot's CURRENT value plus
-        // the incoming one, so the type allocates on first write and copies into its own
-        // buffer thereafter. A type that owns storage but publishes no assign still falls
-        // through to a raw word store — see the array<T> requirements in the spec.
+        // A slot whose element type owns storage accepts a bare text pointer — no explicit
+        // _bglStr.new() needed: a type that owns storage publishes `static operator =`, which
+        // setOwned hands the slot's CURRENT value plus the incoming one, so the type allocates
+        // on first write and copies into its own buffer thereafter. A type that owns storage but
+        // publishes no assign still falls through to a raw word store — see the array<T>
+        // requirements in the spec.
 
         // If the element type publishes a static `operator =` it OWNS its storage, so the slot
         // write must go through the type rather than being a raw word store. Prefer array<T>'s
@@ -1756,9 +1755,7 @@ bool bglParser::processStatement(token tok, abstractObject& contextObj){
             // Only `:=` skips operator= dispatch — that is what rebinding means. A plain `=`
             // on a `ref` slot assigns THROUGH the reference: it dispatches the type's
             // operator= into whatever the slot currently points at, exactly as it would on a
-            // slot that owned its instance. Before `:=` existed, `=` on a ref slot had to
-            // double as the rebind, so dispatch was suppressed for every ref assignment;
-            // with a dedicated rebind operator that is no longer necessary.
+            // slot that owned its instance.
             if(classType != nullptr && val != nullptr && !isBindAssign){
                 string valueTypeName = val->resolvedType;
                 if(!valueTypeName.empty()){

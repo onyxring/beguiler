@@ -2,9 +2,7 @@
 // bglParserHelpers.h — small pure helpers shared across bglParser*.cpp files.
 //
 // Functions here are free (non-member) and have no side effects on parser state.
-// They were originally `static` helpers in bglParser.cpp; promoted here so the
-// expression-parser extraction (and future extractions) can call them from
-// other .cpp files without duplication.
+// Every bglParser*.cpp file calls them from this one definition.
 // ═══════════════════════════════════════════════════════════════════════════════
 #pragma once
 #include <string>

@@ -1,7 +1,7 @@
 #include "platform.h"
 // bglPreScanner.cpp — Pre-scanner (Pass 1) for the Beguile compiler.
 // Registers type/object/function stubs so forward references resolve in Pass 2.
-// These are bglParser methods extracted for code organization.
+// Holds the definitions of the pre-scan bglParser methods declared in bglParser.h.
 
 #include "bglParser.h"
 #include "bglLanguageService.h"
@@ -602,7 +602,7 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
 }
 
 // Walks tokens in the currently-open file, registering type/global stubs until EOF.
-// Extracted from preScanFile so .inf-mode declaration islands (opened as virtual files)
+// Separate from preScanFile so .inf-mode declaration islands (opened as virtual files)
 // can run the same registration logic.
 void bglParser::preScanGlobalLoop(){
     while(true){
@@ -683,9 +683,8 @@ void bglParser::preScanGlobalLoop(){
                     // a platform-core `extend bgl {...}` included before `object bgl`). Capture the
                     // raw body and replay it after the whole include tree is pre-scanned
                     // (drainDeferredObjectExtends), so declarative `extend` is order-independent.
-                    // Previously this skipped the body, leaving `bgl.asm`/`bgl.util.*` unresolvable
-                    // when a consumer preceded the platform core. See
-                    // [[project_prescan_forward_extend_order_dependency]].
+                    // Skipping the body instead would leave `bgl.asm`/`bgl.util.*` unresolvable
+                    // whenever a consumer precedes the platform core.
                     auto detail = file.getCurrentFileDetail();
                     string vname = std::get<1>(detail);
                     int    vline = std::get<2>(detail);

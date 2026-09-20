@@ -1,8 +1,5 @@
 #pragma once
-// Platform shims, so one build command line works everywhere.
-//
-// These used to be supplied as -D defines on the build line, which is why the README
-// carried a different command per platform. They belong here: the divergence is a
+// Platform shims, so one build command line works everywhere: the divergence is a
 // property of the source, not of how you invoke the compiler.
 //
 //   isnumber      BSD extension (macOS). Replaced at its one call site with isdigit.

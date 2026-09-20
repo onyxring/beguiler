@@ -17,7 +17,7 @@
 //   parseExpression()   — expression parser (900+ lines, section-commented)
 //   processStatement()  — statement-level dispatch
 //
-// Shared helpers (extracted to reduce duplication):
+// Shared helpers:
 //   resolveMethod()         — unified method lookup across class hierarchy + objectDef members
 //   replaceStubMember()     — replace pre-scan stub with real definition
 //   applyBinaryOperator()   — binary operator emitter resolution + RHS parsing
@@ -1202,9 +1202,9 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
         // top-level declaration. Uses file.braceDepth (maintained by the lexer) to know exactly
         // how deeply nested the parser was when the error fired, so we consume the right number
         // of closing braces to reach global scope — not just the nearest '}'. This matters for
-        // errors inside nested function bodies (e.g. `class Foo { void m(){ bad_stmt; } }`),
-        // which previously left recovery stuck at mid-file depth and silently dropped every
-        // subsequent top-level declaration.
+        // errors inside nested function bodies (e.g. `class Foo { void m(){ bad_stmt; } }`):
+        // without the full unwind, recovery stays stuck at mid-file depth and silently drops
+        // every subsequent top-level declaration.
         while(lspMode && file.getNumberOfOpenFiles() > 0) {
             bool hitEof = false;
             if(file.braceDepth > 0) {
@@ -1261,7 +1261,7 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
 
 
 //===============================================================================================================================
-// Grammar-driven pattern matching (V2 parser dispatcher)
+// Grammar-driven pattern matching (parser dispatcher)
 //===============================================================================================================================
 
 // initGrammarTable() is in grammarTable.cpp
@@ -1451,22 +1451,20 @@ bool bglParser::processInlineObjectStatement(vector<token>& t, Qualifiers&, abst
 bool bglParser::processVariable(vector<token>& t, Qualifiers& q, abstractObject& c)
     {
         t[0] = consumeTypeToken(t[0]);
-        // `[additive] property name;` — a property declaration is TYPE-LESS. The type lives at the
-        // use sites (each contributing member's own declaration), not on the property. For an
-        // ADDITIVE property, every contributing member must be a `rawArray<T>` with a consistent
-        // element type across the hierarchy (enforced in checkTypedPropertyMemberTypes); the element
-        // type is fixed by the highest ancestor that declares it, and inferred from the contribution's
-        // elements otherwise. A specified type on a property declaration is now rejected upstream
-        // (processTypedProperty).
+        // `[additive] property name;` — a property declaration is TYPE-LESS; see
+        // processTypedProperty, which rejects the typed forms and states the rule.
         return processVariableDeclaration(t[0], t[1], t[2], c, q.isExtern, q.isConst, "", q.isRef, q.isSuperposed, q.isAdditive);
     }
-// `additive property rawArray<T> name;` — the property declaration carries the type its members
-// must use, so every layer contributing to the property agrees on one element type. Entered after
+// Grammar handler for the typed property forms, which are rejected. Entered after
 // "property" <base> "<" have been consumed by the matcher.
 bool bglParser::processTypedProperty(vector<token>& t, Qualifiers& q, abstractObject& c)
     {
-        // A property declaration no longer carries a type — the type lives at the use sites (each
-        // contributing member's own declaration). Two shapes reach here, both now illegal:
+        // A property declaration is TYPE-LESS: the type lives at the use sites (each contributing
+        // member's own declaration), not on the property. For an ADDITIVE property, every
+        // contributing member must be a `rawArray<T>` with a consistent element type across the
+        // hierarchy (enforced in checkTypedPropertyMemberTypes); the element type is fixed by the
+        // highest ancestor that declares it, and inferred from the contribution's elements
+        // otherwise. Two shapes reach here, both illegal:
         //   `property rawArray<T> name;`  (matcher consumed through the '<')
         //   `property T name;`            (matcher consumed the name)
         // Consume the rest of the statement so error recovery (LSP) resyncs cleanly, then reject.
@@ -1564,7 +1562,7 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
         parsingError("'static' is only valid inside a class body");
 
     // Static member access: ClassName.member — route to processStatement
-    // Object instances no longer need special handling here because they're lexed as identifiers.
+    // Object instances need no special handling here — they're lexed as identifiers.
     if(!q.isExtern && getCurrentCompileContext() != eCompileContext::global && tok.isDataType()) {
         if(file.peekToken(1).is(token::period) || file.peekToken(1).is("?.")) {
             processStatement(tok, contextObject);
@@ -2069,9 +2067,8 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
 // means "a now refers to the same room as b," not "copy b's fields into a"); their stored
 // fields live as I6 properties on the underlying object and are never field-copied. This
 // gates the value-semantics-operator= error so it fires only for plain (non-tree) classes.
-// The hardcoded "object" name is the same coupling flagged in
-// [[compiler-blr-coupling-audit-2026-05-12]] item #1; revisit when the world-tree/utility
-// split lands.
+// The hardcoded "object" name couples the compiler to the BLR's world-tree root; revisit
+// when the world-tree/utility split lands.
 
 
 

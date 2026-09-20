@@ -2,8 +2,8 @@
 // ===============================================================================
 // bglParserDirectives.cpp - directive + #beguilerSettings processing.
 //
-// Extracted from bglParser.cpp (Phase 1 of the refactor). Holds all `#`-prefixed
-// directive handling plus the compile-time #if/#elif/#else condition evaluator.
+// Holds all `#`-prefixed directive handling plus the compile-time #if/#elif/#else
+// condition evaluator.
 //
 // Public-facing entry points (all members of bglParser):
 //   processDirective          - main dispatch for #include/#i6/#bgl/#if/#define/etc.

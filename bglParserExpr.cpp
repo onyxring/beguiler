@@ -2,8 +2,8 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // bglParserExpr.cpp — expression-level parsing for the Beguile compiler.
 //
-// Extracted from bglParser.cpp (Phase 1 of the refactor). All entry points are
-// member methods of bglParser; this file holds their definitions only.
+// All entry points are member methods of bglParser; this file holds their
+// definitions only.
 //
 // parseExpression() branch map (search for these section markers):
 //   PARENS          — open/close paren, lambda detection, cast prefix
@@ -444,11 +444,10 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     }
 
     // LHS conversion fallback: if LHS has operator() → convertedType, retry operator search on that type.
-    // The "converted-to-converted" clause (param type == convertedType) used to accept ANY rhsType
-    // unconditionally — which silently passed type-incompatible comparisons like `int != property`
-    // because both compile to bit-level I6 ops. Now we additionally require the RHS to be
-    // compatible with convertedType, so the fallback only fires when the entire converted-to
-    // operator signature genuinely accepts the call.
+    // The "converted-to-converted" clause (param type == convertedType) also requires the RHS to
+    // be compatible with convertedType, so the fallback only fires when the entire converted-to
+    // operator signature genuinely accepts the call. Accepting ANY rhsType there silently passes
+    // type-incompatible comparisons like `int != property`, because both compile to bit-level I6 ops.
     if(!matchedOp){
         for(typeMember* m : cls->members){
             auto* convFn = dynamic_cast<functionDef*>(m);
@@ -891,12 +890,12 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     // flat expression's stale (non-class) resolvedType and its operators never dispatch — they
     // leak out as raw I6 property access (`obj.parent` instead of `parent(obj)`). Mirrors the RHS
     // precedence sub-parse in applyBinaryOperator(). Non-precedence ops (level <0, e.g. compound
-    // assign) keep the old single-token passthrough.
+    // assign) keep the single-token passthrough.
     auto emitRawBinaryOp = [&](const string& opTok){
         // Only logical && / || need the RHS sub-parse: their RHS is a full boolean sub-expression
         // that may contain emitter-class comparisons (`obj.parent == player`). Other raw operators
-        // (arithmetic, bitwise, comparison) keep the historical token-by-token passthrough, so their
-        // emission/spacing is unchanged — those RHSs don't open a fresh emitter dispatch context.
+        // (arithmetic, bitwise, comparison) keep the token-by-token passthrough — those RHSs
+        // don't open a fresh emitter dispatch context.
         if(opTok != "&&" && opTok != "||"){ expr->tokens.push_back(opTok); return; }
         int rawPrec = operatorPrecedence(opTok);
         if(rawPrec < 0){ expr->tokens.push_back(opTok); return; }
@@ -963,8 +962,8 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     // an `operator() → T` emitter, its body is substituted and returned as the new text;
     // if the body uses `$target` (statement-form, e.g. `@numtof $val $target`), a temp slot
     // is allocated and the substituted body is queued as a side-effect injection. When no
-    // matching emitter exists, the source text is returned unchanged — preserving the
-    // historical relabel-only behavior for bit-compatible casts like int↔uint.
+    // matching emitter exists, the source text is returned unchanged — relabel-only
+    // behavior for bit-compatible casts like int↔uint.
     auto applyCastConversion = [&](const string& srcText, const string& srcType,
                                     const string& targetType) -> string {
         if(targetType.empty() || srcType.empty() || srcType == targetType) return srcText;
@@ -2559,7 +2558,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     if(!castType.empty()){
                         // Try invoking source-type's operator()→castType emitter. For int↔uint
                         // (passthrough bodies) this returns the source text unchanged, matching
-                        // the historical relabel-only behavior. For float casts it emits the
+                        // the relabel-only cast behavior. For float casts it emits the
                         // @numtof/@ftonumz body, allocating a temp slot if needed.
                         string srcType = resolveIdentifierType(cur.value, func, body, memberHint);
                         string newText = applyCastConversion(qualified, srcType, castType);
@@ -2774,7 +2773,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
                     // Member not found on an `object`-typed receiver. `object` is the universal
                     // supertype — a dynamically-typed value (e.g. from `.parent`), so a subtype
                     // member can't resolve without a cast. Error AT the member with a cast hint,
-                    // instead of silently dropping it (which used to surface as a confusing
+                    // instead of silently dropping it (which surfaces as a confusing
                     // "Cannot assign value of type 'object' ..." on the enclosing statement).
                     // Strict mode only — loose #bgl islands keep object passthrough.
                     if(expr->resolvedType == "object" && !looseIdentifierMode && func != nullptr){

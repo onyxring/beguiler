@@ -37,10 +37,9 @@ class token {
         bool isPlural=false;       // true for ..word dictionary word literals
         sourceLocation src;        // file and line where this token was read
 
-        // `const char*`, not `std::string`: a constexpr std::string needs a standard library
-        // implementing P0980R1 (libc++ 15+, libstdc++ 12+), which Apple's bundled clang does
-        // not ship — so the plain `clang++` on a stock macOS could not build this at all.
-        // Every consumer takes `std::string` by value, so these convert implicitly.
+        // `const char*`, not `std::string`: a constexpr std::string needs libc++ 15+ or
+        // libstdc++ 12+ (P0980R1), which stock macOS clang lacks. Every consumer takes
+        // `std::string` by value, so these convert implicitly.
         static constexpr const char* endStatement=";"; 
         static constexpr const char* assignment ="="; 
         // The reference binding (rebinding) operator, `a := b`: stores the reference itself,
@@ -79,8 +78,8 @@ class token {
         token assertOneOf(std::vector<eTokenType>, std::string="");
         token assertOneOf(std::vector<std::string>, std::string="");
         // Brace-list form. With `const char*` token constants, `{a, b}` is convertible to
-        // BOTH vector overloads on some standard libraries (GCC flags it as ambiguous where
-        // Clang does not), so the exact-match initializer_list overload settles it.
+        // BOTH vector overloads on some standard libraries, so the exact-match
+        // initializer_list overload settles it.
         token assertOneOf(std::initializer_list<std::string>, std::string="");
         token assertDataType();
         

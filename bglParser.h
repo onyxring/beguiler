@@ -433,7 +433,7 @@ class bglParser {
         bool tryConsumeNamespacedEnumValue(token first, string& outFlatEmission, string& outEnumType);
 
         expression* parseExpression(token firstToken, vector<string> terminators, functionDef* func, statementBlock* body, int startParenDepth = 0);
-        // parseExpression sub-functions (extracted for readability)
+        // parseExpression sub-functions
         void parseExprTernary(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body, int parenDepth = 0);
         void parseExprNullCoalescing(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body);
         bool parseExprFunctionCall(expression* expr, const string& callName, bool isSelfCall, functionDef* func, statementBlock* body);
@@ -735,12 +735,12 @@ class bglParser {
         // `object bgl` declaration) is captured here — object name + raw body text — and replayed
         // after the whole include tree has been pre-scanned (drainDeferredObjectExtends), so the
         // target is registered by then. This makes declarative `extend` order-free; only `#define`
-        // remains order-dependent. See [[project_prescan_forward_extend_order_dependency]].
+        // remains order-dependent.
         struct DeferredObjectExtend { std::string objName; std::string body; std::string virtualName; int startLine; };
         vector<DeferredObjectExtend> deferredObjectExtends;
         // Register the members added by an `extend <obj>` body onto obj during pre-scan. Assumes the
         // stream is positioned right after the `extend <name>` (scans to '{', processes through '}').
-        // Registers function stubs and — new — auto/alias namespace-redirect members (`emitter auto
+        // Registers function stubs and auto/alias namespace-redirect members (`emitter auto
         // X = Class;`, `auto X = obj;`, `alias X = ...;`) as isExternal/isPrePassStub variable stubs
         // so dotted resolution (bgl.asm, bgl.util.*) works regardless of source order. The main pass
         // reconciles these stubs (processObjectExtension drops a stub once its real member lands).

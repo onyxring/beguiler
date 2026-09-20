@@ -3,8 +3,8 @@
 // bglParserDecls.cpp - non-class/object declarations: enum, variable, array,
 // routine, grammar.
 //
-// Extracted from bglParser.cpp (Phase 3 of the refactor). Covers everything
-// declaration-shaped that doesn't belong in bglParserClassObjectDecl.cpp.
+// Covers everything declaration-shaped that doesn't belong in
+// bglParserClassObjectDecl.cpp.
 //
 //   processEnumDeclaration            - enum / bnum / extern enum / extern bnum
 //   processArrayDeclaration           - array<T> name[N] = { ... };
@@ -795,10 +795,10 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
                     //
                     // A pre-scan stub operator= is ACCEPTED here (order-independence): when the
                     // class is defined after the use site it's only a stub at emit time, but the
-                    // stub now carries the operator's param types (pre-scan) and its dispatch name
-                    // is the mangled `_opeq` the real definition will emit — so `$target._opeq(rhs)`
-                    // resolves at link time. `!params.empty()` directly guards the params[0] access
-                    // (which is why stubs were previously excluded wholesale).
+                    // stub carries the operator's param types (pre-scan) and its dispatch name is
+                    // the mangled `_opeq` the real definition will emit — so `$target._opeq(rhs)`
+                    // resolves at link time. `!params.empty()` directly guards the params[0] access,
+                    // so a stub need not be excluded wholesale.
                     else if(assignOp && !assignOp->isEmitter && !assignOp->params.empty()
                               && classHasStoredFields(classType) && !isReferenceBacked(classType)){
                         if(assignOp->i6name.empty()) assignOp->i6name = mangleOperatorName(assignOp->name);

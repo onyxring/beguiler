@@ -2,9 +2,8 @@
 // ===============================================================================
 // bglParserClassObjectDecl.cpp - class and object declaration processing.
 //
-// Extracted from bglParser.cpp (Phase 3 of the refactor). Covers the top-level
-// `class`/`object` declarations plus all the member-parsing helpers that walk
-// their bodies.
+// Covers the top-level `class`/`object` declarations plus all the member-parsing
+// helpers that walk their bodies.
 //
 // Top-level declarations:
 //   processClassDeclaration         - class Foo { ... }, extern/extend/emitter/alias/byVal
@@ -339,7 +338,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             parsingError("'extend' is not valid inside a class body");
         if(q.isAlias)
             parsingError("'alias' is not valid inside a class body");
-        // array<T> member: same handler as object bodies (refactored to take members vector).
+        // array<T> member: same handler as object bodies.
         // Class is never verb-derived, so no grammarRule downcast applies.
         // `rawArray<T>` declares the same storage as `array<T>` but without Beguile's
         // tracking layer — the plain I6 property array an I6 library expects to read as
@@ -2931,8 +2930,8 @@ void bglParser::processExtendCompoundAssignment(objectDef& obj, token memberName
     }
     // attributeList: only `=` is supported. Use `attributes = {a, b, !c}` to
     // set/replace and `!attr` to negate an inherited attribute (maps directly to
-    // I6's `has ~attr`). The legacy `+=`/`-=` forms were removed because they
-    // didn't compose with extend/class semantics — see spec §… for the new model.
+    // I6's `has ~attr`). `+=`/`-=` don't compose with extend/class semantics, so
+    // they are rejected here.
     else if(memberType == "attributelist"){
         parsingError(format(
             "'{0} {1}': '{2}' is an attributeList, which only accepts `= {{a, b, !c}}`. "
