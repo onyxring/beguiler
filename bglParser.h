@@ -549,6 +549,77 @@ class bglParser {
         void parseExprNullCoalescing(expression* expr, const vector<string>& terminators, functionDef* func, statementBlock* body);
         bool parseExprFunctionCall(expression* expr, const string& callName, bool isSelfCall, functionDef* func, statementBlock* body);
         bool parseExprPrefixNot(expression* expr, token operand, optional<token>& prefetched, functionDef* func, statementBlock* body);
+        // State of one parseExpression activation, shared by its branch methods.
+        struct ExprParseState {
+            expression* expr = nullptr;
+            int parenDepth = 0;
+            int startParenDepth = 0;
+            token cur;                          // token being processed this iteration
+            optional<token> prefetched;         // a token a sub-parse produced that the loop must see next
+            string castType;  // set when a (TypeName) cast prefix is detected
+            // When a cast prefix is followed by '(', the cast applies to the result of the
+            // parenthesized expression, not to the first identifier inside. Push castType
+            // onto this stack on parenOpen and pop/apply on the matching parenClose. The
+            // stack entry pairs the saved type with the parenDepth at which the cast was
+            // queued, so nested casts like `(int)((float)f + (float)g)` resolve correctly.
+            struct PendingParenCast { string castType; int parenDepthAtPush; };
+            vector<PendingParenCast> parenCastStack;
+            // Pending ternary state: when '?' is encountered, the condition and true branch are
+            // captured, then the false branch is collected by continuing the main loop. This avoids
+            // sub-parsing the false branch, which would lose the caller's paren tracking state.
+            struct PendingTernary {
+                string condText;
+                string trueText;
+                string trueType;
+                string tempName;
+                int parenDepthAtQuestion;  // paren depth when '?' was encountered
+                vector<string> prefixParens;  // structural '(' tokens to restore after assembly
+            };
+            vector<PendingTernary> pendingTernaries;
+            const vector<string>* terminators = nullptr;
+            functionDef* func = nullptr;
+            statementBlock* body = nullptr;
+        };
+        // What the main loop does once a branch method returns: fall through to the loop's own
+        // `cur = exprNext(st)` (Advance), skip it because the branch already advanced (Continue),
+        // or leave the loop (Break).
+        enum class ExprStep { Advance, Continue, Break };
+        // Shared helpers of one parseExpression activation.
+        bool exprIsTerminator(const ExprParseState& st, const token& t);
+        token exprNext(ExprParseState& st);
+        void exprEmitRawBinaryOp(ExprParseState& st, const string& opTok);
+        void exprAssembleTernary(ExprParseState& st);
+        string applyCastConversion(const string& srcText, const string& srcType, const string& targetType);
+        // One per branch of parseExpression's main loop, dispatched on the current token's kind.
+        ExprStep parseExprOperatorRef(ExprParseState& st);
+        ExprStep parseExprParenOpen(ExprParseState& st);
+        ExprStep parseExprParenClose(ExprParseState& st);
+        ExprStep parseExprIntLiteral(ExprParseState& st);
+        ExprStep parseExprFloatLiteral(ExprParseState& st);
+        ExprStep parseExprNew(ExprParseState& st);
+        ExprStep parseExprInlineObject(ExprParseState& st);
+        ExprStep parseExprIdentifier(ExprParseState& st);
+        ExprStep parseExprOperator(ExprParseState& st);
+        ExprStep parseExprDictionaryWord(ExprParseState& st);
+        ExprStep parseExprDotChain(ExprParseState& st);
+        ExprStep parseExprTernaryStart(ExprParseState& st);
+        ExprStep parseExprDirective(ExprParseState& st);
+        // Sub-branches of parseExprIdentifier, dispatched on the token AFTER the identifier.
+        ExprStep parseExprSubscript(ExprParseState& st, token& next);
+        ExprStep parseExprCall(ExprParseState& st, token& next);
+        ExprStep parseExprOptionalChain(ExprParseState& st, token& next);
+        ExprStep parseExprMemberAccess(ExprParseState& st, token& next);
+        ExprStep parseExprPostfixQuery(ExprParseState& st, token& next);
+        ExprStep parseExprBareIdentifier(ExprParseState& st, token& next);
+        // Sub-branches of parseExprMemberAccess, dispatched on the token AFTER the member name.
+        ExprStep parseExprSelfMember(ExprParseState& st, token& member, token& afterMember);
+        ExprStep parseExprMemberCall(ExprParseState& st, token& member, token& afterMember);
+        ExprStep parseExprMemberSubscript(ExprParseState& st, token& member, token& afterMember);
+        ExprStep parseExprMemberRead(ExprParseState& st, token& member, token& afterMember);
+        ExprStep parseExprMemberPropertyRead(ExprParseState& st, token& member);
+        // Sub-branches of parseExprDotChain.
+        ExprStep parseExprDotChainRead(ExprParseState& st, token& member, token& afterMember);
+        ExprStep parseExprDotChainCall(ExprParseState& st, token& member, token& afterMember);
 
         // Binary operator resolution in expression context: reads RHS, finds matching operator emitter,
         // applies conversion fallbacks, inlines emitter body into expr->tokens. Uses getNext/prefetched lambdas from parseExpression.
