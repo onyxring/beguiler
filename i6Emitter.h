@@ -161,14 +161,70 @@ class i6Emitter{
                                   statementBlock* body, const string& indent);
 
         void emit(vector<typeDef*>&);
+        // Pure-I6 .inf-mode fast path: emits only the user's own header/raw body/trailer; true when it handled everything.
+        bool emitPhaseInfModeRawOnly(vector<typeDef*>& nodeList);
+        // The leading ICL block (user's `!%` in .inf-mode, else synthesised) plus target/framePool state.
+        void emitPhaseIclAndTarget();
+        // Scratch globals (ternary temps, switch temp, try/catch cookie + per-block save slots), each only when used.
+        void emitPhaseScratchGlobals();
+        // Scans every function/method for framePool need and Z-machine excess-param count, then emits both.
+        void emitPhaseRuntimeNeedsScan(vector<typeDef*>& nodeList);
+        // #emitfirst blocks, plus the placeholder resolvedOutput() replaces with the fired #storedEmitFirst blocks.
+        void emitPhaseEmitFirstBlocks();
+        // Registers sized-uninitialised tracked word arrays so bglInit can stamp their $9084 magic. Emits nothing.
+        void collectTrackedWordArrays();
+        // Registers sized-uninitialised tracked byte arrays and declares the globals bglInit must assign to.
+        void emitPhaseTrackedByteArrayGlobals();
+        // The synthesised bglInit routine: array magic stamps, sized-buffer setup, startup blocks, global inits.
+        void emitPhaseBglInit();
+        // The main source-order walk, emitting each class ahead of its first instance and capturing superposed ones.
+        void emitPhaseSourceOrder(vector<typeDef*>& nodeList);
+        // #emitlast blocks, plus the placeholder resolvedOutput() replaces with the fired #storedEmitLast blocks.
+        void emitPhaseEmitLastBlocks();
+        // .inf-mode trailer: the user's `end;` directive and everything after it, spliced in last.
+        void emitPhaseInfTrailer();
         void generateI6(typeDef*);
         void emitICL(beguilerSettingsDef*);
         void emitSettingsConstants(beguilerSettingsDef*);
         void emitEnum(enumDef*);
         void emitClass(classDef*);
+        // The class's `static` members, emitted as mangled `_bgl_<Class>_<member>` globals ahead of the directive.
+        void emitClassStaticGlobals(classDef* classNode);
+        // Standalone I6 buffers for the class's `array<char>` members; records each mangled global name.
+        void emitClassByteArrayMembers(classDef* classNode, map<string, string>& externalArrayNames);
+        // The `class <Name>[(N)]` directive line and its I6 inheritance list (emitter bases filtered out).
+        void emitClassHeader(classDef* classNode);
+        // Selects the members that reach the `with` list, dropping emitters, statics, attributes and grammar.
+        void collectEmittableMembers(classDef* classNode, vector<typeMember*>& emittable);
+        // The class's whole `with` clause: property members, member arrays and method routine bodies.
+        void emitClassWithClause(vector<typeMember*>& emittable, map<string, string>& externalArrayNames);
+        // The class's `has` clause, assembled from its attributeList members.
+        void emitClassAttributes(classDef* classNode);
         void emitObject(objectDef*);
+        // Standalone tracked globals backing this instance's promoted member arrays (own and inherited).
+        void emitObjectPromotedArrays(objectDef* obj);
+        // Standalone I6 buffers for this instance's `array<char>` members; records each mangled global name.
+        void emitObjectByteArrayMembers(objectDef* obj, map<string, string>& externalArrayNames);
+        // Bakes one backing instance per owned value-helper member (own and inherited), recording name + decl.
+        void emitObjectOwnedMemberInstances(objectDef* obj, map<string, string>& ownedInstanceNames, map<string, variableDeclaration*>& ownedMemberDecl);
+        // Collects `with` wirings for owned/promoted members inherited from the class chain, not redeclared here.
+        void collectInheritedOwnedMembers(objectDef* obj, map<string, string>& ownedInstanceNames, map<string, variableDeclaration*>& ownedMemberDecl, vector<pair<string,string>>& inheritedOwned);
+        // The instance's whole `with` clause: property members, methods, raw blocks and inherited owned wirings.
+        void emitObjectWithClause(objectDef* obj, map<string, string>& externalArrayNames, map<string, string>& ownedInstanceNames, vector<pair<string,string>>& inheritedOwned, bool isVerbInstance);
+        // The instance's `has` clause, assembled from its attributeList members.
+        void emitObjectAttributes(objectDef* obj);
+        // The owning class's globalDeclaration emitter body, with $self/$selfsub/$val bound to this instance.
+        void emitObjectGlobalDeclarationEmitter(objectDef* obj, const string& objI6Name);
         void emitMember(typeMember*);
         void emitGlobal(variableDeclaration*);
+        // One standalone `array<char>` declaration: I6 hybrid buffer, or the `<buf>` SizedBuffer raw allocation.
+        void emitGlobalByteArray(arrayDeclaration* arr);
+        // One standalone word array: tracked `table` layout, plain `table`, or a flat `-->` rawArray.
+        void emitGlobalWordArray(arrayDeclaration* arr);
+        // True when a global of this declared type emits as an I6 `Object` directive rather than a `Global`.
+        bool globalEmitsAsObjectInstance(variableDeclaration* varNode);
+        // The `<Class> <name>` head of an object-instance global, plus any synthesized field backings.
+        void emitGlobalObjectInstanceHead(variableDeclaration* varNode, const string& varI6Name);
         // Walks `cls`'s stored fields. For each field whose type is a different statically-
         // instantiable class (no init emitter), emits a hidden backing global of that field's
         // type to `out` and returns a `with field _backing, ...` clause string suitable for
@@ -179,6 +235,34 @@ class i6Emitter{
         string synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited);
         void emitFunction(functionDef*);
         void emitStatement(statement*, string indent);
+        // A local `array<T>` declaration: alias-assign, seed a list initializer, or nothing.
+        void emitLocalArrayDeclaration(arrayDeclaration*, const string& indent);
+        // A local variable declaration's initializer assignment (plain, emitter-bodied, or interpolated).
+        void emitLocalDeclaration(variableDeclaration*, const string& indent);
+        // An assignment statement: emitter-bodied, interpolated, `$target`-rewritten, or plain `lhs = rhs`.
+        void emitAssignment(assignmentStatement*, const string& indent);
+        // A `return`: deinit cleanups and frame-free first, then the matching I6 return form.
+        void emitReturn(returnStatement*, const string& indent);
+        // A call in statement position: emitter-body inlining, or a direct call with Z-target arg spilling.
+        void emitFunctionCallStatement(functionCallStatement*, const string& indent);
+        // An `if` / `else` statement and its blocks.
+        void emitIfStatement(ifStatement*, const string& indent);
+        // A `do ... while`/`until` loop, emitted as I6 `do { } until (...)`.
+        void emitDoStatement(doStatement*, const string& indent);
+        // A `while` loop.
+        void emitWhileStatement(whileStatement*, const string& indent);
+        // A C-style `for` loop.
+        void emitForStatement(forStatement*, const string& indent);
+        // A `for(x in c)` loop over a string, world-tree children, a member array, or a word/byte array.
+        void emitForInStatement(forInStatement*, const string& indent);
+        // A `switch`: an if/else chain when any case needs guards, otherwise a native I6 `switch`.
+        void emitSwitchStatement(switchStatement*, const string& indent);
+        // A `try`/`catch`, built on @catch/@throw cookies (separate Glulx and Z-machine shapes).
+        void emitTryCatch(tryCatchStatement*, const string& indent);
+        // A `throw`: unhandled-exception guard, then @throw against the active catch cookie.
+        void emitThrow(throwStatement*, const string& indent);
+        // A raw I6 island (`#i6{}` verbatim, or a cooked node whose local names get spill/rename applied).
+        void emitRawNode(i6RawNode*, const string& indent);
         // Emit a raw I6 text block while pushing per-line entries into the source map so
         // I6 diagnostics inside the block remap to the correct .bgl line. Used for `#i6{}`
         // raw blocks (multi-line and single-line) and emitter-body inlinings.
