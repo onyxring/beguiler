@@ -12,7 +12,7 @@ game.bgl  ->  beguiler  ->  game.inf  ->  inform6  ->  game.z5 / game.ulx
 Three pieces:
 
 - **Inform 6** is the downstream compiler that Beguiler invokes to produce the final story file.  I don't spend time on the I6 install itself; I just walk through making sure it works with Beguiler. 
-- **Beguiler** is the compiler (and language server): a single native binary.
+- **Beguiler** is the compiler (and language server): it's a single native binary; packaged together with the BLR to enable run-time features.
 - **Beguilex** is the VS Code extension. Although not strictly required, it is ***highly*** recommended: it drives Beguiler for you, adds syntax highlighting and completion, and provides step-through debugging.  The rest of this document assumes you have it installed.
 ## Prerequisites
 
@@ -24,7 +24,7 @@ Assuming you don't already have it installed, you can get it from [it's official
 
 If you build from source, read this...
 
-> **Build Inform 6 with a real path length.** Inform 6 keeps each `#include` path in a fixed-size buffer, and a default build, using the instructions from the Inform 6 repository ( `cc -O2 -o inform *.c`) falls back to a **128-character** limit, a size that was generous back when directory trees were shallower. Beguile's resolved include paths routinely exceed this.  If you are building it yourself, be sure and specify the platform (one of these lines, and assuming you have a cpp compiler installed locally):
+> **Build Inform 6 with a real target platform.** Do NOT use the first set of instructions from the Inform 6 repository ( `cc -O2 -o inform *.c`).  Inform 6 keeps each `#include` path in a fixed-size buffer, and a default build falls back to a **128-character** limit.  Beguile's resolved include paths routinely exceed this.  If you are building it yourself, be sure and specify the platform (one of the following lines, assuming you have a cpp compiler installed locally):
 > 
 > macOS...
 > 
@@ -78,7 +78,12 @@ The extension needs to know where Beguiler and Inform 6 live. Open VS Code **Set
 
 
 That is the whole configuration. The extension passes these to Beguiler on every build, so you never touch command-line switches.
-## Step 4: Build a complete game
+
+---
+
+Everything should now be configured to work.  Just verify...
+
+## Verify you can build a complete game
 
 `hello.bgl` proves the transpiler runs, but it emits only a bare routine (it sets `informName = "none"` to skip the Inform 6 handoff). To build a real, playable story you need Inform 6 configured (Steps 1 to 3) and an IF library.
 
@@ -87,7 +92,7 @@ That is the whole configuration. The extension passes these to Beguiler on every
 
 - Run the build or debug command from the extension.
 
-## Step 5: Debugging
+## Verify you that debugging works
 
 With the extension, set a breakpoint in your `.bgl` and start debugging to step through your code as it runs. Step-through debugging works for both **Z-machine** and **Glulx** targets.
 ## Troubleshooting
