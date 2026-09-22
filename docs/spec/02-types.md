@@ -30,24 +30,24 @@
 Beguile is statically typed: every variable, parameter and return value has a type known at compile
 time. Types fall into four categories: primitive types (§2.2), literal pseudo-types (§2.4),
 user-defined types (enumerations §2.7, unions §2.8, classes §8) and the `var` escape type (§2.6).
-Arrays are covered in §10.
+Arrays are covered in §12.
 
 ## 2.2 Primitive Types
 
 **Description**
 
-The primitive types are declared by the runtime core (§19) and need no `#include`.
+The primitive types are declared by the runtime core (§21) and need no `#include`.
 
 | Type | Description |
 |---|---|
 | `int` | Signed integer, one native word. |
-| `uint` | Unsigned integer, the same width as `int`. A non-negative integer literal converts to it implicitly; any other conversion between `int` and `uint` is an explicit cast (§2.4.1). Its operators are specified in §19.6.1. |
+| `uint` | Unsigned integer, the same width as `int`. A non-negative integer literal converts to it implicitly; any other conversion between `int` and `uint` is an explicit cast (§2.4.1). Its operators are specified in §21.6.1. |
 | `float` | IEEE 754 single-precision floating point. `[Glulx]` See §2.3. |
 | `bool` | Boolean value, `true` or `false`. The comparison and logical operators and `operator ?()` yield `eBool`, the enumeration `{ true, false }` (§2.7.4); `eBool` and `bool` interoperate, so a comparison may be stored in a `bool` and a `bool` tested where an `eBool` is expected. Tables elsewhere in this specification write `bool` for either. |
-| `char` | A single ZSCII character value. The runtime core (§19.7) adds case-conversion and inspection methods. |
-| `string` | A reference to static text. The core provides printing, equality and literal assignment; the `<string>` extension (§20.3) compares content and adds `stringObj` for text that is built or changed. |
-| `object` | The base class of every world object in the IF model (§9.1). |
-| `verb` | The class from which verbs are declared (§11.2). |
+| `char` | A single ZSCII character value. The runtime core (§21.7) adds case-conversion and inspection methods. |
+| `string` | A reference to static text. The core provides printing, equality and literal assignment; the `<string>` extension (§22.3) compares content and adds `stringObj` for text that is built or changed. |
+| `object` | The base class of every world object in the IF model (§11.1). |
+| `verb` | The class from which verbs are declared (§13.2). |
 | `void` | Not a value type: the return type of a function that returns nothing. |
 
 `object`, `string`, `array` and `verb` share their names with I6 constructs and compile to them, but
@@ -55,8 +55,8 @@ are used with Beguile syntax and typing.
 
 **Notes**
 
-Beyond the primitive types, the library provides `array<T>` and `rawArray<T>` (§10.2, §10.8) and,
-with `#include <string>`, `stringObj` for text that is built or changed (§20.3).
+Beyond the primitive types, the library provides `array<T>` and `rawArray<T>` (§12.2, §12.8) and,
+with `#include <string>`, `stringObj` for text that is built or changed (§22.3).
 
 ## 2.3 The `float` Type
 
@@ -105,12 +105,12 @@ correspond to.
 | `negativeIntLiteral` | `-1` | `int` |
 | `stringLiteral` | `"hello"`, `@"raw"` | `string` |
 | `charLiteral` | `'a'` | `char` |
-| `dictionaryWordLiteral` | `.cloak`, `..cloaks` | `dictionaryWord` (§19.5.3) |
+| `dictionaryWordLiteral` | `.cloak`, `..cloaks` | `dictionaryWord` (§21.5.3) |
 | `interpolatedStringLiteral` | `$"hello {x}"` | none; see §2.4.2 |
 
 A pseudo-type is compatible with its corresponding type only through an `operator =` declared on that
 type (§2.11); there is no built-in rule. Pseudo-types are first-class types, declared as
-`extern class` (§8.2.2) in the core and extensible with `extend` (§8.9.1), so a method defined
+`extern class` (§8.2.2) in the core and extensible with `extend` (§8.7.1), so a method defined
 against one may be called directly on a literal.
 
 **Example**
@@ -143,8 +143,8 @@ uint v = (uint)-1;   // the largest unsigned value
 An interpolated string (§1.6.5) contains several segments that cannot be reduced to a single value, so
 it has no corresponding runtime type. It may be passed only to an emitter that declares an
 `interpolatedStringLiteral` parameter, where it expands into a block of statements; passing it to a
-non-emitter function is a compile-time error. The core `print()` and `log()` accept it (§19.4); the
-`<string>` extension allows `string s = $"…";` (§20.3).
+non-emitter function is a compile-time error. The core `print()` and `log()` accept it (§21.4); the
+`<string>` extension allows `string s = $"…";` (§22.3).
 
 ## 2.5 `nothing` and `null`
 
@@ -385,7 +385,7 @@ a function declared in the core, needs no `#include`, and works on both targets.
 - `nothing` and `null` report `eType.unknown`, as does any value whose category cannot be determined.
 
 Objects and classes report `eType.object` and `eType.class`; a value's class is tested with
-`x.is(SomeClass)` (§19.5.6).
+`x.is(SomeClass)` (§21.5.6).
 
 **Example**
 
@@ -400,7 +400,7 @@ if(typeof(x) == eType.routine) …
 switch(typeof(x)) { case eType.string: …  case eType.object: … }
 ```
 
-**See also** §19.5.9.
+**See also** §21.5.9.
 
 ### 2.8.2 Named Unions
 
@@ -425,7 +425,7 @@ member lookup it is nominal (only a value statically typed as the named union se
 
 Members are emitters (§7.2), inlined by static type, or `static` methods. Printing a named union is
 provided by a global `print(⟨name⟩)` overload rather than a member, because `print` dispatches on the
-argument's static type (§19.4).
+argument's static type (§21.4).
 
 **Example**
 
@@ -441,7 +441,7 @@ void show(stringOrRoutine v) {              // also accepts a string | func<void
 **Notes**
 
 The library bindings ship `stringOrRoutine`, with its `print` overload and an `isRoutine` member, for
-the I6 "string-or-routine" properties such as `description` (§19.5.10, §21.3.7).
+the I6 "string-or-routine" properties such as `description` (§21.5.10, §23.3.7).
 
 ## 2.9 Function Types
 
@@ -484,7 +484,7 @@ for(func<eVerdict> r in rulebook) { eVerdict v = r(); … }
 
 Value and reference semantics concern classes with stored members: what a variable of the type holds,
 and what assignment copies. A class that does not derive from `object` (or otherwise from the
-runtime's root class `_bglObject`, §19.5.8) is a **value class**. A variable whose type is a class
+runtime's root class `_bglObject`, §21.5.8) is a **value class**. A variable whose type is a class
 with stored members holds either the members themselves or a reference to an instance owned elsewhere:
 
 - A local of a value class type has **value semantics**: its members are zero-initialized at routine
@@ -579,13 +579,13 @@ string | func<void> u = "hello";               // 9: a member of the union
 **Description**
 
 A type may declare a **conversion operator**, `operator()`, returning another type; the declaration
-syntax is in §8.6.4. A conversion is **implicit** by default: the compiler applies it during
+syntax is in §9.4. A conversion is **implicit** by default: the compiler applies it during
 assignment, argument matching and operator resolution. A conversion qualified `explicit` is applied
 only at a cast site, `(⟨type⟩)expr`.
 
 A **pass-through conversion**, declared without a body, leaves the value unchanged and merely retypes it.
 A conversion written as a regular method rather than an emitter also fires on a bare read of a member
-of that type, which is the basis of property accessors (§8.7).
+of that type, which is the basis of property accessors (§9.9).
 
 Beyond conversion operators, a cast is required to narrow a union (§2.8), to convert `int` to a
 `bnum` or an `enum` to `int` (§2.7.3), and to convert between `int` and `float` (§2.3). The full cast

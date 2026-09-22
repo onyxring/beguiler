@@ -24,7 +24,7 @@
 A function has a return type, a name, a parenthesized parameter list and a block body (§5.2). A
 function declared at global scope is a **global function**; its name must be unique among non-emitter
 functions, and among all globals (§3.8.3). Functions may also be declared as members of a class (§8.4)
-or object (§9.9). A function declared `extern` has no body and is defined in Inform 6 (§13.4.1); a
+or object (§11.9). A function declared `extern` has no body and is defined in Inform 6 (§15.4.1); a
 function declared `emitter` has an I6 template body (§7.2).
 
 **Example**
@@ -44,7 +44,7 @@ bool Initialise() { location = foyer; rtrue; }
 |---|---|
 | `void` | No value. `return;` is permitted; `return expr;` is an error unless `expr` is `void` (§5.14). |
 | Any other type | Every path must end in `return expr;` with `expr` compatible with the type (§5.14). |
-| `array<T>` | Returns a typed array. A returned *local* array is ephemeral (§10.6). |
+| `array<T>` | Returns a typed array. A returned *local* array is ephemeral (§12.6). |
 
 `rtrue`, `rfalse` and the return-path rules are specified in §5.14.
 
@@ -80,7 +80,7 @@ parameters in order, and named arguments fill their target parameter. It is an e
 parameter the function does not have, to supply a parameter both positionally and by name, or to omit
 a required parameter.
 
-Parameter names may be omitted in non-emitter declarations inside an `extern class` (§13.4.3).
+Parameter names may be omitted in non-emitter declarations inside an `extern class` (§15.4.3).
 
 **Example**
 
@@ -103,7 +103,7 @@ A call is resolved in two steps:
 1. **Arity.** A candidate matches only if the argument count lies between its required and total
    parameter counts.
 2. **Types.** Among candidates that match by arity, an exact type match for every argument wins over a
-   match through an implicit conversion (`operator()`, §8.6.4), which wins over a match through `var`.
+   match through an implicit conversion (`operator()`, §9.4), which wins over a match through `var`.
 
 Type compatibility itself is specified in §2.11.
 
@@ -131,7 +131,7 @@ each `replaced()` calls the version it directly replaced. A predecessor that no 
 not part of the program.
 
 Replacing an `extern` routine defined by an I6 library works the same way in the source; the
-I6-side rules are in §13.6.
+I6-side rules are in §15.6.
 
 **Example**
 
@@ -142,7 +142,7 @@ replace int step(int n) { return replaced(n) + 200; }   // calls the first repla
 // step(5) → 305
 ```
 
-**See also** §8.9.2 (`replace` for class and object members).
+**See also** §8.7.2 (`replace` for class and object members).
 
 ## 6.6 `self`
 
@@ -188,7 +188,7 @@ void Main() { … }
 IF library binding defines `Main` itself, and a missing or duplicated `Main` is reported by the
 Inform 6 stage. A library such as the Inform 6 Standard Library or PunyInform defines `Main` itself
 and calls a library-specific entry point, such as `Initialise`, that the program supplies instead
-(§21.3.1).
+(§23.3.1).
 
 **Example**
 
@@ -198,4 +198,4 @@ void Main() {
 }
 ```
 
-**See also** §21.3.1 (entry point under a binding).
+**See also** §23.3.1 (entry point under a binding).

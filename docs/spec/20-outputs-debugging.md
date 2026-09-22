@@ -1,23 +1,23 @@
-# 18 Build Outputs and Debugging
+# 20 Build Outputs and Debugging
 
 <!-- toc -->
-- [18.1 Output Directory](#181-output-directory)
-- [18.2 Files Produced](#182-files-produced)
-- [18.3 Debug Builds](#183-debug-builds)
-- [18.4 The Inform 6 Debug File](#184-the-inform-6-debug-file)
-- [18.5 Console Output](#185-console-output)
+- [20.1 Output Directory](#201-output-directory)
+- [20.2 Files Produced](#202-files-produced)
+- [20.3 Debug Builds](#203-debug-builds)
+- [20.4 The Inform 6 Debug File](#204-the-inform-6-debug-file)
+- [20.5 Console Output](#205-console-output)
 <!-- /toc -->
 
-## 18.1 Output Directory
+## 20.1 Output Directory
 
 Every file a build produces, other than `_blorbAssets.bgl`, is written to one **output directory**.
 It is named by `-o` on the command line, else by `outputPath` in `#beguilerSettings`, else it is
 `output`. A relative name is resolved against the directory of the entry source file, never against
 the working directory; the directory is created if it does not exist. An explicit output-file
-argument on the command line (§14.2) is the one exception: it is written exactly
+argument on the command line (§16.2) is the one exception: it is written exactly
 where named.
 
-## 18.2 Files Produced
+## 20.2 Files Produced
 
 For an entry file `game.bgl` targeting Glulx, a full build with blorb packaging and `--debug` leaves:
 
@@ -26,13 +26,13 @@ For an entry file `game.bgl` targeting Glulx, a full build with blorb packaging 
 | `game.bgl.transpiled.inf` | output directory | always: the generated Inform 6 source, retained after the build |
 | `game.ulx` | output directory | on Inform 6 success (`game.z5` / `game.z8` for the Z-machine targets) |
 | `game.gblorb` | output directory | with `generateBlorb` (`game.zblorb` for the Z-machine) |
-| `_blorbAssets.bgl` | beside `game.bgl` | with `generateBlorb`, before parsing (§15.6) |
-| `game.bgl.bgldbg` | output directory | with `--debug` (§18.3) |
-| `game.bgl.transpiled.inf.dbg` | output directory | with `--debug`: Inform 6's debug file (§18.4) |
+| `_blorbAssets.bgl` | beside `game.bgl` | with `generateBlorb`, before parsing (§17.6) |
+| `game.bgl.bgldbg` | output directory | with `--debug` (§20.3) |
+| `game.bgl.transpiled.inf.dbg` | output directory | with `--debug`: Inform 6's debug file (§20.4) |
 
 The transpiled file is always `<source file name>.transpiled.inf`, including the source extension, so
 a precompiler-mode `story.inf` yields `story.inf.transpiled.inf`. It is the file Inform 6 compiles
-and the file its diagnostics refer to (§17.1.1); with `-inform=none` it is the
+and the file its diagnostics refer to (§19.1.1); with `-inform=none` it is the
 build's final product.
 
 **Current-file-relative I6 includes.** Inform 6 resolves `Include ">name"` relative to the file
@@ -41,12 +41,12 @@ The compiler rewrites every such directive in the transpiled file so that it sti
 the source directory; an author's `#i6 { Include ">lib.h"; }` therefore behaves as it would in a
 hand-written `.inf` beside the source.
 
-## 18.3 Debug Builds
+## 20.3 Debug Builds
 
-`--debug` (§14.3) changes two things: Inform 6 is run with `-k`, so it writes its own debug
+`--debug` (§16.3) changes two things: Inform 6 is run with `-k`, so it writes its own debug
 file, and the compiler writes its **debug bundle**, `<source file name>.bgldbg`, beside the transpiled
 file. Everything else about the build is unchanged; in particular `omitUnusedRoutines` still applies
-unless the program sets it `false` (§16.11).
+unless the program sets it `false` (§18.11).
 
 The bundle is plain text in three sections, each introduced by a bracketed header:
 
@@ -58,7 +58,7 @@ The bundle is plain text in three sections, each introduced by a bracketed heade
 
 The bundle describes only what the compiler knows; VM addresses come from the Inform 6 file.
 
-## 18.4 The Inform 6 Debug File
+## 20.4 The Inform 6 Debug File
 
 With `-k`, Inform 6 writes `gameinfo.dbg`, an XML database mapping VM addresses to I6 source lines and
 describing routines, their local-variable frames, globals and properties. The compiler moves it into
@@ -69,10 +69,10 @@ Together the two files give a debugger the chain *VM address → I6 line → Beg
 typed variables; the VS Code extension consumes both to provide source-level debugging of a running
 story.
 
-## 18.5 Console Output
+## 20.5 Console Output
 
 A build reports, in order: the compiler banner; blorb scan and IFID notes when packaging is on; any
-compile-time diagnostics (§17.1); on a successful transpile, the exact Inform 6 command line that is
+compile-time diagnostics (§19.1); on a successful transpile, the exact Inform 6 command line that is
 about to run; Inform 6's own output, rewritten; and blorb assembly notes. Inform 6's command line
-shows the switches that were passed through unchanged (§14.3.1), the `-k` added
+shows the switches that were passed through unchanged (§16.3.1), the `-k` added
 by `--debug`, and the `-e` added by `economy`.

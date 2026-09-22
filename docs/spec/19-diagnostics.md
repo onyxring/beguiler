@@ -1,14 +1,14 @@
-# 17 Diagnostics
+# 19 Diagnostics
 
 <!-- toc -->
-- [17.1 Message Format](#171-message-format)
-  - [17.1.1 Inform 6 Diagnostics](#1711-inform-6-diagnostics)
-- [17.2 Compile-Time Errors](#172-compile-time-errors)
-- [17.3 Warnings](#173-warnings)
-- [17.4 Runtime Failures](#174-runtime-failures)
+- [19.1 Message Format](#191-message-format)
+  - [19.1.1 Inform 6 Diagnostics](#1911-inform-6-diagnostics)
+- [19.2 Compile-Time Errors](#192-compile-time-errors)
+- [19.3 Warnings](#193-warnings)
+- [19.4 Runtime Failures](#194-runtime-failures)
 <!-- /toc -->
 
-## 17.1 Message Format
+## 19.1 Message Format
 
 Every diagnostic the compiler produces about the source is one line of the form
 
@@ -21,7 +21,7 @@ Every diagnostic the compiler produces about the source is one line of the form
 it. When a diagnostic is anchored to a statement the column is `1`; otherwise it is the position at
 which the lexer stopped. Diagnostics are written to standard error.
 
-**Errors stop the build.** The first error ends compilation with exit status 1 (§14.7).
+**Errors stop the build.** The first error ends compilation with exit status 1 (§16.7).
 A program therefore never receives more than one error per build.
 
 **Warnings continue.** A warning is advisory; the build proceeds. Warnings whose location lies inside
@@ -31,7 +31,7 @@ an author cannot act on them.
 **Location-free messages.** A few checks run after parsing, when no source position is current; their
 messages carry no `file:line:column` prefix.
 
-### 17.1.1 Inform 6 Diagnostics
+### 19.1.1 Inform 6 Diagnostics
 
 Inform 6's own output is passed through the console with each diagnostic rewritten to Beguile
 conventions:
@@ -49,7 +49,7 @@ compiler-generated header line). Inform 6 "Fatal error" and "Error" both appear 
 adjusted to the number actually shown. Any Inform 6 error fails the build even when Inform 6 itself
 exits successfully.
 
-## 17.2 Compile-Time Errors
+## 19.2 Compile-Time Errors
 
 The categories below are those an author is most likely to meet. Messages are quoted as
 representatives; `'x'` stands for the offending name.
@@ -63,12 +63,12 @@ must be unique. The message always cites the original declaration:
 ```
 
 Collisions between Beguile names and symbols defined only in raw I6 (`#i6`, `#includeI6`) are not
-visible to Beguile and surface as Inform 6 errors instead; declare such symbols `extern` (§13.4) to
+visible to Beguile and surface as Inform 6 errors instead; declare such symbols `extern` (§15.4) to
 bring them into the Beguile namespace. In precompiler mode the compiler does scan the surrounding I6
-for declarations and reports overlaps as warnings (§17.3).
+for declarations and reports overlaps as warnings (§19.3).
 
 **Member collisions.** A member declared twice in one class or object, or added by `extend` when a
-member of that name exists, is an error unless `replace` is used (§8.9):
+member of that name exists, is an error unless `replace` is used (§8.7):
 
 ```text
 class 'Room': member 'light' is already defined
@@ -82,7 +82,7 @@ members of two `#using` imports, or an operator reference with more than one can
 'val' is ambiguous: matches #using-imported member 'libA.val' and #using-imported member 'libB.val'. Qualify the use explicitly to disambiguate.
 ```
 
-**Inheritance and emission order** (§16.7):
+**Inheritance and emission order** (§18.7):
 
 ```text
 class 'A': circular inheritance — 'B' transitively inherits from 'A'
@@ -91,7 +91,7 @@ class 'Room' uses `has light` but its bindings-file declaration `extern attribut
 
 The second is a location-free message.
 
-**Includes and directives** (§12):
+**Includes and directives** (§14):
 
 ```text
 #include: file 'x' not found
@@ -101,7 +101,7 @@ Maximum include nesting depth (255) exceeded while including 'x'
 
 `#error "text"` raises an error whose message is the given text.
 
-**Settings** (§15.1):
+**Settings** (§17.1):
 
 ```text
 Unknown beguilerSettings property 'x'
@@ -114,15 +114,15 @@ beguilerSettings includePaths entry 'x' does not resolve to an existing director
 
 **Qualifier misuse.** Combining qualifiers that exclude one another, or applying one where it has no
 effect, is an error; for example `superposed` on an `extern`, `emitter` or `alias` class or on
-`extend class` (§3.2, §3.13).
+`extend class` (§3.2, §3.12).
 
 **Post-emission check.** After the transpiled file is written, the compiler verifies that no
-property-class member (§8.7) was emitted as a raw property access. A failure names the transpiled file
+property-class member (§9.9) was emitted as a raw property access. A failure names the transpiled file
 and line and suggests reading the value into a local first.
 
-## 17.3 Warnings
+## 19.3 Warnings
 
-**`#using`** (§12.6.1). The directive is ignored, with a warning, when its target is not a declared class
+**`#using`** (§10.4). The directive is ignored, with a warning, when its target is not a declared class
 or object, when a named member does not exist, or when the member is not of an importable type:
 
 ```text
@@ -145,14 +145,14 @@ is also a property of the enclosing object (§3.8):
 Bare 'light' resolves as global variable 'light', but 'light' is also a property of the enclosing object. Beguile cannot tell which you mean. Write 'self.light' for the object's property, or '::light' to force the global and silence this warning.
 ```
 
-**Method overriding without `replace`** (§8.9.3):
+**Method overriding without `replace`** (§8.7.3):
 
 ```text
 class 'Door': method 'describe' shadows definition in base class 'Thing'; use 'replace' to suppress this warning
 replace: no existing global function 'x' found; treating as new definition
 ```
 
-**Verbs and grammar** (§11.2.3, §11.5.2). Pattern tokens after the trigger word in an `extern verb`'s grammar are
+**Verbs and grammar** (§13.2.3, §13.5.2). Pattern tokens after the trigger word in an `extern verb`'s grammar are
 ignored; a `grammar -=` that matches nothing removes nothing:
 
 ```text
@@ -171,19 +171,19 @@ I6 whose name is also a Beguile global:
 is ignored); `superposed` on a non-`static` method (no effect); `#warning "text"` reports the given
 text.
 
-## 17.4 Runtime Failures
+## 19.4 Runtime Failures
 
 The generated code and the BLR detect a small number of conditions at run time. Each prints a bracketed
 message and halts the story with `quit`, except where stated.
 
 | Condition | Message | Recovery |
 | --- | --- | --- |
-| Frame pool full (§16.10) | `[Beguile runtime error: frame pool exhausted]` | Raise `framePoolSize`. |
+| Frame pool full (§18.10) | `[Beguile runtime error: frame pool exhausted]` | Raise `framePoolSize`. |
 | Literal-list `for … in` scratch full (§5.9.1) | `[Beguile runtime error: for-in literal-list scratch exhausted]` | Raise `forInScratchSize`. |
-| `<linq>` query step exceeds its buffer (§20.5) | `[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]` (the method name varies) | Raise `linqScratchSize`. |
-| `<linq>` query chains nested more than two deep (§20.5) | `[Beguile runtime error: LINQ chain nesting exceeds _BGL_LINQ_MAXDEPTH. …]` | Capture the inner result in a local first. |
-| `setLength` beyond the word range (§10.3) | `[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]` | — |
-| `<string>` pool full (§20.3) | `[ERROR: Unable to allocate a new instance.]` | Raise `bglStringPoolReserve`. |
+| `<linq>` query step exceeds its buffer (§22.5) | `[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]` (the method name varies) | Raise `linqScratchSize`. |
+| `<linq>` query chains nested more than two deep (§22.5) | `[Beguile runtime error: LINQ chain nesting exceeds _BGL_LINQ_MAXDEPTH. …]` | Capture the inner result in a local first. |
+| `setLength` beyond the word range (§12.3) | `[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]` | — |
+| `<string>` pool full (§22.3) | `[ERROR: Unable to allocate a new instance.]` | Raise `bglStringPoolReserve`. |
 | Pooled class full (§8.2.6) | none: `new` returns `nothing` | Test the result of `new`, or size the pool larger. |
-| `bgl.world` result buffer full (§19.9) | none: the walk stops at 128 objects | Narrow the query. |
+| `bgl.world` result buffer full (§21.9) | none: the walk stops at 128 objects | Narrow the query. |
 | `throw` with no enclosing `try` (§5.16) | the interpreter's own error; the story halts | — |

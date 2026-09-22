@@ -123,7 +123,7 @@ in string literals and rendered according to the target.
 > **[Z-machine]** The Z-machine has no typographic glyphs: curly double quotes fold to a straight
 > double quote, and curly single quotes and the backtick fold to a straight apostrophe `'`.
 
-The target is the resolved build target (§15); Glulx is the default. Only directly typed characters
+The target is the resolved build target (§17); Glulx is the default. Only directly typed characters
 are folded: a numeric escape such as `\$201C` always denotes that code point.
 
 ## D.7 Character Literals

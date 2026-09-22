@@ -79,7 +79,7 @@ name with a type; the rule is in §3.8.3.
 symbols and runtime infrastructure (`bglInit`, `bglWorld`, loop counters, scratch temporaries). The
 compiler does not reject such names in user code, but if one collides with a generated symbol the
 behavior is undefined. Documented hooks and base types under the prefix (`_bglObject`,
-`_bglGlobalDeclaration`, §19.5.8, §13.8) are the exception; user code may name them.
+`_bglGlobalDeclaration`, §21.5.8, §15.8) are the exception; user code may name them.
 
 **Example**
 
@@ -122,21 +122,21 @@ The literal pseudo-types (§2.4) are likewise reserved.
 
 `false` `grammar` `nothing` `null` `self` `true`
 
-`grammar` names a grammar declaration or member (§11.4) rather than a value, but is reserved in the
+`grammar` names a grammar declaration or member (§13.4) rather than a value, but is reserved in the
 same way.
 
 **Contextual keywords.** These are recognized only in one syntactic position and are ordinary
-identifiers elsewhere: `hide` (§8.9.4), `inject`, `move` and `remove` (§10.11), `outer` (§8.7.3),
-`synonyms` (§11.5.4) and `union` (§2.8.2).
+identifiers elsewhere: `hide` (§8.7.4), `inject`, `move` and `remove` (§12.11), `outer` (§9.9.3),
+`synonyms` (§13.5.4) and `union` (§2.8.2).
 
 **I6-significant words.** Of the words above, `array`, `attribute`, `class`, `false`, `grammar`,
 `nothing`, `object`, `property`, `replace`, `self`, `string`, `true` and `verb` also appear verbatim in
 the generated I6 as keywords or well-known identifiers.
 
 `meta`, `priority`, `handler` and `perform` are not keywords; they are members of the `verb` class
-(§11.2). `typeof` is not a keyword; it is a function of the runtime core (§2.8.1). The words that
+(§13.2). `typeof` is not a keyword; it is a function of the runtime core (§2.8.1). The words that
 Inform 6 reserves and Beguile does not, and the `as` clause that avoids them in generated names, are
-covered in §13.9.
+covered in §15.9.
 
 ## 1.6 Literals
 
@@ -240,7 +240,7 @@ A string literal has the pseudo-type `stringLiteral` (§2.4).
 A raw string literal disables all escape processing except `\"`. Every other character between the
 delimiters is taken literally, including `\`, `^` and `~`; a raw string therefore contains no I6
 newline or quote. A raw string may appear anywhere a string literal may, including
-`#beguilerSettings` values (§15.1), and has the same pseudo-type, `stringLiteral`.
+`#beguilerSettings` values (§17.1), and has the same pseudo-type, `stringLiteral`.
 
 **Example**
 
@@ -264,8 +264,8 @@ an expression span is a compile-time error.
 
 An interpolated string has the pseudo-type `interpolatedStringLiteral` (§2.4.2), which may be passed
 only to an emitter declaring a parameter of that type; passing it to a non-emitter function is a
-compile-time error. `print()` and `log()` accept it in the core runtime (§19.4); assignment to a
-`string` requires the `<string>` extension (§20.3).
+compile-time error. `print()` and `log()` accept it in the core runtime (§21.4); assignment to a
+`string` requires the `<string>` extension (§22.3).
 
 **Example**
 
@@ -315,7 +315,7 @@ input against. The `.` form is singular; the `..` form is plural. A `-` between 
 part of the word, not the subtraction operator, and an apostrophe is likewise part of the word.
 
 A dictionary word literal has the pseudo-type `dictionaryWordLiteral` and is compatible with
-`dictionaryWord` (§2.4, §19.5.3). The meaning of singular and plural words is defined in §11.1.
+`dictionaryWord` (§2.4, §21.5.3). The meaning of singular and plural words is defined in §13.1.
 
 **Example**
 
@@ -344,10 +344,10 @@ The single-character operators and punctuation are:
 `::name` (§3.9). No other construct uses `::`.
 
 Inside a class body, `[]` and `[]=` are the names of the subscript operators in an `operator`
-declaration (§8.6.3); elsewhere `[` and `]` are separate tokens.
+declaration (§9.3); elsewhere `[` and `]` are separate tokens.
 
 The role of each operator and the section that specifies it are indexed in Appendix C.3; the
-overloadable operators are listed in §8.6.1 and precedence is tabulated in §4.3.
+overloadable operators are listed in §9.1 and precedence is tabulated in §4.3.
 
 ## 1.8 Directive Tokens
 
@@ -360,4 +360,4 @@ overloadable operators are listed in §8.6.1 and precedence is tabulated in §4.
 **Description**
 
 A `#` immediately followed by an identifier, with no intervening whitespace, is a directive token:
-`#include`, `#define`, `#if`, `#i6`. Directives are specified in §12 and indexed in Appendix B.
+`#include`, `#define`, `#if`, `#i6`. Directives are specified in §14 and indexed in Appendix B.

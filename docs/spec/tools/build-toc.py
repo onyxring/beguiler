@@ -27,7 +27,7 @@ def chapter_id(path):
     cid = m.group(1)
     return None if cid == '00' else (str(int(cid)) if cid.isdigit() else cid)
 
-KNOWN_CHAPTERS = {str(n) for n in range(1, 22)} | set('ABCDEFGHIJ')
+KNOWN_CHAPTERS = {str(n) for n in range(1, 24)} | set('ABCDEFGHIJ')
 
 def skip_mask(lines):
     """True for lines inside fenced code or HTML comments (not scanned for headings/refs)."""
@@ -175,8 +175,8 @@ def main():
         readme = ROOT / 'README.md'
         rl = readme.read_text(encoding='utf-8').split('\n')
         block = ['<!-- toc -->']
-        PARTS = [(None, '**Front matter**'), ('1', '**Part I — The Beguile Language**'), ('14', '**Part II — The Beguiler Compiler**'),
-                 ('19', '**Part III — The Beguile Language Runtime (BLR)**'), ('A', '**Appendices**')]
+        PARTS = [(None, '**Front matter**'), ('1', '**Part I — The Beguile Language**'), ('16', '**Part II — The Beguiler Compiler**'),
+                 ('21', '**Part III — The Beguile Language Runtime (BLR)**'), ('A', '**Appendices**')]
         shown = set()
         for p, (cid, lines, heads) in parsed.items():
             top = next((h for h in heads if h[1] == 1), None)

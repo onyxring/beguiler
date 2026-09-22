@@ -1,26 +1,26 @@
-# 13 Inform 6 Interoperability
+# 15 Inform 6 Interoperability
 
 <!-- toc -->
-- [13.1 Compilation Modes](#131-compilation-modes)
-  - [13.1.1 Default Mode](#1311-default-mode)
-  - [13.1.2 Precompiler Mode](#1312-precompiler-mode)
-  - [13.1.3 Islands and Nesting](#1313-islands-and-nesting)
-- [13.2 I6 Islands](#132-i6-islands)
-- [13.3 Beguile Islands](#133-beguile-islands)
-  - [13.3.1 In-routine Islands](#1331-in-routine-islands)
-  - [13.3.2 File-scope Islands](#1332-file-scope-islands)
-  - [13.3.3 Loose Identifier Mode](#1333-loose-identifier-mode)
-- [13.4 `extern` Declarations](#134-extern-declarations)
-  - [13.4.1 Extern Functions and `default` Stubs](#1341-extern-functions-and-default-stubs)
-  - [13.4.2 Extern Variables, Constants, Attributes, Properties, Verbs and Enums](#1342-extern-variables-constants-attributes-properties-verbs-and-enums)
-  - [13.4.3 Extern Classes](#1343-extern-classes)
-  - [13.4.4 Extern Objects](#1344-extern-objects)
-- [13.5 Including I6 Source](#135-including-i6-source)
-- [13.6 Replacing I6 Library Routines](#136-replacing-i6-library-routines)
-- [13.7 `superposed`](#137-superposed)
-- [13.8 `_bglGlobalDeclaration`](#138-bglglobaldeclaration)
-- [13.9 I6 Reserved Words and Name Collisions](#139-i6-reserved-words-and-name-collisions)
-- [13.10 Third-party I6 Libraries and Raw Arrays](#1310-third-party-i6-libraries-and-raw-arrays)
+- [15.1 Compilation Modes](#151-compilation-modes)
+  - [15.1.1 Default Mode](#1511-default-mode)
+  - [15.1.2 Precompiler Mode](#1512-precompiler-mode)
+  - [15.1.3 Islands and Nesting](#1513-islands-and-nesting)
+- [15.2 I6 Islands](#152-i6-islands)
+- [15.3 Beguile Islands](#153-beguile-islands)
+  - [15.3.1 In-routine Islands](#1531-in-routine-islands)
+  - [15.3.2 File-scope Islands](#1532-file-scope-islands)
+  - [15.3.3 Loose Identifier Mode](#1533-loose-identifier-mode)
+- [15.4 `extern` Declarations](#154-extern-declarations)
+  - [15.4.1 Extern Functions and `default` Stubs](#1541-extern-functions-and-default-stubs)
+  - [15.4.2 Extern Variables, Constants, Attributes, Properties, Verbs and Enums](#1542-extern-variables-constants-attributes-properties-verbs-and-enums)
+  - [15.4.3 Extern Classes](#1543-extern-classes)
+  - [15.4.4 Extern Objects](#1544-extern-objects)
+- [15.5 Including I6 Source](#155-including-i6-source)
+- [15.6 Replacing I6 Library Routines](#156-replacing-i6-library-routines)
+- [15.7 `superposed`](#157-superposed)
+- [15.8 `_bglGlobalDeclaration`](#158-bglglobaldeclaration)
+- [15.9 I6 Reserved Words and Name Collisions](#159-i6-reserved-words-and-name-collisions)
+- [15.10 Third-party I6 Libraries and Raw Arrays](#1510-third-party-i6-libraries-and-raw-arrays)
 <!-- /toc -->
 
 
@@ -31,7 +31,7 @@ library routines, `superposed` declarations, per-instance I6 injection, and the 
 by the I6 stage. Emitter bodies (§7), which are raw I6 inlined at each call site, are the primary
 path to I6 capabilities that have no Beguile syntax and are specified with emitters, not here.
 
-## 13.1 Compilation Modes
+## 15.1 Compilation Modes
 
 The compiler operates in one of two modes, chosen by the extension of the entry file. Both produce an
 I6 program, both can use every Beguile feature, and the Beguile Language Runtime is loaded in both.
@@ -39,10 +39,10 @@ They differ in which language owns the file and how the other is reached.
 
 | Mode | Entry file | Host language | Guest language, reached through |
 |---|---|---|---|
-| Default mode | `.bgl` | Beguile | I6, via I6 islands (§13.2) |
-| Precompiler mode | `.inf` | Inform 6 | Beguile, via Beguile islands (§13.3) |
+| Default mode | `.bgl` | Beguile | I6, via I6 islands (§15.2) |
+| Precompiler mode | `.inf` | Inform 6 | Beguile, via Beguile islands (§15.3) |
 
-### 13.1.1 Default Mode
+### 15.1.1 Default Mode
 
 **Description**
 
@@ -65,7 +65,7 @@ Room foyer { short_name = "Foyer"; }
 }
 ```
 
-### 13.1.2 Precompiler Mode
+### 15.1.2 Precompiler Mode
 
 **Description**
 
@@ -75,7 +75,7 @@ islands (`#bgl` inside a routine). The following rules apply only in this mode:
 
 - **ICL header.** The compiler does not synthesize an ICL header. The file's own `!%` lines are
   passed through verbatim and must be the first lines of the file, with no blank line between them.
-- **Runtime initialization.** `#startup` blocks (§12.4.1) run inside `bglInit()`, which is declared
+- **Runtime initialization.** `#startup` blocks (§14.4.1) run inside `bglInit()`, which is declared
   but not called; the program must call `bglInit()` itself, from `Main` or `Initialise`, or through
   a library binding that does so.
 - **`#using bgl` is required.** The `bgl` namespace is not imported implicitly. Write `#using bgl;`
@@ -105,17 +105,17 @@ islands (`#bgl` inside a routine). The following rules apply only in this mode:
 ];
 ```
 
-**See also** §14.8, §16.8.
+**See also** §16.8, §18.8.
 
-### 13.1.3 Islands and Nesting
+### 15.1.3 Islands and Nesting
 
 An island is a region of one language embedded in a stream of the other. Islands are named by their
 content, not their host: an **I6 island** is raw I6 inside Beguile, a **Beguile island** is Beguile
 inside I6. Islands nest to any depth: `#i6 { #bgl { #i6 { #bgl { … } } } }` is valid in default mode
 and the symmetric pattern in precompiler mode. A nested island inherits the identifier-resolution
-rules of the outermost Beguile island that contains it (§13.3.3).
+rules of the outermost Beguile island that contains it (§15.3.3).
 
-## 13.2 I6 Islands
+## 15.2 I6 Islands
 
 **Syntax**
 
@@ -134,7 +134,7 @@ character literals (`'…'`), far enough to find the closing brace of the block 
 form takes everything to the end of the line.
 
 An I6 island is placed in source order relative to the surrounding declarations; the ordering
-guarantees around classes and instances are in §16.7.
+guarantees around classes and instances are in §18.7.
 
 **Example**
 
@@ -147,11 +147,11 @@ guarantees around classes and instances are in §16.7.
 }
 ```
 
-**See also** §12.5.1, §16.7.
+**See also** §14.5.1, §18.7.
 
-## 13.3 Beguile Islands
+## 15.3 Beguile Islands
 
-### 13.3.1 In-routine Islands
+### 15.3.1 In-routine Islands
 
 **Syntax**
 
@@ -187,9 +187,9 @@ types do not match, and the arguments are passed as written.
 }
 ```
 
-**See also** §12.5.2.
+**See also** §14.5.2.
 
-### 13.3.2 File-scope Islands
+### 15.3.2 File-scope Islands
 
 **Syntax**
 
@@ -224,9 +224,9 @@ Constant redtangent = 7;
 }
 ```
 
-**See also** §12.5.2, §13.1.2.
+**See also** §14.5.2, §15.1.2.
 
-### 13.3.3 Loose Identifier Mode
+### 15.3.3 Loose Identifier Mode
 
 **Description**
 
@@ -252,24 +252,24 @@ mode are not checked; a typo surfaces as an I6 error.
 
 **See also** §3.8.
 
-## 13.4 `extern` Declarations
+## 15.4 `extern` Declarations
 
 `extern` declares that a name is defined in I6. The compiler registers the name and its type for
 compile-time checking and emits no definition for it. The forms are:
 
 | Form | Specified in |
 |------|--------------|
-| `extern ⟨type⟩ ⟨name⟩ ( ⟨params⟩ ) ;` | §13.4.1 |
-| `extern ⟨type⟩ ⟨name⟩ ;` / `extern const ⟨type⟩ ⟨name⟩ ;` | §13.4.2, §3.5 |
-| `extern attribute ⟨name⟩ ;` / `extern property ⟨name⟩ ;` | §13.4.2, §9.6, §9.7.1 |
-| `extern verb ⟨name⟩ ;` | §13.4.2, §11.2.3 |
-| `extern enum ⟨name⟩ { … }` / `extern bnum ⟨name⟩ { … }` | §13.4.2, §2.7.4 |
-| `extern class ⟨name⟩ { … }` | §13.4.3, §8.2.2 |
-| `extern object ⟨name⟩ ;` / `extern object ⟨name⟩ { … }` | §13.4.4, §9.11 |
+| `extern ⟨type⟩ ⟨name⟩ ( ⟨params⟩ ) ;` | §15.4.1 |
+| `extern ⟨type⟩ ⟨name⟩ ;` / `extern const ⟨type⟩ ⟨name⟩ ;` | §15.4.2, §3.5 |
+| `extern attribute ⟨name⟩ ;` / `extern property ⟨name⟩ ;` | §15.4.2, §11.6, §11.7.1 |
+| `extern verb ⟨name⟩ ;` | §15.4.2, §13.2.3 |
+| `extern enum ⟨name⟩ { … }` / `extern bnum ⟨name⟩ { … }` | §15.4.2, §2.7.4 |
+| `extern class ⟨name⟩ { … }` | §15.4.3, §8.2.2 |
+| `extern object ⟨name⟩ ;` / `extern object ⟨name⟩ { … }` | §15.4.4, §11.11 |
 
-An `extern` declaration may carry an `as i6name` clause naming the I6 identifier (§3.12).
+An `extern` declaration may carry an `as i6name` clause naming the I6 identifier (§3.11).
 
-### 13.4.1 Extern Functions and `default` Stubs
+### 15.4.1 Extern Functions and `default` Stubs
 
 **Syntax**
 
@@ -288,7 +288,7 @@ Because `extern` asserts that the routine already exists, a plain Beguile defini
 is a compile-time error. The exception is `extern default`, which marks an I6 library *stub* (`Stub`
 in I6): a weak default the library expects the program to override. A plain definition of an
 `extern default` function supplants the stub without `replace`. To replace a strongly defined
-library routine, use `replace` (§13.6).
+library routine, use `replace` (§15.6).
 
 **Example**
 
@@ -302,11 +302,11 @@ void Epilogue() { print("The End.^"); }  // overrides it; no replace needed
 
 **See also** §6.1, §6.5.
 
-### 13.4.2 Extern Variables, Constants, Attributes, Properties, Verbs and Enums
+### 15.4.2 Extern Variables, Constants, Attributes, Properties, Verbs and Enums
 
-See §3.5 (variables and constants), §9.6 (attributes), §9.7.1 (properties), §11.2.3 (verbs) and §2.7.4 (enums and bnums).
+See §3.5 (variables and constants), §11.6 (attributes), §11.7.1 (properties), §13.2.3 (verbs) and §2.7.4 (enums and bnums).
 
-### 13.4.3 Extern Classes
+### 15.4.3 Extern Classes
 
 **Syntax**
 
@@ -354,7 +354,7 @@ extern class string {
 
 **See also** §7.2, §8.2.2, §8.2.5, §8.2.6.
 
-### 13.4.4 Extern Objects
+### 15.4.4 Extern Objects
 
 **Syntax**
 
@@ -369,7 +369,7 @@ extern object ⟨name⟩ {
 
 **Description**
 
-Declares a single I6-defined object. The bare form is specified in §9.11. The body form additionally
+Declares a single I6-defined object. The bare form is specified in §11.11. The body form additionally
 declares the types of the object's members so that calls and property reads type-check:
 
 - A method is a bodyless signature; a body on a non-emitter method is a compile-time error. Emitter
@@ -393,13 +393,13 @@ extern object playerCommands {
 playerCommands.pushCommand("say hello");
 ```
 
-**See also** §9.11.
+**See also** §11.11.
 
-## 13.5 Including I6 Source
+## 15.5 Including I6 Source
 
-See §12.1.5.
+See §14.1.5.
 
-## 13.6 Replacing I6 Library Routines
+## 15.6 Replacing I6 Library Routines
 
 **Syntax**
 
@@ -409,7 +409,7 @@ replace ⟨type⟩ ⟨name⟩ ( ⟨params⟩ ) { … }
 
 **Description**
 
-`replace` on a global function whose predecessor is an `extern` function (§13.4.1) replaces the I6
+`replace` on a global function whose predecessor is an `extern` function (§15.4.1) replaces the I6
 library routine of that name. The `replace` qualifier itself, and `replaced()` for calling the
 original from the new body, are specified in §6.5. For an `extern` predecessor the compiler hands the
 name over with I6's `Replace` directive, placed ahead of every include so that it always precedes the
@@ -433,12 +433,12 @@ replace void Banner(){
 
 **See also** §6.5.
 
-## 13.7 `superposed`
+## 15.7 `superposed`
 
-`superposed` is a declaration qualifier; its rule is in §3.13 and its emission behavior in §16.9. It
+`superposed` is a declaration qualifier; its rule is in §3.12 and its emission behavior in §18.9. It
 marks a whole declaration — a function, global, object or class — or a `static` method.
 
-## 13.8 `_bglGlobalDeclaration`
+## 15.8 `_bglGlobalDeclaration`
 
 **Syntax**
 
@@ -478,7 +478,7 @@ counter clicks {}
 
 **See also** §7.3, Appendix G.
 
-## 13.9 I6 Reserved Words and Name Collisions
+## 15.9 I6 Reserved Words and Name Collisions
 
 Beguile's own keywords are listed in Appendix A; those marked I6-significant reach the generated
 program verbatim. Inform 6 reserves many more words that Beguile does not, and they matter in two
@@ -486,7 +486,7 @@ situations.
 
 **Directives with no Beguile form.** `Abbreviate`, `Zcharacter`, `Dictionary`, `Fake_action`,
 `Lowstring`, `Stub`, `Trace`, `System_file` and the like have no Beguile keyword. They are reached
-through raw I6: an I6 island (§13.2) or `#includeI6` (§13.5) passes them to the I6 compiler untouched.
+through raw I6: an I6 island (§15.2) or `#includeI6` (§15.5) passes them to the I6 compiler untouched.
 
 ```bgl
 #i6 {
@@ -498,9 +498,9 @@ through raw I6: an I6 island (§13.2) or `#includeI6` (§13.5) passes them to th
 (an object, function, global or `extern` name) must not be an Inform 6 reserved word — a directive,
 statement, condition keyword or built-in identifier of I6; the I6 stage rejects it even though
 Beguile accepted it. Where such a name must be kept, give the declaration an explicit I6 name with an
-`as` clause (§3.12). The Inform 6 Designer's Manual holds the authoritative, version-current list of
+`as` clause (§3.11). The Inform 6 Designer's Manual holds the authoritative, version-current list of
 reserved words.
 
-## 13.10 Third-party I6 Libraries and Raw Arrays
+## 15.10 Third-party I6 Libraries and Raw Arrays
 
-See §10.8.2.
+See §12.8.2.

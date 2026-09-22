@@ -1,35 +1,35 @@
-# 10 Arrays
+# 12 Arrays
 
 <!-- toc -->
-- [10.1 Overview](#101-overview)
-- [10.2 Declaring Arrays](#102-declaring-arrays)
-- [10.3 Subscripts, Size and Length](#103-subscripts-size-and-length)
-- [10.4 Byte Arrays — `array<char>`](#104-byte-arrays-arraychar)
-- [10.5 Assignment and Copy Semantics](#105-assignment-and-copy-semantics)
-- [10.6 Local Arrays and Lifetime](#106-local-arrays-and-lifetime)
-- [10.7 Member Arrays](#107-member-arrays)
-- [10.8 `rawArray<T>`](#108-rawarrayt)
-  - [10.8.1 Raw Views](#1081-raw-views)
-  - [10.8.2 File-scope `rawArray<T>` Literals](#1082-file-scope-rawarrayt-literals)
-  - [10.8.3 Member `rawArray<T>`](#1083-member-rawarrayt)
-- [10.9 Arrays of Arrays](#109-arrays-of-arrays)
-- [10.10 Element Type Requirements](#1010-element-type-requirements)
-- [10.11 `extend` for Arrays](#1011-extend-for-arrays)
+- [12.1 Overview](#121-overview)
+- [12.2 Declaring Arrays](#122-declaring-arrays)
+- [12.3 Subscripts, Size and Length](#123-subscripts-size-and-length)
+- [12.4 Byte Arrays — `array<char>`](#124-byte-arrays-arraychar)
+- [12.5 Assignment and Copy Semantics](#125-assignment-and-copy-semantics)
+- [12.6 Local Arrays and Lifetime](#126-local-arrays-and-lifetime)
+- [12.7 Member Arrays](#127-member-arrays)
+- [12.8 `rawArray<T>`](#128-rawarrayt)
+  - [12.8.1 Raw Views](#1281-raw-views)
+  - [12.8.2 File-scope `rawArray<T>` Literals](#1282-file-scope-rawarrayt-literals)
+  - [12.8.3 Member `rawArray<T>`](#1283-member-rawarrayt)
+- [12.9 Arrays of Arrays](#129-arrays-of-arrays)
+- [12.10 Element Type Requirements](#1210-element-type-requirements)
+- [12.11 `extend` for Arrays](#1211-extend-for-arrays)
 <!-- /toc -->
 
-## 10.1 Overview
+## 12.1 Overview
 
 `array<T>` is a typed word array with a capacity fixed at declaration and a run-time tracked length.
 The element type `T` is mandatory; bare `array` is not a type. `T` may be any base type (`int`,
 `bool`, `string`, `object`, `char`, `dictionaryWord`), any user-defined class, or another array type
-(§10.9). `rawArray<T>` (§10.8) is the untracked form used at the I6 boundary.
+(§12.9). `rawArray<T>` (§12.8) is the untracked form used at the I6 boundary.
 
 The `<array>` extension is loaded by the runtime core, so every array operation is available
 without an explicit `#include <array>`. Subscripting, `size()`, `length()` and `for … in` are built
 in; `setLength()`, `clear()`, value-semantic assignment and the remaining methods (`append`,
-`indexOf`, `sort`, …) are provided by `<array>` and are cataloged in §20.4.
+`indexOf`, `sort`, …) are provided by `<array>` and are cataloged in §22.4.
 
-## 10.2 Declaring Arrays
+## 12.2 Declaring Arrays
 
 **Syntax**
 
@@ -45,8 +45,8 @@ third is declared without capacity.
 
 **Description**
 
-Arrays may be declared at file scope, as locals inside a function body (§10.6), and as class or object
-members (§10.7). A global array has no element-count limit. Element type checking is enforced at every
+Arrays may be declared at file scope, as locals inside a function body (§12.6), and as class or object
+members (§12.7). A global array has no element-count limit. Element type checking is enforced at every
 subscript site and in initializers: reading an element yields a `T`, writing requires a value
 compatible with `T`, and a cross-type assignment (a `string` into an `array<int>`) is a compile-time
 error.
@@ -59,7 +59,7 @@ array<int> primes = {2, 3, 5, 7, 11};
 array<Room> visited;
 ```
 
-## 10.3 Subscripts, Size and Length
+## 12.3 Subscripts, Size and Length
 
 **Syntax**
 
@@ -81,7 +81,7 @@ not those slots hold meaningful values.
 
 An array also carries an explicit *length*, the count of in-use entries. Length is set at allocation
 (N for an initializer list, 0 for a sized array) and changes only through explicit operations:
-`setLength()`, `clear()`, and the mutators of `<array>` (§20.4). A slot write (`arr[i] = v`) does not
+`setLength()`, `clear()`, and the mutators of `<array>` (§22.4). A slot write (`arr[i] = v`) does not
 change length; the array behaves as a buffer with a cursor. `setLength(n)` is range-checked to the
 signed word range of the target; `clear()` zeroes every slot up to `size()` and resets length to 0.
 
@@ -90,10 +90,10 @@ Every traversal in `<array>` (`indexOf()`, `contains()`, `removeValue()`, `sort(
 `clear()` is the one capacity-wide operation. A sized array filled only by slot writes therefore has
 `length() == 0` and reads as empty; use `+=`, `insert()` or `setLength()` to make the slots live.
 
-On an `array<char>` (§10.4), `size()` and `length()` both read the buffer's length word, which starts
-at the declared capacity. On a `rawArray<T>` (§10.8) `size()`, `length()` and `for … in` are
+On an `array<char>` (§12.4), `size()` and `length()` both read the buffer's length word, which starts
+at the declared capacity. On a `rawArray<T>` (§12.8) `size()`, `length()` and `for … in` are
 compile-time errors, except that a raw member array reports its property length from both. `isTracked()`
-(§20.4) tells a tracked array from an untracked one.
+(§22.4) tells a tracked array from an untracked one.
 
 **Example**
 
@@ -114,7 +114,7 @@ scores.clear();                 // every slot 0, length 0
 
 > **[Glulx]** `setLength(n)` accepts 0..2^31-1.
 
-## 10.4 Byte Arrays — `array<char>`
+## 12.4 Byte Arrays — `array<char>`
 
 **Syntax**
 
@@ -154,7 +154,7 @@ int code = word[0];
 print(code);                    // → 104
 ```
 
-## 10.5 Assignment and Copy Semantics
+## 12.5 Assignment and Copy Semantics
 
 **Syntax**
 
@@ -166,8 +166,8 @@ print(code);                    // → 104
 
 Assigning one array to another (`dst = src`) copies the elements; the two arrays are independent
 afterwards. This is the mechanism that captures an ephemeral array
-result (§10.6). Copying into an element of an owning element type goes through that type's
-`static operator =` (§10.10).
+result (§12.6). Copying into an element of an owning element type goes through that type's
+`static operator =` (§12.10).
 
 **Example**
 
@@ -179,20 +179,20 @@ dst = src;                      // copies the elements
 dst[0] = 99;                    // src[0] is still 1
 ```
 
-## 10.6 Local Arrays and Lifetime
+## 12.6 Local Arrays and Lifetime
 
 **Description**
 
 A local array (declared inside a function body, sized or initialized) is allocated per call at
 function entry and freed at function exit, so each call, including a recursive one, has its own
-storage (§16.10). File-scope arrays live in permanent storage and may be returned freely.
+storage (§18.10). File-scope arrays live in permanent storage and may be returned freely.
 
 Because a local array's storage is reclaimed on return, a returned local array is an *ephemeral*
-reference, not an owned value, exactly like an ephemeral string (§20.3): the storage it names has been
+reference, not an owned value, exactly like an ephemeral string (§22.3): the storage it names has been
 freed by the time the caller sees it. To keep the result, assign it to a typed local, which copies it
-(§10.5). If the reference is consumed in an expression, or passed straight into another call, without
+(§12.5). If the reference is consumed in an expression, or passed straight into another call, without
 first being assigned, the behavior is undefined. The same applies to results of `<array>` methods and
-chains on a local array (§20.4, §20.5).
+chains on a local array (§22.4, §22.5).
 
 **Example**
 
@@ -207,7 +207,7 @@ array<int> keep = build();      // copies into stable storage
 int n = keep[0];                // safe
 ```
 
-## 10.7 Member Arrays
+## 12.7 Member Arrays
 
 **Syntax**
 
@@ -221,7 +221,7 @@ ref array<⟨type⟩> ⟨name⟩ ;
 
 **Description**
 
-An `array<T>` declared as a class or object member (§8.3.1, §9.8) has the same semantics as any other
+An `array<T>` declared as a class or object member (§8.3.1, §11.8) has the same semantics as any other
 array: `length()`, `append()`, `pop()` and the rest behave identically. Storage is per instance: every
 instance of a class has its own copy of a member array, with the declared capacity and initializer.
 
@@ -231,8 +231,8 @@ instance of a class has its own copy of a member array, with the declared capaci
 | too large for one property | separate storage owned by that instance; the property refers to it |
 
 Two member kinds always keep the bare I6 layout and are never moved to separate storage: a
-`rawArray<T>` member (§10.8.3), where exceeding the property limit is an error, and a member bound to
-an `additive` property, which must be declared `rawArray<T>` (§9.7.2).
+`rawArray<T>` member (§12.8.3), where exceeding the property limit is an error, and a member bound to
+an `additive` property, which must be declared `rawArray<T>` (§11.7.2).
 
 A member may also be declared `ref`, in which case it holds a reference to an array owned elsewhere,
 is bound with `:=` (§3.7), and owns no storage of its own.
@@ -259,9 +259,9 @@ w.log += 5;           // appends to shared
 
 > **[Glulx]** Properties have no practical size limit; member arrays are always stored inline.
 
-## 10.8 `rawArray<T>`
+## 12.8 `rawArray<T>`
 
-### 10.8.1 Raw Views
+### 12.8.1 Raw Views
 
 **Syntax**
 
@@ -276,7 +276,7 @@ rawArray<⟨type⟩> ⟨name⟩
 `rawArray<T>` is a typed view over a bare I6 word array: no length header and no tracking. It is
 declarable at file scope, as an `extern`, as a parameter type, and as a class or object member. Its
 purpose is interoperability: an I6 buffer handed to Beguile (the `results` array of a `parse_error`
-entry point, a library table, an array declared in an `#i6` island, §13.2) has no count word, and
+entry point, a library table, an array declared in an `#i6` island, §15.2) has no count word, and
 receiving it as a `rawArray<T>` parameter allows ordinary subscript syntax on it.
 
 | | `array<T>` | `rawArray<T>` parameter |
@@ -305,7 +305,7 @@ void walk(rawArray<int> buf, int n) {
 }
 ```
 
-### 10.8.2 File-scope `rawArray<T>` Literals
+### 12.8.2 File-scope `rawArray<T>` Literals
 
 **Syntax**
 
@@ -321,7 +321,7 @@ A file-scope `rawArray<T>` declared with an initializer is an *untracked* `array
 count-word-then-elements layout of `array<T>`, and its count word holds the true element count, but it
 carries no length-tracking trailer even though `<array>` is loaded. This is the form to use
 when a bare I6 array API reads the array by its count word (for example the single-array form of
-orLibrary's `util.orArray`, §13.10); a tracked `array<T>` would over-count there.
+orLibrary's `util.orArray`, §15.10); a tracked `array<T>` would over-count there.
 
 A file-scope `rawArray<T>` literal and a `rawArray<T>` parameter are not interchangeable: the literal
 is count-prefixed and the parameter is elements-only. The type system keeps them apart; a literal has
@@ -334,7 +334,7 @@ array<string>    trk = { "a", "b", "c" };   // tracked
 rawArray<string> raw = { "a", "b", "c" };   // untracked; count word = 3
 ```
 
-### 10.8.3 Member `rawArray<T>`
+### 12.8.3 Member `rawArray<T>`
 
 **Syntax**
 
@@ -348,7 +348,7 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 
 A `rawArray<T>` member is a bare property array. It is required for members that contribute to an
 `additive` property, and its `size()`, `length()` and permitted operations on such members are
-specified in §9.7.2.
+specified in §11.7.2.
 
 **Example**
 
@@ -356,7 +356,7 @@ specified in §9.7.2.
 class Room { rawArray<dictionaryWord> name = {.box, .crate}; }
 ```
 
-## 10.9 Arrays of Arrays
+## 12.9 Arrays of Arrays
 
 **Syntax**
 
@@ -393,7 +393,7 @@ for (array<int> row in grid) {
 }
 ```
 
-## 10.10 Element Type Requirements
+## 12.10 Element Type Requirements
 
 **Description**
 
@@ -436,15 +436,15 @@ array<stringObj> slots[4];
 slots += "alpha";                    // the slot allocates and owns
 slots[0] = "replaced";               // reuses slot 0's buffer
 
-stringObj tmp = "beta";              // allocated on declaration (§20.3)
+stringObj tmp = "beta";              // allocated on declaration (§22.3)
 slots += tmp;                        // copies into a new slot allocation; tmp keeps its own buffer,
                                      // released at scope exit, not by the array
 ```
 
-**See also** §8.6.6 — `static` operators; §8.5 — the value form of `deinit`; §20.4 — the `<array>` methods that.
+**See also** §9.6 — `static` operators; §8.5 — the value form of `deinit`; §22.4 — the `<array>` methods that.
 consult these operators.
 
-## 10.11 `extend` for Arrays
+## 12.11 `extend` for Arrays
 
 **Syntax**
 
@@ -463,11 +463,11 @@ extend ⟨array⟩ {
 `extend arrayName { … }` edits the initializer of a previously declared array at compile time, so a
 later file (or a later point in the same file) may add to, remove from or reorder the array without
 touching the original declaration. It is build-time only; nothing runs at startup. Run-time mutation
-uses the array's methods (§20.4). The body holds *array extension statements*: `inject`, `remove`
+uses the array's methods (§22.4). The body holds *array extension statements*: `inject`, `remove`
 and `move`.
 
 - `inject element [position]` splices an element in. The element is a named object, a literal, or an
-  inline object `Type{ … }` (§9.3); when the element type is an object-backed class the type may be
+  inline object `Type{ … }` (§11.3); when the element type is an object-backed class the type may be
   omitted (`inject { … } last;`). With no position clause the element is appended.
 - `remove X` removes an element.
 - `move X [position]` repositions an existing element (remove, then inject at the new position).
@@ -497,4 +497,4 @@ extend before {
 }
 ```
 
-**See also** §9.10 — `extend` for objects; §11.5 — `extend` for verb grammar; §8.9.1 — `extend class`.
+**See also** §11.10 — `extend` for objects; §13.5 — `extend` for verb grammar; §8.7.1 — `extend class`.

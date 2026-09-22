@@ -1,52 +1,52 @@
-# 12 Directives
+# 14 Directives
 
 <!-- toc -->
-- [12.1 Source Organization](#121-source-organization)
-  - [12.1.1 `#include <name>`](#1211-include-name)
-  - [12.1.2 `#include "path"`](#1212-include-path)
-  - [12.1.3 `#include @"path"`](#1213-include-path)
-  - [12.1.4 `#include ?"path"` and `#include ?<name>`](#1214-include-path-and-include-name)
-  - [12.1.5 `#includeI6`](#1215-includei6)
-  - [12.1.6 `#once`](#1216-once)
-- [12.2 Symbols and Conditional Compilation](#122-symbols-and-conditional-compilation)
-  - [12.2.1 `#define`](#1221-define)
-  - [12.2.2 `#redef` and `#undef`](#1222-redef-and-undef)
-  - [12.2.3 `#declare`](#1223-declare)
-  - [12.2.4 Pre-defined Symbols](#1224-pre-defined-symbols)
-  - [12.2.5 `#if`, `#elif`, `#else`, `#endif`](#1225-if-elif-else-endif)
-- [12.3 Diagnostics and Control](#123-diagnostics-and-control)
-  - [12.3.1 `#message`](#1231-message)
-  - [12.3.2 `#warning`](#1232-warning)
-  - [12.3.3 `#error`](#1233-error)
-  - [12.3.4 `#exit`](#1234-exit)
-- [12.4 Raw I6 Placement](#124-raw-i6-placement)
-  - [12.4.1 `#startup`](#1241-startup)
-  - [12.4.2 `#emitfirst`](#1242-emitfirst)
-  - [12.4.3 `#emitlast`](#1243-emitlast)
-  - [12.4.4 `#storedEmitFirst` and `#storedEmitLast`](#1244-storedemitfirst-and-storedemitlast)
-  - [12.4.5 `##beguilerSettings.<key>` Substitution](#1245-beguilersettingskey-substitution)
-- [12.5 Islands](#125-islands)
-  - [12.5.1 `#i6`](#1251-i6)
-  - [12.5.2 `#bgl`, `#bglDecl`, `#bglStmt`](#1252-bgl-bgldecl-bglstmt)
-- [12.6 Namespace Import](#126-namespace-import)
-  - [12.6.1 `#using`](#1261-using)
-- [12.7 Settings](#127-settings)
-  - [12.7.1 `#beguilerSettings { … }`](#1271-beguilersettings-)
-  - [12.7.2 `#beguilerSettings.prop`](#1272-beguilersettingsprop)
+- [14.1 Source Organization](#141-source-organization)
+  - [14.1.1 `#include <name>`](#1411-include-name)
+  - [14.1.2 `#include "path"`](#1412-include-path)
+  - [14.1.3 `#include @"path"`](#1413-include-path)
+  - [14.1.4 `#include ?"path"` and `#include ?<name>`](#1414-include-path-and-include-name)
+  - [14.1.5 `#includeI6`](#1415-includei6)
+  - [14.1.6 `#once`](#1416-once)
+- [14.2 Symbols and Conditional Compilation](#142-symbols-and-conditional-compilation)
+  - [14.2.1 `#define`](#1421-define)
+  - [14.2.2 `#redef` and `#undef`](#1422-redef-and-undef)
+  - [14.2.3 `#declare`](#1423-declare)
+  - [14.2.4 Pre-defined Symbols](#1424-pre-defined-symbols)
+  - [14.2.5 `#if`, `#elif`, `#else`, `#endif`](#1425-if-elif-else-endif)
+- [14.3 Diagnostics and Control](#143-diagnostics-and-control)
+  - [14.3.1 `#message`](#1431-message)
+  - [14.3.2 `#warning`](#1432-warning)
+  - [14.3.3 `#error`](#1433-error)
+  - [14.3.4 `#exit`](#1434-exit)
+- [14.4 Raw I6 Placement](#144-raw-i6-placement)
+  - [14.4.1 `#startup`](#1441-startup)
+  - [14.4.2 `#emitfirst`](#1442-emitfirst)
+  - [14.4.3 `#emitlast`](#1443-emitlast)
+  - [14.4.4 `#storedEmitFirst` and `#storedEmitLast`](#1444-storedemitfirst-and-storedemitlast)
+  - [14.4.5 `##beguilerSettings.<key>` Substitution](#1445-beguilersettingskey-substitution)
+- [14.5 Islands](#145-islands)
+  - [14.5.1 `#i6`](#1451-i6)
+  - [14.5.2 `#bgl`, `#bglDecl`, `#bglStmt`](#1452-bgl-bgldecl-bglstmt)
+- [14.6 Namespace Import](#146-namespace-import)
+  - [14.6.1 `#using`](#1461-using)
+- [14.7 Settings](#147-settings)
+  - [14.7.1 `#beguilerSettings { … }`](#1471-beguilersettings-)
+  - [14.7.2 `#beguilerSettings.prop`](#1472-beguilersettingsprop)
 <!-- /toc -->
 
 
 A directive is a compile-time instruction introduced by `#`. Directive names are case-insensitive, like
 every Beguile identifier (§1.3). Unless an entry says otherwise, a directive is written at global scope
 and is consumed by the compiler: nothing of it reaches the generated I6 except the raw I6 bodies of the
-placement directives in §12.4 and the island directives in §12.5. An unrecognized directive is a
+placement directives in §14.4 and the island directives in §14.5. An unrecognized directive is a
 compile-time error.
 
 The entries are grouped by purpose; Appendix B lists every directive alphabetically.
 
-## 12.1 Source Organization
+## 14.1 Source Organization
 
-### 12.1.1 `#include <name>`
+### 14.1.1 `#include <name>`
 
 **Syntax**
 
@@ -61,7 +61,7 @@ The angle brackets are literal.
 **Description**
 
 Includes a Beguile source file from the Beguile Language Runtime library tree (`beguiLib`, located by
-the `beguiLibPath` setting, §15.2). The tree is searched recursively for `name.bgl`; the `.bgl`
+the `beguiLibPath` setting, §17.2). The tree is searched recursively for `name.bgl`; the `.bgl`
 extension is supplied by the compiler and must not be written.
 
 - `<name>` matches `name.bgl` anywhere in the tree, root or any subfolder.
@@ -87,11 +87,11 @@ found is a compile-time error.
 
 **Notes**
 
-The extensions that ship with the BLR and what each provides are listed in §20.
+The extensions that ship with the BLR and what each provides are listed in §22.
 
-**See also** §16.5, §20.
+**See also** §18.5, §22.
 
-### 12.1.2 `#include "path"`
+### 14.1.2 `#include "path"`
 
 **Syntax**
 
@@ -102,13 +102,13 @@ The extensions that ship with the BLR and what each provides are listed in §20.
 **Description**
 
 Includes a Beguile source file by path. The compiler searches the directory of the current source
-file, then each `includePaths` directory (§15.3), trying *path*`.bgl` first and then *path* exactly as
+file, then each `includePaths` directory (§17.3), trying *path*`.bgl` first and then *path* exactly as
 written. Subdirectory paths are permitted and resolve relative to each directory searched. Either `/`
 or `\` may be used as a separator. Matching is case-insensitive. A file that is not found is a
 compile-time error.
 
 A file may be included more than once; a file that must be processed only once guards itself with
-`#once` (§12.1.6).
+`#once` (§14.1.6).
 
 **Example**
 
@@ -122,9 +122,9 @@ A file may be included more than once; a file that must be processed only once g
 Beguile has no equivalent of Inform 6's `>filename` prefix; the current file's directory is always
 searched first.
 
-**See also** §16.5.
+**See also** §18.5.
 
-### 12.1.3 `#include @"path"`
+### 14.1.3 `#include @"path"`
 
 **Syntax**
 
@@ -137,7 +137,7 @@ searched first.
 
 As `#include "path"`, except that the path is a raw string (§1.6.4): no escape processing is applied,
 so backslashes and escape-like sequences pass through verbatim. Path search and the file-not-found
-error are those of §12.1.2. The optional and raw modifiers combine as `?@"path"`. An interpolated
+error are those of §14.1.2. The optional and raw modifiers combine as `?@"path"`. An interpolated
 string (`$"…"`) is not accepted as an include path.
 
 **Example**
@@ -148,7 +148,7 @@ string (`$"…"`) is not accepted as an include path.
 
 **See also** §1.6.4.
 
-### 12.1.4 `#include ?"path"` and `#include ?<name>`
+### 14.1.4 `#include ?"path"` and `#include ?<name>`
 
 **Syntax**
 
@@ -171,7 +171,7 @@ instead of being reported as an error.
 #include ?<glulxImage>
 ```
 
-### 12.1.5 `#includeI6`
+### 14.1.5 `#includeI6`
 
 **Syntax**
 
@@ -184,7 +184,7 @@ instead of being reported as an error.
 **Description**
 
 Includes an Inform 6 source file in the generated program. The file is resolved like
-`#include "path"` (§12.1.2): the current source file's directory, then each `includePaths` directory,
+`#include "path"` (§14.1.2): the current source file's directory, then each `includePaths` directory,
 trying *name* as written and then *name*`.h`. Subdirectory paths are permitted. The I6 compiler
 receives the resolved file. A file that is not found is a compile-time error.
 
@@ -203,15 +203,15 @@ resolve its own internal includes.
 **Notes**
 
 The I6 include is placed in the generated output at the directive's source position; a Beguile
-declaration that depends on something the I6 file defines must follow it (§13.4, §16.7).
+declaration that depends on something the I6 file defines must follow it (§15.4, §18.7).
 
 An `extern` declaration for a name the included file defines may precede or follow the include; the
 exception is a class that uses an `extern attribute`, which must follow that attribute's declaration
-(§16.7).
+(§18.7).
 
-**See also** §13.5, §16.5.
+**See also** §15.5, §18.5.
 
-### 12.1.6 `#once`
+### 14.1.6 `#once`
 
 **Syntax**
 
@@ -240,11 +240,11 @@ of files without `#once`, is a compile-time error.
 Every file intended to be included as a library should begin with `#once`; the BLR extension files
 all do.
 
-**See also** §12.4 (per-file deduplication that does not depend on `#once`).
+**See also** §14.4 (per-file deduplication that does not depend on `#once`).
 
-## 12.2 Symbols and Conditional Compilation
+## 14.2 Symbols and Conditional Compilation
 
-### 12.2.1 `#define`
+### 14.2.1 `#define`
 
 **Syntax**
 
@@ -258,12 +258,12 @@ all do.
 Defines a compilation symbol. Without a value the symbol has the boolean value `true`. A symbol with
 a value is also usable in a Beguile expression, where the name is replaced by its value at compile
 time: a numeric value is an integer literal, any other value a string literal. Symbols are tested with
-`#if` (§12.2.5).
+`#if` (§14.2.5).
 
 `#define` is linear: it affects only the source that follows it, in the order files are processed. An
 `#if` sees a symbol as defined only if a `#define` for it appears earlier and no intervening `#undef`
 removed it. Defining a symbol that is already defined is a compile-time error; use `#redef`
-(§12.2.2). Defining a symbol that was `#declare`d is a compile-time error (§12.2.3).
+(§14.2.2). Defining a symbol that was `#declare`d is a compile-time error (§14.2.3).
 
 **Example**
 
@@ -275,7 +275,7 @@ if(score >= MAX_SCORE) print("You win!");   // compiles as: if(score >= 100)
 const int maxScore = MAX_SCORE;
 ```
 
-### 12.2.2 `#redef` and `#undef`
+### 14.2.2 `#redef` and `#undef`
 
 **Syntax**
 
@@ -299,7 +299,7 @@ linear, like `#define`. Applying either to a `#declare`d symbol is a compile-tim
 #undef  LEVEL        // now undefined
 ```
 
-### 12.2.3 `#declare`
+### 14.2.3 `#declare`
 
 **Syntax**
 
@@ -341,9 +341,9 @@ usable inline as a literal, and the symbol is tested with the same `#if` express
 #declare I6_STANDARD_LIBRARY
 ```
 
-**See also** §21.3.3.
+**See also** §23.3.3.
 
-### 12.2.4 Pre-defined Symbols
+### 14.2.4 Pre-defined Symbols
 
 **Description**
 
@@ -353,9 +353,9 @@ The compiler defines these symbols before any source file is processed: `beguile
 `#define`d symbols in `#if` expressions and as inline literals in Beguile expressions. Their values
 and the resolution rule are given in Appendix F.
 
-**See also** Appendix F, §15.3.
+**See also** Appendix F, §17.3.
 
-### 12.2.5 `#if`, `#elif`, `#else`, `#endif`
+### 14.2.5 `#if`, `#elif`, `#else`, `#endif`
 
 **Syntax**
 
@@ -416,9 +416,9 @@ are not valid in ordinary Beguile source; see §7.4.
 
 **See also** §7.4.
 
-## 12.3 Diagnostics and Control
+## 14.3 Diagnostics and Control
 
-### 12.3.1 `#message`
+### 14.3.1 `#message`
 
 **Syntax**
 
@@ -437,9 +437,9 @@ generated output or the result of compilation.
 #message "Loading custom library..."
 ```
 
-**See also** §18.5.
+**See also** §20.5.
 
-### 12.3.2 `#warning`
+### 14.3.2 `#warning`
 
 **Syntax**
 
@@ -460,9 +460,9 @@ line number, and continues compilation.
 #endif
 ```
 
-**See also** §17.3.
+**See also** §19.3.
 
-### 12.3.3 `#error`
+### 14.3.3 `#error`
 
 **Syntax**
 
@@ -483,9 +483,9 @@ format with file name and line number.
 #endif
 ```
 
-**See also** §17.2.
+**See also** §19.2.
 
-### 12.3.4 `#exit`
+### 14.3.4 `#exit`
 
 **Syntax**
 
@@ -496,7 +496,7 @@ format with file name and line number.
 **Description**
 
 Stops processing the current file immediately, as though its end had been reached. Any conditional
-nesting (§12.2.5) still open in that file is discarded. Open code blocks are not closed, so `#exit`
+nesting (§14.2.5) still open in that file is discarded. Open code blocks are not closed, so `#exit`
 is used only at the top level of a file.
 
 **Example**
@@ -509,19 +509,19 @@ is used only at the top level of a file.
 // … feature implementation follows …
 ```
 
-**See also** §12.2.5.
+**See also** §14.2.5.
 
-## 12.4 Raw I6 Placement
+## 14.4 Raw I6 Placement
 
 The directives in this section carry a body of raw I6 text between braces. The body is not parsed as
-Beguile; only the substitution in §12.4.5 is applied. All of them share two rules:
+Beguile; only the substitution in §14.4.5 is applied. All of them share two rules:
 
 - **Deduplication.** Each source file contributes its blocks at most once, however many times the
   file is included. `#once` is not required for this.
 - **Ordering.** Blocks from different files are placed in file-inclusion order, the order in which
   the compiler first encounters each file.
 
-### 12.4.1 `#startup`
+### 14.4.1 `#startup`
 
 **Syntax**
 
@@ -535,7 +535,7 @@ Beguile; only the substitution in §12.4.5 is applied. All of them share two rul
 
 Registers I6 statements to run at program startup. The statements run inside the runtime's
 `bglInit()` routine, before any global variable initializers, and before startup blocks from files
-included later. The IF library bindings (§21.3.1) call `bglInit()`; a program built without a
+included later. The IF library bindings (§23.3.1) call `bglInit()`; a program built without a
 binding must call it from its own starting routine.
 
 **Example**
@@ -551,9 +551,9 @@ binding must call it from its own starting routine.
 Intended for library code that must initialize runtime infrastructure before any object is
 constructed. Program code normally uses object initializers or the game's starting routine instead.
 
-**See also** §16.8, §19.2, §21.3.1.
+**See also** §18.8, §21.2, §23.3.1.
 
-### 12.4.2 `#emitfirst`
+### 14.4.2 `#emitfirst`
 
 **Syntax**
 
@@ -568,7 +568,7 @@ constructed. Program code normally uses object initializers or the game's starti
 Places the body at the beginning of the generated I6 program, before the runtime and before every
 declaration, so that it precedes any I6 library included later. This is where an I6 directive that
 must appear early belongs: a `Replace`, a banner constant, or conditional-compilation setup that an
-I6 library reads while it is being included. The body may use `##beguilerSettings.<key>` (§12.4.5).
+I6 library reads while it is being included. The body may use `##beguilerSettings.<key>` (§14.4.5).
 
 **Example**
 
@@ -583,11 +583,11 @@ I6 library reads while it is being included. The body may use `##beguilerSetting
 **Notes**
 
 The IF library bindings use this directive to declare the constants their I6 library requires
-(§21.3.2).
+(§23.3.2).
 
-**See also** §13.6, §16.6, §21.3.2.
+**See also** §15.6, §18.6, §23.3.2.
 
-### 12.4.3 `#emitlast`
+### 14.4.3 `#emitlast`
 
 **Syntax**
 
@@ -600,7 +600,7 @@ The IF library bindings use this directive to declare the constants their I6 lib
 **Description**
 
 Places the body at the very end of the generated I6 program, after every declaration, grammar
-directive and object definition. The body may use `##beguilerSettings.<key>` (§12.4.5).
+directive and object definition. The body may use `##beguilerSettings.<key>` (§14.4.5).
 
 **Example**
 
@@ -612,9 +612,9 @@ directive and object definition. The body may use `##beguilerSettings.<key>` (§
 }
 ```
 
-**See also** §16.6.
+**See also** §18.6.
 
-### 12.4.4 `#storedEmitFirst` and `#storedEmitLast`
+### 14.4.4 `#storedEmitFirst` and `#storedEmitLast`
 
 **Syntax**
 
@@ -631,13 +631,13 @@ directive and object definition. The body may use `##beguilerSettings.<key>` (§
 
 Registers a named, deferred raw-I6 block. Unlike `#emitfirst` and `#emitlast`, a stored block is not
 placed in the output by default: it is emitted, once, only when a built-in I6 template that needs it
-is applied (§16.9). When emitted, the block takes the position of the corresponding non-stored form:
+is applied (§18.9). When emitted, the block takes the position of the corresponding non-stored form:
 the top of the program for `#storedEmitFirst`, the end for `#storedEmitLast`. A program in which no
 template needs the block pays nothing for it.
 
 Several stored blocks may share one name, and one template may need several names. Registering a
 name that is already registered replaces the earlier block (latest wins); `#once` on the declaring
-file is the normal guard. The body may use `##beguilerSettings.<key>` (§12.4.5).
+file is the normal guard. The body may use `##beguilerSettings.<key>` (§14.4.5).
 
 **Example**
 
@@ -653,9 +653,9 @@ file is the normal guard. The body may use `##beguilerSettings.<key>` (§12.4.5)
 
 Intended for BLR authors: helper routines that some runtime feature needs but most programs do not.
 
-**See also** §16.9, Appendix G.
+**See also** §18.9, Appendix G.
 
-### 12.4.5 `##beguilerSettings.<key>` Substitution
+### 14.4.5 `##beguilerSettings.<key>` Substitution
 
 **Syntax**
 
@@ -668,7 +668,7 @@ Intended for BLR authors: helper routines that some runtime feature needs but mo
 Inside the raw I6 body of `#emitfirst`, `#emitlast`, `#storedEmitFirst` or `#storedEmitLast`, this
 marker is replaced by the compile-time value of the named `#beguilerSettings` property. A string
 property becomes an I6 quoted string (`"…"`); an integer property becomes a decimal literal. The
-property names are those accepted by the `#beguilerSettings.prop` expression form (§12.7.2, §15.7).
+property names are those accepted by the `#beguilerSettings.prop` expression form (§14.7.2, §17.7).
 The substitution is applied only in the bodies of `#emitfirst`, `#emitlast`, `#storedEmitFirst` and
 `#storedEmitLast`; it is not applied in `#startup`, `#i6` or emitter bodies.
 
@@ -680,25 +680,25 @@ The substitution is applied only in the bodies of `#emitfirst`, `#emitlast`, `#s
 }
 ```
 
-**See also** §12.7.2, §15.7, Appendix G.
+**See also** §14.7.2, §17.7, Appendix G.
 
-## 12.5 Islands
+## 14.5 Islands
 
 An island is a region of one language embedded in a stream of the other. This section gives the
-syntax; the two compilation modes are in §13.1, the semantics of I6 islands in §13.2, of Beguile
-islands in §13.3, and loose identifier resolution in §13.3.3.
+syntax; the two compilation modes are in §15.1, the semantics of I6 islands in §15.2, of Beguile
+islands in §15.3, and loose identifier resolution in §15.3.3.
 
-### 12.5.1 `#i6`
+### 14.5.1 `#i6`
 
-Syntax: `#i6 ⟨raw I6 to end of line⟩` or `#i6 { ⟨raw I6⟩ }`. See §13.2.
+Syntax: `#i6 ⟨raw I6 to end of line⟩` or `#i6 { ⟨raw I6⟩ }`. See §15.2.
 
-### 12.5.2 `#bgl`, `#bglDecl`, `#bglStmt`
+### 14.5.2 `#bgl`, `#bglDecl`, `#bglStmt`
 
-Syntax: `#bgl ⟨statement⟩ ;`, `#bgl { … }`, `#bglDecl { ⟨declarations⟩ }`, `#bglStmt { ⟨statements⟩ }`. See §13.3.
+Syntax: `#bgl ⟨statement⟩ ;`, `#bgl { … }`, `#bglDecl { ⟨declarations⟩ }`, `#bglStmt { ⟨statements⟩ }`. See §15.3.
 
-## 12.6 Namespace Import
+## 14.6 Namespace Import
 
-### 12.6.1 `#using`
+### 14.6.1 `#using`
 
 **Syntax**
 
@@ -708,59 +708,18 @@ Syntax: `#bgl ⟨statement⟩ ;`, `#bgl { … }`, `#bglDecl { ⟨declarations⟩
 
 **Description**
 
-Imports the members of the named class or object into the current file's scope, so that they may be
-referenced without qualification. A dotted path names a member class or object of the first name
-(`bgl.glulx`).
+Imports the members of a class or object into the current file's scope so they may be used
+unqualified. Every rule of the directive — its file scope, the priority of imported names, what each
+kind of target contributes and alias imports — is specified in §10.4.
 
-**File scope.** The import is active from the directive to the end of the file. It does not cross
-`#include` in either direction: an included file does not see the includer's imports, and a `#using`
-in an included file does not affect the includer.
+**See also** §10.4.
 
-**Priority.** Imported names rank below locals, parameters, class and object members and globals
-(§3.8.3). A global with the same name as an imported member wins, with a warning. If two imports
-declare a member with the same name, using that name unqualified is a compile-time error; qualify it.
+## 14.7 Settings
 
-**Target.** If the target is not a declared class or object, the directive is ignored with a warning;
-it does not take effect even if the target is declared by a later include (§16.3). What the import
-contributes depends on the kind of target:
+### 14.7.1 `#beguilerSettings { … }`
 
-| Target | Imported | Resolution |
-|---|---|---|
-| Emitter class | Value emitters, emitter functions | Expanded at the use site |
-| Object | Methods, properties, type aliases | Through the object path |
-| Static members | Static variables | As a static member reference |
+Syntax: `#beguilerSettings { ⟨property⟩ = ⟨value⟩ ; … }`. See §17.1 and Appendix E.
 
-`#using` a regular class that has only non-static instance members is a compile-time error; instance
-methods require a receiver.
+### 14.7.2 `#beguilerSettings.prop`
 
-**Alias imports.** Type aliases declared in the target (§8.10) are imported as bare type names. With
-`#using bgl.glulx`, `window` resolves to the aliased class; with `#using bgl`, `glulx.window` resolves
-through the partial path. `#using` controls only how much of the namespace path may be omitted.
-
-**Example**
-
-```bgl
-emitter class myPlatform { int wordsize { WORDSIZE } }
-#using myPlatform
-void Main() { int ws = wordsize; }    // myPlatform.wordsize
-
-#using bgl.glulx
-window myWin;                         // resolves to glulxWindow
-```
-
-**Notes**
-
-In default mode `#using bgl` is implicit; in precompiler mode it must be written inside a Beguile
-island (§13.1.2).
-
-**See also** §3.8.3, §8.10, §13.1.2, §19.3.
-
-## 12.7 Settings
-
-### 12.7.1 `#beguilerSettings { … }`
-
-Syntax: `#beguilerSettings { ⟨property⟩ = ⟨value⟩ ; … }`. See §15.1 and Appendix E.
-
-### 12.7.2 `#beguilerSettings.prop`
-
-Syntax: `#beguilerSettings.⟨property⟩`. See §15.7.
+Syntax: `#beguilerSettings.⟨property⟩`. See §17.7.

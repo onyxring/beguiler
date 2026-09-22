@@ -32,7 +32,7 @@ The table is the one in §4.3; higher precedence binds more tightly.
 ## C.2 Overloadable Operators
 
 The complete set of operators a class may overload, with the declaration shape of each, is the table
-in §8.6.1; the operators that must be declared as emitters are listed in §8.6.8. `?.`, `??`, `=>` and
+in §9.1; the operators that must be declared as emitters are listed in §9.8. `?.`, `??`, `=>` and
 `:=` are operator tokens that are not overloadable.
 
 ## C.3 Operator-to-Section Index
@@ -40,25 +40,25 @@ in §8.6.1; the operators that must be declared as emitters are listed in §8.6.
 | Operator(s) | Role | See |
 |---|---|---|
 | `+` `-` `*` `/` `%` | Arithmetic | §4.5 |
-| `+=` `-=` `*=` `/=` `%=` | Compound arithmetic assignment | §5.6, §8.6.7 |
+| `+=` `-=` `*=` `/=` `%=` | Compound arithmetic assignment | §5.6, §9.7 |
 | `==` `!=` `<` `>` `<=` `>=` | Comparison (result `eBool`) | §4.5 |
-| `?=` | Type-defined comparison; no built-in meaning | §4.5, §8.6.5 |
-| `<=>` | Three-way comparison (result `int`: negative / 0 / positive) | §4.5, §8.6.6 |
-| `=~` | Content / case-insensitive equality (core `char`; `<string>`) | §4.5, §19.7, §20.3 |
-| `&&` `\|\|` `!` | Logical (result `eBool`) | §4.5, §8.6.5 |
-| `&` `\|` `^` `<<` `>>` | Bitwise and shift | §4.5, §8.6.1 |
+| `?=` | Type-defined comparison; no built-in meaning | §4.5, §9.5 |
+| `<=>` | Three-way comparison (result `int`: negative / 0 / positive) | §4.5, §9.6 |
+| `=~` | Content / case-insensitive equality (core `char`; `<string>`) | §4.5, §21.7, §22.3 |
+| `&&` `\|\|` `!` | Logical (result `eBool`) | §4.5, §9.5 |
+| `&` `\|` `^` `<<` `>>` | Bitwise and shift | §4.5, §9.1 |
 | `&=` `\|=` `^=` `<<=` `>>=` | Compound bitwise assignment | §5.6 |
-| `++` `--` | Increment / decrement | §5.7, §8.6.7 |
+| `++` `--` | Increment / decrement | §5.7, §9.7 |
 | `=` | Assignment | §5.5, §2.11 |
 | `:=` | Reference binding (rebinding) | §3.7 |
 | `? :` | Ternary conditional | §4.9 |
-| `?` (postfix) | Query / null test (result `eBool`) | §4.10, §8.6.5 |
+| `?` (postfix) | Query / null test (result `eBool`) | §4.10, §9.5 |
 | `?.` | Optional chaining | §4.10 |
 | `??` | Null coalescing | §4.10 |
-| `(Type)x` | Type cast and conversion | §4.11, §8.6.4 |
+| `(Type)x` | Type cast and conversion | §4.11, §9.4 |
 | `&x` (prefix) | Address-of: raw machine address as `int` (`(int)x`) | §4.12 |
 | `=>` | Lambda literal | §4.14 |
-| `[]` `[]=` | Subscript read / write | §8.6.3, §10.3 |
+| `[]` `[]=` | Subscript read / write | §9.3, §12.3 |
 | `::name` | Global-scope qualifier | §3.9 |
 | `Type::operator op` | Operator reference | §4.15 |
 | `$opref(op)` | Operator reference inside an emitter body | §7.3.1 |

@@ -14,9 +14,8 @@
   - [3.8.3 Global Scope](#383-global-scope)
 - [3.9 The Global-Scope Qualifier `::`](#39-the-global-scope-qualifier-)
 - [3.10 Shadowing](#310-shadowing)
-- [3.11 `#using`](#311-using)
-- [3.12 The `as` Clause](#312-the-as-clause)
-- [3.13 `superposed`](#313-superposed)
+- [3.11 The `as` Clause](#311-the-as-clause)
+- [3.12 `superposed`](#312-superposed)
 <!-- /toc -->
 
 
@@ -25,14 +24,14 @@
 A program is one or more source files. The declarations at the outermost level of a file (types,
 classes, enums, variables, functions, objects, verbs and grammar) constitute the **global scope** and
 are visible throughout the entire compilation. Declarations may appear in any order, and a name may
-be used before it is declared; see §16.3 for the pre-scan.
+be used before it is declared; see §18.3 for the pre-scan.
 
 Every program has a `Main` function as its entry point (§6.7). General-purpose libraries such as
 the Inform 6 Standard Library and PunyInform define `Main` themselves and expect a library-specific
-entry point, such as `Initialise`, instead (§21.3.1).
+entry point, such as `Initialise`, instead (§23.3.1).
 
 A global name must be unique across every kind of global declaration: declaring a variable, function,
-class, object or enum with the name of an existing global of any kind is a compile-time error (§17.2).
+class, object or enum with the name of an existing global of any kind is a compile-time error (§19.2).
 
 ## 3.2 Declaration Qualifiers
 
@@ -52,19 +51,19 @@ the construct it modifies.
 |---|---|---|
 | `const` | Read-only variable or member. | §3.4 |
 | `static` | Member belongs to the type rather than to an instance. | §8.3.3 |
-| `extern` | Declared in Inform 6; registered for type-checking only, produces no output. | §13.4 |
+| `extern` | Declared in Inform 6; registered for type-checking only, produces no output. | §15.4 |
 | `emitter` | The body is an I6 template expanded at each use. | §7.2 |
-| `extend` | Adds members to an existing class, object, enum or array. | §8.9.1, §9.10, §10.11 |
-| `alias` | Another name for an existing type or value. | §8.2.4, §8.10.2 |
-| `replace` | Replaces an already-declared function or member. | §6.5, §8.9.2 |
-| `default` | A base-class member that a derived declaration may override without warning. | §8.9.3 |
-| `explicit` | A conversion operator that fires only under a cast. | §8.6.4 |
-| `superposed` | A routine, global, object or class that is emitted only if it is used. | §3.13 |
+| `extend` | Adds members to an existing class, object, enum or array. | §8.7.1, §11.10, §12.11 |
+| `alias` | Another name for an existing type or value. | §8.2.4, §10.2 |
+| `replace` | Replaces an already-declared function or member. | §6.5, §8.7.2 |
+| `default` | A base-class member that a derived declaration may override without warning. | §8.7.3 |
+| `explicit` | A conversion operator that fires only under a cast. | §9.4 |
+| `superposed` | A routine, global, object or class that is emitted only if it is used. | §3.12 |
 | `typesealed` | A member whose type a derived class may not change. | §8.2.8 |
 | `byVal` | A class whose parameters are passed by value. | §8.2.7 |
-| `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §9.3.1 |
+| `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §11.3.1 |
 | `ref` | A local or member that references an instance owned elsewhere. | §3.7 |
-| `additive` | A property whose values accumulate along the class chain. | §9.7.2 |
+| `additive` | A property whose values accumulate along the class chain. | §11.7.2 |
 
 The following combinations are compile-time errors: `explicit` on anything but `operator()`; `const`
 with `static`; `static` with `emitter`; `explicit` with `const` or `static`; `alias` with `extern`;
@@ -87,7 +86,7 @@ auto ⟨name⟩ = ⟨initializer⟩ ;
 A variable declared at file scope is a global. The initializer must be a constant expression: a
 literal, constant arithmetic, an object or routine name, or a `#define` value. The compiler does not
 check this; a non-constant initializer is reported by the Inform 6 stage. A class-typed global whose
-type declares a parameterless `init` has its initializer applied at startup instead (§19.2). `auto`
+type declares a parameterless `init` has its initializer applied at startup instead (§21.2). `auto`
 infers the type from the initializer (§3.6). A global name must be unique (§3.1), and a local may not
 share a name with a global (§3.10).
 
@@ -133,7 +132,7 @@ extern ⟨type⟩ ⟨name⟩ ;
 
 An `extern` variable is declared in Inform 6 and registered for type-checking only. It produces no
 output and cannot be initialized. It may be read and assigned; `extern const` (§3.4) is read-only.
-Other `extern` declarations are specified in §13.4.
+Other `extern` declarations are specified in §15.4.
 
 **Example**
 
@@ -160,7 +159,7 @@ local, global and member declarations.
 
 If the variable's type declares an `init` emitter, it fires immediately after the declaration and
 before the initializer is assigned (§8.5). Locals beyond the Z-machine's per-routine limit are
-spilled to the frame pool by the compiler (§16.10). Shadowing rules are in §3.10.
+spilled to the frame pool by the compiler (§18.10). Shadowing rules are in §3.10.
 
 **Example**
 
@@ -252,7 +251,7 @@ Members declared later in the same body resolve normally.
 
 1. Enum values, which share one flat global namespace.
 2. Global variables, constants, `extern` declarations and verb names.
-3. Members imported with `#using` (§3.11), which rank below every global.
+3. Members imported with `#using`, which rank below every global; the directive is specified in §10.4.
 
 **Verb names.** A verb is an object and follows the same rules as any other identifier; a local or
 parameter with the same name as a verb takes priority.
@@ -312,7 +311,7 @@ Local variables, parameters and `for`-loop variables are checked against the enc
 - Shadowing a direct member of the enclosing class or object, or a member inherited from a base
   class; `self.name` reaches the member.
 - A lambda-local variable shadowing a capturable outer local or parameter (§4.14).
-- A member overriding a base-class member; `replace` or `default` suppresses the warning (§8.9.3).
+- A member overriding a base-class member; `replace` or `default` suppresses the warning (§8.7.3).
 
 **Example**
 
@@ -325,18 +324,7 @@ void foo() {
 }
 ```
 
-## 3.11 `#using`
-
-**Description**
-
-`#using` imports the members of a class or object into the current file's scope so that they may be
-referenced without qualification; the directive itself, its file scope, what each kind of target
-contributes and how conflicting imports are resolved are specified in §12.6.1. Imported names rank
-below locals, parameters, members and globals (§3.8.3).
-
-**See also** §12.6.1, Appendix B.
-
-## 3.12 The `as` Clause
+## 3.11 The `as` Clause
 
 **Syntax**
 
@@ -358,7 +346,7 @@ declaration (`extern class`, `alias class`) or on a free function it is a compil
 
 `as` renames one instance for output; it is unrelated to `for` in `alias class Foo for Bar`, which
 affects type resolution (§8.2.4). The usual reason to use `as` is that the required I6 name is a
-Beguile keyword or a reserved Inform 6 word (§13.9).
+Beguile keyword or a reserved Inform 6 word (§15.9).
 
 **Example**
 
@@ -371,7 +359,7 @@ class Widget : object {
 }
 ```
 
-## 3.13 `superposed`
+## 3.12 `superposed`
 
 **Syntax**
 
@@ -399,7 +387,7 @@ array, a whole object declaration, or a whole class declaration.
   on `extend class`, where it belongs to the original declaration.
 - `superposed` may appear in any position among the qualifiers.
 
-The `omitUnusedRoutines` setting (§15.3) is complementary: `superposed` withholds a declaration that
+The `omitUnusedRoutines` setting (§17.3) is complementary: `superposed` withholds a declaration that
 is never referenced, while `omitUnusedRoutines` asks the I6 compiler to drop routines that were
 emitted and remain unreferenced.
 
@@ -421,8 +409,8 @@ extend bgl { alias world = worldHelpers; }   // bgl.world.getAll() materializes 
 
 **Notes**
 
-An `alias` value member (§8.10.2) references its target only where the alias is used, so an alias to
+An `alias` value member (§10.2) references its target only where the alias is used, so an alias to
 a superposed object keeps the object absent until the alias is used; an `auto` member references its
 target unconditionally.
 
-**See also** §8.10.2, §15.3, §16.7 (placement of a materialized class), §16.9 (emission).
+**See also** §10.2, §17.3, §18.7 (placement of a materialized class), §18.9 (emission).

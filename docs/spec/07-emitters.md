@@ -31,7 +31,7 @@ Unlike functions, emitters may be **overloaded**: several emitters with the same
 parameter types may coexist, and the best match is chosen from the argument types at each use site.
 
 Class-member emitters that have their own rules — operator emitters, `init`/`deinit`, conversion and
-accessor operators — are specified in §8.5 and §8.6; this chapter covers the emitter mechanism itself.
+accessor operators — are specified in §8.5 and §9; this chapter covers the emitter mechanism itself.
 
 ## 7.2 Emitter Functions
 
@@ -53,7 +53,7 @@ directives such as `#ifdef`, passes through unchanged to the output.
 - Parameters are referenced in the body as `$name`. The bare name is *not* substituted, so a body may
   freely mention an I6 identifier that happens to share a parameter's name.
 - An emitter always has a body. The one exception is the bodiless conversion operator
-  `emitter T operator();`, which is a pass-through (§8.6.4).
+  `emitter T operator();`, which is a pass-through (§9.4).
 - `static` and `emitter` cannot be combined: an emitter has no routine to make static.
 - Recursion is meaningless; an emitter body cannot refer to itself as a routine.
 
@@ -75,11 +75,11 @@ c.increment();      // the body is substituted here with $self = c
 
 Every substitution token begins with `$`, which keeps it distinct from any raw I6 identifier. The
 tokens below are recognized in every emitter body; a feature may add a feature-local token, which is
-documented with that feature (`$selfsub`, §13.8). Appendix G is the one-page index.
+documented with that feature (`$selfsub`, §15.8). Appendix G is the one-page index.
 
 | Token | Replaced with |
 |---|---|
-| `$self` | In an operator or assignment emitter, the receiver expression with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`x` for `x + 1`, `container.children` for `container.children.length()`); a method emitter on `parent` or `attributes` (§9.5) is the exception and receives the owner. Not meaningful in a global emitter. |
+| `$self` | In an operator or assignment emitter, the receiver expression with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`x` for `x + 1`, `container.children` for `container.children.length()`); a method emitter on `parent` or `attributes` (§11.5) is the exception and receives the owner. Not meaningful in a global emitter. |
 | `$val` | The full receiver expression as written: `obj.score` for `obj.score + 1`; otherwise identical to `$self`. |
 | `$host` | The object a proxy member (§7.3.2) is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter. For a receiver that is not a member access, `$host` equals `$self`. |
 | `$paramName` | The argument expression supplied for the parameter of that name. |
@@ -148,7 +148,7 @@ emitter int  indexOf(T item) { _bglArray.indexOf($self, $prop, $item, $opref(==)
 emitter void sort()          { _bglArray.sortDefault($self, $prop, $oprefReq(<=>)) }
 ```
 
-**See also** §4.15 (`Type::operator op`, the same lookup in ordinary code), §8.6.6.
+**See also** §4.15 (`Type::operator op`, the same lookup in ordinary code), §9.6.
 
 ### 7.3.2 Choosing `$self`, `$val` and `$target`
 
@@ -177,7 +177,7 @@ extern class parentProp {
 }
 ```
 
-**See also** §19.5.7 (`parentProp` and `childrenProp`).
+**See also** §21.5.7 (`parentProp` and `childrenProp`).
 
 ## 7.4 Conditional Text: `##if`, `##else`, `##endif`
 
@@ -194,7 +194,7 @@ extern class parentProp {
 **Description**
 
 Inside an emitter body, the double-hash directives select which body text is substituted.
-`⟨expression⟩` accepts the same forms as `#if` (§12.2.5): symbols, comparisons, `&&`, `||`, `!` and
+`⟨expression⟩` accepts the same forms as `#if` (§14.2.5): symbols, comparisons, `&&`, `||`, `!` and
 parentheses, with the same definedness-versus-value rule. They are evaluated when the emitter is
 substituted, and are not valid in ordinary Beguile source. `##ifdef` and `##ifndef` are compile-time
 errors in an emitter body; use `##if SYMBOL`.
@@ -204,7 +204,7 @@ conditionals. Any other `##name` (for instance an I6 action constant such as `##
 through unchanged, so `$self == ##$v` substitutes the I6 action name of `$v`.
 
 One further double-hash form, `##beguilerSettings.key`, is recognized only in the raw-I6 directive
-bodies of §12.4.5; it is not substituted in emitter bodies.
+bodies of §14.4.5; it is not substituted in emitter bodies.
 
 **Example**
 
@@ -218,7 +218,7 @@ emitter void newline(){
 }
 ```
 
-**See also** §12.2.4 (pre-defined symbols), Appendix F.
+**See also** §14.2.4 (pre-defined symbols), Appendix F.
 
 ## 7.5 Global Emitters
 
@@ -235,7 +235,7 @@ The declaration is written at file scope.
 A global emitter is declared at file scope and is used like a global function, with its body
 substituted at each use site. `$self` has no meaning in a global emitter. Global emitters may be
 overloaded; the overload is selected by argument type. `print()` and `log()` are global emitters
-(§19.4).
+(§21.4).
 
 **Example**
 
@@ -305,7 +305,7 @@ An emitter namespace groups emitters under one name without declaring a class. I
 
 An `emitter class` (§8.2.3) differs in that it *is* a type — its purpose is to declare variables of
 it — whereas an emitter namespace exists only to be called by name. `style` is a built-in emitter
-namespace; it coexists with the `style` value class of `<glulxWindow>` (§20.7.7), because a call
+namespace; it coexists with the `style` value class of `<glulxWindow>` (§22.7.7), because a call
 `style.member(…)` reaches the namespace while the inline-object form `style { … }` builds a value of
 the class.
 
@@ -320,7 +320,8 @@ emitter style {
 print($"{style.italics()}Italic text{style.roman()}");
 ```
 
-**See also** §8.10.3 (alias members on emitter classes, for composing namespaces hierarchically).
+**See also** §10 — namespaces in general (objects and emitter classes as containers, `alias`, `#using`);
+§10.3 — alias members on emitter classes, for composing namespaces hierarchically.
 
 ## 7.8 `operator auto()`
 
@@ -413,4 +414,4 @@ int c = east.plus(10);      // → 13
 | At global scope | Yes | Yes |
 
 An emitter body is the primary route to I6 capabilities that have no Beguile syntax; for a raw-I6
-block inside a function body see `#i6` (§13.2).
+block inside a function body see `#i6` (§15.2).

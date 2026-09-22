@@ -105,10 +105,10 @@ lamp.parent = library;
 
 `+= -= *= /= %= &= |= ^= <<= >>=` modify the variable in place. The left type must declare the
 corresponding compound operator; if it does not and the type is known (not `var`), it is a
-compile-time error. The BLR defines all of them for `int` (§2.2) and `uint` (§19.6.1).
+compile-time error. The BLR defines all of them for `int` (§2.2) and `uint` (§21.6.1).
 
 > **Shorthand.** `n += 2` is equivalent to `n = n + 2` when the type declares no `operator +=`; the
-> fallback is specified in §8.6.7.
+> fallback is specified in §9.7.
 
 **Example**
 
@@ -226,7 +226,7 @@ for (object o in bgl.world.getAll()) print(o);
 for (int i in start to start + count - 1) print(i);     // → 101112
 ```
 
-**See also** §19.9 (`bgl.world`).
+**See also** §21.9 (`bgl.world`).
 
 ## 5.10 `while`
 
@@ -291,7 +291,7 @@ directly in a case body is accepted and has no effect. A `break` nested inside a
 body has unspecified effect: it may leave the `switch` or the innermost enclosing loop. Case values
 are type-checked against the switch expression (§2.11): integer literals match an `int`, and an enum
 value must be of the switch expression's enum type. When the switch expression is a `verb`, case
-values are verb names (§11.2).
+values are verb names (§13.2).
 
 **Ranges.** `low to high` matches the inclusive range and may be mixed with single values in one case:
 `case 1, 3, 5 to 10:`.
@@ -302,7 +302,7 @@ and ranges in the same switch become equality and range tests.
 
 **Type-driven comparison.** When the switch expression's type declares `operator switch()`, that
 operator performs each case comparison; `string` declares one so that `case "north":` compares
-content. Overloads for different case-value types may coexist. The declaration form is in §8.6.5.
+content. Overloads for different case-value types may coexist. The declaration form is in §9.5.
 
 **Example**
 
@@ -358,7 +358,7 @@ rtrue(⟨expression⟩) ;   rfalse(⟨expression⟩) ;
 `return` exits the function, with a value if given. The value may be any expression and is
 type-checked against the declared return type. In a `void` function `return expr;` is a compile-time
 error unless `expr` is itself of type `void`. In loose mode (`#bgl` islands and precompiler mode,
-§13.3.3) an expression of type `var` is also accepted there.
+§15.3.3) an expression of type `var` is also accepted there.
 
 > **Shorthand.** In a `void` function, `return expr;` where `expr` is of type `void` is equivalent to
 > `expr; return;`.
@@ -367,13 +367,13 @@ error unless `expr` is itself of type `void`. In loose mode (`#bgl` islands and 
 > and `rfalse;` to `return false;`.
 
 `rtrue(expr)` and `rfalse(expr)` print `expr`, with full `print()` overload dispatch including `$"…"`
-strings (§19.4), and then return.
+strings (§21.4), and then return.
 
 **Return-path analysis.** A non-`void` function must return on every path; a path that can reach the
 end of the body without returning is a compile-time error. A path is satisfied by an unconditional
 `return` at the top level of the body; by an `if`/`else` whose two branches are both satisfied; by a
 `switch` with a `default` whose every case body is satisfied (a `switch` without `default` is not); or
-by an `#i6` island that returns (§13.2). A loop body alone does not satisfy it.
+by an `#i6` island that returns (§15.2). A loop body alone does not satisfy it.
 
 If a local's type declares a `deinit` emitter, it fires before the function returns (§8.5).
 

@@ -1,7 +1,7 @@
 # Appendix F Pre-defined Symbols
 
 The compiler defines the following symbols before any source file is processed. They are tested and
-compared in `#if` expressions exactly like symbols defined with `#define` (§12.2). Symbol names are
+compared in `#if` expressions exactly like symbols defined with `#define` (§14.2). Symbol names are
 case-insensitive, like all Beguile identifiers.
 
 | Symbol | Example value | Meaning |
@@ -14,7 +14,7 @@ case-insensitive, like all Beguile identifiers.
 | `TARGET_ZCODE` | `5` or `8` | Defined when the target is the Z-machine; the value is the Z-machine version, so it can be compared. |
 
 The version symbols are read-only and derived from the compiler's own version. The target symbols are
-set from the `target` setting (§15.3) before any source is read, so they are available to every `#if`
+set from the `target` setting (§17.3) before any source is read, so they are available to every `#if`
 in the program. Exactly one of `TARGET_GLULX` and `TARGET_ZCODE` is defined.
 
 **Resolution rule.** Every symbol, pre-defined or `#define`d, that carries a value is resolved as an
@@ -42,4 +42,4 @@ const int myVer = beguilerMajor;    // this const is the program's own declarati
 #endif
 ```
 
-**See also** §12.2.4, §12.2.5, §15.3, Appendix E.
+**See also** §14.2.4, §14.2.5, §17.3, Appendix E.

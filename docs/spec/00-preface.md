@@ -50,15 +50,15 @@ Beguile is built on top of Inform 6; it is not a replacement for it. It generate
 - Emitter bodies contain literal Inform 6, giving library authors precise control over the output.
 
 Authors who need capabilities beyond what Beguile exposes can always drop down to Inform 6 through these
-mechanisms (§13).
+mechanisms (§15).
 
 ## Audiences
 
 - **Game authors** writing interactive fiction in Beguile against one of the supplied library bindings
-  (Part I; §21).
+  (Part I; §23).
 - **Library and binding authors** exposing an Inform 6 library to Beguile or writing reusable Beguile
-  code (§7, §13, Part III).
-- **Inform 6 developers** adopting Beguile incrementally inside an existing `.inf` project (§13).
+  code (§7, §15, Part III).
+- **Inform 6 developers** adopting Beguile incrementally inside an existing `.inf` project (§15).
 - **Tool developers** building editors, debuggers and build integrations around the compiler's inputs
   and outputs (Part II).
 
@@ -77,7 +77,7 @@ specification is the reference to graduate to once the language is familiar.
 
 This specification describes the language as implemented by the current Beguiler compiler and
 beguiLib. Part I defines the language. Part II describes the compiler, including the compilation
-pipeline from source to story file (§16). Part III describes the Beguile Language Runtime that every
+pipeline from source to story file (§18). Part III describes the Beguile Language Runtime that every
 program compiles against. Terms of art are collected in Appendix H.
 
 ## How to read this specification

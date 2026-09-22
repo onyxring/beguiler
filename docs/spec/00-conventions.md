@@ -40,7 +40,7 @@ The form above reads: zero or more qualifiers, then a type, then a name, then an
 introduced by `=`, then a semicolon. Where a form uses `[`, `]`, `|` or `<` as Beguile tokens (array
 sizes, union types, type parameters), the sentence under the block says so.
 
-A placeholder may also stand for part of a name. `split⟨direction⟩⟨kind⟩` (§20.7.3) names one method
+A placeholder may also stand for part of a name. `split⟨direction⟩⟨kind⟩` (§22.7.3) names one method
 for every combination of the listed values, spelled as a single identifier (`splitUpGrid`); the
 sentence under the block lists the values. In running text and in tables, a form is abbreviated with
 capitalized words in place of angle quotes: `Type::operator op` stands for `⟨type⟩::operator ⟨op⟩`
@@ -50,11 +50,11 @@ capitalized words in place of angle quotes: `Type::operator op` stands for `⟨t
 
 An example is the smallest fragment that shows the rule. A `// →` comment gives the resulting value or
 the text printed. Program output appears in blocks tagged `text`. Inform 6 appears in blocks tagged
-`i6`, and only in sections about emission (Part II and §13); emitter bodies, which are raw I6 by
+`i6`, and only in sections about emission (Part II and §15); emitter bodies, which are raw I6 by
 definition, are exempt. Examples use real keywords and real library names, and `Main` as the entry
 point, so that they compile in principle. An example that uses a name declared by the Inform 6
 Standard Library (`location`, `player`, `light`, `selfobj`, …) assumes `#include <i6StandardLibrary>`
-(§21.2) and leaves the name undeclared.
+(§23.2) and leaves the name undeclared.
 
 ## Target Markers
 
@@ -96,5 +96,5 @@ Every language construct (keyword, directive, operator, declaration form, librar
 documented as an entry with up to five labeled parts, in this order: **Syntax** (the form, in the
 notation above), **Description** (the normative rule), **Example**, **Notes** (target markers, the
 Shorthand callout, limits) and **See also** (references to sections that are not neighbors of the
-entry). A part that is genuinely empty is omitted. Chapters 14, 16, 17, 18 and 21 are narrative and
-do not use the shape; the extension entries of §20 use their own shape, announced in §20.1.
+entry). A part that is genuinely empty is omitted. Chapters 16, 18, 19, 20 and 23 are narrative and
+do not use the shape; the extension entries of §22 use their own shape, announced in §22.1.

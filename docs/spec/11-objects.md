@@ -1,41 +1,41 @@
-# 9 Objects
+# 11 Objects
 
 <!-- toc -->
-- [9.1 Overview](#91-overview)
-- [9.2 Declaring an Object](#92-declaring-an-object)
-- [9.3 Inline Objects — `Type{ … }`](#93-inline-objects-type-)
-  - [9.3.1 Positional and Named Members](#931-positional-and-named-members)
-  - [9.3.2 Type Inference from the Target](#932-type-inference-from-the-target)
-  - [9.3.3 Inline Objects as Arguments](#933-inline-objects-as-arguments)
-  - [9.3.4 Constant and Run-time Members](#934-constant-and-run-time-members)
-  - [9.3.5 Nested Aggregates](#935-nested-aggregates)
-  - [9.3.6 Standalone Declarations](#936-standalone-declarations)
-- [9.4 Members and Type Inference](#94-members-and-type-inference)
-- [9.5 Special Members: `parent`, `children`, `attributes`](#95-special-members-parent-children-attributes)
-  - [9.5.1 `parent`](#951-parent)
-  - [9.5.2 `children`](#952-children)
-  - [9.5.3 `attributes`](#953-attributes)
-- [9.6 Attribute Declarations](#96-attribute-declarations)
-- [9.7 Property Declarations](#97-property-declarations)
-  - [9.7.1 `property` and `extern property`](#971-property-and-extern-property)
-  - [9.7.2 `additive` Properties](#972-additive-properties)
-  - [9.7.3 Computed Property Access and `property` Parameters](#973-computed-property-access-and-property-parameters)
-- [9.8 Array Members](#98-array-members)
-- [9.9 Methods](#99-methods)
-  - [9.9.1 Dispatch on Object Receivers](#991-dispatch-on-object-receivers)
-  - [9.9.2 Overloads](#992-overloads)
-- [9.10 `extend` for Objects](#910-extend-for-objects)
-- [9.11 `extern object`](#911-extern-object)
+- [11.1 Overview](#111-overview)
+- [11.2 Declaring an Object](#112-declaring-an-object)
+- [11.3 Inline Objects — `Type{ … }`](#113-inline-objects-type-)
+  - [11.3.1 Positional and Named Members](#1131-positional-and-named-members)
+  - [11.3.2 Type Inference from the Target](#1132-type-inference-from-the-target)
+  - [11.3.3 Inline Objects as Arguments](#1133-inline-objects-as-arguments)
+  - [11.3.4 Constant and Run-time Members](#1134-constant-and-run-time-members)
+  - [11.3.5 Nested Aggregates](#1135-nested-aggregates)
+  - [11.3.6 Standalone Declarations](#1136-standalone-declarations)
+- [11.4 Members and Type Inference](#114-members-and-type-inference)
+- [11.5 Special Members: `parent`, `children`, `attributes`](#115-special-members-parent-children-attributes)
+  - [11.5.1 `parent`](#1151-parent)
+  - [11.5.2 `children`](#1152-children)
+  - [11.5.3 `attributes`](#1153-attributes)
+- [11.6 Attribute Declarations](#116-attribute-declarations)
+- [11.7 Property Declarations](#117-property-declarations)
+  - [11.7.1 `property` and `extern property`](#1171-property-and-extern-property)
+  - [11.7.2 `additive` Properties](#1172-additive-properties)
+  - [11.7.3 Computed Property Access and `property` Parameters](#1173-computed-property-access-and-property-parameters)
+- [11.8 Array Members](#118-array-members)
+- [11.9 Methods](#119-methods)
+  - [11.9.1 Dispatch on Object Receivers](#1191-dispatch-on-object-receivers)
+  - [11.9.2 Overloads](#1192-overloads)
+- [11.10 `extend` for Objects](#1110-extend-for-objects)
+- [11.11 `extern object`](#1111-extern-object)
 <!-- /toc -->
 
-## 9.1 Overview
+## 11.1 Overview
 
 An *object* is a named, globally visible instance that exists as a concrete entity in the story file.
 A class (§8.1) is a type; an object is a single instance of a type. Objects are commonly used for
 world-model entities (rooms, things, characters), but any class that inherits from `object` may be
 instantiated as a named object, including utility classes and data tables.
 
-## 9.2 Declaring an Object
+## 11.2 Declaring an Object
 
 **Syntax**
 
@@ -58,12 +58,12 @@ is required when the object inherits from more than one base. An object declared
 (`object Name { … }`) is an instance of `object`.
 
 An object declared with no base, or with a base that derives from `object`, is an instance of
-`object` and carries `parent`, `children` and `attributes` (§9.5). `object` is **not** added
+`object` and carries `parent`, `children` and `attributes` (§11.5). `object` is **not** added
 implicitly: an object whose bases do not derive from `object` has the static type of its first base,
 is not assignable to an `object` variable, and lacks the `object` members. Give such a declaration
 `object` as an explicit base when the world-model members are wanted.
 
-The optional `as i6name` clause names the object differently in the emitted I6 (§3.12).
+The optional `as i6name` clause names the object differently in the emitted I6 (§3.11).
 
 **Example**
 
@@ -90,9 +90,9 @@ object dog : object, Animal, Robot {   // object listed explicitly: dog is a wor
 
 > **Shorthand.** `ClassName Name { … }` is equivalent to `object Name : ClassName { … }`.
 
-**See also** §9.4 — members and type inference; §9.11 — `extern object`.
+**See also** §11.4 — members and type inference; §11.11 — `extern object`.
 
-## 9.3 Inline Objects — `Type{ … }`
+## 11.3 Inline Objects — `Type{ … }`
 
 **Syntax**
 
@@ -103,7 +103,7 @@ object dog : object, Animal, Robot {   // object listed explicitly: dog is a wor
 { … }
 ```
 
-The last form omits `⟨type⟩`; it is permitted only where the target type is known (§9.3.2).
+The last form omits `⟨type⟩`; it is permitted only where the target type is known (§11.3.2).
 
 **Description**
 
@@ -114,10 +114,10 @@ at startup, and it is unrelated to `new` (§4.13), which allocates at run time.
 
 The form is available for any class that can be declared as a named object. It has no meaning for
 namespace types (`emitter class`, `alias class`) or value classes. It may appear anywhere an
-expression may: an array-literal element, an `inject` element in `extend` for arrays (§10.11), a
+expression may: an array-literal element, an `inject` element in `extend` for arrays (§12.11), a
 variable initializer, a call argument, or standing alone as a statement.
 
-### 9.3.1 Positional and Named Members
+### 11.3.1 Positional and Named Members
 
 **Description**
 
@@ -146,7 +146,7 @@ array<point> pts = {
 };
 ```
 
-### 9.3.2 Type Inference from the Target
+### 11.3.2 Type Inference from the Target
 
 **Description**
 
@@ -155,7 +155,7 @@ target's type. Inference applies in four positions:
 
 - an `array<T>` element;
 - an object-backed variable initializer (`Type name = { … }`);
-- the element of a declarative `inject` (§10.11);
+- the element of a declarative `inject` (§12.11);
 - a call argument whose parameter is an object-backed class.
 
 A bare `{ … }` produces an object only when the target type is an object-backed class. If the target
@@ -189,7 +189,7 @@ rule fallback = { Look, any, lookBody };
 > **Shorthand.** `Type name = { … };` is equivalent to the named object declaration
 > `Type name { … }`.
 
-### 9.3.3 Inline Objects as Arguments
+### 11.3.3 Inline Objects as Arguments
 
 **Description**
 
@@ -211,7 +211,7 @@ place(p: {3, 4});
 obj.method({ x = 1; y = 2; });
 ```
 
-### 9.3.4 Constant and Run-time Members
+### 11.3.4 Constant and Run-time Members
 
 **Description**
 
@@ -236,7 +236,7 @@ void Main() {
 }
 ```
 
-### 9.3.5 Nested Aggregates
+### 11.3.5 Nested Aggregates
 
 **Description**
 
@@ -256,14 +256,14 @@ class menu : object {
 menu child = { root, "a child", {.foo, .bar, .baz} };
 ```
 
-### 9.3.6 Standalone Declarations
+### 11.3.6 Standalone Declarations
 
 **Description**
 
 An inline object may stand alone as a statement, with no name and no assignment. The reference is
 discarded, so the object is reachable only if it links itself, for example by setting a positional
 `parent` or `linkTo` that places it in the object tree. Without such a link it is an unreferenced
-object, reachable only by an object-tree walk (§19.9).
+object, reachable only by an object-tree walk (§21.9).
 
 **Example**
 
@@ -271,7 +271,7 @@ object, reachable only by an object-tree walk (§19.9).
 menu{ root, "text to display", {.type, .kind} };
 ```
 
-## 9.4 Members and Type Inference
+## 11.4 Members and Type Inference
 
 **Description**
 
@@ -307,15 +307,15 @@ object gameState {
 gameState.sys.activate();
 ```
 
-**See also** §8.3.4 — owned members; §3.7 — `ref` members; §9.8 — array members.
+**See also** §8.3.4 — owned members; §3.7 — `ref` members; §11.8 — array members.
 
-## 9.5 Special Members: `parent`, `children`, `attributes`
+## 11.5 Special Members: `parent`, `children`, `attributes`
 
 Three members declared on the base `object` class have compiler-level support tied to the world model:
 `parent` and `children` place objects in the object tree, and `attributes` sets the object's attribute
 flags. They are available on every object.
 
-### 9.5.1 `parent`
+### 11.5.1 `parent`
 
 **Syntax**
 
@@ -339,7 +339,7 @@ object cloak {
 }
 ```
 
-### 9.5.2 `children`
+### 11.5.2 `children`
 
 **Syntax**
 
@@ -387,7 +387,7 @@ int n = kitchen.children.length();
 bowl.children += { apple, pear };
 ```
 
-### 9.5.3 `attributes`
+### 11.5.3 `attributes`
 
 **Syntax**
 
@@ -397,7 +397,7 @@ attributes = { [ ! ] ⟨attribute⟩ , … } ;
 
 **Description**
 
-`attributes` is an `attributeList` member (§19.5.1) that declares the object's initial attributes.
+`attributes` is an `attributeList` member (§21.5.1) that declares the object's initial attributes.
 Each entry names an attribute; a `!` prefix explicitly clears an attribute the object would otherwise
 inherit from its class. The list is additive relative to the class: attributes the class gives are
 kept unless negated, and `attributes = {}` clears nothing. In an `extend` block, `attributes =` is
@@ -405,7 +405,7 @@ permitted only when the object's own declaration has no `attributes` member; oth
 compile-time error, even with `replace`.
 
 `attributeList` accepts `=` only; `+=` and `-=` are not permitted. To change attributes at run time
-use `give(attr)` and `ungive(attr)`, and test them with `has(attr)` (§19.5.1).
+use `give(attr)` and `ungive(attr)`, and test them with `has(attr)` (§21.5.1).
 
 **Example**
 
@@ -422,7 +422,7 @@ extend lampPost {
 }
 ```
 
-## 9.6 Attribute Declarations
+## 11.6 Attribute Declarations
 
 **Syntax**
 
@@ -435,7 +435,7 @@ extern attribute ⟨name⟩ [ as ⟨i6name⟩ ] ;
 
 An `attribute` declaration introduces a named flag that can be given to objects. An attribute must be
 declared before use. The `extern` form refers to an attribute defined in I6 (typically by the IF
-library binding, §21.3.4). Once declared, the name is an identifier of type `attribute` and may be
+library binding, §23.3.4). Once declared, the name is an identifier of type `attribute` and may be
 used in `attributes` lists and passed to `give`, `ungive` and `has`.
 
 **Example**
@@ -445,9 +445,9 @@ attribute myNewAttr;
 extern attribute light;
 ```
 
-## 9.7 Property Declarations
+## 11.7 Property Declarations
 
-### 9.7.1 `property` and `extern property`
+### 11.7.1 `property` and `extern property`
 
 **Syntax**
 
@@ -459,7 +459,7 @@ extern property ⟨name⟩ ;
 **Description**
 
 Every member name that appears in any class or object declaration is a property name, and
-`obj.provides(name)` (§19.5.2) tests at run time whether `obj` carries that property. No declaration
+`obj.provides(name)` (§21.5.2) tests at run time whether `obj` carries that property. No declaration
 is needed for a member of a declared class.
 
 A `property` declaration introduces a property name that is not a member of any Beguile class,
@@ -478,7 +478,7 @@ expected. A free-standing declaration does not grant `obj.name` access; declare 
 member to read or write it.
 
 In default mode, `obj.provides(unknownName)` on an undeclared name is a compile-time error. In loose
-mode (`#bgl` islands and precompiler mode, §13.3.3) the name passes through unchecked.
+mode (`#bgl` islands and precompiler mode, §15.3.3) the name passes through unchecked.
 
 **Example**
 
@@ -496,7 +496,7 @@ void Main() {
 }
 ```
 
-### 9.7.2 `additive` Properties
+### 11.7.2 `additive` Properties
 
 **Syntax**
 
@@ -515,10 +515,10 @@ declaration. On an `extern property` it records that the I6 declaration is alrea
 
 `name` is additive in I6 itself. The core BLR declares it, and the core is always loaded, so the rules
 below apply to `name` in every program; a program that repeats `extern property name;` is in error.
-Every other additive property is declared by the IF library binding that defines it (§21.3.5).
+Every other additive property is declared by the IF library binding that defines it (§23.3.5).
 
 **Contributions are raw arrays.** An additive property has no length word, which is the
-`rawArray<T>` layout (§10.8.1), so every member that contributes to it must be a `rawArray<T>` or a
+`rawArray<T>` layout (§12.8.1), so every member that contributes to it must be a `rawArray<T>` or a
 routine. The element type is fixed by the highest ancestor that declares the member, walking the
 class hierarchy root-first; every other contribution in that hierarchy must use the same element type.
 Unrelated hierarchies may each fix their own. An inference-typed override (`name = {.wooden};`) takes
@@ -540,9 +540,9 @@ class Room       { rawArray<dictionaryWord> name = {.box, .crate}; }   // fixes 
 object r1 : Room { name = {.wooden}; }                                 // matches all three words
 ```
 
-**See also** §10.8.3 — member `rawArray<T>`.
+**See also** §12.8.3 — member `rawArray<T>`.
 
-### 9.7.3 Computed Property Access and `property` Parameters
+### 11.7.3 Computed Property Access and `property` Parameters
 
 **Syntax**
 
@@ -580,7 +580,7 @@ object gameState { int taskGetBanana = 1; }
 achieved(taskGetBanana);        // passes the property identifier
 ```
 
-## 9.8 Array Members
+## 11.8 Array Members
 
 **Syntax**
 
@@ -596,11 +596,11 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 **Description**
 
 A member may be an array. It has the same semantics as any other array: subscripting, `for … in`,
-`length()` and the `<array>` methods (§20.4) behave identically, and element type checking follows
-the rules for global arrays (§10.2). A byte-array member (`array<char>`) accepts a string initializer
+`length()` and the `<array>` methods (§22.4) behave identically, and element type checking follows
+the rules for global arrays (§12.2). A byte-array member (`array<char>`) accepts a string initializer
 or a brace initializer. Storage rules for member arrays, including the Z-machine property-size limit
-and `ref` members, are given in §10.7; the `rawArray<T>` member form is covered in §10.8.3 and its
-use for additive properties in §9.7.2.
+and `ref` members, are given in §12.7; the `rawArray<T>` member form is covered in §12.8.3 and its
+use for additive properties in §11.7.2.
 
 **Example**
 
@@ -615,7 +615,7 @@ object foo {
 }
 ```
 
-## 9.9 Methods
+## 11.9 Methods
 
 **Syntax**
 
@@ -643,7 +643,7 @@ object bar {
 }
 ```
 
-### 9.9.1 Dispatch on Object Receivers
+### 11.9.1 Dispatch on Object Receivers
 
 **Description**
 
@@ -653,8 +653,8 @@ body, the method is looked up in this order:
 1. the object's own members (per-instance overrides);
 2. the object's class, then its base classes recursively.
 
-Every object that derives from `object` (§9.2) reaches the methods declared there
-(`give`, `ungive`, `has`, `provides`, `is`, …; §19.5) through the same walk. Per-instance methods
+Every object that derives from `object` (§11.2) reaches the methods declared there
+(`give`, `ungive`, `has`, `provides`, `is`, …; §21.5) through the same walk. Per-instance methods
 shadow inherited ones. There is no special case for the `object` base
 class; it is an ordinary class reached through the ordinary hierarchy walk.
 
@@ -674,7 +674,7 @@ cow.speak();            // ...          — the class's method
 cat.give(light);        // from object, through the hierarchy walk
 ```
 
-### 9.9.2 Overloads
+### 11.9.2 Overloads
 
 **Description**
 
@@ -698,7 +698,7 @@ lg.log("hi");       // log(string)
 lg.log(3, 7);       // log(int, int)
 ```
 
-## 9.10 `extend` for Objects
+## 11.10 `extend` for Objects
 
 **Syntax**
 
@@ -721,10 +721,10 @@ Any previously declared object may be extended. Inside the body:
   is a compile-time error; `replace` on a member that does not exist is a warning.
 - `+=` appends to, and `-=` removes from, an existing collection member (`grammarRuleList` or
   `array<T>`). The member must exist and be a collection type; otherwise it is a compile-time error.
-  `attributeList` accepts `=` only (§9.5.3). The grammar forms are specified in §11.5.
+  `attributeList` accepts `=` only (§11.5.3). The grammar forms are specified in §13.5.
 
-Extending an `extern` object (§9.11) is restricted to its `grammar` member: `grammar += { … }`,
-`replace grammar = { … }` and `grammar -= { … }` are permitted (§11.5). Adding a member or method, or
+Extending an `extern` object (§11.11) is restricted to its `grammar` member: `grammar += { … }`,
+`replace grammar = { … }` and `grammar -= { … }` are permitted (§13.5). Adding a member or method, or
 using `-=` on any other member of an extern object, is a compile-time error.
 
 **Example**
@@ -743,9 +743,9 @@ extend myRoom {
 }
 ```
 
-**See also** §8.9.1 — `extend class`; §8.9.5 — `replace` matching rules; §10.11 — `extend` for arrays.
+**See also** §8.7.1 — `extend class`; §8.7.5 — `replace` matching rules; §12.11 — `extend` for arrays.
 
-## 9.11 `extern object`
+## 11.11 `extern object`
 
 **Syntax**
 
@@ -784,4 +784,4 @@ extern object playerCommands {
 playerCommands.pushCommand("say hello");
 ```
 
-**See also** §13.4.4 — extern objects at the I6 boundary; §8.2.2 — `extern class`.
+**See also** §15.4.4 — extern objects at the I6 boundary; §8.2.2 — `extern class`.

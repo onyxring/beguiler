@@ -1,28 +1,28 @@
-# 11 Dictionary Words, Verbs and Grammar
+# 13 Dictionary Words, Verbs and Grammar
 
 <!-- toc -->
-- [11.1 Dictionary Words](#111-dictionary-words)
-- [11.2 Verb Declarations](#112-verb-declarations)
-  - [11.2.1 `handler()`](#1121-handler)
-  - [11.2.2 `perform()`](#1122-perform)
-  - [11.2.3 Extern Verbs and Claimed Words](#1123-extern-verbs-and-claimed-words)
-  - [11.2.4 Meta Verbs](#1124-meta-verbs)
-  - [11.2.5 Verb Priority](#1125-verb-priority)
-- [11.3 Action Comparisons](#113-action-comparisons)
-- [11.4 Grammar](#114-grammar)
-  - [11.4.1 Grammar Types](#1141-grammar-types)
-  - [11.4.2 Pattern Tokens](#1142-pattern-tokens)
-  - [11.4.3 Alternation and Multi-trigger Lines](#1143-alternation-and-multi-trigger-lines)
-  - [11.4.4 Line Modifiers: `reverse`, `withI6Synonyms`](#1144-line-modifiers-reverse-withi6synonyms)
-  - [11.4.5 Grammar on Verbs and Grammar Objects](#1145-grammar-on-verbs-and-grammar-objects)
-- [11.5 Extending Grammar](#115-extending-grammar)
-  - [11.5.1 `grammar +=`](#1151-grammar-)
-  - [11.5.2 `grammar -=`](#1152-grammar--)
-  - [11.5.3 `replace grammar =`](#1153-replace-grammar-)
-  - [11.5.4 Synonyms](#1154-synonyms)
+- [13.1 Dictionary Words](#131-dictionary-words)
+- [13.2 Verb Declarations](#132-verb-declarations)
+  - [13.2.1 `handler()`](#1321-handler)
+  - [13.2.2 `perform()`](#1322-perform)
+  - [13.2.3 Extern Verbs and Claimed Words](#1323-extern-verbs-and-claimed-words)
+  - [13.2.4 Meta Verbs](#1324-meta-verbs)
+  - [13.2.5 Verb Priority](#1325-verb-priority)
+- [13.3 Action Comparisons](#133-action-comparisons)
+- [13.4 Grammar](#134-grammar)
+  - [13.4.1 Grammar Types](#1341-grammar-types)
+  - [13.4.2 Pattern Tokens](#1342-pattern-tokens)
+  - [13.4.3 Alternation and Multi-trigger Lines](#1343-alternation-and-multi-trigger-lines)
+  - [13.4.4 Line Modifiers: `reverse`, `withI6Synonyms`](#1344-line-modifiers-reverse-withi6synonyms)
+  - [13.4.5 Grammar on Verbs and Grammar Objects](#1345-grammar-on-verbs-and-grammar-objects)
+- [13.5 Extending Grammar](#135-extending-grammar)
+  - [13.5.1 `grammar +=`](#1351-grammar-)
+  - [13.5.2 `grammar -=`](#1352-grammar--)
+  - [13.5.3 `replace grammar =`](#1353-replace-grammar-)
+  - [13.5.4 Synonyms](#1354-synonyms)
 <!-- /toc -->
 
-## 11.1 Dictionary Words
+## 13.1 Dictionary Words
 
 **Syntax**
 
@@ -40,8 +40,8 @@ type `dictionaryWord`. The token form, including internal hyphens and apostrophe
 §1.6.7.
 
 Dictionary words are compared with `==` and `!=`, and are the trigger and literal tokens of grammar
-patterns (§11.4.2). `print()` on a dictionary word prints the word's text; the `dictionaryWord`
-runtime type and its printing behavior are specified in §19.5.3.
+patterns (§13.4.2). `print()` on a dictionary word prints the word's text; the `dictionaryWord`
+runtime type and its printing behavior are specified in §21.5.3.
 
 **Example**
 
@@ -50,9 +50,9 @@ dictionaryWord w = .lamp;
 if (w == .lamp) print(w);      // → lamp
 ```
 
-**See also** §1.6.7, §19.5.3.
+**See also** §1.6.7, §21.5.3.
 
-## 11.2 Verb Declarations
+## 13.2 Verb Declarations
 
 **Syntax**
 
@@ -69,9 +69,9 @@ verb ⟨name⟩ {
 **Description**
 
 `verb` is an alias class for `object` (`alias class verb for object { … }`, declared by the core BLR,
-§19.5.4) whose members are `grammarRuleList grammar`, `bool meta`, `int priority`, `handler()` and
+§21.5.4) whose members are `grammarRuleList grammar`, `bool meta`, `int priority`, `handler()` and
 `perform()`. A `verb` declaration creates a named object that is an instance of that
-class. The body uses ordinary object member syntax (§9.4): the `grammar` member's type is inferred
+class. The body uses ordinary object member syntax (§11.4): the `grammar` member's type is inferred
 from the class, so `grammar = { … }` needs no type, and further members and methods may be declared
 as on any object.
 
@@ -103,9 +103,9 @@ verb Examine {
 > grammar line list is accepted: verb declarations, `extend` blocks (`grammar += { … }`,
 > `grammar -= { … }`, `replace grammar = { … }`), grammar objects, and extern verb bodies.
 
-**See also** §9.2, §19.5.4.
+**See also** §11.2, §21.5.4.
 
-### 11.2.1 `handler()`
+### 13.2.1 `handler()`
 
 **Syntax**
 
@@ -116,10 +116,10 @@ void handler() { … }
 **Description**
 
 `handler()` is the verb's action body: it runs when the player enters a command matching the verb's
-grammar. The `verb` class declares it as a `default` emitter method (§8.9.3), so a verb object overrides it
+grammar. The `verb` class declares it as a `default` emitter method (§8.7.3), so a verb object overrides it
 with an ordinary `void handler()` and needs no `replace`. A non-extern verb must define `handler()`; omitting it is a
 compile-time error. Extern
-verbs (§11.2.3) are exempt.
+verbs (§13.2.3) are exempt.
 
 **Example**
 
@@ -130,7 +130,7 @@ verb Jump {
 }
 ```
 
-### 11.2.2 `perform()`
+### 13.2.2 `perform()`
 
 **Syntax**
 
@@ -155,7 +155,7 @@ Take.perform(coin, pouch);
 Take.perform(coin); rtrue;
 ```
 
-### 11.2.3 Extern Verbs and Claimed Words
+### 13.2.3 Extern Verbs and Claimed Words
 
 **Syntax**
 
@@ -165,7 +165,7 @@ extern verb ⟨name⟩ { .⟨word⟩ [ | .⟨word⟩ ] … }
 extern verb ⟨name⟩ { grammar = { { .⟨word⟩ [ | .⟨word⟩ ] … } , … } ; }
 ```
 
-The `|` in these forms is the literal alternation token (§11.4.3), not notation.
+The `|` in these forms is the literal alternation token (§13.4.3), not notation.
 
 **Description**
 
@@ -178,14 +178,14 @@ verb's body makes the claims visible, so that a grammar line elsewhere that uses
 extends the library verb rather than defining a new one. The body uses the same `grammar` syntax as a
 native verb, and these rules apply:
 
-- Several words are listed with `|`-alternation (§11.4.3). Splitting the words over several lines or
+- Several words are listed with `|`-alternation (§13.4.3). Splitting the words over several lines or
   listing them all in one line yields the same claimed-word set.
 - Pattern tokens after the trigger word are ignored, and writing one is a warning. No grammar is
   defined for an extern verb from Beguile; only the words in first position contribute.
 - A bare `extern verb Name;` claims a single word, the lowercased verb name. The body form is needed
   only when the verb claims additional words or its primary word differs from its name.
 - The first word of the first grammar line is the verb's *primary trigger*, the word used as the
-  target when the verb is extended (§11.5). All listed words are equally claimed for collision
+  target when the verb is extended (§13.5). All listed words are equally claimed for collision
   detection.
 
 Extern verbs cannot be marked `meta` and cannot carry a `priority`.
@@ -203,9 +203,9 @@ extern verb Inv  { .inventory|.inv|.i }
 extern verb Quit { .q|.quit|.die }
 ```
 
-**See also** §13.4.2, §21.3.6.
+**See also** §15.4.2, §23.3.6.
 
-### 11.2.4 Meta Verbs
+### 13.2.4 Meta Verbs
 
 **Syntax**
 
@@ -230,7 +230,7 @@ verb Inventory {
 }
 ```
 
-### 11.2.5 Verb Priority
+### 13.2.5 Verb Priority
 
 **Syntax**
 
@@ -249,7 +249,7 @@ recognized only on `verb` instances and is not a run-time property.
 A verb's *anchor* is the priority declared in its own `verb` body, or `10` when none is declared
 (an extern verb always has the default anchor). Every other contribution to that verb's trigger
 words sorts relative to the anchor: a contribution with a lower priority is tried before the verb's
-own lines, a higher one after. The verb that a `synonyms` list attaches to (§11.5.4) is not an anchor
+own lines, a higher one after. The verb that a `synonyms` list attaches to (§13.5.4) is not an anchor
 in this sense.
 
 | Source | Syntax | Scope | Default |
@@ -260,7 +260,7 @@ in this sense.
 | Inferred-verb line | none | A line written `{pattern}` takes the owning verb's anchor, or the enclosing `extend` block's priority | — |
 
 Combining `priority = N;` with `replace grammar = { … }` in the same `extend` block is a compile-time
-error (§11.5.3). An extern verb cannot carry a `priority` in its declaration (§11.2.3).
+error (§13.5.3). An extern verb cannot carry a `priority` in its declaration (§13.2.3).
 
 **Ordering.** For each trigger word of a verb, lines with `priority < anchor` are tried before the
 verb's own lines; the verb's own lines come next; lines with `priority ≥ anchor` from other sources
@@ -291,9 +291,9 @@ grammar additions {
 }
 ```
 
-**See also** §11.4.5, §11.5.
+**See also** §13.4.5, §13.5.
 
-## 11.3 Action Comparisons
+## 13.3 Action Comparisons
 
 **Syntax**
 
@@ -319,20 +319,20 @@ switch (action) {
 }
 ```
 
-**See also** §5.12, §21.3.4.
+**See also** §5.12, §23.3.4.
 
-## 11.4 Grammar
+## 13.4 Grammar
 
 Grammar lines define what the player may type and which verb they trigger. A line is declared either
-on a verb (§11.4.5) or in a grammar object, and both forms have the same effect.
+on a verb (§13.4.5) or in a grammar object, and both forms have the same effect.
 
-### 11.4.1 Grammar Types
+### 13.4.1 Grammar Types
 
 **Description**
 
 | Type | Purpose |
 |---|---|
-| `grammarToken` | An extern enum declared by the IF library binding (§21.3.6); its values are the parser tokens `noun`, `held`, `creature`, …. Both the bare value (`held`) and the qualified form (`grammarToken.held`) are valid in pattern position. `noun(Routine)` and `scope(Routine)` are its parameterized forms. |
+| `grammarToken` | An extern enum declared by the IF library binding (§23.3.6); its values are the parser tokens `noun`, `held`, `creature`, …. Both the bare value (`held`) and the qualified form (`grammarToken.held`) are valid in pattern position. `noun(Routine)` and `scope(Routine)` are its parameterized forms. |
 | `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, noun}`. |
 | `grammarRule` | One verb-targeted pattern, with an optional priority: `{Examine, {.examine, noun}}` or `{Examine, {.examine, noun}, 5}`. |
 | `grammarRuleList` | A list of grammar rules; the type of the `grammar` member on `verb` and of a grammar object. |
@@ -342,14 +342,14 @@ A `grammarRule` has two initializer forms:
 - **Explicit verb**: `{Verb, {pattern}[, priority]}`. Valid in any context.
 - **Inferred verb**: `{pattern}`. The verb is the owning object, which should be a `verb` or a
   subclass of `verb`; otherwise a warning is issued. The priority is the owning verb's anchor or the
-  enclosing `extend` block's (§11.2.5).
+  enclosing `extend` block's (§13.2.5).
 
 A `grammarRule` member takes exactly one `{verb, {pattern}}` pair; an `array<grammarRule>` member
 takes a list of them. Any other shape is a compile-time error.
 
-**See also** §19.5.5.
+**See also** §21.5.5.
 
-### 11.4.2 Pattern Tokens
+### 13.4.2 Pattern Tokens
 
 **Description**
 
@@ -404,9 +404,9 @@ verb Chat {
 }
 ```
 
-**See also** §9.6, §21.3.6.
+**See also** §11.6, §23.3.6.
 
-### 11.4.3 Alternation and Multi-trigger Lines
+### 13.4.3 Alternation and Multi-trigger Lines
 
 **Description**
 
@@ -415,7 +415,7 @@ Alternation is allowed in any position, including the first.
 
 When alternation appears in the first position, the line declares one pattern that fires on any of
 the listed trigger words. The line behaves as one line per word: each trigger word is treated
-independently, so `grammar -=` (§11.5.2) can remove a single word's line, and each word is routed on
+independently, so `grammar -=` (§13.5.2) can remove a single word's line, and each word is routed on
 its own. A new word defines that word's grammar; a word already claimed by another verb (a library
 verb through its claimed words, or an earlier Beguile verb) adds the line to that word's grammar. The
 same applies to multi-trigger lines inside `extend V { grammar += { … } }`.
@@ -437,7 +437,7 @@ verb TypeNum {                                     // three trigger words: one l
 }
 ```
 
-### 11.4.4 Line Modifiers: `reverse`, `withI6Synonyms`
+### 13.4.4 Line Modifiers: `reverse`, `withI6Synonyms`
 
 **Syntax**
 
@@ -476,7 +476,7 @@ verb Keypad {
 extend Take { grammar += { {.take, .all, .from, noun, withI6Synonyms} }; }   // take/get/carry/…
 ```
 
-### 11.4.5 Grammar on Verbs and Grammar Objects
+### 13.4.5 Grammar on Verbs and Grammar Objects
 
 **Syntax**
 
@@ -497,7 +497,7 @@ is the owning object.
 A `grammar` declaration declares an object of class `grammarRuleList`. A grammar object is
 cross-cutting: one object may carry rules targeting many verbs, each rule pairing a pattern with an
 explicit verb. Member types may be inferred, and an `array<grammarRule>` member holds several rules.
-Per-rule priority is the optional third element (§11.2.5).
+Per-rule priority is the optional third element (§13.2.5).
 
 **Example**
 
@@ -511,9 +511,9 @@ grammar customPatterns {
 }
 ```
 
-**See also** §11.2.5, §19.5.5.
+**See also** §13.2.5, §21.5.5.
 
-## 11.5 Extending Grammar
+## 13.5 Extending Grammar
 
 **Syntax**
 
@@ -528,22 +528,22 @@ extend ⟨verb⟩ {
 }
 ```
 
-The two `grammar -=` forms are the line-level and word-level shapes of §11.5.2; entries of both shapes
+The two `grammar -=` forms are the line-level and word-level shapes of §13.5.2; entries of both shapes
 may be mixed in one list.
 
 **Description**
 
 Grammar is added to or removed from an existing verb, including an `extern verb`, inside an
-`extend V { … }` body (§9.10). An operator is required: bare `grammar = { … }` is valid only in the
+`extend V { … }` body (§11.10). An operator is required: bare `grammar = { … }` is valid only in the
 original `verb` or `extern verb` declaration and is a compile-time error inside an `extend`. A bare
-`priority = N;` in the block applies to the lines it appends (§11.2.5).
+`priority = N;` in the block applies to the lines it appends (§13.2.5).
 
-### 11.5.1 `grammar +=`
+### 13.5.1 `grammar +=`
 
 **Description**
 
-`grammar += { … }` appends lines to the verb's grammar. Multi-trigger lines (§11.4.3) and line
-modifiers (§11.4.4) are accepted.
+`grammar += { … }` appends lines to the verb's grammar. Multi-trigger lines (§13.4.3) and line
+modifiers (§13.4.4) are accepted.
 
 **Example**
 
@@ -554,7 +554,7 @@ extend PutOn {
 }
 ```
 
-### 11.5.2 `grammar -=`
+### 13.5.2 `grammar -=`
 
 **Description**
 
@@ -597,9 +597,9 @@ verb  Keypad  { grammar = { {.enter, number, .into, noun} }; void handler() { �
 extend Disturb { grammar -= { {.xyzzy} }; }     // no reclaimer: 'xyzzy' is disabled
 ```
 
-**See also** §11.2.3, §11.4.3.
+**See also** §13.2.3, §13.4.3.
 
-### 11.5.3 `replace grammar =`
+### 13.5.3 `replace grammar =`
 
 **Description**
 
@@ -623,9 +623,9 @@ extend Take {
 }
 ```
 
-**See also** §11.2.5.
+**See also** §13.2.5.
 
-### 11.5.4 Synonyms
+### 13.5.4 Synonyms
 
 **Description**
 
@@ -639,7 +639,7 @@ declares none). `synonyms` works on both extern and native verbs. One-letter and
 conventions apply (§1.6.7). An empty `synonyms = { }` is a compile-time error.
 
 There is no Beguile form for I6's `Extend 'w' only` directive; if needed, write it in an `#i6` island
-(§13.2).
+(§15.2).
 
 **Example**
 
@@ -648,4 +648,4 @@ extend Take { synonyms = {.steal, .grab, .pilfer}; }
 extend Take { grammar += { {.take, .quietly, noun} }; }   // also "steal quietly", "grab quietly"
 ```
 
-**See also** §11.2.3, §13.2.
+**See also** §13.2.3, §15.2.

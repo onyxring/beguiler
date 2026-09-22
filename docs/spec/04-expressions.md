@@ -39,7 +39,7 @@ An expression is one or more operands joined by operators. An operand is one of:
 | `self` | The enclosing class (§6.6) |
 | Member access `expr.member` | The member's type |
 | Call `f(args)` / `expr.m(args)` | The function's return type |
-| Subscript `arr[i]` | The array's element type (§10.3) |
+| Subscript `arr[i]` | The array's element type (§12.3) |
 | `(expr)` | The type of `expr` |
 | `(Type)expr` | The cast target (§4.11) |
 | `&expr` | `int` (§4.12) |
@@ -86,7 +86,7 @@ A binary operator is resolved against the resolved type of its left operand:
    built-in operator.
 
 Assignment and arithmetic operators keep the left operand's type. The overloadable operators are
-listed in §8.6.1; the declaration forms are specified in §8.6.
+listed in §9.1; the declaration forms are specified in §9.
 
 **Example**
 
@@ -104,19 +104,19 @@ int  sum  = a + five;     // 2: no operator + on Money; a converts to int, built
 ## 4.5 Arithmetic Operators
 
 The built-in operators are declared by the runtime core, need no `#include`, and are ordinary
-overloadable operators (§8.6.1) that a type may declare for itself. The table lists every built-in
+overloadable operators (§9.1) that a type may declare for itself. The table lists every built-in
 binary and prefix operator by the types that define it; the compound-assignment forms follow the
 binary operator they are built from (§5.6), and the postfix query, optional chaining and null
 coalescing are in §4.10.
 
 | Operators | Built in for | Result | Example |
 |---|---|---|---|
-| `+` `-` `*` `/` `%` | `int`, `uint` (§19.6.1), `float` (§2.3); `+` and `-` also for `char` with a `char` or `int` right operand (§19.7) | The left operand's type | `7 / 2` → `3`; `7 % 2` → `1`; `'a' + 1` → `'b'` |
+| `+` `-` `*` `/` `%` | `int`, `uint` (§21.6.1), `float` (§2.3); `+` and `-` also for `char` with a `char` or `int` right operand (§21.7) | The left operand's type | `7 / 2` → `3`; `7 % 2` → `1`; `'a' + 1` → `'b'` |
 | `==` `!=` `<` `>` `<=` `>=` | `int`, `uint`, `float`, `char`; `==` and `!=` also for `bool`, `string` (identity of the text) and `object` | `eBool` | `score >= 50`; `noun == lamp` |
-| `?=` | No built-in type; it exists so that a type may give it a meaning (§8.6.5) | `eBool` | — |
-| `=~` | `char`: case-insensitive equality (§19.7); `string` with `<string>` (§20.3) | `eBool` | `'A' =~ 'a'` → `true` |
-| `<=>` | No built-in type; `<string>` declares it for `string` (§20.3). A type provides it as `operator <=>`, `static` with both operands as parameters or as an instance operator (§8.6.6); generic containers use it to obtain an ordering | `int`: negative, `0` or positive | `(a <=> b) < 0` |
-| `&&` `\|\|` `!` | `bool` and `eBool` (§2.2); `!` on a type that declares `operator !()` uses that emitter (§8.6.5) | `eBool` | `a > 0 && b < 10` |
+| `?=` | No built-in type; it exists so that a type may give it a meaning (§9.5) | `eBool` | — |
+| `=~` | `char`: case-insensitive equality (§21.7); `string` with `<string>` (§22.3) | `eBool` | `'A' =~ 'a'` → `true` |
+| `<=>` | No built-in type; `<string>` declares it for `string` (§22.3). A type provides it as `operator <=>`, `static` with both operands as parameters or as an instance operator (§9.6); generic containers use it to obtain an ordering | `int`: negative, `0` or positive | `(a <=> b) < 0` |
+| `&&` `\|\|` `!` | `bool` and `eBool` (§2.2); `!` on a type that declares `operator !()` uses that emitter (§9.5) | `eBool` | `a > 0 && b < 10` |
 | `&` `\|` `^` `<<` `>>` | `int`, `uint`; `&`, `\|` and `^` also combine `bnum` values that share a base (§2.7.2) | The left operand's type | `flags & lit`; `1 << 4` → `16` |
 
 A leading `-` on an integer literal forms a negative literal, whose pseudo-type is
@@ -171,7 +171,7 @@ int result = (cond ? a : b) + extra;
 **Description**
 
 All three operators are type-driven: the operand's type must declare an `operator ?()` emitter, whose
-result is the null test (the declaration is specified in §8.6.5; the BLR defines it for `object` as
+result is the null test (the declaration is specified in §9.5; the BLR defines it for `object` as
 "not `nothing`" and for `string` as "non-zero handle"). Using them on a type without `operator ?()`
 is a compile-time error.
 
@@ -220,7 +220,7 @@ compile-time error. The cast qualifies method dispatch only; it does not apply t
 a.speak();` runs `Dog`'s override.
 
 **Explicit conversion.** A conversion operator declared `explicit` fires only under a cast:
-`string s = (string)myValue;` (§8.6.4). A cast also forces resolution through a specific type when the
+`string s = (string)myValue;` (§9.4). A cast also forces resolution through a specific type when the
 inferred type would resolve differently.
 
 **Class vs. instance.** The target may be a class or a named object. Casting to a class exposes the
@@ -241,7 +241,7 @@ int a = ((library)obj.parent).shelves;     // instance member
 int b = ((Room)obj.parent).lit;            // class member
 ```
 
-**See also** §2.12 (conversion operators), §8.8 (inheritance and overriding).
+**See also** §2.12 (conversion operators), §8.6 (inheritance and overriding).
 
 ## 4.12 Address-of `&`
 
@@ -268,7 +268,7 @@ int n = 7;
 int m = &n;                                        // → 7: a scalar yields its value
 ```
 
-**See also** §13.4.1 (`extern` functions).
+**See also** §15.4.1 (`extern` functions).
 
 ## 4.13 `new`
 
@@ -357,7 +357,7 @@ void test(int multiplier) {
 Names an operator that `⟨type⟩` declares, yielding its address for use wherever a `func<>` is
 expected. Only a `static` operator is referenceable; referencing an instance operator is a
 compile-time error. When a type declares several static overloads of the operator, the parenthesized
-operand type selects one. The rules for declaring static operators are in §8.6.6.
+operand type selects one. The rules for declaring static operators are in §9.6.
 
 **Example**
 

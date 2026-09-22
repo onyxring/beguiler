@@ -1,56 +1,56 @@
-# 19 Runtime Core
+# 21 Runtime Core
 
 <!-- toc -->
-- [19.1 Overview](#191-overview)
-- [19.2 `bglInit()`](#192-bglinit)
-- [19.3 The `bgl` Namespace](#193-the-bgl-namespace)
-- [19.4 `print()`, `log()` and Article Helpers](#194-print-log-and-article-helpers)
-- [19.5 IF-Domain Types](#195-if-domain-types)
-  - [19.5.1 `attribute` and `attributeList`](#1951-attribute-and-attributelist)
-  - [19.5.2 `property`](#1952-property)
-  - [19.5.3 `dictionaryWord`](#1953-dictionaryword)
-  - [19.5.4 `verb`](#1954-verb)
-  - [19.5.5 Grammar Types](#1955-grammar-types)
-  - [19.5.6 `bglClass`](#1956-bglclass)
-  - [19.5.7 `parentProp` and `childrenProp`](#1957-parentprop-and-childrenprop)
-  - [19.5.8 `_bglObject`](#1958-bglobject)
-  - [19.5.9 `eType` and `typeof()`](#1959-etype-and-typeof)
-  - [19.5.10 `stringOrRoutine`](#19510-stringorroutine)
-- [19.6 Numeric Utilities](#196-numeric-utilities)
-  - [19.6.1 `uint`](#1961-uint)
-  - [19.6.2 `bgl.util.math`](#1962-bglutilmath)
-  - [19.6.3 `bgl.util.random`](#1963-bglutilrandom)
-- [19.7 Character Utilities](#197-character-utilities)
-- [19.8 `bglAllocated`](#198-bglallocated)
-- [19.9 `bgl.world`](#199-bglworld)
-- [19.10 `bgl.ui`](#1910-bglui)
-- [19.11 `bgl.printRules`](#1911-bglprintrules)
-- [19.12 Utility Types](#1912-utility-types)
-- [19.13 `bgl.asm`](#1913-bglasm)
-  - [19.13.1 Glulx Opcodes](#19131-glulx-opcodes)
-  - [19.13.2 Glk Calls](#19132-glk-calls)
-  - [19.13.3 Z-machine Opcodes](#19133-z-machine-opcodes)
+- [21.1 Overview](#211-overview)
+- [21.2 `bglInit()`](#212-bglinit)
+- [21.3 The `bgl` Namespace](#213-the-bgl-namespace)
+- [21.4 `print()`, `log()` and Article Helpers](#214-print-log-and-article-helpers)
+- [21.5 IF-Domain Types](#215-if-domain-types)
+  - [21.5.1 `attribute` and `attributeList`](#2151-attribute-and-attributelist)
+  - [21.5.2 `property`](#2152-property)
+  - [21.5.3 `dictionaryWord`](#2153-dictionaryword)
+  - [21.5.4 `verb`](#2154-verb)
+  - [21.5.5 Grammar Types](#2155-grammar-types)
+  - [21.5.6 `bglClass`](#2156-bglclass)
+  - [21.5.7 `parentProp` and `childrenProp`](#2157-parentprop-and-childrenprop)
+  - [21.5.8 `_bglObject`](#2158-bglobject)
+  - [21.5.9 `eType` and `typeof()`](#2159-etype-and-typeof)
+  - [21.5.10 `stringOrRoutine`](#21510-stringorroutine)
+- [21.6 Numeric Utilities](#216-numeric-utilities)
+  - [21.6.1 `uint`](#2161-uint)
+  - [21.6.2 `bgl.util.math`](#2162-bglutilmath)
+  - [21.6.3 `bgl.util.random`](#2163-bglutilrandom)
+- [21.7 Character Utilities](#217-character-utilities)
+- [21.8 `bglAllocated`](#218-bglallocated)
+- [21.9 `bgl.world`](#219-bglworld)
+- [21.10 `bgl.ui`](#2110-bglui)
+- [21.11 `bgl.printRules`](#2111-bglprintrules)
+- [21.12 Utility Types](#2112-utility-types)
+- [21.13 `bgl.asm`](#2113-bglasm)
+  - [21.13.1 Glulx Opcodes](#21131-glulx-opcodes)
+  - [21.13.2 Glk Calls](#21132-glk-calls)
+  - [21.13.3 Z-machine Opcodes](#21133-z-machine-opcodes)
 <!-- /toc -->
 
-## 19.1 Overview
+## 21.1 Overview
 
-The Beguile Language Runtime (BLR) is the library of Beguile source that every program compiles against. Its *core* is loaded automatically: no `#include` is needed, in either default mode or precompiler mode (§13.1). Everything in this chapter is part of the core. The extensions, each enabled with `#include <…>` except `<array>`, which the core includes itself (§20.1), are in §20; the IF library bindings are in §21.
+The Beguile Language Runtime (BLR) is the library of Beguile source that every program compiles against. Its *core* is loaded automatically: no `#include` is needed, in either default mode or precompiler mode (§15.1). Everything in this chapter is part of the core. The extensions, each enabled with `#include <…>` except `<array>`, which the core includes itself (§22.1), are in §22; the IF library bindings are in §23.
 
 The core provides:
 
-- the `bgl` namespace and its target-specific branches (§19.3);
-- the output routines `print()` and `log()` and the article helpers (§19.4);
-- the IF-domain types: `attribute`, `property`, `dictionaryWord`, `verb`, the grammar types, `bglClass`, `parentProp`, `childrenProp`, `_bglObject`, `eType` (§19.5);
-- the numeric, character and allocation utilities: `uint`, `bgl.util.math`, `bgl.util.random`, the `char` methods, `bglAllocated` (§19.6–§19.8);
-- object-tree queries, `bgl.world` (§19.9);
-- the user-interface roots `bgl.ui.mainWin` / `bgl.ui.statusBar` and the print rules (§19.10–§19.11);
-- the utility types `bglSize` and the blorb asset enums (§19.12).
+- the `bgl` namespace and its target-specific branches (§21.3);
+- the output routines `print()` and `log()` and the article helpers (§21.4);
+- the IF-domain types: `attribute`, `property`, `dictionaryWord`, `verb`, the grammar types, `bglClass`, `parentProp`, `childrenProp`, `_bglObject`, `eType` (§21.5);
+- the numeric, character and allocation utilities: `uint`, `bgl.util.math`, `bgl.util.random`, the `char` methods, `bglAllocated` (§21.6–§21.8);
+- object-tree queries, `bgl.world` (§21.9);
+- the user-interface roots `bgl.ui.mainWin` / `bgl.ui.statusBar` and the print rules (§21.10–§21.11);
+- the utility types `bglSize` and the blorb asset enums (§21.12).
 
 The primitive types (`int`, `bool`, `char`, `string`, `float`, `object`, `var`) and their literals are documented in §2.2; they are also core.
 
-In precompiler mode the core is loaded but the `bgl` namespace is not imported: a `#bgl` island must declare `#using bgl;` before using `bgl.…` (§13.1.2).
+In precompiler mode the core is loaded but the `bgl` namespace is not imported: a `#bgl` island must declare `#using bgl;` before using `bgl.…` (§15.1.2).
 
-## 19.2 `bglInit()`
+## 21.2 `bglInit()`
 
 **Syntax**
 
@@ -60,15 +60,15 @@ bglInit();
 
 **Description**
 
-`bglInit()` is a routine the compiler synthesizes for every program; its position in the generated file is given in §16.8. It runs at most once however often it is called and, in order:
+`bglInit()` is a routine the compiler synthesizes for every program; its position in the generated file is given in §18.8. It runs at most once however often it is called and, in order:
 
-1. the length headers of sized tracked arrays and byte arrays (§10.3, §20.2, §20.4);
-2. every `#startup` block in the program, in file-inclusion order (§12.4.1);
+1. the length headers of sized tracked arrays and byte arrays (§12.3, §22.2, §22.4);
+2. every `#startup` block in the program, in file-inclusion order (§14.4.1);
 3. the deferred initializers of class-typed globals whose type declares a parameterless `init` (§8.5): the `init` body, then the `operator =` that applies a declared value.
 
-A program built on an IF library binding does not call `bglInit()` itself: the binding wraps the library's `main` so that `bglInit()` runs first (§21.3.1). A program built without a binding, or with `autoInitialize = false` (§15.4), must call `bglInit()` from its entry point before using anything that depends on it. The call is always available and is harmless when nothing has registered work.
+A program built on an IF library binding does not call `bglInit()` itself: the binding wraps the library's `main` so that `bglInit()` runs first (§23.3.1). A program built without a binding, or with `autoInitialize = false` (§17.4), must call `bglInit()` from its entry point before using anything that depends on it. The call is always available and is harmless when nothing has registered work.
 
-Extensions that need `bglInit()` say so in their entry in §20: `<string>` and `<linq>` do, and so do `<array>` and `<buf>`, whose sized, uninitialized tracked arrays have no length header until it runs: before `bglInit()`, such an array reports its raw header word from `size()` and `length()` and `append` fails; arrays declared with an initializer list are complete at compile time. `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
+Extensions that need `bglInit()` say so in their entry in §22: `<string>` and `<linq>` do, and so do `<array>` and `<buf>`, whose sized, uninitialized tracked arrays have no length header until it runs: before `bglInit()`, such an array reports its raw header word from `size()` and `length()` and `append` fails; arrays declared with an initializer list are complete at compile time. `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
 
 **Example**
 
@@ -79,23 +79,23 @@ void Main() {
 }
 ```
 
-**See also** §12.4.1, §13.1.2, §16.8, §21.3.1.
+**See also** §14.4.1, §15.1.2, §18.8, §23.3.1.
 
-## 19.3 The `bgl` Namespace
+## 21.3 The `bgl` Namespace
 
-`bgl` is the root namespace object of the runtime. Its members are reached by dotted path (`bgl.asm.add(a, b)`, `bgl.util.math.pow(2, 8)`); `#using bgl.glulx;` and the other `#using` forms import a branch so its members are reachable bare (§12.6.1).
+`bgl` is the root namespace object of the runtime. Its members are reached by dotted path (`bgl.asm.add(a, b)`, `bgl.util.math.pow(2, 8)`); `#using bgl.glulx;` and the other `#using` forms import a branch so its members are reachable bare (§10.4).
 
 | Path | Contents | Target |
 |---|---|---|
 | `bgl.wordsize` | The word size of the active target: `2` on the Z-machine, `4` on Glulx. | both |
-| `bgl.asm.*` | Direct opcode emitters for the active virtual machine; the set of members differs per target (§19.13). | both |
-| `bgl.glulx.*` | Glulx-specific names: the enum aliases `eStyleType`, `eWinType`, `eImgAlign`, `eImgDimension`, `bWinBorder`, `bWinPlacement`, `bWinScale` (§20.7.10); the window types and `color` when `<glulxWindow>` is included (§20.7). | Glulx |
+| `bgl.asm.*` | Direct opcode emitters for the active virtual machine; the set of members differs per target (§21.13). | both |
+| `bgl.glulx.*` | Glulx-specific names: the enum aliases `eStyleType`, `eWinType`, `eImgAlign`, `eImgDimension`, `bWinBorder`, `bWinPlacement`, `bWinScale` (§22.7.10); the window types and `color` when `<glulxWindow>` is included (§22.7). | Glulx |
 | `bgl.zcode.*` | Z-machine-specific names. Empty in the current core. | Z-machine |
-| `bgl.util.*` | Utilities: `math` (§19.6.2), `random` (§19.6.3), and `buf` when `<buf>` is included (§20.2). | both |
-| `bgl.world.*` | Object-tree queries (§19.9). | both |
-| `bgl.ui.*` | `mainWin`, `statusBar` (§19.10); `screen` with `<glulxWindow>` (§20.7.2); `hideCursor`, `showCursor`, `waitForKey` with `<ui>` (§20.6). | both |
-| `bgl.printRules.*` | Text-style print rules for interpolated strings (§19.11). | both |
-| `bgl.story.*` | Story-file identity values. Provided by the `i6StandardLibrary` binding (§21.3.9). | both |
+| `bgl.util.*` | Utilities: `math` (§21.6.2), `random` (§21.6.3), and `buf` when `<buf>` is included (§22.2). | both |
+| `bgl.world.*` | Object-tree queries (§21.9). | both |
+| `bgl.ui.*` | `mainWin`, `statusBar` (§21.10); `screen` with `<glulxWindow>` (§22.7.2); `hideCursor`, `showCursor`, `waitForKey` with `<ui>` (§22.6). | both |
+| `bgl.printRules.*` | Text-style print rules for interpolated strings (§21.11). | both |
+| `bgl.story.*` | Story-file identity values. Provided by the `i6StandardLibrary` binding (§23.3.9). | both |
 
 Only the branch for the active target is loaded: a Glulx build loads `bgl.glulx` and the Glulx `bgl.asm`; a Z-machine build loads `bgl.zcode` and the Z-machine `bgl.asm`. Referencing a member of the other target's branch is a compile-time error.
 
@@ -106,9 +106,9 @@ int bits = bgl.wordsize * 8;             // 16 on Z-machine, 32 on Glulx
 int roll = bgl.util.random.get(6);       // 1..6
 ```
 
-**See also** §8.10, §12.6.1, §20.
+**See also** §10, §10.4, §22.
 
-## 19.4 `print()`, `log()` and Article Helpers
+## 21.4 `print()`, `log()` and Article Helpers
 
 **Syntax**
 
@@ -123,11 +123,11 @@ a( ⟨obj⟩ ) ;   cA( ⟨obj⟩ ) ;   the( ⟨obj⟩ ) ;   cThe( ⟨obj⟩ ) ; 
 
 `print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce (`<string>` replaces `print(string)`; a binding adds `print(stringOrRoutine)`). An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
 
-`print(obj)` on a value whose type derives from `_bglObject` (§19.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's short name. A class therefore customizes how its instances print by defining `void print()`.
+`print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's short name. A class therefore customizes how its instances print by defining `void print()`.
 
-The core declares `short_name` as a `string` member of `object`: the text (or routine) the article helpers and `printName()` print as the object's name. No binding redeclares it (§21.3.4).
+The core declares `short_name` as a `string` member of `object`: the text (or routine) the article helpers and `printName()` print as the object's name. No binding redeclares it (§23.3.4).
 
-`log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined (§12.2.1). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
+`log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined (§14.2.1). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
 
 The article helpers print a world-tree object with an article: `a(obj)` → "a lamp", `cA(obj)` → "A lamp", `the(obj)` → "the lamp", `cThe(obj)` → "The lamp", `printName(obj)` → "lamp" (the bare short name, no article).
 
@@ -148,11 +148,11 @@ void Main() {
 
 The article forms depend on the active IF library's article and naming conventions (for example the `proper` attribute), which the library, not the core, defines.
 
-**See also** §1.6.5, §12.2.1, §20.3.
+**See also** §1.6.5, §14.2.1, §22.3.
 
-## 19.5 IF-Domain Types
+## 21.5 IF-Domain Types
 
-### 19.5.1 `attribute` and `attributeList`
+### 21.5.1 `attribute` and `attributeList`
 
 **Syntax**
 
@@ -167,9 +167,9 @@ The `attributeList` form appears in a class or object body; the `!` is literal.
 
 **Description**
 
-`attribute` is the type of a single Inform 6 attribute (`light`, `container`, `static`, …). Attributes are usually bound with `extern attribute` by a library binding (§21.3.4); a program may also declare its own (§9.6).
+`attribute` is the type of a single Inform 6 attribute (`light`, `container`, `static`, …). Attributes are usually bound with `extern attribute` by a library binding (§23.3.4); a program may also declare its own (§11.6).
 
-`attributeList` is the type of a class's or object's `attributes` member: the set of attributes the object initially has. It takes an initializer list. A `!` prefix on an entry negates an inherited attribute, so the object starts *without* it even though its class has it. Only `=` is accepted on `attributes`; `+=` and `-=` are compile-time errors. `attributes = {…}` in an `extend` block is permitted only when the object's declaration has no `attributes` member; the list is additive relative to the class (§9.5.3).
+`attributeList` is the type of a class's or object's `attributes` member: the set of attributes the object initially has. It takes an initializer list. A `!` prefix on an entry negates an inherited attribute, so the object starts *without* it even though its class has it. Only `=` is accepted on `attributes`; `+=` and `-=` are compile-time errors. `attributes = {…}` in an `extend` block is permitted only when the object's declaration has no `attributes` member; the list is additive relative to the class (§11.5.3).
 
 At runtime an object's attributes change through `give()` and `ungive()` and are tested with `has()` and `hasnt()`; all four are defined on `object` and on `attributeList`.
 
@@ -194,9 +194,9 @@ void Main() {
 }
 ```
 
-**See also** §9.5.3, §9.6, §21.3.4.
+**See also** §11.5.3, §11.6, §23.3.4.
 
-### 19.5.2 `property`
+### 21.5.2 `property`
 
 **Syntax**
 
@@ -213,7 +213,7 @@ extern property ⟨name⟩ ;
 
 A `property` value is the property identifier, a word-sized value. It supports `=`, `==` and `!=` only; arithmetic on a property identifier is a compile-time error.
 
-The core declares one property itself: `name`, which is `additive` in the Inform 6 compiler. A program must not redeclare it. Every other additive property belongs to a library and is declared by its binding (§21.3.5).
+The core declares one property itself: `name`, which is `additive` in the Inform 6 compiler. A program must not redeclare it. Every other additive property belongs to a library and is declared by its binding (§23.3.5).
 
 **Example**
 
@@ -230,9 +230,9 @@ void Main() {
 }
 ```
 
-**See also** §9.7, §21.3.5.
+**See also** §11.7, §23.3.5.
 
-### 19.5.3 `dictionaryWord`
+### 21.5.3 `dictionaryWord`
 
 **Syntax**
 
@@ -243,7 +243,7 @@ dictionaryWord ⟨name⟩ = ..⟨word⟩ ;
 
 **Description**
 
-`dictionaryWord` is the type of an Inform 6 dictionary word. Literals are written `.word` (singular) or `..word` (plural); the literal syntax is in §1.6.7 and the use of dictionary words in grammar is in §11.4.2.
+`dictionaryWord` is the type of an Inform 6 dictionary word. Literals are written `.word` (singular) or `..word` (plural); the literal syntax is in §1.6.7 and the use of dictionary words in grammar is in §13.4.2.
 
 `print()` on a dictionary word prints the word's text. This applies to a literal, a `dictionaryWord` variable, and an element read from a `rawArray<dictionaryWord>` member alike. Dictionary words compare with `==` and `!=`.
 
@@ -257,22 +257,22 @@ void Main() {
 }
 ```
 
-**See also** §1.6.7, §11.1.
+**See also** §1.6.7, §13.1.
 
-### 19.5.4 `verb`
+### 21.5.4 `verb`
 
-`verb` is the core class from which verbs are declared; its members and the whole verb model are specified in §11.2.
+`verb` is the core class from which verbs are declared; its members and the whole verb model are specified in §13.2.
 
-### 19.5.5 Grammar Types
+### 21.5.5 Grammar Types
 
 | Type | Purpose |
 |---|---|
 | `patternElement` | The base type of one element of a grammar pattern. A pattern element is a dictionary word, a grammar token, an attribute, or a parser-hook function. |
-| `grammarToken` | An `extern enum` of the parser's token names (`noun`, `held`, `creature`, …). It is declared by the library binding, not by the core (§21.3.6). |
+| `grammarToken` | An `extern enum` of the parser's token names (`noun`, `held`, `creature`, …). It is declared by the library binding, not by the core (§23.3.6). |
 | `grammarRule` | One verb-targeted pattern with a priority: `{verb, {pattern}[, priority]}`. |
 | `grammarRuleList` | A list of grammar rules; the type of a verb's `grammar` member and of a grammar object. |
 
-These types are the receivers of the grammar operators (`=`, `+=`, `-=`, `replace … =`). Programs rarely name them; the grammar declaration syntax and its rules are in §11.4.
+These types are the receivers of the grammar operators (`=`, `+=`, `-=`, `replace … =`). Programs rarely name them; the grammar declaration syntax and its rules are in §13.4.
 
 **Example**
 
@@ -284,7 +284,7 @@ grammar extraLines {
 }
 ```
 
-### 19.5.6 `bglClass`
+### 21.5.6 `bglClass`
 
 **Syntax**
 
@@ -294,7 +294,7 @@ grammar extraLines {
 
 **Description**
 
-`bglClass` is the parameter type of `object.is()`, the runtime class test (true when `obj` is an instance of the class or of any subclass). Every registered class — declared with `class Name {…}` or `extern class Name : object {…}` — is type-compatible with `bglClass`, so any class name is accepted as the argument. In default mode the class must be declared; in loose identifier mode (§13.3.3) the name passes through unchecked.
+`bglClass` is the parameter type of `object.is()`, the runtime class test (true when `obj` is an instance of the class or of any subclass). Every registered class — declared with `class Name {…}` or `extern class Name : object {…}` — is type-compatible with `bglClass`, so any class name is accepted as the argument. In default mode the class must be declared; in loose identifier mode (§15.3.3) the name passes through unchecked.
 
 **Example**
 
@@ -308,9 +308,9 @@ void Main() {
 }
 ```
 
-**See also** §8.8, §13.3.3.
+**See also** §8.6, §15.3.3.
 
-### 19.5.7 `parentProp` and `childrenProp`
+### 21.5.7 `parentProp` and `childrenProp`
 
 **Syntax**
 
@@ -327,7 +327,7 @@ for ( object ⟨name⟩ in ⟨obj⟩.children ) ⟨statement⟩
 
 `parentProp` is the type of the `parent` member that every `object` has. Assigning to `obj.parent` *moves* the object in the world tree; reading it yields the parent object; `==` and `!=` compare against an object. The member is `typesealed`: an object body may re-initialize `parent` but not change its type (§8.2.8).
 
-`childrenProp` is the type of the `children` member: the collection of an object's direct children. It is iterable with `for … in`, reports its count with `length()` or `size()` (synonyms here: a world-tree collection has no capacity), is populated in an object body with `children = { … }`, and grows at runtime with `+=`. It is a storageless member: it has no slot of its own and reads the world tree through its owner. The placement rules are in §9.5.
+`childrenProp` is the type of the `children` member: the collection of an object's direct children. It is iterable with `for … in`, reports its count with `length()` or `size()` (synonyms here: a world-tree collection has no capacity), is populated in an object body with `children = { … }`, and grows at runtime with `+=`. It is a storageless member: it has no slot of its own and reads the world tree through its owner. The placement rules are in §11.5.
 
 **Example**
 
@@ -341,9 +341,9 @@ void Main() {
 }
 ```
 
-**See also** §9.5.
+**See also** §11.5.
 
-### 19.5.8 `_bglObject`
+### 21.5.8 `_bglObject`
 
 **Syntax**
 
@@ -355,13 +355,13 @@ class ⟨name⟩ : _bglObject { … }
 
 `_bglObject` is the root base class of the runtime: an empty `emitter class` from which `object`, the primitive wrappers (`int`, `char`, `string`, …), the IF-domain types above and the runtime's own namespace objects derive.
 
-Deriving from `_bglObject` gives a class with stored members **reference semantics**: locals and members of the type hold an identity, not a copy. `object` adds world-tree citizenship (`parent`, `children`, attributes) on top of that. A class with no base is a value class and is copied on assignment. The veneer classes `int`, `bool`, `char` and `string` (§8.2.5) also derive from `_bglObject` but have no stored members, so there is nothing to share and they behave as values. `_bglObject` is never inherited implicitly; a program names it as a base only to obtain reference semantics without the world tree — the window types of `<glulxWindow>` are an example (§20.7.1).
+Deriving from `_bglObject` gives a class with stored members **reference semantics**: locals and members of the type hold an identity, not a copy. `object` adds world-tree citizenship (`parent`, `children`, attributes) on top of that. A class with no base is a value class and is copied on assignment. The veneer classes `int`, `bool`, `char` and `string` (§8.2.5) also derive from `_bglObject` but have no stored members, so there is nothing to share and they behave as values. `_bglObject` is never inherited implicitly; a program names it as a base only to obtain reference semantics without the world tree — the window types of `<glulxWindow>` are an example (§22.7.1).
 
-`print(x)` dispatches on `_bglObject` as described in §19.4.
+`print(x)` dispatches on `_bglObject` as described in §21.4.
 
 **See also** §2.10, §8.2.
 
-### 19.5.9 `eType` and `typeof()`
+### 21.5.9 `eType` and `typeof()`
 
 **Syntax**
 
@@ -387,7 +387,7 @@ void Main() {
 
 **See also** §2.8.
 
-### 19.5.10 `stringOrRoutine`
+### 21.5.10 `stringOrRoutine`
 
 **Syntax**
 
@@ -399,7 +399,7 @@ print( ⟨value⟩ ) ;
 
 **Description**
 
-`stringOrRoutine` is the named union `string | func<void>`: a value that is either printable text or a routine to run, the classic Inform "string-or-routine" property (`description`, `cant_go`, …). It is provided by the IF library bindings, not by the core: it is in scope whenever a binding is included (§21.3.7). `isRoutine()` reports which the value currently holds. `print(x)` prints the string or runs the routine; the overload carries no library dependency.
+`stringOrRoutine` is the named union `string | func<void>`: a value that is either printable text or a routine to run, the classic Inform "string-or-routine" property (`description`, `cant_go`, …). It is provided by the IF library bindings, not by the core: it is in scope whenever a binding is included (§23.3.7). `isRoutine()` reports which the value currently holds. `print(x)` prints the string or runs the routine; the overload carries no library dependency.
 
 **Example**
 
@@ -415,11 +415,11 @@ void Main() {
 }
 ```
 
-**See also** §2.8.2, §21.3.7.
+**See also** §2.8.2, §23.3.7.
 
-## 19.6 Numeric Utilities
+## 21.6 Numeric Utilities
 
-### 19.6.1 `uint`
+### 21.6.1 `uint`
 
 **Syntax**
 
@@ -456,7 +456,7 @@ uint w = (uint)-1;    // a negative literal requires the cast
 
 **See also** §2.2, §2.4.1.
 
-### 19.6.2 `bgl.util.math`
+### 21.6.2 `bgl.util.math`
 
 **Description**
 
@@ -484,7 +484,7 @@ int c = bgl.util.math.clamp(120, 0, 100);     // → 100
 int s = bgl.util.math.sign(-7);               // → -1
 ```
 
-### 19.6.3 `bgl.util.random`
+### 21.6.3 `bgl.util.random`
 
 **Description**
 
@@ -507,7 +507,7 @@ object prize = bgl.util.random.get(coin, gem, key);
 
 > **[Z-machine/Glulx difference]** Both targets accept the same `seed(s)` calls; the underlying mechanism differs but the contract above holds on both.
 
-## 19.7 Character Utilities
+## 21.7 Character Utilities
 
 **Description**
 
@@ -534,7 +534,7 @@ char u = c.toUpper();        // → 'A'
 bool same = c =~ 'A';        // → true
 ```
 
-## 19.8 `bglAllocated`
+## 21.8 `bglAllocated`
 
 **Syntax**
 
@@ -572,7 +572,7 @@ void Main() {
 
 **See also** §4.13, §5.15, §8.2.6.
 
-## 19.9 `bgl.world`
+## 21.9 `bgl.world`
 
 **Syntax**
 
@@ -594,7 +594,7 @@ bgl.world.instances( ⟨class⟩ [ , ⟨pred⟩ ] )
 
 Each method takes an optional predicate `func<bool, object>`; only objects for which it returns true are returned. The predicate runs inside the walk, so a selective predicate is preferable to filtering the full result afterwards.
 
-Results live in a shared rotating set of four scratch buffers of 128 objects each; the buffer size is fixed and is not a setting. A result is valid until the fourth subsequent query; nested queries inside a `for (o in bgl.world.…)` loop are therefore safe to a depth of three. A result must not be stored across turns; a result that is needed later is copied into a program-declared `array<object>` (assignment copies, §20.4). A walk that would exceed 128 objects stops silently at 128.
+Results live in a shared rotating set of four scratch buffers of 128 objects each; the buffer size is fixed and is not a setting. A result is valid until the fourth subsequent query; nested queries inside a `for (o in bgl.world.…)` loop are therefore safe to a depth of three. A result must not be stored across turns; a result that is needed later is copied into a program-declared `array<object>` (assignment copies, §22.4). A walk that would exceed 128 objects stops silently at 128.
 
 **Example**
 
@@ -608,9 +608,9 @@ void Main() {
 }
 ```
 
-**See also** §4.14, §20.4, §20.5.
+**See also** §4.14, §22.4, §22.5.
 
-## 19.10 `bgl.ui`
+## 21.10 `bgl.ui`
 
 **Syntax**
 
@@ -622,7 +622,7 @@ bgl.ui.statusBar.height [ = ⟨lines⟩ ]
 
 **Description**
 
-The core defines the two root windows of the display as objects under `bgl.ui`. Their members are the same on both targets; an IF library binding replaces the members that the library itself controls (§21.3.8), and `<glulxWindow>` adds the window API to the same objects (§20.7.2).
+The core defines the two root windows of the display as objects under `bgl.ui`. Their members are the same on both targets; an IF library binding replaces the members that the library itself controls (§23.3.8), and `<glulxWindow>` adds the window API to the same objects (§22.7.2).
 
 | Member | Type | Description |
 |---|---|---|
@@ -640,9 +640,9 @@ bgl.ui.statusBar.height = 2;
 
 > **[Z-machine]** Without a binding, writing `statusBar.height` splits the upper window to that height.
 
-**See also** §20.6, §20.7, §21.3.8.
+**See also** §22.6, §22.7, §23.3.8.
 
-## 19.11 `bgl.printRules`
+## 21.11 `bgl.printRules`
 
 **Syntax**
 
@@ -663,7 +663,7 @@ $"… {bgl.printRules.img( ⟨image⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨he
 | `reverse` | Reverse video. |
 | `fixed` | Fixed-pitch text. |
 | `roman` | Return to plain text. |
-| `img(image[, align[, width[, height]]])` | Draw an image inline in the main window. **[Glulx]**, and only when `generateBlorb` is true (§15.6). `image` is an `eImages` value; `align` is an `eGlulxImageAlign` (default `inlineCenter`); a `0` dimension is computed from the other, preserving aspect ratio, and `0, 0` draws at natural size. |
+| `img(image[, align[, width[, height]]])` | Draw an image inline in the main window. **[Glulx]**, and only when `generateBlorb` is true (§17.6). `image` is an `eImages` value; `align` is an `eGlulxImageAlign` (default `inlineCenter`); a `0` dimension is computed from the other, preserving aspect ratio, and `0, 0` draws at natural size. |
 
 **Example**
 
@@ -673,13 +673,13 @@ print($"The troll {bgl.printRules.italics}hit{bgl.printRules.roman} the table.")
 print($"{bold}Warning{roman}");
 ```
 
-**See also** §1.6.5, §15.6, §20.8.
+**See also** §1.6.5, §17.6, §22.8.
 
-## 19.12 Utility Types
+## 21.12 Utility Types
 
 **Description**
 
-**`bglSize`.** A value class with `int width` and `int height` members and a copying `operator =`. It is the return type of the image-metadata calls in `<glulxImage>` (§20.8) and the argument type of the runtime's scaling helpers.
+**`bglSize`.** A value class with `int width` and `int height` members and a copying `operator =`. It is the return type of the image-metadata calls in `<glulxImage>` (§22.8) and the argument type of the runtime's scaling helpers.
 
 **Blorb asset enums.** The core declares three enums, empty unless blorb packaging is enabled, and one union over them:
 
@@ -690,18 +690,18 @@ print($"{bold}Warning{roman}");
 | `eUnknownAsset` | Data resource ids: any packaged file that is neither an image nor a sound. |
 | `eAssets` | The union `eImages \| eSounds \| eUnknownAsset`, for APIs that accept any resource. |
 
-When `generateBlorb` is true the compiler extends `eImages` and `eSounds` with one member per asset file found (§15.6.1). A value of `eImages` is the raw resource id; with `<glulxImage>` it also answers `width()`, `height()` and `size()` (§20.8).
+When `generateBlorb` is true the compiler extends `eImages` and `eSounds` with one member per asset file found (§17.6.1). A value of `eImages` is the raw resource id; with `<glulxImage>` it also answers `width()`, `height()` and `size()` (§22.8).
 
-**See also** §2.7, §2.8, §15.6.1, §20.8.
+**See also** §2.7, §2.8, §17.6.1, §22.8.
 
-## 19.13 `bgl.asm`
+## 21.13 `bgl.asm`
 
 **Description**
 
 `bgl.asm` is the namespace of direct opcode emitters for the active target. It is an alias
-(§8.10.2) for a target-specific class: on Glulx the Glulx opcode class, on the Z-machine the
+(§10.2) for a target-specific class: on Glulx the Glulx opcode class, on the Z-machine the
 Z-machine opcode class; each is available only on its own target. Members are either emitters,
-which inline the opcode at the call site, or `static superposed` functions (§3.13), which wrap a
+which inline the opcode at the call site, or `static superposed` functions (§3.12), which wrap a
 value-returning opcode in a free routine that exists only in programs that call it. Kind **E** below
 is an emitter; **S** is a `static superposed` function.
 
@@ -713,7 +713,7 @@ int n = asm.random(6);        // Glulx: @random; Z-machine: @random
 asm.streamchar('!');          // Glulx only
 ```
 
-### 19.13.1 Glulx Opcodes
+### 21.13.1 Glulx Opcodes
 
 | Member | Signature | Kind | Meaning |
 |---|---|---|---|
@@ -766,7 +766,7 @@ asm.streamchar('!');          // Glulx only
 | `accelfunc` | `void accelfunc(int idx, int addr)` | E | `@accelfunc` |
 | `accelparam` | `void accelparam(int idx, int val)` | E | `@accelparam` |
 
-### 19.13.2 Glk Calls
+### 21.13.2 Glk Calls
 
 Each of these is an emitter that performs the named Glk call; the member name is the Glk function
 name in camel case without the `glk_` prefix (`windowOpen` is `glk_window_open`). Parameters are
@@ -875,7 +875,7 @@ name in camel case without the `glk_` prefix (`windowOpen` is `glk_window_open`)
 | `garglkSetZcolors` / `garglkSetZcolorsStream` | `void garglkSetZcolors(int a, int b)` / `void garglkSetZcolorsStream(int a, int b, int c)` | `garglk_set_zcolors`, `garglk_set_zcolors_stream` |
 | `garglkSetReversevideo` / `garglkSetReversevideoStream` | `void garglkSetReversevideo(int a)` / `void garglkSetReversevideoStream(int a, int b)` | `garglk_set_reversevideo`, `garglk_set_reversevideo_stream` |
 
-### 19.13.3 Z-machine Opcodes
+### 21.13.3 Z-machine Opcodes
 
 | Member | Signature | Kind | Meaning |
 |---|---|---|---|
@@ -932,4 +932,4 @@ The following members exist only when `TARGET_ZCODE` is greater than 3 (Appendix
 | `call1n` / `call2n` | `void call1n(int routine)` / `void call2n(int routine, int a)` | E | `@call_1n`, `@call_2n` |
 | `checkUnicode` | `int checkUnicode(int ch)` | S | `@check_unicode` |
 
-**See also** §3.13; §8.10.2; §20.7.
+**See also** §3.12; §10.2; §22.7.

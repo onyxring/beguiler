@@ -1,29 +1,29 @@
-# 20 Language Extensions
+# 22 Language Extensions
 
 <!-- toc -->
-- [20.1 Overview](#201-overview)
-- [20.2 `<buf>`](#202-buf)
-- [20.3 `<string>`](#203-string)
-- [20.4 `<array>`](#204-array)
-- [20.5 `<linq>`](#205-linq)
-- [20.6 `<ui>`](#206-ui)
-- [20.7 `<glulxWindow>`](#207-glulxwindow)
-  - [20.7.1 Window Types](#2071-window-types)
-  - [20.7.2 Roots](#2072-roots)
-  - [20.7.3 Splitting](#2073-splitting)
-  - [20.7.4 Sizing and Re-arrangement](#2074-sizing-and-re-arrangement)
-  - [20.7.5 Images](#2075-images)
-  - [20.7.6 Cursor and Lifecycle](#2076-cursor-and-lifecycle)
-  - [20.7.7 Styles](#2077-styles)
-  - [20.7.8 Colors](#2078-colors)
-  - [20.7.9 Style Validation](#2079-style-validation)
-  - [20.7.10 Enums](#20710-enums)
-- [20.8 `<glulxImage>`](#208-glulximage)
+- [22.1 Overview](#221-overview)
+- [22.2 `<buf>`](#222-buf)
+- [22.3 `<string>`](#223-string)
+- [22.4 `<array>`](#224-array)
+- [22.5 `<linq>`](#225-linq)
+- [22.6 `<ui>`](#226-ui)
+- [22.7 `<glulxWindow>`](#227-glulxwindow)
+  - [22.7.1 Window Types](#2271-window-types)
+  - [22.7.2 Roots](#2272-roots)
+  - [22.7.3 Splitting](#2273-splitting)
+  - [22.7.4 Sizing and Re-arrangement](#2274-sizing-and-re-arrangement)
+  - [22.7.5 Images](#2275-images)
+  - [22.7.6 Cursor and Lifecycle](#2276-cursor-and-lifecycle)
+  - [22.7.7 Styles](#2277-styles)
+  - [22.7.8 Colors](#2278-colors)
+  - [22.7.9 Style Validation](#2279-style-validation)
+  - [22.7.10 Enums](#22710-enums)
+- [22.8 `<glulxImage>`](#228-glulximage)
 <!-- /toc -->
 
-## 20.1 Overview
+## 22.1 Overview
 
-An *extension* is a file in the `beguiLib` folder that a program enables with `#include <name>` (§12.1.1). Extensions build on the runtime core (§19) and are library-agnostic: each works with any IF library binding or with none. Nothing in an extension is available until it is included; `<array>` is the exception because the core includes it itself (§10.1).
+An *extension* is a file in the `beguiLib` folder that a program enables with `#include <name>` (§14.1.1). Extensions build on the runtime core (§21) and are library-agnostic: each works with any IF library binding or with none. Nothing in an extension is available until it is included; `<array>` is the exception because the core includes it itself (§12.1).
 
 | Extension | Include | Adds | Requires `bglInit()` | Also includes | Target |
 |---|---|---|---|---|---|
@@ -35,11 +35,11 @@ An *extension* is a file in the `beguiLib` folder that a program enables with `#
 | Glulx windows | `#include <glulxWindow>` | window types, splitting, sizing, styles, colors | no | `<glulxImage>` when `generateBlorb` is true | Glulx |
 | Glulx images | `#include <glulxImage>` | the `glulxImage` handle; `eImages` metadata | no | — | Glulx |
 
-Including an extension more than once is harmless. The names `uint`, the `char` utilities, `bgl.util.math`, `bgl.util.random`, `bglAllocated` and `bgl.world` are part of the core and need no include (§19).
+Including an extension more than once is harmless. The names `uint`, the `char` utilities, `bgl.util.math`, `bgl.util.random`, `bglAllocated` and `bgl.world` are part of the core and need no include (§21).
 
 Every entry below has the same shape: purpose, include line, what it adds, the settings it reads, and notes.
 
-## 20.2 `<buf>`
+## 22.2 `<buf>`
 
 **Purpose.** Length-tracked character buffers. With `<buf>` included, a sized `array<char>` is a *tracked buf*: it records its capacity and its current length, and the buffer operations below apply to it.
 
@@ -51,9 +51,9 @@ Every entry below has the same shape: purpose, include line, what it adds, the s
 
 **Description**
 
-A tracked buf's value behaves as a standard I6 hybrid buffer — the length word first, then the characters — so it can be passed directly to I6 library routines that expect one (`print_to_array`, `glk_put_buffer`, …). `buf[i]` reads and writes character `i` (§10.4). Length and capacity are read and written through the methods below. Writing `buf[i]` does not change the length.
+A tracked buf's value behaves as a standard I6 hybrid buffer — the length word first, then the characters — so it can be passed directly to I6 library routines that expect one (`print_to_array`, `glk_put_buffer`, …). `buf[i]` reads and writes character `i` (§12.4). Length and capacity are read and written through the methods below. Writing `buf[i]` does not change the length.
 
-An `array<char>` that is not tracked (an `extern` I6 array, or one created without the tracked layout) answers `size()` and `length()` from the buffer's length word (§10.4), and `isTracked()` returns false.
+An `array<char>` that is not tracked (an `extern` I6 array, or one created without the tracked layout) answers `size()` and `length()` from the buffer's length word (§12.4), and `isTracked()` returns false.
 
 **Methods on `array<char>`**
 
@@ -118,13 +118,13 @@ void Main() {
 
 **Notes**
 
-Requires `bglInit()`, which writes the length headers of sized tracked buffers (§19.2). `compare()` orders by character code, not by locale: on the Z-machine every uppercase letter sorts before every lowercase one; pass `caseInsensitive` for dictionary order.
+Requires `bglInit()`, which writes the length headers of sized tracked buffers (§21.2). `compare()` orders by character code, not by locale: on the Z-machine every uppercase letter sorts before every lowercase one; pass `caseInsensitive` for dictionary order.
 
 > **[Glulx]** Capture uses a Glk memory stream. `<buf>` supplies the constants it needs (`filemode_Write`, `gg_arguments`) when no IF library defines them.
 
-**See also** §10.4, §20.3.
+**See also** §12.4, §22.3.
 
-## 20.3 `<string>`
+## 22.3 `<string>`
 
 **Purpose.** Content semantics for text: comparison and ordering by content on `string`, and a second type, `stringObj`, that owns a mutable buffer.
 
@@ -207,36 +207,36 @@ void Main() {
 
 **Settings**
 
-The pool holds `bglStringPoolReserve` string objects (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Exhausting the pool is a runtime error. Each buffer holds `bglStringDefaultSize` characters (default `500`, §20.2). Both are I6 constants, set before the include:
+The pool holds `bglStringPoolReserve` string objects (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Exhausting the pool is a runtime error. Each buffer holds `bglStringDefaultSize` characters (default `500`, §22.2). Both are I6 constants, set before the include:
 
 ```bgl
 #i6 { Constant bglStringPoolReserve 64; }
 #include <string>
 ```
 
-`bglStringPoolReserve` is unrelated to `framePoolSize` (§15.4), which sizes the Z-machine local-variable overflow pool.
+`bglStringPoolReserve` is unrelated to `framePoolSize` (§17.4), which sizes the Z-machine local-variable overflow pool.
 
 **Notes**
 
-Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by a printer that accepts a literal, a `stringObj`, a buffer or a routine (which it runs). For use of `stringObj` as an array element type — the slot allocates on first write and is released when the element is dropped — see §10.10.
+Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by a printer that accepts a literal, a `stringObj`, a buffer or a routine (which it runs). For use of `stringObj` as an array element type — the slot allocates on first write and is released when the element is dropped — see §12.10.
 
-**See also** §2.2, §10.10, §19.2, §20.2.
+**See also** §2.2, §12.10, §21.2, §22.2.
 
-## 20.4 `<array>`
+## 22.4 `<array>`
 
 **Purpose.** Searching, mutation, deque and sort operations on `array<T>`, and value-semantic assignment.
 
 **Include**
 
 ```bgl
-#include <array>         // optional: the core includes it (§10.1)
+#include <array>         // optional: the core includes it (§12.1)
 ```
 
 **Description**
 
-The runtime core loads `<array>` automatically, so an explicit `#include <array>` is never required; the built-in part of the surface is subscripting, `size()` and `length()` (§10.3). `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§20.5).
+The runtime core loads `<array>` automatically, so an explicit `#include <array>` is never required; the built-in part of the surface is subscripting, `size()` and `length()` (§12.3). `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
 
-Methods that take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`: an argument of an incompatible type is a compile-time error. Where a method needs an operation of `T` — equality, ordering, assignment, release — it uses the one `T` publishes, or the plain word semantics when `T` publishes none; the contract is specified in §10.10.
+Methods that take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`: an argument of an incompatible type is a compile-time error. Where a method needs an operation of `T` — equality, ordering, assignment, release — it uses the one `T` publishes, or the plain word semantics when `T` publishes none; the contract is specified in §12.10.
 
 **Methods**
 
@@ -287,11 +287,11 @@ void Main() {
 
 **Notes**
 
-Requires `bglInit()`, which writes the length headers of sized tracked arrays (§19.2). Writing `arr[i] = v` never changes the length.
+Requires `bglInit()`, which writes the length headers of sized tracked arrays (§21.2). Writing `arr[i] = v` never changes the length.
 
-**See also** §10.3, §10.10, §20.5.
+**See also** §12.3, §12.10, §22.5.
 
-## 20.5 `<linq>`
+## 22.5 `<linq>`
 
 **Purpose.** Chainable, LINQ-style transformations on `array<T>`.
 
@@ -319,7 +319,7 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 | `any(pred)` | `bool` | True when some element satisfies `pred`; false on an empty array. |
 | `all(pred)` | `bool` | True when every element satisfies `pred`; true on an empty array. |
 
-**Chain results.** A non-terminal's result lives in a scratch buffer that the next chain reuses. Consume it in the same statement, reduce it with a terminal, or capture it by assigning it to a typed array, which copies it (§20.4). Do not return a chain result from a function whose source is a local array (§10.6).
+**Chain results.** A non-terminal's result lives in a scratch buffer that the next chain reuses. Consume it in the same statement, reduce it with a terminal, or capture it by assigning it to a typed array, which copies it (§22.4). Do not return a chain result from a function whose source is a local array (§12.6).
 
 **Nesting.** A chain may run inside another chain's predicate or mapper — `arr.filter((Room r) => r.exits.any(isOpen))` — to a depth of two (a chain inside a chain). Deeper nesting is a runtime error that ends the program.
 
@@ -338,15 +338,15 @@ void Main() {
 
 **Settings**
 
-`linqScratchSize` (§15.4, default `32`) is the capacity of each scratch buffer. A chain step whose result would exceed it is a runtime error that ends the program.
+`linqScratchSize` (§17.4, default `32`) is the capacity of each scratch buffer. A chain step whose result would exceed it is a runtime error that ends the program.
 
 **Notes**
 
 Requires `bglInit()`, which prepares the scratch buffers. `orderBy()` with no comparator orders by signed word value even when `T` publishes an ordering operator; pass `compare` for content-ordered element types such as `string`.
 
-**See also** §4.14, §10.6, §15.4, §20.4.
+**See also** §4.14, §12.6, §17.4, §22.4.
 
-## 20.6 `<ui>`
+## 22.6 `<ui>`
 
 **Purpose.** Single-key input and cursor placement, on both targets, through `bgl.ui`.
 
@@ -381,13 +381,13 @@ void Main() {
 
 Does not require `bglInit()`.
 
-> **[Glulx]** `waitForKey()` requests a character event on the status window when `statusBar.height` is positive and `statusBar.id` is a real window, otherwise on `bgl.ui.mainWin.id`; it discards other events until the key arrives. `mainWin.id` must therefore hold the main window's handle, which a binding provides (§21.3.8).
+> **[Glulx]** `waitForKey()` requests a character event on the status window when `statusBar.height` is positive and `statusBar.id` is a real window, otherwise on `bgl.ui.mainWin.id`; it discards other events until the key arrives. `mainWin.id` must therefore hold the main window's handle, which a binding provides (§23.3.8).
 
 > **[Z-machine]** `hideCursor()` switches to the upper window and positions the cursor at its last row and column; `waitForKey()` reads with the character-input opcode and then switches back.
 
-**See also** §19.10, §21.3.8.
+**See also** §21.10, §23.3.8.
 
-## 20.7 `<glulxWindow>`
+## 22.7 `<glulxWindow>`
 
 **Purpose.** Typed access to the Glk window tree: window types with compile-time subtype safety, splitting, sizing, image drawing, styles and colors.
 
@@ -401,36 +401,36 @@ Does not require `bglInit()`.
 
 **Description**
 
-Glk arranges the screen as a binary tree of windows: a window is never resized directly; instead an existing window is *split* to create a child. The extension models each window as a reference-semantic object (§19.5.8) and gives a graphics-only or grid-only operation on the wrong kind of window a compile-time error.
+Glk arranges the screen as a binary tree of windows: a window is never resized directly; instead an existing window is *split* to create a child. The extension models each window as a reference-semantic object (§21.5.8) and gives a graphics-only or grid-only operation on the wrong kind of window a compile-time error.
 
-### 20.7.1 Window Types
+### 22.7.1 Window Types
 
 **Description**
 
 | Type | Kind | Members beyond `window` |
 |---|---|---|
-| `window` | base | `id`, `width`, `height`, `close()`, the split family (§20.7.3), the move family (§20.7.4), `measureStyle()`, `styleHonored()` (§20.7.9) |
-| `textBufferWindow` | scrolling prose | `drawImage(img, align, …)` (§20.7.5), `setStyle()`, `clearStyle()` (§20.7.7) |
-| `textGridWindow` | fixed character grid | `moveCursor(col, line)` (§20.7.6), `setStyle()`, `clearStyle()` |
+| `window` | base | `id`, `width`, `height`, `close()`, the split family (§22.7.3), the move family (§22.7.4), `measureStyle()`, `styleHonored()` (§22.7.9) |
+| `textBufferWindow` | scrolling prose | `drawImage(img, align, …)` (§22.7.5), `setStyle()`, `clearStyle()` (§22.7.7) |
+| `textGridWindow` | fixed character grid | `moveCursor(col, line)` (§22.7.6), `setStyle()`, `clearStyle()` |
 | `graphicsWindow` | pixels | `drawImage(img, x, y, …)`, `setBackgroundColor(color)` |
 
 The types are also reachable as `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow` and `bgl.glulx.graphicsWindow`. Windows derive from `_bglObject`, not from `object`: they are not world-tree objects and have no `parent`, `children` or attributes.
 
 Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13).
 
-### 20.7.2 Roots
+### 22.7.2 Roots
 
-The core objects `bgl.ui.mainWin` and `bgl.ui.statusBar` (§19.10) are the roots of the tree; the extension adds the window API to those same objects.
+The core objects `bgl.ui.mainWin` and `bgl.ui.statusBar` (§21.10) are the roots of the tree; the extension adds the window API to those same objects.
 
 | Object | Window kind | Added by this extension |
 |---|---|---|
 | `bgl.ui.mainWin` | text buffer | `width`, `height`, the split family, `drawImage()`, `setStyle()`, `clearStyle()` |
-| `bgl.ui.statusBar` | text grid | `width`, the split family, `setStyle()`, `clearStyle()` (`height` is the core's, or the binding's, §21.3.8) |
-| `bgl.ui.screen` | not a window | `setStyle()`, `clearStyle()` for both text window types at once (§20.7.7) |
+| `bgl.ui.statusBar` | text grid | `width`, the split family, `setStyle()`, `clearStyle()` (`height` is the core's, or the binding's, §23.3.8) |
+| `bgl.ui.screen` | not a window | `setStyle()`, `clearStyle()` for both text window types at once (§22.7.7) |
 
 The roots are objects, not `window` instances: `close()`, the move family, `moveCursor()`, `measureStyle()` and `styleHonored()` are not available on them.
 
-### 20.7.3 Splitting
+### 22.7.3 Splitting
 
 **Syntax**
 
@@ -449,7 +449,7 @@ The kind fixes the returned type; the direction fixes its *orientation view*:
 | `Up`, `Down` | `textGridWindowHorz`, `graphicsWindowHorz` or `textBufferWindowHorz` |
 | `Left`, `Right` | `textGridWindowVert`, `graphicsWindowVert` or `textBufferWindowVert` |
 
-An orientation view is an `alias class` of the content type (§8.2.4) that hides the assignment to the axis a window of that orientation cannot resize (§20.7.4). Holding the result with `auto` keeps the view; holding it as the plain content type (`textGridWindow hud = …`) or casting to it drops to the permissive surface.
+An orientation view is an `alias class` of the content type (§8.2.4) that hides the assignment to the axis a window of that orientation cannot resize (§22.7.4). Holding the result with `auto` keeps the view; holding it as the plain content type (`textGridWindow hud = …`) or casting to it drops to the permissive surface.
 
 **Example**
 
@@ -464,7 +464,7 @@ void Main() {
 }
 ```
 
-### 20.7.4 Sizing and Re-arrangement
+### 22.7.4 Sizing and Re-arrangement
 
 **Syntax**
 
@@ -483,7 +483,7 @@ void Main() {
 `width` and `height` are readable on every window and root; reading queries the live window. Writing re-arranges the window within its parent pair. Only the axis a window was split *along* can be written — `height` for an `Up`/`Down` split, `width` for a `Left`/`Right` split — because the other dimension is dictated by the sibling window. This is enforced at two levels:
 
 - **At compile time**, when the window is held as its orientation view: a `…Horz` view hides `width.operator =`, a `…Vert` view hides `height.operator =`, and writing the hidden axis is a compile-time error.
-- **At run time**, on the permissive surface (a content-typed or `window`-typed value, or a cast): writing the fixed axis has no effect, and reports it through `log()` (§19.4).
+- **At run time**, on the permissive surface (a content-typed or `window`-typed value, or a cast): writing the fixed axis has no effect, and reports it through `log()` (§21.4).
 
 `moveUp`, `moveDown`, `moveLeft` and `moveRight` re-arrange an *existing* child window within its parent pair, changing its placement and size and, with it, which axis is subsequently writable. They are not available on the roots.
 
@@ -497,7 +497,7 @@ hud.height = 5;                      // the split axis
 bgl.ui.statusBar.height = 2;         // roots are writable on both axes
 ```
 
-### 20.7.5 Images
+### 22.7.5 Images
 
 **Syntax**
 
@@ -509,7 +509,7 @@ bgl.ui.statusBar.height = 2;         // roots are writable on both axes
 
 **Description**
 
-Image drawing needs blorb assets, so these methods exist only when `generateBlorb` is true (§15.6). ⟨img⟩ is a `var`: an `eImages` value, a `glulxImage` (§20.8) or a raw resource id. A graphics window draws at pixel position `(x, y)`; a text-buffer window (including `bgl.ui.mainWin`) draws inline with an `eGlulxImageAlign` (default `inlineCenter`). When both `width` and `height` are `0` the image is drawn at its natural size; when one is given the other is computed to preserve the aspect ratio; when both are given they are used as is.
+Image drawing needs blorb assets, so these methods exist only when `generateBlorb` is true (§17.6). ⟨img⟩ is a `var`: an `eImages` value, a `glulxImage` (§22.8) or a raw resource id. A graphics window draws at pixel position `(x, y)`; a text-buffer window (including `bgl.ui.mainWin`) draws inline with an `eGlulxImageAlign` (default `inlineCenter`). When both `width` and `height` are `0` the image is drawn at its natural size; when one is given the other is computed to preserve the aspect ratio; when both are given they are used as is.
 
 `setBackgroundColor(color)` sets a graphics window's background to an `$RRGGBB` value and clears the window to it.
 
@@ -521,7 +521,7 @@ pic.drawImage(eImages.coverArt, 0, 0, 100);       // width 100, height to match
 bgl.ui.mainWin.drawImage(eImages.icon, eGlulxImageAlign.marginLeft, 48, 48);
 ```
 
-### 20.7.6 Cursor and Lifecycle
+### 22.7.6 Cursor and Lifecycle
 
 **Description**
 
@@ -542,7 +542,7 @@ hud.moveCursor(0, 0);                       // the top-left cell
 hud.close();                                // hud and any window split from it are gone
 ```
 
-### 20.7.7 Styles
+### 22.7.7 Styles
 
 **Syntax**
 
@@ -553,9 +553,9 @@ hud.close();                                // hud and any window split from it 
 
 **Description**
 
-Glk styles are hints set per window kind and style type; a hint affects windows of that kind created *after* it is set. A style applied after a split does not affect windows already created. ⟨target⟩ is `bgl.ui.screen` (both text kinds at once), `bgl.ui.mainWin` or a `textBufferWindow` (the text-buffer kind), or `bgl.ui.statusBar` or a `textGridWindow` (the text-grid kind). ⟨styleType⟩ is an `eGlulxStyleType` (§20.7.10).
+Glk styles are hints set per window kind and style type; a hint affects windows of that kind created *after* it is set. A style applied after a split does not affect windows already created. ⟨target⟩ is `bgl.ui.screen` (both text kinds at once), `bgl.ui.mainWin` or a `textBufferWindow` (the text-buffer kind), or `bgl.ui.statusBar` or a `textGridWindow` (the text-grid kind). ⟨styleType⟩ is an `eGlulxStyleType` (§22.7.10).
 
-`style` is a value class whose members default to "leave the interpreter's setting". Build one with the named inline-object form (§9.3.1) giving only the members to change; `clearStyle()` resets every hint of that style type to the interpreter's default.
+`style` is a value class whose members default to "leave the interpreter's setting". Build one with the named inline-object form (§11.3.1) giving only the members to change; `clearStyle()` resets every hint of that style type to the interpreter's default.
 
 | `style` member | Type | Meaning |
 |---|---|---|
@@ -579,7 +579,7 @@ hud.setStyle(eGlulxStyleType.alert, style { reverse = true; foreColor = $ff0000;
 hud.clearStyle(eGlulxStyleType.alert);
 ```
 
-### 20.7.8 Colors
+### 22.7.8 Colors
 
 **Description**
 
@@ -593,7 +593,7 @@ pic.setBackgroundColor(color.rgb(20, 30, 40));
 bgl.ui.screen.setStyle(eGlulxStyleType.normal, style { foreColor = color.white; });
 ```
 
-### 20.7.9 Style Validation
+### 22.7.9 Style Validation
 
 **Description**
 
@@ -606,11 +606,11 @@ if (!hud.styleHonored(eGlulxStyleType.alert, eGlulxStyleHint.reverse)) { /* fall
 int fg = hud.measureStyle(eGlulxStyleType.normal, eGlulxStyleHint.foreColor);
 ```
 
-### 20.7.10 Enums
+### 22.7.10 Enums
 
 **Description**
 
-Provided by the Glulx core or by this extension. Each core enum is also reachable through a short alias under `bgl.glulx` (§19.3); the alias names the type, and members may be written through either name (`bgl.glulx.eWinType.textGrid` or `eGlulxWindowType.textGrid`).
+Provided by the Glulx core or by this extension. Each core enum is also reachable through a short alias under `bgl.glulx` (§21.3); the alias names the type, and members may be written through either name (`bgl.glulx.eWinType.textGrid` or `eGlulxWindowType.textGrid`).
 
 | Enum or bnum | Values | Provided by | `bgl.glulx` alias |
 |---|---|---|---|
@@ -626,9 +626,9 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 
 `styleUnset` is the `const int` returned by `measureStyle()` for an unreported hint.
 
-**See also** §8.2.4, §8.9.4, §9.3.1, §15.6, §19.10, §20.8, §21.3.8.
+**See also** §8.2.4, §8.7.4, §11.3.1, §17.6, §21.10, §22.8, §23.3.8.
 
-## 20.8 `<glulxImage>`
+## 22.8 `<glulxImage>`
 
 **Purpose.** A typed handle to a Glulx image resource that answers "how big is this picture?".
 
@@ -647,7 +647,7 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 | Member | Returns | Description |
 |---|---|---|
 | `img.width()` / `img.height()` | `int` | Natural pixel dimensions. |
-| `img.size()` | `bglSize` | Both dimensions (§19.12). |
+| `img.size()` | `bglSize` | Both dimensions (§21.12). |
 
 The same three members are added to the `eImages` enum, so `eImages.logo.width()` works without a handle.
 
@@ -667,4 +667,4 @@ void Main() {
 
 Does not require `bglInit()`. Does not require `generateBlorb`, but without packaged assets there are no images to measure.
 
-**See also** §15.6, §19.12, §20.7.
+**See also** §17.6, §21.12, §22.7.
