@@ -1,0 +1,428 @@
+# 3 Declarations, Variables and Scope
+
+<!-- toc -->
+- [3.1 Program Structure](#31-program-structure)
+- [3.2 Declaration Qualifiers](#32-declaration-qualifiers)
+- [3.3 Global Variables](#33-global-variables)
+- [3.4 Constants](#34-constants)
+- [3.5 Extern Variables](#35-extern-variables)
+- [3.6 Local Variables](#36-local-variables)
+- [3.7 References: `ref` and `:=`](#37-references-ref-and-)
+- [3.8 Identifier Resolution](#38-identifier-resolution)
+  - [3.8.1 Local Scope](#381-local-scope)
+  - [3.8.2 Class and Object Scope](#382-class-and-object-scope)
+  - [3.8.3 Global Scope](#383-global-scope)
+- [3.9 The Global-Scope Qualifier `::`](#39-the-global-scope-qualifier-)
+- [3.10 Shadowing](#310-shadowing)
+- [3.11 `#using`](#311-using)
+- [3.12 The `as` Clause](#312-the-as-clause)
+- [3.13 `superposed`](#313-superposed)
+<!-- /toc -->
+
+
+## 3.1 Program Structure
+
+A program is one or more source files. The declarations at the outermost level of a file (types,
+classes, enums, variables, functions, objects, verbs and grammar) constitute the **global scope** and
+are visible throughout the entire compilation. Declarations may appear in any order, and a name may
+be used before it is declared; see §16.3 for the pre-scan.
+
+Every program has a `Main` function as its entry point (§6.7). General-purpose libraries such as
+the Inform 6 Standard Library and PunyInform define `Main` themselves and expect a library-specific
+entry point, such as `Initialise`, instead (§21.3.1).
+
+A global name must be unique across every kind of global declaration: declaring a variable, function,
+class, object or enum with the name of an existing global of any kind is a compile-time error (§17.2).
+
+## 3.2 Declaration Qualifiers
+
+**Syntax**
+
+```syntax
+[ ⟨qualifier⟩ … ] ⟨declaration⟩
+```
+
+**Description**
+
+A declaration may be preceded by one or more qualifiers, in any order: `emitter replace void foo()`
+and `replace emitter void foo()` are equivalent. Each qualifier is specified in the chapter that owns
+the construct it modifies.
+
+| Qualifier | Meaning | See |
+|---|---|---|
+| `const` | Read-only variable or member. | §3.4 |
+| `static` | Member belongs to the type rather than to an instance. | §8.3.3 |
+| `extern` | Declared in Inform 6; registered for type-checking only, produces no output. | §13.4 |
+| `emitter` | The body is an I6 template expanded at each use. | §7.2 |
+| `extend` | Adds members to an existing class, object, enum or array. | §8.9.1, §9.10, §10.11 |
+| `alias` | Another name for an existing type or value. | §8.2.4, §8.10.2 |
+| `replace` | Replaces an already-declared function or member. | §6.5, §8.9.2 |
+| `default` | A base-class member that a derived declaration may override without warning. | §8.9.3 |
+| `explicit` | A conversion operator that fires only under a cast. | §8.6.4 |
+| `superposed` | A routine, global, object or class that is emitted only if it is used. | §3.13 |
+| `typesealed` | A member whose type a derived class may not change. | §8.2.8 |
+| `byVal` | A class whose parameters are passed by value. | §8.2.7 |
+| `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §9.3.1 |
+| `ref` | A local or member that references an instance owned elsewhere. | §3.7 |
+| `additive` | A property whose values accumulate along the class chain. | §9.7.2 |
+
+The following combinations are compile-time errors: `explicit` on anything but `operator()`; `const`
+with `static`; `static` with `emitter`; `explicit` with `const` or `static`; `alias` with `extern`;
+`alias` with `emitter`; `default` in an object or verb body.
+
+`global` is not a qualifier. A variable is global by being declared at file scope (§3.3); the compiler
+does not recognize `global` before a declaration.
+
+## 3.3 Global Variables
+
+**Syntax**
+
+```syntax
+⟨type⟩ ⟨name⟩ [ = ⟨initializer⟩ ] ;
+auto ⟨name⟩ = ⟨initializer⟩ ;
+```
+
+**Description**
+
+A variable declared at file scope is a global. The initializer must be a constant expression: a
+literal, constant arithmetic, an object or routine name, or a `#define` value. The compiler does not
+check this; a non-constant initializer is reported by the Inform 6 stage. A class-typed global whose
+type declares a parameterless `init` has its initializer applied at startup instead (§19.2). `auto`
+infers the type from the initializer (§3.6). A global name must be unique (§3.1), and a local may not
+share a name with a global (§3.10).
+
+**Example**
+
+```bgl
+bool isGood = true;
+int score = 5 + 3;
+string playerName;
+```
+
+## 3.4 Constants
+
+**Syntax**
+
+```syntax
+const ⟨type⟩ ⟨name⟩ = ⟨value⟩ ;
+extern const ⟨type⟩ ⟨name⟩ ;
+```
+
+**Description**
+
+`const` marks a variable as read-only. Assigning to it, including `++`, `--` and compound assignment,
+is a compile-time error. `extern const` declares a constant that is defined in Inform 6: it is
+registered for type-checking, produces no output, and takes no initializer.
+
+**Example**
+
+```bgl
+const int MAX_SCORE = 2;
+extern const int STUCK_PE;
+```
+
+## 3.5 Extern Variables
+
+**Syntax**
+
+```syntax
+extern ⟨type⟩ ⟨name⟩ ;
+```
+
+**Description**
+
+An `extern` variable is declared in Inform 6 and registered for type-checking only. It produces no
+output and cannot be initialized. It may be read and assigned; `extern const` (§3.4) is read-only.
+Other `extern` declarations are specified in §13.4.
+
+**Example**
+
+```bgl
+extern int score;
+extern object location;
+```
+
+## 3.6 Local Variables
+
+**Syntax**
+
+```syntax
+⟨type⟩ ⟨name⟩ [ = ⟨initializer⟩ ] ;
+auto ⟨name⟩ = ⟨initializer⟩ ;
+```
+
+**Description**
+
+A local variable is visible from its declaration to the end of the enclosing block (§5.2). `auto`
+infers the type from the initializer and requires one; `auto x;` is a compile-time error. The inferred
+type is fixed at the declaration and later assignments are checked against it. `auto` is accepted in
+local, global and member declarations.
+
+If the variable's type declares an `init` emitter, it fires immediately after the declaration and
+before the initializer is assigned (§8.5). Locals beyond the Z-machine's per-routine limit are
+spilled to the frame pool by the compiler (§16.10). Shadowing rules are in §3.10.
+
+**Example**
+
+```bgl
+class Room : object { }
+Room myRoom { }
+
+auto x = 5;          // int
+auto s = "hello";    // stringLiteral
+auto r = myRoom;     // Room, the object's class
+```
+
+## 3.7 References: `ref` and `:=`
+
+**Syntax**
+
+```syntax
+ref ⟨type⟩ ⟨name⟩ := ⟨expression⟩ ;    // local: bound at declaration
+ref ⟨type⟩ ⟨name⟩ ;                    // member: starts empty
+⟨slot⟩ := ⟨expression⟩ ;               // rebind
+```
+
+**Description**
+
+A class-typed slot is either an **owning slot** or a **reference slot**.
+
+**Owning slots.** A local or member of a class type normally owns an instance: a local's members are
+zero-initialized at routine entry, and a class-typed member is created with its host (§8.3.4). `=`
+copies into an owning slot by dispatching the type's `operator =`. A class that has stored members,
+does not inherit from `object`, and declares no `operator =` has no copy semantics, so assigning into
+a slot of that type is a compile-time error; the remedies are to declare `operator =`, mark the slot
+`ref`, or inherit from `object`. Classes derived from `object` use reference semantics, and classes
+with no stored members have nothing to copy.
+
+**Reference slots.** A slot declared `ref` owns nothing; it names an instance owned elsewhere. It is
+empty (`nothing`) until bound, so `if (!slot)` distinguishes an unbound slot from a bound one. `ref` is
+valid on local variable declarations and on class and object members; on a parameter or on an `extern`
+or `const` declaration it is a compile-time error. A member whose type is its own class must be `ref`.
+
+**Binding and assignment.** `:=` binds a reference: it stores the reference and never dispatches
+`operator =`. Both sides must be the same class, or the right side a subclass; binding an unrelated
+class or a non-instance value is a compile-time error. `:=` is not overloadable. A plain `=` on a
+bound reference assigns *through* it, dispatching `operator =` into the referent exactly as on an
+owning slot, and so requires the type to have copy semantics. Reads and member writes through a
+reference chain normally (`node.next.id`).
+
+**Declaration pairing.** A `ref` declaration binds with `:=`; `=` on a `ref` declaration is a
+compile-time error, and so is `:=` on a slot that is not `ref`.
+
+**Example**
+
+```bgl
+class Node { int id; ref Node next; }
+
+Node first;   first.id = 1;
+Node second;  second.id = 2;
+ref Node r := first;          // bind
+r.id = 9;                     // through the reference: first.id is now 9
+r := second;                  // rebind: first keeps its value
+first.next := second;         // a ref member is bound the same way
+```
+
+**Notes**
+
+A `ref` slot may be bound to a pooled-class instance created with `new`
+(`holder.slot := new pooled();`); pooled classes are specified in §8.2.6. Parameters of class type are
+passed by reference unless the class is declared `byVal` (§8.2.7).
+
+**See also** §4.13, §5.15.
+
+## 3.8 Identifier Resolution
+
+An identifier is resolved by searching three tiers in order; the first match wins and later tiers are
+not searched. An identifier that matches no tier is undeclared, a compile-time error.
+
+### 3.8.1 Local Scope
+
+1. Parameters of the enclosing function.
+2. Local variables of the current block.
+3. Local variables of enclosing blocks of the same function.
+
+### 3.8.2 Class and Object Scope
+
+Inside a method body, members of the enclosing class or object, including members inherited through
+the base chain. A bare member name resolves as `self.name`; `self` is the receiver (§6.6).
+Members declared later in the same body resolve normally.
+
+### 3.8.3 Global Scope
+
+1. Enum values, which share one flat global namespace.
+2. Global variables, constants, `extern` declarations and verb names.
+3. Members imported with `#using` (§3.11), which rank below every global.
+
+**Verb names.** A verb is an object and follows the same rules as any other identifier; a local or
+parameter with the same name as a verb takes priority.
+
+**Ambiguity.** Inside an object method body, a bare identifier that resolves at this tier and is also
+a property of the enclosing object (own or inherited) is resolved to the global candidate and the
+compiler issues a warning; `self.X` selects the property and `::X` (§3.9) the global. Inherited *methods* are
+not included in this check.
+
+**Members named after types.** A member or method may share a name with a type, including a built-in
+type keyword such as `object`; a name following `.` is unambiguously a member. Type names remain
+reserved for top-level identifiers (§1.5).
+
+## 3.9 The Global-Scope Qualifier `::`
+
+**Syntax**
+
+```syntax
+::⟨name⟩
+::⟨name⟩.⟨member⟩
+```
+
+**Description**
+
+A leading `::` resolves `⟨name⟩` at global scope, skipping §3.8.1 and §3.8.2. It is the counterpart of
+`self.name`: where `self.name` selects the member, `::name` selects the global. It is valid as an
+lvalue and as an rvalue and applies to the head of a dotted path. `::name` suppresses the ambiguity
+warning of §3.8.3. If no such global exists it is an undeclared-identifier error; it never falls back
+to a member.
+
+**Example**
+
+```bgl
+int count = 0;
+
+object tally {
+    int count = 0;
+    void bump() {
+        self.count++;       // this object's member
+        ::count++;          // the global
+    }
+}
+```
+
+## 3.10 Shadowing
+
+**Description**
+
+Local variables, parameters and `for`-loop variables are checked against the enclosing scopes.
+
+**Errors.**
+- Shadowing a global variable. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
+  and `grammarToken` are exempt: they name compile-time constants, not runtime storage.
+- Shadowing a registered type name (a class or an enum).
+
+**Warnings.**
+- Shadowing a direct member of the enclosing class or object, or a member inherited from a base
+  class; `self.name` reaches the member.
+- A lambda-local variable shadowing a capturable outer local or parameter (§4.14).
+- A member overriding a base-class member; `replace` or `default` suppresses the warning (§8.9.3).
+
+**Example**
+
+```bgl
+int score = 0;
+class Counter { int n = 0; }
+void foo() {
+    int score = 5;       // error: shadows global
+    int Counter = 0;     // error: shadows class
+}
+```
+
+## 3.11 `#using`
+
+**Description**
+
+`#using` imports the members of a class or object into the current file's scope so that they may be
+referenced without qualification; the directive itself, its file scope, what each kind of target
+contributes and how conflicting imports are resolved are specified in §12.6.1. Imported names rank
+below locals, parameters, members and globals (§3.8.3).
+
+**See also** §12.6.1, Appendix B.
+
+## 3.12 The `as` Clause
+
+**Syntax**
+
+```syntax
+⟨type⟩ ⟨name⟩ as ⟨i6 name⟩ ;
+object ⟨name⟩ as ⟨i6 name⟩ { … }
+⟨type⟩ ⟨member⟩ as ⟨i6 name⟩ ;              // class or object member
+⟨type⟩ ⟨method⟩ ( … ) as ⟨i6 name⟩ { … }
+```
+
+**Description**
+
+An `as` clause gives an instance declaration the name it has in Inform 6. The Beguile name is used
+throughout Beguile source for type-checking and resolution; the I6 name is used wherever the
+declaration reaches the output. It is valid on any typed instance declaration, on a named object
+definition (including instances of subclasses such as `room Name as place { }`), and on class and
+object members, where it follows the member name. It is ignored on operator methods; on a type
+declaration (`extern class`, `alias class`) or on a free function it is a compile-time error.
+
+`as` renames one instance for output; it is unrelated to `for` in `alias class Foo for Bar`, which
+affects type resolution (§8.2.4). The usual reason to use `as` is that the required I6 name is a
+Beguile keyword or a reserved Inform 6 word (§13.9).
+
+**Example**
+
+```bgl
+extern attribute lit as light;
+object myHook as hook { … }
+class Widget : object {
+    int count as internalCount;
+    void refresh() as _widgetRefresh { … }
+}
+```
+
+## 3.13 `superposed`
+
+**Syntax**
+
+```syntax
+superposed ⟨declaration⟩
+```
+
+**Description**
+
+`superposed` is a declaration qualifier (§3.2). A declaration qualified `superposed` is part of the
+program only if something references it; a superposed declaration that nothing names is absent from
+the story file and costs nothing. It may qualify a global function, a file-scope global variable or
+array, a whole object declaration, or a whole class declaration.
+
+- **Reference.** A declaration is **materialized**, made part of the program, the first time its name
+  is used. For a class, a use is a static instance, a subclass, `new` on a pooled class, an `is`
+  test, or any typed use. Reference matching is case-insensitive, like all Beguile identity.
+- **Transitive.** A materialized declaration's own references materialize in turn; a superposed
+  declaration may freely reference other superposed declarations.
+- **Whole declarations, plus `static` methods.** `superposed` applies to a function, global, object or
+  class. Inside a class body it applies only to a `static` method (`static superposed ⟨type⟩ ⟨name⟩(…)`),
+  which then materializes only when referenced (§8.4); on a non-`static` method it has no effect and
+  the compiler issues a warning.
+- **Rejected on** `extern`, `emitter` and `alias` classes, which have no definition to withhold, and
+  on `extend class`, where it belongs to the original declaration.
+- `superposed` may appear in any position among the qualifiers.
+
+The `omitUnusedRoutines` setting (§15.3) is complementary: `superposed` withholds a declaration that
+is never referenced, while `omitUnusedRoutines` asks the I6 compiler to drop routines that were
+emitted and remain unreferenced.
+
+**Example**
+
+```bgl
+superposed array<char> vowels = "aeiou";
+
+superposed bool charIsVowel(char c){
+    for(char v in vowels) if(v == c) rtrue;   // materializes vowels as well
+    rfalse;
+}
+
+superposed object worldHelpers {
+    array<object> getAll() { … }
+}
+extend bgl { alias world = worldHelpers; }   // bgl.world.getAll() materializes worldHelpers
+```
+
+**Notes**
+
+An `alias` value member (§8.10.2) references its target only where the alias is used, so an alias to
+a superposed object keeps the object absent until the alias is used; an `auto` member references its
+target unconditionally.
+
+**See also** §8.10.2, §15.3, §16.7 (placement of a materialized class), §16.9 (emission).
