@@ -272,14 +272,15 @@ an expression span is a compile-time error.
 
 An interpolated string has the pseudo-type `interpolatedStringLiteral` (§2.4.2), which may be passed
 only to an emitter declaring a parameter of that type; passing it to a non-emitter function is a
-compile-time error. `print()` and `log()` accept it in the core runtime (§21.4); assignment to a
-`string` requires the `<string>` extension (§22.3).
+compile-time error. `print()` and `log()` accept it in the core runtime (§21.4).
 
 **Example**
 
 ```bgl
-print($"The {obj.name} weighs {obj.weight} stone.");
-print($"Press \{enter} to continue.");     // → Press {enter} to continue.
+object lamp { string title = "brass lamp"; int weight = 2; }
+
+print($"The {lamp.title} weighs {lamp.weight} stone.");   // → The brass lamp weighs 2 stone.
+print($"Press \{enter} to continue.");                    // → Press {enter} to continue.
 ```
 
 ### 1.6.6 Character Literals
@@ -292,10 +293,10 @@ print($"Press \{enter} to continue.");     // → Press {enter} to continue.
 
 **Description**
 
-A character literal is exactly one character in single quotes. It accepts the same escapes as a string
-literal and the same directly typed Unicode characters (Appendix D). A single-quoted literal holding
-more than one character is a compile-time error; Beguile does not use I6's `'word'` spelling for
-dictionary words (§1.6.7).
+A character literal represents exactly one character and is written in single quotes. It accepts the
+same escapes as a string literal and the same directly typed Unicode characters (Appendix D), so the
+literal itself may be several characters long. A literal representing more than one character is a
+compile-time error.
 
 `\'` followed by a vowel in the acute-accent set is the acute accent (`'\'e'` is `é`); a `\'` not
 followed by such a vowel is an escaped single quote. A character literal has the pseudo-type
@@ -306,6 +307,10 @@ followed by such a vowel is an escaped single quote. A character literal has the
 ```bgl
 'a'   '\n'   '\\'   'ä'   '\:a'
 ```
+
+> **Not an I6 dictionary word.** Inform 6 writes a dictionary word in single quotes (`'sword'`).
+> Beguile does not: single quotes are the character literal, and a dictionary word is written with a
+> leading `.` (§1.6.7).
 
 ### 1.6.7 Dictionary Word Literals
 
@@ -351,8 +356,9 @@ The single-character operators and punctuation are:
 `::` immediately followed by an identifier forms one token with it, the global-scope qualifier
 `::name` (§3.9). No other construct uses `::`.
 
-Inside a class body, `[]` and `[]=` are the names of the subscript operators in an `operator`
-declaration (§9.3); elsewhere `[` and `]` are separate tokens.
+Where a subscript operator is declared on a class or object, or referred to by name, `[]` and `[]=`
+are single tokens naming it (§9.3, §4.15). Everywhere else — an array declaration, a subscript
+expression — `[` and `]` are separate tokens.
 
 The role of each operator and the section that specifies it are indexed in Appendix C.3; the
 overloadable operators are listed in §9.1 and precedence is tabulated in §4.3.
