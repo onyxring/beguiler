@@ -94,14 +94,14 @@ verb Examine {
 
 **Notes**
 
-> **Shorthand.** When the first token inside `grammar = { … }` is a dictionary-word literal, the
-> outer braces are read as the braces of a single grammar line, so the inner braces may be omitted:
-> `grammar = {.whistle, noun};` is the pretty lie for the canonical
-> `grammar = { {.whistle, noun} };`. `|`-alternation is allowed in the shorthand
-> (`grammar = {.hum|.murmur, noun};`). It applies only when one line is being declared; several lines
-> use the canonical form with one pair of braces per line. The shorthand is recognized wherever a
-> grammar line list is accepted: verb declarations, `extend` blocks (`grammar += { … }`,
-> `grammar -= { … }`, `replace grammar = { … }`), grammar objects, and extern verb bodies.
+When the first token inside `grammar = { … }` is a dictionary-word literal, the
+outer braces are read as the braces of a single grammar line, so the inner braces may be omitted:
+`grammar = {.whistle, noun};` is equivalent to
+`grammar = { {.whistle, noun} };`. `|`-alternation is allowed in this form
+(`grammar = {.hum|.murmur, noun};`). It applies only when one line is being declared; several lines
+use the full form with one pair of braces per line. The single-line form is recognized wherever a
+grammar line list is accepted: verb declarations, `extend` blocks (`grammar += { … }`,
+`grammar -= { … }`, `replace grammar = { … }`), grammar objects, and extern verb bodies.
 
 **See also** §11.2, §21.5.4.
 
@@ -190,10 +190,10 @@ native verb, and these rules apply:
 
 Extern verbs cannot be marked `meta` and cannot carry a `priority`.
 
-> **Shorthand.** When an extern verb's body begins with a dictionary-word literal, the body is read
-> as the trigger-word section of a single grammar line: `extern verb Inv { .inventory|.inv|.i }` is
-> the pretty lie for `extern verb Inv { grammar = { {.inventory|.inv|.i} }; }`. The shorthand accepts
-> trigger words only; a body with several lines or other members uses the canonical form.
+When an extern verb's body begins with a dictionary-word literal, the body is read
+as the trigger-word section of a single grammar line: `extern verb Inv { .inventory|.inv|.i }` is
+equivalent to `extern verb Inv { grammar = { {.inventory|.inv|.i} }; }`. This form accepts
+trigger words only; a body with several lines or other members uses the full form.
 
 **Example**
 

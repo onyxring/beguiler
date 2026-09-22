@@ -124,7 +124,7 @@ def splice_toc(lines, block):
 def main():
     check = '--check' in sys.argv; resolve = '--resolve' in sys.argv
     files = sorted((p for p in ROOT.glob('*.md') if CHAPTER_RE.match(p.name)),
-                   key=lambda p: (0 if p.name == '00-preface.md' else 1, p.name))
+                   key=lambda p: p.name)
     problems, index = [], {}   # index[cid] = {slug_title: number_string}
     parsed = {}
     for p in files:

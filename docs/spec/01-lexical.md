@@ -5,7 +5,7 @@
 - [1.2 Comments](#12-comments)
 - [1.3 Case-Insensitivity](#13-case-insensitivity)
 - [1.4 Identifiers](#14-identifiers)
-- [1.5 Keywords](#15-keywords)
+- [1.5 Reserved Words](#15-reserved-words)
 - [1.6 Literals](#16-literals)
   - [1.6.1 Integer Literals](#161-integer-literals)
   - [1.6.2 Float Literals](#162-float-literals)
@@ -37,7 +37,7 @@ a compile-time error.
 
 **Description**
 
-Beguile has the two C comment forms. Comments are discarded and have no effect on compilation.
+Beguile has two comment forms. Comments are discarded and have no effect on compilation.
 
 **Example**
 
@@ -59,7 +59,7 @@ IF(x == 1) Print("yes");
 If(x == 1) PRINT("yes");
 ```
 
-String literal contents are preserved exactly as written.
+Casing within string literals is preserved as written.
 
 ## 1.4 Identifiers
 
@@ -72,14 +72,8 @@ String literal contents are preserved exactly as written.
 **Description**
 
 An identifier is a sequence of letters, digits and underscores whose first character is not a digit.
-A keyword (§1.5) may not be used as a variable, function, type or object name. A member may share its
-name with a type; the rule is in §3.8.3.
-
-**Reserved prefixes.** Identifiers beginning with `_bgl` or `bgl` are reserved for language-generated
-symbols and runtime infrastructure (`bglInit`, `bglWorld`, loop counters, scratch temporaries). The
-compiler does not reject such names in user code, but if one collides with a generated symbol the
-behavior is undefined. Documented hooks and base types under the prefix (`_bglObject`,
-`_bglGlobalDeclaration`, §21.5.8, §15.8) are the exception; user code may name them.
+A reserved word (§1.5) should not be used as a name. A member may share its name with a type
+(§3.8.3).
 
 **Example**
 
@@ -87,56 +81,68 @@ behavior is undefined. Documented hooks and base types under the prefix (`_bglOb
 score   myVar   _internal   room1   velvetCloak
 ```
 
-## 1.5 Keywords
+> **Reserved prefixes.** Names beginning with `_bgl` or `bgl` are earmarked for the language and its
+> runtime: the compiler generates symbols with these prefixes (loop counters, scratch temporaries,
+> `bglInit`), and the runtime library declares its own (`bgl`, `_bglObject`,
+> `_bglGlobalDeclaration`). The compiler does not reject such a name in user code, but a name of your
+> own that coincides with one of the system's can conflict with it, and the behavior is then
+> undefined. Where the runtime exposes a prefixed name for authors to use, it is documented with the
+> feature (§15.8, §21.5.8).
 
-The following words are reserved and may not be used as variable, function, type or object names.
-Beguile is case-insensitive, so the reservation applies in any letter case. Appendix A is the single
-alphabetical table of these words, with the kind and owning section of each; this section groups the
-same words by role.
+## 1.5 Reserved Words
 
-**Declaration and qualifier keywords.** Consumed entirely by the compiler; none appears in the
-generated output.
+The words below have meaning in Beguile and should not be used as names. The compiler recognizes most
+of them only in the position where they carry that meaning, so it does not reject every use of one as a
+name; the use is nevertheless unsupported. Declaring a type with the name of a built-in type is a
+compile-time error, and a global named after a word shared with Inform 6 is rejected by the Inform 6
+stage. Beguile is case-insensitive, so all of this applies in any letter case. Appendix A lists the same
+words alphabetically, with the section that defines each.
 
-`additive` `alias` `as` `byVal` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
+**Declaration words** begin or qualify a declaration.
+
+`alias` `as` `byVal` `class` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
 `operator` `ref` `replace` `static` `superposed` `typesealed`
 
-**Type keywords and built-in type names.** Words that form or name a type. `auto`, `bnum`, `enum`,
-`func`, `var` and `void` are recognized by the compiler; the rest are declared by the runtime core but
-reserved at file scope for the same reason a user-declared type name is (§3.1).
+**Type-forming words** build a type rather than name one.
 
-`array` `attribute` `auto` `bnum` `bool` `char` `class` `dictionaryWord` `enum` `float` `func` `int`
-`object` `property` `rawArray` `string` `uint` `var` `verb` `void`
+`auto` `bnum` `enum` `func` `var` `void`
 
-The literal pseudo-types (§2.4) are likewise reserved.
+**Built-in type names** are the types the runtime core declares.
 
-**Control-flow keywords.** Each compiles to an I6 statement of the same or equivalent name.
+`array` `attribute` `bool` `char` `dictionaryWord` `float` `int` `object` `property` `rawArray`
+`string` `uint` `verb`
+
+**Literal pseudo-types** are the types of literal values.
+
+`charLiteral` `dictionaryWordLiteral` `intLiteral` `interpolatedStringLiteral` `negativeIntLiteral`
+`stringLiteral`
+
+**Statement words** begin or structure a statement.
 
 `break` `case` `catch` `continue` `delete` `do` `else` `for` `if` `in` `return` `rfalse` `rtrue`
 `switch` `throw` `to` `try` `until` `while`
 
-**Operator keywords.**
+**Expression words** introduce an expression.
 
 `new` `replaced`
 
-**Value keywords.**
+**Value words** name a fixed value or the current receiver.
 
-`false` `grammar` `nothing` `null` `self` `true`
+`false` `nothing` `null` `self` `true`
 
-`grammar` names a grammar declaration or member (§13.4) rather than a value, but is reserved in the
-same way.
+**Contextual words** have meaning in one position only and are ordinary identifiers elsewhere.
 
-**Contextual keywords.** These are recognized only in one syntactic position and are ordinary
-identifiers elsewhere: `hide` (§8.7.4), `inject`, `move` and `remove` (§12.11), `outer` (§9.9.3),
-`synonyms` (§13.5.4) and `union` (§2.8.2).
+`hide` `inject` `move` `outer` `remove` `synonyms` `union`
 
-**I6-significant words.** Of the words above, `array`, `attribute`, `class`, `false`, `grammar`,
-`nothing`, `object`, `property`, `replace`, `self`, `string`, `true` and `verb` also appear verbatim in
-the generated I6 as keywords or well-known identifiers.
+**Words shared with Inform 6** also appear verbatim in the generated Inform 6, as keywords or
+well-known identifiers, so a program that uses one as a name can produce Inform 6 that the Inform 6
+compiler rejects.
 
-`meta`, `priority`, `handler` and `perform` are not keywords; they are members of the `verb` class
-(§13.2). `typeof` is not a keyword; it is a function of the runtime core (§2.8.1). The words that
-Inform 6 reserves and Beguile does not, and the `as` clause that avoids them in generated names, are
-covered in §15.9.
+`additive` `array` `attribute` `class` `false` `nothing` `object` `property` `replace` `self` `string`
+`true` `verb`
+
+Inform 6 reserves further words that Beguile does not; §15.9 describes them and the `as` clause that
+keeps them out of generated names.
 
 ## 1.6 Literals
 
@@ -153,7 +159,7 @@ $$⟨binary digits⟩
 **Description**
 
 An integer literal is decimal, hexadecimal (prefix `$`, digits `0`–`9` `A`–`F` in either case) or
-binary (prefix `$$`, digits `0` and `1`). A negative value is formed by prefixing `-`. C-style `0x`
+binary (prefix `$$`, digits `0` and `1`). A negative value is formed by prefixing `-`. `0x`
 notation is a compile-time error.
 
 An integer literal has the pseudo-type `intLiteral`; a negated one has `negativeIntLiteral` (§2.4).
@@ -176,9 +182,8 @@ An integer literal has the pseudo-type `intLiteral`; a negated one has `negative
 
 **Description**
 
-A float literal is a decimal number containing a `.` with at least one digit after it. A `.` is part
-of the literal only when a digit follows it, so `1.method()` is an integer followed by a member access.
-A negative value is formed by prefixing `-`.
+A float literal is a decimal number containing a `.` with at least one digit after it. A negative
+value is formed by prefixing `-`. `1.` is not a float literal and is a compile-time error; write `1.0`.
 
 **Example**
 
@@ -187,6 +192,9 @@ A negative value is formed by prefixing `-`.
 ```
 
 **Notes**
+
+> **Member access on a literal.** A `.` followed by anything other than a digit is a member access, so
+> `42.someMethod()` calls a method on the integer `42` (§2.4) rather than beginning a float.
 
 > **[Glulx]** Float literals and the `float` type (§2.3) exist only when the target is Glulx.
 

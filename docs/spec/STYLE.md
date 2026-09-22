@@ -10,8 +10,8 @@ This folder is the Beguile Language Specification. Every chapter and appendix fo
 ```
 docs/spec/
   README.md            front matter + generated table of contents for the whole spec
-  00-preface.md        Preface
-  00-conventions.md    Conventions used in this specification
+  00-a-about.md        About This Specification (audience, scope, how to read, conventions)
+  00-b-introduction.md Introduction to Beguile (what it is, design goals, relationship to I6)
   01-lexical.md … 15-interop.md          Part I   The Beguile Language
   16-invoking.md … 20-outputs-debugging.md   Part II  The Beguiler Compiler
   21-runtime-core.md … 23-bindings.md        Part III The Beguile Language Runtime
@@ -45,7 +45,7 @@ genuinely empty. Chapter 14 is the reference example of the shape.
 3. **Example** — the smallest fragment (```bgl) that shows the rule. `// →` comments may show the
    resulting value or output; never the emitted I6 unless the section is *about* emission (Part II,
    Chapter 15). Emitter *bodies* are raw I6 by definition and are exempt.
-4. **Notes** — `[Z-machine]`, `[Glulx]`, `[Z-machine/Glulx difference]` markers; the **Shorthand** callout
+4. **Notes** — `[Z-machine]`, `[Glulx]`, `[Z-machine/Glulx difference]` markers; asides
    (below); limits.
 5. **See also** — `§` references to non-adjacent sections only (the chapter TOC already shows neighbours).
 
@@ -61,8 +61,10 @@ literal `[`, `]`, `|` or `<` appears in a form, the sentence under the block say
 
 ## Callouts
 
-- `> **Shorthand.** …` marks a "pretty lie": a surface form that desugars to a canonical form. State the
-  canonical form. This is the only place the term *pretty lie* is used outside the Conventions chapter.
+- `> **⟨Label⟩.** …` marks an aside: a consequence, caution or limit the reader may skip on a first
+  reading. Target markers are asides.
+- A shorter form that is equivalent to a canonical one is stated in the entry's Description as an
+  ordinary sentence ("`X` is equivalent to `Y`"); it is not labeled or called out.
 - `> **[Z-machine]** …` / `> **[Glulx]** …` for target-specific behavior.
 - No other blockquote callouts. No emoji.
 
@@ -104,4 +106,4 @@ program · source file · story file · target (Z-machine / Glulx) · directive 
 declaration · routine (I6) vs function (Beguile) · member · property (object) vs field (class) is **not**
 a distinction Beguile makes: use *member* · emitter · emitter body · substitution token · island ·
 default mode / precompiler mode · binding · BLR (Beguile Language Runtime) · extension (an opt-in
-`#include <…>` file) · pretty lie / shorthand · pooled class · veneer class · owned member.
+`#include <…>` file) · pooled class · veneer class · owned member.

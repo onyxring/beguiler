@@ -73,9 +73,9 @@ alphabetical order, depth first, and the first match wins. Matching is case-inse
 (`<String>` and `<string>` are the same include) regardless of the file system. A file that is not
 found is a compile-time error.
 
-> **Shorthand.** A folder prefix is optional: `#include <⟨name⟩>` is the pretty lie for the
-> canonical `#include <⟨folder⟩/…/⟨name⟩>` naming the folder in which the search finds `name.bgl`,
-> so `<i6StandardLibrary>` and `<bindings/i6StandardLibrary>` are the same include.
+A folder prefix is optional: `#include <⟨name⟩>` is equivalent to the
+canonical `#include <⟨folder⟩/…/⟨name⟩>` naming the folder in which the search finds `name.bgl`,
+so `<i6StandardLibrary>` and `<bindings/i6StandardLibrary>` are the same include.
 
 **Example**
 

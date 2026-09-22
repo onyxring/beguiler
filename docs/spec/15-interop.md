@@ -480,7 +480,7 @@ counter clicks {}
 
 ## 15.9 I6 Reserved Words and Name Collisions
 
-Beguile's own keywords are listed in Appendix A; those marked I6-significant reach the generated
+Beguile's own reserved words are listed in Appendix A; those marked I6-significant reach the generated
 program verbatim. Inform 6 reserves many more words that Beguile does not, and they matter in two
 situations.
 

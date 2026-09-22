@@ -80,7 +80,7 @@ reachable through the path. The two forms differ in whether a runtime member exi
 - `alias name = Target` is compile-time only: `host.name.m()` resolves to `Target.m()` and no member
   exists on the host. `Target` is referenced only where the alias is used, so paired with a
   `superposed` target (§3.12) the namespace costs nothing until it is called. `Target` may be a class;
-  `alias asm = bglOpCodes` is the shorthand for the alias-member form `emitter auto asm = bglOpCodes;`, a
+  `alias asm = bglOpCodes` is equivalent to the alias-member form `emitter auto asm = bglOpCodes;`, a
   compile-time redirect with no I6 backing.
 
 | Form | Target | Runtime member | Use |

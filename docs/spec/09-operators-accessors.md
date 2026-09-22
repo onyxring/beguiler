@@ -175,8 +175,8 @@ class heightProxy {
 
 **Notes**
 
-> **Shorthand.** `emitter T operator ();` (semicolon, no body) is the pass-through conversion; it is
-> equivalent to `emitter T operator () { $val }`.
+`emitter T operator ();` (semicolon, no body) is the pass-through conversion; it is
+equivalent to `emitter T operator () { $val }`.
 
 ## 9.5 Special Operators
 
@@ -273,9 +273,9 @@ n += 2;         // → n = n + 2;  when n's type declares no operator +=
 
 **Notes**
 
-> **Shorthand.** `n op= v` on a type that declares no `operator op=` is equivalent to `n = n op v`;
-> `n++` and `n--` on a type that declares no increment operator are equivalent to `n = n + 1` and
-> `n = n - 1`.
+`n op= v` on a type that declares no `operator op=` is equivalent to `n = n op v`;
+`n++` and `n--` on a type that declares no increment operator are equivalent to `n = n + 1` and
+`n = n - 1`.
 
 **See also** §5.6 — the compound-assignment statement; §5.7 — increment and decrement.
 
@@ -388,8 +388,8 @@ int n = gadget.level;       // n → 12
 
 **Notes**
 
-> **Shorthand.** `auto level = { int _raw = 0; int operator (){ … } void operator = (int v){ … } }`
-> is equivalent to declaring a hidden class with that body and writing `HiddenClass level;`.
+`auto level = { int _raw = 0; int operator (){ … } void operator = (int v){ … } }`
+is equivalent to declaring a hidden class with that body and writing `HiddenClass level;`.
 
 ### 9.9.3 `outer`
 

@@ -107,8 +107,8 @@ lamp.parent = library;
 corresponding compound operator; if it does not and the type is known (not `var`), it is a
 compile-time error. The BLR defines all of them for `int` (§2.2) and `uint` (§21.6.1).
 
-> **Shorthand.** `n += 2` is equivalent to `n = n + 2` when the type declares no `operator +=`; the
-> fallback is specified in §9.7.
+`n += 2` is equivalent to `n = n + 2` when the type declares no `operator +=`; the
+fallback is specified in §9.7.
 
 **Example**
 
@@ -155,8 +155,8 @@ if (⟨condition⟩) { … } else if (⟨condition⟩) { … } else { … }
 
 The body may be a single statement or a block. `else` is optional.
 
-> **Shorthand.** `else if (⟨condition⟩) { … }` is equivalent to `else { if (⟨condition⟩) { … } }`:
-> an `else if` chain is an `if` nested in the `else`.
+`else if (⟨condition⟩) { … }` is equivalent to `else { if (⟨condition⟩) { … } }`:
+an `else if` chain is an `if` nested in the `else`.
 
 **Example**
 
@@ -360,11 +360,11 @@ type-checked against the declared return type. In a `void` function `return expr
 error unless `expr` is itself of type `void`. In loose mode (`#bgl` islands and precompiler mode,
 §15.3.3) an expression of type `var` is also accepted there.
 
-> **Shorthand.** In a `void` function, `return expr;` where `expr` is of type `void` is equivalent to
-> `expr; return;`.
+In a `void` function, `return expr;` where `expr` is of type `void` is equivalent to
+`expr; return;`.
 
-> **Shorthand.** In a function whose return type is `bool`, `rtrue;` is equivalent to `return true;`
-> and `rfalse;` to `return false;`.
+In a function whose return type is `bool`, `rtrue;` is equivalent to `return true;`
+and `rfalse;` to `return false;`.
 
 `rtrue(expr)` and `rfalse(expr)` print `expr`, with full `print()` overload dispatch including `$"…"`
 strings (§21.4), and then return.

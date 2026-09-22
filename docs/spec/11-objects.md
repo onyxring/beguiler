@@ -88,7 +88,7 @@ object dog : object, Animal, Robot {   // object listed explicitly: dog is a wor
 
 **Notes**
 
-> **Shorthand.** `ClassName Name { … }` is equivalent to `object Name : ClassName { … }`.
+`ClassName Name { … }` is equivalent to `object Name : ClassName { … }`.
 
 **See also** §11.4 — members and type inference; §11.11 — `extern object`.
 
@@ -186,8 +186,8 @@ rule fallback = { Look, any, lookBody };
 
 **Notes**
 
-> **Shorthand.** `Type name = { … };` is equivalent to the named object declaration
-> `Type name { … }`.
+`Type name = { … };` is equivalent to the named object declaration
+`Type name { … }`.
 
 ### 11.3.3 Inline Objects as Arguments
 

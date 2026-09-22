@@ -54,7 +54,6 @@ section with the full treatment.
 - **pseudo-type** — The compile-time type of a literal (`intLiteral`, `stringLiteral`, …), inferred by the compiler and never written by the author; it takes part in overload and operator resolution separately from the runtime type it corresponds to. See §2.4.
 - **resolved type** — The static type the compiler assigns to an expression, which drives operator resolution, type checking and emitter dispatch. See §4.1.
 - **routine** — An I6 callable. A Beguile **function** compiles to a routine. See §6.1.
-- **shorthand** — A surface form that desugars to a canonical form at parse time, flagged in this specification by the **Shorthand** callout; the Conventions chapter calls it a *pretty lie*. See the Conventions chapter.
 - **size vs. length** — For a Beguile array, `size()` is the capacity reserved at compile time; `length()` is the runtime count of in-use elements. See §12.3.
 - **source file** — A file the compiler reads: a `.bgl` file, or an `.inf` file in precompiler mode. See §3.1, §15.1.
 - **statement** — An executable unit inside a function body, ending in `;` or a `{ }` block. See §5.1.

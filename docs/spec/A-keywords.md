@@ -1,18 +1,18 @@
-# Appendix A Keywords
+# Appendix A Reserved Words
 
-This is the single table of Beguile's reserved words; §1.5 groups the same words by role. A reserved
-word may not be used as the name of a variable, function, type, member or object. Beguile is
-case-insensitive, so the reservation applies in any letter case. Words marked *soft* are reserved only
-in the position shown and are otherwise usable as identifiers.
+This is the alphabetical table of Beguile's reserved words, with the section that defines each; §1.5
+groups the same words by role and explains why they should not be used as names. Beguile is
+case-insensitive, so this applies in any letter case. Words marked *soft* have meaning only in the
+position shown and are otherwise ordinary identifiers.
 
 Kinds: **qualifier** (declaration qualifier), **type** (type name or type-forming word),
 **control** (statement or control-flow word), **operator** (operator word), **value** (a value or
 receiver name), **I6** (I6-significant: the word also appears verbatim in the generated program, so
-reusing it as a name would produce invalid I6).
+reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 
-| Keyword | Kind | Section |
+| Word | Kind | Section |
 |---|---|---|
-| `additive` | qualifier | §11.7.2 |
+| `additive` | qualifier, I6 | §11.7.2 |
 | `alias` | qualifier | §8.2.4, §10.2 |
 | `array` | type, I6 | §12.2 |
 | `as` | qualifier (I6 name clause) | §3.11 |
@@ -25,12 +25,14 @@ reusing it as a name would produce invalid I6).
 | `case` | control | §5.12 |
 | `catch` | control | §5.16 |
 | `char` | type | §2.2 |
-| `class` | type, I6 | §8.1 |
+| `charLiteral` | type | §2.4 |
+| `class` | qualifier, I6 | §8.1 |
 | `const` | qualifier | §3.4 |
 | `continue` | control | §5.13 |
 | `default` | qualifier; control (`switch`) | §5.12, §8.7.3, §15.4.1 |
 | `delete` | control | §5.15 |
 | `dictionaryWord` | type | §13.1, §21.5.3 |
+| `dictionaryWordLiteral` | type | §2.4 |
 | `do` | control | §5.11 |
 | `else` | control | §5.8 |
 | `emitter` | qualifier | §7.2 |
@@ -42,14 +44,16 @@ reusing it as a name would produce invalid I6).
 | `float` | type | §2.3 |
 | `for` | control | §5.9 |
 | `func` | type | §2.9 |
-| `grammar` | value, I6 (grammar declaration or member) | §13.4 |
 | `hide` | qualifier (soft: at the head of a member declaration) | §8.7.4 |
 | `if` | control | §5.8 |
 | `in` | control (`for … in`) | §5.9.1 |
 | `inject` | control (soft: inside `extend` of an array) | §12.11 |
 | `inline` | qualifier | §8.3.5, §11.3.1 |
 | `int` | type | §2.2 |
+| `interpolatedStringLiteral` | type | §2.4 |
+| `intLiteral` | type | §2.4 |
 | `move` | control (soft: inside `extend` of an array) | §12.11 |
+| `negativeIntLiteral` | type | §2.4 |
 | `new` | operator | §4.13 |
 | `nothing` | value, I6 | §2.5 |
 | `null` | value | §2.5 |
@@ -68,6 +72,7 @@ reusing it as a name would produce invalid I6).
 | `self` | value, I6 | §6.6 |
 | `static` | qualifier | §8.3.3 |
 | `string` | type, I6 | §2.2 |
+| `stringLiteral` | type | §2.4 |
 | `superposed` | qualifier | §3.12 |
 | `switch` | control | §5.12 |
 | `synonyms` | qualifier (soft: inside a verb body or `extend` of a verb) | §13.5.4 |
@@ -84,10 +89,9 @@ reusing it as a name would produce invalid I6).
 | `void` | type | §2.2, §6.2 |
 | `while` | control | §5.10 |
 
-The following identifiers are not keywords, although they carry meaning: `meta` and `priority` are
-members of the `verb` class, and `handler` and `perform` are its methods (§13.2); `typeof` is a
-function of the runtime core (§2.8.1); the literal pseudo-types (`intLiteral`, `stringLiteral`, …) are
-core type names (§2.4); `create` and `destroy` are the lifecycle methods of a pooled class (§8.2.6)
+The following identifiers are not reserved, although they carry meaning: `grammar`, `meta` and
+`priority` are members of the `verb` class, and `handler` and `perform` are its methods (§13.2);
+`typeof` is a function of the runtime core (§2.8.1); `create` and `destroy` are the lifecycle methods of a pooled class (§8.2.6)
 and `init` and `deinit` the lifecycle emitters of any class (§8.5); `first`, `last`, `after` and
 `before` are the positions of an array `inject` (§12.11); `reverse` and `withI6Synonyms` are the
 pseudo-tokens that may end a grammar line (§13.4.4). The keyword `for` is reused, outside a loop, in

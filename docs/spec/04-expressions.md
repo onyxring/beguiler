@@ -315,9 +315,9 @@ passed as an argument, or stored in a collection (`func<>` is specified in §2.9
 inferred: from the expression of a `return expr;` in the body, or `void` if the body has no `return`.
 A lambda in argument position is passed by reference, like a named `func<>` value.
 
-> **Shorthand.** The expression-bodied form `(⟨params⟩) => ⟨expr⟩` is equivalent to
-> `(⟨params⟩) => { return ⟨expr⟩; }`; the return type is inferred from the expression. In both forms
-> every parameter is typed; `x => …` is not a lambda.
+The expression-bodied form `(⟨params⟩) => ⟨expr⟩` is equivalent to
+`(⟨params⟩) => { return ⟨expr⟩; }`; the return type is inferred from the expression. In both forms
+every parameter is typed; `x => …` is not a lambda.
 
 **Capture.** A lambda body may use locals and parameters of the enclosing function, wherever in that
 function the lambda appears, including inside loop and `if` bodies. Each captured variable's value is
