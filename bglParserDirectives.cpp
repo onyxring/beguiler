@@ -854,6 +854,7 @@ bool bglParser::directiveI6SingleLine(token t, statementBlock* body, const sourc
     node->text = t.value;
     char c = file.readChar();
     while(c != '\n' && c != EOF){ node->text += c; c = file.readChar(); }
+    node->text = resolveIslandTokens(node->text, currentFunc, body);
     installI6Node(node, body, i6DirLoc);
     return false;
 }
@@ -892,7 +893,8 @@ bool bglParser::directiveI6Block(statementBlock* body, abstractObject& contextOb
         // by the emitter to anchor per-source-line entries in the source map, so I6
         // diagnostics inside the raw block remap accurately to the .bgl line.
         sourceLocation segStart = file.currentLocation();
-        string segment = file.getRawTextUntilCloseOrBgl(directive, depth, depth);
+        string segment = resolveIslandTokens(file.getRawTextUntilCloseOrBgl(directive, depth, depth),
+                                             currentFunc, body);
         if(body != nullptr){
             if(!segment.empty()){
                 i6RawNode* node = new i6RawNode();

@@ -866,7 +866,14 @@ class bglParser {
         // Replace every `$i6Expr(<beguile expression>)` with the I6 that expression emits. The
         // expression is parsed and type-checked with the body's tokens bound as typed values, so
         // overload resolution and the callee's own `##if` gating apply as at any other use site.
-        string substituteI6Exprs(const string& body, const emitterBindings& b);
+        // `func`/`enclosing` are supplied when the text is an #i6 island inside a routine, so the
+        // payload can name that routine's locals; emitter bodies pass neither, since an emitter's
+        // only visible names are its own tokens.
+        string substituteI6Exprs(const string& body, const emitterBindings& b,
+                                 functionDef* func = nullptr, statementBlock* enclosing = nullptr);
+        // Resolve `$i6Name(...)` / `$i6Expr(...)` in a raw-I6 island (§15.2). An island has no
+        // receiver and no parameters, so these two are the only tokens it can carry.
+        string resolveIslandTokens(const string& raw, functionDef* func, statementBlock* enclosing);
         // Emitter bodies currently being expanded, outermost first. A body reached twice is a cycle;
         // a chain past kMaxEmitterDepth is a runaway. Both are errors rather than a stack overflow.
         vector<const i6Block*> emitterExpansionChain;

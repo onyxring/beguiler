@@ -248,7 +248,8 @@ emitter int  scale(int a, int b)  { $i6Name(Money.scale(int, int))($a, $b) }
 > mangling gains a parameter-type discriminator as soon as a second overload of that name is
 > declared, so a spelling that is correct today is silently wrong after an unrelated edit elsewhere.
 
-**See also** §3.11 (`as`), §7.3.1 (`$opref`, the same lookup for operators), §4.15.
+**See also** §3.11 (`as`), §7.3.1 (`$opref`, the same lookup for operators), §4.15, §15.2
+(the same token in an `#i6` island).
 
 ### 7.3.4 `$i6Expr`
 
@@ -308,7 +309,8 @@ class Counter : object {
 }
 ```
 
-**See also** §7.3.3 (`$i6Name`, for a name where no expression is legal), §3.12 (`superposed`), §7.4.
+**See also** §7.3.3 (`$i6Name`, for a name where no expression is legal), §3.12 (`superposed`),
+§7.4, §15.2 (the same token in an `#i6` island).
 
 ## 7.4 Conditional Text: `##if`, `##else`, `##endif`
 

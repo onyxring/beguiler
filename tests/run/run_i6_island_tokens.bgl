@@ -1,0 +1,53 @@
+/*  run_i6_island_tokens — `$i6Name` and `$i6Expr` resolve inside `#i6` islands (§15.2).
+
+    An island is raw I6 exactly as an emitter body is, and wants the same two escapes: name a
+    Beguile declaration whose emitted identifier the author should not have to know, or inline one
+    Beguile expression. Before this they passed through verbatim and reached Inform as literal
+    `$i6Name(...)` text.
+
+    `#bgl` remains the way to run Beguile STATEMENTS in an island; these two are for the much
+    smaller jobs, and unlike `#bgl` they work in the single-line `#i6` form too.
+
+    Inside a routine the payload resolves against that routine's own scope, so it can name Beguile
+    LOCALS — `q` and `r` below are locals of main().
+
+    I6 spells hex and binary literals with `$`, so the last island checks that `$ff` and `$$…` are
+    left alone: only the exact `$i6Name(`/`$i6Expr(` forms are claimed.
+
+    (Comments inside the islands use `!`, I6's comment character — `//` is not one, and in the
+    single-line form it would be carried into the emitted I6 and rejected there.)  */
+// EXPECT_OUTPUT: single=6 name=7 expr=12 obj=9 hex=255
+#beguilerSettings { target = z5; informName = "none"; }
+
+int bump(int a){ return a + 1; }
+object beacon { int wattage; }
+
+void main(){
+    int q = 5;
+    int r;
+
+    #i6 r = $i6Expr(bump(q));
+    print("single="); print(r);
+
+    #i6 {
+        r = $i6Name(bump)(r);        ! name form: the emitted routine name
+    }
+    print(" name="); print(r);
+
+    #i6 {
+        r = $i6Expr(bgl.asm.add(r, q));   ! expression form, over two locals
+    }
+    print(" expr="); print(r);
+
+    beacon.wattage = 9;
+    print(" obj=");
+    #i6 {
+        print $i6Name(beacon).wattage;   ! name form on an OBJECT, then a raw I6 property read
+    }
+
+    #i6 {
+        r = $ff;                     ! untouched: I6 hex literal
+        if(r ~= $$11111111) r = 0;   ! untouched: I6 binary literal
+    }
+    print(" hex="); print(r);
+}

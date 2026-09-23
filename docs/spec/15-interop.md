@@ -128,10 +128,21 @@ rules of the outermost Beguile island that contains it (§15.3.3).
 
 **Description**
 
-Injects raw I6 at the directive's source position in the generated program. The body is not parsed,
-type-checked or modified: the compiler tracks only braces, string literals (`"…"`) and word or
-character literals (`'…'`), far enough to find the closing brace of the block form. The single-line
-form takes everything to the end of the line.
+Injects raw I6 at the directive's source position in the generated program. The body is not parsed
+or type-checked: the compiler tracks only braces, string literals (`"…"`) and word or character
+literals (`'…'`), far enough to find the closing brace of the block form. The single-line form takes
+everything to the end of the line.
+
+Two substitution tokens are recognized in the body, the same two an emitter body uses to reach a
+Beguile declaration: `$i6Name(⟨path⟩)` (§7.3.3) for the identifier Inform 6 knows a declaration by,
+and `$i6Expr(⟨expression⟩)` (§7.3.4) for the I6 a Beguile expression emits. An island has no
+receiver and no parameters, so no other `$` token means anything in one; inside a routine the
+payload of `$i6Expr` resolves against that routine's scope and may name its locals. Everything else
+passes through untouched, including I6's own `$` hexadecimal and `$$` binary literals — only the
+exact `$i6Name(` and `$i6Expr(` forms are claimed.
+
+Those two cover naming a declaration and inlining one expression. To run Beguile *statements* in an
+island, use `#bgl` (§15.3.1), which is also the only one of the three that needs the block form.
 
 An I6 island is placed in source order relative to the surrounding declarations; the ordering
 guarantees around classes and instances are in §18.7.
@@ -145,9 +156,18 @@ guarantees around classes and instances are in §18.7.
     [ MyRoutine x; print "hello ", x, "^"; ];
     Object foo "Foo Object" with description "An item.";
 }
+
+void tick(){
+    int n = 5;
+    #i6 n = $i6Expr(bump(n));            ! one expression, over a Beguile local
+    #i6 {
+        n = $i6Name(bump)(n);            ! the routine's emitted name
+        if(n > $ff) n = 0;               ! `$ff` is an I6 hex literal, left alone
+    }
+}
 ```
 
-**See also** §14.5.1, §18.7.
+**See also** §7.3.3, §7.3.4, §15.3.1 (`#bgl`), §14.5.1, §18.7.
 
 ## 15.3 Beguile Islands
 

@@ -1524,7 +1524,8 @@ string bglParser::resolveI6Name(const string& spec){
 // Mechanism: each bound token is rewritten to a unique placeholder identifier declared, at its
 // Beguile type, in a synthetic scope handed to parseExpression. The parse therefore sees a
 // well-typed expression; the placeholders are swapped back for the bound I6 text afterwards.
-string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b){
+string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b,
+                                    functionDef* func, statementBlock* enclosing){
     string out = body;
     size_t at = 0;
     while((at = findTokenCI(out, "$i6Expr", at)) != string::npos){
@@ -1598,7 +1599,11 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
         try {
             file.bleedSpaces();
             token first = file.getToken();
-            expression* e = parseExpression(first, {";"}, nullptr, scope);
+            // Placeholders live in `scope`; with none (an island) fall through to the enclosing
+            // routine's own scope so the payload can name its locals.
+            expression* e = scope->statements.empty() && enclosing != nullptr
+                          ? parseExpression(first, {";"}, func, enclosing)
+                          : parseExpression(first, {";"}, func, scope);
             emitted = e != nullptr ? e->text() : "";
         } catch(...) {
             file.close();
@@ -1613,6 +1618,16 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
         at += emitted.size();
     }
     return out;
+}
+
+// Resolve the two Beguile-reaching tokens inside a raw-I6 island (§15.2). An island is raw text
+// exactly as an emitter body is, and wants the same two escapes — but it has no receiver and no
+// parameters, so nothing else is bound. `#bgl` remains the way to run Beguile STATEMENTS in an
+// island; these two are for naming a declaration and for inlining one expression.
+string bglParser::resolveIslandTokens(const string& raw, functionDef* func, statementBlock* enclosing){
+    if(raw.find('$') == string::npos) return raw;      // the common case: no token, no work
+    emitterBindings none;
+    return substituteI6Names(substituteI6Exprs(raw, none, func, enclosing));
 }
 
 // Replace every `$i6Name(...)` in an emitter body. Parenthesis-aware, so an overload signature

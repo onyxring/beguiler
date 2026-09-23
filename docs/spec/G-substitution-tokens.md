@@ -3,7 +3,8 @@
 ## G.1 Token Reference
 
 Every `$` token is replaced when an emitter body is substituted at a use site; every `##` form is
-processed at the same time. Anything else in an emitter body, including single-hash `#` directives
+processed at the same time. `$i6Name` and `$i6Expr` are also recognized in an `#i6` island (§15.2),
+where they are the only tokens that mean anything — an island has no receiver and no parameters. Anything else in an emitter body, including single-hash `#` directives
 and unrecognized `##name` text, passes through to the output unchanged. Full rules: §7.3 and §7.4.
 
 | Token | Meaning | See |
