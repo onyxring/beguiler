@@ -1110,6 +1110,15 @@ void bglParser::preScanObject(token& tok, bool isExtern){
         if(auto* cls = languageService.findClass(classType))
             isVerbType = checkVerb(cls);
     }
+    // Optional `as <i6name>` (§3.11) directly after the name. Consume it before deciding between
+    // the body and bodiless forms, so the decision sees the real next token — left in place, `as`
+    // matched neither arm, the declaration fell through to the bodiless path, and the skip there
+    // ran past this object's body into the NEXT declaration. Consuming it here rather than
+    // widening the test below keeps `object Name as alias;` on the bodiless path where it belongs.
+    if(file.peekToken().is("as")){
+        file.getToken();   // 'as'
+        file.getToken();   // the I6 name
+    }
     token peek = file.peekToken();
     if(peek.is(token::braceOpen) || peek.is(":")){ // object body
         objectDef* objStub = nullptr;
@@ -1342,6 +1351,15 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
     if(sym.is(":")){
         file.getToken(); // class name
         sym = file.getToken(); // should be '{'
+    }
+    // Optional `as <i6name>` (§3.11), after the class when both are present. The pre-scan has no
+    // use for the alias itself — the main pass records it — but it must step over the clause.
+    // Otherwise the token here is the identifier `as`, no branch below matches, and the trailing
+    // skip-to-semicolon runs straight through this declaration's body and swallows the NEXT
+    // declaration's registration, so a class after `object X as Y { }` was never registered.
+    if(sym.is("as")){
+        file.getToken();        // the I6 name
+        sym = file.getToken();  // now the real '{' or ';'
     }
 
     if(sym.is(token::parenOpen)){

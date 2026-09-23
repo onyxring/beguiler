@@ -1751,7 +1751,9 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             out << sep << "\n";
         }
         else if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
-            out << format("    {0}", vd->dName());
+            // `as <i6name>` (§3.11) renames the emitted property. The declaration has to honour it
+            // or it names the property one thing while every access site names it another.
+            out << format("    {0}", vd->i6name.empty() ? vd->dName() : vd->i6name);
             // Inherited array<T> members reassigned in a subclass body (`name = {...}`)
             // produce a variableDeclaration (not arrayDeclaration) carrying an
             // initializerList in declaredExpressionValue. expression::text() returns

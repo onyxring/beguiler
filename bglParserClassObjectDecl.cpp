@@ -283,7 +283,7 @@ void bglParser::parseOperatorMemberName(token& tok, token& name){
 
 // Parse one method member of a class body; `tok` is the '(' opening its parameter list.
 // Returns true when the member is fully handled and the member loop should move to the next.
-bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExternal, bool isExtend){
+bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExternal, bool isExtend, const string& i6alias){
     bool isReplace = q.isReplace;
     bool isExplicitConversion = q.isExplicit;
     bool isMemberStatic = q.isStatic;
@@ -312,6 +312,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
     if(isExplicitConversion && funcDef.name != "operator()")
         parsingError("'explicit' is only valid on conversion operators (operator())");
     processParameterList(funcDef);
+    consumeMethodI6Alias(funcDef);      // `Type method(...) as <i6name> { … }` (§3.11)
     // Synthesize per-(class, method, param) backing globals for byVal-class params.
     // Same machinery as the top-level call from processRoutineDeclaration; pass the
     // enclosing class name as context so backings on same-named methods across
@@ -505,7 +506,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
 
 // Parse one variable (or emitter-class alias) member of a class body; `tok` is the '=' or ';'
 // following the member name. Returns true when the member is fully handled.
-bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend){
+bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias){
     bool isReplace = q.isReplace;
     bool isMemberConst = q.isConst;
     bool isMemberStatic = q.isStatic;
@@ -551,6 +552,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     variableDeclaration& varDef=*(new variableDeclaration());
     varDef.name=(string) name;
     varDef.displayName = name.originalValue;
+    varDef.i6name = i6alias;        // `Type member as <i6name>;` — empty leaves the Beguile name
     varDef.src = name.src.line > 0 ? name.src : file.currentLocation();
     varDef.type=languageService.getType((string) returnType);
     if(((string)returnType).rfind("func<", 0) == 0) varDef.type.name = (string)returnType;  // keep parameterized func type
@@ -771,15 +773,24 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
         returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type
         name=file.getToken({eTokenType::identifier, eTokenType::dataType});
     }
+    string memberI6Alias;
     if(name.is("operator")){
         isOperator=true;
         parseOperatorMemberName(tok, name);
     } else {
+        // Optional `as <i6name>` (§3.11) after the member name, the same position and meaning it
+        // has on an object member. Without this the token here is the identifier `as`, which is
+        // neither a symbol nor an operator, and the member was rejected outright.
+        if(file.peekToken().is("as")){
+            file.getToken();   // 'as'
+            token aliasTok = file.getToken(eTokenType::identifier);
+            memberI6Alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
+        }
         tok=file.getToken({eTokenType::symbol, eTokenType::oper});
     }
 
     if(tok.is(token::parenOpen))  { //this is a function
-        if(parseClassMethodMember(newClass, tok, name, returnType, q, isEmitter, isExternal, isExtend)) return;
+        if(parseClassMethodMember(newClass, tok, name, returnType, q, isEmitter, isExternal, isExtend, memberI6Alias)) return;
     }
     else if(tok.is(token::braceOpen) && isEmitter && !isOperator){
         // Emitter value in class body: emitter Type name { body }
@@ -799,7 +810,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
     }
     else{
         if(isOperator==true) parsingError("Operators must be functions.");
-        if(parseClassVariableMember(newClass, tok, name, returnType, q, isEmitter, isExtend)) return;
+        if(parseClassVariableMember(newClass, tok, name, returnType, q, isEmitter, isExtend, memberI6Alias)) return;
     }
     tok=file.getToken();
 }
@@ -1278,6 +1289,21 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
 }
 
 
+void bglParser::consumeMethodI6Alias(functionDef& funcDef){
+    if(!file.peekToken().is("as")) return;
+    file.getToken();                                   // 'as'
+    token aliasTok = file.getToken(eTokenType::identifier);
+    // §3.11: the clause is ignored on operator methods, whose i6name is assigned by the
+    // operator/overload mangler — a manual alias there would fight it. Still consumed, so the
+    // declaration parses either way. An operator is stored under its bare symbol (`==`, not
+    // `operator==`), so test the same shape the mangler does rather than a name prefix.
+    bool isOperatorMethod = !funcDef.name.empty()
+        && (funcDef.name == "operator()" || funcDef.name.rfind("operator", 0) == 0
+            || (!isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_'));
+    if(!isOperatorMethod)
+        funcDef.i6name = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
+}
+
 void bglParser::processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace, string i6alias){
     functionDef& funcDef = *(new functionDef());
     funcDef.name = (string)name;
@@ -1289,6 +1315,7 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
     funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
     funcDef.returnType = languageService.getType((string)returnType);
     processParameterList(funcDef);
+    consumeMethodI6Alias(funcDef);      // `Type method(...) as <i6name> { … }` (§3.11)
     file.getToken(token::braceOpen);
     funcDef.body = new statementBlock();
     functionDef* savedFunc = currentFunc;

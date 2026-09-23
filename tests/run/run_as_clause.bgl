@@ -1,0 +1,47 @@
+/*  run_as_clause — the `as` clause (§3.11) on every declaration form it is specified for.
+
+    Three conformance gaps this pins, all of which used to be parse errors or silent mismatches:
+
+      - `object X as Y { }` WITH a body: the PRE-SCANNER had no notion of `as`, so the token after
+        the name matched no branch, the skip-to-semicolon ran past this object's body, and the NEXT
+        declaration was never registered. A class after such an object failed to parse entirely.
+      - `as` on a class MEMBER: rejected outright ("Expected symbol, or operator"). Object members
+        already worked, so the two member paths disagreed.
+      - `as` on a METHOD (class or object): rejected. The clause sits AFTER the parameter list here,
+        not after the name.
+
+    The member case also needed the emitter side: the class DIRECTIVE declared the property under
+    its Beguile name while every access site used the alias, which I6 rejects. This tier runs the
+    program, so a declaration/access mismatch shows up as a real failure rather than a text diff.
+
+    The operator below carries an `as` too, because §3.11 says the clause is IGNORED there — the
+    i6name belongs to the overload mangler. That it emits as `_opeqeq` and not `_bogus` is pinned by
+    the emission baseline in test_as_clause.bgl; this tier only needs it to parse and not disturb
+    the rest. (Dispatching `w == 6` to the operator does not currently happen for a class-typed
+    global — it emits a raw I6 address comparison — which is a separate, pre-existing defect and is
+    deliberately not asserted here.)  */
+// EXPECT_OUTPUT: count=6 refreshed=1 pinged=1
+#beguilerSettings { target = z5; informName = "none"; }
+
+object myHook as hook { }          // object + as + BODY, immediately before a class
+class Widget : object {            // …this class is what used to vanish from the pre-scan
+    int count as internalCount;    // as on a class member
+    int touched;
+    void refresh() as _widgetRefresh { count = count + 1; touched = 1; }   // as on a class method
+    bool operator == (int o) as _bogus { return count == o; }              // ignored on operators
+}
+object plain {                                   // as on an OBJECT method
+    int seen;
+    void ping() as _plainPing { seen = 1; }
+}
+
+Widget w;
+
+void main(){
+    w.count = 5;
+    w.refresh();
+    print("count=");     print(w.count);                  print(" ");
+    print("refreshed="); print(w.touched);
+    plain.ping();
+    print(" pinged=");   print(plain.seen);
+}

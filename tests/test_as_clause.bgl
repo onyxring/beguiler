@@ -1,0 +1,24 @@
+/*  test_as_clause — emission side of the `as` clause (§3.11).
+
+    The run/ tier proves the aliases behave; this one pins the NAMES in the output, which is where
+    the bugs actually lived: the class directive used to declare a member under its Beguile name
+    while every access site used the alias (I6 then rejects the access), and `as` on an operator
+    must be IGNORED — the i6name belongs to the overload mangler, so `_opeqeq` must survive and
+    `_bogus` must appear nowhere.  */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+object myHook as hook { }
+class Widget : object {
+    int count as internalCount;
+    void refresh() as _widgetRefresh { count = count + 1; }
+    bool operator == (int o) as _bogus { return count == o; }
+}
+object plain { void ping() as _plainPing { } }
+Widget w;
+
+void main(){
+    w.count = 5;
+    w.refresh();
+    plain.ping();
+    print(w.count);
+}

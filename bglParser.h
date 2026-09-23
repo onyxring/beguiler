@@ -343,9 +343,9 @@ class bglParser {
         // Decode an `operator ...` member name into `name`; leaves `tok` on the symbol that follows it.
         void parseOperatorMemberName(token& tok, token& name);
         // Parse one method member of a class body (`tok` is its '('); true = member fully handled.
-        bool parseClassMethodMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExternal, bool isExtend);
+        bool parseClassMethodMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExternal, bool isExtend, const string& i6alias = "");
         // Parse one variable/alias member of a class body (`tok` is its '=' or ';'); true = handled.
-        bool parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend);
+        bool parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias = "");
         // Parse one member of a class body; on return `tok` is the next member's first token (or '}').
         void parseClassMember(classDef& newClass, token& tok, bool isExternal, bool isExtend);
         // Parse one member of an `extern object` body; on return `tok` is the next member's first token.
@@ -511,6 +511,9 @@ class bglParser {
                                 abstractObject* ctx = nullptr, Qualifiers* q = nullptr, bool declIsRaw = false);
         void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false, bool isRef = false);
         void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false, string i6alias = "");
+        // Consume an optional `as <i6name>` sitting after a method's parameter list (§3.11) and
+        // record it on the method. Ignored on operators, whose i6name the overload mangler owns.
+        void consumeMethodI6Alias(functionDef& funcDef);
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "", bool isRef = false);
         void processInheritedMember(objectDef& obj, token nameTok);
         bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members
