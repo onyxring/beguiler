@@ -418,18 +418,28 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         size_t rhsIdx = opFn->isStatic ? 1 : 0;   // static takes (lhs, rhs); instance takes (rhs)
         if(opFn->params.size() <= rhsIdx) return false;
         const string& paramT = opFn->params[rhsIdx]->type.name;
-        bool exact = (rhsType.empty() || rhsType == "var" || paramT == rhsType || paramT == "var");
+        // A `var` parameter accepts anything, so it is the UNIVERSAL fallback and has to lose to
+        // any more specific overload — most importantly, an inherited one has to lose to the
+        // subclass's own. `object` declares `emitter eBool operator == (var)`, so while `var`
+        // counted as an exact match a class deriving from `object` could never override `==`:
+        // `class W : object { bool operator ==(int) }` had its own operator beaten by the
+        // inherited universal one, and `w == 6` emitted a raw address comparison instead.
+        // A genuinely untyped RHS still matches in mode 0 — there is nothing more specific to
+        // prefer in that case.
+        bool rhsUnknown = rhsType.empty() || rhsType == "var";
+        bool exact = rhsUnknown || paramT == rhsType;
         if(widenMode == 0) return exact;
         if(exact) return false;                          // exact already claimed in mode 0
         string base = literalBase(rhsType);
-        if(base.empty()) return false;
-        if(widenMode == 1) return paramT == base;        // prefer the exact literal-base overload
-        return paramT != base && isTypeCompatible(base, paramT);   // mode 2: convertible only
+        if(widenMode == 1) return !base.empty() && paramT == base;   // prefer the literal-base overload
+        if(widenMode == 2) return !base.empty() && paramT != base    // convertible only
+                               && isTypeCompatible(base, paramT);
+        return paramT == "var";                          // mode 3: the universal accepter, last
     };
     // Exact first, then base-exact widen, then convertible widen — so every resolution that already
     // worked resolves identically (exact always wins), and among widen candidates the more specific
     // one wins. Within each phase, non-static wins: an instance operator inlines, a static costs a call.
-    for(int widenMode : {0, 1, 2}){
+    for(int widenMode : {0, 1, 2, 3}){
         if(matchedOp != nullptr) break;
         for(bool wantStatic : {false, true}){
             if(matchedOp != nullptr) break;

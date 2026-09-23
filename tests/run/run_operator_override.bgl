@@ -1,0 +1,46 @@
+/*  run_operator_override — a subclass's own operator must beat the inherited universal one.
+
+    `object` declares `emitter eBool operator == (var v)` (_object.bgl:21), and a `var` parameter
+    accepts anything. Operator resolution counted `paramT == "var"` as an EXACT match, so that
+    inherited operator won in the first resolution pass and a class deriving from `object` could
+    never override `==`: `w == 6` emitted a raw I6 address comparison instead of dispatching, for
+    every declaration form (instance, emitter, static) and every receiver kind (global, local,
+    object instance). No diagnostic — it silently compared the object's address to 6.
+
+    `var` is now the last resort it should always have been: exact type, then literal-base, then
+    convertible, then `var`. The inherited `operator ==(object)` must still win for an OBJECT
+    right-hand side, which is what keeps identity comparison working — so this test pins both
+    directions, and runs the program so a wrong dispatch shows up as a wrong answer.  */
+// EXPECT_OUTPUT: inst=Y instN=N emit=Y stat=Y ident=Y identN=N
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Counter : object {
+    int count;
+    bool operator == (int o) { return count == o; }      // instance, non-emitter
+}
+class Gauge : object {
+    int level;
+    emitter bool operator == (int o) { ($self.level == $o) }   // emitter
+}
+class Meter : object {
+    int reading;
+    static bool operator == (Meter m, int v) { return m.reading == v; }   // static
+}
+class Plain : object { int unused; }                     // no own ==; inherits object's
+
+Counter c;
+Gauge   g;
+Meter   m;
+Plain   p1;
+Plain   p2;
+
+void main(){
+    c.count = 6;  g.level = 7;  m.reading = 8;
+    print("inst=");   if(c == 6) print("Y"); else print("N");
+    print(" instN="); if(c == 5) print("Y"); else print("N");   // same operator, false branch
+    print(" emit=");  if(g == 7) print("Y"); else print("N");
+    print(" stat=");  if(m == 8) print("Y"); else print("N");
+    // Inherited operator ==(object) still governs an OBJECT right-hand side.
+    print(" ident="); if(p1 == p1) print("Y"); else print("N");
+    print(" identN="); if(p1 == p2) print("Y"); else print("N");
+}
