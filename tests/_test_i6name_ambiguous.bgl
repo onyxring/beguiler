@@ -1,0 +1,12 @@
+/* Two statics of one name: the reference is ambiguous and must be reported, because the emitted
+   mangling differs per overload (_bgl_Money_scale_int vs _bgl_Money_scale_int_int). Picking one
+   silently would bind the body to whichever happened to be declared first. */
+// EXPECT_ERROR: is ambiguous between
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Money {
+    int cents;
+    static int scale(int a, int b){ return a * b; }
+    static int scale(int a){ return a * 2; }
+}
+emitter int bad(int v){ $i6Name(Money.scale)($v) }
+void main(){ print(bad(5)); }

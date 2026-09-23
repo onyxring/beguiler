@@ -1,0 +1,8 @@
+/* $i6Expr resolves its payload against the emitter's OWN parameters and receiver. A token that
+   names neither cannot be substituted, and leaving it would reach I6 as a literal `$name` with
+   nothing pointing back at the cause. */
+// EXPECT_ERROR: is not bound at this use site
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+emitter int twice(int v){ ($v * 2) }
+emitter int bad(int v){ $i6Expr(twice($nope)) }
+void main(){ print(bad(1)); }

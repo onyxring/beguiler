@@ -3049,18 +3049,10 @@ json LspServer::handleCompletion(const json& params) {
     if(json r = completeIncludePathsDir(uri, line, col, lineText, insideBsBlock, handled); handled) return r;
     if(json r = completeEnumArgument(uri, line, col, lineText, docText, handled); handled) return r;
 
-    // Suppress completion inside string literals — the user is typing prose.
-    auto isInsideStringLiteral = [&]() -> bool {
-        int limit = col;
-        if(limit > (int)lineText.size()) limit = (int)lineText.size();
-        bool inStr = false;
-        for(int i = 0; i < limit; i++) {
-            char c = lineText[i];
-            if(c == '"' && (i == 0 || lineText[i-1] != '\\')) inStr = !inStr;
-        }
-        return inStr;
-    };
-    if(isInsideStringLiteral()) return nullptr;
+    // Suppress completion inside string/char literals and comments — the user is typing prose.
+    // Scanned from the top of the file (multi-line strings/comments carry state across lines);
+    // a position inside an interpolated string's {expr} slot is real code and isn't suppressed.
+    if(isInStringOrComment(uri, line, col)) return nullptr;
 
     if(json r = completeAngleInclude(line, col, lineText, handled); handled) return r;
     if(json r = completeClassHeader(col, lineText, handled); handled) return r;
@@ -4182,6 +4174,150 @@ bool LspServer::scanInterpString(const SemanticScope& scope,
         i++;
     }
     if(i > segStart) emit(lineNum, (int)segStart, (int)(i - segStart), stString);
+    return false;
+}
+
+bool LspServer::isInStringOrComment(const string& uri, int line, int col) {
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return false;
+    const string& docText = docIt->second;
+
+    // Same carryover state as handleSemanticTokensFull's tokenizer, but instead of emitting
+    // full token classification we only record string/char/comment spans on the target line
+    // and check whether `col` falls inside one. Reuses scanInterpString (with an empty scope —
+    // {expr} identifier resolution doesn't matter for this query, only span boundaries do) so
+    // interpolated-string literal segments and comment/string carveouts stay in lockstep with
+    // the real tokenizer.
+    struct Span { int start, end; };
+    vector<Span> literalSpans;
+    SemanticScope emptyScope;
+    std::function<void(int,int,int,int)> record = [&](int ln, int start, int len, int tokenType) {
+        if(ln != line || (tokenType != stString && tokenType != stComment)) return;
+        literalSpans.push_back({start, start + len});
+    };
+
+    istringstream stream(docText);
+    string lineText;
+    int lineNum = 0;
+    bool inBlockComment = false;
+    bool inString = false;
+    bool inInterpolatedString = false;
+
+    while(getline(stream, lineText)) {
+        bool isTargetLine = (lineNum == line);
+        size_t i = 0;
+
+        if(inBlockComment) {
+            size_t close = lineText.find("*/");
+            int len = (close == string::npos) ? (int)lineText.size() : (int)close + 2;
+            if(len > 0) record(lineNum, 0, len, stComment);
+            if(close == string::npos) {
+                if(isTargetLine) break;
+                lineNum++; continue;
+            }
+            inBlockComment = false;
+            i = close + 2;
+        } else if(inInterpolatedString) {
+            size_t j = 0;
+            bool closed = scanInterpString(emptyScope, record, lineText, j, lineNum, 0);
+            if(!closed) {
+                if(isTargetLine) break;
+                lineNum++; continue;
+            }
+            inInterpolatedString = false;
+            i = j;
+        } else if(inString) {
+            size_t j = 0;
+            while(j < lineText.size() && lineText[j] != '"') {
+                if(lineText[j] == '\\' && j + 1 < lineText.size()) j++;
+                j++;
+            }
+            int len = (j < lineText.size()) ? (int)j + 1 : (int)lineText.size();
+            if(len > 0) record(lineNum, 0, len, stString);
+            if(j >= lineText.size()) {
+                if(isTargetLine) break;
+                lineNum++; continue;
+            }
+            inString = false;
+            i = j + 1;
+        }
+
+        while(i < lineText.size()) {
+            char c = lineText[i];
+            if(isspace((unsigned char)c)) { i++; continue; }
+
+            if(c == '/' && i + 1 < lineText.size() && lineText[i+1] == '/') {
+                record(lineNum, (int)i, (int)(lineText.size() - i), stComment);
+                break;
+            }
+            if(c == '/' && i + 1 < lineText.size() && lineText[i+1] == '*') {
+                size_t start = i;
+                size_t close = lineText.find("*/", i + 2);
+                if(close == string::npos) {
+                    record(lineNum, (int)start, (int)(lineText.size() - start), stComment);
+                    inBlockComment = true;
+                    break;
+                }
+                record(lineNum, (int)start, (int)(close + 2 - start), stComment);
+                i = close + 2;
+                continue;
+            }
+            if(c == '$' && i + 1 < lineText.size() && lineText[i+1] == '"') {
+                size_t segStart = i;
+                i += 2;
+                bool closed = scanInterpString(emptyScope, record, lineText, i, lineNum, segStart);
+                if(!closed) { inInterpolatedString = true; break; }
+                continue;
+            }
+            if(c == '"') {
+                size_t start = i;
+                i++;
+                while(i < lineText.size() && lineText[i] != '"') {
+                    if(lineText[i] == '\\' && i + 1 < lineText.size()) i++;
+                    i++;
+                }
+                if(i < lineText.size()) i++;
+                else inString = true;
+                record(lineNum, (int)start, (int)(i - start), stString);
+                continue;
+            }
+            if(c == '\'') {
+                size_t start = i;
+                i++;
+                while(i < lineText.size() && lineText[i] != '\'') {
+                    if(lineText[i] == '\\' && i + 1 < lineText.size()) i++;
+                    i++;
+                }
+                if(i < lineText.size()) i++;
+                record(lineNum, (int)start, (int)(i - start), stString);
+                continue;
+            }
+            if(isalnum((unsigned char)c) || c == '_') {
+                i++;
+                while(i < lineText.size() && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i++;
+                continue;
+            }
+            i++;
+        }
+        lineNum++;
+        if(isTargetLine) break;
+    }
+
+    // A completion position is a CURSOR between characters, not a character index. A span
+    // that runs to end-of-line (continuation line of a multi-line "..."/$"...", an unclosed
+    // /*, or a // comment) must suppress the cursor sitting AT that end-of-line too — the
+    // author has just typed "...lamp." and the caret is past the last character, still inside
+    // the literal. A span that CLOSES mid-line (a complete "...", 'c', or a /*...*/ that ends
+    // on this line) must NOT suppress the cursor just past its closing character — that's real
+    // code (e.g. `print("done")‸;`). `lineText` still holds the target line's content here
+    // (the scan loop only breaks within the target line's own iteration), so a span's end
+    // coinciding with the line's length is exactly the "runs to end-of-line" case.
+    int lineLen = (int)lineText.size();
+    for(auto& sp : literalSpans) {
+        bool touchesEOL = (sp.end == lineLen);
+        if(touchesEOL) { if(col >= sp.start && col <= sp.end) return true; }
+        else           { if(col >= sp.start && col <  sp.end) return true; }
+    }
     return false;
 }
 

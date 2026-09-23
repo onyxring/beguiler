@@ -2525,12 +2525,9 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
 
                 if(printFn != nullptr && printFn->isEmitter){
                     if(auto* blk = dynamic_cast<i6Block*>(printFn->body)){
-                        string b = parser.processBglConditionals(blk->i6Body);
-                        b = replaceWord(b, "$self", exprStr);
-                        b = replaceWord(b, "$val",  exprStr);
-                        size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
-                        size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
-                        out << indent << b << ";\n";
+                        emitterBindings pb; pb.self = exprStr; pb.val = exprStr;
+                        pb.trim = emitterTrim::wsSemi;
+                        out << indent << parser.expandEmitterBody(blk, pb) << ";\n";
                         continue;
                     }
                 }

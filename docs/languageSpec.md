@@ -232,7 +232,6 @@
   - 14.4.12 Emitters vs. Regular Functions
   - 14.4.13 Emitter Bodies as Raw I6
 - 14.5 `#i6` - I6 Islands (Inline Raw I6)
-  - 14.5.1 `#i6replace` - hoisted I6 `Replace` directive
 - 14.6 `#bgl` - In-Routine Beguile Islands
 - 14.7 Precompiler Mode - File-Scope Beguile Islands
   - 14.7.1 The three Beguile island directives
@@ -3488,6 +3487,40 @@ replace int step(int n){
 
 A compile-time warning is reported if no matching function exists to replace; the definition is treated as a new function.
 
+#### Replacing an `extern` (I6 library) routine
+
+`replace` works the same way when the function being replaced is declared `extern` — an I6 library
+routine such as `Banner` or `DrawStatusLine`. The difference is invisible in the source and lies
+entirely in emission:
+
+- A **Beguile** predecessor simply isn't emitted, so nothing else is needed.
+- An **`extern`** predecessor belongs to I6 and cannot be dropped, so the compiler emits I6's own
+  `Replace` directive to hand the name over. It is hoisted above every include, so it always
+  precedes the library that defines the routine.
+
+```bgl
+extern void Banner();                  // declared by bindings/i6StandardLibrary
+
+replace void Banner(){                 // emits:  Replace Banner;
+    print("my banner");
+}
+
+replace void Banner(){                 // emits:  Replace Banner _bgl_replaced_Banner_0;
+    print("before ");
+    replaced();                        // the I6 library's original, kept under the saved name
+    print(" after");
+}
+```
+
+The one- or two-operand form is chosen automatically: the two-operand (rename-the-original) form is
+emitted only when the body actually calls `replaced()`, matching the dead-code rule above.
+
+> **I6 permits only one `Replace` per routine.** If a library already replaces the routine you are
+> targeting — orLibrary's hook headers do this for several standard routines — I6 reports
+> *"A routine cannot be 'Replace'd to more than one new name"*. That is a property of the I6 side,
+> not of `replace`. Disable the other replacement, or override through that library's own hook
+> mechanism instead.
+
 ## 7.5 Extern Variables
 
 `extern` variables are declared in I6 and used by Beguile for type-checking only. They produce no I6 output and cannot be initialized.
@@ -6218,26 +6251,6 @@ Two forms:
 The block contents are emitted **verbatim**; Beguile does not parse, type-check, or modify them. The compiler tracks `{}`, string literals (`"..."`), and dictionary-word/character literals (`'...'`) only well enough to find the closing `}` of the multi-line form; everything else is opaque.
 
 `#i6` blocks are emitted in their source-order position relative to other declarations (see §14.8 for ordering guarantees around classes and instances).
-
-### 14.5.1 `#i6replace` - hoisted I6 `Replace` directive
-
-I6's `Replace routine [savedName];` tells the compiler to discard the *first* definition of `routine` it encounters (typically the library's) and use a later one instead. It only works if it appears **before** the library that first defines the routine; placement is order-sensitive and easy to get wrong.
-
-The `#i6replace` directive makes this safe: it emits a `Replace` directive but **hoists it to the top of the generated output** (the emit-first position, above all includes and definitions), so the replacement always takes effect no matter where you write the directive.
-
-```bgl
-#i6replace GameEpilogue;              // emits:  Replace GameEpilogue;
-#i6replace DrawStatusLine _oldStatus; // emits:  Replace DrawStatusLine _oldStatus;
-
-// ...define your own GameEpilogue later, in Beguile or in an #i6 block...
-void GameEpilogue() { /* ... */ }
-```
-
-- The routine name is emitted as written.
-- The optional second name is I6's rename-the-original form: the replaced library routine remains callable under `savedName`.
-- Prefer `#i6replace X;` over a bare `#i6 replace X;`; however, the latter lands verbatim at its source position and only works if it happens to precede the relevant `#includeI6`.
-
-> Note: `#i6replace` is hoisted to the top of the output like `#emitfirst` (§3.5.6), and is skipped in precompiler mode when a `.inf` file has no Beguile islands (the no-island pass-through). In that situation the author owns the I6 stream directly and can write `Replace` by hand.
 
 ## 14.6 `#bgl` - In-Routine Beguile Islands
 

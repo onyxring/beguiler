@@ -50,7 +50,7 @@ extern attribute door;          // is a door between locations
 extern attribute absent;        // object is currently out of scope
 
 // NOTE: the Inform library's object properties (description, capacity, door_to, when_open,
-// before/after, …; see inform6/lib/linklpa.h) are intentionally NOT declared here as members
+// before/after, …; see inform6/stdlib/linklpa.h) are intentionally NOT declared here as members
 // of the base `object`. Doing so would let *any* object read *any* of them regardless of
 // whether it actually defines them — the opposite of the property-membership discipline.
 // Declare each property on the specific class/object that provides it. `short_name` is the
@@ -506,6 +506,60 @@ extern default int  InitGlkWindow(var rock);                  // Glulx: window s
 // object's person/tense. The verb-form params (v1/v2/v3/past) are string-or-0 (0 = "reuse v1"), so
 // they're `var`.
 extern void CSubjectVerb(object obj, bool reportage, bool nocaps, var v1, var v2, var v3, var past);
+
+// Version text the library's own Banner prints: "Inform v", " Library v", and the library's
+// release (english.h / version.h). `inversion` is an I6 STATEMENT that prints the compiler version
+// and has no expression form, so it is bound as an emitter — usable in interpolated text the same
+// way bgl.printRules styles are: print($"{informV}{informVersion}{libraryV}{libRelease}").
+extern string INFORMV__TX;
+extern string LIBRARYV__TX;
+extern string LibRelease;
+emitter void informVersion { inversion; }
+
+// bgl.story — the story file's own identity fields, read from the header. The addresses and the
+// read opcodes both differ per target, and the Z-machine release lives in the low 10 bits only;
+// keeping that split here means a game's banner reads the same on either target.
+superposed _bglObject _bglStory {
+    auto release = {
+        int operator(){
+        #if TARGET_GLULX
+            return bgl.asm.aloads(ROM_GAMERELEASE, 0);
+        #else
+            return bgl.asm.loadw(HDR_GAMERELEASE, 0) & $03ff;
+        #endif
+        }
+    }
+    // The serial is six ASCII characters in the header, not a string — print it rather than
+    // allocating. `i` is the 0-5 index.
+    char serialChar(int i){
+    #if TARGET_GLULX
+        return (char)bgl.asm.aloadb(ROM_GAMESERIAL, i);
+    #else
+        return (char)bgl.asm.loadb(HDR_GAMESERIAL, i);
+    #endif
+    }
+    void printSerial(){
+        int i = 0;
+        for(i = 0; i < 6; i++) print(self.serialChar(i));
+    }
+}
+extend bgl { alias story = _bglStory; }
+
+// Story identity. The `#emitfirst` block below emits these as I6 constants from
+// #beguilerSettings; declaring them here lets Beguile code read them (e.g. a replacement Banner).
+extern string story;
+extern string headline;
+
+// Header fields carrying the release number and the six-character serial. The addresses differ per
+// target (parser.h): Z-machine keeps them at $02/$12, Glulx at $34/$36. Read with bgl.asm.loadw /
+// loadb on Z-code, bgl.asm.aloads / aloadb on Glulx.
+#if TARGET_GLULX
+extern int ROM_GAMERELEASE;
+extern int ROM_GAMESERIAL;
+#else
+extern int HDR_GAMERELEASE;
+extern int HDR_GAMESERIAL;
+#endif
 
 // Hoisted via #emitfirst so the constants appear ABOVE the user's
 // #includeI6 "parser" directive — the I6 standard library reads Story/Headline

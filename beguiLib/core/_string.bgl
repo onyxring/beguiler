@@ -13,6 +13,12 @@ extern emitter class stringLiteral:_bglObject{
     emitter eBool operator == (string v)        { $val == $v }
     emitter eBool operator != (stringLiteral v) { $val ~= $v }
     emitter eBool operator != (string v)        { $val ~= $v }
+
+    // `s == null` / `s != null`. Kept as the raw I6 address test and NOT replaced by
+    // <string>'s content comparison: there is no content to compare against null, and
+    // areEqual would walk a null pointer.
+    emitter eBool operator == (object v)        { $val == $v }
+    emitter eBool operator != (object v)        { $val ~= $v }
 }       
 
 extern emitter class interpolatedStringLiteral:_bglObject{} //interpolatedStrings are smoke and mirrors.  All functionality is implemented by the compiler. NOTE: _bglObject no longer carries print(), so there's no inherited member to worry about here; add a `replace emitter void print()` only if `@"{actor} was here".print();` should become a thing (as it is for other literals).
@@ -29,6 +35,11 @@ extern emitter class string : _bglObject{
     emitter eBool operator == (stringLiteral v) { $val == $v }
     emitter eBool operator != (string v)        { $val ~= $v }
     emitter eBool operator != (stringLiteral v) { $val ~= $v }
+
+    // `s == null` / `s != null`. See the note on stringLiteral — address test, and
+    // deliberately left alone by <string>'s content-comparison replacements.
+    emitter eBool operator == (object v)        { $val == $v }
+    emitter eBool operator != (object v)        { $val ~= $v }
 }
 
 emitter void print(string str){ print (string)$str; }

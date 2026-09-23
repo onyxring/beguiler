@@ -12,26 +12,85 @@
 //-----------------------------------------------------------------------------
 #once
 
+#if TARGET_GLULX
+// Two-word scratch: glk writes [0]=width, [1]=height.
+array<int> _bglKeyWinSize[2];
+#endif
+
 extend _bglUi {
-    char waitForKey(){
+
+    // Park the text caret out of the prose, ahead of a key read.
+    //
+    // The targets need opposite moves because they bind the caret differently:
+    //   Glulx  - glk draws it on the window the char request NAMES, and a text-grid window draws it
+    //            at that window's own cursor. So this positions the status grid's cursor and hands
+    //            back the window the caller must request input on.
+    //   Z-code - @read_char draws at the CURRENT window's cursor, so this switches to the upper
+    //            window. The caller must call showCursor() once the key has been read.
+    //
+    // Returns the window to request char input on (Glulx), or 0 when there is no usable status
+    // window and the caller should fall back to the main window.
+    int hideCursor(){
+    #if TARGET_GLULX
+        // `id` is 0 unless a library binding maps it to a real grid window (core's own _bglStatus
+        // tracks its window privately), so both must hold before redirecting the request.
+        if(bgl.ui.statusBar.height <= 0 || bgl.ui.statusBar.id == 0) return 0;
+
+        int win = bgl.ui.statusBar.id;
+        bgl.asm.windowGetSize(win, ((int)_bglKeyWinSize) + bgl.wordsize, ((int)_bglKeyWinSize) + (2 * bgl.wordsize));
+        bgl.asm.windowMoveCursor(win, _bglKeyWinSize[0] - 1, _bglKeyWinSize[1] - 1);
+        return win;
+    #else
+        int h = bgl.ui.statusBar.height;
+        int w = bgl.asm.loadb(0, $21);   // header byte $21 - screen width in characters
+        if(h <= 0 || w <= 0) return 0;
+
+        bgl.asm.setWindow(1);            // @set_cursor only addresses the upper window
+        bgl.asm.setCursor(h, w);         // 1-based: last row, last column
+        return 0;
+    #endif
+    }
+
+    // Undo hideCursor. Z-code: hand the current window back to the main window. Glulx: nothing to
+    // undo - the caret belonged to the input request, which has already completed.
+    void showCursor(){
+    #if TARGET_GLULX
+        ;
+    #else
+        bgl.asm.setWindow(0);
+    #endif
+    }
+
+    char waitForKey(string separator=null){
+    
+    if(separator !=null) {
+        print(separator);
+        print("^^");
+    }
     
     #if TARGET_GLULX
 
         rawArray<int> eventPayload[3];  //allocate space for the glk events.
 
-        bgl.asm.requestCharEvent(bgl.ui.mainWin.id); // let glk know we care about the next key press in main
+        int inputWin = bgl.ui.hideCursor();
+        if(inputWin == 0) inputWin = bgl.ui.mainWin.id;
+
+        bgl.asm.requestCharEvent(inputWin); // let glk know we care about the next key press
         
         while (true) { 
             bgl.asm.select(&eventPayload); //get the next event in the queue
 
-            if(eventPayload[0]==(int)eGlulxEventType.charInput && eventPayload[1] == bgl.ui.mainWin.id)  //if its a keypress from the main window, return it; otherwise discard it. 
+            if(eventPayload[0]==(int)eGlulxEventType.charInput && eventPayload[1] == inputWin)  //if its a keypress from the window we asked, return it; otherwise discard it. 
                 return (char)eventPayload[2]; 
             else{
                 ; //no-op; TODO: add some generic processor to handle background events
             }
         }
     #else
-        return bgl.asm.readChar(1);   // read_char is now a value-returning routine; returns cleanly
+        bgl.ui.hideCursor();
+        int k = bgl.asm.readChar(1);   // read_char is now a value-returning routine; returns cleanly
+        bgl.ui.showCursor();           // put the current window back before handing the key over
+        return (char)k;
     #endif
     }
     // void setStatusHeight(int height){

@@ -1,7 +1,7 @@
 !% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
-Constant beguiler = 1000;
+Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 global _bgl_sw;
 global _bglInitDone = 0;

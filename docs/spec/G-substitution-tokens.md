@@ -16,6 +16,8 @@ and unrecognized `##name` text, passes through to the output unchanged. Full rul
 | `$prop` | In an `array<T>` emitter, the property name of an object-member array; `0` for a global array. | §7.3, §12.7 |
 | `$opref(op[, T])` | A callable reference to the receiver type's `operator op` (routine name for `static`, property name for an instance operator, `0` for an emitter or none); `T` selects an overload. | §7.3.1 |
 | `$oprefReq(op[, T])` | As `$opref`, with a compile-time warning when nothing is found. | §7.3.1 |
+| `$i6Expr(expr)` | The I6 a Beguile expression emits, expanded inline — how one emitter reaches another. Binds the body's tokens as typed values; one expression or one void call; cycles and chains deeper than eight are errors. | §7.3.4 |
+| `$i6Name(path[(types)])` | The identifier Inform 6 knows a declaration by: its `as` alias, the `_bgl_<class>_<method>` mangling of a `static` method, or its plain name. `types` selects an overload. Naming an emitter is an error. | §7.3.3 |
 | `$selfsub` | In a `_bglGlobalDeclaration` body, the instance name with `sub` appended. | §15.8 |
 | `##if expr` / `##else` / `##endif` | Conditional inclusion of body text, with the `#if` expression syntax. `##ifdef`/`##ifndef` are errors. | §7.4 |
 | `##beguilerSettings.key` | The compile-time value of a `#beguilerSettings` property, in the raw-I6 bodies of `#emitfirst`, `#emitlast`, `#storedEmitFirst` and `#storedEmitLast` only. | §14.4.5, §17.7 |

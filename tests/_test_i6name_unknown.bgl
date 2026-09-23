@@ -1,0 +1,6 @@
+/* $i6Name on a name that is not declared is an error, not a silent empty substitution —
+   an empty expansion would reach I6 as malformed code with no hint of the cause. */
+// EXPECT_ERROR: no declaration named 'noSuchThing' is in scope
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+emitter int bad(){ $i6Name(noSuchThing)() }
+void main(){ print(bad()); }

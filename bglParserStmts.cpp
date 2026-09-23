@@ -129,7 +129,7 @@ void bglParser::emitRtrueRfalseWithMessage(abstractObject& ctx, const string& wh
                                             func, body);
     if(gcb.method && gcb.method->isEmitter)
         if(auto* blk = dynamic_cast<i6Block*>(gcb.method->body)){
-            printCall.emitterBody = processBglConditionals(blk->i6Body);
+            printCall.emitterBody = expandEmitterBody(blk, {});
             for(paramDef* p : gcb.method->params) printCall.emitterParams.push_back(p->name);
         }
 
@@ -798,7 +798,7 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
                     if(auto* blk = dynamic_cast<i6Block*>(fn->body)){
                         string paramType = fn->params[0]->type.name;
                         if(swStmt.switchEmitters.find(paramType) == swStmt.switchEmitters.end()){
-                            string b = processBglConditionals(blk->i6Body);
+                            string b = expandEmitterBody(blk, {});
                             swStmt.switchEmitters[paramType] = fn->params[0]->name + "\t" + b;
                         }
                     }
@@ -1020,11 +1020,9 @@ bool bglParser::processPrefixIncDec(token op, StatementContext& sc){
         if(!m) return false;
         auto* opFunc = dynamic_cast<functionDef*>(m);
         auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-        string b = processBglConditionals(blk->i6Body);
-        b = replaceWord(b, "$self", lhs);
-        b = replaceWord(b, "$val",  lhs);
+        emitterBindings ob; ob.self = lhs; ob.val = lhs;
         i6RawNode& node = *(new i6RawNode());
-        node.text = b + ";";
+        node.text = expandEmitterBody(blk, ob) + ";";
         node.src = stmtLoc;
         if(body != nullptr) body->statements.push_back(&node);
         return true;
@@ -1089,13 +1087,9 @@ token bglParser::parseStatementPath(token& tok, StatementContext& sc){
             if(nullTestFn == nullptr)
                 parsingError(format("Type '{0}' does not support optional chaining (no operator?() emitter)", pathType));
             auto* blk = dynamic_cast<i6Block*>(nullTestFn->body);
-            string guard = processBglConditionals(blk->i6Body);
-            guard = i6Emitter::replaceWord(guard, "$self", pathSoFar);
-            guard = i6Emitter::replaceWord(guard, "$val",  pathSoFar);
-            { size_t s=guard.find_first_not_of(" \t\n\r"); if(s!=string::npos) guard=guard.substr(s);
-              size_t e=guard.find_last_not_of(" \t\n\r;"); if(e!=string::npos) guard=guard.substr(0,e+1); }
+            emitterBindings gb; gb.self = pathSoFar; gb.val = pathSoFar; gb.trim = emitterTrim::wsSemi;
             i6RawNode* openNode = new i6RawNode();
-            openNode->text = "if (" + guard + ") {";
+            openNode->text = "if (" + expandEmitterBody(blk, gb) + ") {";
             pendingInjections.push_back(openNode);
             optionalChainDepth++;
         }
@@ -1160,7 +1154,7 @@ bool bglParser::processValueEmitterStatement(token tok, StatementContext& sc){
                     if(fd->name == ident && fd->isValueEmitter && fd->isEmitter){ veFunc = fd; break; }
     if(veFunc){
         if(auto* blk = dynamic_cast<i6Block*>(veFunc->body)){
-            string bodyText = processBglConditionals(blk->i6Body);
+            string bodyText = expandEmitterBody(blk, {});
             size_t s = bodyText.find_first_not_of(" \t\n\r"); if(s != string::npos) bodyText = bodyText.substr(s);
             size_t e = bodyText.find_last_not_of(" \t\n\r;"); if(e != string::npos) bodyText = bodyText.substr(0, e+1);
             i6RawNode& node = *(new i6RawNode());
@@ -1200,17 +1194,13 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
     string subscriptText;
     if(getMethod->isEmitter)
         if(auto* blk = dynamic_cast<i6Block*>(getMethod->body)){
-            string b = processBglConditionals(blk->i6Body);
             string pv = (isWordArrayType(arrType) || arrType == "bytearray") ? "0" : "<$prop undefined>";
             string selfValue = arrPath;
             size_t innerDot = arrPath.rfind('.');
             if(innerDot != string::npos){ selfValue = arrPath.substr(0, innerDot); pv = arrPath.substr(innerDot + 1); }
-            b = replaceWord(b, "$self", selfValue);
-            b = replaceWord(b, "$val",  arrPath);
-            b = replaceWord(b, "$prop", pv);
-            if(!getMethod->params.empty())
-                b = replaceWord(b, "$" + getMethod->params[0]->name, indexExpr->text());
-            subscriptText = b;
+            emitterBindings rb; rb.self = selfValue; rb.val = arrPath; rb.prop = pv;
+            rb.fn = getMethod; rb.args.push_back(indexExpr->text());
+            subscriptText = expandEmitterBody(blk, rb);
         }
     // Read member name and dispatch
     token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
@@ -1232,12 +1222,10 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
         callStmt.interpSegmentsPerArg = interpSegs;
         if(method->isEmitter && !method->isPrePassStub)
             if(auto* blk = dynamic_cast<i6Block*>(method->body)){
-                string b = processBglConditionals(blk->i6Body);
-                for(size_t i = 0; i < method->params.size() && i < pal.args.size(); i++)
-                    b = replaceWord(b, "$" + method->params[i]->name, pal.args[i]->text());
-                b = replaceWord(b, "$self", subscriptText);
-                b = replaceWord(b, "$val",  subscriptText);
-                callStmt.emitterBody = b;
+                emitterBindings sb; sb.self = subscriptText; sb.val = subscriptText;
+                sb.fn = method;
+                for(expression* a : pal.args) sb.args.push_back(a->text());
+                callStmt.emitterBody = expandEmitterBody(blk, sb);
             }
         file.getToken(token::endStatement);
         if(body != nullptr) body->statements.push_back(&callStmt);
@@ -1280,16 +1268,13 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPath, expression* 
     // First read step: name-based $self/$prop (handles member-array `obj.prop` too).
     string readText;
     {
-        string b = processBglConditionals(gblk->i6Body);
         size_t innerDot = arrPath.rfind('.');
         string selfV = (innerDot == string::npos) ? arrPath : arrPath.substr(0, innerDot);
         string pv    = (innerDot != string::npos) ? arrPath.substr(innerDot + 1)
                      : (isWordArrayType(arrType) || arrType == "bytearray" ? "0" : "<$prop undefined>");
-        b = replaceWord(b, "$self", selfV);
-        b = replaceWord(b, "$val",  arrPath);
-        b = replaceWord(b, "$prop", pv);
-        if(!getM->params.empty()) b = replaceWord(b, "$" + getM->params[0]->name, indexExpr->text());
-        readText = b;
+        emitterBindings gb; gb.self = selfV; gb.val = arrPath; gb.prop = pv;
+        gb.fn = getM; gb.args.push_back(indexExpr->text());
+        readText = expandEmitterBody(gblk, gb);
     }
     string curType = elemType;   // type of grid[0] — an array<...>
     while(true){
@@ -1306,12 +1291,9 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPath, expression* 
             if(blk == nullptr)
                 parsingError(format("Chained subscript: '{0}' has no readable operator[].", typeDisplayName(curType)));
             string recv = "(" + readText + ")";
-            string b = processBglConditionals(blk->i6Body);
-            b = replaceWord(b, "$self", recv);
-            b = replaceWord(b, "$val",  recv);
-            b = replaceWord(b, "$prop", "0");
-            if(!gm->params.empty()) b = replaceWord(b, "$" + gm->params[0]->name, idx->text());
-            readText = b;
+            emitterBindings eb2; eb2.self = recv; eb2.val = recv; eb2.prop = "0";
+            eb2.fn = gm; eb2.args.push_back(idx->text());
+            readText = expandEmitterBody(blk, eb2);
             curType  = innerElem;
             continue;
         }
@@ -1324,12 +1306,9 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPath, expression* 
             if(rblk == nullptr)
                 parsingError(format("Chained subscript: '{0}' has no readable operator[].", typeDisplayName(curType)));
             string recv0 = "(" + readText + ")";
-            string eb = processBglConditionals(rblk->i6Body);
-            eb = replaceWord(eb, "$self", recv0);
-            eb = replaceWord(eb, "$val",  recv0);
-            eb = replaceWord(eb, "$prop", "0");
-            if(!gm->params.empty()) eb = replaceWord(eb, "$" + gm->params[0]->name, idx->text());
-            string recv = "(" + eb + ")";     // the element value (type innerElem)
+            emitterBindings rb0; rb0.self = recv0; rb0.val = recv0; rb0.prop = "0";
+            rb0.fn = gm; rb0.args.push_back(idx->text());
+            string recv = "(" + expandEmitterBody(rblk, rb0) + ")";     // the element value (type innerElem)
             file.getToken(); // consume '.'
             token memberTok = file.getToken({eTokenType::identifier, eTokenType::dataType});
             string memberName = memberTok.value;
@@ -1352,12 +1331,10 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPath, expression* 
                 cs.args = pal.args; cs.namedArgNames = pal.namedArgNames; cs.interpSegmentsPerArg = pal.interpSegmentsPerArg;
                 if(method->isEmitter && !method->isPrePassStub)
                     if(auto* mblk = dynamic_cast<i6Block*>(method->body)){
-                        string mb = processBglConditionals(mblk->i6Body);
-                        for(size_t i = 0; i < method->params.size() && i < pal.args.size(); i++)
-                            mb = replaceWord(mb, "$" + method->params[i]->name, pal.args[i]->text());
-                        mb = replaceWord(mb, "$self", recv);
-                        mb = replaceWord(mb, "$val",  recv);
-                        cs.emitterBody = mb;
+                        emitterBindings eb3; eb3.self = recv; eb3.val = recv;
+                        eb3.fn = method;
+                        for(expression* a : pal.args) eb3.args.push_back(a->text());
+                        cs.emitterBody = expandEmitterBody(mblk, eb3);
                     }
                 file.getToken(token::endStatement);
                 if(body != nullptr) body->statements.push_back(&cs);
@@ -1382,13 +1359,10 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPath, expression* 
             parsingError(format("No operator[]= for element type '{0}' on type '{1}'.",
                                 typeDisplayName(innerElem), typeDisplayName(curType)));
         string recv = "(" + readText + ")";
-        string b = processBglConditionals(sblk->i6Body);
-        if(setM->params.size() > 0) b = replaceWord(b, "$" + setM->params[0]->name, idx->text());
-        if(setM->params.size() > 1) b = replaceWord(b, "$" + setM->params[1]->name, valExpr->text());
-        b = replaceWord(b, "$self", recv);
-        b = replaceWord(b, "$val",  recv);
-        b = replaceWord(b, "$prop", "0");
-        b = substituteElemOps(b, innerElem);
+        emitterBindings sb; sb.self = recv; sb.val = recv; sb.prop = "0";
+        sb.fn = setM; sb.args = { idx->text(), valExpr->text() };
+        sb.elemType = innerElem;
+        string b = expandEmitterBody(sblk, sb);
         functionCallStatement& cs = *(new functionCallStatement());
         cs.src = stmtLoc;
         cs.emitterBody = b;
@@ -1496,16 +1470,11 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
         callStmt.emitterBody = memOwner + ".&" + memProp + "-->(" + indexExpr->text() + ") = " + valExpr->text();
     else if(setMethod->isEmitter)
         if(auto* blk = dynamic_cast<i6Block*>(setMethod->body)) {
-            string b = processBglConditionals(blk->i6Body);
-            size_t pos = 0;
-            for(size_t i = 0; i < setMethod->params.size() && i < callStmt.args.size(); i++)
-                b = replaceWord(b, "$" + setMethod->params[i]->name, callStmt.args[i]->text());
-            b = replaceWord(b, "$self", selfValue);
-            b = replaceWord(b, "$val",  arrPath);
-            b = replaceWord(b, "$prop", propValue);
-            // One substitution covers every $elemop(<op>) in the body.
-            b = substituteElemOps(b, elemType);
-            callStmt.emitterBody = b;
+            emitterBindings ab; ab.self = selfValue; ab.val = arrPath; ab.prop = propValue;
+            ab.fn = setMethod;
+            for(expression* a : callStmt.args) ab.args.push_back(a->text());
+            ab.elemType = elemType;   // one substitution covers every $opref in the body
+            callStmt.emitterBody = expandEmitterBody(blk, ab);
         }
     if(body != nullptr) body->statements.push_back(&callStmt);
     for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
@@ -1736,13 +1705,12 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                 if(m){
                     auto* opFunc = dynamic_cast<functionDef*>(m);
                     auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-                    a.emitterBody = processBglConditionals(blk->i6Body);
-                    a.emitterParam = opFunc->params[0]->name;
                     // Pre-substitute $class with the LHS's declared type. $self / $param /
                     // $target are substituted later at emit time (i6Emitter), but $class
                     // resolves at parse time because it depends on the static type known here.
-                    if(classType != nullptr)
-                        a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
+                    emitterBindings cb; if(classType != nullptr) cb.cls = classType->i6Name();
+                    a.emitterBody = expandEmitterBody(blk, cb);
+                    a.emitterParam = opFunc->params[0]->name;
                     found = true;
                 }
             }
@@ -1764,10 +1732,9 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                     if(m){
                         auto* opFunc = dynamic_cast<functionDef*>(m);
                         auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-                        a.emitterBody = processBglConditionals(blk->i6Body);
+                        emitterBindings cb; if(classType != nullptr) cb.cls = classType->i6Name();
+                        a.emitterBody = expandEmitterBody(blk, cb);
                         a.emitterParam = opFunc->params[0]->name;
-                        if(classType != nullptr)
-                            a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
                         found = true;
                     }
                 }
@@ -1816,10 +1783,9 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                 if(m){
                     auto* opFunc = dynamic_cast<functionDef*>(m);
                     auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-                    a.emitterBody = processBglConditionals(blk->i6Body);
+                    emitterBindings cb; if(classType != nullptr) cb.cls = classType->i6Name();
+                    a.emitterBody = expandEmitterBody(blk, cb);
                     a.emitterParam = opFunc->params[0]->name;
-                    if(classType != nullptr)
-                        a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
                     found = true;
                 }
             }
@@ -1845,10 +1811,9 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                 if(m){
                     auto* opFunc = dynamic_cast<functionDef*>(m);
                     auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-                    a.emitterBody = processBglConditionals(blk->i6Body);
+                    emitterBindings cb; if(classType != nullptr) cb.cls = classType->i6Name();
+                    a.emitterBody = expandEmitterBody(blk, cb);
                     a.emitterParam = opFunc->params[0]->name;
-                    if(classType != nullptr)
-                        a.emitterBody = i6Emitter::replaceWord(a.emitterBody, "$class", classType->i6Name());
                     found = true;
                 }
                 if(!found){
@@ -1899,10 +1864,8 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                     })){
                         auto* opFn = dynamic_cast<functionDef*>(m);
                         auto* blk = dynamic_cast<i6Block*>(opFn->body);
-                        string b = processBglConditionals(blk->i6Body);
-                        string argText = val->text();
-                        size_t pos = 0;
-                        while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
+                        emitterBindings cb2; cb2.self = val->text();
+                        string b = expandEmitterBody(blk, cb2);
                         val->tokens.clear();
                         val->tokens.push_back(b);
                         val->resolvedType = leftType->name;
@@ -2081,8 +2044,9 @@ bool bglParser::processArrayBracedCompound(token tok, token symbol, const string
             if(!opm)
                 parsingError(format("No operator '{0}' defined on type '{1}'", symbol.value, typeDisplayName(aType)));
             auto* opFunc = dynamic_cast<functionDef*>(opm);
-            string opBody = replaceWord(processBglConditionals(dynamic_cast<i6Block*>(opFunc->body)->i6Body), "$prop", "0");
-            opBody = substituteElemOps(opBody, resolveArrayElementType(tok.value, func, body));
+            emitterBindings lb; lb.prop = "0";
+            lb.elemType = resolveArrayElementType(tok.value, func, body);
+            string opBody = expandEmitterBody(dynamic_cast<i6Block*>(opFunc->body), lb);
             file.getToken();  // consume '{'
             token et = file.getToken();
             while(!et.is(token::braceClose)){
@@ -2192,7 +2156,6 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
             a.src = stmtLoc;
             a.variableLeft = lhs;
             a.assignedExpression = rhs;
-            a.emitterBody = processBglConditionals(blk->i6Body);
             // $self/$prop: a member array is addressed as (owner, property); a bare
             // global or local array uses the 0 sentinel, the same pair the method-call
             // path computes. A BARE IDENTIFIER is not proof of the non-member case —
@@ -2202,10 +2165,12 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
             string cOwner, cProp;
             bool cIsMember = splitQualifiedMember(lhs, func, body, cOwner, cProp);
             if(cIsMember && memberArrayIsRef(cOwner, cProp, func, body)) cIsMember = false;
+            emitterBindings pb;   // $self stays deferred to emit time; only $prop/$opref resolve here
             if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray"){
-                a.emitterBody = replaceWord(a.emitterBody, "$prop", cIsMember ? cProp : "0");
-                a.emitterBody = substituteElemOps(a.emitterBody, resolveArrayElementType(lhs, func, body));
+                pb.prop = cIsMember ? cProp : "0";
+                pb.elemType = resolveArrayElementType(lhs, func, body);
             }
+            a.emitterBody = expandEmitterBody(blk, pb);
             a.emitterParam = opFunc->params[0]->name;
             a.emitterSelf = cIsMember ? cOwner : lhs;
             if(body != nullptr) body->statements.push_back(&a);
@@ -2250,11 +2215,9 @@ bool bglParser::processPostfixIncDec(token tok, token symbol, StatementContext& 
         })){
             auto* opFunc = dynamic_cast<functionDef*>(m);
             auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-            string b = processBglConditionals(blk->i6Body);
-            b = replaceWord(b, "$self", lhs);
-            b = replaceWord(b, "$val",  lhs);
+            emitterBindings sb2; sb2.self = lhs; sb2.val = lhs;
             i6RawNode& node = *(new i6RawNode());
-            node.text = b + ";";
+            node.text = expandEmitterBody(blk, sb2) + ";";
             node.src = stmtLoc;
             if(body != nullptr) body->statements.push_back(&node);
             emitterFound = true;
@@ -2514,35 +2477,25 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
         // if emitter, pre-substitute $self, $prop, and $class
         if(method->isEmitter)
             if(auto* blk = dynamic_cast<i6Block*>(method->body)){
-                string b = processBglConditionals(blk->i6Body);
+                emitterBindings mb;
                 // $selfsub → `<self>sub` (the I6 action routine) for the verb class's
-                // perform() bridge — e.g. `Take.perform()` → `TakeSub()`. Must run before
-                // $self: $self is a prefix of $selfsub, and replaceWord's word boundary
-                // leaves $selfsub untouched if $self runs first (it was emitted literally).
-                b = replaceWord(b, "$selfsub", selfValue + "sub");
-                b = replaceWord(b, "$self", selfValue);
-                // $val generic (receiver-value) substitution — skip when a parameter is
-                // named `val`, so the emission-time param substitution ($val → arg) wins.
-                // Mirrors the $prop/hasPropParam guard below (e.g. orArray.set(...,var val)).
-                bool hasValParam = false;
-                for(paramDef* p : method->params) if(p->name == "val"){ hasValParam = true; break; }
-                if(!hasValParam)
-                    b = replaceWord(b, "$val",  emitObjectPath);
+                // perform() bridge — e.g. `Take.perform()` → `TakeSub()`.
+                mb.selfsub = selfValue + "sub";
+                mb.self    = selfValue;
+                mb.val     = emitObjectPath;
                 // $class — declared receiver type (ignores multiple inheritance).
                 // Resolves to the variable's static type, not the type that owns the
                 // inherited emitter. Powers class-message I6 emission from mixins.
-                if(cls != nullptr)
-                    b = replaceWord(b, "$class", cls->i6Name());
-                // $prop fallback — done before staging callStmt.emitterBody so that
-                // resolveEmitterText's later param substitution can still substitute
-                // a `prop`-named parameter when present (e.g. `provides(property prop)`).
-                // Skip if any parameter is named `prop` so the param sub wins.
-                bool hasPropParam = false;
-                for(paramDef* p : method->params) if(p->name == "prop"){ hasPropParam = true; break; }
-                if(!hasPropParam)
-                    b = replaceWord(b, "$prop", propValue);
-                // One substitution covers every $elemop(<op>) in the body.
-                b = substituteElemOps(b, recvElemType.empty() ? objectType : recvElemType, methodName);
+                if(cls != nullptr) mb.cls = cls->i6Name();
+                mb.prop = propValue;
+                // One substitution covers every $opref(<op>) in the body.
+                mb.elemType    = recvElemType.empty() ? objectType : recvElemType;
+                mb.elemContext = methodName;
+                // fn WITHOUT args: the body is staged for resolveEmitterText to substitute the
+                // parameters at emit time, so the funnel must leave $val / $prop alone when a
+                // parameter of that name will claim them (e.g. `orArray.set(…, var val)`).
+                mb.fn = method;
+                string b = expandEmitterBody(blk, mb);
                 callStmt.emitterBody = b;
                 for(paramDef* p : method->params)
                     callStmt.emitterParams.push_back(p->name);
@@ -2565,7 +2518,7 @@ void bglParser::bindGlobalCallStatement(functionCallStatement& callStmt, token t
     else                                chainReturnType = "var"; // loose mode: unresolved → opaque
     if(gcb.method && gcb.method->isEmitter)
         if(auto* blk = dynamic_cast<i6Block*>(gcb.method->body)){
-            callStmt.emitterBody = processBglConditionals(blk->i6Body);
+            callStmt.emitterBody = expandEmitterBody(blk, {});
             for(paramDef* p : gcb.method->params) callStmt.emitterParams.push_back(p->name);
         }
     // Loose-mode unresolved global call: carry original case via displayName so
@@ -2656,12 +2609,10 @@ void bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
             parsingError(format("Chained method '{0}' on type '{1}' is not an emitter", chainMethodName, chainReturnType));
         string selfText = resolveEmitterText(callStmt);
         i6Block* chainBlk = dynamic_cast<i6Block*>(chainMethod->body);
-        string b = processBglConditionals(chainBlk->i6Body);
-        b = replaceWord(b, "$self", selfText);
-        b = replaceWord(b, "$val",  selfText);
-        for(size_t i=0; i<chainMethod->params.size() && i<chainArgs.size(); i++)
-            b = replaceWord(b, "$" + chainMethod->params[i]->name, chainArgs[i]->text());
-        callStmt.emitterBody = b;
+        emitterBindings chb; chb.self = selfText; chb.val = selfText;
+        chb.fn = chainMethod;
+        for(expression* a : chainArgs) chb.args.push_back(a->text());
+        callStmt.emitterBody = expandEmitterBody(chainBlk, chb);
         callStmt.emitterParams.clear();
         callStmt.args.clear();
         chainReturnType = chainMethod->returnType.name;

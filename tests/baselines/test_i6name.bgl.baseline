@@ -1,11 +1,8 @@
 !% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
-Constant beguiler = 1000;
+Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-Replace GameEpilogue;
-Replace DrawStatusLine _oldStatus;
-Replace Sing;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -275,8 +272,40 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-constant SOME_CONST = 3;
-global afterNoSemi = 7;
-[main;
-    afternosemi = 8;
+object hook;
+[helperRoutine a;
+    return a + 1;
+];
+class money
+  with
+    cents
+;
+class widget
+  class object
+  with
+    count,
+    refresh[;
+        self.count=self.count + 1;
+    ]
+;
+[main w;
+    print helperroutine(5);
+    print (w has light);
+    print (hook);
+    print (widget);
+    print (w.count);
+    print (w.refresh());
+    print _bgl_Money_scale_int(5);
+    print _bgl_Money_scale_int_int(3, 4);
+    print _bgl_bglOpCodes_readChar(1);
+];
+[_bgl_Money_scale_2_int_int a b;
+    return a * b;
+];
+[_bgl_Money_scale_1_int a;
+    return a * 2;
+];
+[_bgl_bglOpCodes_readChar dev c;
+     @read_char dev -> c; 
+    return c;
 ];

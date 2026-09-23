@@ -1,0 +1,43 @@
+// test_replace_extern.bgl — `replace` over an `extern` (I6 library) routine emits I6's own
+// `Replace` directive, hoisted to the emit-first position so it precedes the library that
+// defines the routine. A Beguile predecessor needs no such directive (it simply isn't emitted).
+//
+// Coverage:
+//   - replace over an extern, original NOT called  → one-operand  `Replace name;`
+//   - replace over an extern, original called      → two-operand  `Replace name saved;`
+//     and `replaced()` resolves to that saved name
+//   - replace over a plain Beguile function        → NO `Replace` directive at all
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+extern void GameEpilogue();
+extern void DrawStatusLine();
+
+// original never called → one-operand form
+replace void GameEpilogue(){
+    print("my epilogue");
+}
+
+// original called → two-operand form, keeping the library version reachable
+replace void DrawStatusLine(){
+    print("before ");
+    replaced();
+    print(" after");
+}
+
+// a pure-Beguile predecessor: replaced in place, no I6 Replace needed
+void localOnly(){ print("first"); }
+replace void localOnly(){
+    replaced();
+    print("second");
+}
+
+void main(){
+    GameEpilogue();
+    DrawStatusLine();
+    localOnly();
+}

@@ -1,0 +1,9 @@
+/* Two emitters whose bodies reach each other through $i6Expr. An emitter is SUBSTITUTED, not
+   called, so a cycle has no base case and would expand until the stack gave out. §7.2's
+   "recursion is meaningless" stops being self-enforcing once a body can call out, so the
+   expander tracks the chain and reports instead. */
+// EXPECT_ERROR: emitter expansion cycle
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+emitter int ping(int v){ $i6Expr(pong($v)) }
+emitter int pong(int v){ $i6Expr(ping($v)) }
+void main(){ int r = ping(1); print(r); }

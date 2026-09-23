@@ -1367,6 +1367,279 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
     return out;
 }
 
+// Case-insensitive, word-boundary search for a `$token` in raw body text. i6Emitter has its own
+// copy but keeps it file-static; Beguile is case-insensitive, so `$I6NAME` must match too.
+static size_t findTokenCI(const string& hay, const string& needle, size_t pos){
+    for(; pos + needle.size() <= hay.size(); pos++){
+        size_t i = 0;
+        for(; i < needle.size(); i++)
+            if(tolower((unsigned char)hay[pos+i]) != tolower((unsigned char)needle[i])) break;
+        if(i < needle.size()) continue;
+        size_t after = pos + needle.size();
+        if(after < hay.size() && (isalnum((unsigned char)hay[after]) || hay[after] == '_')) continue;
+        return pos;
+    }
+    return string::npos;
+}
+
+// ─── `$i6Name(<path>[(<types>)])` — the identifier Inform 6 knows a declaration by ───
+//
+// Emitter bodies are raw I6, so a body that wants to call a Beguile routine has to spell that
+// routine's emitted name itself. That spelling is not the author's to know: `as` renames it, a
+// `static` method is mangled to `_bgl_<class>_<method>`, and the mangling grows a parameter-type
+// discriminator the moment a second overload of that name appears. `$i6Name` asks the compiler
+// instead. The parenthesized type list selects among overloads, exactly as `Type::operator ==(int)`
+// and `$opref(==, Money)` already do.
+//
+// An emitter is never referenceable — it has no routine and no constant — so naming one is an
+// error rather than a silent `0`. This mirrors `$opref`, which yields 0 only because a missing
+// operator has a sound word-semantics default; a missing name has none.
+string bglParser::resolveI6Name(const string& spec){
+    auto trim = [](string v){ size_t a = v.find_first_not_of(" \t\n\r");
+                              size_t b = v.find_last_not_of(" \t\n\r");
+                              return a == string::npos ? string() : v.substr(a, b - a + 1); };
+    // Split the optional overload signature off the path: `bgl.asm.callf(int, int)`.
+    string path = trim(spec), sig;
+    bool hasSig = false;
+    if(size_t p = path.find('('); p != string::npos){
+        if(path.empty() || path.back() != ')'){
+            parsingError(format("$i6Name({0}) — unterminated overload signature; expected a closing ')'", spec));
+            return "";
+        }
+        sig     = trim(path.substr(p + 1, path.size() - p - 2));
+        path    = trim(path.substr(0, p));
+        hasSig  = true;
+    }
+    vector<string> sigTypes;
+    if(hasSig && !sig.empty()){
+        size_t from = 0;
+        while(true){
+            size_t c = sig.find(',', from);
+            sigTypes.push_back(trim(sig.substr(from, c == string::npos ? string::npos : c - from)));
+            if(c == string::npos) break;
+            from = c + 1;
+        }
+    }
+    if(path.empty()){ parsingError("$i6Name() — no declaration named"); return ""; }
+    // Declarations are registered under their folded name (Beguile is case-insensitive), so every
+    // lookup below folds too. `shown` keeps the author's spelling for the diagnostics.
+    const string shown = path;
+    transform(path.begin(), path.end(), path.begin(), ::tolower);
+
+    // Does this function's parameter list match the signature the author named? An empty
+    // signature matches anything, so a single-overload lookup never has to spell one out.
+    auto sigMatches = [&](functionDef* fd){
+        if(!hasSig) return true;
+        if(fd->params.size() != sigTypes.size()) return false;
+        for(size_t i = 0; i < sigTypes.size(); i++){
+            string a = fd->params[i]->type.name, b = sigTypes[i];
+            transform(a.begin(), a.end(), a.begin(), ::tolower);
+            transform(b.begin(), b.end(), b.begin(), ::tolower);
+            if(a != b) return false;
+        }
+        return true;
+    };
+    auto describe = [&](functionDef* fd){
+        string d = fd->dName() + "(";
+        for(size_t i = 0; i < fd->params.size(); i++){ if(i) d += ", "; d += typeDisplayName(fd->params[i]->type.name); }
+        return d + ")";
+    };
+    auto notReferenceable = [&](const string& what){
+        parsingError(format("$i6Name({0}) — '{1}' is an emitter; it has no I6 name because no routine "
+                            "is emitted for it. Use $i6Expr(...) to expand it inline instead.", spec, what));
+        return string();
+    };
+
+    size_t dot = path.rfind('.');
+    if(dot == string::npos){
+        // Top-level: a global routine, a global variable, or a named object/class/enum.
+        if(auto* fd = languageService.findGlobalAs<functionDef>(path)){
+            if(fd->isEmitter) return notReferenceable(fd->dName());
+            return fd->i6name.empty() ? fd->name : fd->i6name;
+        }
+        // Named declarations before plain globals: an object instance is registered in BOTH
+        // tables, and only the objectDef carries its `as` alias.
+        typeDef& td = languageService.getType(path);
+        if(auto* od = dynamic_cast<objectDef*>(&td)) return od->i6name.empty() ? od->name : od->i6name;
+        if(auto* cd = dynamic_cast<classDef*>(&td))  return cd->i6Name();
+        if(auto* g = languageService.findGlobal(path))
+            return g->i6name.empty() ? g->name : g->i6name;
+        if(!td.name.empty())                         return td.i6name.empty() ? td.name : td.i6name;
+        parsingError(format("$i6Name({0}) — no declaration named '{1}' is in scope", spec, shown));
+        return "";
+    }
+
+    // Dotted: resolve the head to a type, then find the member on it.
+    string head = trim(path.substr(0, dot)), member = trim(path.substr(dot + 1));
+    string headType = resolvePathType(head, nullptr, nullptr, member);
+    if(headType.empty()) headType = head;          // the head may already BE a type name
+    classDef* cls = getDispatchClass(headType);
+    if(cls == nullptr){
+        // An enum value is a bare word and is its own I6 name.
+        if(auto* ed = languageService.findEnum(headType)) { (void)ed; return member; }
+        parsingError(format("$i6Name({0}) — '{1}' does not name a type with members", spec, head));
+        return "";
+    }
+    vector<functionDef*> candidates;
+    findMemberInHierarchy(cls, [&](typeMember* m){
+        if(auto* fd = dynamic_cast<functionDef*>(m))
+            if(fd->name == member && sigMatches(fd)) candidates.push_back(fd);
+        return false;                              // visit every member; we collect rather than pick
+    });
+    if(candidates.size() > 1){
+        string list;
+        for(functionDef* fd : candidates){ if(!list.empty()) list += ", "; list += describe(fd); }
+        parsingError(format("$i6Name({0}) — '{1}' is ambiguous between {2}. Name the parameter types "
+                            "to select one, e.g. $i6Name({1}(int, int)).", spec, shown, list));
+        return "";
+    }
+    if(candidates.size() == 1){
+        functionDef* fd = candidates.front();
+        if(fd->isEmitter) return notReferenceable(shown);
+        if(fd->isStatic)  return i6Emitter::staticRoutineName(getDispatchClass(headType), fd);
+        return fd->i6name.empty() ? fd->name : fd->i6name;   // instance method → its property name
+    }
+    // Not a method — a data member, whose emitted property name `as` may have renamed.
+    string prop = memberI6Name(headType, member);
+    if(prop != member || findMemberInHierarchy(cls, [&](typeMember* m){
+           auto* vd = dynamic_cast<variableDeclaration*>(m); return vd != nullptr && vd->name == member; }) != nullptr)
+        return prop;
+    parsingError(format("$i6Name({0}) — '{1}' has no member '{2}'", spec, typeDisplayName(headType), member));
+    return "";
+}
+
+// ─── `$i6Expr(<beguile expression>)` — expand another emitter (or any call) inline ───
+//
+// An emitter body is raw I6, so it cannot call another emitter: the callee has no routine to name.
+// `$i6Expr` parses its payload as ordinary Beguile and substitutes the I6 that expression emits, so
+// a body can reach the pure-expression opcode wrappers, inherit their `##if` target gating, and get
+// overload resolution — none of which a textual body can do for itself.
+//
+// Binding, not text. The payload is parsed with the body's tokens standing for TYPED values: `$v`
+// denotes a value of `v`'s declared type whose emitted text is the argument's I6. Substituting the
+// text first and parsing the result cannot work — the substituted text is I6, not Beguile
+// (`$self` is routinely something like `_glktmpsizebuf-->(0+1)`), and it would also throw away the
+// types that make the type-checking and overload resolution possible.
+//
+// Mechanism: each bound token is rewritten to a unique placeholder identifier declared, at its
+// Beguile type, in a synthetic scope handed to parseExpression. The parse therefore sees a
+// well-typed expression; the placeholders are swapped back for the bound I6 text afterwards.
+string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b){
+    string out = body;
+    size_t at = 0;
+    while((at = findTokenCI(out, "$i6Expr", at)) != string::npos){
+        size_t open = at + 7;
+        while(open < out.size() && (out[open] == ' ' || out[open] == '\t')) open++;
+        if(open >= out.size() || out[open] != '('){ at += 7; continue; }
+        int depth = 0; size_t close = string::npos;
+        for(size_t i = open; i < out.size(); i++){
+            if(out[i] == '(') depth++;
+            else if(out[i] == ')' && --depth == 0){ close = i; break; }
+        }
+        if(close == string::npos){ parsingError("$i6Expr( — unterminated; expected a closing ')'"); break; }
+        string payload = out.substr(open + 1, close - open - 1);
+
+        // Bind each token to a placeholder local of the right Beguile type.
+        statementBlock* scope = new statementBlock();
+        vector<pair<string,string>> restore;        // placeholder → the I6 text it stands for
+        int slot = 0;
+        vector<string> untyped;      // present at this site, but with no Beguile type to parse against
+        auto bind = [&](const string& token, const string& text, const string& type){
+            if(findTokenCI(payload, token, 0) == string::npos) return;
+            if(type.empty()){ untyped.push_back(token); return; }
+            string ph = format("_bglXpr{0}_", slot++);
+            auto* vd = new variableDeclaration();
+            vd->name = ph;
+            vd->type = languageService.getType(type);
+            if(vd->type.name.empty()) vd->type.name = type;
+            scope->statements.push_back(vd);
+            payload = i6Emitter::replaceWord(payload, token, ph);
+            restore.push_back({ph, text});
+        };
+        if(b.self) bind("$self", *b.self, b.selfType);
+        if(b.val)  bind("$val",  *b.val,  b.selfType);
+        if(b.host) bind("$host", *b.host, b.selfType);
+        if(b.fn != nullptr)
+            for(size_t i = 0; i < b.fn->params.size() && i < b.args.size(); i++)
+                bind("$" + b.fn->params[i]->name, b.args[i], b.fn->params[i]->type.name);
+        // A token the caller never bound is not substitutable here, and leaving it would reach I6
+        // as a literal `$name`. Say so where the author can act on it.
+        if(size_t stray = payload.find('$'); stray != string::npos){
+            size_t e = stray + 1;
+            while(e < payload.size() && (isalnum((unsigned char)payload[e]) || payload[e] == '_')) e++;
+            string tok = payload.substr(stray, e - stray);
+            string src = out.substr(open + 1, close - open - 1);
+            // Two different failures wear the same shape, and the fix differs: an unknown token is
+            // the author's typo, a known-but-untyped one is a use site that never supplied the
+            // receiver's type — nothing the BLR author can do about it from the body.
+            if(find(untyped.begin(), untyped.end(), tok) != untyped.end())
+                parsingError(format("$i6Expr({0}) — '{1}' is available here but its Beguile type is "
+                                    "not, so the expression cannot be type-checked. Reaching the "
+                                    "receiver through $i6Expr is not supported at this kind of use "
+                                    "site; use the plain token outside $i6Expr instead.", src, tok));
+            else
+                parsingError(format("$i6Expr({0}) — '{1}' is not bound at this use site; $i6Expr can "
+                                    "only reference this emitter's own parameters and receiver.",
+                                    src, tok));
+            out.replace(at, close - at + 1, "");
+            continue;
+        }
+
+        // Sub-parse. The lexer keeps a stack of streams, so pushing one mid-parse is safe, but its
+        // scratch state (a peeked token, the brace depth) belongs to the OUTER stream and has to be
+        // put back exactly as it was.
+        bool  savedHasPending  = file.hasPendingToken;
+        token savedPending     = file.pendingToken;
+        string emitted;
+        // The payload is an expression, not a statement, so give the parser the terminator it
+        // expects rather than letting it read off the end of the stream.
+        file.openText(payload + ";", "$i6Expr", 0);
+        file.hasPendingToken = false;
+        try {
+            file.bleedSpaces();
+            token first = file.getToken();
+            expression* e = parseExpression(first, {";"}, nullptr, scope);
+            emitted = e != nullptr ? e->text() : "";
+        } catch(...) {
+            file.close();
+            file.hasPendingToken = savedHasPending; file.pendingToken = savedPending;
+            throw;
+        }
+        file.close();
+        file.hasPendingToken = savedHasPending; file.pendingToken = savedPending;
+
+        for(auto& [ph, text] : restore) emitted = i6Emitter::replaceWord(emitted, ph, text);
+        out.replace(at, close - at + 1, emitted);
+        at += emitted.size();
+    }
+    return out;
+}
+
+// Replace every `$i6Name(...)` in an emitter body. Parenthesis-aware, so an overload signature
+// inside the payload does not terminate the token early.
+string bglParser::substituteI6Names(const string& body){
+    string out = body;
+    size_t at = 0;
+    while((at = findTokenCI(out, "$i6Name", at)) != string::npos){
+        size_t open = at + 7;
+        while(open < out.size() && (out[open] == ' ' || out[open] == '\t')) open++;
+        if(open >= out.size() || out[open] != '('){ at += 7; continue; }
+        int depth = 0; size_t close = string::npos;
+        for(size_t i = open; i < out.size(); i++){
+            if(out[i] == '(') depth++;
+            else if(out[i] == ')' && --depth == 0){ close = i; break; }
+        }
+        if(close == string::npos){
+            parsingError("$i6Name( — unterminated; expected a closing ')'");
+            break;
+        }
+        string rep = resolveI6Name(out.substr(open + 1, close - open - 1));
+        out.replace(at, close - at + 1, rep);
+        at += rep.size();
+    }
+    return out;
+}
+
 // The I6 property name a member is emitted under. `Type member as <i6name>;` lets a member's
 // emitted identifier differ from its Beguile name, which is how a member dodges an I6 symbol
 // clash — including one of the compiler's reserved additive properties such as `name`. The
@@ -1564,12 +1837,9 @@ optional<string> bglParser::qualifyDottedViaClassHead(const DottedPath& p, funct
             if(auto* fd = dynamic_cast<functionDef*>(m))
                 if(fd->name == firstSeg && fd->isValueEmitter && fd->isEmitter && rest.empty())
                     if(auto* blk = dynamic_cast<i6Block*>(fd->body)){
-                        string b = processBglConditionals(blk->i6Body);
-                        b = i6Emitter::replaceWord(b, "$self", qualifiedHead);
-                        b = i6Emitter::replaceWord(b, "$val",  qualifiedHead);
-                        size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
-                        size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
-                        return b;
+                        emitterBindings hb; hb.self = qualifiedHead; hb.val = qualifiedHead;
+                        hb.trim = emitterTrim::wsSemi;
+                        return expandEmitterBody(blk, hb);
                     }
             // Alias member: resolve through the alias type for the remaining path
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -1822,7 +2092,7 @@ void bglParser::collectQualifyCandidatesFromGlobals(const string& name, vector<Q
             origin = format("global function '{0}'", g->name);
             if(fd->isValueEmitter && fd->isEmitter){
                 if(auto* blk = dynamic_cast<i6Block*>(fd->body)){
-                    string b = processBglConditionals(blk->i6Body);
+                    string b = expandEmitterBody(blk, {});
                     size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
                     size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
                     qual = b;
@@ -1868,12 +2138,9 @@ void bglParser::collectQualifyCandidatesFromUsingClassImports(const string& name
                 origin = format("#using-imported method '{0}.{1}'", imp->dName(), name);
                 if(fd->isValueEmitter && fd->isEmitter){
                     if(auto* blk = dynamic_cast<i6Block*>(fd->body)){
-                        string b = processBglConditionals(blk->i6Body);
-                        b = i6Emitter::replaceWord(b, "$self", imp->name);
-                        b = i6Emitter::replaceWord(b, "$val",  imp->name);
-                        size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
-                        size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
-                        qual = b;
+                        emitterBindings ub; ub.self = imp->name; ub.val = imp->name;
+                        ub.trim = emitterTrim::wsSemi;
+                        qual = expandEmitterBody(blk, ub);
                     } else qual = imp->name + "." + name;
                 } else qual = imp->name + "." + name;
                 matched = true;
@@ -1906,12 +2173,9 @@ void bglParser::collectQualifyCandidatesFromUsingObjectImports(const string& nam
                 origin = format("#using-imported method '{0}.{1}'", imp->name, name);
                 if(fd->isValueEmitter && fd->isEmitter){
                     if(auto* blk = dynamic_cast<i6Block*>(fd->body)){
-                        string b = processBglConditionals(blk->i6Body);
-                        b = i6Emitter::replaceWord(b, "$self", imp->name);
-                        b = i6Emitter::replaceWord(b, "$val",  imp->name);
-                        size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
-                        size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1);
-                        qual = b;
+                        emitterBindings ub; ub.self = imp->name; ub.val = imp->name;
+                        ub.trim = emitterTrim::wsSemi;
+                        qual = expandEmitterBody(blk, ub);
                     } else qual = imp->name + "." + name;
                 } else qual = imp->name + "." + name;
                 matched = true;
@@ -2457,20 +2721,18 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
         if(found){
             auto* fn = dynamic_cast<functionDef*>(found);
             auto* blk = dynamic_cast<i6Block*>(fn->body);
-            string b = processBglConditionals(blk->i6Body);
-            { size_t s = b.find_first_not_of(" \t\n\r"); if(s != string::npos) b = b.substr(s);
-              size_t e = b.find_last_not_of(" \t\n\r;"); if(e != string::npos) b = b.substr(0, e+1); }
+            // $self = host of property access (parentProp's `parent($self)` etc.).
+            // $val  = full receiver expression as written (`obj.parent`, `5`, `localInt`).
+            // For non-property contexts the two coincide.
+            emitterBindings ac;
+            ac.self = !args[i]->emitterSelf.empty() ? args[i]->emitterSelf : args[i]->text();
+            ac.val  = args[i]->text();
+            ac.trim = emitterTrim::wsSemi;
+            string b = expandEmitterBody(blk, ac);
             if(b.empty()){
                 // Empty body = pass-through conversion; just update the type
                 args[i]->resolvedType = paramType;
             } else {
-                // $self = host of property access (parentProp's `parent($self)` etc.).
-                // $val  = full receiver expression as written (`obj.parent`, `5`, `localInt`).
-                // For non-property contexts the two coincide.
-                string selfText = !args[i]->emitterSelf.empty() ? args[i]->emitterSelf : args[i]->text();
-                string valText  = args[i]->text();
-                b = i6Emitter::replaceWord(b, "$self", selfText);
-                b = i6Emitter::replaceWord(b, "$val",  valText);
                 args[i]->tokens.clear();
                 args[i]->tokens.push_back(b);
                 args[i]->resolvedType = paramType;

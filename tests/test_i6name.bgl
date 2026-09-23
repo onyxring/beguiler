@@ -1,0 +1,50 @@
+/*  test_i6name — `$i6Name(<path>)` substitutes the identifier Inform 6 knows a declaration by.
+
+    An emitter body is raw I6, so a body that calls a Beguile routine has to spell that routine's
+    EMITTED name. That spelling is not the author's to know: `as` renames it, a `static` method is
+    mangled to `_bgl_<class>_<method>`, and the mangling grows a parameter-type discriminator the
+    moment a second overload appears — so hard-coding it is wrong the moment an unrelated overload
+    is declared. The baseline pins each form, which is what makes a regression in the mangling or
+    in the `as` plumbing visible here rather than as an I6 "No such constant" much later.
+
+    NOTE: myHook is declared bodiless because `object <name> as <alias> { }` WITH a body currently
+    corrupts the parse of the following declaration ("expected type name (in class declaration)").
+    That is a pre-existing bug against spec 3.11, unrelated to $i6Name; switch this back to a
+    braced body once it is fixed, since that is the form the spec shows.  */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+extern attribute lit as light;          // `as` on an attribute
+object myHook as hook;                  // `as` on an object instance (bodiless: see note)
+int helperRoutine(int a){ return a + 1; }
+
+class Money {
+    int cents;
+    static int scale(int a, int b){ return a * b; }   // two statics of one name → discriminated
+    static int scale(int a){ return a * 2; }
+}
+class Widget : object { int count; void refresh(){ count = count + 1; } }
+
+emitter int  viaRoutine(int v)        { $i6Name(helperRoutine)($v) }
+emitter int  isLit(object o)          { ($o has $i6Name(lit)) }
+emitter int  hookName()               { ($i6Name(myHook)) }
+emitter int  widgetClass()            { ($i6Name(Widget)) }
+emitter int  readCount(Widget w)      { ($w.$i6Name(Widget.count)) }
+emitter int  callRefresh(Widget w)    { ($w.$i6Name(Widget.refresh)()) }
+emitter int  scaleOne(int v)          { $i6Name(Money.scale(int))($v) }
+emitter int  scaleTwo(int a, int b)   { $i6Name(Money.scale(int, int))($a, $b) }
+// A static superposed method reached through a namespace alias chain (`bgl.asm` → bglOpCodes):
+// the body names the Beguile path, the compiler supplies `_bgl_bglOpCodes_readChar`.
+emitter int  readKey()                { $i6Name(bgl.asm.readChar)(1) }
+
+void main(){
+    Widget w;
+    print(viaRoutine(5));
+    print(isLit(w));
+    print(hookName());
+    print(widgetClass());
+    print(readCount(w));
+    print(callRefresh(w));
+    print(scaleOne(5));
+    print(scaleTwo(3, 4));
+    print(readKey());
+}

@@ -1,0 +1,39 @@
+/*  test_i6expr — `$i6Expr(<expression>)` expands another emitter inline inside a raw body.
+
+    Before this, an emitter body could not reach another emitter at all: the callee has no routine
+    to name, so `twice($v)` in a body went out as literal I6 and Inform failed with "No such
+    constant". The three things this buys, all pinned below:
+
+      - chaining at all (`quad` calls `twice`, nested);
+      - reaching the PURE-EXPRESSION opcode wrappers (bgl.asm.add is an emitter — no routine
+        exists for it, so no amount of name lookup could have reached it);
+      - reaching a `static superposed` op, whose `_bgl_bglOpCodes_<op>` mangling the body never
+        has to spell.
+
+    $self binds too, at its declared type, so the payload is type-checked and overload-resolved
+    like any other use site.  */
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+
+emitter int twice(int v){ ($v * 2) }
+emitter int quad(int v){ $i6Expr(twice(twice($v))) }          // emitter calling an emitter, nested
+emitter int viaAsm(int a, int b){ $i6Expr(bgl.asm.add($a, $b)) }   // pure-expression opcode wrapper
+emitter int viaStatic(){ $i6Expr(bgl.asm.readChar(1)) }            // static superposed → real routine
+emitter void putc(int c){ @print_char $c; }
+emitter void emitA(){ $i6Expr(putc(65)); }                         // void call, statement position
+
+class Counter : object {
+    int value;
+    emitter int doubled(){ $i6Expr(bgl.asm.add($self.value, $self.value)) }   // $self, typed
+    emitter int plus(int n){ $i6Expr(bgl.asm.add($self.value, $n)) }          // $self + a parameter
+}
+Counter globalC;
+
+void main(){
+    Counter localC;
+    print(quad(5));
+    print(viaAsm(40, 2));
+    print(viaStatic());
+    emitA();
+    print(globalC.doubled());
+    print(localC.plus(7));
+}

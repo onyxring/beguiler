@@ -6,6 +6,8 @@
 - [7.3 Substitution Tokens](#73-substitution-tokens)
   - [7.3.1 `$opref` and `$oprefReq`](#731-opref-and-oprefreq)
   - [7.3.2 Choosing `$self`, `$val` and `$target`](#732-choosing-self-val-and-target)
+  - [7.3.3 `$i6Name`](#733-i6name)
+  - [7.3.4 `$i6Expr`](#734-i6expr)
 - [7.4 Conditional Text: `##if`, `##else`, `##endif`](#74-conditional-text-if-else-endif)
 - [7.5 Global Emitters](#75-global-emitters)
 - [7.6 Emitter Values](#76-emitter-values)
@@ -55,7 +57,9 @@ directives such as `#ifdef`, passes through unchanged to the output.
 - An emitter always has a body. The one exception is the bodiless conversion operator
   `emitter T operator();`, which is a pass-through (§9.4).
 - `static` and `emitter` cannot be combined: an emitter has no routine to make static.
-- Recursion is meaningless; an emitter body cannot refer to itself as a routine.
+- Recursion is meaningless; an emitter body cannot refer to itself as a routine. A body may
+  reach another emitter through `$i6Expr` (§7.3.4), and a chain that comes back round to a body
+  already being expanded is a compile-time error rather than an unbounded expansion.
 
 **Example**
 
@@ -87,6 +91,8 @@ documented with that feature (`$selfsub`, §15.8). Appendix G is the one-page in
 | `$prop` | In an `array<T>` emitter, the property name when the array is an object member; `0` for a global array. |
 | `$opref(op[, T])` | A callable reference to the receiver type's `operator op` (§7.3.1). |
 | `$oprefReq(op[, T])` | As `$opref`, but a missing operator is a compile-time warning (§7.3.1). |
+| `$i6Name(path)` | The identifier Inform 6 knows the named declaration by (§7.3.3). |
+| `$i6Expr(expr)` | The I6 that a Beguile expression emits, expanded inline (§7.3.4). |
 
 **`$self` and `$host`.** The two differ in which emitters strip the trailing member: `$self` strips
 it only in an operator or assignment emitter, whereas `$host` strips it in a method emitter as well,
@@ -178,6 +184,131 @@ extern class parentProp {
 ```
 
 **See also** §21.5.7 (`parentProp` and `childrenProp`).
+
+### 7.3.3 `$i6Name`
+
+**Syntax**
+
+```syntax
+$i6Name( ⟨path⟩ )
+$i6Name( ⟨path⟩( ⟨type⟩ [, …] ) )
+```
+
+**Description**
+
+Substitutes the identifier Inform 6 knows a declaration by. A body is raw I6, so calling a Beguile
+routine from one means writing that routine's *emitted* name — which is not the author's to know: an
+`as` clause renames it (§3.11), a `static` method emits as `_bgl_⟨class⟩_⟨method⟩`, and that mangling
+grows a parameter-type discriminator as soon as a second overload of the name is declared. A body
+that spells the name itself is therefore wrong the moment an unrelated overload appears. `$i6Name`
+asks the compiler for it instead.
+
+`⟨path⟩` is a Beguile path, resolved as an ordinary name would be, including through namespace
+aliases (`bgl.asm.readChar`). What is substituted depends on what the path names:
+
+| The path names | `$i6Name` substitutes |
+|---|---|
+| A global function | Its routine name, or its `as` alias |
+| A `static` method | The free routine's name, `_bgl_⟨class⟩_⟨method⟩`, with the overload discriminator when the class declares more than one |
+| An instance method | Its property name — call it as `receiver.(⟨name⟩)(…)` |
+| A data member | Its property name, or its `as` alias |
+| An object, class or enum | Its emitted name, or its `as` alias |
+| An enum value | The value's bare word |
+
+When the path names an overloaded method, the parenthesized type list selects one; omitting it where
+more than one candidate exists is a compile-time error naming the candidates. The same selection
+form appears in `$opref(op, T)` (§7.3.1) and `Type::operator op(T)` (§4.15).
+
+Two cases are compile-time errors rather than a substituted `0`:
+
+- **An emitter.** No routine and no constant is emitted for it, so there is nothing to name. Use
+  `$i6Expr` to expand it inline instead. (`$opref` yields `0` for the same situation only because a
+  missing operator has a sound fallback in word semantics; a missing *name* has none.)
+- **An unresolved path.** An empty substitution would reach Inform 6 as malformed text with nothing
+  pointing back at the cause.
+
+A body is expanded only where it is used, so a `$i6Name` in an emitter that is never called is never
+resolved and never reports.
+
+**Example**
+
+```bgl
+extern attribute lit as light;
+object myHook as hook;
+
+emitter bool isLit(object o)      { ($o has $i6Name(lit)) }          // → ($o has light)
+emitter int  readKey()            { $i6Name(bgl.asm.readChar)(1) }   // → _bgl_bglOpCodes_readChar(1)
+emitter int  scale(int a, int b)  { $i6Name(Money.scale(int, int))($a, $b) }
+```
+
+> **When to reach for it.** A global function with no `as` clause emits under its own name, so a body
+> may simply write that name; `$i6Name` buys nothing there. Use it where the emitted identifier is
+> *not* the Beguile one: anything carrying an `as` clause, a member or method (which emit as property
+> names), a promoted member array, and above all a `static` method — its `_bgl_⟨class⟩_⟨method⟩`
+> mangling gains a parameter-type discriminator as soon as a second overload of that name is
+> declared, so a spelling that is correct today is silently wrong after an unrelated edit elsewhere.
+
+**See also** §3.11 (`as`), §7.3.1 (`$opref`, the same lookup for operators), §4.15.
+
+### 7.3.4 `$i6Expr`
+
+**Syntax**
+
+```syntax
+$i6Expr( ⟨expression⟩ )
+```
+
+**Description**
+
+Substitutes the I6 that a Beguile expression emits. This is how one emitter reaches another: an
+emitter has no routine, so a body cannot call one by name (§7.3.3) — it has to be *expanded*, and
+`$i6Expr` is what expands it.
+
+The payload is ordinary Beguile, parsed and type-checked at the use site, so it gets overload
+resolution, and a callee's own `##if` gating (§7.4) comes with it rather than being re-written by
+every caller.
+
+**Binding.** The body's tokens stand for **typed values** inside the payload: `$v` denotes a value of
+`v`'s declared type whose emitted text is the argument at that use site, and `$self`/`$val`/`$host`
+likewise at the receiver's type. The payload may therefore mention only this emitter's own
+parameters and receiver; any other `$name` is a compile-time error. It may not mention a bare I6
+identifier either, since that is not a Beguile symbol — `$i6Expr(__glkHook(33, $a))` resolves only
+because `__glkHook` *is* a Beguile function.
+
+**Extent.** Exactly one expression: either one that produces a value, or a single call that returns
+nothing, which is what lets an `emitter void` body chain. A `;`-separated list is not accepted —
+without locals, control flow or `return` it would look like a function body without being one.
+Multi-statement logic still belongs in a routine, which an emitter body can then reach by name
+(§7.3.3); a `superposed` routine (§3.12) costs nothing when no body references it.
+
+**Termination.** Because a body is substituted rather than called, a `$i6Expr` chain that reaches a
+body already being expanded has no base case. Such a cycle is a compile-time error, as is a chain
+deeper than eight expansions.
+
+> **Substituted text is duplicated text.** A body that names `$v` twice already duplicates the
+> argument expression, evaluating its side effects twice. Chaining multiplies this: an outer body
+> passing `$self` into an inner one that names `$val` twice yields four copies of the receiver.
+> Prefer a routine where the argument is expensive or effectful.
+
+**Example**
+
+```bgl
+emitter int twice(int v){ ($v * 2) }
+emitter int quad (int v){ $i6Expr(twice(twice($v))) }        // → ((v * 2) * 2)
+
+// bgl.asm.add is an emitter — no routine exists for it, so only expansion can reach it
+emitter int sum(int a, int b){ $i6Expr(bgl.asm.add($a, $b)) }
+
+// the callee owns the target gating; this caller inherits it
+emitter void reseed(){ $i6Expr(bgl.util.random.seed(0)); }   // z-code → random(-0)
+                                                             // Glulx  → @setrandom 0
+class Counter : object {
+    int value;
+    emitter int doubled(){ $i6Expr(bgl.asm.add($self.value, $self.value)) }
+}
+```
+
+**See also** §7.3.3 (`$i6Name`, for a name where no expression is legal), §3.12 (`superposed`), §7.4.
 
 ## 7.4 Conditional Text: `##if`, `##else`, `##endif`
 
@@ -409,7 +540,7 @@ int c = east.plus(10);      // → 13
 | Parameters in the body | Bare name (`myParam`) | `$myParam` |
 | Receiver in the body | `self` | `$self` / `$val` / `$host` |
 | Overloading | Global functions: not supported (one routine per name); class and object methods: by parameter signature (§8.4) | Supported, by parameter types |
-| Recursion | Supported | Not meaningful |
+| Recursion | Supported | Not meaningful — a `$i6Expr` chain that revisits a body is an error (§7.3.4) |
 | In an `extern class` body | Declaration only, no body | Must have a body (or `;` for a pass-through conversion) |
 | At global scope | Yes | Yes |
 

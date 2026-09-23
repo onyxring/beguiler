@@ -153,6 +153,11 @@ private:
     bool scanInterpString(const SemanticScope& scope,
                           const std::function<void(int, int, int, int)>& emit,
                           const std::string& lineText, size_t& i, int lineNum, size_t segStart);
+    // True when (line, col) falls inside a string literal, char literal, or comment — scanned
+    // from the top of the document so multi-line "..."/$"..."/ /* */ carry over correctly.
+    // A position inside an interpolated string's {expr} slot is real code and returns false.
+    // Used to gate completion providers that would otherwise fire while typing prose.
+    bool isInStringOrComment(const std::string& uri, int line, int col);
     json handleWorkspaceSymbol(const json& params);
 
     // Semantic token classification

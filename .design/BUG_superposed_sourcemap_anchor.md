@@ -57,7 +57,7 @@ cat > /tmp/spmap/t.bgl <<'EOF'
 #beguilerSettings {
     target=Glulx;
     title="SPMap";
-    includePaths ="/Users/jim/projects/IF-Projects/inform6/lib";
+    includePaths ="/Users/jim/projects/IF-Projects/inform6/stdlib";
 }
 #includeI6 "parser"
 #includeI6 "verblib"

@@ -171,6 +171,62 @@ string bglParser::processBglConditionals(const string& text){
     return result;
 }
 
+// Expand one emitter body at one use site. See bglParser.h for the token ordering rule.
+string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b){
+    if(blk == nullptr) return "";
+    // Nesting is only reachable through $i6Expr, but the guards live here so they cover every
+    // expansion path. A body already on the chain is a cycle; §7.2's "recursion is meaningless"
+    // stops being self-enforcing once a body can call out.
+    for(const i6Block* active : emitterExpansionChain)
+        if(active == blk){
+            parsingError("emitter expansion cycle — a $i6Expr chain reaches the same emitter body "
+                         "again. An emitter is substituted, not called, so it cannot recurse.");
+            return "";
+        }
+    if(emitterExpansionChain.size() >= kMaxEmitterDepth){
+        parsingError(format("emitter expansion exceeded a depth of {0} — check the $i6Expr chain for "
+                            "a runaway expansion.", (int)kMaxEmitterDepth));
+        return "";
+    }
+    emitterExpansionChain.push_back(blk);
+    struct popper { vector<const i6Block*>& c; ~popper(){ c.pop_back(); } } pop{emitterExpansionChain};
+
+    string out = processBglConditionals(blk->i6Body);
+    if(b.trim != emitterTrim::none){
+        const char* tail = b.trim == emitterTrim::wsSemi ? " \t\n\r;" : " \t\n\r";
+        size_t s = out.find_first_not_of(" \t\n\r"); if(s != string::npos) out = out.substr(s);
+        size_t e = out.find_last_not_of(tail);       if(e != string::npos) out = out.substr(0, e + 1);
+    }
+    // $i6Expr before the plain token pass: it binds the tokens as TYPED values itself, so it has
+    // to see them intact rather than already replaced by their I6 text.
+    out = substituteI6Exprs(out, b);
+    if(b.fn != nullptr)
+        for(size_t i = 0; i < b.fn->params.size() && i < b.args.size(); i++)
+            out = i6Emitter::replaceWord(out, "$" + b.fn->params[i]->name, b.args[i]);
+    // A declared parameter shadows the built-in token of the same name — the BLR really does write
+    // `emitter void accelparam(int idx, int val)` and `emitter bool provides(property prop)`. With
+    // args in hand the loop above has already consumed the token and this guard is a no-op; in the
+    // deferred case it is what keeps the token intact for emit-time parameter substitution.
+    auto shadowed = [&](const char* name){
+        if(b.fn == nullptr) return false;
+        for(paramDef* p : b.fn->params) if(p->name == name) return true;
+        return false;
+    };
+    // $selfsub before $self: $self is a prefix of it. replaceWord's right-boundary check already
+    // makes the order immaterial, but the dependency is real and worth stating.
+    if(b.selfsub) out = i6Emitter::replaceWord(out, "$selfsub", *b.selfsub);
+    if(b.self && !shadowed("self"))  out = i6Emitter::replaceWord(out, "$self",  *b.self);
+    if(b.val  && !shadowed("val"))   out = i6Emitter::replaceWord(out, "$val",   *b.val);
+    if(b.host && !shadowed("host"))  out = i6Emitter::replaceWord(out, "$host",  *b.host);
+    if(b.prop && !shadowed("prop"))  out = i6Emitter::replaceWord(out, "$prop",  *b.prop);
+    if(b.cls  && !shadowed("class")) out = i6Emitter::replaceWord(out, "$class", *b.cls);
+    // Lookup tokens last: their payloads are Beguile paths and operator names, never $tokens, so
+    // they neither consume nor are consumed by the substitutions above.
+    out = substituteI6Names(out);
+    if(b.elemType) out = substituteElemOps(out, *b.elemType, b.elemContext);
+    return out;
+}
+
 // Evaluate a #if / #elif boolean expression against definedSymbols.
 // Supports: symbol, integer literal, !expr, expr&&expr, expr||expr, (expr),
 //           and comparison operators: == != < > <= >=
@@ -646,48 +702,6 @@ bool bglParser::directiveIncludeI6(token directive, abstractObject& contextObj){
     return false;
 }
 
-// #i6replace — emit I6 `Replace Routine [Saved];` through the emit-first stream so it outranks every include.
-bool bglParser::directiveI6Replace(token directive, abstractObject& contextObj){
-    // #i6replace RoutineName [SavedName];
-    //
-    // Emits I6 `Replace RoutineName [SavedName];`. `Replace` must appear before the
-    // library that first defines the routine, so — unlike a bare `#i6 replace X;`
-    // (which lands verbatim at its source position) — this directive routes through the
-    // emit-first stream so it is hoisted above ALL includes and definitions. The author
-    // can therefore write `#i6replace` anywhere and the replacement always takes effect.
-    //
-    // Routine names are emitted in their original case (I6 identifiers are case-sensitive);
-    // the optional second name is I6's rename-the-original form, so the replaced routine's
-    // library definition remains callable under SavedName.
-    //
-    // Operands are scanned on THIS LINE ONLY: the raw rest-of-line is read to the next
-    // newline, then trimmed at a `//` comment and at the terminating `;`. This keeps the
-    // scan line-bounded — a no-semicolon form can't reach across the newline and swallow
-    // the next statement's first identifier as the saved-original name. Reading raw text
-    // also preserves the operands' original case for the case-sensitive I6 identifiers.
-    string line;
-    { char c = file.readChar();
-      while(c != '\n' && c != EOF){ line += c; c = file.readChar(); } }
-    { size_t sl = line.find("//"); if(sl != string::npos) line.erase(sl); }   // strip trailing // comment
-    { size_t sc = line.find(';');  if(sc != string::npos) line.erase(sc); }   // operands end at ';'
-    vector<string> names;
-    for(size_t i = 0; i < line.size(); ){
-        while(i < line.size() && isspace((unsigned char)line[i])) i++;
-        size_t s = i;
-        while(i < line.size() && !isspace((unsigned char)line[i])) i++;
-        if(i > s) names.push_back(line.substr(s, i - s));
-    }
-    if(names.empty())
-        return parsingError("#i6replace expects a routine name (e.g. `#i6replace GameEpilogue;`)");
-    if(names.size() > 2)
-        return parsingError("#i6replace expects a routine name and an optional saved-original name — got extra tokens");
-    string replaceLine = "Replace " + names[0];
-    if(names.size() == 2) replaceLine += " " + names[1];
-    replaceLine += ";";
-    languageService.emitFirstBlocks.push_back(replaceLine);
-    return false;
-}
-
 // #define / #redef — define a preprocessor symbol; #define rejects a redefinition, #redef overwrites.
 bool bglParser::directiveDefine(token directive, abstractObject& contextObj){
     bool isRedef = directive.is("#redef");
@@ -1026,7 +1040,6 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         case chk("#storedemitlast"): return directiveStoredEmitLast(directive, contextObj);
         case chk("#includei6"): return directiveIncludeI6(directive, contextObj);
         case chk("#i6"): return directiveI6(directive, contextObj);
-        case chk("#i6replace"): return directiveI6Replace(directive, contextObj);
         case chk("#define"):
         case chk("#redef"): return directiveDefine(directive, contextObj);
         case chk("#declare"): return directiveDeclare(directive, contextObj);

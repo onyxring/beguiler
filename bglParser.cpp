@@ -617,10 +617,9 @@ void bglParser::recordObjectMemberInits(){
                 continue;
             }
 
+            emitterBindings ib; ib.self = path; ib.val = path;
             string body = initFn == nullptr ? string()
-                        : trim(processBglConditionals(dynamic_cast<i6Block*>(initFn->body)->i6Body));
-            body = replaceWord(body, "$self", path);
-            body = replaceWord(body, "$val",  path);
+                        : trim(expandEmitterBody(dynamic_cast<i6Block*>(initFn->body), ib));
             languageService.globalInits.push_back({path, body});
 
             // The declared value goes through the type's operator= after init, for the same
@@ -640,10 +639,9 @@ void bglParser::recordObjectMemberInits(){
                 functionDef* opFn = findAssign(rhsType);
                 if(opFn == nullptr) opFn = findAssign("var");
                 if(opFn != nullptr){
-                    string ab = trim(processBglConditionals(dynamic_cast<i6Block*>(opFn->body)->i6Body));
-                    ab = replaceWord(ab, "$" + opFn->params[0]->name, rhsText);
-                    ab = replaceWord(ab, "$self", path);
-                    ab = replaceWord(ab, "$val",  path);
+                    emitterBindings ob; ob.self = path; ob.val = path;
+                    ob.fn = opFn; ob.args.push_back(rhsText);
+                    string ab = trim(expandEmitterBody(dynamic_cast<i6Block*>(opFn->body), ob));
                     languageService.globalInits.push_back({path, ab});
                     // Only clear the value when it is declared ON THIS OBJECT. An inherited
                     // member's value belongs to the class and is shared by every instance —

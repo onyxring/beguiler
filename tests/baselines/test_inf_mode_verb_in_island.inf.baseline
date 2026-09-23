@@ -1,6 +1,6 @@
 !% -v5
 !% -E1
-Constant beguiler = 1000;
+Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 
     Constant story    = "";

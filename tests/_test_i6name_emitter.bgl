@@ -1,0 +1,8 @@
+/* An emitter has no I6 name — no routine and no constant is emitted for it — so naming one is an
+   error rather than the `0` $opref yields. $opref can default to 0 because word semantics are a
+   sound fallback for a missing operator; a missing NAME has no such fallback. */
+// EXPECT_ERROR: is an emitter; it has no I6 name
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+emitter int addEm(int a, int b){ ($a + $b) }
+emitter int bad(int a, int b){ $i6Name(addEm)($a, $b) }
+void main(){ print(bad(1, 2)); }

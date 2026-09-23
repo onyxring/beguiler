@@ -631,11 +631,11 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
             // Skip if RHS contains $target — the opcode handles its own store
             if(assignOp && assignOp->isEmitter && rhs->text().find("$target") == string::npos){
                 if(auto* blk = dynamic_cast<i6Block*>(assignOp->body)){
-                    varDecl.initEmitterBody  = processBglConditionals(blk->i6Body);
-                    varDecl.initEmitterParam = assignOp->params[0]->name;
                     // Pre-substitute $class — the declared LHS type. Mirrors the
                     // assignment-statement path; $self/$target stay deferred to emit time.
-                    varDecl.initEmitterBody = i6Emitter::replaceWord(varDecl.initEmitterBody, "$class", classType->i6Name());
+                    emitterBindings cb; cb.cls = classType->i6Name();
+                    varDecl.initEmitterBody  = expandEmitterBody(blk, cb);
+                    varDecl.initEmitterParam = assignOp->params[0]->name;
                 }
             }
             // Non-emitter operator=: mirror the assignment-statement dispatch
@@ -685,10 +685,8 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
                     })){
                         auto* opFn = dynamic_cast<functionDef*>(m);
                         auto* blk = dynamic_cast<i6Block*>(opFn->body);
-                        string b = processBglConditionals(blk->i6Body);
-                        string argText = rhs->text();
-                        size_t pos = 0;
-                        while((pos = b.find("$self", pos)) != string::npos){ b.replace(pos, 5, argText); pos += argText.size(); }
+                        emitterBindings cv; cv.self = rhs->text();
+                        string b = expandEmitterBody(blk, cv);
                         rhs->tokens.clear();
                         rhs->tokens.push_back(b);
                         rhs->resolvedType = (string)dataType;
@@ -769,7 +767,7 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
                 }));
                 if(assignOp && assignOp->isEmitter){
                     if(auto* blk = dynamic_cast<i6Block*>(assignOp->body)){
-                        varDecl.initEmitterBody  = processBglConditionals(blk->i6Body);
+                        varDecl.initEmitterBody  = expandEmitterBody(blk, {});
                         varDecl.initEmitterParam = assignOp->params[0]->name;
                     }
                 }
@@ -850,16 +848,17 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
             for(typeMember* m : cls->members){
                 functionDef* fn = dynamic_cast<functionDef*>(m);
                 if(fn == nullptr || !fn->isEmitter || fn->params.size() != 0) continue;
+                // Only init/deinit are wanted here. The name test used to come AFTER the body was
+                // expanded, so declaring a local expanded every zero-argument emitter the class
+                // happened to declare — wasted work while bodies were inert text, and an outright
+                // error once a body can contain $i6Expr.
+                if(fn->name != "init" && fn->name != "deinit") continue;
                 i6Block* blk = dynamic_cast<i6Block*>(fn->body);
                 if(blk == nullptr) continue;
-                string bodyText = processBglConditionals(blk->i6Body);
-                // trim
-                size_t s=bodyText.find_first_not_of(" \t\n\r"); if(s!=string::npos) bodyText=bodyText.substr(s);
-                size_t e=bodyText.find_last_not_of(" \t\n\r");  if(e!=string::npos) bodyText=bodyText.substr(0,e+1);
-                if(bodyText.empty()) continue;
-                // substitute $self / $val with variable name
-                string substituted = replaceWord(bodyText, "$self", varDecl.name);
-                substituted = replaceWord(substituted, "$val",  varDecl.name);
+                emitterBindings ib; ib.self = varDecl.name; ib.val = varDecl.name; ib.trim = emitterTrim::ws;
+                ib.selfType = varDecl.type.name;
+                string substituted = expandEmitterBody(blk, ib);
+                if(substituted.empty()) continue;
                 if(fn->name == "init"){
                     i6RawNode& initNode = *(new i6RawNode());
                     initNode.text = substituted;
@@ -885,12 +884,9 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
                 if(fn == nullptr || !fn->isEmitter || fn->params.size() != 0 || fn->name != "init") continue;
                 i6Block* blk = dynamic_cast<i6Block*>(fn->body);
                 if(blk == nullptr) continue;
-                string bodyText = processBglConditionals(blk->i6Body);
-                size_t s=bodyText.find_first_not_of(" \t\n\r"); if(s!=string::npos) bodyText=bodyText.substr(s);
-                size_t e=bodyText.find_last_not_of(" \t\n\r");  if(e!=string::npos) bodyText=bodyText.substr(0,e+1);
-                if(bodyText.empty()) continue;
-                string subbed = replaceWord(bodyText, "$self", varDecl.name);
-                subbed = replaceWord(subbed, "$val", varDecl.name);
+                emitterBindings gb; gb.self = varDecl.name; gb.val = varDecl.name; gb.trim = emitterTrim::ws;
+                string subbed = expandEmitterBody(blk, gb);
+                if(subbed.empty()) continue;
                 languageService.globalInits.push_back({varDecl.name, subbed});
                 // The declared value has to be applied through the type's operator= AFTER
                 // init has run, not baked into the I6 `global` directive. For a type whose
@@ -915,12 +911,9 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
                         });
                     if(opm != nullptr){
                         auto* opFn = dynamic_cast<functionDef*>(opm);
-                        string ab = processBglConditionals(dynamic_cast<i6Block*>(opFn->body)->i6Body);
-                        size_t a0=ab.find_first_not_of(" \t\n\r"); if(a0!=string::npos) ab=ab.substr(a0);
-                        size_t a1=ab.find_last_not_of(" \t\n\r");  if(a1!=string::npos) ab=ab.substr(0,a1+1);
-                        ab = replaceWord(ab, "$" + opFn->params[0]->name, rhsText);
-                        ab = replaceWord(ab, "$self", varDecl.name);
-                        ab = replaceWord(ab, "$val",  varDecl.name);
+                        emitterBindings ab_; ab_.self = varDecl.name; ab_.val = varDecl.name;
+                        ab_.trim = emitterTrim::ws; ab_.fn = opFn; ab_.args.push_back(rhsText);
+                        string ab = expandEmitterBody(dynamic_cast<i6Block*>(opFn->body), ab_);
                         languageService.globalInits.push_back({varDecl.name, ab});
                         varDecl.declaredExpressionValue = nullptr;   // no longer baked into the directive
                         varDecl.needsEarlyGlobalDecl = true;         // declare before bglInit writes to it
@@ -1131,6 +1124,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         functionDef* existing = nullptr;
         for(typeDef* g : languageService.globals){
             if(auto* fd = dynamic_cast<functionDef*>(g)){
+                if(fd == &funcDef) continue;   // this declaration is already registered — it can't replace itself
                 if(fd->name != funcDef.name) continue;
                 if(fd->isPrePassStub) continue; // pre-scan stub doesn't count as a real definition
                 existing = fd;
@@ -1207,12 +1201,24 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         parsingWarning(format("replace: no existing emitter '{0}' found with matching signature; treating as new definition", funcDef.name));
     }
 
+    // ── replace over an I6 routine: hand the name over via I6's own Replace ──
+    // A Beguile target is simply not emitted, so `replace` needs no help. An `extern` target names
+    // a routine I6 supplies, which we cannot drop — so tell I6 to yield the name. The two-operand
+    // form keeps the original callable under the mangled name that `replaced()` resolves to; the
+    // one-operand form is enough when the body never calls it. Routed through emitFirstBlocks so
+    // the directive precedes the library that defines the routine.
+    if(isReplace && !isEmitter && funcDef.replacedFunc && funcDef.replacedFunc->isExternal){
+        string line = "Replace " + funcDef.name;
+        if(funcDef.replacedWasCalled) line += " " + funcDef.replacedTarget;
+        languageService.emitFirstBlocks.push_back(line + ";");
+    }
+
     // ── replace chaining: dead code elimination ──
     // If replaced() was never called in the body, the predecessor (and its entire
     // backward chain) will never execute — mark them dead so the emitter skips them.
     if(isReplace && !isEmitter && funcDef.replacedFunc && !funcDef.replacedWasCalled){
         functionDef* f = funcDef.replacedFunc;
-        while(f){
+        while(f && f != &funcDef && !f->isReplacedDead){   // guard against a self- or cyclic chain
             f->isReplacedDead = true;
             f = f->replacedFunc;
         }

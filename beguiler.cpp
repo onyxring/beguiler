@@ -747,7 +747,9 @@ bool beguiler::go(int argc, char* argv[]) {
 
     if(tryRunLspServer(argc, argv)) return false;
 
-   cout << "Beguiler 0.1b : The Beguile-Inform6 Transpiler (" << __DATE__ << ")" << endl;
+   cout << "Beguiler " << (BEGUILER_VERSION / 1000) << "." << ((BEGUILER_VERSION % 1000) / 10)
+        << "." << (BEGUILER_VERSION % 10)
+        << " : The Beguile-Inform6 Transpiler (" << __DATE__ << ")" << endl;
     if(parseArgs(argc, argv)) return true;
 
     CompileJob job;

@@ -155,6 +155,35 @@ struct lspRecoverySignal : public std::runtime_error {  // thrown by parsingErro
     using runtime_error::runtime_error;
 };
 
+// Whether an expanded body is trimmed, and whether a trailing ';' goes with the whitespace.
+// The two differ where the caller re-adds its own terminator, so they are not interchangeable.
+enum class emitterTrim { none, ws, wsSemi };
+
+// What each substitution token stands for at one emitter-body use site. A token left unset is
+// not substituted, so a caller supplies only what its context actually defines — the receiver
+// alone for a method emitter, receiver + property for an array emitter, and so on.
+struct emitterBindings {
+    optional<string> self;                  // $self
+    optional<string> val;                   // $val
+    optional<string> host;                  // $host
+    optional<string> prop;                  // $prop
+    optional<string> cls;                   // $class
+    optional<string> selfsub;               // $selfsub — the verb class's I6 action routine
+    // The receiver's Beguile type. Text alone is enough for plain substitution, but $i6Expr must
+    // TYPE-CHECK an expression mentioning $self/$val/$host, so it needs the type as well.
+    string selfType;
+    // Supplies the parameter names for $paramName, paired positionally with args. Naming fn WITHOUT
+    // args is the deferred case: the caller stages the body for emit-time parameter substitution, and
+    // the funnel must then leave a token alone when a parameter of that name will claim it later.
+    const functionDef* fn = nullptr;
+    vector<string> args;
+    // array<T> element type for the $opref pass. Unset skips the pass; set-but-EMPTY still runs it,
+    // because an empty element type is how $opref resolves to 0 for a type that publishes no operator.
+    optional<string> elemType;
+    string elemContext;                     // method name, for the $opref ambiguity diagnostic
+    emitterTrim trim = emitterTrim::none;
+};
+
 class bglParser {
     public:
         fileLexer file;    //what the parser reads from.  Tokens are produced by the filelexer.
@@ -247,6 +276,11 @@ class bglParser {
         void closeCompileContext(eCompileContext);  //closing out the current context and returning to the previous
         eCompileContext getCurrentCompileContext(); //what is the the current context?
         string processBglConditionals(const string& text); // evaluates ##ifdef/##ifndef/##else/##endif in raw emitter body text
+        // The single entry point for turning a raw emitter body into I6 at a use site: evaluates
+        // `##if`, then substitutes the tokens the caller bound. Ordering is load-bearing and matches
+        // what the open-coded sites did — parameters before `$self`/`$val`, `$opref` last — so a
+        // parameter named `self` still wins, as it always has.
+        string expandEmitterBody(const i6Block* blk, const emitterBindings& b);
 
         // Grammar handler methods — standard GrammarHandler signature, called from the grammar table.
         // Declarations
@@ -567,7 +601,6 @@ class bglParser {
         bool directiveI6SingleLine(token t, statementBlock* body, const sourceLocation& i6DirLoc);                 // #i6 <rest of line>
         bool directiveI6Block(statementBlock* body, abstractObject& contextObj, const sourceLocation& i6DirLoc);   // #i6 { raw I6 interleaved with #bgl{} }
         void installI6Node(i6RawNode* node, statementBlock* body, const sourceLocation& i6DirLoc);                 // places an #i6 node in the body, or claims its global placeholder
-        bool directiveI6Replace(token directive, abstractObject& contextObj);        // #i6replace Routine [Saved];
         bool directiveDefine(token directive, abstractObject& contextObj);           // #define and #redef
         bool directiveDeclare(token directive, abstractObject& contextObj);          // #declare — immutable, pre-scan-hoisted define
         bool directiveIf(token directive, abstractObject& contextObj);               // #if cond
@@ -821,6 +854,20 @@ class bglParser {
         // partially wired the way four separate tokens could.
         string substituteElemOps(const string& body, const string& elemType,
                                  const string& contextName = "");
+        // Replace every `$i6Name(<path>[(<types>)])` in an emitter body with the identifier Inform 6
+        // knows that declaration by — the `as` alias, the `_bgl_<class>_<method>` static mangling, or
+        // the plain name. Lets a raw body reach a Beguile declaration without hard-coding how the
+        // compiler spells it. Unresolvable or non-referenceable paths are compile-time errors.
+        string substituteI6Names(const string& body);
+        string resolveI6Name(const string& spec);   // one `$i6Name(...)` payload → its I6 identifier
+        // Replace every `$i6Expr(<beguile expression>)` with the I6 that expression emits. The
+        // expression is parsed and type-checked with the body's tokens bound as typed values, so
+        // overload resolution and the callee's own `##if` gating apply as at any other use site.
+        string substituteI6Exprs(const string& body, const emitterBindings& b);
+        // Emitter bodies currently being expanded, outermost first. A body reached twice is a cycle;
+        // a chain past kMaxEmitterDepth is a runaway. Both are errors rather than a stack overflow.
+        vector<const i6Block*> emitterExpansionChain;
+        static constexpr size_t kMaxEmitterDepth = 8;
         bool isTypeCompatible(string argType, string paramType);
         static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
         static std::vector<std::string> splitUnionType(const std::string& t);  // split a union name into its member type names
