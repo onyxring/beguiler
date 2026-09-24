@@ -16,7 +16,9 @@ struct settingsStruct{
     std::string informPath;
     std::string libPath;   // path to the beguile language extensions folder (beguilib), alongside the compiler binary
     char   pathSep;
-    bool   debugMode = false;  // set by --debug flag; passes -d to I6 and emits .inf.sym
+    bool   debugMode = false;  // set by --debug: writes the `<source>.bgldbg` debug bundle, and runs
+                               // I6 with -k, whose gameinfo.dbg is moved to
+                               // `<source>.transpiled.inf.dbg` beside it (docs/spec 20.1)
 };
 extern settingsStruct settings;
 
