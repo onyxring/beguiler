@@ -1,0 +1,32 @@
+/*  run_global_runtime_init — a global initializer that is not a compile-time constant is applied at
+    startup instead of being written into the I6 `Global` directive.
+
+    I6 takes a constant there, so a non-constant reached it verbatim and died as
+    "Expected constant but found <expression>" on a line of generated code, naming a construct the
+    author never wrote. The startup path already existed and already did exactly this for one
+    category — a class-typed global whose type declares an `init` (21.2) — so this extends it to
+    any initializer that needs to run.
+
+    Globals a deferred initializer READS are hoisted ahead of bglInit with their own initializers,
+    since I6 wants a variable defined before use and bglInit is emitted before the program's
+    declarations. Declaration order is preserved, so an initializer may read a global declared
+    before it.  */
+// EXPECT_OUTPUT: 10 15 42 5 20
+#beguilerSettings { target = z5; informName = "none"; }
+
+int base      = 10;
+int derived   = base + 5;      // reads another global
+int calls     = compute();     // a call
+int constExpr = 2 + 3;         // still a directive: I6 folds it
+int chained   = derived + 5;   // reads a global that was itself deferred
+
+int compute(){ return 42; }
+
+void main(){
+    bglInit();
+    print(base);      print(" ");
+    print(derived);   print(" ");
+    print(calls);     print(" ");
+    print(constExpr); print(" ");
+    print(chained);
+}

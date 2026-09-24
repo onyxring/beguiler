@@ -1132,15 +1132,24 @@ if(languageService.bufInUse){
             out << format("global {0} = 0;\n", arr->dName());
         }
     }
-    // Same reason, for a class-typed global whose value is applied in bglInit through
-    // its type's operator= (see processVariableDeclaration): the directive has to exist
-    // before the routine that writes to it.
-    for(typeDef* g : languageService.globals){
-        auto* vd = dynamic_cast<variableDeclaration*>(g);
-        if(vd != nullptr && vd->needsEarlyGlobalDecl && !vd->isExternal){
+}
+// Same reason, for any global bglInit assigns to — a class-typed one whose value is applied
+// through its type's operator=, or one whose initializer is not a compile-time constant (see
+// recordGlobalVariableInit): the directive has to exist before the routine that writes to it.
+// Outside the `bufInUse` guard above, which it used to sit inside — a startup assignment to a
+// global is not a `<buf>` matter, and without that extension the declaration came AFTER bglInit,
+// leaving I6 with "'=' applied to undeclared variable".
+for(typeDef* g : languageService.globals){
+    auto* vd = dynamic_cast<variableDeclaration*>(g);
+    if(vd != nullptr && vd->needsEarlyGlobalDecl && !vd->isExternal){
+        // Carry the initializer when there is one: this is the whole declaration, moved, and pass
+        // 3 skips the name once it is here. A global whose own initializer was deferred has had it
+        // cleared, so it declares bare and bglInit assigns it.
+        if(vd->declaredExpressionValue != nullptr)
+            out << format("global {0} = {1};\n", vd->dName(), vd->declaredExpressionValue->text());
+        else
             out << format("global {0};\n", vd->dName());
-            earlyDeclaredGlobals.insert(vd->name);
-        }
+        earlyDeclaredGlobals.insert(vd->name);
     }
 }
 }

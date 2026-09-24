@@ -64,7 +64,7 @@ bglInit();
 
 1. the length headers of sized tracked arrays and byte arrays (§12.3, §22.2, §22.4);
 2. every `#startup` block in the program, in file-inclusion order (§14.4.1);
-3. the deferred initializers of class-typed globals whose type declares a parameterless `init` (§8.5): the `init` body, then the `operator =` that applies a declared value.
+3. the deferred initializers of globals, in declaration order (§3.6): for a class-typed global whose type declares a parameterless `init` (§8.5), the `init` body and then the `operator =` that applies a declared value; for any global whose initializer is not a constant expression, that initializer.
 
 A program built on an IF library binding does not call `bglInit()` itself: the binding wraps the library's `main` so that `bglInit()` runs first (§23.3.1). A program built without a binding, or with `autoInitialize = false` (§17.4), must call `bglInit()` from its entry point before using anything that depends on it. The call is always available and is harmless when nothing has registered work.
 

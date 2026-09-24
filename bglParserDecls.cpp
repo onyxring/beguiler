@@ -901,6 +901,59 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
 
 // File-scope counterpart: records the type's init emitter — and, when the declaration has a value,
 // the operator= emitter that applies it — in languageService.globalInits for the bglInit routine.
+// True when a global's initializer text is something Inform 6 will NOT accept in a `Global`
+// directive, which takes a compile-time constant. Deliberately conservative: it answers yes only
+// for the two shapes that are unmistakably runtime work — a call, and a read of another global's
+// storage — so an initializer that compiles today still emits as a directive and costs nothing.
+// Everything else (literals, constant arithmetic, an object or routine name, an enum value, a
+// `#define`d value) stays where it is.
+static bool initializerNeedsRuntime(const string& text){
+    auto isIdentChar = [](char c){ return isalnum((unsigned char)c) || c == '_'; };
+    for(size_t i = 0; i < text.size(); i++){
+        if(!isIdentChar(text[i])) continue;
+        size_t start = i;
+        while(i < text.size() && isIdentChar(text[i])) i++;
+        string word = text.substr(start, i - start);
+        if(isdigit((unsigned char)word[0])) continue;          // a number, not a name
+        // A call: the name is followed by '(' (possibly across spaces).
+        size_t j = text.find_first_not_of(" \t", i);
+        if(j != string::npos && text[j] == '(') return true;
+        // A read of another global's storage. An object, class, enum or routine name is a
+        // constant in I6, and a `const` global was folded to its value before it got here.
+        string lower = word;
+        transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        for(typeDef* g : languageService.globals){
+            if(g->name != lower) continue;
+            auto* vd = dynamic_cast<variableDeclaration*>(g);
+            if(vd == nullptr || vd->isConst) break;
+            if(dynamic_cast<arrayDeclaration*>(vd)) break;     // an array name is its address
+            const string& t = vd->type.name;
+            if(t == "attribute" || t == "property" || t == "verb" || t == "grammartoken") break;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Every global a deferred initializer reads has to be declared ahead of bglInit too — I6 wants a
+// variable defined before use, and bglInit is emitted before the program's own declarations.
+// Marking them moves their whole declaration, initializer included.
+static void markGlobalsReadEarly(const string& text){
+    auto isIdentChar = [](char c){ return isalnum((unsigned char)c) || c == '_'; };
+    for(size_t i = 0; i < text.size(); i++){
+        if(!isIdentChar(text[i])) continue;
+        size_t start = i;
+        while(i < text.size() && isIdentChar(text[i])) i++;
+        string word = text.substr(start, i - start);
+        if(isdigit((unsigned char)word[0])) continue;
+        transform(word.begin(), word.end(), word.begin(), ::tolower);
+        for(typeDef* g : languageService.globals)
+            if(g->name == word)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                    if(!vd->isExternal) vd->needsEarlyGlobalDecl = true;
+    }
+}
+
 void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isConst, functionDef* func, statementBlock* body){
     // Global scope: record init body in globalInits for bglInit
     if(!isConst && body == nullptr && func == nullptr){
@@ -947,6 +1000,19 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
                     }
                 }
             }
+        }
+        // An initializer that is not a compile-time constant cannot go in the `Global` directive —
+        // I6 answers "Expected constant but found <expression>", naming a line of generated code.
+        // It becomes a startup assignment instead, which is what a class-typed global with an
+        // `init` already does above. Declaration order is preserved, so an initializer may read a
+        // global declared before it.
+        if(varDecl.declaredExpressionValue != nullptr
+           && initializerNeedsRuntime(varDecl.declaredExpressionValue->text())){
+            string rhs = varDecl.declaredExpressionValue->text();
+            languageService.globalInits.push_back({varDecl.name, varDecl.name + " = " + rhs + ";"});
+            markGlobalsReadEarly(rhs);
+            varDecl.declaredExpressionValue = nullptr;
+            varDecl.needsEarlyGlobalDecl = true;
         }
     }
 }

@@ -83,11 +83,12 @@ auto ⟨name⟩ = ⟨initializer⟩ ;
 
 **Description**
 
-A variable declared at file scope is a global. The initializer must be a constant expression: a
-literal, constant arithmetic, an object or routine name, or a `#define` value. The compiler does not
-check this; a non-constant initializer is reported by the Inform 6 stage. A class-typed global whose
-type declares a parameterless `init` has its initializer applied at startup instead (§21.2). `auto`
-infers the type from the initializer (§3.6). A global name must be unique (§3.1), and a local may not
+A variable declared at file scope is a global. An initializer that is a constant expression — a
+literal, constant arithmetic, an object or routine name, or a `#define` value — is part of the
+declaration. **Any other initializer is applied at startup**, in `bglInit()`, in declaration order:
+it may call a routine or read a global declared before it, and the variable holds `0` until
+`bglInit()` runs (§21.2). A class-typed global whose type declares a parameterless `init` is applied
+at startup for the same reason. `auto` infers the type from the initializer (§3.6). A global name must be unique (§3.1), and a local may not
 share a name with a global (§3.10).
 
 **Example**
