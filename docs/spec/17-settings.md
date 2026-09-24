@@ -113,7 +113,7 @@ least 1.
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `framePoolSize` | int | `64` | Word slots in the frame pool that backs Z-machine local-variable overflow and local arrays (§18.10). |
+| `framePoolSize` | int | `64` | Word slots in the frame pool, which backs local arrays on both targets and, on the Z-machine, local-variable overflow (§18.10). Emitted only when some routine needs it. |
 | `linqScratchSize` | int | `32` | Elements per scratch buffer for `<linq>` query chains (§22.5). Emitted only when `<linq>` is included. |
 | `worldBufSize` | int | `128` | Objects per scratch buffer for `bgl.world` queries (§21.9); a walk that would exceed it stops there. Sizes a runtime-library declaration, so it must be set in the entry file (§17.1). |
 | `forInScratchSize` | int | `31` | Maximum elements in a literal-list `for (x in {…})` (§5.9.1). Emitted only when that form is used. |
