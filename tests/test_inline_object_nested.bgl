@@ -21,7 +21,9 @@ menu{ root, "text to display", {.type, .kind} };
 // a lonely baked object (no name, no link) — allowed; just unreferenced compile-time data
 menu{ "lonely" };
 
-// nested INLINE OBJECT as an object-typed field value (positional first, then a named nested array)
+// nested INLINE OBJECT as an object-typed field value (positional first, then a named nested array).
+// `w.head` reads the member at run time — an inline member is storage that construction fills, not
+// a compile-time name for the object it was filled with, and it can be reassigned.
 class wrapper : object { inline menu head; }
 wrapper w = { { root, "nested", {.x} } };
 

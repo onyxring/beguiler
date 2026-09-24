@@ -2358,7 +2358,11 @@ bglParser::ExprStep bglParser::parseExprMemberRead(ExprParseState& st, token& me
                         { classDef* mcd = getDispatchClass(vd->type.name);
                           if(mcd && mcd->isEmitterClass
                              && findMemberInHierarchy(mcd, [this](typeMember* m){ return isPropertyClassReadEmitter(m); }) != nullptr) break; }
-                        string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+                        // An `alias` member redirects to the object it names; an ordinary property
+                        // with an object-valued default is storage, and reading it must read the
+                        // property. See qualifyDottedViaObjectHead (bglParserTypes.cpp).
+                        string initName = vd->isAlias && vd->declaredExpressionValue
+                                        ? vd->declaredExpressionValue->text() : "";
                         objectDef* target = nullptr;
                         if(!initName.empty())
                             if(auto* od = languageService.findGlobalAs<objectDef>(initName)) target = od;

@@ -283,5 +283,5 @@ object app
   with eng engine
 ;
 [main n;
-    n=engine.increment();
+    n=app.eng.increment();
 ];

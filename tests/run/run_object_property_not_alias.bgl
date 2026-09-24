@@ -1,0 +1,34 @@
+/*  run_object_property_not_alias — a property whose default names a global object is storage, not a
+    compile-time name for that object.
+
+    Resolving a dotted path follows each hop, and at each one asked only "does this member's declared
+    initializer name a global object?" — which is true of a namespace hook (`alias ui = _bglUi;`) and
+    equally true of an ordinary property given a starting value. So `withInit.a` stopped being
+    storage: reads emitted `n1` whatever the property held, and `withInit.a = n3;` emitted `n1 = n3;`,
+    assigning to the object symbol — which Inform 6 rejects outright. The same fold reached an
+    `auto` member and an `inline` member, both of which are reassignable at run time.
+
+    The flag that records what the author actually wrote, `isAlias`, was already required by the
+    FINAL hop of the same walk; the intermediate hops now require it too.  */
+// EXPECT_OUTPUT: 1 3 3 1
+#beguilerSettings { target = z5; informName = "none"; }
+
+class node : object {
+    node a;
+    int id = 0;
+    int who(){ return id; }
+}
+object n1 : node { id = 1; }
+object n3 : node { id = 3; }
+object withInit : node { a = n1; id = 2; }
+
+void main(){
+    print(withInit.a.who());      // reads the property: n1
+    withInit.a = n3;              // writes the property, not the object symbol
+    print(" "); print(withInit.a.who());
+
+    node v = withInit.a;          // the expression path folded too
+    print(" "); print(v.who());
+
+    print(" "); print(n1.who());  // n1 itself is untouched
+}

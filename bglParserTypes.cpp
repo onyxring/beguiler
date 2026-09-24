@@ -1980,7 +1980,15 @@ optional<string> bglParser::qualifyDottedViaObjectHead(const DottedPath& p, func
         for(typeMember* m : instObj->members)
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(vd->name == firstSeg){
-                    string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+                    // `isAlias` is what separates a namespace hook (`alias ui = _bglUi;`) from an
+                    // ordinary property that merely starts out pointing at an object
+                    // (`object door { room target = hallway; }`). Both are "a member whose declared
+                    // initializer names a global object", so following the initializer alone turned
+                    // every such property into a compile-time redirect: `door.target` emitted
+                    // `hallway`, so `door.target = kitchen;` assigned to the object symbol and every
+                    // read ignored the property's storage.
+                    string initName = vd->isAlias && vd->declaredExpressionValue
+                                    ? vd->declaredExpressionValue->text() : "";
                     if(!initName.empty())
                         if(auto* od = languageService.findGlobalAs<objectDef>(initName))
                             return qualifyIdentifier(rest.empty() ? od->name : od->name + "." + rest, func, body);
@@ -3153,8 +3161,10 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
             for(typeMember* m : imp->members){
                 auto* vd = dynamic_cast<variableDeclaration*>(m);
                 if(!vd || vd->name != head) continue;
-                // Follow the member to find the target object by initializer name
-                string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+                // Follow the member to find the target object by initializer name — an `alias`
+                // member only; see qualifyDottedViaObjectHead.
+                string initName = vd->isAlias && vd->declaredExpressionValue
+                                ? vd->declaredExpressionValue->text() : "";
                 if(!initName.empty())
                     if(auto* od = languageService.findGlobalAs<objectDef>(initName)) curObj = od;
                 if(!curObj){
@@ -3212,8 +3222,10 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
             // rather than the specific object type. Try matching by member's initializer name first,
             // then fall back to the type name.
             string nextType = vd->type.name;
-            // If the member has a declared initializer pointing to an object, use that
-            string initName = vd->declaredExpressionValue ? vd->declaredExpressionValue->text() : "";
+            // Only an `alias` member redirects to the object its initializer names; an ordinary
+            // property with an object-valued default is storage, and its type is its own.
+            string initName = vd->isAlias && vd->declaredExpressionValue
+                            ? vd->declaredExpressionValue->text() : "";
             curObj = nullptr;
             // Try init name first (e.g., auto glulx = _bglGlulx → initName="_bglglulx")
             if(!initName.empty())
@@ -3420,14 +3432,16 @@ bool bglParser::tryConsumeNamespacedEnumValue(token first, string& outFlatEmissi
                 // Alias resolved — fall through to normal handling (unlikely if we got here).
                 return false;
             }
-            // Auto member / property — follow to its target object to keep walking.
-            string initName = foundMember->declaredExpressionValue ? foundMember->declaredExpressionValue->text() : "";
+            // A namespace step is an `alias` member; anything else is a property, and
+            // `obj.prop.member` is an ordinary runtime chain that the property handlers own.
+            // Following a property's initializer here made this diagnostic claim the path and
+            // then reject it, because a class method is not among the target object's own members.
             objectDef* next = nullptr;
-            if(!initName.empty())
-                if(auto* od = languageService.findGlobalAs<objectDef>(initName)) next = od;
-            if(!next)
-                if(auto* od = languageService.findGlobalAs<objectDef>(foundMember->type.name)) next = od;
-            if(!next) return false;  // non-namespace member — let normal handling proceed
+            if(foundMember->isAlias && foundMember->declaredExpressionValue)
+                next = languageService.findGlobalAs<objectDef>(foundMember->declaredExpressionValue->text());
+            if(!next && foundMember->isAlias)
+                next = languageService.findGlobalAs<objectDef>(foundMember->type.name);
+            if(!next) return false;  // not a namespace step — let normal handling proceed
             curObj = next;
             prefixSoFar += "." + segments[i];
         }

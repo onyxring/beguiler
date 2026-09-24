@@ -290,7 +290,7 @@ class wrapper
 [main;
     print (string)child.title;
     if(child.words provides print) child.words.print(); else print (name)child.words;
-    print (string)_bglanon5.title;
+    print (string)w.head.title;
 ];
 menu child
   with linkto root,
