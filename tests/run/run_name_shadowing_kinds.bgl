@@ -1,0 +1,58 @@
+/*  run_name_shadowing_kinds — a function and a variable of one name are told apart by USE.
+
+    The BLR publishes unprefixed file-scope globals — `print`, `the`, `a`, `typeof`, `log`,
+    `printName` — so an author's own declaration of one of those names is a second global of the
+    same name. Resolution used to take whichever was registered first, which meant a class-typed
+    global named `print` or `the` resolved to the BLR function and then reported the member access
+    against it: "'c' is not a declared property of 'the' (type 'func')" — a message that named
+    neither the real problem nor the collision.
+
+    The rule is syntactic, and it works because a call never reaches name resolution (bindGlobalCall
+    handles `name(args)` on its own). So every use that does reach it is either a dotted access or a
+    bare value, and a function reference supports neither:
+
+      - `name.member` / `name = v`  -> the variable or object
+      - `name(args)`                -> the function
+      - `name` bare, no variable    -> still the function reference (arr.any(isEven) below)
+
+    Note the limit of the rule: shadowing a name you then CALL unqualified (declaring a variable
+    `print` and still writing `print(...)`) resolves to the variable, as ordinary shadowing should
+    — so don't shadow something you still mean to call. `a` and `the` are safe because the variable
+    and the rule are used in different positions.
+
+    Articles are the motivating case: `a` and `the` are I6 print rules, which I6 itself keeps out of
+    the identifier namespace by making them context-sensitive keywords. Beguile models them as
+    global emitters, so it has to do the equivalent work at resolution time.  */
+// EXPECT_OUTPUT: var=7 cls=3 using=9 fnref=true rules=
+#beguilerSettings { target = z5; informName = "none"; }
+#include <linq>
+
+object apple { }
+class W : object { int c; }
+
+int a;                                   // shadows the BLR print rule `a`
+W the;                                   // class-typed, shadows the BLR print rule `the`
+
+object myRules { emitter void mark(object o){ print (the)$o; } }
+#using myRules;
+int mark;                                // shadows a #using-imported method
+
+bool isEven(var x){ return true; }
+array<int> nums = {1,2,3};
+
+void main(){
+    a    = 7;                                   // bare `a`    -> the variable
+    the.c = 3;                                  // dotted      -> the class-typed global
+    mark = 9;                                   // bare `mark` -> the variable, not the import
+
+    print("var=");   print(a);
+    print(" cls=");  print(the.c);
+    print(" using="); print(mark);
+    print(" fnref="); print(nums.any(isEven));  // lone fn name -> a function reference
+
+    // The same names in CALL position still reach the emitters. Left until last because the
+    // article rules print a short name, which this library-less fixture does not have.
+    print(" rules=");
+    a(apple);
+    mark(apple);
+}

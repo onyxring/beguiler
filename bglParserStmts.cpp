@@ -1528,7 +1528,7 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
         if(size_t d = qualified.rfind('.'); d != string::npos){
             string recvPath = lhsOriginal.substr(0, lhsOriginal.rfind('.'));
             string mem      = qualified.substr(d + 1);
-            string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
+            string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body, mem), mem);
             if(aliased != mem) qualified = qualified.substr(0, d + 1) + aliased;
         }
         t.variableLeft = qualified;
@@ -1585,7 +1585,10 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
                         break;
                     }
         }
-        string ownerType = leftType != nullptr ? "" : resolvePathType(ownerPath, func, body);
+        // Pass the member being assigned as the hint: when the owner name matches more than one
+        // declaration (a user global shadowing an unprefixed BLR global such as `print` or `the`),
+        // it is what picks the candidate whose type actually has that member.
+        string ownerType = leftType != nullptr ? "" : resolvePathType(ownerPath, func, body, propName);
         // `hide` enforcement (write): block `v.member = …` when member's write (`operator =`), or
         // the whole member, is hidden on v's static type. `(Base)v.member = …` retypes the owner
         // to Base — the door. Reads are unaffected (fires only on this assignment path).

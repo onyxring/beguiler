@@ -761,9 +761,9 @@ class bglParser {
         // the caller's vector and returns void.
 
         // One file-scope match for resolveIdentifierType: the type plus where it came from.
-        struct TypeCandidate { string type; string origin; bool isEnum; bool isObject = false; };
+        struct TypeCandidate { string type; string origin; bool isEnum; bool isObject = false; bool isFunction = false; };
         // One file-scope match for qualifyIdentifier: also carries the I6 emission to use.
-        struct QualifyCandidate { string qualified; string type; string origin; bool isEnum; bool isObject = false; };
+        struct QualifyCandidate { string qualified; string type; string origin; bool isEnum; bool isObject = false; bool isFunction = false; };
         // A dotted name split for the qualifyDotted* tiers. head/tail keep the user's case;
         // firstSeg/rest are the lowercased first segment of the tail and the remainder.
         struct DottedPath { string head; string tail; string qualifiedHead; string firstSeg; string rest; };

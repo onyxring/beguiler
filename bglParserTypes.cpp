@@ -525,9 +525,15 @@ optional<string> bglParser::resolveTypeFromCaptures(const string& name){
 
 // Globals (variable, function, objectDef, classDef, enumDef)
 void bglParser::collectTypeCandidatesFromGlobals(const string& name, vector<TypeCandidate>& candidates){
-    if(typeDef* g = languageService.findGlobal(name)){
+    // EVERY global of this name, not just the first. The BLR publishes unprefixed globals (`print`,
+    // `the`, `typeof`, …), so a user declaration of the same name is a second global — and taking
+    // only the first meant the user's never became a candidate, leaving the ranking below (which
+    // exists precisely to break such ties by member hint) nothing to choose between. `obj.member`
+    // on a shadowed name then resolved against the BLR entry and reported the member as missing.
+    for(typeDef* g : languageService.globals){
+        if(g->name != name) continue;
         string ct, origin;
-        bool isObj = false;
+        bool isObj = false, isFn = false;
         if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ ct = vd->type.name; origin = format("global variable '{0}'", g->name); }
         else if(auto* fd = dynamic_cast<functionDef*>(g)){
             // A bare function NAME used as a value is a function reference (the I6 routine
@@ -535,7 +541,7 @@ void bglParser::collectTypeCandidatesFromGlobals(const string& name, vector<Type
             // "func" and matches func<…> params). A *call* `name(args)` never reaches here;
             // it's handled by bindGlobalCall. So this lets `arr.filter(isEven)` bind like
             // `arr.filter((int x) => …)`. (void fd is unused here.)
-            ct = "func"; origin = format("global function '{0}'", g->name);
+            ct = "func"; origin = format("global function '{0}'", g->name); isFn = true;
         }
         else if(auto* od = dynamic_cast<objectDef*>(g)){
             isObj = true;
@@ -557,7 +563,14 @@ void bglParser::collectTypeCandidatesFromGlobals(const string& name, vector<Type
             ct = name;
             origin = format("type '{0}'", g->name);
         }
-        if(!ct.empty()) candidates.push_back({ct, origin, false, isObj});
+        // Overloads of one global function all describe the same reference, and a pre-scan stub
+        // may sit beside its real definition; collapse them so an overload set does not look like
+        // an ambiguity.
+        if(!ct.empty()){
+            bool dup = false;
+            for(auto& c : candidates) if(c.type == ct && c.isObject == isObj){ dup = true; break; }
+            if(!dup) candidates.push_back({ct, origin, false, isObj, isFn});
+        }
     }
 }
 
@@ -595,6 +608,24 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
     //                           If a single candidate emerges, use it; otherwise error.
     if(candidates.size() == 1) return candidates[0].type;
     if(candidates.size() >= 2){
+        // Kind filter: a FUNCTION reference and a variable/object of the same name are told apart
+        // by how the name is USED, not by which was declared first. A call `name(args)` never
+        // reaches here — bindGlobalCall handles it — so every use that does reach here is either a
+        // dotted access or a bare value, and a function reference supports neither a member access
+        // nor being shadowed by an author's own declaration. Dropping function candidates therefore
+        // resolves the collision that the BLR's unprefixed globals (`print`, `the`, `typeof`, …)
+        // otherwise create, while a lone function name still resolves as a reference
+        // (`arr.filter(isEven)`) because it is then the only candidate.
+        {
+            bool hasNonFunction = false;
+            for(auto& c : candidates) if(!c.isFunction){ hasNonFunction = true; break; }
+            if(hasNonFunction){
+                vector<TypeCandidate> filtered;
+                for(auto& c : candidates) if(!c.isFunction) filtered.push_back(c);
+                candidates = filtered;
+            }
+        }
+        if(candidates.size() == 1) return candidates[0].type;
         if(!memberHint.empty()){
             vector<TypeCandidate*> satisfying;
             for(auto& c : candidates)
@@ -717,7 +748,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         bool added = false;
         for(typeMember* m : imp->members){
             if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(fd->name == name){ candidates.push_back({fd->returnType.name, format("#using-imported method '{0}.{1}'", imp->dName(), name), false}); added = true; break; }
+                if(fd->name == name){ candidates.push_back({fd->returnType.name, format("#using-imported method '{0}.{1}'", imp->dName(), name), false, /*isObject=*/false, /*isFunction=*/true}); added = true; break; }
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(vd->name == name){ candidates.push_back({vd->type.name, format("#using-imported variable '{0}.{1}'", imp->dName(), name), false}); added = true; break; }
         }
@@ -728,7 +759,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         bool added = false;
         for(typeMember* m : imp->members){
             if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(fd->name == name){ candidates.push_back({fd->returnType.name, format("#using-imported method '{0}.{1}'", imp->name, name), false}); added = true; break; }
+                if(fd->name == name){ candidates.push_back({fd->returnType.name, format("#using-imported method '{0}.{1}'", imp->name, name), false, /*isObject=*/false, /*isFunction=*/true}); added = true; break; }
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(vd->name == name){ candidates.push_back({vd->type.name, format("#using-imported member '{0}.{1}'", imp->name, name), false}); added = true; break; }
         }
@@ -1910,8 +1941,13 @@ string bglParser::qualifyDottedPath(const string& name, size_t dot, functionDef*
                                     statementBlock* body, bool forceGlobalScope){
     string head = name.substr(0, dot);
     string tail = name.substr(dot + 1);
-    // Re-attach the global qualifier to the head so the recursion forces file scope for it.
-    string qualifiedHead = qualifyIdentifier((forceGlobalScope ? "::" : "") + head, func, body);
+    // Re-attach the global qualifier to the head so the recursion forces file scope for it, and
+    // hint it with the member being reached. When the head matches more than one declaration — a
+    // user global shadowing one of the BLR's unprefixed globals (`print`, `the`, `typeof`, …) —
+    // the hint is what picks the candidate whose type actually has that member. Without it the
+    // head resolved to whichever matched first and the access was reported against the wrong one.
+    string headHint = tail.substr(0, tail.find('.'));
+    string qualifiedHead = qualifyIdentifier((forceGlobalScope ? "::" : "") + head, func, body, headHint);
     if(qualifiedHead.empty()) return "";
     DottedPath p{head, tail, qualifiedHead, "", ""};
     if(auto r = qualifyDottedHeadViaUsingAlias(p, func, body, forceGlobalScope)) return *r;
@@ -2099,9 +2135,12 @@ optional<string> bglParser::qualifyFromCaptures(const string& name){
 
 // Globals (variable, function, objectDef, classDef, enumDef)
 void bglParser::collectQualifyCandidatesFromGlobals(const string& name, vector<QualifyCandidate>& candidates){
-    if(typeDef* g = languageService.findGlobal(name)){
+    // Every global of this name — see collectTypeCandidatesFromGlobals for why the first alone
+    // is not enough.
+    for(typeDef* g : languageService.globals){
+        if(g->name != name) continue;
         string qual, ct, origin;
-        bool isObj = false;
+        bool isObj = false, isFn = false;
         if(auto* fd = dynamic_cast<functionDef*>(g)){
             ct = fd->returnType.name;
             origin = format("global function '{0}'", g->name);
@@ -2113,6 +2152,7 @@ void bglParser::collectQualifyCandidatesFromGlobals(const string& name, vector<Q
                     qual = b;
                 } else qual = g->i6name.empty() ? name : g->i6name;
             } else qual = g->i6name.empty() ? name : g->i6name;
+            isFn = true;
         }
         else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
             ct = vd->type.name;
@@ -2135,7 +2175,11 @@ void bglParser::collectQualifyCandidatesFromGlobals(const string& name, vector<Q
             ct = name;  // type identifies itself
             origin = format("type '{0}'", g->name);
         }
-        if(!qual.empty()) candidates.push_back({qual, ct, origin, false, isObj});
+        if(!qual.empty()){
+            bool dup = false;
+            for(auto& c : candidates) if(c.qualified == qual && c.type == ct){ dup = true; break; }
+            if(!dup) candidates.push_back({qual, ct, origin, false, isObj, isFn});
+        }
     }
 }
 
@@ -2146,9 +2190,11 @@ void bglParser::collectQualifyCandidatesFromUsingClassImports(const string& name
     for(classDef* imp : usingImports){
         for(typeMember* m : imp->members){
             string qual, ct, origin;
-            bool matched = false;
+            bool matched = false, isFn = false;
             if(auto* fd = dynamic_cast<functionDef*>(m)){
                 if(fd->name != name) continue;
+                // A value emitter expands to a value; a method import is a function reference.
+                isFn = !(fd->isValueEmitter && fd->isEmitter);
                 ct = fd->returnType.name;
                 origin = format("#using-imported method '{0}.{1}'", imp->dName(), name);
                 if(fd->isValueEmitter && fd->isEmitter){
@@ -2169,7 +2215,7 @@ void bglParser::collectQualifyCandidatesFromUsingClassImports(const string& name
                 origin = format("#using-imported variable '{0}.{1}'", imp->dName(), name);
                 matched = true;
             }
-            if(matched){ candidates.push_back({qual, ct, origin, false}); break; }
+            if(matched){ candidates.push_back({qual, ct, origin, false, /*isObject=*/false, isFn}); break; }
         }
     }
 }
@@ -2181,9 +2227,11 @@ void bglParser::collectQualifyCandidatesFromUsingObjectImports(const string& nam
     for(objectDef* imp : usingObjectImports){
         for(typeMember* m : imp->members){
             string qual, ct, origin;
-            bool matched = false;
+            bool matched = false, isFn = false;
             if(auto* fd = dynamic_cast<functionDef*>(m)){
                 if(fd->name != name) continue;
+                // A value emitter expands to a value; a method import is a function reference.
+                isFn = !(fd->isValueEmitter && fd->isEmitter);
                 ct = fd->returnType.name;
                 origin = format("#using-imported method '{0}.{1}'", imp->name, name);
                 if(fd->isValueEmitter && fd->isEmitter){
@@ -2205,7 +2253,7 @@ void bglParser::collectQualifyCandidatesFromUsingObjectImports(const string& nam
                 origin = format("#using-imported member '{0}.{1}'", imp->name, name);
                 matched = true;
             }
-            if(matched){ candidates.push_back({qual, ct, origin, false}); break; }
+            if(matched){ candidates.push_back({qual, ct, origin, false, /*isObject=*/false, isFn}); break; }
         }
     }
 }
@@ -2282,6 +2330,24 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
         return candidates[0].qualified;
     }
     if(candidates.size() >= 2){
+        // Kind filter: a FUNCTION reference and a variable/object of the same name are told apart
+        // by how the name is USED, not by which was declared first. A call `name(args)` never
+        // reaches here — bindGlobalCall handles it — so every use that does reach here is either a
+        // dotted access or a bare value, and a function reference supports neither a member access
+        // nor being shadowed by an author's own declaration. Dropping function candidates therefore
+        // resolves the collision that the BLR's unprefixed globals (`print`, `the`, `typeof`, …)
+        // otherwise create, while a lone function name still resolves as a reference
+        // (`arr.filter(isEven)`) because it is then the only candidate.
+        {
+            bool hasNonFunction = false;
+            for(auto& c : candidates) if(!c.isFunction){ hasNonFunction = true; break; }
+            if(hasNonFunction){
+                vector<QualifyCandidate> filtered;
+                for(auto& c : candidates) if(!c.isFunction) filtered.push_back(c);
+                candidates = filtered;
+            }
+        }
+        if(candidates.size() == 1) return candidates[0].qualified;
         if(!memberHint.empty()){
             vector<QualifyCandidate*> satisfying;
             for(auto& c : candidates)
