@@ -13,8 +13,9 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | Word | Kind | Section |
 |---|---|---|
 | `additive` | qualifier, I6 | §11.7.2 |
-| `alias` | qualifier (Beguile-side second name; on `extern`, maps an I6 symbol) | §3.11, §8.2.4, §10.2 |
+| `alias` | qualifier (a second Beguile name for a Beguile declaration) | §8.2.4, §10.2 |
 | `array` | type, I6 | §12.2 |
+| `asBgl` | qualifier (names an `extern` I6 symbol for Beguile source) | §3.11 |
 | `asI6` | qualifier (names the I6 symbol a Beguile declaration emits as) | §3.11 |
 | `attribute` | type, I6 | §11.6 |
 | `auto` | type | §3.6, §9.9.2 |

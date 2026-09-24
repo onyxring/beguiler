@@ -100,7 +100,7 @@ words alphabetically, with the section that defines each.
 
 **Declaration words** begin or qualify a declaration.
 
-`alias` `asI6` `byVal` `class` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
+`alias` `asBgl` `asI6` `byVal` `class` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
 `operator` `ref` `replace` `static` `superposed` `typesealed`
 
 **Type-forming words** build a type rather than name one.

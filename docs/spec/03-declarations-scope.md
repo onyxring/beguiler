@@ -14,7 +14,7 @@
   - [3.8.3 Global Scope](#383-global-scope)
 - [3.9 The Global-Scope Qualifier `::`](#39-the-global-scope-qualifier-)
 - [3.10 Shadowing](#310-shadowing)
-- [3.11 The `asI6` and `alias` Clauses](#311-the-asi6-and-alias-clauses)
+- [3.11 The `asI6` and `asBgl` Clauses](#311-the-asi6-and-asbgl-clauses)
 - [3.12 `superposed`](#312-superposed)
 <!-- /toc -->
 
@@ -324,7 +324,7 @@ void foo() {
 }
 ```
 
-## 3.11 The `asI6` and `alias` Clauses
+## 3.11 The `asI6` and `asBgl` Clauses
 
 **Syntax**
 
@@ -333,7 +333,7 @@ void foo() {
 object ⟨name⟩ asI6 ⟨i6 name⟩ { … }
 ⟨type⟩ ⟨member⟩ asI6 ⟨i6 name⟩ ;              // class or object member
 ⟨type⟩ ⟨method⟩ ( … ) asI6 ⟨i6 name⟩ { … }
-extern ⟨type⟩ ⟨i6 name⟩ alias ⟨name⟩ ;
+extern ⟨type⟩ ⟨i6 name⟩ asBgl ⟨name⟩ ;
 ```
 
 **Description**
@@ -345,17 +345,18 @@ where the thing is defined.
 **The declared name is always the name in the language that defines the thing; the clause names it
 in the other one.** A plain declaration is defined in Beguile, so the declared name is the Beguile
 one and `asI6` *creates* the name Inform 6 will get. An `extern` declaration adopts a symbol Inform 6
-already defines, so the declared name is the I6 one and `alias` *maps* it to a Beguile name.
+already defines, so the declared name is the I6 one and `asBgl` *names* it for Beguile.
 
 ```bgl
 attribute heightened asI6 excited;   // a new attribute: Beguile says heightened, I6 says excited
-extern attribute light alias lit;    // I6 already has light; Beguile says lit
+extern attribute light asBgl lit;    // I6 already has light; Beguile says lit
 ```
 
 Each clause is therefore tied to one side of `extern`. `asI6` on an `extern` is a compile-time error
-— there is no name to create, because the symbol already exists — and `alias` without `extern` is an
-error for the mirror reason. That is what keeps the reading unambiguous: **`asI6` never maps to an
-existing name, and `alias` never invents one.**
+— there is no name to create, because the symbol already exists — and `asBgl` without `extern` is an
+error for the mirror reason. That is what keeps the reading unambiguous: **`asI6` never names an
+existing symbol, and `asBgl` never invents one.** The pair reads as one mechanism with two
+directions: each clause names the side its keyword ends in.
 
 `asI6` is valid on any typed instance declaration, on a named object definition (including instances
 of subclasses such as `room Name asI6 place { }`), and on class and object members, where it follows
@@ -363,15 +364,14 @@ the member name. It is ignored on operator methods; on a type declaration (`exte
 `alias class`) or on a free function it is a compile-time error. The usual reason to reach for either
 clause is that the name required on one side is a keyword or reserved word on the other (§15.9).
 
-This `alias` clause names one declaration across the language boundary. The other `alias` forms —
-`alias class Foo for Bar` (§8.2.4), `alias name = Target` (§10.2) and alias members on emitter
-classes (§10.3) — introduce a second *Beguile* name for something already named in Beguile, and
-leave the emitted I6 untouched.
+Both clauses cross the language boundary. `alias` never does: `alias class Foo for Bar` (§8.2.4),
+`alias name for Type;` and `alias name = Target;` (§10.2) each introduce a second *Beguile* name for
+something already named in Beguile, and leave the emitted I6 untouched.
 
 **Example**
 
 ```bgl
-extern attribute light alias lit;
+extern attribute light asBgl lit;
 object myHook asI6 hook { … }
 class Widget : object {
     int count asI6 internalCount;

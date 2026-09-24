@@ -1281,11 +1281,11 @@ void bglParser::preScanProperty(bool isExtern){
 // for `alias` register under the BEGUILE name the clause supplies rather than the I6 symbol declared
 // before it. Reports nothing — the main pass owns the diagnostics.
 void bglParser::preScanI6NameClause(string& nameStr){
-    bool isAlias = file.peekToken().is("alias");
-    if(!isAlias && !file.peekToken().is("asi6")) return;
+    bool isAsBgl = file.peekToken().is("asbgl");
+    if(!isAsBgl && !file.peekToken().is("asi6")) return;
     file.getToken();                       // the clause keyword
     token other = file.getToken();         // the name it carries
-    if(!isAlias) return;                   // asI6: the declared name stays the Beguile one
+    if(!isAsBgl) return;                   // asI6: the declared name stays the Beguile one
     nameStr = other.value;
     transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
 }
@@ -1368,10 +1368,10 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
     // Otherwise the token here is the identifier `as`, no branch below matches, and the trailing
     // skip-to-semicolon runs straight through this declaration's body and swallows the NEXT
     // declaration's registration, so a class after `object X as Y { }` was never registered.
-    if(sym.is("asi6") || sym.is("alias")){
-        bool wasAlias = sym.is("alias");
+    if(sym.is("asi6") || sym.is("asbgl")){
+        bool wasAsBgl = sym.is("asbgl");
         token other = file.getToken();      // the name the clause carries
-        if(wasAlias){                       // `extern T <i6name> alias <beguileName>`
+        if(wasAsBgl){                       // `extern T <i6name> asBgl <beguileName>`
             nameStr = other.value;
             transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
         }

@@ -13,7 +13,7 @@
     braced body once it is fixed, since that is the form the spec shows.  */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-extern attribute light alias lit;         // `alias` maps an I6 symbol to a Beguile name
+extern attribute light asBgl lit;         // `asBgl` names an I6 symbol for Beguile
 object myHook asI6 hook;                  // `asI6` on an object instance (bodiless: see note)
 int helperRoutine(int a){ return a + 1; }
 
