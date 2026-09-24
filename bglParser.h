@@ -514,6 +514,20 @@ class bglParser {
         // Consume an optional `as <i6name>` sitting after a method's parameter list (§3.11) and
         // record it on the method. Ignored on operators, whose i6name the overload mangler owns.
         void consumeMethodI6Alias(functionDef& funcDef);
+        // Parse an optional `asI6 <i6name>` / `alias <beguileName>` clause (§3.11). The two run in
+        // opposite directions, which is why each is tied to one side of `extern`: `asI6` CREATES the
+        // name I6 will get, so it belongs on a declaration Beguile defines; `alias` MAPS a symbol I6
+        // already defines, so it belongs on an `extern`. For `alias` the declared token is the I6
+        // symbol and `nameTok` is rewritten to the Beguile name. Returns the I6 name, or "".
+        string parseI6NameClause(token& nameTok, bool isExtern);
+        // The §3.11 direction rule, shared by the grammar-matched form and the inline one.
+        // Returns the I6 name; for `alias` it rewrites nameTok to the Beguile name the clause
+        // carries. Reports and returns "" when the clause sits on the wrong side of `extern`.
+        string applyI6NameClause(token& nameTok, const token& otherTok, bool isAlias, bool isExtern);
+        // Pre-scan counterpart: step over `asI6 <name>` / `alias <name>` and, for `alias`, register
+        // the stub under the BEGUILE name the clause supplies rather than the I6 symbol declared
+        // before it. Reports nothing — the main pass owns the diagnostics.
+        void preScanI6NameClause(string& nameStr);
         void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "", bool isRef = false);
         void processInheritedMember(objectDef& obj, token nameTok);
         bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members

@@ -1114,11 +1114,8 @@ void bglParser::preScanObject(token& tok, bool isExtern){
     // the body and bodiless forms, so the decision sees the real next token — left in place, `as`
     // matched neither arm, the declaration fell through to the bodiless path, and the skip there
     // ran past this object's body into the NEXT declaration. Consuming it here rather than
-    // widening the test below keeps `object Name as alias;` on the bodiless path where it belongs.
-    if(file.peekToken().is("asi6")){
-        file.getToken();   // 'as'
-        file.getToken();   // the I6 name
-    }
+    // widening the test below keeps `object Name asI6 <name>;` on the bodiless path where it belongs.
+    preScanI6NameClause(nameStr);
     token peek = file.peekToken();
     if(peek.is(token::braceOpen) || peek.is(":")){ // object body
         objectDef* objStub = nullptr;
@@ -1280,6 +1277,19 @@ void bglParser::preScanProperty(bool isExtern){
 }
 
 // `attribute name;` — reserve the global stub at this source position so `has <attr>` clauses keep their source-order dependency.
+// Pre-scan counterpart to parseI6NameClause (§3.11): step over `asI6 <name>` / `alias <name>`, and
+// for `alias` register under the BEGUILE name the clause supplies rather than the I6 symbol declared
+// before it. Reports nothing — the main pass owns the diagnostics.
+void bglParser::preScanI6NameClause(string& nameStr){
+    bool isAlias = file.peekToken().is("alias");
+    if(!isAlias && !file.peekToken().is("asi6")) return;
+    file.getToken();                       // the clause keyword
+    token other = file.getToken();         // the name it carries
+    if(!isAlias) return;                   // asI6: the declared name stays the Beguile one
+    nameStr = other.value;
+    transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+}
+
 void bglParser::preScanAttribute(bool isExtern){
     // Register a stub at this source position so the main-parse emitter can see the
     // attribute's declaration index. Without this, `extern attribute light;` gets
@@ -1288,6 +1298,7 @@ void bglParser::preScanAttribute(bool isExtern){
     token nameTok = file.getToken();
     string nameStr = nameTok.value;
     transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+    preScanI6NameClause(nameStr);
     bool alreadyReg = false;
     for(typeDef* g : languageService.globals)
         if(auto* vd = dynamic_cast<variableDeclaration*>(g))
@@ -1357,9 +1368,14 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
     // Otherwise the token here is the identifier `as`, no branch below matches, and the trailing
     // skip-to-semicolon runs straight through this declaration's body and swallows the NEXT
     // declaration's registration, so a class after `object X as Y { }` was never registered.
-    if(sym.is("asi6")){
-        file.getToken();        // the I6 name
-        sym = file.getToken();  // now the real '{' or ';'
+    if(sym.is("asi6") || sym.is("alias")){
+        bool wasAlias = sym.is("alias");
+        token other = file.getToken();      // the name the clause carries
+        if(wasAlias){                       // `extern T <i6name> alias <beguileName>`
+            nameStr = other.value;
+            transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+        }
+        sym = file.getToken();              // now the real '{' or ';'
     }
 
     if(sym.is(token::parenOpen)){

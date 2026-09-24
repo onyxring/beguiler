@@ -7,13 +7,13 @@
     is declared. The baseline pins each form, which is what makes a regression in the mangling or
     in the `as` plumbing visible here rather than as an I6 "No such constant" much later.
 
-    NOTE: myHook is declared bodiless because `object <name> as <alias> { }` WITH a body currently
+    NOTE: myHook is declared bodiless because `object <name> asI6 <name> { }` WITH a body currently
     corrupts the parse of the following declaration ("expected type name (in class declaration)").
     That is a pre-existing bug against spec 3.11, unrelated to $i6Name; switch this back to a
     braced body once it is fixed, since that is the form the spec shows.  */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-extern attribute lit asI6 light;          // `asI6` on an attribute
+extern attribute light alias lit;         // `alias` maps an I6 symbol to a Beguile name
 object myHook asI6 hook;                  // `asI6` on an object instance (bodiless: see note)
 int helperRoutine(int a){ return a + 1; }
 

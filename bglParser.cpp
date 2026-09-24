@@ -1477,8 +1477,12 @@ bool bglParser::processTypedProperty(vector<token>& t, Qualifiers& q, abstractOb
     }
 bool bglParser::processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c)
     { t[0] = consumeTypeToken(t[0]); return processTypedObjectDeclaration(t[0], t[1], t[3], q, c); }
-bool bglParser::processAliased(vector<token>& t, Qualifiers& q, abstractObject& c)
-    { return processAliasedDeclaration(t[0], t[1], t[3], q, c); }
+bool bglParser::processAliased(vector<token>& t, Qualifiers& q, abstractObject& c){
+    token nameTok = t[1];
+    string i6name = applyI6NameClause(nameTok, t[3], t[2].is("alias"), q.isExtern);
+    token i6Tok = t[3]; i6Tok.value = i6name; i6Tok.originalValue = i6name;
+    return processAliasedDeclaration(t[0], nameTok, i6Tok, q, c);
+}
 
 // ── Statement handlers (code-block scope) ───────────────────────────────────
 bool bglParser::processDirectiveDispatch(vector<token>& t, Qualifiers&, abstractObject& ctx) {
@@ -1510,12 +1514,7 @@ bool bglParser::processFunc(vector<token>& t, Qualifiers& q, abstractObject& ctx
         file.getToken();
         objectClassName = file.getToken(eTokenType::dataType).value;
     }
-    string i6alias;
-    if(file.peekToken().is("asi6")) {
-        file.getToken();
-        token aliasTok = file.getToken(eTokenType::identifier);
-        i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
-    }
+    string i6alias = parseI6NameClause(name, q.isExtern);
     token symbol = file.getToken({token::assignment, token::parenOpen, token::endStatement, token::braceOpen});
     if(symbol.is(token::parenOpen))
         return processRoutineDeclaration(typeTok, name, ctx, q.isExtern, q.isEmitter, q.isReplace, q.isDefault, q.isSuperposed);
@@ -1523,6 +1522,50 @@ bool bglParser::processFunc(vector<token>& t, Qualifiers& q, abstractObject& ctx
         return processObjectDeclaration(typeTok, name, q.isExtern, objectClassName, i6alias, true, q.isEmitter);
     else
         return processVariableDeclaration(typeTok, name, symbol, ctx, q.isExtern, q.isConst, i6alias, q.isRef, q.isSuperposed);
+}
+
+// See bglParser.h. `asI6` adds an I6 spelling to a Beguile declaration; `alias` names an existing
+// I6 symbol for Beguile. Tying each to one side of `extern` keeps a single reading: the DECLARED
+// name is always the name in the language that defines the thing, and the clause names it in the
+// other one.
+string bglParser::parseI6NameClause(token& nameTok, bool isExtern){
+    bool isAsI6  = file.peekToken().is("asi6");
+    bool isAlias = file.peekToken().is("alias");
+    if(!isAsI6 && !isAlias) return "";
+    file.getToken();                                    // the clause keyword
+    token other = file.getToken({eTokenType::identifier, eTokenType::dataType});
+    return applyI6NameClause(nameTok, other, isAlias, isExtern);
+}
+
+// See bglParser.h. `asI6` CREATES the name Inform 6 will get, so it belongs on a declaration
+// Beguile defines; `alias` MAPS a symbol Inform 6 already defines, so it belongs on an `extern`.
+// Tying each to one side of `extern` keeps a single reading: the DECLARED name is always the name
+// in the language that defines the thing, and the clause names it in the other one.
+string bglParser::applyI6NameClause(token& nameTok, const token& otherTok, bool isAlias, bool isExtern){
+    string otherName = otherTok.originalValue.empty() ? otherTok.value : otherTok.originalValue;
+    string declared  = nameTok.originalValue.empty()  ? nameTok.value  : nameTok.originalValue;
+    if(!isAlias){
+        if(isExtern){
+            parsingError(format("'asI6' names the Inform 6 symbol to emit, so it cannot apply to an "
+                                "'extern' declaration — that adopts a symbol Inform 6 already "
+                                "defines. Write `extern … {0} alias {1};` to give '{0}' the Beguile "
+                                "name '{1}'.", declared, otherName));
+            return "";
+        }
+        return otherName;
+    }
+    if(!isExtern){
+        parsingError(format("'alias' maps a symbol Inform 6 already defines, so it needs 'extern'. "
+                            "Write `{0} asI6 {1};` to choose the name '{0}' is emitted under.",
+                            declared, otherName));
+        return "";
+    }
+    // `extern <type> <i6name> alias <beguileName>` — the declared token IS the I6 symbol; the clause
+    // supplies the name Beguile source uses. Register under the Beguile name, emit under the I6 one.
+    nameTok.value = otherName;
+    transform(nameTok.value.begin(), nameTok.value.end(), nameTok.value.begin(), ::tolower);
+    nameTok.originalValue = otherName;
+    return declared;
 }
 
 bool bglParser::processNextStatement(abstractObject& contextObject) {
