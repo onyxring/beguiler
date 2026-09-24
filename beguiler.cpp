@@ -150,8 +150,27 @@ void beguiler::extractBlorbSettings(const string& filename) {
             target = block.substr(q1 + 1, q2 - q1 - 1);
         };
 
+        // Extract: key = <integer>  (leading '-' is not accepted — every int setting is a size)
+        auto extractInt = [&](const string& key, int& target) {
+            if(target >= 0) return;                       // already set (CLI, or an earlier block)
+            size_t k = blockLower.find(key);
+            if(k == string::npos) return;
+            size_t eq = block.find('=', k + key.size());
+            if(eq == string::npos) return;
+            size_t vs = block.find_first_not_of(" \t\r\n", eq + 1);
+            if(vs == string::npos || !isdigit((unsigned char)block[vs])) return;
+            size_t ve = vs;
+            while(ve < block.size() && isdigit((unsigned char)block[ve])) ve++;
+            try { target = stoi(block.substr(vs, ve - vs)); } catch(...) { }
+        };
+
         extractBool("generateblorb",   beguilerSettings.blorbEnabled);
         extractStr( "blorbassetpath", beguilerSettings.blorbAssetPath);
+
+        // worldBufSize sizes the BLR's bgl.world scratch buffers, and the BLR is parsed BEFORE the
+        // entry file's settings block is reached — so, unlike the other sizes (which are consumed
+        // at emit time), this one has to be read here or the declaration sees only the default.
+        extractInt("worldbufsize", beguilerSettings.worldBufSize);
 
         // autoInitialize (default true): record on the settings struct here. The gating symbol is
         // defined AFTER the loop (below) so it's set even for files with no #beguilerSettings block.

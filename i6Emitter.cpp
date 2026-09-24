@@ -1441,11 +1441,6 @@ void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     if(languageService.linqInUse)
         out << "Constant _BGL_LINQ_SCRATCH_SIZE = " << (cfg->linqScratchSize > 0 ? cfg->linqScratchSize : 32) << ";\n";
 
-    // bglWorld scratch buffer capacity — referenced from bglWorld.bgl's #emitfirst{}.
-    // Emitted only when `#include <bglWorld>` was resolved.
-    if(languageService.worldInUse)
-        out << "Constant _BGL_WORLD_BUFSIZE = " << (cfg->worldBufSize > 0 ? cfg->worldBufSize : 128) << ";\n";
-
     // for-in literal-list scratch capacity (max elements per `for(x in {a,b,c})`) — referenced from
     // _array.bgl's #storedEmitFirst scratchSupport block. Emitted only when that syntax is
     // used (same gate as the block itself, but the flag is set at parse time so the constant lands

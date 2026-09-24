@@ -502,9 +502,6 @@ bool bglParser::directiveInclude(token directive, abstractObject& contextObj){
                 // the LINQ-only bits (e.g. the _BGL_LINQ_SCRATCH_SIZE constant).
                 languageService.linqInUse = true;
             }
-            else if(ciInclude == "bglworld"){
-                languageService.worldInUse = true;
-            }
             else if(ciInclude == "buf"){
                 languageService.bufInUse = true;
             }

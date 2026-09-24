@@ -40,7 +40,8 @@ array<⟨type⟩> ⟨name⟩ ;
 ```
 
 `<`, `>`, `[` and `]` are literal. The first form is a sized array: capacity `⟨n⟩`, zero-initialized,
-length 0. The second is an initialized array: capacity and length equal to the number of values. The
+length 0. `⟨n⟩` is any compile-time integer: an integer literal, a `#define`d symbol whose value is
+an integer (§14.2.1), or an integer `#beguilerSettings` property (§17.7). The second is an initialized array: capacity and length equal to the number of values. The
 third is declared without capacity.
 
 **Description**

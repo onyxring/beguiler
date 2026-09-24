@@ -36,6 +36,7 @@ that `#beguilerSettings.prop` may read (§17.7).
 | `seriesNumber` | int | `0` | first (0 = unset) | — | yes | §17.5 |
 | `target` | `eTarget` | `Glulx` | first | `-G`, `-z5`, `-z8` | yes | §17.3 |
 | `title` | string | `""` | first | — | yes | §17.5 |
+| `worldBufSize` | int | `128` | first | — | yes | §17.4 |
 
 **Enum values.** `eTarget`: `Glulx`, `Z5`, `Z8`. `eErrorFormat`: `E1`, `E2`.
 

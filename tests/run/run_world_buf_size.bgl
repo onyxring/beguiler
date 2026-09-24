@@ -1,0 +1,23 @@
+/*  run_world_buf_size — `worldBufSize` actually sizes bgl.world's scratch buffers.
+
+    The setting was parsed, validated and readable, and nothing consumed it: _bglWorld.bgl
+    hard-coded `[128]` because a declared array size had to be an integer literal, and the I6
+    constant the compiler emitted for it had no reader. Two things had to change. A declared size
+    now accepts any compile-time integer — a `#define`d one or an integer `#beguilerSettings`
+    property — so the BLR can name the setting. And the setting is read in the entry-file pre-scan,
+    because the BLR is parsed before the entry file's settings block is reached; without that the
+    declaration sees only the schema default, which is what "readable but dead" looked like.
+
+    The walk stops at the buffer's capacity, so a world with more objects than that is the
+    observable difference: with worldBufSize = 4 the query returns 4, not the whole tree.  */
+// EXPECT_OUTPUT: 4
+#beguilerSettings { target = z5; informName = "none"; worldBufSize = 4; }
+
+object a { } object b { } object c { } object d { }
+object e { } object f { } object g { } object h { }
+
+void main(){
+    int n = 0;
+    for(object o in bgl.world.getAll()) n++;
+    print(n);
+}

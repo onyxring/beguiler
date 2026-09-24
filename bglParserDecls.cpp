@@ -315,8 +315,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     bool hasInitializer = symbol.is(token::assignment);
     if(symbol.is(token::bracketOpen)) {
         // array<T> name[N];   or   array<T> name[N] = <initializer>;
-        token sizeTok = file.getToken(eTokenType::integer);
-        arrDecl.arraySize = stoi(sizeTok.value);
+        arrDecl.arraySize = readCompileTimeInt("an array's capacity");
         file.getToken(token::bracketClose);
         hasInitializer = file.getToken({token::endStatement, token::assignment}).is(token::assignment);
     }
@@ -1024,6 +1023,42 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     recordGlobalVariableInit(varDecl, isConst, func, body);
 
     return false;
+}
+
+// Read an integer where the grammar needs a compile-time constant: an integer literal, a `#define`d
+// symbol whose value is an integer, or an integer `#beguilerSettings` property. The last two already
+// resolve to inline literals everywhere else a value is read (Appendix F), and a declared size is
+// read no later — it becomes an I6 array declaration, which I6 sizes at compile time.
+int bglParser::readCompileTimeInt(const string& what){
+    token t = file.getToken();
+    if(t.is(eTokenType::integer)) return stoi(t.value);
+    if(t.value == "#beguilersettings"){
+        file.getToken(token::period);
+        token prop = file.getToken(eTokenType::identifier);
+        string sv; int iv = 0; bool bv = false;
+        switch(readBeguilerSetting(prop.value, sv, iv, bv)){
+            case eSettingKind::integer: return iv;
+            case eSettingKind::unknown:
+                parsingError(format("#beguilerSettings.{0}: unknown or unsupported property", prop.value));
+                return 0;
+            default:
+                parsingError(format("#beguilerSettings.{0} is not an integer property, so it cannot give {1}.",
+                                    prop.value, what));
+                return 0;
+        }
+    }
+    if(t.is(eTokenType::identifier) || t.is(eTokenType::name)){
+        auto it = definedSymbols.find(t.value);
+        if(it != definedSymbols.end()){
+            try { return stoi(it->second); } catch(...){ }
+            parsingError(format("'{0}' is defined as '{1}', which is not an integer, so it cannot give {2}.",
+                                t.originalValue.empty() ? t.value : t.originalValue, it->second, what));
+            return 0;
+        }
+    }
+    parsingError(format("{0} must be a compile-time integer — an integer literal, a #define'd integer, or an "
+                        "integer #beguilerSettings property. Got '{1}'.", what, t.value));
+    return 0;
 }
 
 bool bglParser::processRoutineDeclaration(token returnType, token name, abstractObject& contextObject, bool isExternal, bool isEmitter, bool isReplace, bool isDefault, bool isSuperposed){

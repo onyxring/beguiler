@@ -23,22 +23,24 @@
 // so the whole thing gates on actual use: a game that never calls bgl.world emits
 // none of it.
 //
-// SHARED rotating scratch (4 buffers, 128 objects each): a nested query inside a
-// `for(o in bgl.world…)` loop gets a different buffer than the live outer one.
-// Tolerates up to (pool − 1) concurrent live iterations. Don't store a result
-// across turns; snapshot into your own `array<object>` for deep nesting or large
-// worlds (walks that exceed 128 stop silently).
+// SHARED rotating scratch (4 buffers, #beguilerSettings.worldBufSize objects each,
+// default 128): a nested query inside a `for(o in bgl.world…)` loop gets a different
+// buffer than the live outer one. Tolerates up to (pool − 1) concurrent live
+// iterations. Don't store a result across turns; snapshot into your own
+// `array<object>` for deep nesting or large worlds (a walk that exceeds the buffer
+// stops silently).
 //-----------------------------------------------------------------------------
 #once
 #include <array>
 
-// Scratch pool — superposed. (Fixed 128/buffer: a Beguile array size must be a
-// literal, so the former #beguilerSettings.worldBufSize knob is gone — edit the
-// [128]s to resize.)
-superposed array<object> _bglWorldBuf0[128];
-superposed array<object> _bglWorldBuf1[128];
-superposed array<object> _bglWorldBuf2[128];
-superposed array<object> _bglWorldBuf3[128];
+// Scratch pool — superposed. Capacity is #beguilerSettings.worldBufSize (default
+// 128); a declared size may be any compile-time integer, so the setting reaches the
+// declaration directly. The POOL SIZE (4) is still fixed: I6 cannot declare arrays in
+// a loop, so adding a buffer means a decl plus a selector arm.
+superposed array<object> _bglWorldBuf0[#beguilerSettings.worldBufSize];
+superposed array<object> _bglWorldBuf1[#beguilerSettings.worldBufSize];
+superposed array<object> _bglWorldBuf2[#beguilerSettings.worldBufSize];
+superposed array<object> _bglWorldBuf3[#beguilerSettings.worldBufSize];
 // Rotation index: a plain global. A superposed scalar Global can't be forward-referenced
 // by the routine that uses it (I6 wants it declared first); arrays forward-reference fine.
 int _bglWorldBufIdx = -1;

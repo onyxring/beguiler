@@ -263,6 +263,7 @@ class bglParser {
         // funcDef is a class member (used to disambiguate same-method-name across classes
         // in the backing-global name); empty for top-level functions.
         void synthesizeParamBackings(functionDef& funcDef, const string& classContext = "");
+        int readCompileTimeInt(const std::string& what);
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
         void parsingWarning(string); //like parsingError but continues parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields

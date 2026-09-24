@@ -598,7 +598,7 @@ bgl.world.instances( ⟨class⟩ [ , ⟨pred⟩ ] )
 
 Each method takes an optional predicate `func<bool, object>`; only objects for which it returns true are returned. The predicate runs inside the walk, so a selective predicate is preferable to filtering the full result afterwards.
 
-Results live in a shared rotating set of four scratch buffers of 128 objects each; the buffer size is fixed and is not a setting. A result is valid until the fourth subsequent query; nested queries inside a `for (o in bgl.world.…)` loop are therefore safe to a depth of three. A result must not be stored across turns; a result that is needed later is copied into a program-declared `array<object>` (assignment copies, §22.4). A walk that would exceed 128 objects stops silently at 128.
+Results live in a shared rotating set of four scratch buffers, each holding `worldBufSize` objects (default 128, §17.4). The number of buffers is fixed. A result is valid until the fourth subsequent query; nested queries inside a `for (o in bgl.world.…)` loop are therefore safe to a depth of three. A result must not be stored across turns; a result that is needed later is copied into a program-declared `array<object>` (assignment copies, §22.4). A walk that would exceed a buffer stops silently at its capacity.
 
 **Example**
 
