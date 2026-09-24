@@ -23,7 +23,7 @@ namespace fs = std::filesystem;
 settingsStruct settings;
 
 // .inf-mode pre-pass: walk the file's leading `!%` block and detect the target. Sets
-// beguilerSettings.target and the target_zcode / target_glulx compile-time symbols so
+// beguilerSettings.target and the target_zcode / target_glulx compile-time flags so
 // BLR's `#if TARGET_ZCODE` chooses the right branch when it's pre-scanned right after.
 //
 // I6 ICL switches recognized:
@@ -42,7 +42,6 @@ void beguiler::extractInfTargetFromIcl(const string& filename){
 
     string line;
     string detectedTarget;
-    string zcodeVersion;
     while(getline(f, line)){
         // Strip trailing CR so CRLF-terminated files tokenize the same as LF — otherwise
         // a switch like `-z` at end-of-line is read as `"-z\r"` and never matches.
@@ -72,11 +71,10 @@ void beguiler::extractInfTargetFromIcl(const string& filename){
                 detectedTarget = "glulx";
                 break;
             } else if(tok == "-z" || tok == "-Z"){
-                if(detectedTarget.empty()){ detectedTarget = "z5"; zcodeVersion = "5"; }
+                if(detectedTarget.empty()) detectedTarget = "z5";
             } else if(tok.size() == 3 && (tok[0] == '-') && (tok[1] == 'v' || tok[1] == 'V')
                       && (tok[2] == '3' || tok[2] == '5' || tok[2] == '8')){
                 detectedTarget = string("z") + tok[2];
-                zcodeVersion = string(1, tok[2]);
             }
         }
         if(detectedTarget == "glulx") break;  // explicit Glulx wins; stop scanning further `!%`
@@ -84,10 +82,7 @@ void beguiler::extractInfTargetFromIcl(const string& filename){
 
     if(detectedTarget.empty()) return;
     if(beguilerSettings.target.empty()) beguilerSettings.target = detectedTarget;
-    if(detectedTarget == "glulx")
-        parser.defineSymbol("target_glulx");
-    else
-        parser.defineSymbol("target_zcode", zcodeVersion);
+    parser.defineSymbol(detectedTarget == "glulx" ? "target_glulx" : "target_zcode");
 }
 
 // Simple pre-scan to extract blorb settings before the full parse.
@@ -175,7 +170,7 @@ void beguiler::extractBlorbSettings(const string& filename) {
                         if(val == "glulx")
                             parser.defineSymbol("target_glulx");
                         else if(val == "z5" || val == "z8")
-                            parser.defineSymbol("target_zcode", val.substr(1)); // "5" or "8"
+                            parser.defineSymbol("target_zcode");
                     }
                 }
             }

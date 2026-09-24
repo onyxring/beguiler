@@ -3126,71 +3126,13 @@ bglParser::ExprStep bglParser::parseExprDirective(ExprParseState& st){
         string strVal;
         bool   isInt = false, isBool = false, boolVal = false;
         int    intVal = 0;
-        if     (key == "title")          strVal = beguilerSettings.title;
-        else if(key == "author")         strVal = beguilerSettings.author;
-        else if(key == "headline")       strVal = beguilerSettings.headline;
-        else if(key == "genre")          strVal = beguilerSettings.genre;
-        else if(key == "description")    strVal = beguilerSettings.description;
-        else if(key == "language")       strVal = beguilerSettings.language;
-        else if(key == "series")         strVal = beguilerSettings.series;
-        else if(key == "seriesnumber") { isInt = true; intVal = beguilerSettings.seriesNumber; }
-        else if(key == "firstpublished") strVal = beguilerSettings.firstPublished;
-        else if(key == "forgiveness")    strVal = beguilerSettings.forgiveness;
-        else if(key == "ifid")           strVal = beguilerSettings.ifid;
-        else if(key == "target")        strVal = beguilerSettings.target;
-        else if(key == "outputpath")    strVal = beguilerSettings.outputPath;
-        else if(key == "blorbassetpath")strVal = beguilerSettings.blorbAssetPath;
-        else if(key == "informname")    strVal = beguilerSettings.informName;
-        else if(key == "release")     { isInt = true; intVal = beguilerSettings.release; }
-        else if(key == "serial")       strVal = beguilerSettings.serial;
-        else if(key == "framepoolsize" || key == "linqscratchsize" || key == "worldbufsize" || key == "forinscratchsize"){
-            isInt = true;
-            int v = (key == "framepoolsize") ? beguilerSettings.framePoolSize
-                  : (key == "linqscratchsize") ? beguilerSettings.linqScratchSize
-                  : (key == "forinscratchsize") ? beguilerSettings.forInScratchSize
-                  : beguilerSettings.worldBufSize;
-            if(v < 0){
-                // applySchemaDefaults() runs after parsing, so during source parse the
-                // runtime value may still be -1 (unset). Fall back to the schema-declared
-                // default so #beguilerSettings.X at parse time resolves consistently with
-                // what the final ICL emission will use.
-                classDef* schema = languageService.findClass("beguilerSettingstype");
-                if(schema){
-                    for(typeMember* m : schema->members){
-                        auto* vd = dynamic_cast<variableDeclaration*>(m);
-                        if(vd && vd->name == key && vd->declaredExpressionValue){
-                            v = stoi(vd->declaredExpressionValue->text());
-                            break;
-                        }
-                    }
-                }
-                if(v < 0) v = 0;
-            }
-            intVal = v;
+        switch(readBeguilerSetting(key, strVal, intVal, boolVal)){
+            case eSettingKind::integer: isInt  = true; break;
+            case eSettingKind::boolean: isBool = true; break;
+            case eSettingKind::str:     break;
+            case eSettingKind::unknown:
+                parsingError(format("#beguilerSettings.{0}: unknown or unsupported property", prop.value));
         }
-        // Compiler-facing paths and the boolean options. Every declared setting is readable; a
-        // property the author can write is a property the author can read back.
-        else if(key == "informpath")    strVal = beguilerSettings.informBinaryPath;
-        else if(key == "beguilibpath")  strVal = beguilerSettings.beguiLibPath;
-        else if(key == "errorformat")   strVal = beguilerSettings.errorFormat;
-        else if(key == "includepaths"){
-            // A list has no literal form, so it reads back as the ';'-joined search path — enough
-            // to test or print, and it matches how the paths are searched.
-            for(size_t i = 0; i < beguilerSettings.includePaths.size(); i++){
-                if(i) strVal += ";";
-                strVal += beguilerSettings.includePaths[i];
-            }
-        }
-        else if(key == "generateblorb" || key == "economy" || key == "autoinitialize"
-             || key == "omitunusedroutines" || key == "rewritepaths"){
-            isBool = true;
-            boolVal = (key == "generateblorb")      ? beguilerSettings.blorbEnabled
-                    : (key == "economy")            ? beguilerSettings.economy
-                    : (key == "autoinitialize")     ? beguilerSettings.autoInitialize
-                    : (key == "omitunusedroutines") ? beguilerSettings.omitUnusedRoutines
-                    : beguilerSettings.rewritePaths.value_or(true);   // unset means enabled
-        }
-        else parsingError(format("#beguilerSettings.{0}: unknown or unsupported property", prop.value));
 
         if(isBool){
             expr->tokens.push_back(boolVal ? "true" : "false");

@@ -50,9 +50,9 @@ static bool includeNameSpansLines(const string& n){
 // their compile-time values. Uses the `##` prefix that already marks Beguile-
 // inside-I6 constructs (see processBglConditionals for ##if/##ifdef/##else
 // /##endif in emitter bodies). String properties expand to I6 quoted strings
-// ("…"); int properties expand to a decimal literal. Property names mirror
-// the expression-context handler in bglParserExpr.cpp (~line 2070) so the same
-// keys work in both. Motivating use: bindings that need to hoist
+// ("…"), int properties to a decimal literal, bools to I6's `true` / `false`.
+// The property set comes from readBeguilerSetting(), shared with the expression
+// handler and `#if`, so the same keys work everywhere. Motivating use: bindings that need to hoist
 // `Constant story = "…";` and `Constant headline = "…";` above the
 // `#includeI6` of their I6 library — the library's Banner machinery reads
 // those constants during its own include processing, so they must already
@@ -70,33 +70,15 @@ static string substituteBeguilerSettingsRefs(const string& block){
             while(keyEnd < block.size() && (isalnum((unsigned char)block[keyEnd]) || block[keyEnd] == '_')) keyEnd++;
             string key(block, keyStart, keyEnd - keyStart);
             transform(key.begin(), key.end(), key.begin(), ::tolower);
-            bool isInt = false; int iv = 0; string sv;
-            if     (key == "title")          sv = beguilerSettings.title;
-            else if(key == "headline")       sv = beguilerSettings.headline;
-            else if(key == "author")         sv = beguilerSettings.author;
-            else if(key == "genre")          sv = beguilerSettings.genre;
-            else if(key == "description")    sv = beguilerSettings.description;
-            else if(key == "language")       sv = beguilerSettings.language;
-            else if(key == "series")         sv = beguilerSettings.series;
-            else if(key == "seriesnumber") { isInt = true; iv = beguilerSettings.seriesNumber; }
-            else if(key == "firstpublished") sv = beguilerSettings.firstPublished;
-            else if(key == "forgiveness")    sv = beguilerSettings.forgiveness;
-            else if(key == "ifid")           sv = beguilerSettings.ifid;
-            else if(key == "target")         sv = beguilerSettings.target;
-            else if(key == "outputpath")     sv = beguilerSettings.outputPath;
-            else if(key == "blorbassetpath") sv = beguilerSettings.blorbAssetPath;
-            else if(key == "informname")     sv = beguilerSettings.informName;
-            else if(key == "release")      { isInt = true; iv = beguilerSettings.release; }
-            else if(key == "serial")         sv = beguilerSettings.serial;
-            else if(key == "framepoolsize"){ isInt = true; iv = beguilerSettings.framePoolSize > 0 ? beguilerSettings.framePoolSize : 0; }
-            else if(key == "linqscratchsize"){ isInt = true; iv = beguilerSettings.linqScratchSize > 0 ? beguilerSettings.linqScratchSize : 0; }
-            else if(key == "worldbufsize"){ isInt = true; iv = beguilerSettings.worldBufSize > 0 ? beguilerSettings.worldBufSize : 0; }
-            else if(key == "forinscratchsize"){ isInt = true; iv = beguilerSettings.forInScratchSize > 0 ? beguilerSettings.forInScratchSize : 31; }
-            else {
+            string sv; int iv = 0; bool bv = false;
+            eSettingKind kind = readBeguilerSetting(key, sv, iv, bv);
+            if(kind == eSettingKind::unknown){
                 out += block[i++];   // unknown key — pass through, let I6 surface the error
                 continue;
             }
-            if(isInt) out += to_string(iv);
+            // `true`/`false` are I6 constants, so a bool expands bare; a string expands quoted.
+            if(kind == eSettingKind::integer)      out += to_string(iv);
+            else if(kind == eSettingKind::boolean) out += (bv ? "true" : "false");
             else { out += '"'; out += sv; out += '"'; }
             i = keyEnd;
             continue;
@@ -228,7 +210,8 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
 }
 
 // Evaluate a #if / #elif boolean expression against definedSymbols.
-// Supports: symbol, integer literal, !expr, expr&&expr, expr||expr, (expr),
+// Supports: symbol, integer literal, string literal, #beguilerSettings.<property>,
+//           !expr, expr&&expr, expr||expr, (expr),
 //           and comparison operators: == != < > <= >=
 // Precedence (low→high): || → && → ! → comparison → atom
 // (macro system removed — emitters with ##if cover the use case)
@@ -238,6 +221,7 @@ bool bglParser::evaluateCondition(const string& expr){
         const string& s;
         size_t pos = 0;
         map<string,string>& syms;
+        bglParser& p;
         bool lastWasSymbol = false;      // last atom read was a symbol name (not a literal)
         bool lastSymbolDefined = false;  // ...and that symbol was defined
 
@@ -277,6 +261,40 @@ bool bglParser::evaluateCondition(const string& expr){
                 if(vl=="true")  return "1";
                 if(vl=="false") return "0";
                 return v;
+            }
+            // A quoted string is a literal atom — only useful on one side of == / !=, which is
+            // where the settings properties below are compared.
+            if(pos<s.size() && s[pos]=='"'){
+                size_t start=++pos;
+                while(pos<s.size() && s[pos]!='"') pos++;
+                string v=s.substr(start,pos-start);
+                if(pos<s.size()) pos++;
+                return v;
+            }
+            // `#beguilerSettings.<property>` reads a settings property as a compile-time value,
+            // the same value the expression handler would give (§17.7). Every declared property
+            // is readable, so `#if #beguilerSettings.target == "z8"` and `#if
+            // #beguilerSettings.economy` both work; a bool reads as 1/0 so it tests directly.
+            if(pos<s.size() && s[pos]=='#'){
+                size_t start=pos++;
+                while(pos<s.size() && (isalnum((unsigned char)s[pos])||s[pos]=='_'||s[pos]=='.')) pos++;
+                string ref=s.substr(start,pos-start);
+                string lower=ref; transform(lower.begin(),lower.end(),lower.begin(),::tolower);
+                const string prefix="#beguilersettings.";
+                if(lower.rfind(prefix,0)!=0){
+                    p.parsingError(format("'{0}' is not valid in a #if condition — the only directive reference allowed here is #beguilerSettings.<property>.", ref));
+                    return "0";
+                }
+                string key=lower.substr(prefix.size());
+                string sv; int iv=0; bool bv=false;
+                switch(readBeguilerSetting(key, sv, iv, bv)){
+                    case eSettingKind::integer: return to_string(iv);
+                    case eSettingKind::boolean: return bv ? "1" : "0";
+                    case eSettingKind::str:     return sv;
+                    case eSettingKind::unknown:
+                        p.parsingError(format("#beguilerSettings.{0}: unknown or unsupported property", key));
+                }
+                return "0";
             }
             return "0";
         }
@@ -339,7 +357,11 @@ bool bglParser::evaluateCondition(const string& expr){
                 if(op=="<=") return lhs<=rhs;
                 if(op==">=") return lhs>=rhs;
             } catch(...){
-                // string fallback for == and !=
+                // String fallback for == and !=. Case-insensitive: the operands are settings
+                // values and symbol names, and Beguile is case-insensitive everywhere else —
+                // `target == "z8"` must not depend on how the author spelled `Z8`.
+                transform(lhsVal.begin(),lhsVal.end(),lhsVal.begin(),::tolower);
+                transform(rhsVal.begin(),rhsVal.end(),rhsVal.begin(),::tolower);
                 if(op=="==") return lhsVal==rhsVal;
                 if(op=="!=") return lhsVal!=rhsVal;
             }
@@ -347,7 +369,7 @@ bool bglParser::evaluateCondition(const string& expr){
         }
         bool parseExpr(){ return parseOr(); }
     };
-    Eval e{expr, 0, definedSymbols};
+    Eval e{expr, 0, definedSymbols, *this};
     return e.parseExpr();
 }
 
@@ -759,7 +781,19 @@ bool bglParser::directiveIf(token directive, abstractObject& contextObj){
     token t = file.getBasicToken(true);
     bool stoppedOnDirective = false;
     while(t.isNot("\n") && t.isNot(";") && t.isNot(eTokenType::eof)){
-        if(!t.value.empty() && t.value[0] == '#'){ stoppedOnDirective = true; break; }
+        // getBasicToken hands back a bare `#`; the directive name is the token after it. A `#`
+        // normally means the next directive has started — except `#beguilerSettings.<prop>`,
+        // which is a value inside the condition (§17.7).
+        if(t.value == "#"){
+            token name = file.getBasicToken(true);
+            string dir = "#" + name.value;
+            transform(dir.begin(), dir.end(), dir.begin(), ::tolower);
+            if(dir == "#beguilersettings"){ condText += dir; t = file.getBasicToken(true); continue; }
+            t.value = dir;
+            t.tokenType = eTokenType::directive;
+            stoppedOnDirective = true;
+            break;
+        }
         condText += t.value;
         t = file.getBasicToken(true);
     }
@@ -1363,6 +1397,6 @@ void bglParser::applySchemaDefaults(){
         if(t == "glulx")
             definedSymbols["target_glulx"] = "";
         else if(t.size() == 2 && t[0] == 'z' && isdigit(t[1]))
-            definedSymbols["target_zcode"] = string(1, t[1]);
+            definedSymbols["target_zcode"] = "";
     }
 }

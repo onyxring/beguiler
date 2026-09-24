@@ -10,12 +10,21 @@ case-insensitive, like all Beguile identifiers.
 | `beguilerMajor` | `1` | Major version component. |
 | `beguilerMinor` | `2` | Minor version component. |
 | `beguilerPatch` | `3` | Patch version component. |
-| `TARGET_GLULX` | (defined, no value) | Defined when the `target` setting is `Glulx`. Having no value, it can be tested with `#if` but not used in an expression. |
-| `TARGET_ZCODE` | `5` or `8` | Defined when the target is the Z-machine; the value is the Z-machine version, so it can be compared. |
+| `TARGET_GLULX` | (defined, no value) | Defined when the `target` setting is `Glulx`. |
+| `TARGET_ZCODE` | (defined, no value) | Defined when the `target` setting is a Z-machine version. |
 
 The version symbols are read-only and derived from the compiler's own version. The target symbols are
 set from the `target` setting (§17.3) before any source is read, so they are available to every `#if`
 in the program. Exactly one of `TARGET_GLULX` and `TARGET_ZCODE` is defined.
+
+**The target symbols carry no value.** Both are flags, and they answer one question: which machine.
+Having no value, neither can be used in a Beguile expression — `#if TARGET_ZCODE` tests definedness
+like any other bare symbol (§14.2.5). A finer question, such as Z5 versus Z8, is a question about the
+`target` *setting*, which `#if` reads directly:
+
+```bgl
+#if #beguilerSettings.target == "z8"
+```
 
 **Resolution rule.** Every symbol, pre-defined or `#define`d, that carries a value is resolved as an
 inline compile-time literal wherever it appears in a Beguile expression: the name is replaced by its
@@ -33,8 +42,8 @@ const int myVer = beguilerMajor;    // this const is the program's own declarati
     // requires Beguile 1.1.0 or later
 #endif
 
-#if TARGET_ZCODE <= 5
-    // Z5 only (excludes Z8)
+#if #beguilerSettings.target == "z5"
+    // Z5 only (excludes Z8) — the version lives in the setting, not the symbol
 #endif
 
 #if TARGET_GLULX

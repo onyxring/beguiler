@@ -353,6 +353,10 @@ The compiler defines these symbols before any source file is processed: `beguile
 `#define`d symbols in `#if` expressions and as inline literals in Beguile expressions. Their values
 and the resolution rule are given in Appendix F.
 
+The two target symbols are flags with no value: they say which machine is being compiled for, and
+nothing more. To distinguish `Z5` from `Z8`, read the setting instead — `#if #beguilerSettings.target
+== "z8"` (§14.2.5, §17.7).
+
 **See also** Appendix F, §17.3.
 
 ### 14.2.5 `#if`, `#elif`, `#else`, `#endif`
@@ -376,8 +380,15 @@ currently defined symbols. Source in an excluded branch is skipped without being
 blocks nest. They may enclose declarations as well as statements; an excluded declaration does not
 exist.
 
-The expression may contain: symbol names; integer literals; `true` and `false` (the values `1` and
-`0`); the comparisons `==`, `!=`, `<`, `>`, `<=`, `>=`; `&&`, `||`, `!`; and parentheses.
+The expression may contain: symbol names; integer literals; string literals;
+`#beguilerSettings.⟨property⟩` references (§17.7); `true` and `false` (the values `1` and `0`); the
+comparisons `==`, `!=`, `<`, `>`, `<=`, `>=`; `&&`, `||`, `!`; and parentheses.
+
+A `#beguilerSettings.⟨property⟩` reference resolves to the property's value, the same value the
+reference has in a Beguile expression (§14.7.2): a string property compares against a string
+literal, an int property compares numerically, and a bool property tests on its own. String
+comparison ignores case, as everywhere else in Beguile. The property must be written with no space
+around the `.`; an undeclared property is a compile-time error, not a false condition.
 
 A bare symbol name is true when the symbol is *defined*, whatever its value, so `#if V` is true even
 when `V` was defined as `0` or `false`. In a comparison the name resolves to the symbol's *value*; an
@@ -404,8 +415,12 @@ There is no `#ifdef` or `#ifndef`: `#if SYMBOL` and `#if !SYMBOL` test definedne
     // fallback
 #endif
 
-#if TARGET_ZCODE <= 5
-    // Z5 only (`TARGET_ZCODE` carries the version number, Appendix F)
+#if TARGET_ZCODE
+    // any Z-machine target
+#endif
+
+#if #beguilerSettings.target == "z8"
+    // Z8 only — the target symbols say which machine, the setting says which version
 #endif
 ```
 

@@ -116,6 +116,15 @@ class bglLanguageService{
 extern bglLanguageService languageService;
 extern beguilerSettingsDef beguilerSettings;
 
+// The kind of literal a `#beguilerSettings.<property>` reference resolves to.
+enum class eSettingKind { unknown, str, integer, boolean };
+// Resolve a settings property (key already lowercased) to its compile-time value, filling exactly
+// one of `sv` / `iv` / `bv` per the returned kind; `unknown` means the name is not a declared
+// property. Every declared property is readable (§17.7) — this is the ONE place that knows how a
+// property reads back, shared by the expression handler, the `##beguilerSettings.` raw-I6
+// substitution and `#if`, so the three cannot drift apart.
+eSettingKind readBeguilerSetting(const string& key, string& sv, int& iv, bool& bv);
+
 // Virtual in-memory file overlay: maps a normalized absolute path to source text.
 // Populated only in LSP mode (see LspServer::parseDocument) so that a live-scanned
 // `_blorbAssets.bgl` asset enum resolves and opens from memory — no compile, no disk

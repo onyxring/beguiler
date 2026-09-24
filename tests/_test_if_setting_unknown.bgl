@@ -1,0 +1,8 @@
+/*  A `#if` that reads a property that doesn't exist is the same error as reading one in an
+    expression — the condition is not silently false.  */
+// EXPECT_ERROR: unknown or unsupported property
+void main(){
+#if #beguilerSettings.bogusProperty == "x"
+    print("never");
+#endif
+}

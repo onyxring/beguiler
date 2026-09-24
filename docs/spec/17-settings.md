@@ -97,7 +97,7 @@ own `Include` directives against the same set.
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `target` | `eTarget` | `Glulx` | `Glulx`, `Z5` or `Z8`. Emitted as `!% -G`, `!% -v5` or `!% -v8`, and exposed to `#if` as the `TARGET_GLULX` / `TARGET_ZCODE` symbols (Appendix F). |
+| `target` | `eTarget` | `Glulx` | `Glulx`, `Z5` or `Z8`. Emitted as `!% -G`, `!% -v5` or `!% -v8`, and exposed to `#if` as the valueless `TARGET_GLULX` / `TARGET_ZCODE` flags (Appendix F). The flags say which machine; for the Z-machine version, read the setting — `#if #beguilerSettings.target == "z8"` (§17.7). |
 | `outputPath` | string | `"output"` | Directory for the story file and every intermediate file; relative to the source file's directory (§20.1). |
 | `errorFormat` | `eErrorFormat` | `E1` | Inform 6 diagnostic style, emitted as `!% -E1` or `!% -E2`. Only `E1` and `E2` are accepted in a block. |
 | `release` | int | `0` | Story release number, emitted as an I6 `Release` directive when non-zero. |
@@ -257,6 +257,12 @@ defaults; so the block that sets a property must precede, in parse order, any re
 Inside the raw-I6 body of `#emitfirst`, `#emitlast`, `#storedEmitFirst` and `#storedEmitLast`, the
 same properties are available as `##beguilerSettings.property` (§14.4.5).
 
+**In a `#if` condition.** The same reference reads the same value in a compile-time condition
+(§14.2.5), which is how a program asks a question the target flags cannot answer — `TARGET_ZCODE`
+and `TARGET_GLULX` say which machine, and nothing more. A string property compares against a string
+literal, ignoring case; an int property compares numerically; a bool property tests on its own. The
+property must be written with no space around the `.`.
+
 **Example**
 
 ```bgl
@@ -264,9 +270,13 @@ same properties are available as `##beguilerSettings.property` (§14.4.5).
 
 const string story      = #beguilerSettings.title;     // → "Cloak of Darkness"
 const int    gameRelease = #beguilerSettings.release;  // → 3
+
+#if #beguilerSettings.target == "z8"
+    // this build has the larger Z-machine address space
+#endif
 ```
 
-**See also** §14.4.2, §14.4.5, §17.5.
+**See also** §14.2.5, §14.4.2, §14.4.5, §17.5.
 
 ## 17.8 Bindings and the Library Banner Constants
 

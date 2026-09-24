@@ -1,0 +1,41 @@
+/*  run_if_settings — `#if` can read a `#beguilerSettings` property.
+
+    The target symbols used to be asymmetric: TARGET_GLULX was a bare flag, while TARGET_ZCODE
+    carried the Z-machine version as its value, so `#if TARGET_ZCODE > 3` worked but the Glulx
+    equivalent could not exist. Both are bare flags now — they answer "which machine", nothing
+    more. Anything finer is a question about the `target` SETTING, so `#if` reads settings
+    properties directly, with the same values the expression handler gives (§17.7): a string
+    compares against a string literal (case-insensitively, like every other Beguile name), an int
+    compares numerically, and a bool tests on its own.  */
+// EXPECT_OUTPUT: z5 zcode notGlulx frames econ
+#beguilerSettings {
+    target     = z5;
+    informName = "none";
+}
+
+void main(){
+#if #beguilerSettings.target == "Z5"
+    print("z5");
+#else
+    print("NOT-z5");
+#endif
+
+#if TARGET_ZCODE
+    print(" zcode");
+#endif
+#if TARGET_GLULX
+    print(" glulx");
+#endif
+
+#if #beguilerSettings.target != "glulx"
+    print(" notGlulx");
+#endif
+
+#if #beguilerSettings.framePoolSize >= 64
+    print(" frames");
+#endif
+
+#if !#beguilerSettings.economy
+    print(" econ");
+#endif
+}

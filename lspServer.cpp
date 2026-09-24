@@ -554,7 +554,7 @@ bool LspServer::parseDocumentInEntryContext(const string& uri) {
                         string val = lower.substr(vs, ve - vs);
                         if(val == "glulx") parser.defineSymbol("target_glulx");
                         else if(val.size() == 2 && val[0] == 'z' && isdigit(val[1]))
-                            parser.defineSymbol("target_zcode", string(1, val[1]));
+                            parser.defineSymbol("target_zcode");
                     }
                 }
             }
@@ -731,7 +731,7 @@ void LspServer::parseDocument(const string& uri) {
                         string val = lower.substr(vs, ve - vs);
                         if(val == "glulx")                              parser.defineSymbol("target_glulx");
                         else if(val.size() == 2 && val[0] == 'z' && isdigit(val[1]))
-                            parser.defineSymbol("target_zcode", string(1, val[1]));
+                            parser.defineSymbol("target_zcode");
                     }
                 }
             }

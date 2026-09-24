@@ -101,7 +101,7 @@ superposed class bglOpCodes {
 //─────────────────────────────────────────────────────────────────────────────
 // Z5+ opcodes (not available on Z3)
 //─────────────────────────────────────────────────────────────────────────────
-#if TARGET_ZCODE > 3
+#if #beguilerSettings.target != "z3"
 extend class bglOpCodes {
 
     //── Window / Display (Z4+) ──────────────────────────────────────────

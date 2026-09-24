@@ -57,6 +57,61 @@ static void rePushIfMissing(vector<typeDef*>& globals, T* existing, bool isExter
 typeDef emptyTDef;
 beguilerSettingsDef beguilerSettings;
 
+eSettingKind readBeguilerSetting(const string& key, string& sv, int& iv, bool& bv){
+    if     (key == "title")          sv = beguilerSettings.title;
+    else if(key == "author")         sv = beguilerSettings.author;
+    else if(key == "headline")       sv = beguilerSettings.headline;
+    else if(key == "genre")          sv = beguilerSettings.genre;
+    else if(key == "description")    sv = beguilerSettings.description;
+    else if(key == "language")       sv = beguilerSettings.language;
+    else if(key == "series")         sv = beguilerSettings.series;
+    else if(key == "firstpublished") sv = beguilerSettings.firstPublished;
+    else if(key == "forgiveness")    sv = beguilerSettings.forgiveness;
+    else if(key == "ifid")           sv = beguilerSettings.ifid;
+    else if(key == "target")         sv = beguilerSettings.target;
+    else if(key == "outputpath")     sv = beguilerSettings.outputPath;
+    else if(key == "blorbassetpath") sv = beguilerSettings.blorbAssetPath;
+    else if(key == "informname")     sv = beguilerSettings.informName;
+    else if(key == "informpath")     sv = beguilerSettings.informBinaryPath;
+    else if(key == "beguilibpath")   sv = beguilerSettings.beguiLibPath;
+    else if(key == "errorformat")    sv = beguilerSettings.errorFormat;
+    else if(key == "serial")         sv = beguilerSettings.serial;
+    else if(key == "includepaths"){
+        // A list has no literal form, so it reads back as the ';'-joined search path — enough to
+        // test or print, and it matches the order the paths are searched in.
+        for(size_t i = 0; i < beguilerSettings.includePaths.size(); i++){
+            if(i) sv += ";";
+            sv += beguilerSettings.includePaths[i];
+        }
+    }
+    else if(key == "release")      { iv = beguilerSettings.release;      return eSettingKind::integer; }
+    else if(key == "seriesnumber") { iv = beguilerSettings.seriesNumber; return eSettingKind::integer; }
+    else if(key == "framepoolsize" || key == "linqscratchsize"
+         || key == "worldbufsize"  || key == "forinscratchsize"){
+        iv = (key == "framepoolsize")    ? beguilerSettings.framePoolSize
+           : (key == "linqscratchsize")  ? beguilerSettings.linqScratchSize
+           : (key == "forinscratchsize") ? beguilerSettings.forInScratchSize
+           :                               beguilerSettings.worldBufSize;
+        // applySchemaDefaults() runs after parsing, so mid-parse the value may still be the -1
+        // "unset" sentinel. Fall back to the schema-declared default so a read during the parse
+        // resolves to what the final ICL emission will use.
+        if(iv < 0) iv = languageService.getClassFieldIntDefault("beguilerSettingstype", key, 0);
+        if(iv < 0) iv = 0;
+        return eSettingKind::integer;
+    }
+    else if(key == "generateblorb" || key == "economy" || key == "autoinitialize"
+         || key == "omitunusedroutines" || key == "rewritepaths"){
+        bv = (key == "generateblorb")      ? beguilerSettings.blorbEnabled
+           : (key == "economy")            ? beguilerSettings.economy
+           : (key == "autoinitialize")     ? beguilerSettings.autoInitialize
+           : (key == "omitunusedroutines") ? beguilerSettings.omitUnusedRoutines
+           :                                 beguilerSettings.rewritePaths.value_or(true); // unset = enabled
+        return eSettingKind::boolean;
+    }
+    else return eSettingKind::unknown;
+    return eSettingKind::str;
+}
+
 bglLanguageService::bglLanguageService(){
     registerType("void");
     registerType("var");
