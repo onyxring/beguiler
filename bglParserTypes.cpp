@@ -1527,7 +1527,14 @@ string bglParser::resolveI6Name(const string& spec){
     if(candidates.size() == 1){
         functionDef* fd = candidates.front();
         if(fd->isEmitter) return notReferenceable(shown);
-        if(fd->isStatic)  return i6Emitter::staticRoutineName(getDispatchClass(headType), fd);
+        // Settle the overload set's names FIRST, exactly as an ordinary call site does before it
+        // reads i6name. The mangler adds an arity component for an overloaded name
+        // (`_bgl_Money_scale_2_int_int`), which staticRoutineName alone does not — computing the
+        // name here instead produced `_bgl_Money_scale_int_int`, a routine that is never emitted.
+        mangleOverloadSetForReceiver(headType, fd->name);
+        // staticRoutineName reads i6name and adds the `_bgl_<class>_` prefix, so it is still the
+        // right call — it just has to run AFTER the mangler has settled the overload's i6name.
+        if(fd->isStatic) return i6Emitter::staticRoutineName(getDispatchClass(headType), fd);
         return fd->i6name.empty() ? fd->name : fd->i6name;   // instance method → its property name
     }
     // Not a method — a data member, whose emitted property name `as` may have renamed.

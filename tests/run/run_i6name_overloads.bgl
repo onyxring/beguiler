@@ -1,0 +1,33 @@
+/*  run_i6name_overloads — $i6Name on an OVERLOADED static must name the routine that is emitted.
+
+    This is the case $i6Name exists for: a static method's I6 name cannot be derived from the
+    Beguile name alone, because the mangling gains discriminators once the name is overloaded. The
+    first implementation computed the name itself with staticRoutineName and produced
+
+        _bgl_Money_scale_int_int          (what $i6Name emitted)
+        _bgl_Money_scale_2_int_int        (what was actually emitted, and what calls reference)
+
+    — a routine that does not exist. The mangler adds an ARITY component that only runs when the
+    overload set is settled, so $i6Name has to settle it first, exactly as an ordinary call site
+    does before reading i6name.
+
+    It went unnoticed because the original coverage was a BASELINE test: baselines compare emitted
+    text and never reach Inform, so a dangling routine name looks identical to a good one. This
+    tier runs the program, which is the only way a wrong name shows up as a failure.  */
+// EXPECT_OUTPUT: two=12 one=10 direct=12
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Money : object {
+    int cents;
+    static int scale(int a, int b){ return a * b; }
+    static int scale(int a){ return a * 2; }
+}
+
+emitter int viaTwo(int a, int b){ $i6Name(Money.scale(int, int))($a, $b) }
+emitter int viaOne(int a)       { $i6Name(Money.scale(int))($a) }
+
+void main(){
+    print("two=");    print(viaTwo(3, 4));
+    print(" one=");   print(viaOne(5));
+    print(" direct="); print(Money.scale(3, 4));   // the ordinary call, for comparison
+}

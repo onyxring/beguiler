@@ -295,8 +295,8 @@ class widget
     print (widget);
     print (w.count);
     print (w.refresh());
-    print _bgl_Money_scale_int(5);
-    print _bgl_Money_scale_int_int(3, 4);
+    print _bgl_Money_scale_1_int(5);
+    print _bgl_Money_scale_2_int_int(3, 4);
     print _bgl_bglOpCodes_readChar(1);
 ];
 [_bgl_Money_scale_2_int_int a b;
