@@ -1457,7 +1457,11 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
     // func<...> member: consume its own <...> so it isn't mistaken for the member name.
     if(typeTok.value == "func") typeTok.value = parseFuncType();
     typeTok.value = maybeParseUnionTail(typeTok.value);  // A | B | ... union member type
-    token propName = file.getToken(eTokenType::identifier);
+    // A member name may collide with a TYPE name — Beguile is case-insensitive, so a user class
+    // `A` makes the bare word `a` lex as a dataType. Accept both, as the class-member path does;
+    // otherwise a library member simply named `a` is undeclarable by any program that happens to
+    // define a class of that letter.
+    token propName = file.getToken({eTokenType::identifier, eTokenType::dataType});
     if(propName.is("operator")){
         token opTok = file.getToken();
         if(opTok.is(token::parenOpen))
@@ -2065,7 +2069,7 @@ void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
     if(q.isEmitter){
         // Emitter methods and emitter values are allowed on extern objects
         token retType = tok;
-        token propName = file.getToken(eTokenType::identifier);
+        token propName = file.getToken({eTokenType::identifier, eTokenType::dataType});
         if(propName.is("operator")){
             token opTok = file.getToken();
             if(opTok.is(token::parenOpen)) propName.value = "operator()";
@@ -2273,7 +2277,9 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
         }
         // emitter method inside object body — parse as raw I6 body
         token retType = tok;
-        token propName = file.getToken(eTokenType::identifier);
+        // A member name may collide with a TYPE name (Beguile is case-insensitive, so a user
+        // class `A` makes the bare word `a` lex as a dataType). Accept both, as class members do.
+        token propName = file.getToken({eTokenType::identifier, eTokenType::dataType});
         if(propName.is("operator")){
             token opTok = file.getToken();
             if(opTok.is(token::parenOpen)) propName.value = "operator()";
@@ -2597,7 +2603,7 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
             return;
         }
         token retType = tok;
-        token propName = file.getToken(eTokenType::identifier);
+        token propName = file.getToken({eTokenType::identifier, eTokenType::dataType});
         if(propName.is("operator")){
             token opTok = file.getToken();
             if(opTok.is(token::parenOpen)) propName.value = "operator()";

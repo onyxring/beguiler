@@ -26,6 +26,7 @@
 // EXPECT_OUTPUT: var=7 cls=3 using=9 fnref=true rules=
 #beguilerSettings { target = z5; informName = "none"; }
 #include <linq>
+#using bgl.printRules;          // articles now live in the print-rule namespace
 
 object apple { }
 class W : object { int c; }

@@ -9,6 +9,11 @@
     or, without the import, fully qualified:
 
         print($"The troll {bgl.printRules.italics}hit{bgl.printRules.roman}...");
+
+    The indefinite/definite article rules live here too. In I6 these are context-sensitive
+    keywords valid only in the `print (rule) value` slot, so they are not I6 identifiers and
+    nothing in the emitted program is named after them; in Beguile they are ordinary emitters
+    and so belong in a namespace rather than at file scope.
  -----------------------------------------------------------------------------*/
 
 superposed _bglObject _bglPrintRules {
@@ -18,6 +23,12 @@ superposed _bglObject _bglPrintRules {
     emitter void underline { style underline; }
     emitter void reverse   { style reverse; }
     emitter void fixed     { style fixed; }
+
+    // Articles. `c`-prefixed forms are the capitalised variants, matching I6's (A) and (The).
+    emitter void a   (object o){ print (a)$o;   }
+    emitter void cA  (object o){ print (A)$o;   }
+    emitter void the (object o){ print (the)$o; }
+    emitter void cThe(object o){ print (The)$o; }
 }
 
 extend bgl { alias printRules = _bglPrintRules; }

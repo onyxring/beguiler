@@ -116,7 +116,9 @@ int roll = bgl.util.random.get(6);       // 1..6
 print( ⟨value⟩ ) ;
 print( $"⟨text⟩ {⟨expr⟩} ⟨text⟩" ) ;
 log( ⟨value⟩ ) ;
-a( ⟨obj⟩ ) ;   cA( ⟨obj⟩ ) ;   the( ⟨obj⟩ ) ;   cThe( ⟨obj⟩ ) ;   printName( ⟨obj⟩ ) ;
+printName( ⟨obj⟩ ) ;
+bgl.printRules.a( ⟨obj⟩ ) ;   bgl.printRules.cA( ⟨obj⟩ ) ;
+bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 ```
 
 **Description**
@@ -129,7 +131,9 @@ The core declares `short_name` as a `string` member of `object`: the text (or ro
 
 `log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined (§14.2.1). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
 
-The article helpers print a world-tree object with an article: `a(obj)` → "a lamp", `cA(obj)` → "A lamp", `the(obj)` → "the lamp", `cThe(obj)` → "The lamp", `printName(obj)` → "lamp" (the bare short name, no article).
+The article helpers print a world-tree object with an article: `a(obj)` → "a lamp", `cA(obj)` → "A lamp", `the(obj)` → "the lamp", `cThe(obj)` → "The lamp". They are members of `bgl.printRules` (§21.11), so they are written qualified, or `#using bgl.printRules;` (§10.4) brings the short spelling into a file — which is how they read best inside interpolated text. `printName(obj)` → "lamp" prints the bare short name with no article and is a file-scope function.
+
+> **Why they are namespaced.** In Inform 6 `a`, `an`, `the`, `A` and `The` are context-sensitive keywords, meaningful only in the `print (rule) value` slot; they are not I6 identifiers, and an I6 program may freely name a variable or object `the`. Beguile models them as ordinary emitters, which would otherwise put four very common words at file scope in every program.
 
 **Example**
 
@@ -138,9 +142,9 @@ extern attribute light;
 object lamp { short_name = "brass lamp"; }
 
 void Main() {
-    print($"You see {a(lamp)}.");    // → You see a brass lamp.
-    cThe(lamp); print(" glows.");      // → The brass lamp glows.
-    log("reached Main");               // output only with #define DEBUG
+    print($"You see {bgl.printRules.a(lamp)}.");   // → You see a brass lamp.
+    bgl.printRules.cThe(lamp); print(" glows.");   // → The brass lamp glows.
+    log("reached Main");                           // output only with #define DEBUG
 }
 ```
 
@@ -653,10 +657,14 @@ $"… {bgl.printRules.img( ⟨image⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨he
 
 **Description**
 
-`bgl.printRules` holds print rules for use inside interpolated strings (§1.6.5): each is a value-less emitter that switches the output style at that point in the text. With `#using bgl.printRules;` the rules are reachable bare.
+`bgl.printRules` holds print rules for use inside interpolated strings (§1.6.5). The style rules are value-less emitters that switch the output style at that point in the text; the article rules take the object to print. With `#using bgl.printRules;` the rules are reachable bare, which is how the articles read best in interpolated text.
 
 | Rule | Effect |
 |---|---|
+| `a(obj)` | The object's short name with an indefinite article — "a lamp". |
+| `cA(obj)` | As `a`, capitalized — "A lamp". |
+| `the(obj)` | The object's short name with the definite article — "the lamp". |
+| `cThe(obj)` | As `the`, capitalized — "The lamp". |
 | `bold` | Bold text. |
 | `italics` | Italic text (rendered as underline where the target has no italics). |
 | `underline` | Underlined text. |
@@ -671,6 +679,7 @@ $"… {bgl.printRules.img( ⟨image⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨he
 print($"The troll {bgl.printRules.italics}hit{bgl.printRules.roman} the table.");
 #using bgl.printRules;
 print($"{bold}Warning{roman}");
+print($"You cannot open {the(noun)}.");
 ```
 
 **See also** §1.6.5, §17.6, §22.8.
