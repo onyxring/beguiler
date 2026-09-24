@@ -173,7 +173,7 @@ the transpiled file calls `bglInit()`. The program still builds and still runs; 
 uninitialized data.
 
 ```text
-WARNING: nothing calls bglInit(), so this program starts with its runtime uninitialized — …
+WARNING: nothing calls bglInit(), so this program starts with the BLR uninitialized.
 ```
 
 **Other.** `hide` naming a member that is not inherited; re-typing a `typesealed` member (the retype

@@ -135,11 +135,8 @@ string i6Emitter::resolvedOutput(){
             if(j != string::npos && buf[j] == '('){ called = true; break; }
         }
         if(!called)
-            std::cerr << "WARNING: nothing calls bglInit(), so this program starts with its runtime "
-                         "uninitialized — sized array length headers are unstamped, #startup blocks "
-                         "do not run, and deferred global initializers do not run. Call bglInit() "
-                         "from your entry point, or build on a library binding, which calls it for "
-                         "you.\n";
+            std::cerr << "WARNING: nothing calls bglInit(), so this program starts with the BLR "
+                         "uninitialized.\n";
     }
     return buf;
 }
