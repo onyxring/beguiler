@@ -48,9 +48,9 @@ void main(){
     Room gp = foyer?.up?.up;
     string d2 = foyer?.up?.description;
 
-    // ?. mixed with regular . — once a ?. link resolves non-null, subsequent .member can
-    // proceed without further null-checks.
-    string d3 = foyer?.up.description;
+    // A plain `.` after a `?.` in the same chain is rejected — the guard covers only its own
+    // step, so the next one would read from whatever that step produced. See
+    // _test_optional_chain_plain_dot.bgl.
 
     // Common pattern: optional chain combined with null coalescing. If the chain resolves
     // to null, fall back to a default. Only works today for object-typed chains — a

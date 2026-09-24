@@ -1112,6 +1112,16 @@ token bglParser::parseStatementPath(token& tok, StatementContext& sc){
     token symbol = file.getToken({eTokenType::symbol, eTokenType::oper});
     int optionalChainDepth = 0; // number of ?. guards opened
     while(symbol.is(token::period) || symbol.is("?.")) {
+        // A plain `.` after a `?.` in the same path. The guard covers only its own step, so this
+        // one would read from whatever that step produced — including `nothing`. Same rule as the
+        // expression form (parseExprOptionalChain).
+        if(symbol.is(token::period) && optionalChainDepth > 0){
+            token after = file.getToken({eTokenType::identifier, eTokenType::dataType});
+            parsingError(format("'.{0}' follows '?.' in the same chain. The '?.' guards only its own "
+                "step, so '.{0}' would read from a value that step may have left as nothing. Write "
+                "'?.{0}' to guard this step too, or use a plain '.' from the start if the receiver is "
+                "always present.", after.originalValue.empty() ? after.value : after.originalValue));
+        }
         if(symbol.is("?.")){
             // Optional chaining at statement level: emit if(nullTest){ as pre-injection, } as post-injection
             string pathSoFar = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;

@@ -1,0 +1,10 @@
+/*  The same rule in statement position, where the path is built as a flat dotted string rather
+    than through the expression chain parser.  */
+// EXPECT_ERROR: follows '?.' in the same chain
+#beguilerSettings { target = z5; informName = "none"; }
+
+class node : object { object a; void ping(){ print("ping"); } }
+object n1 : node { }
+object n2 : node { a = n1; }
+
+void main(){ n2?.a.ping(); }
