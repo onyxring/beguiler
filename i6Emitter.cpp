@@ -2885,14 +2885,18 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         return;
     }
     if(varNode->type.name == "attribute"){
-        out << format("attribute {0}", varNode->dName());
+        // Honour `as <i6name>` (§3.11), as the general global path below does. Without it the
+        // DECLARATION used the Beguile name while every `give`/`has` site used the alias, so I6
+        // rejected the uses with "No such constant".
+        out << format("attribute {0}", varNode->i6name.empty() ? varNode->dName() : varNode->i6name);
         out << ";\n";
         return;
     }
     if(varNode->type.name == "property"){
         // `additive` marks the slot so I6 accumulates values across the class hierarchy
         // (obj + ancestors) instead of the descendant overriding — `Property additive foo;`.
-        out << format("property {0}{1}", varNode->isAdditive ? "additive " : "", varNode->dName());
+        out << format("property {0}{1}", varNode->isAdditive ? "additive " : "",
+                      varNode->i6name.empty() ? varNode->dName() : varNode->i6name);
         out << ";\n";
         return;
     }

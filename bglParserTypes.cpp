@@ -1452,6 +1452,25 @@ string bglParser::resolveI6Name(const string& spec){
         }
     }
     if(path.empty()){ parsingError("$i6Name() — no declaration named"); return ""; }
+    // The parenthesized list is a SIGNATURE — type names selecting one overload, as in
+    // `Type::operator ==(int)` (§4.15) — not an argument list. Passing values used to fall through
+    // the overload match and be reported as a missing member, which pointed at the wrong thing.
+    for(const string& t : sigTypes){
+        if(t.empty()){
+            parsingError(format("$i6Name({0}) — empty entry in the overload signature; it takes type "
+                                "names, e.g. $i6Name({1}(int, int))", spec, path));
+            return "";
+        }
+        string probe = t;
+        transform(probe.begin(), probe.end(), probe.begin(), ::tolower);
+        if(languageService.getType(probe).name.empty()){
+            parsingError(format("$i6Name({0}) — '{1}' is not a type name. The parentheses after a "
+                                "path hold the SIGNATURE that selects one overload, not the "
+                                "arguments: write $i6Name({2}(int, int)), then supply the arguments "
+                                "outside — $i6Name({2}(int, int))($a, $b).", spec, t, path));
+            return "";
+        }
+    }
     // Declarations are registered under their folded name (Beguile is case-insensitive), so every
     // lookup below folds too. `shown` keeps the author's spelling for the diagnostics.
     const string shown = path;
