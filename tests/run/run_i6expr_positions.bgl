@@ -1,0 +1,52 @@
+/*  run_i6expr_positions — an emitter using `$i6Expr` is callable wherever a call is legal.
+
+    `$i6Expr` parses its payload at parse time, so it needs the receiver and parameters BOUND. The
+    obvious way to get them — substituting the argument's text there and then — is wrong: final
+    argument text is only knowable at emit time, where i6Emitter::exprText applies the per-routine
+    display-name, spill and local-rename maps. Substituting early emitted `viaamp` where the
+    deferred pass emits `viaAmp`.
+
+    So `$i6Expr` binds each token to a placeholder of the token's declared TYPE, parses against
+    that, and hands the placeholder back as the TOKEN — never as text. Its output is therefore an
+    ordinary emitter body with `$self`/`$param` still in it, and whichever pass would have filled
+    those still does. Only the signature is needed at the call site, not the arguments, which is
+    what makes a bare statement work.
+
+    This matters most for `emitter void`: a statement is its ONLY legal position (§7.2), so before
+    this a void emitter could not use `$i6Expr` at all.  */
+// EXPECT_OUTPUT: void=1 expr=7 discard=10 interp=10 self=10
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Npc : object {
+    int seen;
+    int score;
+    void notifyEvent(){ seen = 1; }
+    void addScore(int n){ score = score + n; }
+    int  rate(){ return score; }
+    // $self AND a parameter in one payload, on a void method emitter — a statement is its only
+    // legal position, so this is the shape that could not be written at all before.
+    emitter void bumpBy(int n){ $i6Expr($self.addScore($n)); }
+    emitter int  doubled(){ $i6Expr($self.rate()) }        // $self, value method emitter
+}
+emitter void trigger(Npc n){ $i6Expr($n.notifyEvent()); }  // void global emitter
+emitter int  rateOf (Npc n){ $i6Expr($n.rate()) }          // value global emitter
+
+Npc robot;
+
+void main(){
+    robot.score = 7;
+
+    trigger(robot);                       // void emitter as a bare STATEMENT
+    print("void="); print(robot.seen);
+
+    int r = rateOf(robot);                // value emitter in EXPRESSION position
+    print(" expr="); print(r);
+
+    rateOf(robot);                        // value emitter, result DISCARDED — an ordinary call
+    robot.bumpBy(3);                      // method emitter as a bare statement
+    print(" discard="); print(robot.score);
+
+    print(" interp="); print($"{rateOf(robot)}");   // INTERPOLATION
+
+    print(" self="); print(robot.doubled());        // $self through $i6Expr
+}

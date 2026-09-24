@@ -2516,6 +2516,7 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
                 // perform() bridge — e.g. `Take.perform()` → `TakeSub()`.
                 mb.selfsub = selfValue + "sub";
                 mb.self    = selfValue;
+                mb.selfType = objectType;   // $i6Expr needs the receiver's TYPE to parse its payload
                 mb.val     = emitObjectPath;
                 // $class — declared receiver type (ignores multiple inheritance).
                 // Resolves to the variable's static type, not the type that owns the
@@ -2552,7 +2553,12 @@ void bglParser::bindGlobalCallStatement(functionCallStatement& callStmt, token t
     else                                chainReturnType = "var"; // loose mode: unresolved → opaque
     if(gcb.method && gcb.method->isEmitter)
         if(auto* blk = dynamic_cast<i6Block*>(gcb.method->body)){
-            callStmt.emitterBody = expandEmitterBody(blk, {});
+            // fn WITHOUT args: the signature is all $i6Expr needs to parse its payload, while the
+            // plain `$param` tokens stay for the deferred pass below — which is the only pass that
+            // can produce final argument text (i6Emitter::exprText applies the per-routine
+            // display-name, spill and rename maps).
+            emitterBindings sb; sb.fn = gcb.method;
+            callStmt.emitterBody = expandEmitterBody(blk, sb);
             for(paramDef* p : gcb.method->params) callStmt.emitterParams.push_back(p->name);
         }
     // Loose-mode unresolved global call: carry original case via displayName so

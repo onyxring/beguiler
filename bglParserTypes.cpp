@@ -1573,10 +1573,13 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
 
         // Bind each token to a placeholder local of the right Beguile type.
         statementBlock* scope = new statementBlock();
-        vector<pair<string,string>> restore;        // placeholder → the I6 text it stands for
+        vector<pair<string,string>> restore;        // placeholder → the token it stands for
         int slot = 0;
         vector<string> untyped;      // present at this site, but with no Beguile type to parse against
-        auto bind = [&](const string& token, const string& text, const string& type){
+        // Only the TYPE is needed: the payload is parsed against a placeholder of that type, and the
+        // placeholder is handed back as the token afterwards. The argument's TEXT is never needed
+        // here, which is precisely what lets this run where the arguments are not yet bound.
+        auto bind = [&](const string& token, const string& type){
             if(findTokenCI(payload, token, 0) == string::npos) return;
             if(type.empty()){ untyped.push_back(token); return; }
             // Lowercase: Beguile folds identifiers, so a mixed-case placeholder is registered
@@ -1589,14 +1592,23 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
             if(vd->type.name.empty()) vd->type.name = type;
             scope->statements.push_back(vd);
             payload = i6Emitter::replaceWord(payload, token, ph);
-            restore.push_back({ph, text});
+            // Restore to the TOKEN, not to the argument's text. The final text of an argument is
+            // only knowable at emit time — i6Emitter::exprText applies the per-routine display-name,
+            // spill and local-rename maps — so substituting it here would emit `viaamp` where the
+            // deferred pass emits `viaAmp`. Handing the token back instead leaves $i6Expr's output
+            // in the same shape as any other emitter body, so whichever pass would have filled the
+            // token still does, and $i6Expr works in statement and expression position alike.
+            restore.push_back({ph, token});
         };
-        if(b.self) bind("$self", *b.self, b.selfType);
-        if(b.val)  bind("$val",  *b.val,  b.selfType);
-        if(b.host) bind("$host", *b.host, b.selfType);
+        if(b.self) bind("$self", b.selfType);
+        if(b.val)  bind("$val",  b.selfType);
+        if(b.host) bind("$host", b.selfType);
+        // Every parameter, whether or not this site has its argument yet: a body reached as a bare
+        // statement stages its `$param` tokens for the deferred pass, and $i6Expr has to parse
+        // against the same signature there as anywhere else.
         if(b.fn != nullptr)
-            for(size_t i = 0; i < b.fn->params.size() && i < b.args.size(); i++)
-                bind("$" + b.fn->params[i]->name, b.args[i], b.fn->params[i]->type.name);
+            for(paramDef* p : b.fn->params)
+                bind("$" + p->name, p->type.name);
         // A token the caller never bound is not substitutable here, and leaving it would reach I6
         // as a literal `$name`. Say so where the author can act on it.
         if(size_t stray = payload.find('$'); stray != string::npos){
