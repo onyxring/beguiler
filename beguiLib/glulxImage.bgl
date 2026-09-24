@@ -34,14 +34,19 @@ int _imgWidth (int imgId){ return _bglGetImageInfo(imgId).width;  }
 int _imgHeight(int imgId){ return _bglGetImageInfo(imgId).height; }
 
 // The image handle. Assign it a blorb asset (or a raw resource id); query its size.
+/// A picture from the blorb file. Ask it how big it is; draw it through a window's `drawImage()`
+/// or a print rule.
 extern emitter class glulxImage : _bglObject {
     emitter void operator = (eImages a){ $self = $a; }        // glulxImage pic = eImages.logo;
     emitter void operator = (int id)   { $self = $id; }       // …or a raw resource id
     emitter int  operator ()           { ($self) }            // → int: the raw resource id
 
     // Natural (unscaled) pixel dimensions of the asset.
+    /// The image's natural size in pixels.
     emitter bglSize size  (){ (_bglGetImageInfo($self)) }
+    /// The image's natural width in pixels.
     emitter int     width (){ (_imgWidth($self))  }
+    /// The image's natural height in pixels.
     emitter int     height(){ (_imgHeight($self)) }
 }
 
@@ -50,7 +55,10 @@ extern emitter class glulxImage : _bglObject {
 // resource int, so each inlines with `$self` = the id. (eSounds gets its own methods when a sound API
 // lands.) This is why the asset enum is split by kind: these appear only on images.
 extend enum eImages {
+    /// The image's natural size in pixels.
     emitter bglSize size  (){ (_bglGetImageInfo($self)) }
+    /// The image's natural width in pixels.
     emitter int     width (){ (_imgWidth($self))  }
+    /// The image's natural height in pixels.
     emitter int     height(){ (_imgHeight($self)) }
 }

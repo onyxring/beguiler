@@ -988,6 +988,9 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 //------------------------------------------------------------------------------
 
 
+/// `<string>` upgrades `string` from I6's address semantics: `==` now compares TEXT, and the query
+/// and transform methods below become available. A `string` still owns no storage — every method
+/// that changes text returns a new `stringObj`.
 extend class string {
     // NO lifecycle. A `string` is a slot holding a pointer to static text: it allocates
     // nothing and frees nothing. `stringObj` is the slot that owns a pool buffer.
@@ -1058,31 +1061,55 @@ extend class string {
     // Methods
     replace emitter void  print()                          { _bglStr.print($val) }
 
+    /// Return a NEW string with `v` joined on. This one does not change the original — `stringObj` is the type that can be mutated.
     emitter stringObj  append(string v)                      { _bglStr.append($val, $v) }
+    /// Return a new string with one character joined on.
     emitter stringObj  append(char v)                        { _bglStr.appendChar($val, $v) }
+    /// Return a new string with `v` joined on the FRONT.
     emitter stringObj  prepend(var v)                        { _bglStr.prepend($val, $v) }
+    /// Return an upper-case copy.
     emitter stringObj  toUpper()                             { _bglStr.toUpper($val) }
+    /// Return a lower-case copy.
     emitter stringObj  toLower()                             { _bglStr.toLower($val) }
+    /// Return a copy with leading and trailing whitespace removed.
     emitter stringObj  trim()                                { _bglStr.trim($val) }
+    /// Return a copy with leading whitespace removed.
     emitter stringObj  trimLeft()                            { _bglStr.trimLeft($val) }
+    /// Return a copy with trailing whitespace removed.
     emitter stringObj  trimRight()                           { _bglStr.trimRight($val) }
+    /// Return a copy with the characters in reverse order.
     emitter stringObj  reverse()                             { _bglStr.reverse($val) }
+    /// Return `count` characters starting at `start`, counting from 0.
     emitter stringObj  mid(int start, int count)             { _bglStr.mid($val, $start, $count) }
+    /// Return the first `count` characters.
     emitter stringObj  left(int count)                       { _bglStr.left($val, $count) }
+    /// Return the last `count` characters.
     emitter stringObj  right(int count)                      { _bglStr.right($val, $count) }
+    /// Return a copy with `source` inserted at `pos`.
     emitter stringObj  insert(int pos, var source)           { _bglStr.insert($val, $pos, $source) }
+    /// Return a copy with `count` characters removed from `pos`.
     emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
+    /// Return a copy with the FIRST `searchText` swapped for `replaceText`.
     emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
+    /// Return a copy with EVERY `searchText` swapped for `replaceText`.
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
+    /// Substitute `{0}`, `{1}`… in `pattern` with this string and any extra arguments.
     emitter stringObj  format(var pattern)                   { _bglStr.format($val, $pattern) }
     emitter stringObj  format(var pattern, var p1)           { _bglStr.format($val, $pattern, $p1) }
     emitter stringObj  format(var pattern, var p1, var p2)   { _bglStr.format($val, $pattern, $p1, $p2) }
+    /// How many characters, not counting a terminator.
     emitter int     getLength()                           { _bglStr.getLength($val) }
+    /// Order two strings by content: <0, 0 or >0. This is the comparison to hand `sort`.
     emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
+    /// Order by content, optionally ignoring case.
     emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
+    /// Position of the first `searchText`, counting from 0, or -1.
     emitter int     indexOf(var searchText)               { _bglStr.indexOf($val, $searchText, 0) }
+    /// True when the string begins with `prefix`.
     emitter eBool   startsWith(var prefix)                { _bglStr.startsWith($val, $prefix, false) }
+    /// True when the string ends with `suffix`.
     emitter eBool   endsWith(var suffix)                  { _bglStr.endsWith($val, $suffix, false) }
+    /// True when `searchText` appears anywhere.
     emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
     emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
     // capture/release/captureOutput redirect output INTO a buffer — stringObj only.
@@ -1110,9 +1137,14 @@ extend class string {
 // Members mirror `string`'s surface and delegate to the same var-taking _bglStr
 // utilities — the single implementation both types share.
 //-----------------------------------------------------------------------------
+/// Text you build at run time. Unlike `string`, which points at fixed text in the story file, a
+/// `stringObj` owns a buffer from the string pool: it is taken when the variable is declared and
+/// given back when its block ends. Assigning copies the TEXT in.
 emitter class stringObj : _bglObject {
     // Lifecycle
+    /// Take a buffer from the pool. Runs automatically at the declaration.
     emitter void init()   { $self = _bglStr.new(); }
+    /// Give the buffer back. Runs automatically when the declaring block ends.
     emitter void deinit() { $self.free(); }
 
     // Assignment — Phase B: type-discriminated dispatch eliminates isTracked()
@@ -1255,6 +1287,8 @@ emitter class stringObj : _bglObject {
     // and, because assignment is a copy, passing one now allocates twice.
 }
 
+/// The `"…"` literal gains `<string>`'s content comparison and query methods, so a literal can be
+/// compared and searched without first being copied into a `stringObj`.
 extend class stringLiteral {
     emitter string operator + (string v)      { _bglStr.new($self).append($v) }
     emitter string operator + (charLiteral c) { _bglStr.new($self).appendChar($c) }

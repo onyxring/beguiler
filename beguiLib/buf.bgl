@@ -134,10 +134,16 @@ array<int> _bglTrackedRegistry[128];
 // type. With <buf> included, `arr.size()` / `arr.length()` / `arr.setLength(n)`
 // on an `array<char>` work as expected for tracked bufs.
 //=============================================================================
+/// `<buf>` gives an `array<char>` a length separate from its capacity, so a text buffer can report
+/// how much of it is in use.
 extend extern class byteArray {
+    /// How many bytes the buffer can hold.
     replace emitter int  size()           { _bglBuf.size($val) }
+    /// How many bytes are in use.
     replace emitter int  length()         { _bglBuf.length($val) }
+    /// Set the in-use count, after writing into the buffer through some other route.
     emitter void setLength(int n)         { _bglBuf.setLength($val, $n) }
+    /// True when this buffer carries a length. A buffer built outside `<buf>` does not.
     emitter bool isTracked()              { _bglBuf.isTracked($val) }
 }
 

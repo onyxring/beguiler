@@ -53,9 +53,13 @@ int _bglArrayCompareAsc(var lhs, var rhs){
 extend extern class array {
     // Tracked-aware overrides of the core's raw `$val-->0` size/length.
     // Probe a magic marker stamped by the compiler when `<array>` is included.
+    /// How many elements the array can hold. Fixed at declaration.
     replace emitter int  size()           { _bglArray.size($self, $prop) }
+    /// How many elements are in use. `append` and friends move it; `size()` does not change.
     replace emitter int  length()         { _bglArray.length($self, $prop) }
+    /// Set the in-use count directly. Growing it exposes slots that were never written.
     emitter void setLength(int n)         { _bglArray.setLength($self, $prop, $n) }
+    /// True when this array carries a length separate from its capacity. A `rawArray` does not.
     emitter bool isTracked()              { _bglArray.isTracked($self, $prop) }
 
     // Value-semantic copy-on-assign: `dest = src` copies src's elements into dest's
@@ -79,13 +83,19 @@ extend extern class array {
     emitter void setOwnedAt(int i, T v) { _bglArray.setOwned($self, $prop, $i, $v, $opref(=)) }
 
     // Search
+    /// The position of the first `item`, or -1. Uses the element type's `==`.
     emitter int  indexOf(T item)          { _bglArray.indexOf($self, $prop, $item, $opref(==)) }
+    /// The position of the first `item`, or -1. The orLibrary name for `indexOf`.
     emitter int  find(T item)             { _bglArray.indexOf($self, $prop, $item, $opref(==)) }       // alias — matches orLibrary terminology
+    /// True when `item` is somewhere in the used part of the array.
     emitter bool contains(T item)         { (_bglArray.indexOf($self, $prop, $item, $opref(==)) >= 0) }
 
     // In-place transforms (no resize)
+    /// Empty the array — length back to 0, every slot zeroed, and owned elements released.
     emitter void clear()                  { _bglArray.clear($self, $prop, $opref(deinit)) }
+    /// Exchange the elements at two positions.
     emitter void swap(int pos1, int pos2) { _bglArray.swap($self, $prop, $pos1, $pos2) }
+    /// Reverse the used part of the array, in place.
     emitter void reverse()                { _bglArray.reverse($self, $prop) }
 
     // Compound-assignment sugar for the append/remove idiom:
@@ -98,26 +108,40 @@ extend extern class array {
 
     // Length-changing mutators — each grows or shrinks the explicit length.
     // append / prepend / insert return false on a full array (no growth happened).
+    /// Add `item` at the end. False when the array is already full — it does not grow.
     emitter bool append(T item)             { _bglArray.append($self, $prop, $item, $opref(=)) }
+    /// Add `item` at the front, shifting the rest up. False when full.
     emitter bool prepend(T item)            { _bglArray.prepend($self, $prop, $item, $opref(=)) }
+    /// Insert `item` at `pos`, shifting the rest up. False when full or `pos` is out of range.
     emitter bool insert(int pos, T item)    { _bglArray.insert($self, $prop, $pos, $item, $opref(=)) }
+    /// Take out the element at `pos`, closing the gap. Releases it if the element type owns storage.
     emitter void remove(int pos)            { _bglArray.remove($self, $prop, $pos, $opref(deinit)) }
+    /// Take out EVERY element equal to `item`, closing the gaps.
     emitter void removeValue(T item)        { _bglArray.removeValue($self, $prop, $item, $opref(==), $opref(deinit)) }
 
     // Deque view (orLibrary convention — push/peek/pop at the front;
     // enqueue/peekEnd/popEnd at the back).
+    /// Stack push — onto the FRONT. `pop()` takes it back off.
     emitter void push(T item)               { _bglArray.push($self, $prop, $item) }
+    /// Stack pop — take the front element off and return it. 0 when empty.
     emitter T    pop()                      { _bglArray.pop($self, $prop) }
+    /// Queue take — the front element, removed. Pairs with `enqueue`.
     emitter T    dequeue()                  { _bglArray.dequeue($self, $prop) }
+    /// Queue add — onto the END. Pairs with `dequeue`.
     emitter void enqueue(T item)            { _bglArray.enqueue($self, $prop, $item) }
+    /// The front element, left in place. 0 when empty.
     emitter T    peek()                     { _bglArray.peek($self, $prop) }
+    /// The last element, left in place. 0 when empty.
     emitter T    peekEnd()                  { _bglArray.peekEnd($self, $prop) }
+    /// Take the last element off and return it. 0 when empty.
     emitter T    popEnd()                   { _bglArray.popEnd($self, $prop) }
 
     // Sort — two overloads. The no-arg form uses the default ascending
     // comparator; the func-arg form lets the caller customize ordering
     // (e.g. descending, by field, locale-aware string compare).
+    /// Sort ascending, using the element type's `<=>`. A type without one will not compile.
     emitter void sort()                            { _bglArray.sortDefault($self, $prop, $oprefReq(<=>)) }
+    /// Sort with your own comparison, which returns <0, 0 or >0 like `<=>`.
     emitter void sort(func<int, T, T> compare)     { _bglArray.sort($self, $prop, $compare) }
 
 }

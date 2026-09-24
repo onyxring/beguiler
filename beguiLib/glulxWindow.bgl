@@ -67,9 +67,15 @@ class _winDim {
 // entity, not an IF world-tree citizen — it has no `parent`/`children`/attributes and isn't
 // `remove`-able from the object tree. Reference locals (`window w = mainWin.split…()`) work because
 // reference semantics roots at `_bglObject` (see isReferenceBacked in the compiler).
+/// A Glk window. Split an existing one to make another (`splitUpGrid`, `splitRightBuffer`, …); the
+/// split method's name picks the new window's content type and where it goes.
 class window[16] : _bglObject {
+    /// The Glk window handle. 0 once the window is closed.
     int id = 0;
+    /// The window's width. Writable only on the axis its split controls; a write to the other is
+    /// ignored at run time.
     _winDim width;      // read/write; a write to the non-adjustable axis is a runtime no-op (see _winDim)
+    /// The window's height, on the same terms as `width`.
     _winDim height;
 
     void _bind(int newId, bGlulxWindowMethodFlags method = noBorder){
@@ -78,6 +84,7 @@ class window[16] : _bglObject {
         self.height._id = newId; self.height._axis = 1; self.height._method = (int)method;
     }
     // Close this window (glk closes its subtree). self.id guards double-close.
+    /// Close this window and everything split from it. Safe to call twice.
     void close(){ if(self.id != 0){ bgl.asm.windowClose(self.id, 0); self.id = 0; } }
 
     // ---- re-arrangement: change an EXISTING window's placement/size within its parent pair ----
@@ -88,6 +95,8 @@ class window[16] : _bglObject {
         self.height._method = (int)method;
         bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(self.id), method, size, self.id);
     }
+    /// Move this window to the top of its parent split and resize it. `size` is lines, or a
+    /// percentage when `scale` is `proportional`.
     void moveUp   (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ self._rearrange(bGlulxWindowPlacement.above | scale | border, size); }
     void moveDown (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ self._rearrange(bGlulxWindowPlacement.below | scale | border, size); }
     void moveLeft (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ self._rearrange(bGlulxWindowPlacement.left  | scale | border, size); }
@@ -96,6 +105,8 @@ class window[16] : _bglObject {
     // ---- split family: content type in the name → typed return; direction → placement + orientation.
     // Up/Down (horizontal divider) → the child owns its HEIGHT → a `…Horz` subtype (width write hidden).
     // Left/Right (vertical divider) → owns its WIDTH → a `…Vert` subtype (height write hidden).
+    /// Split this window and put a new TEXT GRID above it, `size` lines tall. The `Horz` return type
+    /// is what makes only the height writable — the split's own axis.
     textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size); }
     textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size); }
     textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size); }
@@ -109,12 +120,18 @@ class window[16] : _bglObject {
     textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size); }
     textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder){ return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size); }
 }
+/// A window that holds text — the base of the grid and buffer kinds.
 class textWindow[8]       : window { }
+/// A scrolling text window, where the story's prose goes. Lines wrap and the view scrolls.
 class textBufferWindow[8] : textWindow { }   // drawImage(align) added under #if generateBlorb below
+/// A fixed grid of character cells, addressed by column and line. What a status bar is made of.
 class textGridWindow[8]   : textWindow {
+    /// Put the cursor at a cell. Columns and lines count from 1.
     void moveCursor(int col, int line){ bgl.asm.windowMoveCursor(self.id, col, line); }
 }
+/// A window you draw images into rather than text.
 class graphicsWindow[8]   : window {
+    /// Set the background colour and clear the window to it. `color` is 0xRRGGBB.
     void setBackgroundColor(int color){ bgl.asm.windowSetBackgroundColor(self.id, color); bgl.asm.windowClear(self.id); }
     // drawImage(x,y,…) added under #if generateBlorb below
 }

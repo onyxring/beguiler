@@ -94,28 +94,43 @@ extend extern class array {
     // buffers, see #emitfirst block below). filter/distinct/orderBy etc. are
     // type-preserving; map returns array<var> because the mapper's output
     // type can't be statically tracked.
+    /// The elements `pred` accepts: `nums.filter((int n) => n > 3)`. The result lives in a shared
+    /// scratch buffer — assign it to your own array to keep it beyond the statement.
     emitter array<T>   filter(func<bool, T> pred)   { _bglArray.filter($self, $prop, $pred) }
+    /// Each element put through `f`. The result is `array<var>`: the mapper may return any type.
     emitter array<var> map(func<var, T> f)          { _bglArray.map($self, $prop, $f) }
 
     // Terminals — collapse a chain to a scalar. No scratch writes; receiver
     // type drives element type for first/last (returns T) and any/all (pred
     // signature). count is a plain alias of length() for naming familiarity.
+    /// The first element, or 0 when empty. A terminal — it ends the chain.
     emitter T    first()                            { _bglArray.first($self, $prop) }
+    /// The last element, or 0 when empty. A terminal.
     emitter T    last()                             { _bglArray.last($self, $prop) }
+    /// How many elements. A terminal; the same number as `length()`.
     emitter int  count()                            { _bglArray.length($self, $prop) }
+    /// True when at least one element satisfies `pred`. Stops at the first hit.
     emitter bool any(func<bool, T> pred)            { _bglArray.any($self, $prop, $pred) }
+    /// True when every element satisfies `pred`. Stops at the first miss.
     emitter bool all(func<bool, T> pred)            { _bglArray.all($self, $prop, $pred) }
 
     // Slicing — all type-preserving, flip parity, return array<T>.
+    /// The first `n` elements. Fewer if the array is shorter.
     emitter array<T> take(int n)                    { _bglArray.take($self, $prop, $n) }
+    /// Everything after the first `n` elements.
     emitter array<T> skip(int n)                    { _bglArray.skip($self, $prop, $n) }
+    /// Elements from the start until `pred` first fails. Unlike `filter`, it stops there.
     emitter array<T> takeWhile(func<bool, T> pred)  { _bglArray.takeWhile($self, $prop, $pred) }
+    /// Elements from where `pred` first fails, to the end.
     emitter array<T> skipWhile(func<bool, T> pred)  { _bglArray.skipWhile($self, $prop, $pred) }
 
     // distinct / orderBy. distinct keeps first occurrence (O(N²) scan, fine at IF scale).
     // orderBy reuses sort() on the scratch copy — two overloads matching sort's surface.
+    /// The elements with later duplicates dropped, first occurrence kept.
     emitter array<T> distinct()                          { _bglArray.distinct($self, $prop) }
+    /// Sorted ascending into a new buffer. Unlike `sort()`, the source is left alone.
     emitter array<T> orderBy()                           { _bglArray.orderBy($self, $prop, _bglArrayCompareAsc) }
+    /// Sorted by your own comparison, which returns <0, 0 or >0.
     emitter array<T> orderBy(func<int, T, T> compare)    { _bglArray.orderBy($self, $prop, $compare) }
 }
 
