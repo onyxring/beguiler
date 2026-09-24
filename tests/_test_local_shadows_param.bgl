@@ -1,0 +1,7 @@
+/*  Same rule against a parameter, which is the routine's outermost scope and holds a header slot of
+    its own. This was an I6 error — `[f z z;` → "Local variable defined twice" — rather than a
+    Beguile one.  */
+// EXPECT_ERROR: already declared as a parameter
+#beguilerSettings { target = z5; informName = "none"; }
+void f(int z){ int z = 9; print(z); }
+void main(){ f(1); }

@@ -1,0 +1,16 @@
+/*  run_sibling_block_locals — blocks that do not enclose one another may reuse a local's name.
+
+    They share one I6 slot, since locals hoist to the routine header one slot per name, but the
+    lifetimes do not overlap and the name is not visible once its block closes — so the sharing
+    cannot be observed. This is what keeps two sequential `for (int i …)` loops legal.  */
+// EXPECT_OUTPUT: 1 2 0 1 2
+#beguilerSettings { target = z5; informName = "none"; }
+
+void main(){
+    bool a = true;
+    if(a){ int z = 1; print(z); }
+    if(a){ int z = 2; print(" "); print(z); }
+
+    for(int i = 0; i < 3; i++){ print(" "); print(i); }
+    for(int i = 0; i < 0; i++){ print(" never"); }
+}

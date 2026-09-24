@@ -152,7 +152,9 @@ auto ⟨name⟩ = ⟨initializer⟩ ;
 
 **Description**
 
-A local variable is visible from its declaration to the end of the enclosing block (§5.2). `auto`
+A local variable is visible from its declaration to the end of the enclosing block (§5.2); reading it
+after that block has closed is a compile-time error. Two blocks that do not enclose one another may
+each declare the same name (§3.10). `auto`
 infers the type from the initializer and requires one; `auto x;` is a compile-time error. The inferred
 type is fixed at the declaration and later assignments are checked against it. `auto` is accepted in
 local, global and member declarations.
@@ -306,6 +308,10 @@ Local variables, parameters and `for`-loop variables are checked against the enc
 - Shadowing a global variable. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
   and `grammarToken` are exempt: they name compile-time constants, not runtime storage.
 - Shadowing a registered type name (a class or an enum).
+- Re-declaring a local that an enclosing block still has open, or a parameter of the same function.
+  A nested declaration does not shadow the outer name — it shares its storage — so the two must have
+  different names. Blocks that do not enclose one another may reuse a name freely; their lifetimes
+  do not overlap, and a name is not visible after its block closes.
 
 **Warnings.**
 - Shadowing a direct member of the enclosing class or object, or a member inherited from a base

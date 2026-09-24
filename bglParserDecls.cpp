@@ -462,6 +462,26 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                     if(vd->name == varDecl.name)
                         parsingError(format("Variable '{0}' is already declared in this scope", varDecl.name));
+        // A parameter is the routine's outermost scope, and it occupies a header slot of its own —
+        // re-declaring its name emits `[f z z;`, which I6 rejects as "Local variable defined twice".
+        // Same rule as the enclosing-block case below, reported here rather than by Inform 6.
+        for(paramDef* pd : func->params)
+            if(pd->name == varDecl.name)
+                parsingError(format("Variable '{0}' is already declared as a parameter of this "
+                    "function, so it must have a different name.", varDecl.name));
+        // Re-declaring a local that an ENCLOSING block still has open. I6 has no block scope: every
+        // local is hoisted to the routine header, one slot per name, so the inner declaration would
+        // not be a second variable — it would write through to the outer one, and the outer would
+        // keep the inner's value after the block closed. Sibling blocks may reuse a name freely,
+        // their lifetimes not overlapping; it is only the nested case that cannot mean what it says.
+        for(statementBlock* blk : activeBlockStack)
+            if(blk != nullptr && blk != body)
+                for(statement* s : blk->statements)
+                    if(auto* vd = dynamic_cast<variableDeclaration*>(s))
+                        if(vd->name == varDecl.name)
+                            parsingError(format("Variable '{0}' is already declared in an enclosing block. "
+                                "A nested declaration would share the outer variable's storage, not shadow it, "
+                                "so it must have a different name.", varDecl.name));
         for(typeDef* g : languageService.globals)
             if(g->name == varDecl.name){
                 if(auto* vd = dynamic_cast<variableDeclaration*>(g)){

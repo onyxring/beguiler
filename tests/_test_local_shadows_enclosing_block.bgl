@@ -1,0 +1,15 @@
+/*  A local may not re-declare a name an enclosing block still has open.
+
+    I6 has no block scope: every local is hoisted to the routine header, one slot per name. So the
+    inner declaration would not be a second variable — it would write through to the outer one, and
+    the outer would keep the inner's value after the block closed (`int z = 1; if(c){ int z = 2; }
+    print(z)` gave 2, where C, C# and TypeScript give 1). Sibling blocks may still reuse a name:
+    run_sibling_block_locals.bgl.  */
+// EXPECT_ERROR: already declared in an enclosing block
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    bool a = true;
+    int z = 1;
+    if(a){ int z = 2; print(z); }
+    print(z);
+}
