@@ -393,6 +393,10 @@ class switchStatement : public statement {
         expression* condition = nullptr;
         vector<switchCase*> cases;
         bool needsIfChain = false; // true if any case uses comparison guards or operator switch(); emit as if/else if
+        // Label emitted after an if-chain lowering, the target of the `jump` a case's `break`
+        // becomes. Empty when the chain contains no break (or when this is a native I6 switch,
+        // whose own `break` already leaves the switch).
+        string breakLabel;
         // operator switch() emitter bodies, keyed by parameter type name; used for if-chain comparisons
         map<string, string> switchEmitters; // paramType → emitter body text (with $self and param name unsubstituted)
 };

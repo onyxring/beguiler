@@ -1,0 +1,79 @@
+/*  run_switch_break — `break` leaves the switch, in both of the switch's lowerings.
+
+    A switch whose cases are all plain values emits a native I6 switch, whose own `break` leaves
+    the switch. A switch with a guarded case (`case >`, `case <`) lowers to an if/else chain, where
+    there is no switch for I6's break to leave — so the same `break` left the enclosing LOOP, and
+    with no loop around it the I6 compiler rejected the routine outright. One source text, two
+    meanings, decided by whether some OTHER case happened to use a guard.
+
+    A `break` in an if-chain is now a jump to a label after the chain. Separately, a `break` that
+    was not the last statement of its case was dropped entirely and the statements after it ran;
+    only a trailing break is dropped now, where it is a no-op in both lowerings.  */
+// EXPECT_OUTPUT: plain:a.loop.loop. guard:b.loop.loop. mid:a. noloop:after inner:2
+#beguilerSettings { target = z5; informName = "none"; }
+
+// Native switch: I6's own break leaves it, so the loop tail still runs.
+void plain(int y){
+    int i = 0;
+    while(i < 2){
+        i++;
+        switch(y){
+            case 1:
+                if(i == 2) break;
+                print("a.");
+        }
+        print("loop.");
+    }
+}
+
+// Guarded switch: same shape, lowered to an if-chain.
+void guarded(int y){
+    int i = 0;
+    while(i < 2){
+        i++;
+        switch(y){
+            case > 10:
+                if(i == 2) break;
+                print("b.");
+        }
+        print("loop.");
+    }
+}
+
+// A break that is not the last statement of its case ends the case.
+void mid(int y){
+    switch(y){
+        case 1:
+            print("a.");
+            break;
+            print("never.");
+    }
+}
+
+// An if-chain break with no enclosing loop: nothing to escape, so this used to be an I6 error.
+void noLoop(int y){
+    switch(y){
+        case > 10:
+            if(y == 11) break;
+            print("never.");
+    }
+    print("after");
+}
+
+// A break inside a loop inside a case belongs to the loop, not the switch.
+void inner(int y){
+    int z = 0;
+    switch(y){
+        case 1:
+            while(z < 5){ z++; if(z == 2) break; }
+            print(z);
+    }
+}
+
+void main(){
+    print("plain:");  plain(1);
+    print(" guard:"); guarded(11);
+    print(" mid:");   mid(1);
+    print(" noloop:"); noLoop(11);
+    print(" inner:"); inner(1);
+}

@@ -286,9 +286,11 @@ switch (⟨expression⟩) {
 
 **Description**
 
-A case lists one or more values separated by commas. Cases do not fall through. A `break` written
-directly in a case body is accepted and has no effect. A `break` nested inside a block within a case
-body has unspecified effect: it may leave the `switch` or the innermost enclosing loop. Case values
+A case lists one or more values separated by commas. Cases do not fall through. A `break` in a case
+body leaves the `switch` — at the top of the body or nested in a block within it, and whichever
+lowering the switch takes. Because cases do not fall through, a `break` as the last statement of a
+case body does nothing; a `break` before the end of the body ends the case there, leaving the rest of
+it unreachable. A `break` inside a loop within a case body belongs to that loop. Case values
 are type-checked against the switch expression (§2.11): integer literals match an `int`, and an enum
 value must be of the switch expression's enum type. When the switch expression is a `verb`, case
 values are verb names (§13.2).
@@ -326,8 +328,8 @@ continue ;
 
 **Description**
 
-`break` exits the innermost enclosing `for`, `while` or `do` loop; for `break` inside a `switch` see
-§5.12. A `break` outside any loop is reported by the Inform 6 stage.
+`break` exits the innermost enclosing `for`, `while` or `do` loop, or the innermost enclosing
+`switch` when that is nearer (§5.12). A `break` in neither is reported by the Inform 6 stage.
 `continue` skips the rest of the current iteration of the innermost `for`, `while` or `do` and
 re-evaluates the loop condition; a `switch` inside the loop does not intercept it. `continue` outside
 a loop is a compile-time error.

@@ -869,14 +869,55 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
             token peek = file.peekToken();
             if(peek.is(token::braceClose) || peek.is("case") || peek.is("default")) break;
             token st = file.getToken();
-            if(st.is("break")){ file.getToken(token::endStatement); continue; }
             processStatementDispatch(st, caseCtx);
+        }
+        // A `break` as the LAST statement of a case is a no-op in both lowerings — neither an I6
+        // switch case nor an if-chain branch falls through — so drop it rather than emit a jump to
+        // the very next instruction. Only a trailing one: a break anywhere earlier in the body is
+        // the author ending the case early, and dropping THAT ran the statements after it.
+        if(sc.body != nullptr && !sc.body->statements.empty()){
+            if(auto* raw = dynamic_cast<i6RawNode*>(sc.body->statements.back()))
+                if(!raw->isI6Island && raw->text == "break;") sc.body->statements.pop_back();
         }
         swStmt.cases.push_back(&sc);
     }
-    if(swStmt.needsIfChain) languageService.switchTempNeeded = true;
+    if(swStmt.needsIfChain){
+        languageService.switchTempNeeded = true;
+        // `break` means "leave the switch". A native I6 switch gives that for free — I6's own
+        // break leaves the innermost loop OR switch. An if-chain has no switch to leave, so the
+        // same break would leave the enclosing LOOP instead (or fail to compile with no loop
+        // around it), which made one source text mean two different things depending on whether
+        // some other case happened to use a guard. Retarget them at a label after the chain.
+        string label = format("_bgl_swend{0}", languageService.switchEndCounter++);
+        bool used = false;
+        for(switchCase* c : swStmt.cases) if(retargetSwitchBreaks(c->body, label)) used = true;
+        if(used) swStmt.breakLabel = label;
+    }
     if(body != nullptr) body->statements.push_back(&swStmt);
     return false;
+}
+
+// Rewrite every `break` that belongs to THIS switch into a jump to `label`; returns true if any
+// were found. A break inside a nested loop or a nested switch belongs to that one, so those are
+// not descended into — the same rule the loop-escape analysis uses (bglParserHelpers.cpp).
+bool bglParser::retargetSwitchBreaks(statementBlock* blk, const string& label){
+    if(blk == nullptr) return false;
+    bool found = false;
+    for(statement* st : blk->statements){
+        if(auto* raw = dynamic_cast<i6RawNode*>(st)){
+            if(raw->isI6Island) continue;          // author's raw I6 — not ours to rewrite
+            size_t a = raw->text.find_first_not_of(" \t\r\n");
+            size_t b = raw->text.find_last_not_of(" \t\r\n;");
+            string core = (a == string::npos) ? "" : raw->text.substr(a, (b == string::npos ? raw->text.size() : b + 1) - a);
+            if(core == "break"){ raw->text = "jump " + label + ";"; found = true; }
+            continue;
+        }
+        if(auto* is = dynamic_cast<ifStatement*>(st)){
+            if(retargetSwitchBreaks(is->thenBlock, label)) found = true;
+            if(retargetSwitchBreaks(is->elseBlock, label)) found = true;
+        }
+    }
+    return found;
 }
 
 bool bglParser::processTry(vector<token>& t, Qualifiers&, abstractObject& ctx) {

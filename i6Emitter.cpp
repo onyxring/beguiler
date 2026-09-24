@@ -2389,6 +2389,8 @@ void i6Emitter::emitSwitchStatement(switchStatement* sw, const string& indent){
                     emitStatement(s, indent + "    ");
             out << indent << "}\n";
         }
+        // Where a case's `break` jumps to. An if-chain has no switch for I6's own break to leave.
+        if(!sw->breakLabel.empty()) out << indent << "." << sw->breakLabel << ";\n";
     } else {
         // Standard I6 switch — all entries are values or ranges (no comparison guards)
         out << indent << "switch (" << (sw->condition != nullptr ? exprText(sw->condition) : "") << ") {\n";

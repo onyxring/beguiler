@@ -298,6 +298,7 @@ class bglParser {
         bool processTypedObject(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processAliased(vector<token>& t, Qualifiers& q, abstractObject& c);
         // Statements
+        bool retargetSwitchBreaks(statementBlock* blk, const std::string& label);
         bool processBreak(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processContinue(vector<token>& t, Qualifiers& q, abstractObject& c);
         bool processRtrue(vector<token>& t, Qualifiers& q, abstractObject& c);

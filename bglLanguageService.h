@@ -32,6 +32,7 @@ class bglLanguageService{
     set<string> evictedExternWords;  // words evicted from a library verb via word-level `grammar -= {.w}`;
                                      // emitter lowers each to I6 `Extend only 'w' replace` (see i6Emitter)
     int ternaryTempCount = 0;  // number of _bgl_tempN globals needed; increments per ternary/null-coalesce
+    int switchEndCounter = 0;  // names the `.label` an if-chain switch's `break` jumps to
     bool tryCatchNeeded = false;     // set true when try/catch is used; drives conditional _bgl_catch_cookie emission
     int tryCatchCounter = 0;         // unique ID for try/catch label generation
     int captureCounter = 0;          // unique ID for closure capture globals
