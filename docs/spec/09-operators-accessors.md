@@ -97,6 +97,15 @@ class Animal : object {
 }
 ```
 
+> **Which overload wins.** When a type declares several overloads of one operator, the right-hand
+> operand selects between them in four passes: the operand's **exact** type; the **base type of a
+> literal** (`intLiteral` → `int`); a type the base is **convertible** to; and finally a parameter
+> declared `var`. `var` accepts anything, so it is the last resort rather than an exact match — which
+> is what lets a subclass override an operator it inherits. `object` declares
+> `emitter eBool operator == (var v)`, and were `var` treated as exact, a class deriving from
+> `object` could never give `==` its own meaning. An operand whose type is itself `var`, or whose
+> type is unknown, still matches in the first pass; there is nothing more specific to prefer.
+
 ## 9.3 Subscript: `operator []` and `operator []=`
 
 **Syntax**

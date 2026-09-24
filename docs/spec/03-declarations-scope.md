@@ -313,6 +313,21 @@ Local variables, parameters and `for`-loop variables are checked against the enc
 - A lambda-local variable shadowing a capturable outer local or parameter (§4.14).
 - A member overriding a base-class member; `replace` or `default` suppresses the warning (§8.7.3).
 
+**Two file-scope declarations of one name.** A function and a variable or object may share a
+file-scope name, which happens whenever an author declares one of the unprefixed names the library
+publishes (`print`, `log`, and the article rules before they moved to `bgl.printRules` — §21.11).
+They are told apart by **use**, not by declaration order:
+
+| Use | Resolves to |
+|---|---|
+| `name(args)` | the function |
+| `name.member`, `name = v` | the variable or object |
+| a bare `name`, with no variable of that name declared | the function, as a `func<>` reference |
+
+A function reference supports neither a member access nor assignment, so the two readings never
+compete. Shadowing a name you then call unqualified resolves to the variable, as ordinary shadowing
+does — so do not shadow something you still mean to call.
+
 **Example**
 
 ```bgl
