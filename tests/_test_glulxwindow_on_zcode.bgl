@@ -1,0 +1,8 @@
+/*  A Glulx-only extension included in a Z-machine build says so. It always failed — but by
+    accident, deep inside the extension where a glk opcode was missing from the Z-code opcode
+    bindings ("No method 'windowgetsize' on type 'bglOpCodes'"), naming a line the author never
+    wrote. The guard is the mirror of the one core/_zcodeOpCodes.bgl already carries.  */
+// EXPECT_ERROR: <glulxWindow> is a Glulx extension
+#beguilerSettings { target = z5; informName = "none"; }
+#include <glulxWindow>
+void main(){ print("unreachable"); }

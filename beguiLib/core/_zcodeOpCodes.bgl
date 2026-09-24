@@ -1,6 +1,6 @@
 #once
 #if TARGET_GLULX
-    #error "ERROR: Z-Code assembly binding are not compatible with Glulx."
+    #error "The Z-code assembly bindings are not compatible with Glulx. Use bgl.asm on a Glulx target."
 #endif
 //=============================================================================
 // asmZcode — Z-machine assembly opcode emitters

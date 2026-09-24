@@ -1,0 +1,5 @@
+/*  Same guard on the other Glulx-only extension (it failed at 'imagegetinfo').  */
+// EXPECT_ERROR: <glulxImage> is a Glulx extension
+#beguilerSettings { target = z5; informName = "none"; }
+#include <glulxImage>
+void main(){ print("unreachable"); }

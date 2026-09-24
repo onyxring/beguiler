@@ -1,4 +1,7 @@
 #once
+#if TARGET_ZCODE
+    #error "<glulxWindow> is a Glulx extension and is not compatible with the Z-machine. Set `target = Glulx`, or guard the include with `#if TARGET_GLULX`."
+#endif
 //=============================================================================
 // glulxWindow.bgl — the opt-in Glulx window toolkit (`#include <glulxWindow>`).
 //

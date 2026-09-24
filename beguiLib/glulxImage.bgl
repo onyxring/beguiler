@@ -1,4 +1,7 @@
 #once
+#if TARGET_ZCODE
+    #error "<glulxImage> is a Glulx extension and is not compatible with the Z-machine. Set `target = Glulx`, or guard the include with `#if TARGET_GLULX`."
+#endif
 //=============================================================================
 // glulxImage.bgl — a typed handle to a Glulx image resource (blorb asset).
 //
