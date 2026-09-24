@@ -1,0 +1,43 @@
+/*  run_object_alias_use_sites — `object X as Y` must emit Y at EVERY use site, not just some.
+
+    The declaration always emitted `object lamp`, and property reads/writes went through
+    qualifyIdentifier and correctly emitted `lamp.wattage`. Three receiver positions did not:
+
+      - a method call (`beacon.flash()`), because the single-hop rewrite only fired when the
+        qualified name was itself a registered object — which an `as` alias never is, the registry
+        keying on the Beguile name;
+      - `give`/`has`, which route through the same method-call machinery;
+      - a world-tree store (`beacon.parent = …`), where $self is forced to the owner path and that
+        path was the Beguile name, so parentProp's `move $self to $v` addressed `beacon`.
+
+    Each emitted a dangling `beacon` that Inform 6 cannot link, so this tier — which runs the
+    program — is the one that catches it. A local named the same as an object must still win, which
+    is why the fix goes through qualifyIdentifier rather than looking the object up directly.  */
+// EXPECT_OUTPUT: watt=4 flashed=1 has=Y moved=Y local=7
+#beguilerSettings { target = z5; informName = "none"; }
+
+attribute lit;
+object holder as crate { }
+object beacon as lamp {
+    int wattage;
+    int flashed;
+    void flash(){ flashed = 1; }
+}
+
+void main(){
+    beacon.wattage = 4;                  // property write
+    print("watt="); print(beacon.wattage);
+
+    beacon.flash();                      // method call on an aliased receiver
+    print(" flashed="); print(beacon.flashed);
+
+    beacon.give(lit);                    // give on an aliased receiver
+    print(" has="); if(beacon.has(lit)) print("Y"); else print("N");
+
+    beacon.parent = holder;              // world-tree store, aliased owner AND aliased target
+    print(" moved="); if(beacon.parent == holder) print("Y"); else print("N");
+
+    // A local may share an object's name; it must shadow it, not pick up the alias.
+    int beaconCount = 7;
+    print(" local="); print(beaconCount);
+}

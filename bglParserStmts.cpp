@@ -1549,8 +1549,19 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
         if(size_t ed = lhsOriginal.rfind('.'); ed != string::npos){
             string recvPath = lhsOriginal.substr(0, ed);
             string mem      = lhsOriginal.substr(ed + 1);
+            // Resolve the member alias against the ORIGINAL receiver path — the type registry keys
+            // on Beguile names, so rewriting the receiver first would lose the type.
             string aliased  = memberI6Name(resolveIdentifierType(recvPath, func, body), mem);
-            if(aliased != mem) emitterSelfForLhs = recvPath + "." + aliased;
+            // The receiver may carry an `as` alias of its own (`object beacon as lamp`). A proxy
+            // emitter addresses it directly — parentProp's body is `move $self to $v` — so $self
+            // has to be the emitted name, or the store targets an object I6 never declared.
+            string emitRecv = recvPath;
+            if(recvPath.find('.') == string::npos){
+                string q = qualifyIdentifier(recvPath, func, body, mem);
+                if(!q.empty() && q.find('(') == string::npos && q.find('.') == string::npos)
+                    emitRecv = q;
+            }
+            if(aliased != mem || emitRecv != recvPath) emitterSelfForLhs = emitRecv + "." + aliased;
         }
     }
 
@@ -1627,8 +1638,18 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
         // pointing $self at the owner sent the message to the wrong object entirely
         // (`j.setFromLit(...)` instead of `j.name.setFromLit(...)`).
         if(emitterSelfForLhs.rfind("_bgl_", 0) != 0
-           && (leftType == nullptr || isPropertyClassType(leftType->name)))
-            emitterSelfForLhs = ownerPath;  // $self = the owner object, not the full obj.prop path
+           && (leftType == nullptr || isPropertyClassType(leftType->name))){
+            // $self = the owner object, not the full obj.prop path — and the owner's EMITTED name,
+            // since an owner declared `object beacon as lamp` otherwise produced `move beacon to …`,
+            // addressing an object Inform 6 never declared.
+            string emitOwner = ownerPath;
+            if(func != nullptr && ownerPath.find('.') == string::npos){
+                string q = qualifyIdentifier(ownerPath, func, body);
+                if(!q.empty() && q.find('(') == string::npos && q.find('.') == string::npos)
+                    emitOwner = q;
+            }
+            emitterSelfForLhs = emitOwner;
+        }
     } else {
         if(func != nullptr){
             for(paramDef* p : func->params)
@@ -2326,6 +2347,16 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
         string qh = qualifyIdentifier(head, func, body);
         if(!qh.empty() && qh != head && qh.find('(') == string::npos && qh.find('.') == string::npos)
             emitObjectPath = qh + objectPath.substr(hd);
+    } else {
+        // Single-hop receiver (`beacon.flash()`). The namespace rewrite above only fires when the
+        // qualified name is itself a registered object, which an `as` alias never is — the registry
+        // keys on the Beguile name. So `object beacon as lamp` emitted a dangling `beacon.flash()`
+        // while its property accesses, which go through qualifyIdentifier, emitted `lamp.wattage`.
+        // Going through qualifyIdentifier here keeps local/parameter precedence: a local named
+        // `beacon` resolves to itself and nothing is rewritten.
+        string q = qualifyIdentifier(objectPath, func, body, methodName);
+        if(!q.empty() && q != objectPath && q.find('(') == string::npos && q.find('.') == string::npos)
+            emitObjectPath = q;
     }
     string objectName = objectPath;  // kept for backward compat in non-emitter emit path
     // Pass memberHint=methodName so the resolver disambiguates a name collision in favor
