@@ -121,6 +121,9 @@ class i6Emitter{
         // than an explicit zero list for large arrays) and registers the name here so bglInit
         // can write the $9084 magic at startup. List-initialized arrays bake the magic into
         // the initializer values and don't need to be registered.
+        // True when bglInit() has work to do — a length header to stamp, a `#startup` block, or a
+        // deferred global initializer. Drives the unreachable-init warning in resolvedOutput().
+        bool bglInitHasWork = false;
         vector<string> trackedArraysNeedingMagicInit;
         // Byte-array analog of trackedArraysNeedingMagicInit. When `<buf>` is included, sized-
         // uninitialized `array<char>` declarations get 4 trailing bytes (length-hi, length-lo,

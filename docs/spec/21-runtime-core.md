@@ -68,6 +68,8 @@ bglInit();
 
 A program built on an IF library binding does not call `bglInit()` itself: the binding wraps the library's `main` so that `bglInit()` runs first (§23.3.1). A program built without a binding, or with `autoInitialize = false` (§17.4), must call `bglInit()` from its entry point before using anything that depends on it. The call is always available and is harmless when nothing has registered work.
 
+Omitting it does not stop the build and does not stop the program: it runs on uninitialized data, where a sized tracked array reports its raw header word as its length and a sized byte array is still a null pointer. The compiler therefore warns when the program has initialization to do and nothing in the transpiled file calls `bglInit()` (§19.3).
+
 Extensions that need `bglInit()` say so in their entry in §22: `<string>` and `<linq>` do, and so do `<array>` and `<buf>`, whose sized, uninitialized tracked arrays have no length header until it runs: before `bglInit()`, such an array reports its raw header word from `size()` and `length()` and `append` fails; arrays declared with an initializer list are complete at compile time. `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
 
 **Example**

@@ -25,6 +25,8 @@ void i6Emitter::to(ostream& strm){
 static const char* kStoredFirstMarker = "!__BGL_STORED_EMITFIRST__\n";
 static const char* kStoredLastMarker  = "!__BGL_STORED_EMITLAST__\n";
 
+static size_t findWordCI(const string& haystack, const string& needle, size_t pos);
+
 string i6Emitter::resolvedOutput(){
     string buf = out.str();
     auto substitute = [&](const char* marker, const map<string,string>& blocks){
@@ -116,6 +118,28 @@ string i6Emitter::resolvedOutput(){
                 added = true;
             }
         }
+    }
+
+    // bglInit() does the work a program cannot see it needs: stamping the length headers of sized
+    // tracked arrays and byte arrays, running `#startup` blocks, and running the deferred
+    // initializers of class-typed globals (§21.2). A library binding calls it by wrapping the
+    // library's `main`; a program with no binding has to call it itself, and one that does not
+    // still RUNS — it just runs on uninitialized data. A sized `array<T>` reports its raw header
+    // word as its length, a sized `array<char>` is still a null pointer, and nothing in the output
+    // says so. Checked against the finished text because the binding's call comes from an
+    // `#emitlast` block, not from anything the parser saw.
+    if(bglInitHasWork){
+        bool called = false;
+        for(size_t i = 0; (i = findWordCI(buf, "bglinit", i)) != string::npos; i += 7){
+            size_t j = buf.find_first_not_of(" \t", i + 7);
+            if(j != string::npos && buf[j] == '('){ called = true; break; }
+        }
+        if(!called)
+            std::cerr << "WARNING: nothing calls bglInit(), so this program starts with its runtime "
+                         "uninitialized — sized array length headers are unstamped, #startup blocks "
+                         "do not run, and deferred global initializers do not run. Call bglInit() "
+                         "from your entry point, or build on a library binding, which calls it for "
+                         "you.\n";
     }
     return buf;
 }
@@ -1171,6 +1195,8 @@ for(const string& block : languageService.startupBlocks)
 for(auto& [varName, body] : languageService.globalInits)
     out << "    " << body << "\n";
 out << "];\n";
+bglInitHasWork = !trackedArraysNeedingMagicInit.empty() || !trackedByteArraysNeedingMagicInit.empty()
+              || !languageService.startupBlocks.empty() || !languageService.globalInits.empty();
 }
 
 // The main source-order walk, emitting each class ahead of its first instance and capturing superposed ones.

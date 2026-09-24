@@ -118,7 +118,7 @@ least 1.
 | `worldBufSize` | int | `128` | Objects per scratch buffer for `bgl.world` queries (§21.9); a walk that would exceed it stops there. Sizes a runtime-library declaration, so it must be set in the entry file (§17.1). |
 | `forInScratchSize` | int | `31` | Maximum elements in a literal-list `for (x in {…})` (§5.9.1). Emitted only when that form is used. |
 | `rewritePaths` | bool | `true` | Rewrite `/` and `\` in every path (settings paths, `#include`, `#includeI6`) to the platform separator (§18.5). |
-| `autoInitialize` | bool | `true` | When `true`, the library binding wraps the program's entry point so that `bglInit()` runs first (§21.2, §23.3.1). Set `false` when another library already replaces `Main`. |
+| `autoInitialize` | bool | `true` | When `true`, the library binding wraps the program's entry point so that `bglInit()` runs first (§21.2, §23.3.1). Set `false` when another library already replaces `Main`; the program then calls `bglInit()` itself. A program built on no binding at all always calls it itself, whatever this is set to — there is nothing to do the wrapping. |
 
 The string pool used by `<string>` is not a setting: its size is the I6 constant
 `bglStringPoolReserve`, declared in an `#i6` island before the extension is included (§22.3).

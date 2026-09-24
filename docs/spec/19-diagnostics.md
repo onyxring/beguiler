@@ -167,6 +167,15 @@ I6 whose name is also a Beguile global:
 <file>: warning: I6 routine 'Score' collides with Beguile-declared global of the same name
 ```
 
+**Unreachable `bglInit()`** (§21.2). The program has runtime initialization to do — a sized tracked
+array or byte array to stamp, a `#startup` block, or a deferred global initializer — and nothing in
+the transpiled file calls `bglInit()`. The program still builds and still runs; it runs on
+uninitialized data.
+
+```text
+WARNING: nothing calls bglInit(), so this program starts with its runtime uninitialized — …
+```
+
 **Other.** `hide` naming a member that is not inherited; re-typing a `typesealed` member (the retype
 is ignored); `superposed` on a non-`static` method (no effect); `#warning "text"` reports the given
 text.
