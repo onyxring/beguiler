@@ -2264,6 +2264,22 @@ void bglParser::parsingWarning(string msg){
 //===============================================================================================================================
 // Routines to manage the compile context 
 //-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+// A `return` leaves every nested block it sits inside, so their deinits run first — innermost
+// out. The routine's own top-level locals are not here: those are func->cleanups, which the
+// emitter already writes ahead of every return.
+void bglParser::emitOpenBlockCleanups(statementBlock* body){
+    if(body == nullptr) return;
+    for(auto blk = activeBlockStack.rbegin(); blk != activeBlockStack.rend(); ++blk){
+        auto it = blockCleanups.find(*blk);
+        if(it == blockCleanups.end()) continue;
+        for(auto r = it->second.rbegin(); r != it->second.rend(); ++r){
+            i6RawNode* node = new i6RawNode();
+            node->text = *r;
+            body->statements.push_back(node);
+        }
+    }
+}
+
 void bglParser::openCompileContext(eCompileContext newScope, statementBlock* body){
     compileContextStack.push_front(newScope);
     // For codeBlock contexts, always push to the active block stack (nullptr if no body provided).
@@ -2290,8 +2306,25 @@ void bglParser::closeCompileContext(eCompileContext expectedScope){
     if(oldScope!=expectedScope) parsingError(format("Internal Error: Attempting to close compile context '{0}' but current context is '{1}'.", contextToString(expectedScope), contextToString(oldScope)));
     compileContextStack.pop_front();
     // Pop the active block stack if we pushed a body on openCompileContext
-    if(!activeBlockStack.empty() && expectedScope == eCompileContext::codeBlock)
+    if(!activeBlockStack.empty() && expectedScope == eCompileContext::codeBlock){
+        statementBlock* closing = activeBlockStack.back();
         activeBlockStack.pop_back();
+        // The block's locals die here, so their deinits run here — last declared, first released.
+        // Unless the block ends in a `return`, which already ran them on its way out (see
+        // emitOpenBlockCleanups); appending after it would only leave I6 unreachable statements.
+        auto it = blockCleanups.find(closing);
+        bool endsInReturn = !closing->statements.empty()
+                         && dynamic_cast<returnStatement*>(closing->statements.back()) != nullptr;
+        if(it != blockCleanups.end() && endsInReturn) blockCleanups.erase(it);
+        else if(it != blockCleanups.end()){
+            for(auto r = it->second.rbegin(); r != it->second.rend(); ++r){
+                i6RawNode* node = new i6RawNode();
+                node->text = *r;
+                closing->statements.push_back(node);
+            }
+            blockCleanups.erase(it);
+        }
+    }
     // Invalidate cached statement location on leaving a code block — without this,
     // a later global-scope error reuses the last in-body statement's file:line.
     if(expectedScope == eCompileContext::codeBlock) currentStatementSrc.line = 0;

@@ -264,6 +264,13 @@ class bglParser {
         // in the backing-global name); empty for top-level functions.
         void synthesizeParamBackings(functionDef& funcDef, const string& classContext = "");
         int readCompileTimeInt(const std::string& what);
+        // Deinit text for class-typed locals declared in a NESTED block, keyed by that block. A
+        // nested block parses against a throwaway functionDef, so its cleanups cannot live on
+        // `func`; they are flushed to the end of the block when it closes, and replayed ahead of a
+        // `return` that leaves it. A local at the routine's own top level still uses func->cleanups.
+        std::map<statementBlock*, std::vector<std::string>> blockCleanups;
+        // Append the deinits of every nested block currently open, innermost first, to `body`.
+        void emitOpenBlockCleanups(statementBlock* body);
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
         void parsingWarning(string); //like parsingError but continues parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields

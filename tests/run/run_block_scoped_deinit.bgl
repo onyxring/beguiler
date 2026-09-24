@@ -1,0 +1,45 @@
+/*  run_block_scoped_deinit — a class-typed local declared in a nested block is released when that
+    block ends.
+
+    `init` was injected into the block's statements and fired correctly; `deinit` was registered on
+    `func->cleanups` — and a nested block parses against a THROWAWAY functionDef, discarded when the
+    block closes. So the deinit was never registered at all: a `stringObj` declared inside an `if`
+    leaked its pool instance, every time, while the same declaration at the routine's top level was
+    released correctly.
+
+    They now run at the end of the declaring block, which is also what makes sibling blocks safe now
+    that they may reuse a name: registering both at the routine's end would free one slot twice.
+    A `return` out of a block runs them on the way out, and the block-end copy is then suppressed so
+    I6 is not left with unreachable statements.
+
+    The pool is 4 instances wide by default, so the loop below — 8 iterations, one instance each —
+    only completes if each one is actually returned.  */
+// EXPECT_OUTPUT: a b ok8 ret=1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+int pick(bool a){
+    if(a){
+        stringObj s = "inner";
+        return 1;                  // leaves the block: the release runs first
+    }
+    return 0;
+}
+
+void main(){
+    bglInit();
+
+    // Two sibling blocks reusing one name — one slot, two instances, two releases.
+    if(true){ stringObj s = "a"; print(s); }
+    if(true){ stringObj s = "b"; print(" "); print(s); }
+
+    // Without a release per iteration this exhausts the pool and prints an allocation error.
+    int n = 0;
+    for(int i = 0; i < 8; i++){
+        stringObj t = "loop";
+        n = n + 1;
+    }
+    print(" ok"); print(n);
+
+    print(" ret="); print(pick(true));
+}

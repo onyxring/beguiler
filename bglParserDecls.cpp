@@ -884,7 +884,15 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
                     // insert before varDecl (which is currently the last element)
                     body->statements.insert(body->statements.end()-1, &initNode);
                 } else if(fn->name == "deinit"){
-                    func->cleanups.push_back({varDecl.name, substituted});
+                    // A local declared in a nested block dies with that block, so its deinit runs
+                    // at the block's end rather than the routine's. It could not be registered on
+                    // `func` in any case: a nested block parses against a throwaway functionDef
+                    // whose cleanups are discarded, which is why a `stringObj` declared inside an
+                    // `if` was never freed at all.
+                    if(activeBlockStack.size() > 1 && !activeBlockStack.empty() && body == activeBlockStack.back())
+                        blockCleanups[body].push_back(substituted);
+                    else
+                        func->cleanups.push_back({varDecl.name, substituted});
                 }
             }
         }

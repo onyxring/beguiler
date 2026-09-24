@@ -599,8 +599,9 @@ A class of any form may declare `init` and `deinit`, which run automatically for
 that type.
 
 - `init` fires immediately after the variable is declared, before any initializer assignment.
-- `deinit` fires before every `return` in the enclosing routine and at the routine's end if it falls
-  through.
+- `deinit` fires at the end of the block the variable was declared in, and before any `return` that
+  leaves that block. For a variable declared at the routine's top level these are the same thing:
+  the routine's end and every `return` in it. Releases run in reverse declaration order.
 - In these instance forms both must be emitters and declare no parameters; either violation is a
   compile-time error. `init` has no other form and cannot be `static`.
 

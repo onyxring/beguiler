@@ -159,6 +159,7 @@ bool bglParser::processReturnVoid(vector<token>& t, Qualifiers&, abstractObject&
         parsingError("'return' is not valid at global scope");
     functionDef* func = dynamic_cast<functionDef*>(&ctx);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+    emitOpenBlockCleanups(body);
     returnStatement& rs = *(new returnStatement());
     rs.src = file.currentLocation();
     if(body != nullptr) body->statements.push_back(&rs);
@@ -203,6 +204,9 @@ bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject&
     if(body != nullptr){
         for(statement* inj : pendingInjections) body->statements.push_back(inj);
         pendingInjections.clear();
+        // After the expression is evaluated — the value being returned may read a local this is
+        // about to release — and before the return itself.
+        emitOpenBlockCleanups(body);
         body->statements.push_back(&rs);
     }
     return false;
