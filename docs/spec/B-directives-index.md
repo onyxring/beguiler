@@ -45,6 +45,7 @@ directives and are not valid in ordinary Beguile source:
 | `##else` | emitter bodies | Alternate branch of `##if` | §7.4 |
 | `##endif` | emitter bodies | Close a `##if` block | §7.4 |
 | `##beguilerSettings.key` | `#emitfirst`, `#emitlast`, `#storedEmitFirst`, `#storedEmitLast` bodies | Substitute a setting's value as an I6 literal | §14.4.5 |
+| `##ifdef`, `##ifndef` | — | Do not exist. `##if SYMBOL` in an emitter body, `#if SYMBOL` in Beguile source | §7.4, §14.2.5 |
 | `##Action` | raw I6 only | Not a Beguile marker: Inform 6's own action-constant syntax (`##Take`), valid wherever raw I6 is written. In Beguile source, compare `action` with the verb name instead | §13.3 |
 
 A single-hash directive inside an emitter body (`#ifdef`, `#iftrue`, …) is not a Beguile directive:

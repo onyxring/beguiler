@@ -395,7 +395,14 @@ when `V` was defined as `0` or `false`. In a comparison the name resolves to the
 undefined symbol compares as `0`. Thus after `#define V false`, `#if V` and `#if V == false` are both
 true and `#if V == true` is false.
 
-There is no `#ifdef` or `#ifndef`: `#if SYMBOL` and `#if !SYMBOL` test definedness.
+There is no `#ifdef` or `#ifndef`, in either the single- or double-hash form: `#if SYMBOL` and
+`#if !SYMBOL` test definedness. `#if` tests *Beguile* symbols; to emit a conditional for the Inform 6
+compiler to evaluate — over one of its own constants, say — write it in an `#i6` island, where a
+single-hash directive is raw I6 and passes through (§7.4):
+
+```bgl
+#i6 { #Ifndef NO_SCORE; print "^"; #Endif; }
+```
 
 **Example**
 

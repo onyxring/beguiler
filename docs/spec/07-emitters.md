@@ -329,8 +329,8 @@ class Counter : object {
 Inside an emitter body, the double-hash directives select which body text is substituted.
 `⟨expression⟩` accepts the same forms as `#if` (§14.2.5): symbols, comparisons, `&&`, `||`, `!` and
 parentheses, with the same definedness-versus-value rule. They are evaluated when the emitter is
-substituted, and are not valid in ordinary Beguile source. `##ifdef` and `##ifndef` are compile-time
-errors in an emitter body; use `##if SYMBOL`.
+substituted, and are not valid in ordinary Beguile source, where the conditional is `#if` (§14.2.5).
+`##ifdef` and `##ifndef` do not exist at all: use `##if SYMBOL` here, `#if SYMBOL` there.
 
 Single-hash directives are raw I6 and pass through to the output, where they act as I6 compile-time
 conditionals. Any other `##name` (for instance an I6 action constant such as `##Take`) also passes

@@ -1,0 +1,14 @@
+/*  run_i6_conditional_island — how to emit an Inform 6 conditional from Beguile source.
+
+    `#if` in Beguile source is Beguile's own, over Beguile's symbols; an I6 library constant like
+    `NO_SCORE` is not among them, so testing it there always takes the same branch. A single-hash
+    directive inside an `#i6` island is raw I6 and passes through to the output, where the I6
+    compiler evaluates it (7.4).  */
+// EXPECT_OUTPUT: a b
+#beguilerSettings { target = z5; informName = "none"; }
+
+void main(){
+    print("a");
+    #i6 { #Ifdef NO_SCORE; print " scored"; #Endif; }
+    #i6 { #Ifndef NO_SCORE; print " b"; #Endif; }
+}

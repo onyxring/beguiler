@@ -1,0 +1,17 @@
+/*  The double-hash conditionals belong to emitter bodies, where `##` distinguishes a Beguile
+    conditional from the raw I6 around it. In Beguile source there is no I6 to distinguish from and
+    `#if` is the conditional — 7.4 says the double-hash forms "are not valid in ordinary Beguile
+    source", and appendix B lists them with scope "emitter bodies".
+
+    They were dispatched here anyway, which left the two scopes with exactly inverted vocabularies:
+    `##ifdef` worked in source and was an error in an emitter body ("use '##if <expr>'"), while
+    `##if` worked in an emitter body and was "Unrecognized statement" in source. Whichever you
+    learned first was the wrong one for the other place.  */
+// EXPECT_ERROR: '##ifdef' is not a Beguile directive
+#beguilerSettings { target = z5; informName = "none"; }
+#define FEATURE
+void main(){
+##ifdef FEATURE
+    print("A");
+##endif
+}

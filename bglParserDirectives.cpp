@@ -1091,22 +1091,27 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             return false;
         }
 
-        // ## compile-time conditionals — evaluated by the Beguile transpiler; emit nothing when false
-        case chk("##ifdef"):{
-            token sym = file.getToken(eTokenType::identifier);
-            if(definedSymbols.find(sym.value) == definedSymbols.end())
-                skipBglConditionalBlock(contextObj);
-            return false;
-        }
+        // The `##` prefix marks a Beguile conditional inside text that is otherwise raw I6 — an
+        // emitter body (7.4). In ordinary Beguile source there is no I6 to distinguish it from, and
+        // `#if` is the conditional. These four were dispatched here anyway, which left the two
+        // scopes with exactly inverted vocabularies: `##ifdef` worked here and was an error in an
+        // emitter body, while `##if` worked there and was an error here. Neither appears in
+        // appendix B, and 7.4 says the double-hash forms "are not valid in ordinary Beguile
+        // source" — so they are rejected here, with the same directness as the emitter-body rule.
+        case chk("##ifdef"):
         case chk("##ifndef"):{
-            token sym = file.getToken(eTokenType::identifier);
-            if(definedSymbols.find(sym.value) != definedSymbols.end())
-                skipBglConditionalBlock(contextObj);
+            bool neg = (directive.value == "##ifndef");
+            parsingError(format("'{0}' is not a Beguile directive — '##' marks a Beguile conditional "
+                "inside raw I6, such as an emitter body. In Beguile source write '#if {1}SYMBOL'. To "
+                "emit an Inform 6 conditional instead, put it in an '#i6' island: "
+                "#i6 {{ #Ifndef SYMBOL; … #Endif; }}", directive.value, neg ? "!" : ""));
             return false;
         }
-        case chk("##else"): return directiveBglElse(directive, contextObj);
+        case chk("##else"):
         case chk("##endif"):{
-            // consumed as a no-op (skipBglConditionalBlock handles it)
+            parsingError(format("'{0}' is not a Beguile directive — '##' marks a Beguile conditional "
+                "inside raw I6, such as an emitter body. In Beguile source the conditional is '#if' "
+                "/ '#else' / '#endif'.", directive.value));
             return false;
         }
 
