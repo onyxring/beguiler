@@ -3780,15 +3780,18 @@ static const set<string> bglKeywords = {
 // keywords.
 static const set<string> bglModifiers = {
     "class", "enum", "extern", "emitter", "static", "const", "inline",
-    "replace", "extend", "readonly", "explicit", "default",
+    "replace", "extend", "explicit", "default",
     // The rest of Appendix A's qualifier set, which this list had drifted behind.
     // `asI6`/`asBgl` are stored folded, as every keyword comparison here is.
     "additive", "alias", "asbgl", "asi6", "byval", "hide", "ref",
     "superposed", "synonyms", "typesealed"
 };
+// No `#ifdef` / `#ifndef`, in either hash form: `#if SYMBOL` and `#if !SYMBOL` test definedness
+// (appendix A, 14.2.5). Colouring them as directives told the author they existed. `readonly` is
+// likewise not a qualifier — the parser answers "Illegal global identifier".
 static const set<string> bglDirectives = {
-    "#include", "#once", "#define", "#declare", "#if", "#else", "#endif", "#ifdef",
-    "#ifndef", "#i6", "#startup", "#emitfirst", "#emitlast", "#using", "#exit"
+    "#include", "#once", "#define", "#declare", "#if", "#else", "#endif",
+    "#i6", "#startup", "#emitfirst", "#emitlast", "#using", "#exit"
 };
 
 int LspServer::classifyWord(const string& word) const {
