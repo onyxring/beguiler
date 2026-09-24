@@ -54,7 +54,7 @@ symbols that may follow `operator` are:
 | Bitwise, shift | `&` `\|` `^` `<<` `>>` | `T operator & (U v)` | Author's choice |
 | Compound assignment | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` | `T operator += (U v)` | Author's choice |
 | Increment, decrement | `++` `--` `prefix++` `prefix--` | `T operator ++ ()` | Author's choice |
-| Logical not | `!` | `emitter eBool operator ! ()` | `eBool`; consulted only as an emitter |
+| Logical not | `!` | `eBool operator ! ()` | `eBool` |
 | Subscript | `[]` `[]=` | `E operator [] (int i)`, `R operator []= (int i, E v)` | Element type; author's choice |
 | Conversion | `()` | `[explicit] T operator ()` | The target type |
 | Query | `?` | `emitter eBool operator ? ()` | `eBool`; emitter only |
@@ -66,9 +66,7 @@ class may give each its own behavior. Declaring `operator` with any symbol outsi
 compile-time error. The valid operator tokens `?.`, `??`, `=>`, and the reference-binding operator
 `:=` (§3.7) are not overloadable; `:=` exists precisely to bypass operator dispatch.
 
-`operator !` is consulted only in its emitter form; a non-emitter `operator !` is accepted and never
-used, and `!x` on the type then has its built-in meaning. The `==` row's `static` shape is the form a
-generic container calls (§9.6, §12.10).
+The `==` row's `static` shape is the form a generic container calls (§9.6, §12.10).
 
 **See also** §4.4 — binary operator resolution; Appendix C — the same table as a quick reference.
 
@@ -197,7 +195,7 @@ equivalent to `emitter T operator () { $val }`.
 | `operator switch (U v)` | `switch(x){ case v: }` | The comparison applied to each `case` value. Must be an emitter. Statement semantics: §5.12. |
 | `operator ?= (U v)` | `x ?= y` | A binary comparison at equality precedence with result `eBool`. No built-in type defines it; a class gives it a meaning. |
 | `operator <=> (U v)` | `x <=> y` | Three-way comparison, result `int`: negative when the left operand orders first, `0` when equivalent, positive otherwise. Declarable `static` or as an instance operator (§9.6). |
-| `operator ! ()` | `!x` | Prefix logical not. Consulted only in its emitter form (§9.1). |
+| `operator ! ()` | `!x` | Prefix logical not. |
 
 `string` defines `operator ? ()` as a non-zero handle test. The language has no built-in notion of
 null; it is entirely type-defined. Expression semantics of `?`, `?.` and `??` are in §4.10.
@@ -301,9 +299,6 @@ them as a regular method is a compile-time error:
 | `operator switch (U v)` | Substituted as the comparison of each `case` |
 | `init()` | Substituted at the declaration site; not callable as a method |
 | `deinit()` | Substituted at scope exit and `return`; not callable as a method |
-
-`operator ! ()` is not in this table: a non-emitter `operator !` is not an error, but it is never used
-(§9.1).
 
 ## 9.9 Property Accessors
 

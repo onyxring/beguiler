@@ -1,0 +1,38 @@
+/*  run_operator_not_nonemitter — a non-emitter `operator !` is dispatched.
+
+    The emitter form always worked; the non-emitter form was accepted, emitted as a routine, and
+    then ignored at every use site, which fell through to `~~obj` — I6's logical not of the
+    object's ADDRESS. An object address is never zero, so `!obj` was unconditionally false and the
+    operator body never ran, with no diagnostic. It now dispatches through its mangled routine, the
+    way a non-emitter `operator =` or conversion `operator()` does.
+
+    Runtime-verified on purpose: `~~obj` is legal I6 that compiles and reads plausibly, so the
+    emitted text is not evidence. Only running it shows the operator's answer being used.  */
+// EXPECT_OUTPUT: empty set E S
+#beguilerSettings { target = z5; informName = "none"; }
+
+class flag : _bglObject {
+    int state = 0;
+    bool operator !() { return state == 0; }
+}
+object f : flag { }
+
+// The emitter form, for comparison — both must agree.
+class eflag : _bglObject {
+    int state = 0;
+    emitter bool operator !() { ($self.state == 0) }
+}
+object g : eflag { }
+
+void main(){
+    if(!f) print("empty"); else print("set");
+    f.state = 1;
+    print(" ");
+    if(!f) print("empty"); else print("set");
+
+    print(" ");
+    if(!g) print("E"); else print("S");
+    g.state = 1;
+    print(" ");
+    if(!g) print("E"); else print("S");
+}

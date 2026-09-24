@@ -809,6 +809,20 @@ bool bglParser::parseExprPrefixNot(expression* expr, token operand, optional<tok
                     return true;
                 }
             }
+            // Non-emitter operator!: dispatch through its mangled routine, the same way a
+            // non-emitter operator= or conversion operator() does. Without this the declaration
+            // is accepted and then ignored, and the fallback below emits `~~obj` — I6's not of
+            // the object's ADDRESS, which is never zero, so the test is silently always false.
+            if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* tm){
+                auto* fn = dynamic_cast<functionDef*>(tm);
+                return fn && fn->name == "!" && fn->params.empty() && !fn->isEmitter;
+            })){
+                functionDef* notOp = dynamic_cast<functionDef*>(m);
+                if(notOp->i6name.empty()) notOp->i6name = mangleOperatorName(notOp->name);
+                expr->tokens.push_back(opText + "." + notOp->i6name + "()");
+                if(expr->resolvedType.empty()) expr->resolvedType = notOp->returnType.name;
+                return true;
+            }
         }
     }
     // Fallback: emit ~~ (I6 NOT) and put operand back for normal processing
