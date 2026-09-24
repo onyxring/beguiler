@@ -1602,17 +1602,58 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 parsingError(format("Type '{0}' does not support optional chaining (no operator?() emitter)", currentType));
             continue; // next chain step
         } else if(afterMember.is(token::period)){
-            // A plain `.` after a `?.` in the same chain. The guard covers only its own step, so
-            // this one would read from whatever that step produced — including `nothing`, which
-            // I6 reports as a programming error and then carries on with a garbage value. The
-            // author has to say what they mean about this step too: `?.` to guard it, or a chain
-            // that starts with a plain `.` when the receiver is always present.
+            // Regular dot after optional chain: ?.parent().name — non-guarded step
+            // (member name may collide with a type name → accept dataType too).
             token nextMember = file.getToken({eTokenType::identifier, eTokenType::dataType});
-            parsingError(format("'.{0}' follows '?.' in the same chain. The '?.' guards only its own "
-                "step, so '.{0}' would read from a value that step may have left as nothing. Write "
-                "'?.{0}' to guard this step too, or use a plain '.' from the start if the receiver is "
-                "always present.", nextMember.originalValue.empty() ? nextMember.value : nextMember.originalValue));
-            break;
+            token afterNext = exprNext(st);
+            if(afterNext.is(token::parenOpen)){
+                // .method(args) — build as non-guarded call
+                string methName = nextMember.value;
+                classDef* cls = getDispatchClass(currentType);
+                vector<expression*> callArgs;
+                token firstArg = file.getToken();
+                while(firstArg.isNot(token::parenClose)){
+                    expression* arg = parseExpression(firstArg, {token::comma, token::parenClose}, func, body);
+                    callArgs.push_back(arg);
+                    if(arg->terminator == token::parenClose) break;
+                    firstArg = file.getToken();
+                }
+                MethodMatch mm2 = resolveMethod(currentType, optTemp, methName, callArgs);
+                functionDef* method = mm2.method;
+                if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, typeDisplayName(currentType)));
+                mangleOverloadSetForReceiver(currentType, methName);
+                if(method->isEmitter){
+                    if(auto* blk = dynamic_cast<i6Block*>(method->body)){
+                        emitterBindings mb; mb.self = optTemp; mb.val = optTemp; mb.trim = emitterTrim::wsSemi;
+                        mb.fn = method;
+                        for(expression* a : callArgs) mb.args.push_back(a->text());
+                        injText += " " + optTemp + " = " + expandEmitterBody(blk, mb) + ";";
+                    }
+                } else {
+                    const string& callName = method->i6name.empty() ? methName : method->i6name;
+                    string call = optTemp + "." + callName + "(";
+                    for(size_t i = 0; i < callArgs.size(); i++){ if(i > 0) call += ", "; call += callArgs[i]->text(); }
+                    call += ")";
+                    injText += " " + optTemp + " = " + call + ";";
+                }
+                currentType = method->returnType.name;
+                afterMember = exprNext(st);
+                // Could chain further — check again
+                if(afterMember.is("?.") || afterMember.is(token::period)) { prefetched = afterMember; /* TODO: loop */ }
+                else prefetched = afterMember;
+            } else {
+                // .property
+                classDef* cls = getDispatchClass(currentType);
+                string propType;
+                if(cls != nullptr)
+                    for(typeMember* m : cls->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
+                            if(vd->name == nextMember.value){ propType = vd->type.name; break; }
+                injText += " " + optTemp + " = " + optTemp + "." + nextMember.value + ";";
+                currentType = propType;
+                prefetched = afterNext;
+            }
+            break; // end of chain
         } else {
             prefetched = afterMember;
             break; // end of chain

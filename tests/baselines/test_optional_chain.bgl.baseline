@@ -16,6 +16,7 @@ global _bgl_temp9;
 global _bgl_temp10;
 global _bgl_temp11;
 global _bgl_temp12;
+global _bgl_temp13;
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -299,7 +300,7 @@ room foyer with up _bglField_foyer_up, next _bglField_foyer_next;
 room _bglField_cloakroom_up;
 room _bglField_cloakroom_next;
 room cloakroom with up _bglField_cloakroom_up, next _bglField_cloakroom_next;
-[main x lit target r first dest pick desc gp d2 result nested;
+[main x lit target r first dest pick desc gp d2 d3 result nested;
     x = nothing;
     _bgl_temp0 = x; if (_bgl_temp0 ~= nothing) { _bgl_temp0 = (_bgl_temp0 has light); }
     lit=_bgl_temp0;
@@ -328,10 +329,12 @@ room cloakroom with up _bglField_cloakroom_up, next _bglField_cloakroom_next;
     gp = _bgl_temp7;
     _bgl_temp8 = foyer; if (_bgl_temp8 ~= nothing) { _bgl_temp8 = _bgl_temp8.up; if (_bgl_temp8 ~= nothing) { _bgl_temp8 = _bgl_temp8.description; } }
     d2 = _bgl_temp8;
-    _bgl_temp9 = foyer; if (_bgl_temp9 ~= nothing) { _bgl_temp9 = _bgl_temp9.next; }
-    _bgl_temp10 = _bgl_temp9; if (~~(_bgl_temp10 ~= nothing)) _bgl_temp10 = cloakroom;
-    result = _bgl_temp10;
-    _bgl_temp11 = foyer; if (_bgl_temp11 ~= nothing) { _bgl_temp11 = _bgl_temp11.up; if (_bgl_temp11 ~= nothing) { _bgl_temp11 = _bgl_temp11.next; } }
-    _bgl_temp12 = _bgl_temp11; if (~~(_bgl_temp12 ~= nothing)) _bgl_temp12 = cloakroom;
-    nested = _bgl_temp12;
+    _bgl_temp9 = foyer; if (_bgl_temp9 ~= nothing) { _bgl_temp9 = _bgl_temp9.up; _bgl_temp9 = _bgl_temp9.description; }
+    d3 = _bgl_temp9;
+    _bgl_temp10 = foyer; if (_bgl_temp10 ~= nothing) { _bgl_temp10 = _bgl_temp10.next; }
+    _bgl_temp11 = _bgl_temp10; if (~~(_bgl_temp11 ~= nothing)) _bgl_temp11 = cloakroom;
+    result = _bgl_temp11;
+    _bgl_temp12 = foyer; if (_bgl_temp12 ~= nothing) { _bgl_temp12 = _bgl_temp12.up; if (_bgl_temp12 ~= nothing) { _bgl_temp12 = _bgl_temp12.next; } }
+    _bgl_temp13 = _bgl_temp12; if (~~(_bgl_temp13 ~= nothing)) _bgl_temp13 = cloakroom;
+    nested = _bgl_temp13;
 ];

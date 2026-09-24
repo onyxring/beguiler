@@ -190,12 +190,9 @@ is a compile-time error.
 
 **`?.`** accesses a member or calls a method only if the left operand is non-null. In an expression,
 each `?.` step tests the value so far; if it is null the whole chain yields `nothing`, otherwise the
-step proceeds. As a statement (`x?.remove();`) the operation runs only if the target is non-null.
-
-A `?.` guards **only the step it is attached to**. A plain `.` later in the same chain would
-therefore read from whatever that step produced, including `nothing`, so it is a compile-time
-error: `x?.a.b` is rejected, and the author writes `x?.a?.b` to guard the second step or `x.a?.b`
-when `x` is always present. A chain that begins with a plain `.` is unaffected.
+step proceeds. As a statement (`x?.remove();`) the operation runs only if the target is non-null. A
+plain `.` after a `?.` adds no guard: if the preceding `?.` yielded null, the member access runs on
+`null`; the result is undefined.
 
 **`??`** yields the left operand if it is non-null, otherwise the right operand, which is evaluated only
 in that case.
