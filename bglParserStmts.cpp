@@ -1572,6 +1572,13 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
         string propName  = lhsOriginal.substr(lhsDot + 1);
         // Check for static member assignment: ClassName.staticMember
         classDef* ownerAsCls = languageService.findClass(ownerPath);
+        // The class may be reached through a namespace type alias (`alias gizmo for Gadget;`), in
+        // which case ownerPath is a dotted path and the direct lookup misses. Reads already resolve
+        // it, so without this a WRITE through the alias fell through to a plain property store on
+        // the emitted Class directive — `gadget.s = 9` — which nothing ever reads back.
+        if(ownerAsCls == nullptr && ownerPath.find('.') != string::npos)
+            if(string t = resolveNamespacedType(ownerPath); !t.empty())
+                ownerAsCls = languageService.findClass(t);
         if(ownerAsCls != nullptr){
             for(typeMember* m : ownerAsCls->members)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(m))

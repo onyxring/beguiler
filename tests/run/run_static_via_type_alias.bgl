@@ -1,0 +1,32 @@
+/*  run_static_via_type_alias — a static member reached through a namespace TYPE alias must be the
+    same storage as one reached directly.
+
+    `alias gizmo for Gadget;` hangs a TYPE off a namespace object so it can be written
+    `ns.gizmo` wherever a type name is legal (§10.2). Reads of a static through that path already
+    resolved to the mangled global, but a WRITE did not: the assignment path looked the owner up
+    with findClass(ownerPath), which misses when ownerPath is dotted, so it fell through to a plain
+    property store on the emitted Class directive —
+
+        ns.gizmo.s = 9;   ->   gadget.s = 9;      (nothing ever reads that back)
+        Gadget.s   = 7;   ->   _bgl_gadget_s = 7;
+
+    — and the write was silently lost. This tier runs the program, so the lost write shows up as a
+    wrong number rather than as a plausible-looking diff.  */
+// EXPECT_OUTPUT: direct=7 viaAlias=9 both=9
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Gadget : object {
+    int c;
+    static int s;
+}
+object ns { alias gizmo for Gadget; }
+
+void main(){
+    Gadget.s = 7;
+    print("direct=");     print(Gadget.s);
+
+    ns.gizmo.s = 9;                      // the write that used to go elsewhere
+    print(" viaAlias=");  print(ns.gizmo.s);
+
+    print(" both=");      print(Gadget.s);   // the direct name must see the aliased write
+}
