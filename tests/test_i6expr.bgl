@@ -21,6 +21,18 @@ emitter int viaStatic(){ $i6Expr(bgl.asm.readChar(1)) }            // static sup
 emitter void putc(int c){ @print_char $c; }
 emitter void emitA(){ $i6Expr(putc(65)); }                         // void call, statement position
 
+class Npc : object {
+    int seen;
+    int score(){ return seen; }
+}
+Npc robot;
+// A METHOD CALL on a bound token. The token is rewritten to a placeholder declared in a synthetic
+// scope; that placeholder was spelled mixed-case while Beguile folds identifiers, so the receiver
+// of a method call failed to resolve and the placeholder leaked out as
+// "Unknown variable '_bglxpr0_'". Property reads and argument positions were unaffected, which is
+// why it went unnoticed.
+emitter int npcScore(Npc n){ $i6Expr($n.score()) }
+
 class Counter : object {
     int value;
     emitter int doubled(){ $i6Expr(bgl.asm.add($self.value, $self.value)) }   // $self, typed
@@ -34,6 +46,7 @@ void main(){
     print(viaAsm(40, 2));
     print(viaStatic());
     emitA();
+    print(npcScore(robot));
     print(globalC.doubled());
     print(localC.plus(7));
 }

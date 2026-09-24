@@ -272,6 +272,15 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
+class npc
+  class object
+  with
+    seen,
+    score[;
+        return self.seen;
+    ]
+;
+npc robot;
 class counter
   class object
   with
@@ -283,6 +292,7 @@ counter globalC;
     print (40 + 2);
     print _bgl_bglOpCodes_readChar(1);
     @print_char 65;
+    print robot.score();
     print (globalc.value + globalc.value);
     print (localc.value + 7);
 ];

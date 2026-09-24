@@ -1579,7 +1579,10 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
         auto bind = [&](const string& token, const string& text, const string& type){
             if(findTokenCI(payload, token, 0) == string::npos) return;
             if(type.empty()){ untyped.push_back(token); return; }
-            string ph = format("_bglXpr{0}_", slot++);
+            // Lowercase: Beguile folds identifiers, so a mixed-case placeholder is registered
+            // under one spelling and looked up under another — the receiver of a method call in
+            // the payload then failed to resolve ("Unknown variable '_bglxpr0_'").
+            string ph = format("_bglxpr{0}_", slot++);
             auto* vd = new variableDeclaration();
             vd->name = ph;
             vd->type = languageService.getType(type);
