@@ -8,29 +8,29 @@ that `#beguilerSettings.prop` may read (§17.7).
 | Property | Type | Default | Precedence | CLI equivalent | Readable | Entry |
 | --- | --- | --- | --- | --- | --- | --- |
 | `author` | string | `""` | first | — | yes | §17.5 |
-| `autoInitialize` | bool | `true` | last | — | no | §17.4 |
-| `beguiLibPath` | string | `"beguiLib"` | first | `-lib=<dir>` | no | §17.2 |
+| `autoInitialize` | bool | `true` | first | — | yes | §17.4 |
+| `beguiLibPath` | string | `"beguiLib"` | first | `-lib=<dir>` | yes | §17.2 |
 | `blorbAssetPath` | string | `"assets"` | first | — | yes | §17.6 |
 | `description` | string | `""` | first | — | yes | §17.5 |
-| `economy` | bool | `false` | last | — | no | §17.3 |
-| `errorFormat` | `eErrorFormat` | `E1` | first | `-E1`, `-E2` | no | §17.3 |
+| `economy` | bool | `false` | first | — | yes | §17.3 |
+| `errorFormat` | `eErrorFormat` | `E1` | first | `-E1`, `-E2` | yes | §17.3 |
 | `firstPublished` | string | `""` | first | — | yes | §17.5 |
 | `forgiveness` | string | `""` | first | — | yes | §17.5 |
 | `forInScratchSize` | int | `31` | first | — | yes | §17.4 |
 | `framePoolSize` | int | `64` | first | — | yes | §17.4 |
-| `generateBlorb` | bool | `false` | last | — | no | §17.6 |
+| `generateBlorb` | bool | `false` | first | — | yes | §17.6 |
 | `genre` | string | `""` | first | — | yes | §17.5 |
 | `headline` | string | `""` | first | — | yes | §17.5 |
 | `ifid` | string | `""` (generated) | first | — | yes | §17.5 |
-| `includePaths` | string | none | additive | `-includepaths=<dirs>` | no | §17.2 |
+| `includePaths` | string | none | additive | `-includepaths=<dirs>` | yes | §17.2 |
 | `informName` | string | `"inform"` | first | `-inform=<name>` | yes | §17.2 |
-| `informPath` | string | none | first | `-inform=<path>` | no | §17.2 |
+| `informPath` | string | none | first | `-inform=<path>` | yes | §17.2 |
 | `language` | string | `""` | first | — | yes | §17.5 |
 | `linqScratchSize` | int | `32` | first | — | yes | §17.4 |
-| `omitUnusedRoutines` | bool | `true` | last | — | no | §17.3 |
+| `omitUnusedRoutines` | bool | `true` | first | — | yes | §17.3 |
 | `outputPath` | string | `"output"` | first | `-o <dir>` | yes | §17.3 |
 | `release` | int | `0` | first (0 = unset) | — | yes | §17.3 |
-| `rewritePaths` | bool | `true` | first | — | no | §17.4 |
+| `rewritePaths` | bool | `true` | first | — | yes | §17.4 |
 | `serial` | string | `""` | first | — | yes | §17.3 |
 | `series` | string | `""` | first | — | yes | §17.5 |
 | `seriesNumber` | int | `0` | first (0 = unset) | — | yes | §17.5 |

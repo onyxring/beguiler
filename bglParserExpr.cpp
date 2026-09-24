@@ -3124,7 +3124,7 @@ bglParser::ExprStep bglParser::parseExprDirective(ExprParseState& st){
         token prop = file.getToken(eTokenType::identifier);
         string key = prop.value; // already lowercase
         string strVal;
-        bool   isInt = false;
+        bool   isInt = false, isBool = false, boolVal = false;
         int    intVal = 0;
         if     (key == "title")          strVal = beguilerSettings.title;
         else if(key == "author")         strVal = beguilerSettings.author;
@@ -3168,9 +3168,34 @@ bglParser::ExprStep bglParser::parseExprDirective(ExprParseState& st){
             }
             intVal = v;
         }
+        // Compiler-facing paths and the boolean options. Every declared setting is readable; a
+        // property the author can write is a property the author can read back.
+        else if(key == "informpath")    strVal = beguilerSettings.informBinaryPath;
+        else if(key == "beguilibpath")  strVal = beguilerSettings.beguiLibPath;
+        else if(key == "errorformat")   strVal = beguilerSettings.errorFormat;
+        else if(key == "includepaths"){
+            // A list has no literal form, so it reads back as the ';'-joined search path — enough
+            // to test or print, and it matches how the paths are searched.
+            for(size_t i = 0; i < beguilerSettings.includePaths.size(); i++){
+                if(i) strVal += ";";
+                strVal += beguilerSettings.includePaths[i];
+            }
+        }
+        else if(key == "generateblorb" || key == "economy" || key == "autoinitialize"
+             || key == "omitunusedroutines" || key == "rewritepaths"){
+            isBool = true;
+            boolVal = (key == "generateblorb")      ? beguilerSettings.blorbEnabled
+                    : (key == "economy")            ? beguilerSettings.economy
+                    : (key == "autoinitialize")     ? beguilerSettings.autoInitialize
+                    : (key == "omitunusedroutines") ? beguilerSettings.omitUnusedRoutines
+                    : beguilerSettings.rewritePaths.value_or(true);   // unset means enabled
+        }
         else parsingError(format("#beguilerSettings.{0}: unknown or unsupported property", prop.value));
 
-        if(isInt){
+        if(isBool){
+            expr->tokens.push_back(boolVal ? "true" : "false");
+            if(expr->resolvedType.empty()) expr->resolvedType = "bool";
+        } else if(isInt){
             expr->tokens.push_back(to_string(intVal));
             if(expr->resolvedType.empty()) expr->resolvedType = "intliteral";
         } else {

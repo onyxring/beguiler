@@ -5,6 +5,7 @@
 #include <stack>
 #include <vector>
 #include <map>
+#include <set>
 #include <memory>
 #include <optional>
 #include <functional>
@@ -587,6 +588,14 @@ class verbSynonymDecl : public variableDeclaration {
 //   - ICL directives: emitted as !% lines at the very top of the I6 output
 class beguilerSettingsDef : public typeDef {
     public:
+        // Which properties have already been assigned. Settings are FIRST-ASSIGNED-WINS, so a
+        // property written once is not overwritten by a later `#beguilerSettings` block — an
+        // included file cannot silently change what the including file chose. String and int
+        // properties test their own "unset" sentinel; bools have none, which is why they need
+        // this. A value supplied by the compiler itself (CLI) claims the property before any
+        // source is read, so it wins too.
+        std::set<string> assignedKeys;
+        bool claim(const string& key){ return assignedKeys.insert(key).second; }
         // beguiler paths (not emitted)
         string beguiLibPath;           // overrides BEGUILE_LIB / binary-adjacent lookup
         string informBinaryPath;       // full path override for the I6 binary (from informPath property)

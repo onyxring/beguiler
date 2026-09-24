@@ -1286,9 +1286,9 @@ bool bglParser::processBeguilerSettings(){
             }
         }
         else if(key == "generateblorb"){
-            if(strVal == "true")       cfg.blorbEnabled = true;
-            else if(strVal == "false") cfg.blorbEnabled = false;
-            else parsingError(format("beguilerSettings property 'generateBlorb' expects true or false, got '{0}'", strVal));
+            if(strVal != "true" && strVal != "false")
+                parsingError(format("beguilerSettings property 'generateBlorb' expects true or false, got '{0}'", strVal));
+            else if(cfg.claim(key)) cfg.blorbEnabled = (strVal == "true");
         }
         else if(key == "blorbassetpath"){ if(cfg.blorbAssetPath.empty()) cfg.blorbAssetPath = rewritePathSeps(strVal); }
         else if(key == "author"){         if(cfg.author.empty())         cfg.author         = strVal; }
@@ -1302,9 +1302,9 @@ bool bglParser::processBeguilerSettings(){
         else if(key == "firstpublished"){ if(cfg.firstPublished.empty()) cfg.firstPublished = strVal; }
         else if(key == "forgiveness"){    if(cfg.forgiveness.empty())    cfg.forgiveness    = strVal; }
         else if(key == "ifid"){           if(cfg.ifid.empty())           cfg.ifid           = strVal; }
-        else if(key == "autoinitialize"){ cfg.autoInitialize = (strVal == "true"); }
-        else if(key == "economy"){ cfg.economy = (strVal == "true"); }
-        else if(key == "omitunusedroutines"){ cfg.omitUnusedRoutines = (strVal == "true"); }
+        else if(key == "autoinitialize"){ if(cfg.claim(key)) cfg.autoInitialize = (strVal == "true"); }
+        else if(key == "economy"){ if(cfg.claim(key)) cfg.economy = (strVal == "true"); }
+        else if(key == "omitunusedroutines"){ if(cfg.claim(key)) cfg.omitUnusedRoutines = (strVal == "true"); }
 
         tok = file.getToken();
     }

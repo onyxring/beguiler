@@ -1,0 +1,39 @@
+/*  run_settings_precedence_and_reads — #beguilerSettings is first-assigned-wins, and every
+    declared property reads back.
+
+    Precedence used to be split: string and int properties guarded themselves with an "unset"
+    sentinel (`if(cfg.x.empty())`), but the four booleans — generateBlorb, autoInitialize, economy,
+    omitUnusedRoutines — had no such sentinel and so were LAST-writer-wins. An included file could
+    silently flip what the including file had chosen, and which won depended on include order.
+
+    They now claim the property on first assignment, like everything else, so the block below wins
+    over the one after it regardless of value.
+
+    The read surface was also partial: informPath, beguiLibPath, includePaths, generateBlorb and
+    rewritePaths were rejected as "unknown or unsupported". A property the author can write is one
+    they can read back.  */
+// EXPECT_OUTPUT: econ=Y omit=N blorb=N rewrite=Y auto=N serial=990101
+#beguilerSettings {
+    target      = z5;
+    informName  = "none";
+    economy            = true;     // first assignment of each boolean…
+    omitUnusedRoutines = false;
+    autoInitialize     = false;
+    generateBlorb      = false;
+    serial             = "990101";
+}
+#beguilerSettings {
+    economy            = false;    // …these must all be ignored
+    omitUnusedRoutines = true;
+    autoInitialize     = true;
+    serial             = "000202";
+}
+
+void main(){
+    print("econ=");     if(#beguilerSettings.economy) print("Y"); else print("N");
+    print(" omit=");    if(#beguilerSettings.omitUnusedRoutines) print("Y"); else print("N");
+    print(" blorb=");   if(#beguilerSettings.generateBlorb) print("Y"); else print("N");
+    print(" rewrite="); if(#beguilerSettings.rewritePaths) print("Y"); else print("N");
+    print(" auto=");    if(#beguilerSettings.autoInitialize) print("Y"); else print("N");
+    print(" serial=");  print(#beguilerSettings.serial);
+}

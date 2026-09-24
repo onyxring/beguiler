@@ -41,11 +41,10 @@ name, is a compile-time error.
 
 **Precedence.** Properties follow **first-writer-wins**: the first block, in parse order, that sets a
 property fixes it, and later assignments to the same property are ignored. A value given on the
-command line counts as written before any block (§16.4). Three exceptions:
+command line counts as written before any block (§16.4). Two exceptions:
 
 - `includePaths` is **additive**: every occurrence appends to the search path (duplicates are
   dropped).
-- `generateBlorb`, `autoInitialize`, `economy` and `omitUnusedRoutines` are **last-writer-wins**.
 - `release` and `seriesNumber` treat `0` as "not set", so a block that assigns `0` does not fix them.
 
 **Entry-file properties.** Five properties are read from the entry source file before parsing begins,
@@ -239,13 +238,17 @@ When packaging is on and no `ifid` is set, the compiler supplies one:
 
 In an expression, `#beguilerSettings.property` is replaced at parse time by a literal holding the
 property's value: a string literal for string and enum properties (an enum value is its name, e.g.
-`"z5"`), an integer literal for integer properties. Only the properties below may be read; any other
-name is a compile-time error.
+`"z5"`), an integer literal for integer properties, and `true`/`false` for boolean ones. **Every
+declared property may be read** — a property the author can write is one they can read back. A name
+that is not a declared property is a compile-time error.
 
 | Result | Properties |
 | --- | --- |
-| string | `title`, `author`, `headline`, `genre`, `description`, `language`, `series`, `firstPublished`, `forgiveness`, `ifid`, `target`, `outputPath`, `blorbAssetPath`, `informName`, `serial` |
-| int | `release`, `seriesNumber`, `framePoolSize`, `linqScratchSize`, `forInScratchSize` |
+| string | `title`, `author`, `headline`, `genre`, `description`, `language`, `series`, `firstPublished`, `forgiveness`, `ifid`, `target`, `outputPath`, `blorbAssetPath`, `informName`, `informPath`, `beguiLibPath`, `errorFormat`, `serial`, `includePaths` |
+| int | `release`, `seriesNumber`, `framePoolSize`, `linqScratchSize`, `worldBufSize`, `forInScratchSize` |
+| bool | `generateBlorb`, `autoInitialize`, `economy`, `omitUnusedRoutines`, `rewritePaths` |
+
+`includePaths` is a list, which has no literal form, so it reads back as the `;`-joined search path.
 
 The value is whatever has been fixed when the reference is parsed. A string property not yet set
 reads as `""` and an integer property as `0`, except the three runtime sizes, which read as their
