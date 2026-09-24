@@ -80,30 +80,48 @@ superposed class bglOpCodes {
     emitter int bitor(int a, int b){ ($a | $b) }
     static superposed int bitxor(int a, int b){ int result; #i6 { @bitxor a b result; } return result; }
     emitter int bitnot(int a){ (~$a) }
+    /// Shift `a` left by `b` bits (`@shiftl`). A shift of 32 or more gives 0, not a rotation.
     static superposed int shiftl(int a, int b){ int result; #i6 { @shiftl a b result; } return result; }
+    /// Shift `a` right by `b` bits, carrying the SIGN bit down (`@sshiftr`) — arithmetic shift.
     static superposed int sshiftr(int a, int b){ int result; #i6 { @sshiftr a b result; } return result; }
+    /// Shift `a` right by `b` bits, filling with ZEROS (`@ushiftr`) — logical shift.
     static superposed int ushiftr(int a, int b){ int result; #i6 { @ushiftr a b result; } return result; }
 
     //── Memory Access ───────────────────────────────────────────────────
+    /// Read WORD `idx` at `addr` — a byte offset of `idx*4` (`@aload`).
     static superposed int aload(int addr, int idx){ int result; #i6 { @aload addr idx result; } return result; }
+    /// Read 16-bit SHORT `idx` at `addr` (`@aloads`). Note the different stride from `aload`.
     static superposed int aloads(int addr, int idx){ int result; #i6 { @aloads addr idx result; } return result; }
+    /// Read BYTE `idx` at `addr` (`@aloadb`).
     static superposed int aloadb(int addr, int idx){ int result; #i6 { @aloadb addr idx result; } return result; }
+    /// Read BIT `idx` at `addr` (`@aloadbit`). The index may run past one byte, and may be negative.
     static superposed int aloadbit(int addr, int idx){ int result; #i6 { @aloadbit addr idx result; } return result; }
+    /// Write word `idx` at `addr` (`@astore`).
     emitter void astore(int addr, int idx, int v) { @astore $addr $idx $v; }
+    /// Write 16-bit short `idx` at `addr` (`@astores`).
     emitter void astores(int addr, int idx, int v){ @astores $addr $idx $v; }
+    /// Write byte `idx` at `addr` (`@astoreb`).
     emitter void astoreb(int addr, int idx, int v){ @astoreb $addr $idx $v; }
+    /// Write bit `idx` at `addr` (`@astorebit`).
     emitter void astorebit(int addr, int idx, int v){ @astorebit $addr $idx $v; }
 
     //── Data Movement ───────────────────────────────────────────────────
     emitter int copy(int v)              { @copy $v $target }
+    /// Sign-extend the low 16 bits of `v` to a full word (`@sexs`).
     static superposed int sexs(int v){ int result; #i6 { @sexs v result; } return result; }
+    /// Sign-extend the low 8 bits of `v` to a full word (`@sexb`).
     static superposed int sexb(int v){ int result; #i6 { @sexb v result; } return result; }
 
     //── Stack Operations ────────────────────────────────────────────────
+    /// How many values are on the stack above the current call frame (`@stkcount`).
     static superposed int stkcount(){ int result; #i6 { @stkcount result; } return result; }
+    /// Read the stack `idx` values down from the top, without popping (`@stkpeek`).
     static superposed int stkpeek(int idx){ int result; #i6 { @stkpeek idx result; } return result; }
+    /// Exchange the top two stack values (`@stkswap`).
     emitter void stkswap()               { @stkswap; }
+    /// Rotate the top `count` stack values by `dir` places (`@stkroll`).
     emitter void stkroll(int count, int dir) { @stkroll $count $dir; }
+    /// Push a copy of the top `count` stack values (`@stkcopy`).
     emitter void stkcopy(int count)      { @stkcopy $count; }
 
     //── Function Calls ──────────────────────────────────────────────────
@@ -121,16 +139,25 @@ superposed class bglOpCodes {
     emitter void setstringtbl(int addr)  { @setstringtbl $addr; }
 
     //── Memory Management ───────────────────────────────────────────────
+    /// The current size of memory in bytes (`@getmemsize`).
     static superposed int getmemsize(){ int result; #i6 { @getmemsize result; } return result; }
+    /// Grow or shrink memory to `size` bytes (`@setmemsize`). Non-zero on failure. Invalid while `malloc` blocks are live.
     static superposed int setmemsize(int size){ int result; #i6 { @setmemsize size result; } return result; }
+    /// Allocate `size` bytes from the heap and return the address, or 0 (`@malloc`).
     static superposed int malloc(int size){ int result; #i6 { @malloc size result; } return result; }
+    /// Return a `malloc` block to the heap (`@mfree`).
     emitter void mfree(int addr)         { @mfree $addr; }
+    /// Zero `count` bytes starting at `addr` (`@mzero`).
     emitter void mzero(int count, int addr) { @mzero $count $addr; }
+    /// Copy `count` bytes from `src` to `dst` (`@mcopy`). Overlapping regions copy correctly.
     emitter void mcopy(int count, int src, int dst) { @mcopy $count $src $dst; }
 
     //── Searching ───────────────────────────────────────────────────────
+    /// Walk an array of fixed-size structures looking for `key` (`@linearsearch`). `keySize` is 1, 2 or 4 bytes; `options` bit 0 says the key is passed by address, bit 1 returns the index instead of the address, bit 2 stops at a zero key.
     static superposed int linearsearch(int key, int keySize, int start, int structSize, int numStructs, int keyOffset, int options){ int result; #i6 { @linearsearch key keySize start structSize numStructs keyOffset options result; } return result; }
+    /// As `linearsearch`, but the structures must already be sorted by key (`@binarysearch`).
     static superposed int binarysearch(int key, int keySize, int start, int structSize, int numStructs, int keyOffset, int options){ int result; #i6 { @binarysearch key keySize start structSize numStructs keyOffset options result; } return result; }
+    /// Walk a linked list looking for `key`, following the pointer at `nextOffset` (`@linkedsearch`).
     static superposed int linkedsearch(int key, int keySize, int start, int keyOffset, int nextOffset, int options){ int result; #i6 { @linkedsearch key keySize start keyOffset nextOffset options result; } return result; }
 
     //── Random Numbers ──────────────────────────────────────────────────
@@ -140,30 +167,44 @@ superposed class bglOpCodes {
     //── Game State ──────────────────────────────────────────────────────
     emitter void quit()                  { @quit; }
     emitter void restart()               { @restart; }
+    /// Save the game state to a stream (`@save`). 0 on success, 1 on failure, and 2 in the branch that resumes from `restore`.
     static superposed int save(int stream){ int result; #i6 { @save stream result; } return result; }
+    /// Restore a saved state from a stream (`@restore`). Does not return here on success — execution resumes inside the `save` that wrote it.
     static superposed int restore(int stream){ int result; #i6 { @restore stream result; } return result; }
+    /// Take an undo snapshot (`@saveundo`). Same return convention as `save`.
     static superposed int saveundo(){ int result; #i6 { @saveundo result; } return result; }
+    /// Go back to the last snapshot (`@restoreundo`). Does not return here on success.
     static superposed int restoreundo(){ int result; #i6 { @restoreundo result; } return result; }
+    /// Mark a range to survive `restore` and `restoreundo` (`@protect`). One range at a time; a length of 0 clears it.
     emitter void protect(int addr, int len) { @protect $addr $len; }
+    /// Check the story file against its header checksum (`@verify`). 0 when intact.
     static superposed int verify(){ int result; #i6 { @verify result; } return result; }
 
     //── System ──────────────────────────────────────────────────────────
     //emitter int gestalt(int sel, int val) { @gestalt $sel $val $target }
+    /// Signal the interpreter's debugger (`@debugtrap`). Does nothing in an ordinary interpreter.
     emitter void debugtrap(int val)      { @debugtrap $val; }
+    /// Call a Glk function by selector, with `argc` arguments already pushed on the stack (`@glk`). The typed wrappers below are the ones to reach for.
     emitter int glk(int sel, int argc)   { @glk $sel $argc $target }
 
     //── I/O System ──────────────────────────────────────────────────────
+    /// Choose where output goes: 0 null, 1 the interpreter's filter, 2 Glk (`@setiosys`).
     emitter void setiosys(int mode, int rock) { @setiosys $mode $rock; }
 
     //── Floating-Point Math ─────────────────────────────────────────────
+    /// Convert an integer to a float, preserving its value (`@numtof`).
     static superposed int numtof(int n){ int result; #i6 { @numtof n result; } return result; }
+    /// Convert a float to an integer, truncating toward zero (`@ftonumz`).
     static superposed int ftonumz(int f){ int result; #i6 { @ftonumz f result; } return result; }
+    /// Convert a float to an integer, rounding to nearest (`@ftonumn`).
     static superposed int ftonumn(int f){ int result; #i6 { @ftonumn f result; } return result; }
     static superposed int fadd(int a, int b){ int result; #i6 { @fadd a b result; } return result; }
     static superposed int fsub(int a, int b){ int result; #i6 { @fsub a b result; } return result; }
     static superposed int fmul(int a, int b){ int result; #i6 { @fmul a b result; } return result; }
     static superposed int fdiv(int a, int b){ int result; #i6 { @fdiv a b result; } return result; }
+    /// The smallest whole number not less than `f`, still as a float (`@ceil`).
     static superposed int ceil(int f){ int result; #i6 { @ceil f result; } return result; }
+    /// The largest whole number not greater than `f`, still as a float (`@floor`).
     static superposed int floor(int f){ int result; #i6 { @floor f result; } return result; }
     static superposed int sqrt(int f){ int result; #i6 { @sqrt f result; } return result; }
     static superposed int exp(int f){ int result; #i6 { @exp f result; } return result; }
@@ -178,7 +219,9 @@ superposed class bglOpCodes {
     static superposed int atan2(int a, int b){ int result; #i6 { @atan2 a b result; } return result; }
 
     //── Acceleration ────────────────────────────────────────────────────
+    /// Ask the interpreter to run its own fast version of the routine at `addr` (`@accelfunc`). A speed-up only; the behaviour must match.
     emitter void accelfunc(int idx, int addr) { @accelfunc $idx $addr; }
+    /// Give the accelerated functions a parameter they need, such as the address of a class (`@accelparam`).
     emitter void accelparam(int idx, int val) { @accelparam $idx $val; }
 
 
@@ -308,10 +351,12 @@ Constant wintype_TextGrid = 4;
         __glkHook(1)
     }
 
+    /// Tell the interpreter a turn has passed, so it can update its display (`@tick`).
     emitter void tick(){
         __glkHook(3)
     }
 
+    /// Ask the interpreter about a capability (`@gestalt`). `a` is the selector, `b` its argument.
     emitter int gestalt(int a, int b){
         __glkHook(4, $a, $b)
     }
@@ -328,6 +373,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(33, $a)
     }
 
+    /// The window everything else was split from, or 0 before any window is open.
     emitter int windowGetRoot(){
         __glkHook(34)
     }
@@ -339,14 +385,17 @@ Constant wintype_TextGrid = 4;
         __glkHook(36, $a, $b)
     }
 
+    /// Measure window `a`, writing its width to the address `b` and its height to `c`. Cells for a grid window, pixels for a graphics one.
     emitter void windowGetSize(int a, int b, int c){
         __glkHook(37, $a, $b, $c)
     }
 
+    /// Re-split the PAIR window `a`: `b` is the method flags, `c` the size, `d` which child keeps it.
     emitter void windowSetArrangement(int a, int b, int c, int d){
         __glkHook(38, $a, $b, $c, $d)
     }
 
+    /// Read back a pair window's split: method to address `b`, size to `c`, key child to `d`.
     emitter void windowGetArrangement(int a, int b, int c, int d){
         __glkHook(39, $a, $b, $c, $d)
     }
@@ -355,6 +404,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(40, $a)
     }
 
+    /// The pair window holding `a`, or 0 for the root.
     emitter int windowGetParent(int a){
         __glkHook(41, $a)
     }
@@ -363,14 +413,17 @@ Constant wintype_TextGrid = 4;
         __glkHook(42, $a)
     }
 
+    /// Put the cursor of grid window `a` at column `b`, line `c`. Counts from 0 here, unlike the Beguile wrapper.
     emitter void windowMoveCursor(int a, int b, int c){
         __glkHook(43, $a, $b, $c)
     }
 
+    /// The stream that window `a` prints to.
     emitter int windowGetStream(int a){
         __glkHook(44, $a)
     }
 
+    /// Copy everything printed to window `a` into stream `b` as well — a transcript.
     emitter void windowSetEchoStream(int a, int b){
         __glkHook(45, $a, $b)
     }
@@ -379,10 +432,12 @@ Constant wintype_TextGrid = 4;
         __glkHook(46, $a)
     }
 
+    /// Send later output to window `a` by making its stream current.
     emitter void setWindow(int a){
         __glkHook(47, $a)
     }
 
+    /// The other child of `a`'s parent pair.
     emitter int windowGetSibling(int a){
         __glkHook(48, $a)
     }
@@ -399,26 +454,32 @@ Constant wintype_TextGrid = 4;
         __glkHook(66, $a, $b, $c)
     }
 
+    /// Open a stream writing into the buffer at `a`, `b` bytes long. `c` is the file mode, `d` a rock. Printing to it captures text instead of showing it.
     emitter int streamOpenMemory(int a, int b, int c, int d){
         __glkHook(67, $a, $b, $c, $d)
     }
 
+    /// Close stream `a`, writing its read and write counts to the address `b`. For a memory stream, `b` is how you learn how much was written.
     emitter void streamClose(int a, int b){
         __glkHook(68, $a, $b)
     }
 
+    /// Seek in stream `a` to offset `b`, relative to `c`: 0 start, 1 current, 2 end.
     emitter void streamSetPosition(int a, int b, int c){
         __glkHook(69, $a, $b, $c)
     }
 
+    /// The current offset in stream `a`.
     emitter int streamGetPosition(int a){
         __glkHook(70, $a)
     }
 
+    /// Choose which stream plain output goes to.
     emitter void streamSetCurrent(int a){
         __glkHook(71, $a)
     }
 
+    /// The stream plain output currently goes to — save it before redirecting.
     emitter int streamGetCurrent(){
         __glkHook(72)
     }
@@ -479,6 +540,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(131, $a, $b)
     }
 
+    /// Print `b` characters from the buffer at `a` — the fast path for text already in memory.
     emitter void putBuffer(int a, int b){
         __glkHook(132, $a, $b)
     }
@@ -495,10 +557,12 @@ Constant wintype_TextGrid = 4;
         __glkHook(135, $a, $b)
     }
 
+    /// Read one character from stream `a`, or -1 at the end.
     emitter int getCharStream(int a){
         __glkHook(144, $a)
     }
 
+    /// Read a line from stream `a` into the buffer at `b`, at most `c` bytes.
     emitter int getLineStream(int a, int b, int c){
         __glkHook(145, $a, $b, $c)
     }
@@ -515,6 +579,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(161, $a)
     }
 
+    /// Ask that windows of type `a` render style `b` with hint `c` set to `d`. A request, not a guarantee — set hints before opening the window.
     emitter void stylehintSet(int a, int b, int c, int d){
         __glkHook(176, $a, $b, $c, $d)
     }
@@ -523,22 +588,27 @@ Constant wintype_TextGrid = 4;
         __glkHook(177, $a, $b, $c)
     }
 
+    /// Ask whether window `a` shows styles `b` and `c` differently.
     emitter int styleDistinguish(int a, int b, int c){
         __glkHook(178, $a, $b, $c)
     }
 
+    /// Read back the actual value of hint `c` for style `b` in window `a`, writing it to the address `d`. 0 when the interpreter will not say.
     emitter int styleMeasure(int a, int b, int c, int d){
         __glkHook(179, $a, $b, $c, $d)
     }
 
+    /// Wait for an event, filling the four-word structure at `a`: type, window, val1, val2.
     emitter void select(int a){
         __glkHook(192, $a)
     }
 
+    /// Check for an event without waiting. Fills the same structure; type 0 means nothing happened.
     emitter void selectPoll(int a){
         __glkHook(193, $a)
     }
 
+    /// Ask for a line of input in window `a`, into the buffer at `b`, at most `c` bytes, with `d` characters already there.
     emitter void requestLineEvent(int a, int b, int c, int d){
         __glkHook(208, $a, $b, $c, $d)
     }
@@ -547,6 +617,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(209, $a, $b)
     }
 
+    /// Ask for a single key press in window `a`. The key arrives through `select`.
     emitter void requestCharEvent(int a){
         __glkHook(210, $a)
     }
@@ -563,14 +634,17 @@ Constant wintype_TextGrid = 4;
         __glkHook(213, $a)
     }
 
+    /// Ask for a timer event every `a` milliseconds; 0 turns it off.
     emitter void requestTimerEvents(int a){
         __glkHook(214, $a)
     }
 
+    /// Measure image `a`, writing its width to the address `b` and its height to `c`. 0 when there is no such image.
     emitter int imageGetInfo(int a, int b, int c){
         __glkHook(224, $a, $b, $c)
     }
 
+    /// Draw image `b` in window `a` at `c`,`d` — pixels in a graphics window, an alignment in a text buffer.
     emitter int imageDraw(int a, int b, int c, int d){
         __glkHook(225, $a, $b, $c, $d)
     }
@@ -592,10 +666,12 @@ Constant wintype_TextGrid = 4;
         __glkHook(233, $a, $b, $c, $d, $e)
     }
 
+    /// Fill a rectangle of window `a` with colour `b`, at `c`,`d`, `e` wide and `f` high.
     emitter void windowFillRect(int a, int b, int c, int d, int e, int f){
         __glkHook(234, $a, $b, $c, $d, $e, $f)
     }
 
+    /// Set graphics window `a`'s background to `b` (0xRRGGBB). Takes effect on the next clear.
     emitter void windowSetBackgroundColor(int a, int b){
         __glkHook(235, $a, $b)
     }
@@ -624,10 +700,12 @@ Constant wintype_TextGrid = 4;
         __glkHook(247, $a, $b, $c, $d, $e)
     }
 
+    /// Play sound `b` on channel `a`, once.
     emitter int schannelPlay(int a, int b){
         __glkHook(248, $a, $b)
     }
 
+    /// Play sound `b` on channel `a`, `c` times, with notification value `d`. A `c` of 0 repeats forever.
     emitter int schannelPlayExt(int a, int b, int c, int d){
         __glkHook(249, $a, $b, $c, $d)
     }
@@ -636,6 +714,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(250, $a)
     }
 
+    /// Set channel `a`'s volume, where 0x10000 is full.
     emitter void schannelSetVolume(int a, int b){
         __glkHook(251, $a, $b)
     }
@@ -748,14 +827,17 @@ Constant wintype_TextGrid = 4;
         __glkHook(321, $a, $b, $c, $d)
     }
 
+    /// Whether window `a` echoes the line the player typed. 0 suppresses it.
     emitter void setEchoLineEvent(int a, int b){
         __glkHook(336, $a, $b)
     }
 
+    /// Choose which keys end a line of input in window `a`, from the `c` key codes at `b`.
     emitter void setTerminatorsLineEvent(int a, int b, int c){
         __glkHook(337, $a, $b, $c)
     }
 
+    /// Write the current UTC time to the three-word structure at `a`: high seconds, low seconds, microseconds.
     emitter void currentTime(int a){
         __glkHook(352, $a)
     }
@@ -768,6 +850,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(360, $a, $b)
     }
 
+    /// Convert the time at `a` into the broken-down local date at `b`.
     emitter void timeToDateLocal(int a, int b){
         __glkHook(361, $a, $b)
     }

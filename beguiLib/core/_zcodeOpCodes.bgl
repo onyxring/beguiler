@@ -34,13 +34,19 @@ superposed class bglOpCodes {
     emitter int bitnot(int a)            { (~$a) }
 
     //── Memory Access (all versions) ────────────────────────────────────
+    /// Read WORD `idx` of the array at `arr` — a byte offset of `idx*2` (`@loadw`).
     static superposed int loadw(int arr, int idx){ int result; #i6 { @loadw arr idx -> result; } return result; }
+    /// Read BYTE `idx` of the array at `arr` (`@loadb`). Note the different stride from `loadw`.
     static superposed int loadb(int arr, int idx){ int result; #i6 { @loadb arr idx -> result; } return result; }
+    /// Write word `idx` of the array at `arr` (`@storew`).
     emitter void storew(int arr, int idx, int v) { @storew $arr $idx $v; }
+    /// Write byte `idx` of the array at `arr` (`@storeb`).
     emitter void storeb(int arr, int idx, int v) { @storeb $arr $idx $v; }
 
     //── Stack Operations (all versions) ─────────────────────────────────
+    /// Push a value onto the Z-machine's evaluation stack (`@push`). `pull()` takes it back.
     emitter void push(int v)             { @push $v; }
+    /// Pop the top of the evaluation stack (`@pull`).
     static superposed int pull(){ int result; #i6 { @pull result; } return result; }
 
     //── Object Tree (all versions) ──────────────────────────────────────
@@ -55,8 +61,11 @@ superposed class bglOpCodes {
 
     //── Object Properties (all versions) ────────────────────────────────
     static superposed int getProp(int obj, int prop){ int result; #i6 { @get_prop obj prop -> result; } return result; }
+    /// The ADDRESS of a property's data, or 0 when the object lacks it (`@get_prop_addr`). This is how you reach a property longer than one word.
     static superposed int getPropAddr(int obj, int prop){ int result; #i6 { @get_prop_addr obj prop -> result; } return result; }
+    /// How many bytes the property at this address holds (`@get_prop_len`). Takes an address from `getPropAddr`, not a property number.
     static superposed int getPropLen(int propAddr){ int result; #i6 { @get_prop_len propAddr -> result; } return result; }
+    /// The next property number after `prop` on this object, or 0 at the end (`@get_next_prop`). Pass 0 to start.
     static superposed int getNextProp(int obj, int prop){ int result; #i6 { @get_next_prop obj prop -> result; } return result; }
     emitter void putProp(int obj, int prop, int v) { @put_prop $obj $prop $v; }
 
@@ -80,8 +89,11 @@ superposed class bglOpCodes {
     emitter void setWindow(int win)     { @set_window $win; }
 
     //── Streams (Z3+) ───────────────────────────────────────────────────
+    /// Turn output stream `n` on, or off when `n` is negative (`@output_stream`). 1 screen, 2 transcript, 3 table, 4 command record.
     emitter void outputStream(int n)              { @output_stream $n; }
+    /// Redirect output into a table in memory — stream 3 (`@output_stream`). The first word of `table` receives the character count. Redirects nest.
     emitter void outputStream(int n, int table)   { @output_stream $n $table; }
+    /// Choose where input comes from: 0 keyboard, 1 a command file (`@input_stream`).
     emitter void inputStream(int n)               { @input_stream $n; }
 
     //── Random Numbers (all versions) ───────────────────────────────────
@@ -90,9 +102,11 @@ superposed class bglOpCodes {
     //── Game State (all versions) ───────────────────────────────────────
     emitter void quit()                  { @quit; }
     emitter void restart()               { @restart; }
+    /// Check the story file against its header checksum (`@verify`). True when it is intact.
     emitter int verify()                 { @verify; }
 
     //── Sound (Z3+) ─────────────────────────────────────────────────────
+    /// Play a sound resource. `effect` is 1 prepare, 2 start, 3 stop, 4 finish (`@sound_effect`).
     emitter void soundEffect(int num, int effect, int vol) {
         @sound_effect $num $effect $vol;
     }
@@ -106,10 +120,14 @@ extend class bglOpCodes {
 
     //── Window / Display (Z4+) ──────────────────────────────────────────
     emitter void eraseWindow(int win)   { @erase_window $win; }
+    /// Erase from the cursor to the end of the line when `v` is 1 (`@erase_line`).
     emitter void eraseLine(int v)       { @erase_line $v; }
+    /// Move the cursor in the upper window. Line and column count from 1 (`@set_cursor`).
     emitter void setCursor(int line, int col) { @set_cursor $line $col; }
+    /// Write the cursor's line and column into the first two words of `arr` (`@get_cursor`).
     emitter void getCursor(int arr)     { @get_cursor $arr; }
     emitter void setTextStyle(int style) { @set_text_style $style; }
+    /// Turn word wrapping on (1) or off (0) in the lower window (`@buffer_mode`).
     emitter void bufferMode(int flag)   { @buffer_mode $flag; }
 
     //── Input (Z4+) ─────────────────────────────────────────────────────
@@ -118,12 +136,14 @@ extend class bglOpCodes {
     // Wrapping the opcode in a routine (the infglk shape) makes its value usable anywhere: the
     // raw opcode is emitted verbatim via #i6 (no recursion — this is the opcode, not the
     // emitter). `superposed`: materializes only if the program actually reads a character.
+    /// Wait for one key press and return its ZSCII code (`@read_char`).
     static superposed int readChar(int dev = 1){   // dev defaults to 1 (the only legal Z-machine value)
         int c;
         #i6 { @read_char dev -> c; }
         return c;
     }
     // scan_table is store+BRANCH (branches when found); forward label to fall through with the result.
+    /// Search `table` for `x`, returning its address or 0 (`@scan_table`). Words by default; add $80 to `len` for bytes.
     static superposed int scanTable(int x, int table, int len){ int result; #i6 { @scan_table x table len -> result ?~st; .st; } return result; }
 
     //── Function Calls (Z4+) ────────────────────────────────────────────
@@ -131,28 +151,39 @@ extend class bglOpCodes {
     static superposed int call2s(int routine, int a){ int result; #i6 { @call_2s routine a -> result; } return result; }
 
     //── Bitwise (Z5+ EXT) ───────────────────────────────────────────────
+    /// Shift `a` left by `places`, or right when negative, filling with ZEROS (`@log_shift`).
     static superposed int logShift(int a, int places){ int result; #i6 { @log_shift a places -> result; } return result; }
+    /// Shift `a` left by `places`, or right when negative, carrying the SIGN bit down (`@art_shift`). This is the one that divides a negative number correctly.
     static superposed int artShift(int a, int places){ int result; #i6 { @art_shift a places -> result; } return result; }
 
     //── Memory (Z5+) ────────────────────────────────────────────────────
+    /// Copy `size` bytes between tables (`@copy_table`). A `dst` of 0 zeroes `src` instead; overlapping regions copy correctly.
     emitter void copyTable(int src, int dst, int size) { @copy_table $src $dst $size; }
 
     //── I/O (Z5+) ───────────────────────────────────────────────────────
     emitter void printUnicode(int ch)   { @print_unicode $ch; }
     emitter void setColour(int fg, int bg)  { @set_colour $fg $bg; }
+    /// Switch fonts, returning the previous one or 0 when unavailable (`@set_font`).
     static superposed int setFont(int font){ int result; #i6 { @set_font font -> result; } return result; }
 
     //── Text Processing (Z5+) ───────────────────────────────────────────
+    /// Split the text buffer into words against the dictionary, writing the result to `parse` (`@tokenise`).
     emitter void tokenise(int text, int parse) { @tokenise $text $parse; }
+    /// Encode text into the packed form a dictionary entry uses (`@encode_text`).
     emitter void encodeText(int zscii, int len, int from, int coded) {
         @encode_text $zscii $len $from $coded;
     }
+    /// Print a rectangle of text `width` characters across (`@print_table`).
     emitter void printTable(int zscii, int width) { @print_table $zscii $width; }
 
     //── Game State (Z5+ EXT) ────────────────────────────────────────────
+    /// Save `bytes` of `table` to a named auxiliary file (`@save`). Non-zero on success.
     static superposed int save(int table, int bytes, int name){ int result; #i6 { @save table bytes name -> result; } return result; }
+    /// Read a named auxiliary file back into `table` (`@restore`). Returns how many bytes were read.
     static superposed int restore(int table, int bytes, int name){ int result; #i6 { @restore table bytes name -> result; } return result; }
+    /// Take an undo snapshot (`@save_undo`). 1 saved, 0 failed, 2 on the return from `restoreUndo`, -1 unsupported.
     static superposed int saveUndo(){ int result; #i6 { @save_undo -> result; } return result; }
+    /// Go back to the last `saveUndo()` snapshot (`@restore_undo`). On success it does not return here — execution resumes inside that `saveUndo`.
     static superposed int restoreUndo(){ int result; #i6 { @restore_undo -> result; } return result; }
 
     //── Function Calls (Z5+) ────────────────────────────────────────────
@@ -160,6 +191,7 @@ extend class bglOpCodes {
     emitter void call2n(int routine, int a)      { @call_2n $routine $a; }
 
     //── Unicode (Z5+ EXT) ───────────────────────────────────────────────
+    /// Ask whether the interpreter can print or read this Unicode character (`@check_unicode`). Bit 0 print, bit 1 input.
     static superposed int checkUnicode(int ch){ int result; #i6 { @check_unicode ch -> result; } return result; }
 }
 #endif
