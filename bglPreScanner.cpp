@@ -1115,7 +1115,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
     // matched neither arm, the declaration fell through to the bodiless path, and the skip there
     // ran past this object's body into the NEXT declaration. Consuming it here rather than
     // widening the test below keeps `object Name as alias;` on the bodiless path where it belongs.
-    if(file.peekToken().is("as")){
+    if(file.peekToken().is("asi6")){
         file.getToken();   // 'as'
         file.getToken();   // the I6 name
     }
@@ -1357,7 +1357,7 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
     // Otherwise the token here is the identifier `as`, no branch below matches, and the trailing
     // skip-to-semicolon runs straight through this declaration's body and swallows the NEXT
     // declaration's registration, so a class after `object X as Y { }` was never registered.
-    if(sym.is("as")){
+    if(sym.is("asi6")){
         file.getToken();        // the I6 name
         sym = file.getToken();  // now the real '{' or ';'
     }

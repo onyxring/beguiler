@@ -287,7 +287,7 @@ compile-time checking and emits no definition for it. The forms are:
 | `extern class ⟨name⟩ { … }` | §15.4.3, §8.2.2 |
 | `extern object ⟨name⟩ ;` / `extern object ⟨name⟩ { … }` | §15.4.4, §11.11 |
 
-An `extern` declaration may carry an `as i6name` clause naming the I6 identifier (§3.11).
+An `extern` declaration may carry an `asI6 <i6name>` clause naming the I6 identifier (§3.11).
 
 ### 15.4.1 Extern Functions and `default` Stubs
 
@@ -518,7 +518,7 @@ through raw I6: an I6 island (§15.2) or `#includeI6` (§15.5) passes them to th
 (an object, function, global or `extern` name) must not be an Inform 6 reserved word — a directive,
 statement, condition keyword or built-in identifier of I6; the I6 stage rejects it even though
 Beguile accepted it. Where such a name must be kept, give the declaration an explicit I6 name with an
-`as` clause (§3.11). The Inform 6 Designer's Manual holds the authoritative, version-current list of
+`asI6` clause (§3.11). The Inform 6 Designer's Manual holds the authoritative, version-current list of
 reserved words.
 
 ## 15.10 Third-party I6 Libraries and Raw Arrays

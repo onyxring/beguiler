@@ -1511,7 +1511,7 @@ bool bglParser::processFunc(vector<token>& t, Qualifiers& q, abstractObject& ctx
         objectClassName = file.getToken(eTokenType::dataType).value;
     }
     string i6alias;
-    if(file.peekToken().is("as")) {
+    if(file.peekToken().is("asi6")) {
         file.getToken();
         token aliasTok = file.getToken(eTokenType::identifier);
         i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;

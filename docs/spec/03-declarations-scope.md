@@ -14,7 +14,7 @@
   - [3.8.3 Global Scope](#383-global-scope)
 - [3.9 The Global-Scope Qualifier `::`](#39-the-global-scope-qualifier-)
 - [3.10 Shadowing](#310-shadowing)
-- [3.11 The `as` Clause](#311-the-as-clause)
+- [3.11 The `asI6` Clause](#311-the-asi6-clause)
 - [3.12 `superposed`](#312-superposed)
 <!-- /toc -->
 
@@ -324,38 +324,38 @@ void foo() {
 }
 ```
 
-## 3.11 The `as` Clause
+## 3.11 The `asI6` Clause
 
 **Syntax**
 
 ```syntax
-⟨type⟩ ⟨name⟩ as ⟨i6 name⟩ ;
-object ⟨name⟩ as ⟨i6 name⟩ { … }
-⟨type⟩ ⟨member⟩ as ⟨i6 name⟩ ;              // class or object member
-⟨type⟩ ⟨method⟩ ( … ) as ⟨i6 name⟩ { … }
+⟨type⟩ ⟨name⟩ asI6 ⟨i6 name⟩ ;
+object ⟨name⟩ asI6 ⟨i6 name⟩ { … }
+⟨type⟩ ⟨member⟩ asI6 ⟨i6 name⟩ ;              // class or object member
+⟨type⟩ ⟨method⟩ ( … ) asI6 ⟨i6 name⟩ { … }
 ```
 
 **Description**
 
-An `as` clause gives an instance declaration the name it has in Inform 6. The Beguile name is used
+An `asI6` clause gives an instance declaration the name it has in Inform 6. The Beguile name is used
 throughout Beguile source for type-checking and resolution; the I6 name is used wherever the
 declaration reaches the output. It is valid on any typed instance declaration, on a named object
-definition (including instances of subclasses such as `room Name as place { }`), and on class and
+definition (including instances of subclasses such as `room Name asI6 place { }`), and on class and
 object members, where it follows the member name. It is ignored on operator methods; on a type
 declaration (`extern class`, `alias class`) or on a free function it is a compile-time error.
 
-`as` renames one instance for output; it is unrelated to `for` in `alias class Foo for Bar`, which
-affects type resolution (§8.2.4). The usual reason to use `as` is that the required I6 name is a
+`asI6` renames one instance for output; it is unrelated to `for` in `alias class Foo for Bar`, which
+affects type resolution (§8.2.4). The usual reason to use `asI6` is that the required I6 name is a
 Beguile keyword or a reserved Inform 6 word (§15.9).
 
 **Example**
 
 ```bgl
-extern attribute lit as light;
-object myHook as hook { … }
+extern attribute lit asI6 light;
+object myHook asI6 hook { … }
 class Widget : object {
-    int count as internalCount;
-    void refresh() as _widgetRefresh { … }
+    int count asI6 internalCount;
+    void refresh() asI6 _widgetRefresh { … }
 }
 ```
 

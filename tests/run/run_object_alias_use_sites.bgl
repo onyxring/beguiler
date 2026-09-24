@@ -17,8 +17,8 @@
 #beguilerSettings { target = z5; informName = "none"; }
 
 attribute lit;
-object holder as crate { }
-object beacon as lamp {
+object holder asI6 crate { }
+object beacon asI6 lamp {
     int wattage;
     int flashed;
     void flash(){ flashed = 1; }

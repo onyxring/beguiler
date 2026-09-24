@@ -7,13 +7,13 @@
     `_bogus` must appear nowhere.  */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-object myHook as hook { }
+object myHook asI6 hook { }
 class Widget : object {
-    int count as internalCount;
-    void refresh() as _widgetRefresh { count = count + 1; }
-    bool operator == (int o) as _bogus { return count == o; }
+    int count asI6 internalCount;
+    void refresh() asI6 _widgetRefresh { count = count + 1; }
+    bool operator == (int o) asI6 _bogus { return count == o; }
 }
-object plain { void ping() as _plainPing { } }
+object plain { void ping() asI6 _plainPing { } }
 Widget w;
 
 void main(){

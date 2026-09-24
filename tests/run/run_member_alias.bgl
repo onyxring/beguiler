@@ -22,8 +22,8 @@
 #include <string>
 
 object r1 {
-    int score as pts = 7;
-    stringObj title as caption = "hello";
+    int score asI6 pts = 7;
+    stringObj title asI6 caption = "hello";
     int bump(){ score = score + 1; return score; }   // bare reference inside the body
 }
 

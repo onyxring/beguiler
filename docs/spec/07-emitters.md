@@ -198,7 +198,7 @@ $i6Name( ⟨path⟩( ⟨type⟩ [, …] ) )
 
 Substitutes the identifier Inform 6 knows a declaration by. A body is raw I6, so calling a Beguile
 routine from one means writing that routine's *emitted* name — which is not the author's to know: an
-`as` clause renames it (§3.11), a `static` method emits as `_bgl_⟨class⟩_⟨method⟩`, and that mangling
+`asI6` clause renames it (§3.11), a `static` method emits as `_bgl_⟨class⟩_⟨method⟩`, and that mangling
 grows a parameter-type discriminator as soon as a second overload of the name is declared. A body
 that spells the name itself is therefore wrong the moment an unrelated overload appears. `$i6Name`
 asks the compiler for it instead.
@@ -208,11 +208,11 @@ aliases (`bgl.asm.readChar`). What is substituted depends on what the path names
 
 | The path names | `$i6Name` substitutes |
 |---|---|
-| A global function | Its routine name, or its `as` alias |
+| A global function | Its routine name, or its `asI6` name |
 | A `static` method | The free routine's name, `_bgl_⟨class⟩_⟨method⟩`, with the overload discriminator when the class declares more than one |
 | An instance method | Its property name — call it as `receiver.(⟨name⟩)(…)` |
-| A data member | Its property name, or its `as` alias |
-| An object, class or enum | Its emitted name, or its `as` alias |
+| A data member | Its property name, or its `asI6` name |
+| An object, class or enum | Its emitted name, or its `asI6` name |
 | An enum value | The value's bare word |
 
 When the path names an overloaded method, the parenthesized type list selects one; omitting it where
@@ -233,22 +233,22 @@ resolved and never reports.
 **Example**
 
 ```bgl
-extern attribute lit as light;
-object myHook as hook;
+extern attribute lit asI6 light;
+object myHook asI6 hook;
 
 emitter bool isLit(object o)      { ($o has $i6Name(lit)) }          // → ($o has light)
 emitter int  readKey()            { $i6Name(bgl.asm.readChar)(1) }   // → _bgl_bglOpCodes_readChar(1)
 emitter int  scale(int a, int b)  { $i6Name(Money.scale(int, int))($a, $b) }
 ```
 
-> **When to reach for it.** A global function with no `as` clause emits under its own name, so a body
+> **When to reach for it.** A global function with no `asI6` clause emits under its own name, so a body
 > may simply write that name; `$i6Name` buys nothing there. Use it where the emitted identifier is
-> *not* the Beguile one: anything carrying an `as` clause, a member or method (which emit as property
+> *not* the Beguile one: anything carrying an `asI6` clause, a member or method (which emit as property
 > names), a promoted member array, and above all a `static` method — its `_bgl_⟨class⟩_⟨method⟩`
 > mangling gains a parameter-type discriminator as soon as a second overload of that name is
 > declared, so a spelling that is correct today is silently wrong after an unrelated edit elsewhere.
 
-**See also** §3.11 (`as`), §7.3.1 (`$opref`, the same lookup for operators), §4.15, §15.2
+**See also** §3.11 (`asI6`), §7.3.1 (`$opref`, the same lookup for operators), §4.15, §15.2
 (the same token in an `#i6` island).
 
 ### 7.3.4 `$i6Expr`

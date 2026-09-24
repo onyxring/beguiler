@@ -79,7 +79,7 @@ appendices are for lookup.
     - [3.8.3 Global Scope](03-declarations-scope.md#383-global-scope)
   - [3.9 The Global-Scope Qualifier `::`](03-declarations-scope.md#39-the-global-scope-qualifier-)
   - [3.10 Shadowing](03-declarations-scope.md#310-shadowing)
-  - [3.11 The `as` Clause](03-declarations-scope.md#311-the-as-clause)
+  - [3.11 The `asI6` Clause](03-declarations-scope.md#311-the-asi6-clause)
   - [3.12 `superposed`](03-declarations-scope.md#312-superposed)
 - [4 Expressions and Operators](04-expressions.md)
   - [4.1 Evaluation](04-expressions.md#41-evaluation)

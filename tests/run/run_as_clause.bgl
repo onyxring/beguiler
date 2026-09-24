@@ -2,7 +2,7 @@
 
     Three conformance gaps this pins, all of which used to be parse errors or silent mismatches:
 
-      - `object X as Y { }` WITH a body: the PRE-SCANNER had no notion of `as`, so the token after
+      - `object X asI6 Y { }` WITH a body: the PRE-SCANNER had no notion of `asI6`, so the token after
         the name matched no branch, the skip-to-semicolon ran past this object's body, and the NEXT
         declaration was never registered. A class after such an object failed to parse entirely.
       - `as` on a class MEMBER: rejected outright ("Expected symbol, or operator"). Object members
@@ -23,16 +23,16 @@
 // EXPECT_OUTPUT: count=6 refreshed=1 pinged=1
 #beguilerSettings { target = z5; informName = "none"; }
 
-object myHook as hook { }          // object + as + BODY, immediately before a class
+object myHook asI6 hook { }          // object + asI6 + BODY, immediately before a class
 class Widget : object {            // …this class is what used to vanish from the pre-scan
-    int count as internalCount;    // as on a class member
+    int count asI6 internalCount;    // asI6 on a class member
     int touched;
-    void refresh() as _widgetRefresh { count = count + 1; touched = 1; }   // as on a class method
-    bool operator == (int o) as _bogus { return count == o; }              // ignored on operators
+    void refresh() asI6 _widgetRefresh { count = count + 1; touched = 1; }   // asI6 on a class method
+    bool operator == (int o) asI6 _bogus { return count == o; }              // ignored on operators
 }
 object plain {                                   // as on an OBJECT method
     int seen;
-    void ping() as _plainPing { seen = 1; }
+    void ping() asI6 _plainPing { seen = 1; }
 }
 
 Widget w;

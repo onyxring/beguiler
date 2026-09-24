@@ -100,7 +100,7 @@ words alphabetically, with the section that defines each.
 
 **Declaration words** begin or qualify a declaration.
 
-`alias` `as` `byVal` `class` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
+`alias` `asI6` `byVal` `class` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
 `operator` `ref` `replace` `static` `superposed` `typesealed`
 
 **Type-forming words** build a type rather than name one.
@@ -141,7 +141,7 @@ compiler rejects.
 `additive` `array` `attribute` `class` `false` `nothing` `object` `property` `replace` `self` `string`
 `true` `verb`
 
-Inform 6 reserves further words that Beguile does not; §15.9 describes them and the `as` clause that
+Inform 6 reserves further words that Beguile does not; §15.9 describes them and the `asI6` clause that
 keeps them out of generated names.
 
 ## 1.6 Literals

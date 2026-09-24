@@ -27,7 +27,7 @@ void bglParser::initGrammarTable() {
         {"rawarray declaration",     {"rawarray", "<"},                                             &Self::processArray},
         {"func type declaration",    {"func", "<"},                                                 &Self::processFunc},
         {"typed object declaration", {TYPE_NAME, NEW_NAME, ":", TYPE_NAME},                         &Self::processTypedObject},
-        {"aliased declaration",      {TYPE_NAME, NEW_NAME, "as", NEW_NAME},                         &Self::processAliased},
+        {"aliased declaration",      {TYPE_NAME, NEW_NAME, "asi6", NEW_NAME},                       &Self::processAliased},
         {"routine declaration",      {TYPE_NAME, NEW_NAME, "("},                                    &Self::processRoutine},
         {"object declaration",       {TYPE_NAME, NEW_NAME, "{"},                                    &Self::processObject},
         {"inline object statement",  {TYPE_NAME, "{"},                                              &Self::processInlineObjectStatement},

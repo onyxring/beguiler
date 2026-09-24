@@ -40,9 +40,9 @@ instantiated as a named object, including utility classes and data tables.
 **Syntax**
 
 ```syntax
-object ⟨name⟩ [ as ⟨i6name⟩ ] { ⟨member⟩ … }
-object ⟨name⟩ [ as ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { ⟨member⟩ … }
-⟨class⟩ ⟨name⟩ [ as ⟨i6name⟩ ] { ⟨member⟩ … }
+object ⟨name⟩ [ asI6 ⟨i6name⟩ ] { ⟨member⟩ … }
+object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { ⟨member⟩ … }
+⟨class⟩ ⟨name⟩ [ asI6 ⟨i6name⟩ ] { ⟨member⟩ … }
 ```
 
 **Description**
@@ -428,7 +428,7 @@ extend lampPost {
 
 ```syntax
 attribute ⟨name⟩ ;
-extern attribute ⟨name⟩ [ as ⟨i6name⟩ ] ;
+extern attribute ⟨name⟩ [ asI6 ⟨i6name⟩ ] ;
 ```
 
 **Description**

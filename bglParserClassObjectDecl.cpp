@@ -781,7 +781,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
         // Optional `as <i6name>` (§3.11) after the member name, the same position and meaning it
         // has on an object member. Without this the token here is the identifier `as`, which is
         // neither a symbol nor an operator, and the member was rejected outright.
-        if(file.peekToken().is("as")){
+        if(file.peekToken().is("asi6")){
             file.getToken();   // 'as'
             token aliasTok = file.getToken(eTokenType::identifier);
             memberI6Alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
@@ -1290,7 +1290,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
 
 
 void bglParser::consumeMethodI6Alias(functionDef& funcDef){
-    if(!file.peekToken().is("as")) return;
+    if(!file.peekToken().is("asi6")) return;
     file.getToken();                                   // 'as'
     token aliasTok = file.getToken(eTokenType::identifier);
     // §3.11: the clause is ignored on operator methods, whose i6name is assigned by the
@@ -1570,7 +1570,7 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
     // member's emitted I6 identifier differ from its Beguile name so it can dodge an I6 symbol clash
     // (e.g. `auto util = _bglUtil as bglUtil` avoids orLibrary's `object util`).
     string i6alias;
-    if(file.peekToken().is("as")){
+    if(file.peekToken().is("asi6")){
         file.getToken();  // consume 'as'
         token aliasTok = file.getToken(eTokenType::identifier);
         i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
@@ -1930,7 +1930,7 @@ bool bglParser::processTypedObjectDeclaration(token typeTok, token nameTok, toke
     // Entered after "Type name : ClassName" have been consumed. Reads optional "as alias" then symbol.
     string objectClassName = classNameTok.value;
     string i6alias;
-    if(file.peekToken().is("as")){
+    if(file.peekToken().is("asi6")){
         file.getToken();
         token aliasTok = file.getToken(eTokenType::identifier);
         i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;

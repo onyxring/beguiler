@@ -15,7 +15,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `additive` | qualifier, I6 | §11.7.2 |
 | `alias` | qualifier | §8.2.4, §10.2 |
 | `array` | type, I6 | §12.2 |
-| `as` | qualifier (I6 name clause) | §3.11 |
+| `asI6` | qualifier (I6 name clause) | §3.11 |
 | `attribute` | type, I6 | §11.6 |
 | `auto` | type | §3.6, §9.9.2 |
 | `bnum` | type | §2.7.2 |
