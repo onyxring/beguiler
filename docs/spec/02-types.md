@@ -329,6 +329,9 @@ A union complements overloading rather than replacing it: an overload dispatches
 static type at compile time, whereas a union carries a value whose type is known only at run time (one
 read from a member or an array) and is discriminated with `typeof` (§2.8.1).
 
+A union type is also *inferred* in one place: a ternary whose two branches have unrelated types
+resolves to their union (§4.9).
+
 **Canonical form.** Members are order-independent and de-duplicated: `string | func<void>` and
 `func<void> | string` name the same type, and a union of a type with itself is that type. Members may be listed in any order.
 

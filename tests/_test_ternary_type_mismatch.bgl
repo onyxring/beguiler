@@ -1,0 +1,8 @@
+/*  A ternary over two unrelated types is typed as their union, so a target that can hold only one
+    of them rejects it instead of silently taking the true branch's type.  */
+// EXPECT_ERROR: Cannot assign value of type 'int|string' to variable of type 'int'
+void main(){
+    bool flag = true;
+    int bad = flag ? 1 : "text";
+    print(bad);
+}

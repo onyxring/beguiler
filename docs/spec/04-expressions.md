@@ -144,17 +144,30 @@ A leading `-` on an integer literal forms a negative literal, whose pseudo-type 
 
 **Description**
 
-Selects one of two values. The resolved type is the type of the true branch, or the false branch's when the true branch has
-none; a type mismatch between the branches is not diagnosed. A ternary may appear as a call argument, on the right-hand side of an assignment, in a
-parenthesized sub-expression, and in the condition and increment parts of a `for` loop. At most one
-ternary may appear per statement (a call argument that is a ternary counts), and a ternary may not be
-nested in another ternary's condition or branches.
+Selects one of two values. A ternary may appear as a call argument, on the right-hand side of an
+assignment, in a parenthesized sub-expression, and in the condition and increment parts of a `for`
+loop. At most one ternary may appear per statement (a call argument that is a ternary counts), and a
+ternary may not be nested in another ternary's condition or branches.
+
+**Type of the result.** When the branches have the same type, that is the type. When one branch's
+type is assignable to the other's — a derived class and its base, for instance — the result takes the
+more general of the two, whichever side it is written on. A literal counts as the type it denotes,
+so `-1` and `0` are both `int`. A branch typed `var` imposes nothing.
+
+When the branches have unrelated types, the result is the **union** of the two (§2.8): a ternary over
+a string and a routine is what `string | func<void>` describes, and a union value occupies one word
+either way. The destination then decides whether the expression is legal — a union-typed target
+accepts it and discriminates with `typeof` (§2.8.1), while a target of one branch's type rejects it
+as the mistyping it is.
 
 **Example**
 
 ```bgl
 print(x > 0 ? "positive" : "non-positive");
 int result = (cond ? a : b) + extra;
+
+string | func<void> action = useText ? "nothing happens" : doSomething;  // union of both branches
+int wrong = cond ? 1 : "text";   // error: 'int|string' is not assignable to 'int'
 ```
 
 ## 4.10 Optional Chaining, Null Coalescing and Postfix Query

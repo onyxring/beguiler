@@ -1,0 +1,39 @@
+/*  run_ternary_union — a ternary whose branches have different types yields their UNION.
+
+    `?:` used to take the true branch's type and ignore the false branch's, which was deliberate:
+    a branch could be a routine or a value and I6 would carry either in the same word. Union types
+    make that expressible, so the result is now typed `A | B` — the destination decides. A union
+    target accepts it and discriminates at runtime; a target of one branch's type rejects it
+    (_test_ternary_type_mismatch.bgl).  */
+// EXPECT_OUTPUT: s:text f:[run] i:7 base:1
+#beguilerSettings { target = z5; informName = "none"; }
+
+void helper(){ print("[run]"); }
+
+class base : _bglObject { int a = 1; }
+class derived : base { int b = 2; }
+object theDerived : derived { }
+
+void show(string | func<void> x){
+    if(typeof(x) == eType.routine){ func<void> f = (func<void>)x; f(); }
+    else print((string)x);
+}
+
+void main(){
+    bool flag = true;
+
+    string | func<void> s = flag ? "text" : helper;
+    print("s:"); show(s);
+
+    string | func<void> f = !flag ? "text" : helper;
+    print(" f:"); show(f);
+
+    // Branches that agree still resolve to the single type — literals compare as what they denote,
+    // so a negative and a positive literal are both ints.
+    int i = flag ? 7 : -1;
+    print(" i:"); print(i);
+
+    // A base/derived pair resolves to the base, whichever side the derived is written on.
+    base b = flag ? theDerived : theDerived;
+    print(" base:"); print(b.a);
+}

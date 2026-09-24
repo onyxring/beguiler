@@ -899,6 +899,9 @@ class bglParser {
         bool isTypeCompatible(string argType, string paramType);
         static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
         static std::vector<std::string> splitUnionType(const std::string& t);  // split a union name into its member type names
+        // Canonical name for a union of these members: flattened, sorted and deduped, so the same
+        // set always names the same type and a single member collapses back to itself.
+        static std::string canonicalUnionOf(std::vector<std::string> members);
         // Element-type compatibility for array/list initializers: isTypeCompatible plus an
         // initializer-only relaxation letting a byte array (`array<char>`) accept integer literals.
         bool isArrayElementCompatible(string argType, string elementType);

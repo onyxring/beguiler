@@ -906,7 +906,29 @@ void bglParser::exprAssembleTernary(ExprParseState& st){
     // Restore structural prefix parens so the outer expression stays balanced
     for(auto& p : pt.prefixParens) expr->tokens.push_back(p);
     expr->tokens.push_back(pt.tempName);
-    expr->resolvedType = !pt.trueType.empty() ? pt.trueType : falseType;
+    // A ternary yields ONE value, so its type has to account for both branches. When they agree —
+    // the same type, or a base/derived pair, checked both ways so the base wins whichever side it
+    // is written on — that is the type. Literals compare as the type they denote, so `-1` and `0`
+    // are both ints. `var` on either side is compatible with everything.
+    //
+    // When they DON'T agree, the result is the union of the two (§2.9): a ternary over a string and
+    // a routine is exactly what `string | func<void>` describes. Nothing is lost — a union value is
+    // one word either way, which is why this used to pass untyped — and the destination now decides
+    // whether it is legal: a union-typed target accepts it, and a target of one branch's type
+    // rejects it as the mistyping it is.
+    auto denotedType = [](const string& t){
+        if(t == "intliteral" || t == "negativeintliteral") return string("int");
+        if(t == "charliteral")  return string("char");
+        if(t == "stringliteral") return string("string");
+        return t;
+    };
+    if(!pt.trueType.empty() && !falseType.empty()){
+        string tt = denotedType(pt.trueType), ft = denotedType(falseType);
+        if(isTypeCompatible(ft, tt))      expr->resolvedType = pt.trueType;
+        else if(isTypeCompatible(tt, ft)) expr->resolvedType = falseType;
+        else                              expr->resolvedType = canonicalUnionOf({tt, ft});
+    }
+    else expr->resolvedType = !pt.trueType.empty() ? pt.trueType : falseType;
 }
 
 // Cast emission helper. When `(T)x` is parsed, the consumer site calls this with the

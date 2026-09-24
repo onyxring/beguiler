@@ -1818,13 +1818,22 @@ string bglParser::maybeParseUnionTail(const string& firstType){
         file.getToken();                    // consume '|'
         members.push_back(readUnionMemberType());
     }
-    std::sort(members.begin(), members.end());
-    members.erase(std::unique(members.begin(), members.end()), members.end());
-    if(members.size() == 1) return members[0];
+    return canonicalUnionOf(members);
+}
+
+string bglParser::canonicalUnionOf(vector<string> members){
+    vector<string> flat;
+    for(const string& m : members){
+        if(isUnionType(m)) for(const string& x : splitUnionType(m)) flat.push_back(x);
+        else flat.push_back(m);
+    }
+    std::sort(flat.begin(), flat.end());
+    flat.erase(std::unique(flat.begin(), flat.end()), flat.end());
+    if(flat.size() == 1) return flat[0];
     string result;
-    for(size_t i = 0; i < members.size(); i++){
+    for(size_t i = 0; i < flat.size(); i++){
         if(i) result += "|";
-        result += members[i];
+        result += flat[i];
     }
     return result;
 }
