@@ -125,7 +125,8 @@ marked *(when used)* are absent from programs that do not need them.
 9. Every `#emitlast` block, in file-inclusion order; then the fired `#storedEmitLast` blocks
    *(when triggered)*.
 10. Referenced `superposed` declarations, appended in the order they were observed (§18.9).
-11. In precompiler mode, the entry file's trailing `end;` and anything after it.
+11. In precompiler mode, the entry file's trailing `end;` and anything after it. It comes after the
+    `superposed` declarations because Inform 6 stops reading at `end;`.
 
 ## 18.7 Emission Ordering
 

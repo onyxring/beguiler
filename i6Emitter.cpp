@@ -120,6 +120,13 @@ string i6Emitter::resolvedOutput(){
         }
     }
 
+    // The .inf-mode trailer — `end;` through EOF — goes last of all, AFTER the superposed blocks.
+    // It used to be written into `out` during emission, which put `end;` ahead of them: I6 stops
+    // reading at `end;`, so a superposed routine an island had called was simply not there ("No
+    // such constant as ..."). Nothing in the trailer can reference a superposed name, since I6
+    // never reads past `end;` either, so withholding it from the search above costs nothing.
+    if(!languageService.infTrailer.empty()) buf += languageService.infTrailer;
+
     // bglInit() does the work a program cannot see it needs: stamping the length headers of sized
     // tracked arrays and byte arrays, running `#startup` blocks, and running the deferred
     // initializers of class-typed globals (§21.2). A library binding calls it by wrapping the
@@ -1012,9 +1019,7 @@ bool i6Emitter::emitPhaseInfModeRawOnly(vector<typeDef*>& nodeList){
     for(typeDef* node : nodeList)
         if(dynamic_cast<i6RawNode*>(node))
             generateI6(node);
-    if(!languageService.infTrailer.empty())
-        out << languageService.infTrailer;
-    return true;
+    return true;   // the trailer is appended by resolvedOutput(), after any superposed blocks
 }
 
 // The leading ICL block (user's `!%` in .inf-mode, else synthesised) plus target/framePool state.
@@ -1337,10 +1342,6 @@ if(!languageService.storedEmitLastBlocks.empty())
 }
 
 // .inf-mode trailer: the user's `end;` directive and everything after it, spliced in last.
-void i6Emitter::emitPhaseInfTrailer(){
-if(!languageService.infTrailer.empty())
-    out << languageService.infTrailer;
-}
 void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Lift compile-time-only verb fields (`meta`, `priority`) onto their verbObjectDefs and stamp
     // own-block grammar lines with the verb's anchor. Done once up-front so the values are visible
@@ -1429,7 +1430,6 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // .inf-mode trailer: the user's `end;` directive (and anything after it) was
     // extracted from the .inf body during parsing and is splice in here so it appears as
     // the last content of the file, after all generated I6.
-    emitPhaseInfTrailer();
 }
 void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     if(cfg->target == "glulx")     out << "!% -G\n";

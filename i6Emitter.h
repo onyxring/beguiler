@@ -185,7 +185,6 @@ class i6Emitter{
         // #emitlast blocks, plus the placeholder resolvedOutput() replaces with the fired #storedEmitLast blocks.
         void emitPhaseEmitLastBlocks();
         // .inf-mode trailer: the user's `end;` directive and everything after it, spliced in last.
-        void emitPhaseInfTrailer();
         void generateI6(typeDef*);
         void emitICL(beguilerSettingsDef*);
         void emitSettingsConstants(beguilerSettingsDef*);

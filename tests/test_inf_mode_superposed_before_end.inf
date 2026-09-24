@@ -1,0 +1,28 @@
+! test_inf_mode_superposed_before_end.inf — a superposed routine an island calls must land
+! BEFORE the file's `end;`.
+!
+! In .inf mode the trailer — `end;` through EOF — was written into the output during emission,
+! while superposed blocks are appended afterwards by resolvedOutput(), once the finished text is
+! searched for their names. So the routine landed after `end;`, where I6 stops reading:
+!
+!     line 277: Error:  No such constant as "_bgl_bglOpCodes_random"
+!
+! The trailer is now appended last of all, after the superposed pass. Nothing in it can reference
+! a superposed name — I6 never reads past `end;` either — so withholding it from that search
+! costs nothing.
+!
+! `bgl.asm.random` is the superposed routine here: it is a `static superposed` opcode wrapper, so
+! it materializes only because this island calls it.
+
+!% -v5
+
+[ Main x;
+    print "start^";
+    #bgl{
+        bglInit();
+        x = bgl.asm.random(6);
+    }
+    print "rolled^";
+];
+
+end;
