@@ -2286,6 +2286,12 @@ bglParser::ExprStep bglParser::parseExprMemberRead(ExprParseState& st, token& me
                     }
         }
     }
+    // Nothing class-level claimed the member: a static, a value emitter and an alias member are all
+    // reachable through a type NAME, so if none of them matched and the class declares the member
+    // per-instance, the access is on the class itself and cannot be meant.
+    if(!isStaticAccess && !isValueEmitterAccess && !isAliasMember)
+        rejectNonStaticOnTypeName(cur.value, maybeCls, member.value);
+
     // Auto member on object instance pointing to another object: redirect cur
     // so chained access (e.g. bgl.glulx.method) continues walking. Only applies
     // to namespace-style auto members — those whose initializer names a global

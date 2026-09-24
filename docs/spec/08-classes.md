@@ -485,6 +485,11 @@ A `static` member is class-level state shared by all instances, read and written
 `ClassName.member`. Inside a method the class name is required; a bare name resolves to an instance
 member. Beguile's `static` is unrelated to Inform 6's `static` (an immovable object).
 
+A class name reaches **only** what belongs to the class: its `static` members, its `static` methods,
+its emitter values and its alias members. Naming a per-instance member through the type
+(`Counter.someField`, or through a type alias — §10.2) is a compile-time error; a per-instance
+member exists only on an instance.
+
 **Example**
 
 ```bgl

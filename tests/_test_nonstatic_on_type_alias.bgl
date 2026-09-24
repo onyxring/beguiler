@@ -1,0 +1,7 @@
+/* Same rule when the type is reached through a namespace type alias (`alias gizmo for Gadget;`),
+   which is the path that previously lost a static WRITE entirely (run_static_via_type_alias). */
+// EXPECT_ERROR: is a per-instance member of 'Gadget'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Gadget : object { int c; static int s; }
+object ns { alias gizmo for Gadget; }
+void main(){ print(ns.gizmo.c); }

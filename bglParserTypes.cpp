@@ -1398,6 +1398,20 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
     return out;
 }
 
+void bglParser::rejectNonStaticOnTypeName(const string& headText, classDef* cls, const string& member){
+    if(cls == nullptr || member.empty()) return;
+    // Only when the head really is a TYPE name — an instance that happens to share the name wins.
+    if(!languageService.isClassType(headText) && resolveNamespacedType(headText).empty()) return;
+    typeMember* found = findMemberInHierarchy(cls, [&](typeMember* m){
+        auto* vd = dynamic_cast<variableDeclaration*>(m);
+        return vd != nullptr && !vd->isStatic && !vd->isAlias && vd->name == member;
+    });
+    if(found == nullptr) return;
+    parsingError(format("'{0}' is a per-instance member of '{1}', so it cannot be reached through the "
+                        "type name '{2}'. Only `static` members belong to the class itself; use an "
+                        "instance, or declare '{0}' static.", member, cls->dName(), headText));
+}
+
 // Case-insensitive, word-boundary search for a `$token` in raw body text. i6Emitter has its own
 // copy but keeps it file-static; Beguile is case-insensitive, so `$I6NAME` must match too.
 static size_t findTokenCI(const string& hay, const string& needle, size_t pos){

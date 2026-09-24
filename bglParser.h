@@ -520,6 +520,10 @@ class bglParser {
         // already defines, so it belongs on an `extern`. For `asBgl` the declared token is the I6
         // symbol and `nameTok` is rewritten to the Beguile name. Returns the I6 name, or "".
         string parseI6NameClause(token& nameTok, bool isExtern);
+        // A class NAME reaches only the class's `static` members. Reaching a per-instance member
+        // through it emitted a property access on the I6 `Class` directive — legal I6 that changes
+        // the class DEFAULT, never any instance — so it is rejected instead.
+        void rejectNonStaticOnTypeName(const string& headText, classDef* cls, const string& member);
         // The §3.11 direction rule, shared by the grammar-matched form and the inline one.
         // Returns the I6 name; for `alias` it rewrites nameTok to the Beguile name the clause
         // carries. Reports and returns "" when the clause sits on the wrong side of `extern`.

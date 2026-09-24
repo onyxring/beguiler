@@ -1,0 +1,8 @@
+/* A class NAME reaches only the class's `static` members. Reaching a per-instance member through it
+   used to be accepted and emitted a property access on the I6 `Class` directive — legal Inform 6
+   that changes the class DEFAULT and never touches any instance, so the write went somewhere
+   nothing reads and the read saw a default rather than a value. Rejected now. */
+// EXPECT_ERROR: is a per-instance member of 'Gadget'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Gadget : object { int c; static int s; }
+void main(){ Gadget.c = 3; }

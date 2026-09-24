@@ -1591,6 +1591,8 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
                     if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray;
                         break;
                     }
+            if(t.variableLeft != "_bgl_" + ownerAsCls->name + "_" + propName)
+                rejectNonStaticOnTypeName(ownerPath, ownerAsCls, propName);
         }
         // Pass the member being assigned as the hint: when the owner name matches more than one
         // declaration (a user global shadowing an unprefixed BLR global such as `print` or `the`),
