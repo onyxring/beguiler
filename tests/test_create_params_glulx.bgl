@@ -1,0 +1,22 @@
+/* test_create_params_glulx.bgl — a pooled class's create() may take more than three parameters
+ * on Glulx (target = glulx).
+ *
+ * The three-parameter cap is the Z-machine's, not I6's in general. Z's CA__Pr veneer calls
+ * `Cl__Ms(obj, id, y, a, b, c, d)` with a fixed argument list, and Cl__Ms's create arm enumerates
+ * the cases — `if (y==0) x..create(); … if (y>3) RT__Err(1,obj); if (y>=3) x..create(a,b,c);`.
+ * Glulx's CA__Pr and Cl__Ms both forward `_vararg_count` through to create, so nothing there
+ * counts the arguments. The compiler used to apply the Z limit on both targets.
+ *
+ * The Z-machine side of the same rule is _test_create_params_zcode.bgl.
+ */
+#beguilerSettings { target = Glulx; informName = "none"; }
+
+class point[4] : _bglObject {
+    int a; int b; int c; int d;
+    void create(int w, int x, int y, int z){ a = w; b = x; c = y; d = z; }
+}
+
+void main(){
+    point p = new point(1, 2, 3, 4);
+    print(p.a); print(p.b); print(p.c); print(p.d);
+}

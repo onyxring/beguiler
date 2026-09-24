@@ -325,7 +325,9 @@ allocated, and a `destroy()` method, run before a slot is returned to the pool. 
 
 - `create()` returns `void` and may declare parameters; the arguments of `new Name(args)` are passed
   to it. If `create()` is not declared, `new Name()` with no arguments is the only valid form.
-- `create()` may declare at most three parameters, on both targets; more is a compile-time error.
+- **[Z-machine]** `create()` may declare at most three parameters; a fourth is a compile-time
+  error. I6's class-message veneer enumerates the arguments it forwards on the Z-machine and
+  raises a run-time error past three. Glulx forwards them all, so the limit does not apply there.
 - `destroy()` returns `void` and takes no parameters.
 - One `create` and one `destroy` per class; overloads are compile-time errors.
 

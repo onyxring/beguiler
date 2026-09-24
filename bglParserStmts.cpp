@@ -2560,6 +2560,13 @@ void bglParser::bindGlobalCallStatement(functionCallStatement& callStmt, token t
     if(!gcb.funcVarReturnType.empty())  chainReturnType = gcb.funcVarReturnType;
     else if(gcb.method != nullptr)      chainReturnType = gcb.method->returnType.name;
     else                                chainReturnType = "var"; // loose mode: unresolved → opaque
+    // One member of an overload set is now resolved, so the statement calls it by the routine
+    // name that overload emits under, not by the Beguile name the whole set shares.
+    if(gcb.method != nullptr && !gcb.method->i6name.empty() && !gcb.method->isEmitter
+       && callStmt.functionName == gcb.method->name){
+        callStmt.functionName = gcb.method->i6name;
+        callStmt.displayName.clear();
+    }
     if(gcb.method && gcb.method->isEmitter)
         if(auto* blk = dynamic_cast<i6Block*>(gcb.method->body)){
             // fn WITHOUT args: the signature is all $i6Expr needs to parse its payload, while the

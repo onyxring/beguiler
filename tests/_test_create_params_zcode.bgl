@@ -1,0 +1,12 @@
+/*  On the Z-machine, I6's class-message veneer enumerates create's arguments and errors past
+    three, so the compiler rejects a fourth up front. Glulx has no such limit —
+    test_create_params_glulx.bgl.  */
+// EXPECT_ERROR: limited to 3 parameters on the Z-machine
+#beguilerSettings { target = z5; informName = "none"; }
+
+class point[4] : _bglObject {
+    int a; int b; int c; int d;
+    void create(int w, int x, int y, int z){ a = w; b = x; c = y; d = z; }
+}
+
+void main(){ point p = new point(1, 2, 3, 4); print(p.a); }

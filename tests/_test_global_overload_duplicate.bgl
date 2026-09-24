@@ -1,0 +1,6 @@
+/*  Two global functions with the same parameter types are not overloads — no call could tell them
+    apart, and the return type is not part of the signature.  */
+// EXPECT_ERROR: is already defined with these parameter types
+int f(int a){ return a; }
+string f(int a){ return "x"; }
+void main(){ print(f(1)); }

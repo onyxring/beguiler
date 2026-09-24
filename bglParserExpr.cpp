@@ -674,6 +674,7 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
     // callee's parameter (see parseCallArgList / §6.2.1). Self-calls resolve against the enclosing
     // object/class; plain calls against global functions of that name.
     BraceArgHints braceHints;
+    functionDef* resolvedGlobal = nullptr;   // the overload bindGlobalCall picked, for emission
     if(isSelfCall){
         string recvType = currentObject ? currentObject->name : (currentClass ? currentClass->name : string());
         if(!recvType.empty()) braceHints = braceArgHints(collectMethodCandidates(recvType, callName));
@@ -717,6 +718,7 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
     } else {
         GlobalCallBinding gcb = bindGlobalCall(callName, pal.args, pal.namedArgNames,
                                                  pal.interpSegmentsPerArg, func, body);
+        resolvedGlobal = gcb.method;
         if(!gcb.funcVarReturnType.empty())      retType = gcb.funcVarReturnType;
         else if(gcb.method != nullptr)          retType = gcb.method->returnType.name;
         else                                    retType = "var"; // loose mode: unresolved → opaque
@@ -745,8 +747,15 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
     // matching the statement-call path, which qualifies via emitObjectPath.
     string callEmit = callName;
     if(!isSelfCall){
-        string q = qualifyIdentifier(callName, func, body);
-        if(!q.empty()) callEmit = q;
+        // An overload set emits the routine name of the overload that was resolved — the Beguile
+        // name belongs to all of them, so asking qualifyIdentifier for it would be asking which
+        // one, a question only the arguments answer.
+        if(resolvedGlobal != nullptr && !resolvedGlobal->i6name.empty() && !resolvedGlobal->isEmitter)
+            callEmit = resolvedGlobal->i6name;
+        else {
+            string q = qualifyIdentifier(callName, func, body);
+            if(!q.empty()) callEmit = q;
+        }
     }
     expr->tokens.push_back(isSelfCall ? "self." + callName : callEmit);
     expr->tokens.push_back(token::parenOpen);

@@ -1,0 +1,9 @@
+/*  A bare function reference has to name one routine. An overloaded name names a set, and only a
+    call — which has arguments — can say which member is meant.  */
+// EXPECT_ERROR: names 2 overloads
+int twice(int a){ return a * 2; }
+string twice(string s){ return s; }
+void main(){
+    func<int,int> f = twice;
+    print(f(4));
+}

@@ -116,6 +116,10 @@ class bglLanguageService{
 extern bglLanguageService languageService;
 extern beguilerSettingsDef beguilerSettings;
 
+// True when compiling for the Z-machine. Glulx is the default target, and the Glulx-shaped output
+// of every caller is valid I6 on any target, so an as-yet-unresolved (empty) target reads as Glulx.
+bool targetIsZcode();
+
 // The kind of literal a `#beguilerSettings.<property>` reference resolves to.
 enum class eSettingKind { unknown, str, integer, boolean };
 // Resolve a settings property (key already lowercased) to its compile-time value, filling exactly

@@ -94,9 +94,17 @@ spawn(x: 10, y: 20, name: "goblin", hostile: true);   // spawn("goblin", 10, 20,
 **Description**
 
 Functions and methods with the same name and different parameter-type signatures may coexist:
-emitter functions at global scope, and emitter and non-emitter methods on classes and objects,
-including `operator()`, `operator[]` and `operator[]=`. Global non-emitter functions cannot be
-overloaded: a second global function with the same name is an error.
+functions at global scope, emitter or not, and emitter and non-emitter methods on classes and
+objects, including `operator()`, `operator[]` and `operator[]=`.
+
+Two declarations of the same name must differ in their **parameters** — the return type is not part
+of the signature, since a call is resolved before its result is used. Declaring the same name twice
+with the same parameter types is a compile-time error.
+
+Because Inform 6 has no overloading, each member of a set emits as its own routine or property under
+a mangled name (`add_2_int_int`); a name with a single definition keeps the name the author wrote.
+The mangled name is not part of the language: from raw I6, reach an overload through
+`$i6Name(add(int,int))` (§7.3.3) rather than by spelling it out.
 
 A call is resolved in two steps:
 
@@ -106,6 +114,11 @@ A call is resolved in two steps:
    match through an implicit conversion (`operator()`, §9.4), which wins over a match through `var`.
 
 Type compatibility itself is specified in §2.11.
+
+**A reference is not a call.** A bare function name used as a value (`func<int,int> f = twice;`)
+must name exactly one routine. An overloaded name names the set, and nothing in a reference says
+which member is meant, so it is a compile-time error; wrap the overload you want in a function of
+its own and reference that.
 
 ## 6.5 `replace` and `replaced()`
 
@@ -124,7 +137,8 @@ issues a warning and the declaration is treated as a new function.
 **Emitter functions.** The body is swapped. Matching is by name, return type and full parameter-type
 signature, since emitters overload. `replaced()` is not available in an emitter.
 
-**Non-emitter functions.** Replacements chain. Inside the replacement body, `replaced(args)` calls the
+**Non-emitter functions.** A replacement names the overload it replaces by its own parameter types;
+with a name that has one definition, the parameters need not match it. Replacements chain. Inside the replacement body, `replaced(args)` calls the
 immediately preceding definition; the arguments are type-checked against that predecessor's signature,
 which may differ from the replacement's own. Successive `replace` declarations form a chain in which
 each `replaced()` calls the version it directly replaced. A predecessor that no replacement calls is

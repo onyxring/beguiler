@@ -54,15 +54,10 @@ static const map<uint32_t, ZsciiEntry> unicodeToZscii = {
     {0xBF, {224, "@??"}},  // ¿
 };
 
-// Smart quotes and the backtick are handled per target. Glulx can render the real Unicode
-// glyphs, so they are emitted with the I6 @{HHHH} escape; Z-code has no such glyphs, so the
-// curly double quotes fold to '~' (I6's double quote) and the curly single quotes / backtick
-// fold to a straight apostrophe. Glulx is the default target, and its @{...} form is valid I6
-// on any target, so an as-yet-unresolved (empty) target is treated as Glulx.
-static bool targetIsZcode(){
-    const string& t = beguilerSettings.target;
-    return !t.empty() && (t[0] == 'z' || t[0] == 'Z');
-}
+// Smart quotes and the backtick are handled per target (targetIsZcode, bglLanguageService.cpp).
+// Glulx can render the real Unicode glyphs, so they are emitted with the I6 @{HHHH} escape; Z-code
+// has no such glyphs, so the curly double quotes fold to '~' (I6's double quote) and the curly
+// single quotes / backtick fold to a straight apostrophe.
 
 // Translate one decoded Unicode codepoint (plus the ASCII backtick, 0x60) to its I6 string
 // form inside a string literal. Smart quotes and the backtick are target-dependent (see

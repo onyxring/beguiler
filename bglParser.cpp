@@ -660,6 +660,36 @@ void bglParser::recordObjectMemberInits(){
     }
 }
 
+// Global functions overload the same way methods do — resolveGlobalCall already picks the
+// overload from the argument types. I6 has no overloading, so each member of a set needs its own
+// routine name; call sites emit the resolved overload's i6name. A set of one keeps its plain name,
+// so ordinary functions are untouched (and stay callable from raw I6 by the name the author wrote).
+// `extern` is excluded: it names a routine that already exists in I6, and renaming it would emit a
+// call to something that isn't there.
+void bglParser::mangleGlobalOverloadSet(const string& name){
+    vector<functionDef*> group;
+    for(typeDef* g : languageService.globals)
+        if(auto* fd = dynamic_cast<functionDef*>(g))
+            if(fd->name == name && !fd->isEmitter && !fd->isExternal)
+                group.push_back(fd);
+    // Count distinct SIGNATURES, not declarations: a pre-scan stub and the real definition it
+    // stands for are one function seen twice, and they mangle identically. Only a genuine second
+    // signature makes this an overload set.
+    set<string> signatures;
+    for(functionDef* fd : group) signatures.insert(mangleObjectMethodName(fd));
+    if(signatures.size() < 2) return;
+    for(functionDef* fd : group)
+        if(fd->i6name.empty()) fd->i6name = mangleObjectMethodName(fd);
+}
+
+void bglParser::assignGlobalFunctionOverloadMangling(){
+    set<string> seen;
+    for(typeDef* g : languageService.globals)
+        if(auto* fd = dynamic_cast<functionDef*>(g))
+            if(!fd->isEmitter && !fd->isExternal && seen.insert(fd->name).second)
+                mangleGlobalOverloadSet(fd->name);
+}
+
 void bglParser::assignObjectMethodOverloadMangling(){
     // Walk every object and class; mangle every same-name non-emitter method group.
     // Emitters are inlined at call sites — they don't emit as I6 properties, so they can't

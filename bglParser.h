@@ -236,6 +236,8 @@ class bglParser {
         // object/class and assign mangled i6names so each overload emits as a distinct I6
         // property. Without this, two `foo(int)` and `foo(int,int)` on the same object
         // both emit as `with foo [...]` and I6 errors "Property given twice".
+        void mangleGlobalOverloadSet(const std::string& name);
+        void assignGlobalFunctionOverloadMangling();
         void assignObjectMethodOverloadMangling();
         // Run the `init` emitter (and apply the declared value) for class-typed object members.
         void recordObjectMemberInits();

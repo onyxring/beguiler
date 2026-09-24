@@ -341,6 +341,7 @@ void beguiler::runPostParseChecks() {
     // any overload of the set). Call-site mangling and this pass agree on the mangled name,
     // so re-applying is idempotent.
     parser.assignObjectMethodOverloadMangling();
+    parser.assignGlobalFunctionOverloadMangling();
     // BEFORE recordObjectMemberInits: that pass clears declaredExpressionValue on members whose
     // value it moves into bglInit, and this check reads exactly that field to spot a second
     // contribution.

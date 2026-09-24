@@ -1111,6 +1111,26 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
 
     processParameterList(funcDef);
 
+    // Overloading a global function is fine — the call site picks by argument types and each
+    // overload emits under its own routine name. Declaring the SAME signature twice is not: there
+    // is no call that could tell them apart, and I6 would see one routine name declared twice.
+    // Return type is not part of the signature, so `int f(int)` and `string f(int)` collide here.
+    if(!isExternal && !isEmitter && !isReplace && !funcDef.isPrePassStub){
+        for(typeDef* g : languageService.globals){
+            auto* ex = dynamic_cast<functionDef*>(g);
+            if(!ex || ex == &funcDef || ex->name != funcDef.name) continue;
+            if(ex->isPrePassStub || ex->isExternal || ex->isEmitter) continue;
+            if(ex->params.size() != funcDef.params.size()) continue;
+            bool same = true;
+            for(size_t i = 0; i < ex->params.size(); i++)
+                if(ex->params[i]->type.name != funcDef.params[i]->type.name){ same = false; break; }
+            if(same)
+                parsingError(format("'{0}' is already defined with these parameter types. Overloads must "
+                    "differ in their parameters — a return type alone cannot tell two calls apart.",
+                    funcDef.displayName.empty() ? funcDef.name : funcDef.displayName));
+        }
+    }
+
     // Synthesize per-(function, param) backing globals for any byVal-class params,
     // BEFORE body parsing so identifier resolution inside the body sees param.i6name
     // (the backing's name) and routes reads/writes through the copy.
@@ -1121,16 +1141,32 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // BEFORE parsing the body so that replaced() calls can resolve during parsing.
     // Emitter replace keeps the simpler body-swap path (no chaining).
     if(isReplace && !isEmitter){
+        // A name may now carry several overloads, so a replacement has to say WHICH one it
+        // replaces: its own parameter types. An exact signature match wins; with no exact match
+        // the name still resolves when it names exactly one function, which keeps the ordinary
+        // single-definition case working unchanged.
         functionDef* existing = nullptr;
+        functionDef* byName = nullptr;
+        int byNameCount = 0;
         for(typeDef* g : languageService.globals){
             if(auto* fd = dynamic_cast<functionDef*>(g)){
                 if(fd == &funcDef) continue;   // this declaration is already registered — it can't replace itself
                 if(fd->name != funcDef.name) continue;
                 if(fd->isPrePassStub) continue; // pre-scan stub doesn't count as a real definition
-                existing = fd;
-                break;
+                if(byName == nullptr) byName = fd;
+                byNameCount++;
+                if(fd->params.size() != funcDef.params.size()) continue;
+                bool same = true;
+                for(size_t i = 0; i < fd->params.size(); i++)
+                    if(fd->params[i]->type.name != funcDef.params[i]->type.name){ same = false; break; }
+                if(same){ existing = fd; break; }
             }
         }
+        if(existing == nullptr && byNameCount > 1)
+            parsingError(format("replace: '{0}' has {1} overloads and none takes these parameter types. "
+                "A replacement names the overload it replaces by its parameters.",
+                funcDef.displayName.empty() ? funcDef.name : funcDef.displayName, byNameCount));
+        if(existing == nullptr) existing = byName;
         if(existing){
             // Determine N for mangled name: count existing _bgl_replaced_NAME_* in globals
             int n = 0;

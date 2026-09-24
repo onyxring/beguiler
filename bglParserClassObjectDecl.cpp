@@ -917,8 +917,11 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         if(createFn != nullptr){
             if(createFn->returnType.name != "void")
                 parsingError(format("class '{0}': 'create' must have void return type — I6 ignores the return value", newClass.dName()));
-            if(createFn->params.size() > 3)
-                parsingError(format("class '{0}': 'create' is limited to 3 parameters on Z-machine (I6's class-message veneer caps it). Got {1}.", newClass.dName(), createFn->params.size()));
+            // Z-machine only. Z's CA__Pr hands Cl__Ms a fixed `(obj, id, y, a, b, c, d)` and its
+            // create arm enumerates the cases up to three, erroring past that; Glulx's CA__Pr and
+            // Cl__Ms both forward `_vararg_count` through to `create`, so there is no cap there.
+            if(targetIsZcode() && createFn->params.size() > 3)
+                parsingError(format("class '{0}': 'create' is limited to 3 parameters on the Z-machine (I6's class-message veneer enumerates its arguments; Glulx passes them through, so this limit is Z-only). Got {1}.", newClass.dName(), createFn->params.size()));
         }
         if(destroyFn != nullptr){
             if(destroyFn->returnType.name != "void")

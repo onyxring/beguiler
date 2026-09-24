@@ -57,6 +57,11 @@ static void rePushIfMissing(vector<typeDef*>& globals, T* existing, bool isExter
 typeDef emptyTDef;
 beguilerSettingsDef beguilerSettings;
 
+bool targetIsZcode(){
+    const string& t = beguilerSettings.target;
+    return !t.empty() && (t[0] == 'z' || t[0] == 'Z');
+}
+
 eSettingKind readBeguilerSetting(const string& key, string& sv, int& iv, bool& bv){
     if     (key == "title")          sv = beguilerSettings.title;
     else if(key == "author")         sv = beguilerSettings.author;

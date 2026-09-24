@@ -654,6 +654,17 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
                 candidates = filtered;  // narrowed but still ambiguous — fall through to error
             }
         }
+        // All that is left is one global name carrying several overloads. A call never reaches
+        // here (bindGlobalCall resolves it from the arguments), so this is a bare reference — and
+        // a reference must name ONE routine, which the name alone cannot do.
+        {
+            bool allFunctions = true;
+            for(auto& c : candidates) if(!c.isFunction){ allFunctions = false; break; }
+            if(allFunctions)
+                parsingError(format("'{0}' names {1} overloads, so it cannot be used as a bare "
+                    "function reference — only a call can say which one is meant. Wrap the overload "
+                    "you want in a function of its own and reference that.", name, candidates.size()));
+        }
         string msg = format("'{0}' is ambiguous: matches ", name);
         for(size_t i = 0; i < candidates.size(); i++){
             if(i > 0) msg += (i == candidates.size() - 1 ? " and " : ", ");
@@ -2430,6 +2441,17 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
                 candidates = filtered;  // narrowed but still ambiguous — fall through to error
             }
         }
+        // All that is left is one global name carrying several overloads. A call never reaches
+        // here (bindGlobalCall resolves it from the arguments), so this is a bare reference — and
+        // a reference must name ONE routine, which the name alone cannot do.
+        {
+            bool allFunctions = true;
+            for(auto& c : candidates) if(!c.isFunction){ allFunctions = false; break; }
+            if(allFunctions)
+                parsingError(format("'{0}' names {1} overloads, so it cannot be used as a bare "
+                    "function reference — only a call can say which one is meant. Wrap the overload "
+                    "you want in a function of its own and reference that.", name, candidates.size()));
+        }
         string msg = format("'{0}' is ambiguous: matches ", name);
         for(size_t i = 0; i < candidates.size(); i++){
             if(i > 0) msg += (i == candidates.size() - 1 ? " and " : ", ");
@@ -3094,6 +3116,10 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
                                                          vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
                                                          functionDef* func, statementBlock* body){
     GlobalCallBinding out;
+    // Mangle the overload set (if this name has one) BEFORE resolving, so the matched overload
+    // already carries its i6name — the expression path emits its call text immediately, long
+    // before the post-parse safety-net pass runs.
+    mangleGlobalOverloadSet(name);
     GlobalCallMatch gcm = resolveGlobalCall(name, args, func, body);
     // validateGlobalCall returns the return type string; we discard it here (the caller derives
     // return type from the matched method). validateGlobalCall also throws on invalid calls.

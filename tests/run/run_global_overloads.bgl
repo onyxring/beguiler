@@ -1,0 +1,37 @@
+/*  run_global_overloads — global non-emitter functions overload on their parameter types.
+
+    Resolution was already there: resolveGlobalCall picks the candidate from the argument types
+    exactly as a method call does. What was missing was emission — every overload emitted an I6
+    routine under the same name, which I6 rejects. Each member of a set now emits under a mangled
+    name (`add_2_int_int`), the same shape class methods have used since name mangling landed, and
+    the call site emits the name of the overload it resolved to. A name with only one definition is
+    untouched, so ordinary functions still emit under the name the author wrote.  */
+// EXPECT_OUTPUT: 4 5 ab 24 6 10 fwd
+#beguilerSettings { target = z5; informName = "none"; }
+
+int add(int a){ return a + 3; }
+int add(int a, int b){ return a + b; }
+string add(string s){ return s; }
+
+// Recursion inside an overload resolves to the same overload, not to its sibling.
+int fact(int n){ if(n <= 1) return 1; return n * fact(n - 1); }
+string fact(string s){ return s; }
+
+// A default parameter is filled in before the overload is chosen, so `scale(2)` is the two-param
+// overload with b = 3 — not a one-param overload that does not exist.
+int scale(int a, int b = 3){ return a * b; }
+string scale(string s){ return s; }
+
+void main(){
+    print(add(1)); print(" ");
+    print(add(2, 3)); print(" ");
+    print(add("ab")); print(" ");
+    print(fact(4)); print(" ");
+    print(scale(2)); print(" ");
+    print(scale(2, 5)); print(" ");
+    print(later(1));          // forward call — declared below
+}
+
+// Declared after its call site: the pre-scan registers both signatures, so the call resolves.
+string later(int n){ return "fwd"; }
+string later(string s){ return s; }
