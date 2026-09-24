@@ -7,7 +7,9 @@
  -----------------------------------------------------------------------------*/
 extend _bglUi { alias statusBar = _bglStatus; } //bgl.ui.statusBar
 
+/// `bgl.ui.statusBar` — the status line. The IF library bindings replace this with their own.
 superposed _bglObject _bglStatus {
+    /// The status window's handle. 0 on the Z-machine; a Glk window id on Glulx.
      auto id  = {   // id  getter/setter 
         int _id   = 0;                 
         int operator() { return _id; }
@@ -15,6 +17,7 @@ superposed _bglObject _bglStatus {
             _id=newId;
         }
     }
+    /// The status bar's height in lines. Writing it opens or resizes the window.
     auto height = {   // height  getter/setter 
         int _h   = 0;                 
         #if TARGET_GLULX

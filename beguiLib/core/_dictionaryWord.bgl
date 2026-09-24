@@ -1,10 +1,13 @@
 #once
 //=============================================================================
 // type dictionary word
+    /// The type of a `.word` literal before it is assigned or compared. Converts to `dictionaryWord`.
     extern emitter class dictionaryWordLiteral:_bglObject{
         dictionaryWord operator auto();
         replace emitter void print(){ print (address) $val }
     }
+    /// A word in the story's dictionary, the unit a parser grammar matches. Write a literal with a
+    /// leading dot: `.lamp` for the singular, `..lamps` for the plural.
     emitter class dictionaryWord : patternElement{ //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
         emitter dictionaryWordLiteral operator();                           //--I6 passthrough; enables mixed expressions
         emitter dictionaryWord operator = (dictionaryWordLiteral v){ $target = $v; }

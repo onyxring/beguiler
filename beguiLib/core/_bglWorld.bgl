@@ -115,9 +115,14 @@ superposed array<object> _bglWorldInParent(object parent, var pred){
 
 // Public surface — bgl.world.getAll()/inParent()/instances(). Non-emitter because
 // `emitter array<T>` is only accepted on `extend extern class array`.
+/// `bgl.world` — queries over the object tree, replacing I6's `objectloop`.
 superposed _bglObject _bglWorld {
+    /// Every object in the story, optionally filtered: `bgl.world.getAll((object o) => o has light)`.
+    /// The result is a shared scratch buffer — copy it into your own array to keep it past the loop.
     array<object> getAll(func<bool, object> pred = 0)            { return _bglWorldGetAll(pred); }
+    /// The direct children of `p`, optionally filtered. Not grandchildren.
     array<object> inParent(object p, func<bool, object> pred = 0){ return _bglWorldInParent(p, pred); }
+    /// Every object of class `cls`, including subclasses, optionally filtered.
     array<object> instances(var cls, func<bool, object> pred = 0){ return _bglWorldInstances(cls, pred); }
 }
 

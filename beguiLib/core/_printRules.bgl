@@ -16,18 +16,30 @@
     and so belong in a namespace rather than at file scope.
  -----------------------------------------------------------------------------*/
 
+/// `bgl.printRules` — style and article rules for interpolated text:
+/// `print($"The troll {italics}hit{roman} the table.")`.
 superposed _bglObject _bglPrintRules {
+    /// Switch to bold. Styles stay on until another rule changes them.
     emitter void bold      { style bold; }
+    /// Back to plain text. Ends bold, italics, reverse or fixed.
     emitter void roman     { style roman; }
+    /// Switch to italics — underline on interpreters without an italic face.
     emitter void italics   { style underline; }
+    /// Switch to underline. The same I6 style as `italics`.
     emitter void underline { style underline; }
+    /// Switch to reverse video.
     emitter void reverse   { style reverse; }
+    /// Switch to a fixed-pitch face.
     emitter void fixed     { style fixed; }
 
     // Articles. `c`-prefixed forms are the capitalised variants, matching I6's (A) and (The).
+    /// Print `o` with an indefinite article: "a lamp", "an apple".
     emitter void a   (object o){ print (a)$o;   }
+    /// Like `a`, capitalised for the start of a sentence: "A lamp".
     emitter void cA  (object o){ print (A)$o;   }
+    /// Print `o` with a definite article: "the lamp".
     emitter void the (object o){ print (the)$o; }
+    /// Like `the`, capitalised for the start of a sentence: "The lamp".
     emitter void cThe(object o){ print (The)$o; }
 }
 

@@ -2,6 +2,7 @@
 /*-----------------------------------------------------------------------------
     _ui.bgl - User Interface elements
  -----------------------------------------------------------------------------*/
+/// The `bgl.ui` namespace: windows and screen output. Reached as `bgl.ui.…`, never by this name.
 superposed _bglObject _bglUi{
 
 }

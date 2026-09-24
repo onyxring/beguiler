@@ -1,6 +1,8 @@
 #once
 //=============================================================================
 // type string
+/// The type of a `"…"` literal: a fixed, packed string in the story file. `==` compares ADDRESSES
+/// here, so two identical literals are not equal; `#include <string>` for content comparison.
 extern emitter class stringLiteral:_bglObject{
     emitter string operator();
     replace emitter void print(){ print (string)$val; }
@@ -21,8 +23,11 @@ extern emitter class stringLiteral:_bglObject{
     emitter eBool operator != (object v)        { $val ~= $v }
 }       
 
+/// The type of a `$"…{expr}…"` literal. The compiler expands it into print calls at the use site.
 extern emitter class interpolatedStringLiteral:_bglObject{} //interpolatedStrings are smoke and mirrors.  All functionality is implemented by the compiler. NOTE: _bglObject no longer carries print(), so there's no inherited member to worry about here; add a `replace emitter void print()` only if `@"{actor} was here".print();` should become a thing (as it is for other literals).
 
+/// A string value — one word holding the address of a packed string. Assigning copies the address,
+/// not the text. `#include <string>` adds `stringObj` for text you build at run time.
 extern emitter class string : _bglObject{
     emitter string operator = (stringLiteral v){
         $target=$v

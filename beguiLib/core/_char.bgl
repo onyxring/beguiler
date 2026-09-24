@@ -1,9 +1,12 @@
 #once
+/// The type of a `'x'` literal, before it is assigned or compared. Converts to `char`.
 extern emitter class charLiteral:_bglObject{
     emitter char operator();                   //implicitly converts to char type
     char operator auto();
     replace emitter void print(){ print (char)$val; }
 }
+/// A single character, held as its ZSCII code. Arithmetic with `int` works: `c + 1` is the next
+/// character. A `char` and an `int` are indistinguishable at run time.
 extern emitter class char : _bglObject{
     emitter char operator = (char c){ $target=$c; }
     //emitter char operator = (int v){ $val=$v; } //we avoid:  char c = 45;  Enforce: char c ='\45';
@@ -126,16 +129,26 @@ superposed char _bglCharToUpper(char c){
 }
 
 extend class char {
+    /// This character in upper case, accented letters included. Unchanged if it has no upper case.
     emitter char toUpper()          { _bglCharToUpper($self) }
+    /// This character in lower case, accented letters included. Unchanged if it has no lower case.
     emitter char toLower()          { _bglCharToLower($self) }
+    /// True for a lower-case letter.
     emitter bool isLower()          { _bglCharIsLower($self) }
+    /// True for an upper-case letter.
     emitter bool isUpper()          { _bglCharIsUpper($self) }
+    /// True for a letter of either case.
     emitter bool isAlpha()          { _bglCharIsAlpha($self) }
+    /// True for `'0'` to `'9'`.
     emitter bool isNumeric()        { _bglCharIsNumeric($self) }
+    /// True for a letter or a digit.
     emitter bool isAlphaNumeric()   { _bglCharIsAlphaNumeric($self) }
+    /// True for a vowel, in either case.
     emitter bool isVowel()          { _bglCharIsVowel($self) }
+    /// True for a letter that is not a vowel.
     emitter bool isConsonant()      { _bglCharIsConsonant($self) }
 
+    /// Compare two characters ignoring case: `'A' =~ 'a'`.
     emitter bool operator =~ (char c){ _bglCharToLower($self)==_bglCharToLower($c) }
 
     //NOTE: other comparisons are part of the char class declared above

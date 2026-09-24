@@ -1,6 +1,7 @@
 #once
 //=============================================================================
 // type int 
+    /// The type of a number written literally, before it is assigned or compared.
     extern emitter class intLiteral:_bglObject{
         emitter int operator();
         int operator auto();
@@ -9,10 +10,12 @@
     // Negative integer literals (e.g. -1, -42). Distinguished from intLiteral so the type
     // system can restrict unsigned assignment: negativeIntLiteral converts to int implicitly
     // but requires an explicit cast for uint.
+    /// The type of a negative literal such as `-1`. Behaves as `intLiteral` everywhere.
     extern emitter class negativeIntLiteral:_bglObject{
         emitter int operator();
     }
 
+    /// A signed whole number: 16-bit on the Z-machine, 32-bit on Glulx. The default numeric type.
     extern emitter class int : _bglObject { //--Beguile-side type label over I6's word-sized integer slot; instances emit as `global X;`
         emitter char operator();
         emitter int operator = (int v){ $target=$v; }

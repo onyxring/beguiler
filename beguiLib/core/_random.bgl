@@ -19,8 +19,10 @@
 // the site, so the whole namespace costs zero unless referenced, and there is
 // nothing to materialize. `seed` is the one target-specific piece (below).
 //=============================================================================
+/// `bgl.util.random` — the random-number source.
 emitter class _bglRandom {
     // get(n) → 1..n. Single-arg I6 random() is the ranged roll.
+    /// A uniform roll from 1 to `range`, inclusive. `get(6)` is a die.
     emitter int get(int range){ random($range) }
 
     // get(a, b, …) → one of the values, chosen uniformly. Multi-arg I6 random() is
@@ -28,6 +30,8 @@ emitter class _bglRandom {
     // Arity overloads (2..8): `get(6)` resolves to the roll above, `get(a, b, …)` here.
     // (I6 random() is itself variadic; the cap is only how many overloads we spell out.
     // For more choices, index an array: `arr[bgl.util.random.get(arr.size()) - 1]`.)
+    /// One of the listed values, chosen uniformly. Overloaded up to eight; for more, roll an index
+    /// into an array: `arr[bgl.util.random.get(arr.size()) - 1]`.
     emitter var get(var a, var b){ random($a, $b) }
     emitter var get(var a, var b, var c){ random($a, $b, $c) }
     emitter var get(var a, var b, var c, var d){ random($a, $b, $c, $d) }
@@ -41,6 +45,8 @@ emitter class _bglRandom {
     // argument (0 = re-seed from the environment, negative = deterministic sequence
     // keyed by |n|). We map seed(0) → re-seed, seed(s>0) → deterministic-to-s on both.
     // Inline `##if` is honored inside emitter bodies (see _math.bgl).
+    /// Seed the generator. `seed(0)` re-seeds from the environment; any other value gives the same
+    /// sequence every run, which is what you want for a reproducible test.
     emitter void seed(int s){
         ##if TARGET_GLULX
         @setrandom $s;

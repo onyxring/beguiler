@@ -5,7 +5,9 @@
  -----------------------------------------------------------------------------*/
 extend _bglUi { alias mainWin = _bglMainWindow; } //bgl.ui.statusBar
 
+/// `bgl.ui.mainWin` — the window the story prints to.
 superposed _bglObject _bglMainWindow {
+    /// The window's handle. 0 on the Z-machine, which has no window handles; a Glk window id on Glulx.
     auto id  = {   // id  getter/setter 
         int _id   = 0;                 
         int operator() { return _id; }

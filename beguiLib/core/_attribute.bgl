@@ -2,7 +2,8 @@
 //=============================================================================
 // type attribute
     
-    ///Basic attributes used by I6 to assign runtime state to objects.
+    /// A named on/off flag an object can carry, such as `light` or `open`. Declare one with
+    /// `attribute name;`, set it in an object body's `attributes = {…}`, and test it with `.has()`.
     extern emitter class attribute : _bglObject{
         // Prefix `!` inside an attributeList initializer marks an inherited
         // attribute to be turned off on this instance/class:
@@ -21,18 +22,25 @@
     // only, no story-file footprint and no unused-constant warning), typed on the Beguile side by the
     // extern below.
     #i6 { Constant NO_ATTRIBUTE 0; }
+    /// The "no attribute" value, for leaving an attribute-typed member unset. An attribute is not
+    /// an int, so a bare `0` will not do.
     extern const attribute NO_ATTRIBUTE;
 
+    /// The type of an object's `attributes` member — the set of flags it carries.
     extern emitter class attributeList : _bglObject{
+        /// Add a flag to this set.
         emitter void give(attribute attr){
             give $self $attr
         }
+        /// Take a flag out of this set.
         emitter void ungive(attribute attr){
             give $self ~$attr
         }
+        /// True when the set contains `attr`.
         emitter bool has(attribute attr){
             ($self has $attr)
         }
+        /// True when the set does not contain `attr`.
         emitter bool hasnt(attribute attr){
             ($self hasnt $attr)
         }

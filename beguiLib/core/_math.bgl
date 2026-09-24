@@ -103,17 +103,31 @@ superposed int _bglSign(int v){ if(v < 0) return -1; if(v > 0) return 1; return 
 // (Emitter bodies can't nest-call other emitters, so BLR code that is itself an
 // emitter — e.g. uint's operators — calls the standalone routines directly.)
 //=============================================================================
+/// `bgl.util.math` — integer helpers I6 has no operator for.
 emitter class _bglMath {
+    /// Compare two words as UNSIGNED: -1, 0 or 1. Beguile's `<` and `>` read ints as signed, so
+    /// 40000 looks negative to them; this is the comparison for addresses and bit patterns.
     emitter int unsignedCompare(int x, int y){ _bglUnsignedCompare($x, $y) }
+    /// Divide, reading both words as unsigned.
     emitter int unsignedDiv(int a, int b)    { _bglUnsignedDiv($a, $b) }
+    /// Remainder, reading both words as unsigned.
     emitter int unsignedMod(int a, int b)    { _bglUnsignedMod($a, $b) }
+    /// `i` raised to the power `p`. Integer only, and it will overflow silently.
     emitter int pow(int i, int p)            { _bglPow($i, $p) }
+    /// Absolute value.
     emitter int abs(int p)                   { _bglAbs($p) }
+    /// Shift `i` left by `numBits`, filling with zeros.
     emitter int shiftLeft(int i, int numBits) { _bglShiftLeft($i, $numBits) }
+    /// Shift `i` right by `numBits`, filling with zeros — a LOGICAL shift, so the sign bit is not
+    /// carried down.
     emitter int shiftRight(int i, int numBits){ _bglShiftRight($i, $numBits) }
+    /// The smaller of two ints.
     emitter int min(int a, int b)            { _bglMin($a, $b) }
+    /// The larger of two ints.
     emitter int max(int a, int b)            { _bglMax($a, $b) }
+    /// `v` held inside `lo`..`hi` inclusive.
     emitter int clamp(int v, int lo, int hi) { _bglClamp($v, $lo, $hi) }
+    /// -1, 0 or 1 according to the sign of `v`.
     emitter int sign(int v)                  { _bglSign($v) }
 }
 

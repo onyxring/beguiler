@@ -19,10 +19,14 @@
 // `array<char>` routes to the byteArray subclass below, which overrides the
 // subscript and size emitters with byte-access (`->` instead of `-->`).
 //=============================================================================
+/// A fixed-capacity array of `T`. Declare it sized (`array<int> a[8]`) or from a list
+/// (`array<int> a = {1,2,3}`). `#include <array>` adds append/insert/sort and the rest.
 extern emitter class array<T>  : _bglObject{
     replace emitter T    operator[](int i)        { $val-->($i+1) }
     replace emitter T    operator[]=(int i, T v)  { $val-->($i+1) = $v }
+    /// How many elements the array can hold.
     replace emitter int  size()                   { $val-->0 }
+    /// How many elements are in use. Equals `size()` until `<array>` starts tracking it.
     replace emitter int  length()                 { $val-->0 }
 }
 
@@ -34,6 +38,8 @@ extern emitter class array<T>  : _bglObject{
 // rejected at compile time on a rawArray (see bindMethodCall / processFor); pass the length explicitly.
 // (A file-scope rawArray *literal* is count-prefixed and reaches size() through the <array> path
 // instead — `_bglArray.size(arr, 0)` reading word 0 — so it is unaffected by that rejection.)
+/// An array with no count word and no tracking — element 0 is the first word. For handing a bare
+/// block of memory to an I6 routine that expects one (15.10).
 extern emitter class rawArray<T> : _bglObject {
     emitter T   operator[](int i)        { $val-->$i }
     emitter T   operator[]=(int i, T v)  { $val-->$i = $v }
@@ -52,6 +58,7 @@ extern emitter class rawArray<T> : _bglObject {
 // not the allocated capacity. For tracked sized buffers (`#include <buf>`),
 // `<buf>` adds size()/length() that distinguish capacity from used space
 // via the orLibrary SizedBuffer prefix at negative offsets.
+/// The `array<char>` shape: one BYTE per element rather than one word. Used for text buffers.
 extern emitter class byteArray : array {
     replace emitter char operator[](int i)          { $val->($i + WORDSIZE) }
     replace emitter char operator[]=(int i, char v) { $val->($i + WORDSIZE) = $v }

@@ -24,6 +24,7 @@
 // unknown = 0 so it coincides with null/nothing. (A null-coalescing `operator ?()`
 // over eType is deferred to Phase 2 with the safe-cast family; for now discriminate
 // with `== eType.unknown`.)
+/// What `typeof()` reports: a value's machine category, not its Beguile type.
 enum eType {
     unknown = 0,   // nothing/null, or a category metaclass cannot determine
     int,           // a scalar word (also bool / char / enum — same representation)
@@ -42,6 +43,8 @@ emitter bool _bglMcObject(var v)  { metaclass($v) == Object }
 emitter bool _bglMcClass(var v)   { metaclass($v) == Class }
 
 // typeof — the public primitive.
+/// The machine category of `v` — how to tell apart the members of a union (2.8.1).
+/// `bool`, `char` and enum values all report `int`; they share one representation at run time.
 superposed eType typeof(var v) {
     if (v == null)          return eType.unknown;
     if (_bglMcRoutine(v))   return eType.routine;

@@ -15,6 +15,8 @@
 // emitters and can't nest-call the _bglMath facade, so they target the
 // standalones (_bglUnsignedDiv / _bglUnsignedMod / _bglUnsignedCompare).
 //=============================================================================
+/// A whole number read as UNSIGNED. Same word as `int` — only the comparisons, division and
+/// remainder differ, which is what makes it right for addresses and bit patterns.
 extern emitter class uint : _bglObject { //--unsigned integer wrapper; same I6 representation as int
     emitter int operator = (uint v){ $target=$v; }
 

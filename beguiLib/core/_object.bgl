@@ -14,6 +14,7 @@ extern class object:_bglObject{ //--the base I6 object, declared as external bec
                                     //  library. Library-defined variants (short_name_indef, parse_name) and the
                                     //  rest of the property surface live in the i6StandardLibrary binding.
 
+    /// True when this object is not `nothing`. Backs `?.`, `??` and postfix `?`.
     emitter eBool operator ?() { $val ~= nothing }
     emitter object operator = (object v){
         $target = $v
@@ -24,39 +25,50 @@ extern class object:_bglObject{ //--the base I6 object, declared as external bec
     emitter eBool operator != (var v){
         $val ~= $v
     }
+    /// Give this object an attribute: `door.give(open)`.
     emitter void give(attribute attr){
         give $val $attr
     }
+    /// Take an attribute away: `door.ungive(open)`.
     emitter void ungive(attribute attr){
         give $val ~$attr
     }
+    /// True when this object has `attr`.
     emitter bool has(attribute attr){
         ($val has $attr)
     }
+    /// True when this object does not have `attr`.
     emitter bool hasnt(attribute attr){
         ($val hasnt $attr)
     }
+    /// Take this object out of the world tree. Its members are untouched; `.parent = X` puts it back.
     emitter void remove(){
         remove $val
     }
+    /// This object's first child, or `nothing`. For all of them, iterate `.children`.
     emitter object child{
         child($val)
     }
+    /// The next object under the same parent, or `nothing`.
     emitter object sibling{
         sibling($val)
     }
+    /// True when this object declares `prop`, so reading it is safe.
     emitter bool provides(property prop){
         $val provides $prop
     }
+    /// True when this object is a `cls`, including any class derived from it.
     emitter bool is(bglClass cls){
         ($val ofclass $cls)
     }
+    /// Print this object's short name. What `print(obj)` calls.
     replace emitter void print(){
         print (name)$val;
     }
 }
 
 //--setters
+/// The type of `object.parent`. Assigning to it moves the object in the world tree.
 extern emitter class parentProp{   //obj.parent=loc; -> move obj to loc;
     emitter parentProp operator = (object v){
         move $self to $v
@@ -78,7 +90,10 @@ extern emitter class parentProp{   //obj.parent=loc; -> move obj to loc;
 //  count — routines like `<array>`'s, using `$host` (the object the proxy member is read on,
 //  i.e. `obj` in `obj.children`) since the proxy has no storage of its own. size()==length()
 //  here: a world-tree collection has no capacity-vs-in-use distinction.
+/// The type of `object.children` — the world-tree child collection.
 extern emitter class childrenProp{
+    /// How many children this object has.
     emitter int length(){ children($host) }
+    /// How many children this object has. Same as `length()`: a world-tree collection has no spare capacity.
     emitter int size()  { children($host) }
 }
