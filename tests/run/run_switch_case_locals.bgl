@@ -1,0 +1,29 @@
+/*  run_switch_case_locals — a local declared in a case body is visible to a nested block in that
+    case.
+
+    Every block statement — if, while, for, do, try, catch — pushes its block onto activeBlockStack
+    while it parses, which is how a nested block resolves a name declared outside it. The switch
+    case body was the one block that did not, so `case 1: int z = 0; if(c){ z = 1; }` reported z
+    undeclared. Oddly the same read in the nested block's CONDITION worked: that path resolves
+    against the case body directly rather than walking the stack, so the two disagreed.  */
+// EXPECT_OUTPUT: 3 5 7
+#beguilerSettings { target = z5; informName = "none"; }
+
+void f(int y){
+    switch(y){
+        case 1:
+            int z = 0;
+            if(y == 1){ z = 3; }          // nested block writes the case's local
+            print(z);
+        case 2:
+            int w = 0;
+            while(w < 5){ w = w + 5; }    // nested block, condition AND body
+            print(" "); print(w);
+        case 3:
+            int v = 0;
+            for(int i = 0; i < 7; i++){ v = i + 1; }
+            print(" "); print(v);
+    }
+}
+
+void main(){ f(1); f(2); f(3); }

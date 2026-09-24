@@ -865,12 +865,20 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
         functionDef caseCtx;
         if(func != nullptr){ caseCtx.returnType = func->returnType; caseCtx.params = func->params; }
         caseCtx.body = sc.body;
+        // A case body is a block like any other, so it joins activeBlockStack for the duration —
+        // which is what lets a nested block inside the case see a local the case declared. Every
+        // other block statement (if, while, for, do, try, catch) does this; the case body was the
+        // one that did not, so `case 1: int z = 0; if(c){ z = 1; }` reported z undeclared, while
+        // the same read in the nested block's CONDITION resolved, that one going through the
+        // case body directly rather than through the stack.
+        openCompileContext(eCompileContext::codeBlock, sc.body);
         while(true){
             token peek = file.peekToken();
             if(peek.is(token::braceClose) || peek.is("case") || peek.is("default")) break;
             token st = file.getToken();
             processStatementDispatch(st, caseCtx);
         }
+        closeCompileContext(eCompileContext::codeBlock);
         // A `break` as the LAST statement of a case is a no-op in both lowerings — neither an I6
         // switch case nor an if-chain branch falls through — so drop it rather than emit a jump to
         // the very next instruction. Only a trailing one: a break anywhere earlier in the body is
