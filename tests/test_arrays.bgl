@@ -29,6 +29,7 @@ object inventory {
 }
 
 void main() {
+    bglInit();
     // Typed reads — each must resolve to the matching element type
     int i = g_nums[0];
     bool b = g_flags[1];

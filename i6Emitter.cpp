@@ -129,12 +129,21 @@ string i6Emitter::resolvedOutput(){
     // says so. Checked against the finished text because the binding's call comes from an
     // `#emitlast` block, not from anything the parser saw.
     if(bglInitHasWork){
+        // Only a program can start uninitialized. A file with no entry point — a fixture or a
+        // library-only source compiled on its own — never starts, so there is nothing to warn
+        // about. The routine HEADER is what counts, in either mode: Beguile's `[main;` or the
+        // `[ Main ;` of an author's .inf in precompiler mode.
+        bool hasEntryPoint = false;
+        for(size_t i = 0; (i = findWordCI(buf, "main", i)) != string::npos; i += 4){
+            size_t j = buf.find_last_not_of(" \t", i - 1);
+            if(i > 0 && j != string::npos && buf[j] == '['){ hasEntryPoint = true; break; }
+        }
         bool called = false;
         for(size_t i = 0; (i = findWordCI(buf, "bglinit", i)) != string::npos; i += 7){
             size_t j = buf.find_first_not_of(" \t", i + 7);
             if(j != string::npos && buf[j] == '('){ called = true; break; }
         }
-        if(!called)
+        if(hasEntryPoint && !called)
             std::cerr << "WARNING: nothing calls bglInit(), so this program starts with the BLR "
                          "uninitialized.\n";
     }

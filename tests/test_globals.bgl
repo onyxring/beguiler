@@ -28,6 +28,7 @@ extern int       g_externCounter;
 extern const int G_MAX_SCORE;
 
 void main() {
+    bglInit();
     g_score    = 0;
     g_moves    = 0;
     g_scratch  = 42;

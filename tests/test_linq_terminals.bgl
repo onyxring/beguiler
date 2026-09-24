@@ -19,6 +19,7 @@ array<int> g_nums  = {10, 20, 30, 40, 50};
 array<int> g_empty[8];
 
 void main(){
+    bglInit();
     // first/last on populated.
     print(g_nums.first());          // 10
     print(g_nums.last());           // 50

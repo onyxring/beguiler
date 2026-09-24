@@ -1470,6 +1470,7 @@ class plain
     _bglFrameFree(7);
 ];
 [main;
+    bglinit();
     exercisearrayindexof();
     exercisebarerefs();
     exerciseuserfacing();

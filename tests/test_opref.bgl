@@ -96,6 +96,7 @@ void exerciseUserFacing(){
 }
 
 void main(){
+    bglInit();
     exerciseArrayIndexOf();
     exerciseBareRefs();
     exerciseUserFacing();

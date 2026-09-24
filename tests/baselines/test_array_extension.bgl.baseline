@@ -315,6 +315,7 @@ array g_back table 10 20 30 3 $9084;
 array g_unsorted table 30 10 50 20 40 5 $9084;
 array g_descending table 1 2 3 4 5 5 $9084;
 [main;
+    bglinit();
     if (_bglArray.isTracked(g_nums, 0)) {
         print 1;
     }

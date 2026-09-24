@@ -22,6 +22,7 @@ array<int> src = {11, 22, 33, 44};
 array<int> dst[8];
 
 void main(){
+    bglInit();
     // re-assignment copy
     dst = src;
     // declaration-with-initializer copy (the primary capture form)

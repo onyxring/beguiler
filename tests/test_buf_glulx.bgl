@@ -119,6 +119,7 @@ void exerciseTransform(){
 }
 
 void main(){
+    bglInit();
     exerciseLength();
     exerciseChars();
     exerciseSet();

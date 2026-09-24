@@ -542,6 +542,7 @@ array inner table 10 20 30 3 40 5 $9084;
     return _bglArray.length(_bglArray.filter(inner, 0, isbig), 0) + x;
 ];
 [main a b c;
+    bglinit();
     a=_bglArray.length(_bglArray.filter(outer, 0, innerbeatsx), 0);
     b = _bglArray.first(_bglArray.map(outer, 0, innercountplus), 0);
     c=_bglArray.length(_bglArray.filter(_bglArray.filter(outer, 0, innerbeatsx), 0, isbig), 0);

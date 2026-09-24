@@ -42,6 +42,7 @@ bool isEven(var x){ return true; }
 array<int> nums = {1,2,3};
 
 void main(){
+    bglInit();
     a    = 7;                                   // bare `a`    -> the variable
     the.c = 3;                                  // dotted      -> the class-typed global
     mark = 9;                                   // bare `mark` -> the variable, not the import

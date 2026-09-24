@@ -1361,6 +1361,7 @@ class _bglstring(bglstringpoolreserve)
     ]
 ;
 [main s c;
+    bglinit();
     s = _bglStr.new();
     s.setFromLit("Hello");
     s.setFromStr(s.append(", World"));

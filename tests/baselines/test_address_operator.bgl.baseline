@@ -275,6 +275,7 @@ object bgl
 ;
 array _buf table 4;
 [main viaAmp viaCast slot0 slot1 a b band land;
+    bglinit();
     viaAmp=_buf;
     viaCast=_buf;
     slot0=_buf + WORDSIZE;

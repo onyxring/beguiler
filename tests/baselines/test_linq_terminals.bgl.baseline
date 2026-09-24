@@ -534,6 +534,7 @@ object bgl
 array g_nums table 10 20 30 40 50 5 $9084;
 array g_empty table 10;
 [main;
+    bglinit();
     print _bglArray.first(g_nums, 0);
     print _bglArray.last(g_nums, 0);
     print _bglArray.first(g_empty, 0);

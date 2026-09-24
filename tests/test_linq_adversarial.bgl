@@ -25,6 +25,7 @@ array<int> g_one     = {42};
 array<int> g_empty[8];
 
 void main(){
+    bglInit();
     // ── 1. Deep chain — six ops in sequence ──────────────────────────────────
     // filter→map→filter→skip→take→count should walk both scratch buffers
     // multiple times and still land on the correct count.

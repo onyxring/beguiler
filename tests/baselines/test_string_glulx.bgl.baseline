@@ -1449,6 +1449,7 @@ class _bglstring(bglstringpoolreserve)
     t.free();
 ];
 [main;
+    bglinit();
     exerciseassign();
     exerciseequality();
     exerciseconcat();

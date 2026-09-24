@@ -534,6 +534,7 @@ object bgl
 array g_nums table 1 2 3 4 5 6 6 $9084;
 array g_empty table 10;
 [main;
+    bglinit();
     print _bglArray.length(_bglArray.filter(g_nums, 0, _bglLambda_0), 0);
     print  (_bglArray.filter(g_nums, 0, _bglLambda_1))-->(0+1) ;
     print  (_bglArray.filter(g_nums, 0, _bglLambda_2))-->(1+1) ;

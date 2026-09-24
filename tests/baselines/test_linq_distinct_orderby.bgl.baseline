@@ -536,6 +536,7 @@ array g_unsorted table 30 10 50 20 40 5 $9084;
 array g_alldup table 7 7 7 7 4 $9084;
 array g_empty table 10;
 [main;
+    bglinit();
     print _bglArray.length(_bglArray.distinct(g_dupes, 0), 0);
     print  (_bglArray.distinct(g_dupes, 0))-->(0+1) ;
     print  (_bglArray.distinct(g_dupes, 0))-->(1+1) ;

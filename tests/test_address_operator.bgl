@@ -15,6 +15,7 @@
 array<int> _buf[2];
 
 void main() {
+    bglInit();
     // Address-of an array == its base address == the (int) cast.
     int viaAmp  = &_buf;
     int viaCast = (int)_buf;

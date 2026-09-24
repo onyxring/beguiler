@@ -40,6 +40,7 @@ const string author = #beguilerSettings.author;
 const int gameRelease = #beguilerSettings.release;
 
 void main(){
+    bglInit();
     #if FEATURE_A
     print("Feature A enabled");
     #endif

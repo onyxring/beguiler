@@ -750,6 +750,7 @@ array bufsmall_raw -> (2 + 2*WORDSIZE + 16);
     _bglbuf.trim(bufa);
 ];
 [main;
+    bglinit();
     exerciselength();
     exercisechars();
     exerciseset();

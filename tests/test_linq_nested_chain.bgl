@@ -28,6 +28,7 @@ bool innerBeatsX(int x){ return inner.filter(isBig).count() > x; }
 int innerCountPlus(int x){ return inner.filter(isBig).count() + x; }
 
 void main(){
+    bglInit();
     // chain whose predicate runs a nested chain, then a terminal
     int a = outer.filter(innerBeatsX).count();
     // chain whose mapper runs a nested chain, then a terminal

@@ -287,6 +287,7 @@ array g_itemids table 12;
 array g_primes table 2 3 5 7 11 5 $9084;
 array g_fibonacci table 1 1 2 3 5 8 6 $9084;
 [main first total;
+    bglinit();
     g_score = 0;
     g_moves = 0;
     g_scratch = 42;

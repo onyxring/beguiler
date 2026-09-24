@@ -20,6 +20,7 @@ array<int> g_alldup   = {7, 7, 7, 7};
 array<int> g_empty[8];
 
 void main(){
+    bglInit();
     // distinct — first-occurrence preservation.
     print(g_dupes.distinct().length());          // 7
     print(g_dupes.distinct()[0]);                // 3

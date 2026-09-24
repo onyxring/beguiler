@@ -539,6 +539,7 @@ array g_neg table (-3) (-1) (-4) (-1) (-5) 5 $9084;
 array g_one table 42 1 $9084;
 array g_empty table 10;
 [main result;
+    bglinit();
     print _bglArray.length(_bglArray.take(_bglArray.skip(_bglArray.filter(_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_0), 0, _bglLambda_1), 0, _bglLambda_2), 0, 1), 0, 3), 0);
     if(_bglArray.all(_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_3), 0, _bglLambda_4), 0, _bglLambda_5) == true) print "true"; else print "false";
     result = _bglArray.filter(g_nums, 0, _bglLambda_6);

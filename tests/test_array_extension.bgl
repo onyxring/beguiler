@@ -51,6 +51,7 @@ array<int> g_unsorted   = {30, 10, 50, 20, 40};
 array<int> g_descending = {1, 2, 3, 4, 5};
 
 void main(){
+    bglInit();
     // isTracked — every Beguile-decl array is tracked
     if(g_nums.isTracked())   print(1);
     if(g_sparse.isTracked()) print(1);

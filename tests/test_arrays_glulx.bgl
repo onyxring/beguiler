@@ -39,6 +39,7 @@ object inventory {
 }
 
 void main() {
+    bglInit();
     // Word-array reads/writes on Glulx (WORDSIZE=4)
     int  i = g_nums[0];
     bool b = g_flags[1];

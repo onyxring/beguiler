@@ -126,6 +126,7 @@ void exerciseMethods(){
 }
 
 void main(){
+    bglInit();
     exerciseAssign();
     exerciseEquality();
     exerciseConcat();

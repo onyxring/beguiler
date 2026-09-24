@@ -534,6 +534,7 @@ object bgl
 array g_nums table 10 20 30 40 50 5 $9084;
 array g_empty table 10;
 [main;
+    bglinit();
     print _bglArray.length(_bglArray.take(g_nums, 0, 3), 0);
     print  (_bglArray.take(g_nums, 0, 3))-->(0+1) ;
     print  (_bglArray.take(g_nums, 0, 3))-->(2+1) ;

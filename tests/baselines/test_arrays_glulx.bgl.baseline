@@ -292,6 +292,7 @@ object inventory
        count 0
 ;
 [main i b last first middle last_c firstSh lastSh c;
+    bglinit();
     i= g_nums-->(0+1);
     b= g_flags-->(1+1);
     g_nums-->(0+1) = 42;

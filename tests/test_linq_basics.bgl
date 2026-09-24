@@ -17,6 +17,7 @@ array<int> g_nums   = {1, 2, 3, 4, 5, 6};
 array<int> g_empty[8];
 
 void main(){
+    bglInit();
     // filter-only — keep evens. Result is array<int>, lives in scratch.
     print(g_nums.filter((int x) => (x & 1) == 0).length());   // 3 (2, 4, 6)
     print(g_nums.filter((int x) => (x & 1) == 0)[0]);         // 2

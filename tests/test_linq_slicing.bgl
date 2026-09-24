@@ -18,6 +18,7 @@ array<int> g_nums  = {10, 20, 30, 40, 50};
 array<int> g_empty[8];
 
 void main(){
+    bglInit();
     // take — basic, edge cases.
     print(g_nums.take(3).length());            // 3
     print(g_nums.take(3)[0]);                  // 10

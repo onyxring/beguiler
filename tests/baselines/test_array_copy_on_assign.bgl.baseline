@@ -320,6 +320,7 @@ array src table 11 22 33 44 4 $9084;
 array dst table 10;
 [main keep picked;
     keep = _bglArrayLocalAlloc(8);
+    bglinit();
     _bglArray.copy(dst, 0, src, 0);
     _bglArray.copy(keep, 0, src, 0);
     picked = dst;

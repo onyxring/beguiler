@@ -284,6 +284,7 @@ constant story = "Directive Test";
 constant author = "Tester";
 constant gameRelease = 42;
 [main ws;
+    bglinit();
     print (string)"Feature A enabled";
     print (string)"Many items";
     print (string)story;

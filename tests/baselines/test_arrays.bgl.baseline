@@ -293,6 +293,7 @@ object inventory
        count 0
 ;
 [main i b r o c ch;
+    bglinit();
     i= g_nums-->(0+1);
     b= g_flags-->(1+1);
     r =  g_rooms-->(0+1) ;
