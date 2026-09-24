@@ -31,9 +31,12 @@
 ## 11.1 Overview
 
 An *object* is a named, globally visible instance that exists as a concrete entity in the story file.
-A class (§8.1) is a type; an object is a single instance of a type. Objects are commonly used for
-world-model entities (rooms, things, characters), but any class that inherits from `object` may be
-instantiated as a named object, including utility classes and data tables.
+A class (§8.1) is a type; an object is a single instance of a type. **Any** class may be instantiated
+as a named object, including utility classes and data tables; objects are commonly used for
+world-model entities (rooms, things, characters), and those inherit from `object` to get the
+world-model members. The declaration says which class is instantiated, not whether the instance is an
+`object`: a base that does not derive from `object` gives an instance that is not one, whichever of
+the two declaration forms is used (§11.2).
 
 ## 11.2 Declaring an Object
 
