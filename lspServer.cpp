@@ -3780,7 +3780,11 @@ static const set<string> bglKeywords = {
 // keywords.
 static const set<string> bglModifiers = {
     "class", "enum", "extern", "emitter", "static", "const", "inline",
-    "replace", "extend", "readonly", "explicit", "default"
+    "replace", "extend", "readonly", "explicit", "default",
+    // The rest of Appendix A's qualifier set, which this list had drifted behind.
+    // `asI6`/`asBgl` are stored folded, as every keyword comparison here is.
+    "additive", "alias", "asbgl", "asi6", "byval", "hide", "ref",
+    "superposed", "synonyms", "typesealed"
 };
 static const set<string> bglDirectives = {
     "#include", "#once", "#define", "#declare", "#if", "#else", "#endif", "#ifdef",
