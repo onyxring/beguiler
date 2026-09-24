@@ -436,3 +436,10 @@ appendices are for lookup.
 - [Appendix I Symbol and Method Index](I-symbol-index.md)
 - [Appendix J Limits](J-limits.md)
 <!-- /toc -->
+
+---
+
+**Single-file build.** `docs/languageSpec.md` is this specification merged into one file, generated
+by `tools/build-spec.py` from the chapters here. Edit a chapter and re-run the script; `--check`
+reports whether the merged file is out of date, as `tools/build-toc.py --check` does for the tables
+of contents.
