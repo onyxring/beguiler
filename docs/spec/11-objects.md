@@ -53,7 +53,7 @@ object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { ⟨m
 An object is declared at global scope. The name becomes a globally visible identifier usable wherever
 an `object`-typed value is expected. The body holds member declarations in the same form as a class
 body (§8.3.1): a member is written `Type name [= value];` and members are `;`-separated. A member
-with no initializer defaults to `0`, `false` or `nothing` according to its type.
+with no initializer defaults to `0`, `false` or `null` according to its type.
 
 The class an object instantiates is given in one of two equivalent ways. Using the class name as the
 type keyword (`ClassName Name { … }`) is the usual form. The inheritance form (`object Name : Base`)

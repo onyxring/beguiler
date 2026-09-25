@@ -365,7 +365,7 @@ Deriving from `_bglObject` gives a class with stored members **reference semanti
 
 `print(x)` dispatches on `_bglObject` as described in §21.4.
 
-**See also** §2.10, §8.2.
+**See also** §2.10.3, §8.2.
 
 ### 21.5.9 `eType` and `typeof()`
 

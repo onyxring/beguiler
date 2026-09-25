@@ -56,7 +56,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `move` | control (soft: inside `extend` of an array) | §12.11 |
 | `negativeIntLiteral` | type | §2.4 |
 | `new` | operator | §4.13 |
-| `nothing` | value, I6 | §2.5 |
+| `nothing` | I6 (the Inform 6 constant `null` is emitted as; not a Beguile word) | §2.5 |
 | `null` | value | §2.5 |
 | `object` | type, I6 | §11.2 |
 | `operator` | qualifier (operator member) | §9 |

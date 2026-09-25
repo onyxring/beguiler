@@ -44,7 +44,7 @@ section with the full treatment.
 - **object-backed class** — A class whose instances are Inform 6 objects with storage of their own (a normal class, including a pooled one), as opposed to an emitter, alias or veneer class, whose instances are bare words or do not exist. See §8.2, §11.3.2.
 - **outer** — Inside a property accessor body, the host object the accessor is declared on, as distinct from `self`, the accessor instance itself; resolved at compile time and usable to read and write the host's other members. See §9.9.3.
 - **owned member** — A member whose type is a value class with stored members, declared without an initializer; each instance of the enclosing type gets its own backing instance, so the member is a live object rather than a bare slot. See §8.3.4.
-- **pass-through conversion** — A conversion operator declared without a body (`emitter T operator ();`): the value is left unchanged and merely retyped. See §2.12, §9.4.
+- **pass-through conversion** — A conversion operator declared without a body (`emitter T operator ();`): the value is left unchanged and merely retyped. See §2.10.2, §9.4.
 - **pooled class** — A class declared `class Name[N]`, which reserves `N` statically allocated instances that `new` and `delete` hand out and reclaim. See §8.2.6, §4.13.
 - **precompiler mode** — The compilation mode where the entry file is an `.inf` (Inform 6) file and Beguile is reached through `#bgl` islands. Contrast **default mode**. See §15.1.2.
 - **primary trigger** — The first dictionary word in a verb's first grammar line; the word an `extend V { grammar += … }` targets. See §13.2.3.
@@ -68,7 +68,7 @@ section with the full treatment.
 - **tracked buf** — With `<buf>` included, a sized `array<char>` that records its capacity and current length; its value behaves as an Inform 6 hybrid buffer. See §22.2.
 - **trigger word** — The dictionary word that begins a grammar line and selects its verb; a verb's first trigger word is its primary trigger. See §13.2.3, §13.4.
 - **typesealed** — A member qualifier that locks the member's type: a subclass or instance may re-initialize the member but not re-declare it with another type. See §8.2.8.
-- **value class** — A class that does not derive from `_bglObject` (and so not from `object`): a variable of the type holds the members themselves, is zero-initialized at routine entry, and is copied on assignment through the class's `operator =`. Contrast a class with reference semantics, whose variable holds an identity. See §2.10, §8.2.1, §21.5.8.
+- **value class** — A class that does not derive from `_bglObject` (and so not from `object`): a variable of the type holds the members themselves, is zero-initialized at routine entry, and is copied on assignment through the class's `operator =`. Contrast a class with reference semantics, whose variable holds an identity. See §2.10.3, §8.2.1, §21.5.8.
 - **veneer class** — A class declared `extern emitter class X : _bglObject`: a distinct Beguile type with no representation of its own, whose runtime value is the bare word it wraps; it adds a type and behavior but no storage. `int`, `char`, `uint` and `glulxImage` are veneer classes. See §8.2.5.
 - **word** — The machine's native integer unit: 16 bits on the Z-machine, 32 on Glulx. Every scalar value, reference and `array<T>` element other than an `array<char>` element occupies one word. See §2.2, Appendix J.
 
@@ -76,5 +76,5 @@ section with the full treatment.
 
 - **`$self` / `$val` / `$target` / `$host` / `$prop`** — Substitution tokens used inside emitter bodies: `$self` is the receiver (in an operator or assignment emitter on a member, the member's owner), `$val` the full receiver expression, `$target` an assignment's left-hand side, `$host` the object a proxy member is accessed on, and `$prop` an array property's name. See §7.3, Appendix G.
 - **`$opref(op)`** — A lookup, not a substitution: it yields a reference to the receiver type's operator `op` — the routine for a `static` operator, the property for an instance operator, `0` when the type publishes none — so that a shared runtime routine can apply a type's operation. See §7.3.1, §12.10, Appendix G.
-- **`_bglObject`** — The root base class of the BLR, from which `object`, the primitive wrappers and the IF-domain types derive. Deriving from it gives a class with stored members reference semantics (§2.10). See §8.2.5, §21.5.8.
+- **`_bglObject`** — The root base class of the BLR, from which `object`, the primitive wrappers and the IF-domain types derive. Deriving from it gives a class with stored members reference semantics (§2.10.3). See §8.2.5, §21.5.8.
 - **`_bgl…` / `bgl…`** — Identifier prefixes reserved for the runtime and for compiler-generated symbols. See §1.4.

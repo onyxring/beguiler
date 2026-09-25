@@ -185,11 +185,11 @@ int wrong = cond ? 1 : "text";   // error: 'int|string' is not assignable to 'in
 
 All three operators are type-driven: the operand's type must declare an `operator ?()` emitter, whose
 result is the null test (the declaration is specified in §9.5; the BLR defines it for `object` as
-"not `nothing`" and for `string` as "non-zero handle"). Using them on a type without `operator ?()`
+"not `null`" and for `string` as "non-zero handle"). Using them on a type without `operator ?()`
 is a compile-time error.
 
 **`?.`** accesses a member or calls a method only if the left operand is non-null. In an expression,
-each `?.` step tests the value so far; if it is null the whole chain yields `nothing`, otherwise the
+each `?.` step tests the value so far; if it is null the whole chain yields `null`, otherwise the
 step proceeds. As a statement (`x?.remove();`) the operation runs only if the target is non-null. A
 plain `.` after a `?.` adds no guard: if the preceding `?.` yielded null, the member access runs on
 `null`; the result is undefined.
@@ -254,7 +254,7 @@ int a = ((library)obj.parent).shelves;     // instance member
 int b = ((Room)obj.parent).lit;            // class member
 ```
 
-**See also** §2.12 (conversion operators), §8.6 (inheritance and overriding).
+**See also** §2.10.2 (conversion operators), §8.6 (inheritance and overriding).
 
 ## 4.12 Address-of `&`
 
@@ -293,7 +293,7 @@ new ⟨type⟩(⟨args⟩)
 
 **Description**
 
-Allocates an instance of a pooled class and yields a reference to it, or `nothing` if the pool is
+Allocates an instance of a pooled class and yields a reference to it, or `null` if the pool is
 exhausted; the result must be checked before use. The arguments are passed to the class's `create()`
 method; if the class declares no `create`, `new ⟨type⟩()` is the only valid form. `new` on a class
 that is not pooled is a compile-time error. Pooled classes, pool size and the `create`/`destroy`
@@ -304,7 +304,7 @@ lifecycle are specified in §8.2.6; the `delete` statement in §5.15.
 ```bgl
 class Marble[10] : object { }
 Marble m = new Marble();
-if (m == nothing) print("The pool is exhausted.");
+if (m == null) print("The pool is exhausted.");
 ```
 
 **Notes**

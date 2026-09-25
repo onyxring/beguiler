@@ -82,7 +82,7 @@ A local variable declaration is a statement. The forms, including `auto`, are sp
 
 The left-hand side is a declared variable or a dotted member path. The assignment is permitted when
 the right-hand type is compatible with the left-hand type; the compatibility rules, tested in order,
-are in §2.11. Reference binding (`:=`) is specified in §3.7.
+are in §2.10.1. Reference binding (`:=`) is specified in §3.7.
 
 **Example**
 
@@ -291,7 +291,7 @@ body leaves the `switch` — at the top of the body or nested in a block within 
 lowering the switch takes. Because cases do not fall through, a `break` as the last statement of a
 case body does nothing; a `break` before the end of the body ends the case there, leaving the rest of
 it unreachable. A `break` inside a loop within a case body belongs to that loop. Case values
-are type-checked against the switch expression (§2.11): integer literals match an `int`, and an enum
+are type-checked against the switch expression (§2.10.1): integer literals match an `int`, and an enum
 value must be of the switch expression's enum type. When the switch expression is a `verb`, case
 values are verb names (§13.2).
 
@@ -408,7 +408,7 @@ classes are specified in §8.2.6; allocation with `new` in §4.13.
 
 ```bgl
 Marble m = new Marble();
-if (m != nothing) delete m;    // destroy() runs; the slot returns to the pool
+if (m != null) delete m;       // destroy() runs; the slot returns to the pool
 ```
 
 ## 5.16 `try` / `catch` / `throw`

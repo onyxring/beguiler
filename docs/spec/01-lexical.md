@@ -14,7 +14,7 @@
   - [1.6.5 Interpolated String Literals](#165-interpolated-string-literals)
   - [1.6.6 Character Literals](#166-character-literals)
   - [1.6.7 Dictionary Word Literals](#167-dictionary-word-literals)
-- [1.7 Operators and Punctuation](#17-operators-and-punctuation)
+- [1.7 Operators](#17-operators)
 - [1.8 Directive Tokens](#18-directive-tokens)
 <!-- /toc -->
 
@@ -128,7 +128,7 @@ words alphabetically, with the section that defines each.
 
 **Value words** name a fixed value or the current receiver.
 
-`false` `nothing` `null` `self` `true`
+`false` `null` `self` `true`
 
 **Contextual words** have meaning in one position only and are ordinary identifiers elsewhere.
 
@@ -159,8 +159,7 @@ $$⟨binary digits⟩
 **Description**
 
 An integer literal is decimal, hexadecimal (prefix `$`, digits `0`–`9` `A`–`F` in either case) or
-binary (prefix `$$`, digits `0` and `1`). A negative value is formed by prefixing `-`. `0x`
-notation is a compile-time error.
+binary (prefix `$$`, digits `0` and `1`). A negative value is formed by prefixing `-`.
 
 An integer literal has the pseudo-type `intLiteral`; a negated one has `negativeIntLiteral` (§2.4).
 
@@ -170,6 +169,11 @@ An integer literal has the pseudo-type `intLiteral`; a negated one has `negative
 42        $FF         $$11111111     // → 42, 255, 255
 -1234     $0A         $$11010        // → -1234, 10, 26
 ```
+
+**Notes**
+
+> **`0x` prefix.** Some languages write hexadecimal with a `0x` prefix (`0xFF`). Beguile uses `$`
+> (`$FF`); a `0x` literal is a compile-time error.
 
 ### 1.6.2 Float Literals
 
@@ -336,7 +340,7 @@ A dictionary word literal has the pseudo-type `dictionaryWordLiteral` and is com
 .cloak   ..cloaks   .medium-sized   .monkey's
 ```
 
-## 1.7 Operators and Punctuation
+## 1.7 Operators
 
 The following multi-character sequences are single tokens. A longer token always wins: `<=>` is the
 three-way comparison, never `<=` followed by `>`.
@@ -347,7 +351,7 @@ three-way comparison, never `<=` followed by `>`.
 &&  ||  ++  --  <<  >>  =>  ?.  ??
 ```
 
-The single-character operators and punctuation are:
+The single-character operators are:
 
 ```text
 =  +  -  *  /  %  <  >  !  &  |  ^  ?  :  .  ,  ;  #  (  )  {  }  [  ]

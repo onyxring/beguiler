@@ -198,7 +198,7 @@ a slot of that type is a compile-time error; the remedies are to declare `operat
 with no stored members have nothing to copy.
 
 **Reference slots.** A slot declared `ref` owns nothing; it names an instance owned elsewhere. It is
-empty (`nothing`) until bound, so `if (!slot)` distinguishes an unbound slot from a bound one. `ref` is
+empty (`null`) until bound, so `if (!slot)` distinguishes an unbound slot from a bound one. `ref` is
 valid on local variable declarations and on class and object members; on a parameter or on an `extern`
 or `const` declaration it is a compile-time error. A member whose type is its own class must be `ref`.
 

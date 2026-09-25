@@ -49,7 +49,7 @@ in §9.1; the operators that must be declared as emitters are listed in §9.8. `
 | `&` `\|` `^` `<<` `>>` | Bitwise and shift | §4.5, §9.1 |
 | `&=` `\|=` `^=` `<<=` `>>=` | Compound bitwise assignment | §5.6 |
 | `++` `--` | Increment / decrement | §5.7, §9.7 |
-| `=` | Assignment | §5.5, §2.11 |
+| `=` | Assignment | §5.5, §2.10.1 |
 | `:=` | Reference binding (rebinding) | §3.7 |
 | `? :` | Ternary conditional | §4.9 |
 | `?` (postfix) | Query / null test (result `eBool`) | §4.10, §9.5 |

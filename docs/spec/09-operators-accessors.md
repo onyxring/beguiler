@@ -153,9 +153,9 @@ string s = rooms[0].description;        // member access on the element type
 
 A zero-parameter `operator ()` declares that a value of this class converts to `⟨type⟩`. The
 compatibility rules that decide *when* a conversion is applied — assignment, argument matching,
-operator resolution, casts — are in §2.11 and §2.12.
+operator resolution, casts — are in §2.10.1 and §2.10.2.
 
-- By default a conversion is **implicit** and is applied automatically wherever the rules of §2.11
+- By default a conversion is **implicit** and is applied automatically wherever the rules of §2.10.1
   allow. An `explicit` conversion applies only at an explicit cast `(T)expr` (§4.11). `explicit` is
   valid only on `operator ()` and cannot be combined with `const` or `static`.
 - The emitter form substitutes its body with `$self`/`$val` bound to the source value.

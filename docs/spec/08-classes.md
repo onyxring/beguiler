@@ -141,7 +141,7 @@ with statement bodies, and emitters. Instances are objects with their own storag
 
 A normal class that derives from neither `object` nor `_bglObject` (§21.5.8) is a **value class**:
 an instance holds its members directly, a local or member of the type is an instance in its own
-right, and assignment copies the members through the class's `operator =` (§2.10). A class derived
+right, and assignment copies the members through the class's `operator =` (§2.10.3). A class derived
 from `object` or `_bglObject` has reference semantics: a variable of the type holds a reference to an
 instance owned elsewhere. The term *value class* is used throughout this specification for the
 former.
@@ -307,7 +307,7 @@ constant, and the empty `[]` is the extern marker form (§8.2.2).
 
 A normal class may reserve a fixed number of instances by adding `[N]` after its name. Instances are
 then obtained and released with `new` (§4.13) and `delete` (§5.15). There is no dynamic allocation:
-`new` returns one of the `N` preallocated slots, or `nothing` when the pool is exhausted, and the pool
+`new` returns one of the `N` preallocated slots, or `null` when the pool is exhausted, and the pool
 never grows; the result of `new` must be tested before use.
 
 **Pool size.**
@@ -346,7 +346,7 @@ class marbleClass[10] : object {
 
 void Main(){
     marbleClass m = new marbleClass(5);     // create(5) runs; m.weight → 5
-    if(m == nothing) return;                // pool exhausted
+    if(m == null) return;                   // pool exhausted
     delete m;                               // destroy() runs, slot returns to the pool
 }
 ```

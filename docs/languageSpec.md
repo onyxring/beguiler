@@ -53,7 +53,7 @@ of contents.
     - [1.6.5 Interpolated String Literals](#165-interpolated-string-literals)
     - [1.6.6 Character Literals](#166-character-literals)
     - [1.6.7 Dictionary Word Literals](#167-dictionary-word-literals)
-  - [1.7 Operators and Punctuation](#17-operators-and-punctuation)
+  - [1.7 Operators](#17-operators)
   - [1.8 Directive Tokens](#18-directive-tokens)
 - [2 Types and Values](#2-types-and-values)
   - [2.1 Overview](#21-overview)
@@ -62,7 +62,7 @@ of contents.
   - [2.4 Literal Pseudo-Types](#24-literal-pseudo-types)
     - [2.4.1 `negativeIntLiteral`](#241-negativeintliteral)
     - [2.4.2 `interpolatedStringLiteral`](#242-interpolatedstringliteral)
-  - [2.5 `nothing` and `null`](#25-nothing-and-null)
+  - [2.5 `null`](#25-null)
   - [2.6 The `var` Type](#26-the-var-type)
   - [2.7 Enumerations](#27-enumerations)
     - [2.7.1 `enum`](#271-enum)
@@ -74,9 +74,10 @@ of contents.
     - [2.8.1 `typeof` and `eType`](#281-typeof-and-etype)
     - [2.8.2 Named Unions](#282-named-unions)
   - [2.9 Function Types](#29-function-types)
-  - [2.10 Class Types as Values](#210-class-types-as-values)
-  - [2.11 Type Compatibility](#211-type-compatibility)
-  - [2.12 Conversion](#212-conversion)
+  - [2.10 Type Rules](#210-type-rules)
+    - [2.10.1 Type Compatibility](#2101-type-compatibility)
+    - [2.10.2 Conversion](#2102-conversion)
+    - [2.10.3 Value and Reference Semantics](#2103-value-and-reference-semantics)
 - [3 Declarations, Variables and Scope](#3-declarations-variables-and-scope)
   - [3.1 Program Structure](#31-program-structure)
   - [3.2 Declaration Qualifiers](#32-declaration-qualifiers)
@@ -141,6 +142,8 @@ of contents.
   - [7.3 Substitution Tokens](#73-substitution-tokens)
     - [7.3.1 `$opref` and `$oprefReq`](#731-opref-and-oprefreq)
     - [7.3.2 Choosing `$self`, `$val` and `$target`](#732-choosing-self-val-and-target)
+    - [7.3.3 `$i6Name`](#733-i6name)
+    - [7.3.4 `$i6Expr`](#734-i6expr)
   - [7.4 Conditional Text: `##if`, `##else`, `##endif`](#74-conditional-text-if-else-endif)
   - [7.5 Global Emitters](#75-global-emitters)
   - [7.6 Emitter Values](#76-emitter-values)
@@ -750,7 +753,7 @@ words alphabetically, with the section that defines each.
 
 **Value words** name a fixed value or the current receiver.
 
-`false` `nothing` `null` `self` `true`
+`false` `null` `self` `true`
 
 **Contextual words** have meaning in one position only and are ordinary identifiers elsewhere.
 
@@ -781,8 +784,7 @@ $$⟨binary digits⟩
 **Description**
 
 An integer literal is decimal, hexadecimal (prefix `$`, digits `0`–`9` `A`–`F` in either case) or
-binary (prefix `$$`, digits `0` and `1`). A negative value is formed by prefixing `-`. `0x`
-notation is a compile-time error.
+binary (prefix `$$`, digits `0` and `1`). A negative value is formed by prefixing `-`.
 
 An integer literal has the pseudo-type `intLiteral`; a negated one has `negativeIntLiteral` (§2.4).
 
@@ -792,6 +794,11 @@ An integer literal has the pseudo-type `intLiteral`; a negated one has `negative
 42        $FF         $$11111111     // → 42, 255, 255
 -1234     $0A         $$11010        // → -1234, 10, 26
 ```
+
+**Notes**
+
+> **`0x` prefix.** Some languages write hexadecimal with a `0x` prefix (`0xFF`). Beguile uses `$`
+> (`$FF`); a `0x` literal is a compile-time error.
 
 ### 1.6.2 Float Literals
 
@@ -958,7 +965,7 @@ A dictionary word literal has the pseudo-type `dictionaryWordLiteral` and is com
 .cloak   ..cloaks   .medium-sized   .monkey's
 ```
 
-## 1.7 Operators and Punctuation
+## 1.7 Operators
 
 The following multi-character sequences are single tokens. A longer token always wins: `<=>` is the
 three-way comparison, never `<=` followed by `>`.
@@ -969,7 +976,7 @@ three-way comparison, never `<=` followed by `>`.
 &&  ||  ++  --  <<  >>  =>  ?.  ??
 ```
 
-The single-character operators and punctuation are:
+The single-character operators are:
 
 ```text
 =  +  -  *  /  %  <  >  !  &  |  ^  ?  :  .  ,  ;  #  (  )  {  }  [  ]
@@ -1007,7 +1014,8 @@ A `#` immediately followed by an identifier, with no intervening whitespace, is 
 Beguile is statically typed: every variable, parameter and return value has a type known at compile
 time. Types fall into four categories: primitive types (§2.2), literal pseudo-types (§2.4),
 user-defined types (enumerations §2.7, unions §2.8, classes §8) and the `var` escape type (§2.6).
-Arrays are covered in §12.
+Arrays are covered in §12. §2.10 then gives the rules that apply across types: when one type may be
+used where another is expected, how values convert, and what assigning a class-typed value does.
 
 ## 2.2 Primitive Types
 
@@ -1043,10 +1051,15 @@ A `float` occupies one native word, the same width as `int`, holding an IEEE 754
 value. It supports the arithmetic operators `+` `-` `*` `/` `%` and their compound-assignment forms,
 the comparisons `==` `!=` `<` `<=` `>` `>=`, and `print()`.
 
-A `float` is initialized from a float literal (§1.6.2) or by assignment from an `int`, which converts
-the numeric value (`5` becomes `5.0`). Conversion in either direction by cast is explicit:
-`(float)n` and `(int)f` (the latter truncates). An `int` is never reinterpreted bit-for-bit as a
-`float`.
+A `float` is initialized from a float literal (§1.6.2) or from an `int`. Assigning an `int` to a
+`float` converts it implicitly, preserving its value (`5` becomes `5.0`). Converting a `float` to an
+`int` always requires a cast, `(int)f`, which truncates toward zero. An `int` is never reinterpreted
+bit-for-bit as a `float`.
+
+**Mixed arithmetic.** If at least one operand of an arithmetic operator is a `float`, the other is
+converted to `float` and the result is a `float`. If both operands are `int`, the result is an
+`int`. So `314 / 100` is `3`, while `(float)314 / 100` is `3.14`: one `float` operand, on either side,
+is enough. The comparison operators convert the same way but yield `bool`.
 
 **Example**
 
@@ -1056,7 +1069,8 @@ the numeric value (`5` becomes `5.0`). Conversion in either direction by cast is
 void Main() {
     float a = 2.5;
     float b = 5;                    // → 5.0
-    float c = (float)314 / (float)100;   // → 3.14
+    float c = (float)314 / 100;     // → 3.14: one float operand makes the division float
+    int   d = 314 / 100;            // → 3: two ints divide as integers
     print(b / a);                   // → 2
     if(b > a) print("^bigger^");
     int n = (int)c;                 // → 3
@@ -1065,6 +1079,9 @@ void Main() {
 
 **Notes**
 
+> **Where the cast goes.** A cast applies to the operand it is written on. `(float)(314 / 100)`
+> divides the integers first and converts the result, giving `3.0`.
+
 > **[Glulx]** `float` is available only when the target is Glulx; the Z-machine has no floating-point
 > support. It is part of the core and needs no `#include`.
 
@@ -1072,9 +1089,10 @@ void Main() {
 
 **Description**
 
-A literal has a **pseudo-type** that is inferred by the compiler and never written by the author.
-Pseudo-types take part in operator and overload resolution independently of the runtime types they
-correspond to.
+A literal has a **pseudo-type**, which the compiler infers from how the literal is written. No
+variable is declared with a pseudo-type; the names are written only to extend one or to declare an
+overload that accepts one. Pseudo-types take part in operator and overload resolution independently
+of the runtime types they correspond to.
 
 | Pseudo-type | Written | Corresponding type |
 |---|---|---|
@@ -1085,8 +1103,10 @@ correspond to.
 | `dictionaryWordLiteral` | `.cloak`, `..cloaks` | `dictionaryWord` (§21.5.3) |
 | `interpolatedStringLiteral` | `$"hello {x}"` | none; see §2.4.2 |
 
-A pseudo-type is compatible with its corresponding type only through an `operator =` declared on that
-type (§2.11); there is no built-in rule. Pseudo-types are first-class types, declared as
+A pseudo-type converts to its corresponding type only through operators that the runtime core
+declares: a conversion operator on the pseudo-type (`intLiteral` declares one to `int`), or an
+`operator =` on the target type that accepts it (`float` declares `operator = (intLiteral)`). These
+rules are not built into the compiler (§2.10.1). Pseudo-types are first-class types, declared as
 `extern class` (§8.2.2) in the core and extensible with `extend` (§8.7.1), so a method defined
 against one may be called directly on a literal.
 
@@ -1094,7 +1114,11 @@ against one may be called directly on a literal.
 
 ```bgl
 "hello".print();       // a method on stringLiteral
-42.someMethod();       // a method on intLiteral
+
+extend extern class intLiteral {
+    emitter void twice(){ print $val * 2; }
+}
+42.twice();            // → 84
 ```
 
 ### 2.4.1 `negativeIntLiteral`
@@ -1123,26 +1147,29 @@ it has no corresponding runtime type. It may be passed only to an emitter that d
 non-emitter function is a compile-time error. The core `print()` and `log()` accept it (§21.4); with the
 `<string>` extension a `stringObj` may be assigned one, `stringObj s = $"…";` (§22.3).
 
-## 2.5 `nothing` and `null`
+## 2.5 `null`
 
 **Description**
 
-`nothing` is the absent or unset value. It is the value I6 uses to mean "no object", numerically `0`,
-and Beguile exposes it under that name throughout the language. Its resolved type (§4.1) is `object`,
-but it is compatible with every type. `null` is a synonym; the two are interchangeable.
-
-For a reference, `nothing` is the absent state (a failed `new` on a pooled class, §8.2.6; an unset
-member; a missing parent); for an integer it is `0`.
+`null` is the absent or unset value, numerically `0`. For a reference it is the absent state (a failed
+`new` on a pooled class, §8.2.6; an unset member; a missing parent); for an integer it is `0`. Its
+resolved type (§4.1) is `object`, but it is compatible with every type.
 
 **Example**
 
 ```bgl
 object o;
-if(o == nothing) print("not yet set");
+if(o == null) print("not yet set");
 
 marbleClass m = new marbleClass();
 if(m == null) print("pool exhausted");
 ```
+
+**Notes**
+
+> **Emitted form.** `null` is emitted as the Inform 6 constant `nothing`, which is what appears in
+> generated code and is written in emitter bodies (§7). `nothing` is not a Beguile word: in Beguile
+> source it is an undeclared identifier.
 
 ## 2.6 The `var` Type
 
@@ -1265,9 +1292,13 @@ extern bnum ⟨name⟩ { ⟨member⟩ [ , ⟨member⟩ … ] }
 
 **Description**
 
-An `extern` enumeration names values that are defined in I6, not by Beguile. The declaration registers
-the names for type checking and produces no output. `eBool`, Beguile's boolean-result type (§2.2), is
-declared this way by the runtime core.
+An ordinary `enum` or `bnum` exists only in Beguile: each use of a member is emitted as its number, and
+the enumeration itself does not appear in the generated Inform 6.
+
+An `extern` enumeration names values that are defined in I6, not by Beguile. Its members have no
+values in Beguile, so each use of a member is emitted as its name, and Inform 6 supplies the value. The
+declaration registers the names for type checking and produces no output. `eBool`, Beguile's
+boolean-result type (§2.2), is declared this way by the runtime core.
 
 **Example**
 
@@ -1318,11 +1349,11 @@ is a compile-time error. The value is first **narrowed** with an ordinary cast `
 every member shares one machine word, the cast retypes the value without converting it; it is an
 assertion, and the author is responsible for having discriminated correctly.
 
-**Compatibility.** A value of type `T` is assignable to a union `U` when `T` is compatible with some
-member of `U`. A union `U₁` is assignable to a union `U₂` when every member of `U₁` is compatible with
-some member of `U₂`. A union is not assignable to a plain member type without a narrowing cast. In
-overload resolution a union parameter is the widest candidate: an exact or member-typed overload always
-wins, and the union catches only arguments whose static type is itself a union.
+**Compatibility.** A value fits a union when it fits one of the union's members: a `string` may be
+stored in a `string | func<void>`. One union fits another when each of its members fits the other: a
+`string | int` may be stored in a `string | int | func<void>`. A union does not fit one of its member
+types directly; narrow it first with a cast. When overloads compete, one that takes a union is chosen
+only if no more specific overload matches.
 
 **Example**
 
@@ -1362,7 +1393,7 @@ a function declared in the core, needs no `#include`, and works on both targets.
 - A scalar that happens to equal a valid object number, or a string or routine address, is reported as
   that reference category. A union mixing a scalar with a reference type, such as `int | string`, must
   be discriminated by the author's own test, then narrowed with a cast.
-- `nothing` and `null` report `eType.unknown`, as does any value whose category cannot be determined.
+- `null` reports `eType.unknown`, as does any value whose category cannot be determined.
 
 Objects and classes report `eType.object` and `eType.class`; a value's class is tested with
 `x.is(SomeClass)` (§21.5.6).
@@ -1420,8 +1451,9 @@ void show(stringOrRoutine v) {              // also accepts a string | func<void
 
 **Notes**
 
-The library bindings ship `stringOrRoutine`, with its `print` overload and an `isRoutine` member, for
-the I6 "string-or-routine" properties such as `description` (§21.5.10, §23.3.7).
+> **In the library.** The library bindings ship `stringOrRoutine`, with its `print` overload and an
+> `isRoutine` member, for the I6 "string-or-routine" properties such as `description` (§21.5.10,
+> §23.3.7).
 
 ## 2.9 Function Types
 
@@ -1439,10 +1471,15 @@ The `<` and `>` here are literal tokens enclosing the type arguments.
 type; the remaining arguments are the parameter types in order. A function with no parameters has type
 `func<⟨return type⟩>`; one returning nothing has `func<void, …>`.
 
-`func<>` is valid as a variable, parameter, return and member type, and as the element type of a
-generic collection, including nested forms such as `array<func<T>>`. A value of `func<>` type is
-called with ordinary call syntax, including through a member (`obj.handler(3)`) and through a
-`for…in` loop variable. The bare name `func` is compatible with every `func<…>` type (§2.11).
+`func<>` is valid wherever a type is: a variable, parameter, return or member type, and the element
+type of a collection, including nested forms such as `array<func<T>>`. A `func<>` value is called
+like a function, by writing the arguments after it, whether the value is held in a variable, a member
+or a loop variable.
+
+The name of a function, written without a call, is a function value whose type is the function's
+signature: `int twice(int n)` gives a `func<int, int>`. It may be stored in, passed to or returned as a
+`func<…>` of that signature; a different signature is a compile-time error. An overloaded name denotes
+several signatures and is not checked against the target.
 
 Function values are written as named functions (§6.1) or as lambda literals; lambda syntax and
 variable capture are in §4.14.
@@ -1454,60 +1491,36 @@ func<void, int> printer;    // takes one int, returns nothing
 func<int, int>  doubler;    // takes one int, returns int
 func<void>      callback;   // takes nothing, returns nothing
 
+int twice(int n) { return n * 2; }
+doubler = twice;            // a function name is a func value
+int x = doubler(4);         // → 8: called through a variable
+obj.handler(3);             // called through a member
+
 array<func<eVerdict>> rulebook = { ruleA, ruleB };
-for(func<eVerdict> r in rulebook) { eVerdict v = r(); … }
+for(func<eVerdict> r in rulebook) { eVerdict v = r(); … }   // called through a loop variable
 ```
 
-## 2.10 Class Types as Values
+**Notes**
+
+> **Lambdas.** A lambda literal (§4.14) is not checked against the `func<…>` type it is stored in; the
+> author is responsible for writing one whose parameters and result match.
+
+## 2.10 Type Rules
+
+The sections above describe individual types. The rules here apply across them: when a value of one
+type may be used where another is expected (§2.10.1), how a value converts from one type to another
+(§2.10.2), and what assigning a class-typed value does (§2.10.3).
+
+### 2.10.1 Type Compatibility
 
 **Description**
-
-Value and reference semantics concern classes with stored members: what a variable of the type holds,
-and what assignment copies. A class that does not derive from `object` (or otherwise from the
-runtime's root class `_bglObject`, §21.5.8) is a **value class**. A variable whose type is a class
-with stored members holds either the members themselves or a reference to an instance owned elsewhere:
-
-- A local of a value class type has **value semantics**: its members are zero-initialized at routine
-  entry, and assignment dispatches `operator =` on the class, copying members rather than aliasing. If
-  such a class has stored members and declares no `operator =`, assigning into a local of that type is
-  a compile-time error.
-- A class derived from `_bglObject`, including every class derived from `object`, has **reference
-  semantics**: the variable holds the instance, and assignment makes the variable refer to the
-  right-hand instance.
-- A class with no stored members has nothing to copy, and neither semantics applies. The veneer
-  classes `int`, `bool`, `char` and `string` (§8.2.5) derive from `_bglObject` but store nothing: a
-  variable of such a type holds the bare word, and assignment copies the word.
-- A local declared `ref` opts into reference semantics regardless of its class, and is bound with
-  `:=` (§3.7).
-
-Class parameters follow the same model; a `byVal class` opts a whole class into value semantics for
-parameter passing (§8.2.7).
-
-**Example**
-
-```bgl
-class Vec2 {
-    int x = 0; int y = 0;
-    void operator = (Vec2 v) { x = v.x; y = v.y; }
-}
-
-Vec2 unit;
-
-void doMath() {
-    Vec2 v;              // x = 0, y = 0 on entry
-    unit.x = 1;
-    v = unit;            // operator = copies the members
-}
-```
-
-## 2.11 Type Compatibility
 
 Compatibility is checked at every assignment, declaration initializer and function-call argument. A
 value of type `A` is compatible with a target of type `B` when any of the following holds, tested in
 order:
 
 1. **`var`** — either side is `var` (§2.6).
-2. **`null`** — the value is `nothing` or `null` (§2.5).
+2. **`null`** — the value is `null` (§2.5).
 3. **Assignment operator** — `B` declares an `operator =` that accepts `A`. Candidates are tried in
    this order, and the first found is used:
    1. an emitter whose parameter type is exactly `A`;
@@ -1522,11 +1535,11 @@ order:
       `operator = (int)`).
 4. **Exact match** — `A` and `B` are the same type.
 5. **Class hierarchy** — `A` inherits from `B`, directly or through a chain of base classes and
-   aliases. The reverse is not compatible: an `object` cannot be assigned to a `Room`.
-6. **Conversion operator** — `A` declares an implicit `operator()` returning `B` (§2.12); an emitter
+   aliases. The reverse is not compatible.
+6. **Conversion operator** — `A` declares an implicit `operator()` returning `B` (§2.10.2); an emitter
    conversion is preferred to a non-emitter one.
-7. **Generics** — `func` is compatible with every `func<…>`; `array` is compatible with every
-   `array<T>`.
+7. **Generic types** — a function name is compatible with a `func<…>` type of the same signature
+   (§2.9); an `array<T>` is compatible with an `array<U>` when `T` is compatible with `U`.
 8. **`bnum` widening** — `A` is a `bnum` and `B` is `int` (§2.7.3).
 9. **Unions** — `B` is a union with a member compatible with `A`, or both are unions and every member
    of `A` is compatible with some member of `B` (§2.8).
@@ -1535,44 +1548,75 @@ If none holds, the assignment or call is a compile-time error.
 
 **Example**
 
+Each rule, with a value it accepts and one it rejects.
+
 ```bgl
+// 1. var — either side
+var any = 5;
+int a = any;
+
+// 2. null — compatible with every type
+Dog d = null;
+
+// 3. assignment operator — float declares operator = (intLiteral)
+float n = 42;
+uint u = -1;                     // compile-time error: uint accepts no negative literal (§2.4.1)
+
+// 4. exact match
+bnum itemFlag { portable, fragile }
+enum direction { north, south }
+itemFlag f = fragile;
+itemFlag g = f;
+itemFlag h = north;              // compile-time error: a different enumeration
+
+// 5. class hierarchy
 class Animal : object { }
 class Dog : Animal { }
-class Celsius { int degrees = 0; int operator () { return degrees * 9 / 5 + 32; } }
-bnum itemFlag { portable, fragile }
 Dog rex { }
-void run(func f) { … }
+Animal pet = rex;                // a Dog is an Animal
+Dog d2 = pet;                    // compile-time error: an Animal need not be a Dog
 
-var any = 5;         int a = any;             // 1: var on either side
-object o = nothing;                            // 2: nothing is compatible with every type
-int n = 42;                                    // 3: int declares operator = (intLiteral)
-itemFlag f = fragile; itemFlag g = f;          // 4: exact match
-Animal pet = rex;                              // 5: class hierarchy; `Dog d = pet;` is an error
-Celsius t;           int degrees = t;          // 6: conversion operator
-func<int, int> fn;   run(fn);                  // 7: func accepts every func<…>
-int bits = portable | fragile;                 // 8: a bnum widens to int
-string | func<void> u = "hello";               // 9: a member of the union
+// 6. conversion operator
+class Celsius { int degrees = 0; int operator () { return degrees * 9 / 5 + 32; } }
+Celsius t;
+int degrees = t;                 // Celsius converts to int
+string s = t;                    // compile-time error: no conversion to string
+
+// 7. generic types
+void tick() { }
+func<void> callback = tick;      // tick's signature is func<void>
+func<int, int> bad = tick;       // compile-time error: a different signature
+array<int> numbers = { 1, 2 };
+array<string> words = numbers;   // compile-time error: int does not fit string
+
+// 8. bnum widening
+int bits = portable | fragile;   // a bnum widens to int
+itemFlag back = bits;            // compile-time error: int to bnum needs a cast (§2.7.3)
+
+// 9. unions
+string | func<void> v = "hello"; // a string is one of the members
+string | func<void> w = t;       // compile-time error: Celsius fits no member
 ```
 
-## 2.12 Conversion
+### 2.10.2 Conversion
 
 **Description**
 
 A type may declare a **conversion operator**, `operator()`, returning another type; the declaration
 syntax is in §9.4. A conversion is **implicit** by default: the compiler applies it during
 assignment, argument matching and operator resolution. A conversion qualified `explicit` is applied
-only at a cast site, `(⟨type⟩)expr`.
+only when the value is explicitly cast, as in `(string)t` below.
 
 A **pass-through conversion**, declared without a body, leaves the value unchanged and merely retypes it.
 A conversion written as a regular method rather than an emitter also fires on a bare read of a member
 of that type, which is the basis of property accessors (§9.9).
 
 Beyond conversion operators, a cast is required to narrow a union (§2.8), to convert `int` to a
-`bnum` or an `enum` to `int` (§2.7.3), and to convert between `int` and `float` (§2.3). The full cast
-syntax is in §4.11.
+`bnum` or an `enum` to `int` (§2.7.3), and to convert a `float` to an `int` (§2.3). An `int` converts
+to a `float` implicitly. The full cast syntax is in §4.11.
 
 **Priority.** The order in which an assignment operator, a conversion operator and the other
-compatibility rules are tried is stated once, in §2.11. Among overloads, an exact match wins over a
+compatibility rules are tried is described in §2.10.1. Among overloads, an exact match wins over a
 conversion match, which wins over a `var` fallback (§6.4).
 
 **Example**
@@ -1588,6 +1632,54 @@ Celsius t;
 int n = t;              // implicit conversion
 string s = t;           // compile-time error
 string u = (string)t;   // explicit cast
+```
+
+### 2.10.3 Value and Reference Semantics
+
+**Description**
+
+Assigning a class-typed value either copies it or shares it, depending on the class:
+
+- **Value semantics: the target gets a copy.** A class that does not derive from `object`, or
+  otherwise from the runtime's root class `_bglObject` (§21.5.8), is a **value class**. A local
+  variable of a value class holds its own members, zeroed when the routine starts. Assigning to it runs
+  the class's `operator =`, which copies the members; afterwards the two variables are independent. A
+  value class with stored members must declare `operator =` for such an assignment; without one it is
+  a compile-time error.
+- **Reference semantics: the target shares the instance.** A class derived from `_bglObject`, which
+  includes every class derived from `object`, has reference semantics. The variable refers to an
+  instance, and assignment makes it refer to the same instance as the right-hand side, so a change made
+  through either variable is seen through both.
+
+Two cases fall outside this:
+
+- A class with no stored members has nothing to copy. The veneer classes `int`, `bool`, `char` and
+  `string` (§8.2.5) are of this kind: a variable holds the bare value, and assignment copies it.
+- A local declared `ref` has reference semantics whatever its class, and is bound with `:=` (§3.7).
+
+Parameters follow the same model; a `byVal class` uses value semantics when passed as an argument
+(§8.2.7).
+
+**Example**
+
+```bgl
+class Vec2 {                         // a value class
+    int x = 0; int y = 0;
+    void operator = (Vec2 v) { x = v.x; y = v.y; }
+}
+class Marker : object { int x = 0; } // reference semantics
+Marker home { }
+Vec2 unit;
+
+void compare() {
+    Vec2 v;              // x = 0, y = 0 on entry
+    unit.x = 1;
+    v = unit;            // copies the members: v.x → 1
+    v.x = 5;             // unit.x is still 1
+
+    Marker m = home;     // m and home are the same instance
+    m.x = 5;             // home.x → 5
+}
 ```
 
 ---
@@ -1773,7 +1865,7 @@ a slot of that type is a compile-time error; the remedies are to declare `operat
 with no stored members have nothing to copy.
 
 **Reference slots.** A slot declared `ref` owns nothing; it names an instance owned elsewhere. It is
-empty (`nothing`) until bound, so `if (!slot)` distinguishes an unbound slot from a bound one. `ref` is
+empty (`null`) until bound, so `if (!slot)` distinguishes an unbound slot from a bound one. `ref` is
 valid on local variable declarations and on class and object members; on a parameter or on an `extern`
 or `const` declaration it is a compile-time error. A member whose type is its own class must be `ref`.
 
@@ -2202,11 +2294,11 @@ int wrong = cond ? 1 : "text";   // error: 'int|string' is not assignable to 'in
 
 All three operators are type-driven: the operand's type must declare an `operator ?()` emitter, whose
 result is the null test (the declaration is specified in §9.5; the BLR defines it for `object` as
-"not `nothing`" and for `string` as "non-zero handle"). Using them on a type without `operator ?()`
+"not `null`" and for `string` as "non-zero handle"). Using them on a type without `operator ?()`
 is a compile-time error.
 
 **`?.`** accesses a member or calls a method only if the left operand is non-null. In an expression,
-each `?.` step tests the value so far; if it is null the whole chain yields `nothing`, otherwise the
+each `?.` step tests the value so far; if it is null the whole chain yields `null`, otherwise the
 step proceeds. As a statement (`x?.remove();`) the operation runs only if the target is non-null. A
 plain `.` after a `?.` adds no guard: if the preceding `?.` yielded null, the member access runs on
 `null`; the result is undefined.
@@ -2271,7 +2363,7 @@ int a = ((library)obj.parent).shelves;     // instance member
 int b = ((Room)obj.parent).lit;            // class member
 ```
 
-**See also** §2.12 (conversion operators), §8.6 (inheritance and overriding).
+**See also** §2.10.2 (conversion operators), §8.6 (inheritance and overriding).
 
 ## 4.12 Address-of `&`
 
@@ -2310,7 +2402,7 @@ new ⟨type⟩(⟨args⟩)
 
 **Description**
 
-Allocates an instance of a pooled class and yields a reference to it, or `nothing` if the pool is
+Allocates an instance of a pooled class and yields a reference to it, or `null` if the pool is
 exhausted; the result must be checked before use. The arguments are passed to the class's `create()`
 method; if the class declares no `create`, `new ⟨type⟩()` is the only valid form. `new` on a class
 that is not pooled is a compile-time error. Pooled classes, pool size and the `create`/`destroy`
@@ -2321,7 +2413,7 @@ lifecycle are specified in §8.2.6; the `delete` statement in §5.15.
 ```bgl
 class Marble[10] : object { }
 Marble m = new Marble();
-if (m == nothing) print("The pool is exhausted.");
+if (m == null) print("The pool is exhausted.");
 ```
 
 **Notes**
@@ -2470,7 +2562,7 @@ A local variable declaration is a statement. The forms, including `auto`, are sp
 
 The left-hand side is a declared variable or a dotted member path. The assignment is permitted when
 the right-hand type is compatible with the left-hand type; the compatibility rules, tested in order,
-are in §2.11. Reference binding (`:=`) is specified in §3.7.
+are in §2.10.1. Reference binding (`:=`) is specified in §3.7.
 
 **Example**
 
@@ -2679,7 +2771,7 @@ body leaves the `switch` — at the top of the body or nested in a block within 
 lowering the switch takes. Because cases do not fall through, a `break` as the last statement of a
 case body does nothing; a `break` before the end of the body ends the case there, leaving the rest of
 it unreachable. A `break` inside a loop within a case body belongs to that loop. Case values
-are type-checked against the switch expression (§2.11): integer literals match an `int`, and an enum
+are type-checked against the switch expression (§2.10.1): integer literals match an `int`, and an enum
 value must be of the switch expression's enum type. When the switch expression is a `verb`, case
 values are verb names (§13.2).
 
@@ -2796,7 +2888,7 @@ classes are specified in §8.2.6; allocation with `new` in §4.13.
 
 ```bgl
 Marble m = new Marble();
-if (m != nothing) delete m;    // destroy() runs; the slot returns to the pool
+if (m != null) delete m;       // destroy() runs; the slot returns to the pool
 ```
 
 ## 5.16 `try` / `catch` / `throw`
@@ -2933,7 +3025,7 @@ A call is resolved in two steps:
 2. **Types.** Among candidates that match by arity, an exact type match for every argument wins over a
    match through an implicit conversion (`operator()`, §9.4), which wins over a match through `var`.
 
-Type compatibility itself is specified in §2.11.
+Type compatibility itself is specified in §2.10.1.
 
 **A reference is not a call.** A bare function name used as a value (`func<int,int> f = twice;`)
 must name exactly one routine. An overloaded name names the set, and nothing in a reference says
@@ -3686,7 +3778,7 @@ with statement bodies, and emitters. Instances are objects with their own storag
 
 A normal class that derives from neither `object` nor `_bglObject` (§21.5.8) is a **value class**:
 an instance holds its members directly, a local or member of the type is an instance in its own
-right, and assignment copies the members through the class's `operator =` (§2.10). A class derived
+right, and assignment copies the members through the class's `operator =` (§2.10.3). A class derived
 from `object` or `_bglObject` has reference semantics: a variable of the type holds a reference to an
 instance owned elsewhere. The term *value class* is used throughout this specification for the
 former.
@@ -3852,7 +3944,7 @@ constant, and the empty `[]` is the extern marker form (§8.2.2).
 
 A normal class may reserve a fixed number of instances by adding `[N]` after its name. Instances are
 then obtained and released with `new` (§4.13) and `delete` (§5.15). There is no dynamic allocation:
-`new` returns one of the `N` preallocated slots, or `nothing` when the pool is exhausted, and the pool
+`new` returns one of the `N` preallocated slots, or `null` when the pool is exhausted, and the pool
 never grows; the result of `new` must be tested before use.
 
 **Pool size.**
@@ -3891,7 +3983,7 @@ class marbleClass[10] : object {
 
 void Main(){
     marbleClass m = new marbleClass(5);     // create(5) runs; m.weight → 5
-    if(m == nothing) return;                // pool exhausted
+    if(m == null) return;                   // pool exhausted
     delete m;                               // destroy() runs, slot returns to the pool
 }
 ```
@@ -4518,9 +4610,9 @@ string s = rooms[0].description;        // member access on the element type
 
 A zero-parameter `operator ()` declares that a value of this class converts to `⟨type⟩`. The
 compatibility rules that decide *when* a conversion is applied — assignment, argument matching,
-operator resolution, casts — are in §2.11 and §2.12.
+operator resolution, casts — are in §2.10.1 and §2.10.2.
 
-- By default a conversion is **implicit** and is applied automatically wherever the rules of §2.11
+- By default a conversion is **implicit** and is applied automatically wherever the rules of §2.10.1
   allow. An `explicit` conversion applies only at an explicit cast `(T)expr` (§4.11). `explicit` is
   valid only on `operator ()` and cannot be combined with `const` or `static`.
 - The emitter form substitutes its body with `$self`/`$val` bound to the source value.
@@ -5015,7 +5107,7 @@ object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { ⟨m
 An object is declared at global scope. The name becomes a globally visible identifier usable wherever
 an `object`-typed value is expected. The body holds member declarations in the same form as a class
 body (§8.3.1): a member is written `Type name [= value];` and members are `;`-separated. A member
-with no initializer defaults to `0`, `false` or `nothing` according to its type.
+with no initializer defaults to `0`, `false` or `null` according to its type.
 
 The class an object instantiates is given in one of two equivalent ways. Using the class name as the
 type keyword (`ClassName Name { … }`) is the usual form. The inheritance form (`object Name : Base`)
@@ -9321,7 +9413,7 @@ Deriving from `_bglObject` gives a class with stored members **reference semanti
 
 `print(x)` dispatches on `_bglObject` as described in §21.4.
 
-**See also** §2.10, §8.2.
+**See also** §2.10.3, §8.2.
 
 ### 21.5.9 `eType` and `typeof()`
 
@@ -10767,7 +10859,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `move` | control (soft: inside `extend` of an array) | §12.11 |
 | `negativeIntLiteral` | type | §2.4 |
 | `new` | operator | §4.13 |
-| `nothing` | value, I6 | §2.5 |
+| `nothing` | I6 (the Inform 6 constant `null` is emitted as; not a Beguile word) | §2.5 |
 | `null` | value | §2.5 |
 | `object` | type, I6 | §11.2 |
 | `operator` | qualifier (operator member) | §9 |
@@ -10913,7 +11005,7 @@ in §9.1; the operators that must be declared as emitters are listed in §9.8. `
 | `&` `\|` `^` `<<` `>>` | Bitwise and shift | §4.5, §9.1 |
 | `&=` `\|=` `^=` `<<=` `>>=` | Compound bitwise assignment | §5.6 |
 | `++` `--` | Increment / decrement | §5.7, §9.7 |
-| `=` | Assignment | §5.5, §2.11 |
+| `=` | Assignment | §5.5, §2.10.1 |
 | `:=` | Reference binding (rebinding) | §3.7 |
 | `? :` | Ternary conditional | §4.9 |
 | `?` (postfix) | Query / null test (result `eBool`) | §4.10, §9.5 |
@@ -11236,7 +11328,7 @@ section with the full treatment.
 - **object-backed class** — A class whose instances are Inform 6 objects with storage of their own (a normal class, including a pooled one), as opposed to an emitter, alias or veneer class, whose instances are bare words or do not exist. See §8.2, §11.3.2.
 - **outer** — Inside a property accessor body, the host object the accessor is declared on, as distinct from `self`, the accessor instance itself; resolved at compile time and usable to read and write the host's other members. See §9.9.3.
 - **owned member** — A member whose type is a value class with stored members, declared without an initializer; each instance of the enclosing type gets its own backing instance, so the member is a live object rather than a bare slot. See §8.3.4.
-- **pass-through conversion** — A conversion operator declared without a body (`emitter T operator ();`): the value is left unchanged and merely retyped. See §2.12, §9.4.
+- **pass-through conversion** — A conversion operator declared without a body (`emitter T operator ();`): the value is left unchanged and merely retyped. See §2.10.2, §9.4.
 - **pooled class** — A class declared `class Name[N]`, which reserves `N` statically allocated instances that `new` and `delete` hand out and reclaim. See §8.2.6, §4.13.
 - **precompiler mode** — The compilation mode where the entry file is an `.inf` (Inform 6) file and Beguile is reached through `#bgl` islands. Contrast **default mode**. See §15.1.2.
 - **primary trigger** — The first dictionary word in a verb's first grammar line; the word an `extend V { grammar += … }` targets. See §13.2.3.
@@ -11260,7 +11352,7 @@ section with the full treatment.
 - **tracked buf** — With `<buf>` included, a sized `array<char>` that records its capacity and current length; its value behaves as an Inform 6 hybrid buffer. See §22.2.
 - **trigger word** — The dictionary word that begins a grammar line and selects its verb; a verb's first trigger word is its primary trigger. See §13.2.3, §13.4.
 - **typesealed** — A member qualifier that locks the member's type: a subclass or instance may re-initialize the member but not re-declare it with another type. See §8.2.8.
-- **value class** — A class that does not derive from `_bglObject` (and so not from `object`): a variable of the type holds the members themselves, is zero-initialized at routine entry, and is copied on assignment through the class's `operator =`. Contrast a class with reference semantics, whose variable holds an identity. See §2.10, §8.2.1, §21.5.8.
+- **value class** — A class that does not derive from `_bglObject` (and so not from `object`): a variable of the type holds the members themselves, is zero-initialized at routine entry, and is copied on assignment through the class's `operator =`. Contrast a class with reference semantics, whose variable holds an identity. See §2.10.3, §8.2.1, §21.5.8.
 - **veneer class** — A class declared `extern emitter class X : _bglObject`: a distinct Beguile type with no representation of its own, whose runtime value is the bare word it wraps; it adds a type and behavior but no storage. `int`, `char`, `uint` and `glulxImage` are veneer classes. See §8.2.5.
 - **word** — The machine's native integer unit: 16 bits on the Z-machine, 32 on Glulx. Every scalar value, reference and `array<T>` element other than an `array<char>` element occupies one word. See §2.2, Appendix J.
 
@@ -11268,7 +11360,7 @@ section with the full treatment.
 
 - **`$self` / `$val` / `$target` / `$host` / `$prop`** — Substitution tokens used inside emitter bodies: `$self` is the receiver (in an operator or assignment emitter on a member, the member's owner), `$val` the full receiver expression, `$target` an assignment's left-hand side, `$host` the object a proxy member is accessed on, and `$prop` an array property's name. See §7.3, Appendix G.
 - **`$opref(op)`** — A lookup, not a substitution: it yields a reference to the receiver type's operator `op` — the routine for a `static` operator, the property for an instance operator, `0` when the type publishes none — so that a shared runtime routine can apply a type's operation. See §7.3.1, §12.10, Appendix G.
-- **`_bglObject`** — The root base class of the BLR, from which `object`, the primitive wrappers and the IF-domain types derive. Deriving from it gives a class with stored members reference semantics (§2.10). See §8.2.5, §21.5.8.
+- **`_bglObject`** — The root base class of the BLR, from which `object`, the primitive wrappers and the IF-domain types derive. Deriving from it gives a class with stored members reference semantics (§2.10.3). See §8.2.5, §21.5.8.
 - **`_bgl…` / `bgl…`** — Identifier prefixes reserved for the runtime and for compiler-generated symbols. See §1.4.
 
 ---
@@ -11459,7 +11551,7 @@ and `clear()` come from `<array>`.
 | `name` | property (additive, on `object`) | core | §11.7.2, §21.5.2 |
 | `NO_ATTRIBUTE` | constant | core | §21.5.1 |
 | `n_obj` … `d_obj` (compass direction objects) | object (extern) | binding (`i6StandardLibrary`) | §23.3.4, §23.4 |
-| `nothing`, `null` | value | core | §2.5 |
+| `null` | value | core | §2.5 |
 | `noun`, `held`, `creature`, `topic`, `multi`, `multiheld`, `multiexcept`, `multiinside`, `special`, `anynumber`, `number`, `scope`, `reverse` | constant (`grammarToken` values) | binding | §13.4.2, §23.3.6 |
 | `noun`, `second`, `action`, `verb_word` | variable (extern; `action` is a `verb`) | binding | §23.3.4, §13.3 |
 | `object` | type | core | §2.2, §11 |

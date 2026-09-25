@@ -113,7 +113,7 @@ A call is resolved in two steps:
 2. **Types.** Among candidates that match by arity, an exact type match for every argument wins over a
    match through an implicit conversion (`operator()`, §9.4), which wins over a match through `var`.
 
-Type compatibility itself is specified in §2.11.
+Type compatibility itself is specified in §2.10.1.
 
 **A reference is not a call.** A bare function name used as a value (`func<int,int> f = twice;`)
 must name exactly one routine. An overloaded name names the set, and nothing in a reference says
