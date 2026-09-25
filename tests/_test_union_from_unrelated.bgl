@@ -1,0 +1,14 @@
+/*
+    _test_union_from_unrelated.bgl  (negative)
+    A value fits a union only when it fits one of the members (§2.8). A structural union has no
+    class, so an unrelated value used to be accepted by an initializer.
+*/
+// EXPECT_ERROR: Cannot assign value of type 'Celsius' to variable of type
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+class Celsius { int degrees = 0; }
+
+void main() {
+    Celsius t;
+    string | func<void> w = t;
+}

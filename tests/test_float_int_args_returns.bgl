@@ -1,0 +1,33 @@
+/*
+    test_float_int_args_returns.bgl
+    An int reaching a float through a call argument or a return must convert, as it does on
+    assignment. float's `operator = (int)` is the @numtof that turns 5 into 5.0; arguments and returns
+    used to skip it and hand over the raw int bits (5 arrived as a denormal, about 7e-45). The baseline
+    pins _bglFloatNumtof at each site: an int variable, an int literal, a method argument, and a
+    return from a float function.
+*/
+#beguilerSettings {
+    target = glulx;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+void takesFloat(float x) { print(x); }
+float fromInt(int n) { return n; }
+float fromLiteral() { return 7; }
+
+object meter {
+    float level;
+    void set(float v) { level = v; }
+}
+
+void main() {
+    int n = 5;
+    takesFloat(n);
+    takesFloat(7);
+    meter.set(n);
+    float a = fromInt(3);
+    float b = fromLiteral();
+    float f = 2.5;
+    takesFloat(f);             // already a float: passed unchanged
+}

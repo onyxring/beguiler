@@ -1,0 +1,11 @@
+/*
+    _test_return_type_mismatch.bgl  (negative)
+    A return value must fit the function's return type, as an assignment into that type would.
+    Returns of class and primitive types were not checked at all.
+*/
+// EXPECT_ERROR: Cannot return a value of type 'stringLiteral' from 'count', which returns 'int'
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+int count() { return "three"; }
+
+void main() { count(); }

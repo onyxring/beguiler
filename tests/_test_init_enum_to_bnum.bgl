@@ -1,0 +1,14 @@
+/*
+    _test_init_enum_to_bnum.bgl  (negative)
+    A declaration initializer is held to the same rule as a function argument: a value of one
+    enumeration does not initialize a variable of another.
+*/
+// EXPECT_ERROR: Cannot assign value of type 'direction' to variable of type 'itemFlag'
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+bnum itemFlag { portable, fragile }
+enum direction { north, south }
+
+void main() {
+    itemFlag f = north;
+}

@@ -1,0 +1,15 @@
+/*
+    _test_assign_int_to_bnum.bgl  (negative)
+    int to bnum needs an explicit cast (§2.7.3). An enumeration has no class, so the operator=
+    dispatch that type-checks assignment never ran for it and the int went in silently.
+*/
+// EXPECT_ERROR: Cannot assign value of type 'int' to variable of type 'itemFlag'
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+bnum itemFlag { portable, fragile }
+
+void main() {
+    int n = 2;
+    itemFlag f;
+    f = n;
+}

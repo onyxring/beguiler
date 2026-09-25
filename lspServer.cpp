@@ -3873,7 +3873,7 @@ enum SemanticTokenType {
 static const set<string> bglKeywords = {
     "if", "else", "for", "while", "do", "switch", "case", "default",
     "return", "break", "continue", "in", "to", "new", "try", "catch", "throw",
-    "print", "true", "false", "nothing", "self"
+    "print", "true", "false", "null", "self"
 };
 // Real declaration / member modifiers only. Class type names (object, int, bool, char,
 // string, verb, attribute, attributeList, array, etc.) are intentionally NOT in this set —

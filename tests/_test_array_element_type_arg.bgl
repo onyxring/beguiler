@@ -1,0 +1,14 @@
+/*
+    _test_array_element_type_arg.bgl  (negative)
+    Passing an array to an array<T> parameter compares element types: an array<int> is not an
+    array<string>.
+*/
+// EXPECT_ERROR: No overload of function 'takesWords' accepts these argument types
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+void takesWords(array<string> w) { }
+
+void main() {
+    array<int> numbers = {1, 2};
+    takesWords(numbers);
+}

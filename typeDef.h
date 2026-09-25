@@ -321,6 +321,7 @@ class functionDef:public typeMember, public typeDef{
                                    // referenced (called) somewhere in the final output; otherwise it evaporates.
                                    // The routine sits in superposition until a call "observes" it (see i6Emitter).
         bool isValueEmitter = false; // true for emitter values (no parens): expands inline as expression or statement
+        bool isLambda = false;     // a lambda literal's lifted routine
         bool isStatic = false;     // `static` method: no receiver, so it emits as a FREE I6 routine with a
                                    // mangled name rather than a property routine on the class. Permitted on
                                    // extern/emitter classes precisely because it needs no instance backing —
@@ -349,6 +350,12 @@ class enumValueDef:public abstractObject{
     public:
     int value;
 };
+// The value an enum member takes with no explicit `= N`, given the previous member's value. A bnum
+// doubles, restarting at 1 after a 0 (`none = 0, a, b` → 0, 1, 2) so later flags don't all collapse to 0.
+inline int nextEnumValue(bool isBnum, int prev){
+    if(!isBnum) return prev + 1;
+    return prev <= 0 ? 1 : prev << 1;
+}
 //the declaration of an enum type
 class enumDef:public typeDef{
     public:

@@ -195,6 +195,12 @@ bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject&
         if(retType != "void" && retType != "var")
             parsingError(format("Cannot return a value from void routine '{0}'", funcName));
     }
+    // A block-body lambda has no declared return type: its first `return` supplies it, and any later
+    // one is checked against that.
+    if(retExpr && currentFunc && currentFunc->isLambda && currentFunc->returnType.name.empty()
+       && !retExpr->resolvedType.empty())
+        currentFunc->returnType.name = literalBaseType(retExpr->resolvedType);
+    else if(retExpr && currentFunc) checkReturnValue(retExpr, currentFunc->returnType.name, funcName);
     returnStatement& rs = *(new returnStatement());
     rs.src = file.currentLocation();
     rs.returnExpression = retExpr ? retExpr->text() : "";
@@ -1768,6 +1774,15 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
     typeDef* leftType   = t.leftType;
     const bool lhsIsByteArray = t.lhsIsByteArray;
     a.emitterSelf = emitterSelfForLhs;  // always record $self for this assignment
+    if(leftType != nullptr && val != nullptr && !isBindAssign
+       && (classType == nullptr || leftType->name.find('<') != string::npos))
+        checkClasslessAssignable(val, leftType->name, "variable");
+    // An array variable's declared type is the bare `array`; its element type is on the declaration.
+    if(leftType != nullptr && val != nullptr && !isBindAssign
+       && (leftType->name == "array" || leftType->name == "rawarray")){
+        string elem = resolveArrayElementType(a.variableLeft, currentFunc, nullptr);
+        if(!elem.empty()) checkClasslessAssignable(val, leftType->name + "<" + elem + ">", "variable");
+    }
     // Only `:=` skips operator= dispatch — that is what rebinding means. A plain `=`
     // on a `ref` slot assigns THROUGH the reference: it dispatches the type's
     // operator= into whatever the slot currently points at, exactly as it would on a
@@ -1813,7 +1828,8 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                         auto* opFunc = dynamic_cast<functionDef*>(mm);
                         return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
                                && dynamic_cast<i6Block*>(opFunc->body)!=nullptr
-                               && getDispatchClass(opFunc->params[0]->type.name) == valCls;
+                               && getDispatchClass(opFunc->params[0]->type.name) == valCls
+                               && templateArgsFit(valueTypeName, leftType->name);
                     });
                     if(m){
                         auto* opFunc = dynamic_cast<functionDef*>(m);
@@ -2000,6 +2016,32 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
     assignExpr.variableLeft = target.variableLeft;
     typeDef* leftType   = target.leftType;
     classDef* classType = target.classType;
+
+    // `arr = { a, b };` replaces an array's contents: clear(), then the `+= { … }` per-element append.
+    // Both come from the <array> surface, as `+= { … }` alone already does.
+    if(!isBindAssign && file.peekToken().is(token::braceOpen)){
+        string aType = resolveIdentifierType(tok.value, func, body);
+        if(isWordArrayType(aType) || aType == "bytearray"){
+            classDef* ac = languageService.findClass(aType);
+            auto* clearFn = ac ? dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
+                auto* f = dynamic_cast<functionDef*>(m);
+                return f && f->name == "clear" && f->isEmitter && f->params.empty()
+                       && dynamic_cast<i6Block*>(f->body) != nullptr;
+            })) : nullptr;
+            if(clearFn == nullptr)
+                parsingError(format("Array '{0}' has no clear(), so a brace list cannot replace its contents.", tok.value));
+            emitterBindings cb;
+            cb.self = target.variableLeft; cb.val = target.variableLeft; cb.prop = "0";
+            cb.elemType = resolveArrayElementType(tok.value, func, body);
+            cb.trim = emitterTrim::wsSemi;
+            i6RawNode* clearNode = new i6RawNode();
+            clearNode->text = expandEmitterBody(dynamic_cast<i6Block*>(clearFn->body), cb) + ";";
+            clearNode->src = stmtLoc;
+            if(body != nullptr) body->statements.push_back(clearNode);
+            token append; append.value = "+="; append.tokenType = eTokenType::oper;
+            if(processArrayBracedCompound(tok, append, target.variableLeft, sc)) return false;
+        }
+    }
 
     // Interpolated string literal on RHS: var = $"..."
     if(file.peekToken(1).is("$") && file.peekToken(2).is(eTokenType::quote)){

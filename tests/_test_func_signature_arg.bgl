@@ -1,0 +1,14 @@
+/*
+    _test_func_signature_arg.bgl  (negative)
+    A function passed to a func<…> parameter must match its signature: `twice` takes and returns an
+    int, so it is not a func<void>.
+*/
+// EXPECT_ERROR: No overload of function 'takesCallback' accepts these argument types
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+int twice(int n) { return n * 2; }
+void takesCallback(func<void> c) { c(); }
+
+void main() {
+    takesCallback(twice);
+}

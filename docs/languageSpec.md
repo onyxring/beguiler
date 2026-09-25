@@ -1478,8 +1478,9 @@ or a loop variable.
 
 The name of a function, written without a call, is a function value whose type is the function's
 signature: `int twice(int n)` gives a `func<int, int>`. It may be stored in, passed to or returned as a
-`func<…>` of that signature; a different signature is a compile-time error. An overloaded name denotes
-several signatures and is not checked against the target.
+`func<…>` of that signature; a different signature is a compile-time error. A lambda (§4.14) is
+checked the same way: its parameter types are as written, and its return type is inferred from its
+body. An overloaded name denotes several signatures and is not checked against the target.
 
 Function values are written as named functions (§6.1) or as lambda literals; lambda syntax and
 variable capture are in §4.14.
@@ -1499,11 +1500,6 @@ obj.handler(3);             // called through a member
 array<func<eVerdict>> rulebook = { ruleA, ruleB };
 for(func<eVerdict> r in rulebook) { eVerdict v = r(); … }   // called through a loop variable
 ```
-
-**Notes**
-
-> **Lambdas.** A lambda literal (§4.14) is not checked against the `func<…>` type it is stored in; the
-> author is responsible for writing one whose parameters and result match.
 
 ## 2.10 Type Rules
 
@@ -10232,6 +10228,7 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 | `insert(pos, item)` | `bool` | Insert at `pos` (`0..length()`), shifting the rest right. False when full or `pos` is out of range. |
 | `remove(pos)` | `void` | Remove the element at `pos`, shifting the rest left. Out of range: no effect. |
 | `removeValue(item)` | `void` | Remove every element equal to `item`. |
+| `arr = { a, b }` | `void` | Replace the contents: `clear()`, then append each element of the list. |
 | `arr += item` / `arr += { a, b }` | `void` | Append one element, or each element of a list. |
 | `arr -= item` / `arr -= { a, b }` | `void` | `removeValue` for one element, or for each element of a list. |
 | `push(item)` | `void` | Insert at the front (position `0`). |

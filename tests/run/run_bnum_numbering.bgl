@@ -1,0 +1,24 @@
+/*  run_bnum_numbering — implicit bnum values never overlap.
+
+    Two ways they used to:
+      - after an explicit 0, doubling kept producing 0 — `none = 0, a, b` gave a = b = 0;
+      - `extend bnum` resumed at max + 1 — after 1, 2 it gave 3, overlapping both.
+    A shared-base bnum keeps its relaxed rule: explicit sub-field values need not be single bits.  */
+// EXPECT_OUTPUT: 0 1 2 | 1 2 4 8 | 8 16 | 1 3
+#beguilerSettings { target = z5; informName = "none"; }
+
+bnum withNone { none = 0, a, b }
+bnum grown { p, q }
+extend bnum grown { r, s }
+bnum fromFour { x = 4, y }
+extend bnum fromFour { z }
+bnum space { }
+bnum packed : space { lo = 0, mid = 1 }
+extend bnum packed { both = 3 }
+
+void main(){
+    print($"{(int)withNone.none} {(int)withNone.a} {(int)withNone.b} | ");
+    print($"{(int)grown.p} {(int)grown.q} {(int)grown.r} {(int)grown.s} | ");
+    print($"{(int)fromFour.y} {(int)fromFour.z} | ");
+    print($"{(int)packed.mid} {(int)packed.both}");
+}

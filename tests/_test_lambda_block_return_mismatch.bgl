@@ -1,0 +1,11 @@
+/*
+    _test_lambda_block_return_mismatch.bgl  (negative)
+    A block-body lambda's return type comes from its first `return` (§4.14), so one returning a string
+    does not fit a func<int, int>. It used to be typed `var` and fit any return type.
+*/
+// EXPECT_ERROR: Cannot assign value of type 'func<string,int>' to variable of type 'func<int,int>'
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+void main() {
+    func<int, int> label = (int x) => { return "many"; };
+}

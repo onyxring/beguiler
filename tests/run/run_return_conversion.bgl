@@ -1,0 +1,24 @@
+/*  run_return_conversion — a return value converts as an assignment would.
+
+    - A Celsius returned from an `int` function runs Celsius's implicit `operator()`; the check that
+      now covers returns would otherwise pass the object itself back as the int.
+    - A cast on a call result (`(Dog)find()`) retypes the result; it used to be dropped, so returning
+      it from a Dog function failed the new return check.  */
+// EXPECT_OUTPUT: 212 rex
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Celsius { int degrees = 100; int operator () { return degrees * 9 / 5 + 32; } }
+Celsius boiling;
+
+class Animal : object { }
+class Dog : Animal { }
+Dog rex { }
+
+int fahrenheit() { return boiling; }
+Animal find() { return rex; }
+Dog fetch() { return (Dog)find(); }
+
+void main() {
+    print($"{fahrenheit()} ");
+    if(fetch() == rex) print("rex");
+}

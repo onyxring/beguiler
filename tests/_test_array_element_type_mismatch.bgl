@@ -1,0 +1,12 @@
+/*
+    _test_array_element_type_mismatch.bgl  (negative)
+    An array<T> fits an array<U> only when T fits U. An array variable reads as the bare `array`, so
+    the element types were never compared and an array<int> initialized an array<string>.
+*/
+// EXPECT_ERROR: Cannot assign value of type 'array<int>' to variable of type 'array<string>'
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+void main() {
+    array<int> numbers = {1, 2};
+    array<string> words = numbers;
+}

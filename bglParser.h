@@ -909,6 +909,12 @@ class bglParser {
         static constexpr size_t kMaxEmitterDepth = 8;
     public:
         bool isTypeCompatible(string argType, string paramType);   // public: the LSP filters typed-argument completions with it
+        string funcValueType(const string& name);
+        static string literalBaseType(const string& t);
+        bool funcSignaturesCompatible(const string& argType, const string& paramType);
+        bool templateArgsFit(const string& valueType, const string& targetType);
+        string elementAwareType(const expression* e, functionDef* func, statementBlock* body);
+        bool genericValueFits(const expression* e, const string& targetType, functionDef* func, statementBlock* body);
     private:
         static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
         static std::vector<std::string> splitUnionType(const std::string& t);  // split a union name into its member type names
@@ -944,6 +950,9 @@ class bglParser {
         bool tryConsumePropertyClassReadChain(token first, functionDef* func, statementBlock* body,
                                               string& outEmission, string& outType);
         void applyArgConversions(vector<expression*>& args, functionDef* fd);
+        bool applyAssignOperatorAsValue(expression* e, const string& targetType);
+        void checkReturnValue(expression* e, const string& returnType, const string& fnName);
+        void checkClasslessAssignable(const expression* value, const string& targetType, const string& what);
         // Canonicalize a parsed argument list against a resolved function signature. Performs:
         //   (1) named-argument reordering, (2) default-value fill for trailing unspecified params,
         //   (3) source-type conversion via operator() on argument classes. Mutates all three

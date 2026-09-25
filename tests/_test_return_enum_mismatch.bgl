@@ -1,0 +1,14 @@
+/*
+    _test_return_enum_mismatch.bgl  (negative)
+    A return value is held to the same rule as an assignment: a function returning one enumeration
+    cannot return a value of another.
+*/
+// EXPECT_ERROR: Cannot return a value of type 'direction' from 'pick', which returns 'itemFlag'
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+bnum itemFlag { portable, fragile }
+enum direction { north, south }
+
+itemFlag pick() { return north; }
+
+void main() { pick(); }

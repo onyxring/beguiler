@@ -171,10 +171,11 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
         functionDef* savedFunc = currentFunc;
         currentFunc = &fd;
         openCompileContext(eCompileContext::codeBlock, lambdaBody);
+        fd.isLambda = true;   // its first `return` sets the return type (processReturnExpr)
         while(processNextStatement(fd) == false){}
         closeCompileContext(eCompileContext::codeBlock);
         currentFunc = savedFunc;
-        fd.returnType.name = hasReturn(lambdaBody) ? "var" : "void";
+        if(fd.returnType.name.empty()) fd.returnType.name = hasReturn(lambdaBody) ? "var" : "void";
     } else {
         // Single-expression body. Terminates at ';' (assignment RHS), ',' (next function
         // argument), or ')' (end of enclosing argument list). parseExpression's paren
@@ -197,7 +198,7 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
         ret.src = fd.src;
         ret.returnExpression = retExpr->text();
         lambdaBody->statements.push_back(&ret);
-        fd.returnType.name = retExpr->resolvedType.empty() ? "var" : retExpr->resolvedType;
+        fd.returnType.name = retExpr->resolvedType.empty() ? "var" : literalBaseType(retExpr->resolvedType);
     }
 
     // Restore outer scope context
@@ -1076,7 +1077,9 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
         if(isLambda){
             string lambdaName = parseLambdaExpr(func, body);
             expr->tokens.push_back(lambdaName);
-            expr->resolvedType = "func";
+            // Its signature, so a func<…> slot can check it: parameter types as written, the return
+            // type inferred (`var` for a block body, which then matches any return type).
+            expr->resolvedType = funcValueType(lambdaName);
             cur = exprNext(st);
             return ExprStep::Continue;
         }
@@ -1493,11 +1496,27 @@ bglParser::ExprStep bglParser::parseExprCall(ExprParseState& st, token& next){
         }
     }
     // Note: '(' was already consumed by exprNext(st) above
+    // A pending cast applies to the call's result — `(Dog)make()`. Without this the cast was dropped
+    // and the value kept the callee's declared return type.
+    string& castType = st.castType;
+    string pendingCast = castType;
+    castType = "";
+    size_t callStart = expr->tokens.size();
+    auto applyResultCast = [&]{
+        if(pendingCast.empty() || expr->tokens.size() <= callStart) return;
+        string callText;
+        for(size_t i = callStart; i < expr->tokens.size(); i++) callText += expr->tokens[i];
+        expr->tokens.resize(callStart);
+        expr->tokens.push_back(applyCastConversion(callText, expr->resolvedType, pendingCast));
+        expr->resolvedType = pendingCast;
+    };
     if(parseExprFunctionCall(expr, callName, isSelfCall, func, body)) {
+        applyResultCast();
         // Emitter was inlined — advance past the function call and continue
         cur = exprNext(st);
         return ExprStep::Continue;
     }
+    applyResultCast();
     return ExprStep::Advance;
 }
 

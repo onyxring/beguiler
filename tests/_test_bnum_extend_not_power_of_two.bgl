@@ -1,0 +1,12 @@
+/*
+    _test_bnum_extend_not_power_of_two.bgl  (negative)
+    An explicit bnum value must be 0 or a power of two, and `extend bnum` is held to the same rule as
+    the declaration. It used to skip the check, so an extension could add a value overlapping two flags.
+*/
+// EXPECT_ERROR: explicit value 3 is not a power of 2
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+bnum itemFlag { portable, fragile }
+extend bnum itemFlag { both = 3 }   // 3 = portable | fragile
+
+void main() { }

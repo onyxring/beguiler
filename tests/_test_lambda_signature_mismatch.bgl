@@ -1,0 +1,11 @@
+/*
+    _test_lambda_signature_mismatch.bgl  (negative)
+    A lambda's type is its signature: parameter types as written, the return type inferred from the
+    body. One taking an int does not fit a func<void>; lambdas used to fit any func<…>.
+*/
+// EXPECT_ERROR: Cannot assign value of type 'func<int,int>' to variable of type 'func<void>'
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+void main() {
+    func<void> callback = (int x) => x + 1;
+}

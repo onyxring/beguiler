@@ -1,0 +1,13 @@
+/*
+    _test_func_signature_mismatch.bgl  (negative)
+    A function name used as a value has its signature as its type, so a func<…> slot checks it. A
+    `void cb()` does not fit a func<int, int>; the name used to be accepted by any func<…>.
+*/
+// EXPECT_ERROR: Cannot assign value of type 'func<void>' to variable of type 'func<int,int>'
+#beguilerSettings{ target = Z5; informName = "none"; }
+
+void cb() { }
+
+void main() {
+    func<int, int> g = cb;
+}

@@ -1,0 +1,22 @@
+/*  run_array_brace_reassign — `arr = { … };` replaces an existing array's contents.
+
+    A brace list initialized an array at its declaration and `+= { … }` appended one, but `=` with a
+    brace list was rejected with a misleading type error, and `a = {};` reached Inform 6 verbatim.
+    It now clears the array, then appends each element.  */
+// EXPECT_OUTPUT: 3:345 1:c 0:
+#beguilerSettings { target = z5; informName = "none"; }
+
+void main(){
+    array<int> a[5] = {1, 2};
+    a = {3, 4, 5};
+    print($"{a.length()}:");
+    for(int x in a) print(x);
+
+    array<string> s = {"a", "b"};
+    s = {"c"};
+    print($" {s.length()}:");
+    for(string t in s) print(t);
+
+    a = {};
+    print($" {a.length()}:");
+}

@@ -261,6 +261,7 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
             string paramType = fd->params[i]->type.name;
             if(paramType == "var"){ usesVar = true; allExact = false; }
             else if(!argType.empty() && !isTypeCompatible(argType, paramType)) argsOk = false;
+            else if(!genericValueFits(args[i], paramType, currentFunc, nullptr)) argsOk = false;
             else {
                 // Exactness for the preference tiebreak normalizes a literal to the primitive it
                 // denotes (charliteral→char, intliteral→int): `'X'` is an exact match for a `char`
@@ -541,7 +542,7 @@ void bglParser::collectTypeCandidatesFromGlobals(const string& name, vector<Type
             // "func" and matches func<…> params). A *call* `name(args)` never reaches here;
             // it's handled by bindGlobalCall. So this lets `arr.filter(isEven)` bind like
             // `arr.filter((int x) => …)`. (void fd is unused here.)
-            ct = "func"; origin = format("global function '{0}'", g->name); isFn = true;
+            ct = funcValueType(fd->name); origin = format("global function '{0}'", g->name); isFn = true;
         }
         else if(auto* od = dynamic_cast<objectDef*>(g)){
             isObj = true;
@@ -1167,6 +1168,7 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
                     else if(argType == paramType) {} // exact
                     else if(isTypeCompatible(argType, paramType)) needsConversion = true;
                     else argsOk = false;
+                    if(argsOk && !genericValueFits(args[i], paramType, func, body)) argsOk = false;
                 }
                 if(argsOk){
                     if(usesVar){ if(varFallback == nullptr) varFallback = fd; }
@@ -2719,6 +2721,98 @@ bool bglParser::compatibleViaAssignmentOperator(const string& argType, const str
     return false;
 }
 
+// The type of a global function's NAME used as a value: its signature, `func<ret,param,…>`, so a
+// func<…> slot can check it. An overloaded name denotes a set, not one signature, so it stays the
+// unchecked `func` (as a lambda does).
+// The type a literal's pseudo-type stands for (`intLiteral` → `int`); any other type unchanged.
+string bglParser::literalBaseType(const string& t){
+    if(t == "intliteral" || t == "negativeintliteral") return "int";
+    if(t == "stringliteral") return "string";
+    if(t == "charliteral") return "char";
+    return t;
+}
+
+string bglParser::funcValueType(const string& name){
+    functionDef* only = nullptr;
+    for(typeDef* g : languageService.globals)
+        if(auto* fd = dynamic_cast<functionDef*>(g))
+            if(fd->name == name){ if(only) return "func"; only = fd; }
+    if(only == nullptr) return "func";
+    string t = "func<" + (only->returnType.name.empty() ? string("void") : only->returnType.name);
+    for(paramDef* p : only->params) t += "," + p->type.name;
+    return t + ">";
+}
+
+// Split `func<a,b<c,d>,e>` into its top-level type arguments.
+static vector<string> funcTypeArgs(const string& t){
+    vector<string> out;
+    size_t lt = t.find('<');
+    if(lt == string::npos || t.back() != '>') return out;
+    string inner = t.substr(lt + 1, t.size() - lt - 2);
+    int depth = 0; string cur;
+    for(char c : inner){
+        if(c == '<') depth++;
+        else if(c == '>') depth--;
+        if(c == ',' && depth == 0){ out.push_back(cur); cur.clear(); continue; }
+        if(c != ' ') cur += c;
+    }
+    out.push_back(cur);
+    return out;
+}
+
+// Two func<…> types match when they have the same number of type arguments and each position agrees:
+// the same type, `var` on either side, a type compatible in either direction, or a position the target
+// leaves as an unresolved type parameter (`T` in a generic method's `func<bool,T>`).
+// Whether a generic value's type arguments fit the target's: `array<int>` does not fit `array<string>`.
+// Each argument must be the same type, `var` on either side, compatible with the target's, or a
+// position the target leaves as an unresolved type parameter (`T`). Non-generic sides always fit.
+bool bglParser::templateArgsFit(const string& valueType, const string& targetType){
+    if(valueType.find('<') == string::npos || targetType.find('<') == string::npos) return true;
+    vector<string> a = funcTypeArgs(valueType), p = funcTypeArgs(targetType);
+    if(a.size() != p.size()) return false;
+    for(size_t i = 0; i < a.size(); i++){
+        if(a[i] == p[i] || a[i] == "var" || p[i] == "var") continue;
+        if(!languageService.isClassType(p[i]) && languageService.findEnum(p[i]) == nullptr
+           && p[i].find('<') == string::npos && p[i].find('|') == string::npos) continue;
+        if(!isTypeCompatible(a[i], p[i])) return false;
+    }
+    return true;
+}
+
+// An array variable reads as the bare `array` / `rawarray`; its element type lives on the declaration.
+// For a plain variable name, recover the full `array<T>` so element types can be compared.
+string bglParser::elementAwareType(const expression* e, functionDef* func, statementBlock* body){
+    const string& t = e->resolvedType;
+    if((t == "array" || t == "rawarray") && e->tokens.size() == 1){
+        const string& n = e->tokens[0];
+        if(!n.empty() && all_of(n.begin(), n.end(), [](char c){ return isalnum((unsigned char)c) || c == '_'; })){
+            string elem = resolveArrayElementType(n, func ? func : currentFunc, body);
+            if(!elem.empty()) return t + "<" + elem + ">";
+        }
+    }
+    return t;
+}
+
+// A generic target (`array<string>`) rejects a value whose type arguments don't fit it.
+bool bglParser::genericValueFits(const expression* e, const string& targetType, functionDef* func, statementBlock* body){
+    if(e == nullptr || targetType.find('<') == string::npos || targetType.rfind("func<", 0) == 0) return true;
+    return templateArgsFit(elementAwareType(e, func, body), targetType);
+}
+
+bool bglParser::funcSignaturesCompatible(const string& argType, const string& paramType){
+    if(argType == paramType) return true;
+    vector<string> a = funcTypeArgs(argType), p = funcTypeArgs(paramType);
+    if(a.empty() || p.empty() || a.size() != p.size()) return false;
+    for(size_t i = 0; i < a.size(); i++){
+        if(a[i] == p[i] || a[i] == "var" || p[i] == "var") continue;
+        if(!languageService.isClassType(p[i]) && languageService.findEnum(p[i]) == nullptr
+           && p[i].find('<') == string::npos && p[i].find('|') == string::npos && p[i] != "void") continue;
+        if(isTypeCompatible(a[i], p[i]) || isTypeCompatible(p[i], a[i])) continue;
+        return false;
+    }
+    return true;
+}
+
 bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     if(paramType == "var") return true;  // var accepts any type without checking
     if(argType == "var") return true;    // var is assignable to any type (untyped source)
@@ -2771,10 +2865,10 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     }
     // func<...> compatibility: a func value is compatible with any func<...> param type
     if(argType == "func" && paramType.rfind("func<", 0) == 0) return true;
-    if(argType.rfind("func<", 0) == 0 && paramType.rfind("func<", 0) == 0) return true;
+    if(argType.rfind("func<", 0) == 0 && paramType.rfind("func<", 0) == 0) return funcSignaturesCompatible(argType, paramType);
     // array<T> compatibility: array is compatible with array<T> param
     if(argType == "array" && paramType.rfind("array<", 0) == 0) return true;
-    if(argType.rfind("array<", 0) == 0 && paramType.rfind("array<", 0) == 0) return true;
+    if(argType.rfind("array<", 0) == 0 && paramType.rfind("array<", 0) == 0) return templateArgsFit(argType, paramType);
     // ObjectDef → object: every objectDef is implicitly an object, so any objectDef-typed
     // value is assignable to a parameter of type 'object'. Mirrors class-hierarchy compatibility
     // for instance objects that don't have an explicit class declaration.
@@ -2856,6 +2950,103 @@ void reorderNamedArgs(functionCallStatement& cs, functionDef* fd, function<bool(
 }
 
 
+// A value that reaches a bare-word type (an emitter class such as `float`) only through that type's
+// `operator =` must pass through it wherever it lands, not only at an assignment: `float`'s
+// `operator = (int)` is the @numtof that turns 5 into 5.0, and without it an argument or return value
+// arrives as the raw int bits. Applies when the operator is an emitter whose body is the single
+// statement `$target = <expr>`; <expr> is substituted for the value. Returns true if it rewrote `e`.
+// Enumerations, structural unions and func<…> types have no class, so the operator= dispatch that type-checks an
+// assignment or initializer never runs for them. Hold them to the same rule a function argument
+// meets: the value must be isTypeCompatible with the target. `what` names the target in the error.
+void bglParser::checkClasslessAssignable(const expression* value, const string& targetType, const string& what){
+    if(value == nullptr || targetType.empty()) return;
+    const string& valueType = value->resolvedType;
+    if(valueType.empty() || value->text() == "nothing") return;   // `null` fits every type
+    if(!genericValueFits(value, targetType, currentFunc, nullptr))
+        parsingError(format("Cannot assign value of type '{0}' to {1} of type '{2}'",
+                            typeDisplayName(elementAwareType(value, currentFunc, nullptr)), what, typeDisplayName(targetType)));
+    if(languageService.findEnum(targetType) == nullptr && !isUnionType(targetType)
+       && targetType.rfind("func<", 0) != 0) return;
+    if(!isTypeCompatible(valueType, targetType))
+        parsingError(format("Cannot assign value of type '{0}' to {1} of type '{2}'",
+                            typeDisplayName(valueType), what, typeDisplayName(targetType)));
+}
+
+// A `return` value is held to the rule an assignment into the return type meets, and converted the same
+// way: through the return type's `operator =` (int → float), or an implicit conversion operator on the
+// value's type (a Celsius returned as int). `fnName` names the function in the error.
+void bglParser::checkReturnValue(expression* e, const string& returnType, const string& fnName){
+    if(e == nullptr || looseIdentifierMode) return;
+    if(returnType.empty() || returnType == "void" || returnType == "var") return;
+    const string valueType = e->resolvedType;
+    if(valueType.empty() || valueType == "var" || valueType == "void" || e->text() == "nothing") return;
+    applyAssignOperatorAsValue(e, returnType);
+    auto fail = [&](const string& shown){
+        parsingError(format("Cannot return a value of type '{0}' from '{1}', which returns '{2}'",
+                            typeDisplayName(shown), fnName, typeDisplayName(returnType)));
+    };
+    if(!genericValueFits(e, returnType, currentFunc, nullptr)) fail(elementAwareType(e, currentFunc, nullptr));
+    if(e->resolvedType == returnType) return;
+    if(!isTypeCompatible(e->resolvedType, returnType)) fail(e->resolvedType);
+    // Compatible through the value's own implicit conversion operator: apply it, as an assignment does.
+    if(classDef* cls = getDispatchClass(e->resolvedType))
+        if(findMemberInHierarchy(cls, [&](typeMember* m){
+               auto* fn = dynamic_cast<functionDef*>(m);
+               return fn && fn->name == "operator()" && fn->params.empty() && !fn->isExplicit
+                      && fn->returnType.name == returnType;
+           })){
+            string converted = applyCastConversion(e->text(), e->resolvedType, returnType);
+            e->tokens.clear();
+            e->tokens.push_back(converted);
+            e->resolvedType = returnType;
+        }
+}
+
+bool bglParser::applyAssignOperatorAsValue(expression* e, const string& targetType){
+    if(e == nullptr) return false;
+    const string argType = e->resolvedType;
+    if(argType.empty() || argType == "var" || targetType.empty() || targetType == "var" || argType == targetType)
+        return false;
+    classDef* cls = getDispatchClass(targetType);
+    if(cls == nullptr || !cls->isEmitterClass) return false;
+    auto isAssignEmitter = [](typeMember* m){
+        auto* fn = dynamic_cast<functionDef*>(m);
+        return fn && fn->name == "=" && fn->isEmitter && fn->params.size() == 1
+               && dynamic_cast<i6Block*>(fn->body) != nullptr;
+    };
+    auto* op = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [&](typeMember* m){
+        return isAssignEmitter(m) && dynamic_cast<functionDef*>(m)->params[0]->type.name == argType;
+    }));
+    if(op == nullptr)
+        op = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [&](typeMember* m){
+            if(!isAssignEmitter(m)) return false;
+            const string& pt = dynamic_cast<functionDef*>(m)->params[0]->type.name;
+            return pt != "var" && pt != targetType && isTypeCompatible(argType, pt);
+        }));
+    if(op == nullptr) return false;
+    string body = dynamic_cast<i6Block*>(op->body)->i6Body;
+    size_t a = body.find_first_not_of(" \t\r\n");
+    if(a == string::npos || body.compare(a, 7, "$target") != 0) return false;
+    size_t eq = body.find_first_not_of(" \t", a + 7);
+    if(eq == string::npos || body[eq] != '=' || (eq + 1 < body.size() && body[eq + 1] == '=')) return false;
+    string rhs = body.substr(eq + 1);
+    size_t z = rhs.find_last_not_of(" \t\r\n;");
+    if(z == string::npos) return false;
+    rhs = rhs.substr(0, z + 1);
+    if(rhs.find(';') != string::npos) return false;   // more than one statement: not a plain value
+    i6Block tmp; tmp.i6Body = rhs;
+    emitterBindings bind;
+    bind.fn = op; bind.args = { e->text() };
+    bind.val = e->text();
+    bind.trim = emitterTrim::wsSemi;
+    string b = expandEmitterBody(&tmp, bind);
+    if(b.empty()) return false;
+    e->tokens.clear();
+    e->tokens.push_back(b);
+    e->resolvedType = targetType;
+    return true;
+}
+
 void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef* fd){
     for(size_t i = 0; i < args.size() && i < fd->params.size(); i++){
         string argType = args[i]->resolvedType;
@@ -2879,12 +3070,16 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
         if(paramType == "var" || argType == paramType || argType.empty()) continue;
         // Look for conversion operator on arg's class
         classDef* argCls = getDispatchClass(argType);
-        if(argCls == nullptr) continue;
+        if(argCls == nullptr){ applyAssignOperatorAsValue(args[i], paramType); continue; }
         typeMember* found = findMemberInHierarchy(argCls, [&](typeMember* m){
             auto* fn = dynamic_cast<functionDef*>(m);
             return fn && fn->name == "operator()" && fn->params.empty() && fn->isEmitter && !fn->isExplicit && fn->returnType.name == paramType && dynamic_cast<i6Block*>(fn->body) != nullptr;
         });
-        if(found){
+        if(!found){
+            applyAssignOperatorAsValue(args[i], paramType);
+            continue;
+        }
+        {
             auto* fn = dynamic_cast<functionDef*>(found);
             auto* blk = dynamic_cast<i6Block*>(fn->body);
             // $self = host of property access (parentProp's `parent($self)` etc.).

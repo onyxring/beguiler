@@ -255,6 +255,7 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 | `insert(pos, item)` | `bool` | Insert at `pos` (`0..length()`), shifting the rest right. False when full or `pos` is out of range. |
 | `remove(pos)` | `void` | Remove the element at `pos`, shifting the rest left. Out of range: no effect. |
 | `removeValue(item)` | `void` | Remove every element equal to `item`. |
+| `arr = { a, b }` | `void` | Replace the contents: `clear()`, then append each element of the list. |
 | `arr += item` / `arr += { a, b }` | `void` | Append one element, or each element of a list. |
 | `arr -= item` / `arr -= { a, b }` | `void` | `removeValue` for one element, or for each element of a list. |
 | `push(item)` | `void` | Insert at the front (position `0`). |

@@ -194,10 +194,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
             sep=file.getToken({token::braceClose, token::comma});
         }
         newVal.value=val;
-        if(isBnum)
-            val<<=1;
-        else
-            val++;
+        val = nextEnumValue(isBnum, val);
         newEnum.namedValues.push_back(&newVal);
         if(sep.is(token::braceClose)) break;
     }
@@ -403,6 +400,10 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                                     "Use a '{{ ... }}' element list here, or assign it inside a routine.",
                                     arrDecl.name));
             } else {
+                string target = (string)dataType + "<" + elementType + ">";
+                if(!elementType.empty() && !genericValueFits(expr, target, func, body))
+                    parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'",
+                        typeDisplayName(elementAwareType(expr, func, body)), typeDisplayName(target)));
                 arrDecl.declaredExpressionValue = expr;
             }
         }
@@ -617,6 +618,8 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
     // getDispatchClass (not getType) so a template-typed LHS (`array<int> keep = chain;`)
     // reaches operator= dispatch — this is the primary array copy-on-assign capture form.
     classDef* classType=getDispatchClass((string)dataType);
+    if((classType == nullptr || ((string)dataType).find('<') != string::npos) && rhs != nullptr && !isRef)
+        checkClasslessAssignable(rhs, (string)dataType, "variable");
     if(classType != nullptr && rhs != nullptr && !isRef){
         string valueTypeName = rhs->resolvedType;
         if(!valueTypeName.empty()){
@@ -638,7 +641,8 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
                 if(valCls != nullptr) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
                     auto* fn = dynamic_cast<functionDef*>(m);
                     return fn && fn->name=="=" && fn->params.size()==1
-                           && getDispatchClass(fn->params[0]->type.name) == valCls;
+                           && getDispatchClass(fn->params[0]->type.name) == valCls
+                           && templateArgsFit(valueTypeName, (string)dataType);
                 }));
                 // Note: the declaration-init path has no upcast pass, so an array<char>
                 // (byteArray) RHS never matches array<T>'s copy operator= here (byteArray's

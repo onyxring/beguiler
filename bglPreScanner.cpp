@@ -614,9 +614,15 @@ void bglParser::preScanExtend(token& tok){
         string nameStr = nameTok.value;
         enumDef* ex = languageService.findEnum(nameStr);
         if(ex != nullptr){   // a pre-scan stub is fine — it just means forward-declared
-            // Continue auto-numbering from the current max; explicit `= N` overrides.
+            // Continue auto-numbering past the current max; explicit `= N` overrides. A bnum resumes at
+            // the next unused bit — max + 1 would overlap existing flags (after 1, 2 it would give 3).
+            isBnum = ex->isBnum;
+            bool hasBase = ex->baseBnum != nullptr;
+            int maxVal = 0;
+            for(enumValueDef* v : ex->namedValues) if(v->value > maxVal) maxVal = v->value;
             int val = 1;
-            for(enumValueDef* v : ex->namedValues) if(v->value >= val) val = v->value + 1;
+            if(isBnum) while(val <= maxVal) val <<= 1;
+            else for(enumValueDef* v : ex->namedValues) if(v->value >= val) val = v->value + 1;
             file.getToken(); // consume '{'
             token t = file.getToken();
             while(t.isNot(token::braceClose) && t.isNot(eTokenType::eof)){
@@ -642,10 +648,14 @@ void bglParser::preScanExtend(token& tok){
                     if(file.peekToken().is("-")){ file.getToken(); negate = true; }
                     token numTok = file.getToken(eTokenType::integer);
                     val = stoi(numTok.value); if(negate) val = -val;
+                    if(isBnum && negate)
+                        parsingError(format("bnum '{0}': negative value {1} is not allowed", ex->dName(), val));
+                    if(isBnum && !hasBase && val != 0 && (val & (val - 1)) != 0)
+                        parsingError(format("bnum '{0}': explicit value {1} is not a power of 2", ex->dName(), val));
                     t = file.getToken({token::braceClose, token::comma});
                 }
                 ev.value = val;
-                if(isBnum) val <<= 1; else val++;
+                val = nextEnumValue(isBnum, val);
                 ex->namedValues.push_back(&ev);
                 if(t.is(token::comma)) t = file.getToken();
             }
@@ -1083,7 +1093,7 @@ void bglParser::preScanEnum(token& tok, bool isExtern){
                 t = file.getToken({token::braceClose, token::comma});
             }
             ev.value = val;
-            if(isBnum) val <<= 1; else val++;
+            val = nextEnumValue(isBnum, val);
             newEnum.namedValues.push_back(&ev);
             if(t.is(token::comma)) t = file.getToken();
         }
