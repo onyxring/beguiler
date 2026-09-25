@@ -64,8 +64,8 @@ extend _bglUi {
     #endif
     }
 
-    /// Wait for one key press and return it. Prints `separator` first if given — a "[MORE]" line,
-    /// say. Reads from the status window where there is one, so the caret appears in the right place.
+    /// Wait for one key press and return it. Prints `separator` first if given - a "[MORE]" line,
+    /// for example.
     char waitForKey(string separator=null){
     
     if(separator !=null) {

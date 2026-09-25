@@ -543,7 +543,7 @@ class bglParser {
         // the stub under the BEGUILE name the clause supplies rather than the I6 symbol declared
         // before it. Reports nothing — the main pass owns the diagnostics.
         void preScanI6NameClause(string& nameStr);
-        void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "", bool isRef = false);
+        void processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace = false, string i6alias = "", bool isRef = false, string docComment = "");
         void processInheritedMember(objectDef& obj, token nameTok);
         bool processGrammarObjectDeclaration(const string& name);  // grammar object with grammarRule members
         vector<grammarLine> parseGrammarLines();
@@ -907,7 +907,9 @@ class bglParser {
         // a chain past kMaxEmitterDepth is a runaway. Both are errors rather than a stack overflow.
         vector<const i6Block*> emitterExpansionChain;
         static constexpr size_t kMaxEmitterDepth = 8;
-        bool isTypeCompatible(string argType, string paramType);
+    public:
+        bool isTypeCompatible(string argType, string paramType);   // public: the LSP filters typed-argument completions with it
+    private:
         static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
         static std::vector<std::string> splitUnionType(const std::string& t);  // split a union name into its member type names
         // Canonical name for a union of these members: flattened, sorted and deduped, so the same

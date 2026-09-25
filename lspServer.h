@@ -82,7 +82,7 @@ private:
                                             const std::string& lower, const std::string& ownerName);
     // Hover case: `owner.member` — resolve the owner chain, then the member on it.
     std::string hoverDottedMember(const std::string& uri, int line, const std::string& lower,
-                                  const std::string& ownerName);
+                                  const std::string& ownerName, std::string& docComment);
     // Hover case: a bare identifier — locals, params, class members, globals, verbs, enum values.
     std::string hoverIdentifier(const std::string& uri, int line, const std::string& word,
                                 const std::string& lower, const std::string& ownerName,
@@ -101,6 +101,9 @@ private:
     // Completion case: a call argument whose parameter type is an enum -> that enum's members.
     json completeEnumArgument(const std::string& uri, int line, int col, const std::string& lineText,
                               const std::string& docText, bool& handled);
+    // Completion case: a typed (non-enum) call argument -> in-scope symbols assignable to that type.
+    json completeTypedArgument(const std::string& uri, int line, int col, const std::string& lineText,
+                               const std::string& docText, bool& handled);
     // Completion case: `#include <...>` beguiLib library names.
     json completeAngleInclude(int line, int col, const std::string& lineText, bool& handled);
     // Completion case: class-header inheritance position (`class Foo : |`, `alias class Foo for |`).
@@ -188,6 +191,12 @@ private:
     // print-rule `img` brought in by `#using bgl.printRules`). Empty when none resolve.
     std::vector<objectDef*> activeUsingNamespaces(const std::string& docText, int line);
 
+    // Every function a call site could name — all overloads. `objName` may be a dotted namespace
+    // path (`bgl.ui` for `bgl.ui.waitForKey(`), walked via walkNamespacePath.
+    std::vector<functionDef*> resolveCallees(const std::string& uri, int line, const std::string& funcName,
+                                             const std::string& objName, const std::string& docText);
+    // Walk a lowercased dotted namespace path (`bgl.printrules`) to its objectDef; nullptr if unresolved.
+    objectDef* walkNamespacePath(const std::string& path);
     // Resolve a call site to the parameter list of its (first) matching callee. `funcName` is
     // the called identifier; `objName` is the receiver for a `recv.method(` member call (empty
     // for a bare call). Checks, in order: member methods (when objName is set), global functions,

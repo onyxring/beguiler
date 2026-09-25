@@ -1317,6 +1317,8 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
         funcDef.i6name = i6alias;
     funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
     funcDef.returnType = languageService.getType((string)returnType);
+    if(!returnType.docComment.empty())   funcDef.docComment = returnType.docComment;
+    else if(!name.docComment.empty())    funcDef.docComment = name.docComment;
     processParameterList(funcDef);
     consumeMethodI6Alias(funcDef);      // `Type method(...) as <i6name> { … }` (§3.11)
     file.getToken(token::braceOpen);
@@ -1396,9 +1398,10 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
 }
 
 
-void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace, string i6alias, bool isRef){
+void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace, string i6alias, bool isRef, string docComment){
     variableDeclaration& prop = *(new variableDeclaration());
     prop.name = name;
+    prop.docComment = docComment;
     prop.i6name = i6alias;  // `Type member as <i6name>;` — emitted I6 property short-name (empty = use Beguile name)
     prop.src = file.currentLocation();
     prop.type = languageService.getType(typeName);
@@ -1582,7 +1585,8 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
     if(sym.is(token::parenOpen))
         processMemberMethod(obj, typeTok, propName, isReplace, i6alias);
     else
-        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment), isReplace, i6alias, isRef);
+        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment), isReplace, i6alias, isRef,
+                              typeTok.docComment.empty() ? propName.docComment : typeTok.docComment);
 }
 
 
@@ -1717,7 +1721,7 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
         return;
     }
     bool hasValue = file.getToken({token::assignment, token::endStatement}).is(token::assignment);
-    processMemberVariable(obj, propTypeName, nameTok.value, hasValue);
+    processMemberVariable(obj, propTypeName, nameTok.value, hasValue, false, "", false, nameTok.docComment);
 }
 
 
