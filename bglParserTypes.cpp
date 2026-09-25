@@ -1987,7 +1987,7 @@ optional<string> bglParser::qualifyDottedViaObjectHead(const DottedPath& p, func
                     // every such property into a compile-time redirect: `door.target` emitted
                     // `hallway`, so `door.target = kitchen;` assigned to the object symbol and every
                     // read ignored the property's storage.
-                    string initName = vd->isAlias && vd->declaredExpressionValue
+                    string initName = vd->isNamespaceAlias() && vd->declaredExpressionValue
                                     ? vd->declaredExpressionValue->text() : "";
                     if(!initName.empty())
                         if(auto* od = languageService.findGlobalAs<objectDef>(initName))
@@ -3163,7 +3163,7 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
                 if(!vd || vd->name != head) continue;
                 // Follow the member to find the target object by initializer name — an `alias`
                 // member only; see qualifyDottedViaObjectHead.
-                string initName = vd->isAlias && vd->declaredExpressionValue
+                string initName = vd->isNamespaceAlias() && vd->declaredExpressionValue
                                 ? vd->declaredExpressionValue->text() : "";
                 if(!initName.empty())
                     if(auto* od = languageService.findGlobalAs<objectDef>(initName)) curObj = od;
@@ -3224,7 +3224,7 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
             string nextType = vd->type.name;
             // Only an `alias` member redirects to the object its initializer names; an ordinary
             // property with an object-valued default is storage, and its type is its own.
-            string initName = vd->isAlias && vd->declaredExpressionValue
+            string initName = vd->isNamespaceAlias() && vd->declaredExpressionValue
                             ? vd->declaredExpressionValue->text() : "";
             curObj = nullptr;
             // Try init name first (e.g., auto glulx = _bglGlulx → initName="_bglglulx")
@@ -3437,9 +3437,9 @@ bool bglParser::tryConsumeNamespacedEnumValue(token first, string& outFlatEmissi
             // Following a property's initializer here made this diagnostic claim the path and
             // then reject it, because a class method is not among the target object's own members.
             objectDef* next = nullptr;
-            if(foundMember->isAlias && foundMember->declaredExpressionValue)
+            if(foundMember->isNamespaceAlias() && foundMember->declaredExpressionValue)
                 next = languageService.findGlobalAs<objectDef>(foundMember->declaredExpressionValue->text());
-            if(!next && foundMember->isAlias)
+            if(!next && foundMember->isNamespaceAlias())
                 next = languageService.findGlobalAs<objectDef>(foundMember->type.name);
             if(!next) return false;  // not a namespace step — let normal handling proceed
             curObj = next;

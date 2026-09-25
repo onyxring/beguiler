@@ -1995,6 +1995,7 @@ void bglParser::parseAliasMember(token aliasName, std::vector<typeMember*>& memb
             parsingError(format("alias member '{0}': '{1}' is not a declared object or class",
                 aliasName.value, rhs.originalValue.empty() ? rhs.value : rhs.originalValue));
         aliasDef.type = languageService.getType(rhs.value);
+        aliasDef.isValueAlias = true;
         if(rhsObj){
             // Object value alias: dispatch resolves through the objectDef redirect, which reads
             // declaredExpressionValue for the target object name.

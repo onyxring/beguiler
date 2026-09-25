@@ -261,6 +261,8 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         bool isInline = false;   // `inline` member: participates (in declaration order) in the positional
                                  // form of inline object construction — `Type{ v1, v2, ... }` (§6.2.1).
         bool isAlias = false;    // type alias member: `alias name for Type;` — compile-time type reference, no I6 backing
+        bool isValueAlias = false; // value alias member: `alias name = objectOrClass;` — a namespace hook, no I6 backing
+        bool isNamespaceAlias() const { return isAlias || isValueAlias; }  // either form: a path through it redirects
         bool isTypeSealed = false; // `typesealed` base-class member: subclass/instance re-declarations keep this type (and warn)
         bool isAdditive = false;   // `additive` file-scope `property` decl: emits I6 `Property additive foo;`
                                    // so the slot accumulates values across the class hierarchy instead of overriding

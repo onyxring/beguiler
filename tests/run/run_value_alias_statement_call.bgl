@@ -1,0 +1,25 @@
+/*  run_value_alias_statement_call — a call STATEMENT through a value-alias namespace hook.
+
+    `alias sub = impl;` hangs an object off a namespace (§10.2), the shape of `bgl.ui`. Reaching a
+    method through it must emit a send to the target object. As an expression it did; as a bare
+    statement (`ns.sub.bump();`) the path was emitted verbatim, and I6 rejected `ns.sub` as an
+    unknown constant — so `bgl.ui.waitForKey("---");` failed to compile.  */
+// EXPECT_OUTPUT: n=3 got=4
+#beguilerSettings { target = z5; informName = "none"; }
+
+object impl {
+    int n;
+    void bump(){ n = n + 1; }
+    int next(){ n = n + 1; return n; }
+}
+object ns { }
+extend ns { alias sub = impl; }
+
+void main(){
+    ns.sub.bump();                 // statement form
+    ns.sub.bump();
+    ns.sub.bump();
+    print($"n={impl.n} ");
+    int got = ns.sub.next();       // expression form
+    print($"got={got}");
+}

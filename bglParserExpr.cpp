@@ -2361,7 +2361,7 @@ bglParser::ExprStep bglParser::parseExprMemberRead(ExprParseState& st, token& me
                         // An `alias` member redirects to the object it names; an ordinary property
                         // with an object-valued default is storage, and reading it must read the
                         // property. See qualifyDottedViaObjectHead (bglParserTypes.cpp).
-                        string initName = vd->isAlias && vd->declaredExpressionValue
+                        string initName = vd->isNamespaceAlias() && vd->declaredExpressionValue
                                         ? vd->declaredExpressionValue->text() : "";
                         objectDef* target = nullptr;
                         if(!initName.empty())
