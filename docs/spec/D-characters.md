@@ -43,7 +43,8 @@ An unescaped `^` in a string is a newline and an unescaped `~` is a double quote
 | `\$`*XX* | the character with hexadecimal code *XX* |
 
 Both forms consume every consecutive digit (or hexadecimal digit) after the prefix. The code is a
-Unicode code point and is rendered on both targets.
+Unicode code point. Glulx renders any code point; the Z-machine renders only the characters in its
+character set (§D.5), and any other code is a compile-time error.
 
 ```bgl
 "na\239ve"     // → naïve
@@ -105,13 +106,18 @@ be one of the ZSCII extended characters (codes 155 to 224):
 | ligatures and letters | æ Æ ç Ç þ Þ ð Ð œ Œ ß |
 | punctuation | £ ¡ ¿ |
 
-Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6.
+Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6 and, on
+Glulx, the characters described below.
 
 ```bgl
 "café"
 'ñ'
 .café
 ```
+
+> **[Glulx]** Glulx text is Unicode, so any character may be typed directly into a string literal or an
+> interpolated string literal: `"© 2027 — ✓"`. A character literal and a dictionary word still take only
+> the characters in the table above.
 
 ## D.6 Typographic Quotes and the Backtick
 

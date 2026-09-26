@@ -793,6 +793,19 @@ class bglParser {
         struct TypeCandidate { string type; string origin; bool isEnum; bool isObject = false; bool isFunction = false; };
         // One file-scope match for qualifyIdentifier: also carries the I6 emission to use.
         struct QualifyCandidate { string qualified; string type; string origin; bool isEnum; bool isObject = false; bool isFunction = false; };
+        // When the expected type is an enumeration: the enum candidates that fit it, provided no
+        // non-enum candidate does. Empty otherwise — the caller keeps its usual rules.
+        bool expectedTypeIsEnum();
+        template<class C> vector<C> enumCandidatesFittingExpected(const vector<C>& candidates){
+            vector<C> keep;
+            if(!expectedTypeIsEnum()) return keep;
+            for(auto& c : candidates){
+                if(!isTypeCompatible(c.type, currentExpectedType)) continue;
+                if(!c.isEnum) return {};
+                keep.push_back(c);
+            }
+            return keep;
+        }
         // A dotted name split for the qualifyDotted* tiers. head/tail keep the user's case;
         // firstSeg/rest are the lowercased first segment of the tail and the remainder.
         struct DottedPath { string head; string tail; string qualifiedHead; string firstSeg; string rest; };
@@ -1011,6 +1024,11 @@ class bglParser {
         struct BraceArgHints {
             vector<classDef*> positional;
             map<string, classDef*> named;
+            // The enumeration every candidate agrees a parameter takes, per position / name: the
+            // expected type an argument is parsed under, so a bare member shared by two enumerations
+            // (`fixed`) resolves to the parameter's. "" where the candidates disagree.
+            vector<string> positionalEnum;
+            map<string, string> namedEnum;
         };
         // Gather candidate callees by name (globals) or by receiver type + name (methods), mirroring
         // the candidate-gathering in resolveGlobalCall / resolveMethod (collection only, no scoring).

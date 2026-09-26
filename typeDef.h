@@ -161,6 +161,7 @@ class paramDef:public abstractObject{
     public:
         typeDef type;
         string defaultValue;  // "" if no default; otherwise the default expression text
+        string defaultSource; // the default as written, when it was one token (for hover / signature help)
         // Set by synthesizeParamBackings when the param's class is `byVal`. The compiler
         // synthesizes a per-(function, param) global I6 backing object and emits a
         // copy-in (`backing._opeq(passedArg)`) at routine entry, then routes source

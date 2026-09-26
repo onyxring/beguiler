@@ -62,6 +62,11 @@ bool targetIsZcode(){
     return !t.empty() && (t[0] == 'z' || t[0] == 'Z');
 }
 
+bool targetIsGlulx(){
+    const string& t = beguilerSettings.target;
+    return !t.empty() && (t[0] == 'g' || t[0] == 'G');
+}
+
 eSettingKind readBeguilerSetting(const string& key, string& sv, int& iv, bool& bv){
     if     (key == "title")          sv = beguilerSettings.title;
     else if(key == "author")         sv = beguilerSettings.author;

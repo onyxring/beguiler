@@ -75,6 +75,13 @@ bool i6TranslateStringCodepoint(uint32_t codepoint, string& out){
     }
     auto it = unicodeToZscii.find(codepoint);
     if(it != unicodeToZscii.end()){ out = it->second.i6Accent; return true; }
+    // Glulx text is Unicode, so any code point prints; the Z-machine has only its ZSCII set above.
+    // The target must be KNOWN to be Glulx: library files are read before the game's settings.
+    if(targetIsGlulx()){
+        char hexBuf[16]; snprintf(hexBuf, sizeof(hexBuf), "@{%X}", codepoint);
+        out = hexBuf;
+        return true;
+    }
     return false;
 }
 

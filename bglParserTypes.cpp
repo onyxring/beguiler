@@ -594,6 +594,10 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
     // candidates, drop the enum candidates. Lets a global like `extern object noun` win
     // over an enum value `grammarToken.noun` for bare `noun` references; the enum value
     // is still reachable via `grammarToken.noun` qualified access.
+    // Except where an enumeration is expected (an argument to an enum parameter, a declared enum
+    // variable) and only its values fit: `fixed` for a bGlulxWindowScale parameter is the scale value,
+    // not a #using-imported print style of the same name.
+    if(auto keep = enumCandidatesFittingExpected(candidates); !keep.empty()) candidates = keep;
     {
         bool hasNonEnum = false;
         for(auto& c : candidates) if(!c.isEnum){ hasNonEnum = true; break; }
@@ -1045,6 +1049,26 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
     }
     for(size_t i = 0; i < maxP; i++) if(posConflict[i]) h.positional[i] = nullptr;
     for(auto& [k, v] : namedSeen) if(v != nullptr && !namedConflict.count(k)) h.named[k] = v;
+    // Agreed enumeration parameter types (see BraceArgHints). A position some candidate lacks
+    // still counts: that candidate can't take an argument there at all.
+    h.positionalEnum.assign(maxP, "");
+    vector<char> enumConflict(maxP, 0);
+    map<string, string> namedEnumSeen;
+    set<string> namedEnumConflict;
+    for(auto* fd : candidates){
+        for(size_t i = 0; i < fd->params.size(); i++){
+            const string& t = fd->params[i]->type.name;
+            string e = languageService.findEnum(t) ? t : "";
+            if(h.positionalEnum[i].empty() && !enumConflict[i]) h.positionalEnum[i] = e;
+            else if(h.positionalEnum[i] != e) enumConflict[i] = 1;
+            const string& pn = fd->params[i]->name;
+            auto it = namedEnumSeen.find(pn);
+            if(it == namedEnumSeen.end()) namedEnumSeen[pn] = e;
+            else if(it->second != e) namedEnumConflict.insert(pn);
+        }
+    }
+    for(size_t i = 0; i < maxP; i++) if(enumConflict[i]) h.positionalEnum[i] = "";
+    for(auto& [k, v] : namedEnumSeen) if(!v.empty() && !namedEnumConflict.count(k)) h.namedEnum[k] = v;
     return h;
 }
 
@@ -1120,7 +1144,16 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             if(sep.is(token::parenClose)) break;
             firstArgTok = file.getToken();
         } else {
+            if(!namedArgName.empty()){
+                string nm = namedArgName;
+                transform(nm.begin(), nm.end(), nm.begin(), ::tolower);
+                auto it = braceHints.namedEnum.find(nm);
+                currentExpectedType = it != braceHints.namedEnum.end() ? it->second : "";
+            } else {
+                currentExpectedType = posIdx < braceHints.positionalEnum.size() ? braceHints.positionalEnum[posIdx] : "";
+            }
             expression* arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body);
+            currentExpectedType = "";
             result.args.push_back(arg);
             result.namedArgNames.push_back(namedArgName);
             if(namedArgName.empty()) posIdx++;
@@ -2351,7 +2384,8 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
         }
         candidates = deduped;
     }
-    // Globals beat enum values: see resolveIdentifierType for rationale.
+    // Globals beat enum values: see resolveIdentifierType for rationale (and its expected-enum exception).
+    if(auto keep = enumCandidatesFittingExpected(candidates); !keep.empty()) candidates = keep;
     {
         bool hasNonEnum = false;
         for(auto& c : candidates) if(!c.isEnum){ hasNonEnum = true; break; }
@@ -2725,6 +2759,10 @@ bool bglParser::compatibleViaAssignmentOperator(const string& argType, const str
 // func<…> slot can check it. An overloaded name denotes a set, not one signature, so it stays the
 // unchecked `func` (as a lambda does).
 // The type a literal's pseudo-type stands for (`intLiteral` → `int`); any other type unchanged.
+bool bglParser::expectedTypeIsEnum(){
+    return !currentExpectedType.empty() && languageService.findEnum(currentExpectedType) != nullptr;
+}
+
 string bglParser::literalBaseType(const string& t){
     if(t == "intliteral" || t == "negativeintliteral") return "int";
     if(t == "stringliteral") return "string";
@@ -3076,6 +3114,21 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
             return fn && fn->name == "operator()" && fn->params.empty() && fn->isEmitter && !fn->isExplicit && fn->returnType.name == paramType && dynamic_cast<i6Block*>(fn->body) != nullptr;
         });
         if(!found){
+            // A conversion written as a regular method (a property accessor's getter) runs the same
+            // way: `self.id` passed to an int parameter must call the accessor, not pass the accessor
+            // object itself.
+            bool methodConversion = findMemberInHierarchy(argCls, [&](typeMember* m){
+                auto* fn = dynamic_cast<functionDef*>(m);
+                return fn && fn->name == "operator()" && fn->params.empty() && !fn->isEmitter
+                       && !fn->isExplicit && fn->returnType.name == paramType;
+            }) != nullptr;
+            if(methodConversion){
+                string converted = applyCastConversion(args[i]->text(), argType, paramType);
+                args[i]->tokens.clear();
+                args[i]->tokens.push_back(converted);
+                args[i]->resolvedType = paramType;
+                continue;
+            }
             applyAssignOperatorAsValue(args[i], paramType);
             continue;
         }

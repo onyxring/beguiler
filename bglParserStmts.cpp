@@ -2407,10 +2407,19 @@ void bglParser::parseCallArgsWithHints(functionCallStatement& callStmt, Statemen
     } else {
         string objectPath = callStmt.functionName.substr(0, dp);
         string methodName = callStmt.functionName.substr(dp + 1);
+        // A dotted receiver (`bgl.ui.statusBar`) needs resolvePathType; resolveIdentifierType sees
+        // only a single name.
         string recvType = (objectPath == "self")
             ? (currentObject ? currentObject->name : (currentClass ? currentClass->name : string()))
-            : resolveIdentifierType(objectPath, func, body);
-        if(!recvType.empty()) braceHints = braceArgHints(collectMethodCandidates(recvType, methodName));
+            : objectPath.find('.') != string::npos ? resolvePathType(objectPath, func, body, methodName)
+                                                  : resolveIdentifierType(objectPath, func, body);
+        vector<functionDef*> candidates;
+        if(!recvType.empty()) candidates = collectMethodCandidates(recvType, methodName);
+        if(candidates.empty()){
+            string recvObj = qualifyIdentifier(objectPath, func, body);   // `bgl.ui.statusBar` → `_bglstatus`
+            if(languageService.findObjectType(recvObj) != nullptr) candidates = collectMethodCandidates(recvObj, methodName);
+        }
+        braceHints = braceArgHints(candidates);
     }
     ParsedArgList pal = parseCallArgList(func, body, braceHints);
     callStmt.args = pal.args;

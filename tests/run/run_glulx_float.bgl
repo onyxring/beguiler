@@ -1,0 +1,23 @@
+/*  run_glulx_float — Glulx-only arithmetic, executed.
+
+    float exists only on Glulx, so until the execution tier could run .ulx stories these paths were
+    pinned by emission baselines alone. Covers int → float conversion at an argument and a return
+    (both used to pass the raw int bits), mixed int/float division, and a float in an interpolated
+    string (it printed the raw bits: float had no print() member for interpolation to call).  */
+// EXPECT_OUTPUT: 5.0000 3.1400 12.0000 [0.2500]
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+
+float half(float x) { return x / 2; }
+float asFloat(int n) { return n; }
+
+void main() {
+    glulxConsole();
+    print(half(10));
+    print(" ");
+    print((float)314 / 100);
+    print(" ");
+    print(asFloat(12));
+    float q = (float)1 / 4;
+    print($" [{q}]");
+}

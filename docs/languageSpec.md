@@ -1071,7 +1071,7 @@ void Main() {
     float b = 5;                    // → 5.0
     float c = (float)314 / 100;     // → 3.14: one float operand makes the division float
     int   d = 314 / 100;            // → 3: two ints divide as integers
-    print(b / a);                   // → 2
+    print(b / a);                   // → 2.0000
     if(b > a) print("^bigger^");
     int n = (int)c;                 // → 3
 }
@@ -10476,22 +10476,22 @@ bgl.ui.statusBar.height = 2;         // roots are writable on both axes
 **Syntax**
 
 ```syntax
-⟨graphicsWin⟩.drawImage( ⟨img⟩ , ⟨x⟩ , ⟨y⟩ [ , ⟨width⟩ [ , ⟨height⟩ ] ] ) ;
-⟨textBufferWin⟩.drawImage( ⟨img⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨height⟩ ] ] ] ) ;
+⟨graphicsWin⟩.drawImage( ⟨image⟩ [ , ⟨x⟩ [ , ⟨y⟩ [ , ⟨width⟩ [ , ⟨height⟩ ] ] ] ] ) ;
+⟨textBufferWin⟩.drawImage( ⟨image⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨height⟩ ] ] ] ) ;
 ⟨graphicsWin⟩.setBackgroundColor( ⟨color⟩ ) ;
 ```
 
 **Description**
 
-Image drawing needs blorb assets, so these methods exist only when `generateBlorb` is true (§17.6). ⟨img⟩ is a `var`: an `eImages` value, a `glulxImage` (§22.8) or a raw resource id. A graphics window draws at pixel position `(x, y)`; a text-buffer window (including `bgl.ui.mainWin`) draws inline with an `eGlulxImageAlign` (default `inlineCenter`). When both `width` and `height` are `0` the image is drawn at its natural size; when one is given the other is computed to preserve the aspect ratio; when both are given they are used as is.
+Image drawing needs blorb assets, so these methods exist only when `generateBlorb` is true (§17.6). ⟨image⟩ is an `eImages` value; a `glulxImage` (§22.8) converts to one, and a raw resource id is passed as `(eImages)id`. Every other parameter is optional and may be passed by name, as with the `img` print rule (§21.11). A graphics window draws at pixel position `(x, y)`, default `(0, 0)`; a text-buffer window (including `bgl.ui.mainWin`) draws inline with an `eGlulxImageAlign` (default `inlineCenter`). When both `width` and `height` are `0` the image is drawn at its natural size; when one is given the other is computed to preserve the aspect ratio; when both are given they are used as is.
 
 `setBackgroundColor(color)` sets a graphics window's background to an `$RRGGBB` value and clears the window to it.
 
 **Example**
 
 ```bgl
-pic.drawImage(eImages.coverArt, 0, 0);            // natural size
-pic.drawImage(eImages.coverArt, 0, 0, 100);       // width 100, height to match
+pic.drawImage(eImages.coverArt);                  // natural size, at the top-left
+pic.drawImage(eImages.coverArt, width: 100);      // width 100, height to match
 bgl.ui.mainWin.drawImage(eImages.icon, eGlulxImageAlign.marginLeft, 48, 48);
 ```
 
@@ -10616,7 +10616,7 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 
 **Description**
 
-`glulxImage` is a veneer class over the resource id (§8.2.5): it adds a type and methods but no storage, so a `glulxImage` is accepted wherever an image id is (`drawImage`, `bgl.printRules.img`). It is assigned from an `eImages` value or a raw `int` id, and converts back to `int` with `(int)img`.
+`glulxImage` is a veneer class over the resource id (§8.2.5): it adds a type and methods but no storage, and it converts implicitly to `eImages`, so a `glulxImage` is accepted wherever an image asset is (`drawImage`, `bgl.printRules.img`). It is assigned from an `eImages` value or a raw `int` id, and converts to `int` with `(int)img`.
 
 | Member | Returns | Description |
 |---|---|---|
@@ -11052,7 +11052,8 @@ An unescaped `^` in a string is a newline and an unescaped `~` is a double quote
 | `\$`*XX* | the character with hexadecimal code *XX* |
 
 Both forms consume every consecutive digit (or hexadecimal digit) after the prefix. The code is a
-Unicode code point and is rendered on both targets.
+Unicode code point. Glulx renders any code point; the Z-machine renders only the characters in its
+character set (§D.5), and any other code is a compile-time error.
 
 ```bgl
 "na\239ve"     // → naïve
@@ -11114,13 +11115,18 @@ be one of the ZSCII extended characters (codes 155 to 224):
 | ligatures and letters | æ Æ ç Ç þ Þ ð Ð œ Œ ß |
 | punctuation | £ ¡ ¿ |
 
-Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6.
+Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6 and, on
+Glulx, the characters described below.
 
 ```bgl
 "café"
 'ñ'
 .café
 ```
+
+> **[Glulx]** Glulx text is Unicode, so any character may be typed directly into a string literal or an
+> interpolated string literal: `"© 2027 — ✓"`. A character literal and a dictionary word still take only
+> the characters in the table above.
 
 ## D.6 Typographic Quotes and the Backtick
 

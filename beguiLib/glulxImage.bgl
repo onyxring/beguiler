@@ -40,6 +40,7 @@ extern emitter class glulxImage : _bglObject {
     emitter void operator = (eImages a){ $self = $a; }        // glulxImage pic = eImages.logo;
     emitter void operator = (int id)   { $self = $id; }       // …or a raw resource id
     emitter int  operator ()           { ($self) }            // → int: the raw resource id
+    emitter eImages operator ()       { ($self) }            // → eImages: pass it wherever an image asset goes
 
     // Natural (unscaled) pixel dimensions of the asset.
     /// The image's natural size in pixels.

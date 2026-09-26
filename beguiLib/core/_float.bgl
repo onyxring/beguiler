@@ -50,6 +50,10 @@ extern emitter class float : _bglObject {
     emitter bool operator == (float v){ $val == $v }
     emitter bool operator != (float v){ $val ~= $v }
 
+    /// Print as a decimal (four places), as `print(f)` does. This member is what an interpolated
+    /// string calls for a `{float}` segment.
+    replace emitter void print(){ _bglFloatPrintDecimal($val); }
+
     // Comparison published for generic containers (array<T>.sort()). Without it sort()
     // falls back to a signed-word compare, which is WRONG for IEEE 754: negatives are
     // sign-magnitude, so they order backwards as signed words.

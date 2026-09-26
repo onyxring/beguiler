@@ -1,3 +1,4 @@
+#include <regex>
 #include "platform.h"
 // ═══════════════════════════════════════════════════════════════════════════════
 // bglParser.cpp — Beguile language parser
@@ -260,6 +261,20 @@ void bglParser::reset(){
     hasPreScanSeed = false;
     declaredSymbols.clear();   // #declare set — repopulated by the pre-scan across the whole include graph
     lspErrors.clear();
+    // Mid-statement state: a parse that stopped at an error (LSP recovery) can leave any of these set,
+    // and the next parse of the same text then resolves names in the wrong scope.
+    activeBlockStack.clear();
+    anonObjectCounter = 0;
+    emitterExpansionChain.clear();
+    accessorOuter = nullptr;
+    lambdaOuterFunc = nullptr;
+    lambdaOuterBody = nullptr;
+    lambdaOuterFuncStack.clear();
+    currentExpectedType.clear();
+    allowVoidReturnExpr = false;
+    looseIdentifierMode = false;
+    stashedToken = nullopt;
+    currentStatementSrc = sourceLocation();
     // Drain any files left open by a prior parse that bailed under LSP error recovery. Otherwise
     // getNumberOfOpenFiles() stays > 0 and the next entry parse skips the BLR auto-load (see
     // parseFile), losing every base type and derailing the parse.
@@ -1948,9 +1963,14 @@ bool bglParser::processParameterList(functionDef& funcDef){
             // disambiguate (e.g. an enum value name shared by multiple enums).
             string savedExpectedDef = currentExpectedType;
             currentExpectedType = param.type.name;
-            expression* defExpr = parseExpression(file.getToken(), {token::comma, token::parenClose}, nullptr, nullptr);
+            token defFirst = file.getToken();
+            expression* defExpr = parseExpression(defFirst, {token::comma, token::parenClose}, nullptr, nullptr);
             currentExpectedType = savedExpectedDef;
             param.defaultValue = defExpr->text();
+            // As written, for display: a one-token default (`fixed`, `null`) reads better than its
+            // emitted value (`16`, `nothing`). Longer defaults show the emitted text.
+            if(file.peekToken().isNot(eTokenType::eof) && defExpr->tokens.size() == 1)
+                param.defaultSource = defFirst.originalValue.empty() ? defFirst.value : defFirst.originalValue;
             funcDef.params.push_back(&param);
             if(defExpr->terminator == token::parenClose) break; // ")" consumed by parseExpression
             tok=file.getToken(); // terminator was ","; read next param's type
@@ -2218,7 +2238,12 @@ bool bglParser::parsingError(string msg){
         errorMessage=format("{0}:{1}:{2}: ERROR: {3}",fileName,curLine,curCol,msg);
     }
     else{
-        errorMessage=msg;
+        // Post-parse checks run with no file open and supply their own `file:line:col: ` prefix;
+        // the ERROR label still goes after it, where every other error has it.
+        static const std::regex located(R"(^(.*:\d+:\d+: )(.*)$)");
+        std::smatch m;
+        if(std::regex_match(msg, m, located)) errorMessage = m[1].str() + "ERROR: " + m[2].str();
+        else                                  errorMessage = "ERROR: " + msg;
     }
     
     if(lspMode) {

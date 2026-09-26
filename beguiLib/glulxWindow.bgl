@@ -127,7 +127,7 @@ class textBufferWindow[8] : textWindow { }   // drawImage(align) added under #if
 /// A fixed grid of character cells, addressed by column and line. What a status bar is made of.
 class textGridWindow[8]   : textWindow {
     /// Put the cursor at a cell. Columns and lines count from 1.
-    void moveCursor(int col, int line){ bgl.asm.windowMoveCursor(self.id, col, line); }
+    void moveCursor(int col, int line) asI6 _bglWin_moveCursor { bgl.asm.windowMoveCursor(self.id, col, line); }   // `MoveCursor` is a standard-library routine
 }
 /// A window you draw images into rather than text.
 class graphicsWindow[8]   : window {
@@ -228,7 +228,8 @@ extend _bglStatus {
 
 // ---- Images (§4.3) — blorb-only: reuse core aspect-preserving scaleVectors + _bglGetImageInfo ----
 // Gated as a single top-level block (#if is not allowed inside class/extend bodies) that `extend`s the
-// window subtypes and the mainWin root. `var img` accepts a blorb `eAssets`, a cast int, or a raw id.
+// window subtypes and the mainWin root. `image` is an `eImages` asset; a glulxImage converts to one, and a
+// raw resource id is written `(eImages)id`.
 // 0 width/height ⇒ natural size / aspect-preserving fit; both set ⇒ explicit box. Text-buffer windows
 // take an alignment where a graphics window takes x/y (the y slot is unused, 0).
 #if (generateBlorb == true)
@@ -236,18 +237,18 @@ extend _bglStatus {
 // it — this both keeps the scaling in one place AND sidesteps a value-local backing-name collision
 // (same-named methods across classes synthesize the same `_bglLocal_drawImage_sz` backing).
 // `alignOrX`/`y`: a graphics window passes x,y; a text-buffer window passes the alignment and 0.
-void _drawScaled(int winId, var img, int alignOrX, int y, int width, int height){
-    bglSize sz = scaleVectors({width, height}, _bglGetImageInfo((int)img));
-    bgl.asm.imageDrawScaled(winId, (int)img, alignOrX, y, sz.width, sz.height);
+void _drawScaled(int winId, eImages image, int alignOrX, int y, int width, int height){
+    bglSize sz = scaleVectors({width, height}, _bglGetImageInfo((int)image));
+    bgl.asm.imageDrawScaled(winId, (int)image, alignOrX, y, sz.width, sz.height);
 }
 extend class textBufferWindow {
-    void drawImage(var img, eGlulxImageAlign align = inlineCenter, int width = 0, int height = 0){ _drawScaled(self.id, img, (int)align, 0, width, height); }
+    void drawImage(eImages image, eGlulxImageAlign align = inlineCenter, int width = 0, int height = 0){ _drawScaled(self.id, image, (int)align, 0, width, height); }
 }
 extend class graphicsWindow {
-    void drawImage(var img, int x, int y, int width = 0, int height = 0){ _drawScaled(self.id, img, x, y, width, height); }
+    void drawImage(eImages image, int x = 0, int y = 0, int width = 0, int height = 0){ _drawScaled(self.id, image, x, y, width, height); }
 }
 extend _bglMainWindow {
-    void drawImage(var img, eGlulxImageAlign align = inlineCenter, int width = 0, int height = 0){ _drawScaled(self.id, img, (int)align, 0, width, height); }
+    void drawImage(eImages image, eGlulxImageAlign align = inlineCenter, int width = 0, int height = 0){ _drawScaled(self.id, image, (int)align, 0, width, height); }
 }
 #endif
 
@@ -272,17 +273,19 @@ enum eGlulxStyleHint {
 
 // Declarative style bag — set only the fields you want; omitted fields keep the interpreter default.
 // A value struct (copied), used as `win.setStyle(styleType, style{ backColor = $111111; italics = true; })`.
+// Each member emits under a `_bglStyle_` name: I6 properties share one global namespace, and plain
+// words such as `italics` or `reverse` are routine names in other libraries (orLibrary has `italics`).
 class style {
-    inline int justify              = styleUnset;   // an eGlulxJustify value (cast to int)
-    inline int indentation          = styleUnset;   // left-margin indent
-    inline int paragraphIndentation = styleUnset;   // first-line extra indent
-    inline int sizeAdjustment       = styleUnset;   // relative to the base text size (…-1, 0, 1…)
-    inline int fontWeight           = styleUnset;   // -1 lighter, 0 normal, 1 bold
-    inline int italics              = styleUnset;   // bool: oblique/italic
-    inline int fixedWidth           = styleUnset;   // bool: true ⇒ fixed-pitch (non-proportional)
-    inline int foreColor            = styleUnset;   // 0xRRGGBB text colour
-    inline int backColor            = styleUnset;   // 0xRRGGBB background colour
-    inline int reverse              = styleUnset;   // bool: swap fore/back
+    inline int justify asI6 _bglStyle_justify              = styleUnset;   // an eGlulxJustify value (cast to int)
+    inline int indentation asI6 _bglStyle_indentation          = styleUnset;   // left-margin indent
+    inline int paragraphIndentation asI6 _bglStyle_paragraphIndentation = styleUnset;   // first-line extra indent
+    inline int sizeAdjustment asI6 _bglStyle_sizeAdjustment       = styleUnset;   // relative to the base text size (…-1, 0, 1…)
+    inline int fontWeight asI6 _bglStyle_fontWeight           = styleUnset;   // -1 lighter, 0 normal, 1 bold
+    inline int italics asI6 _bglStyle_italics              = styleUnset;   // bool: oblique/italic
+    inline int fixedWidth asI6 _bglStyle_fixedWidth           = styleUnset;   // bool: true ⇒ fixed-pitch (non-proportional)
+    inline int foreColor asI6 _bglStyle_foreColor            = styleUnset;   // 0xRRGGBB text colour
+    inline int backColor asI6 _bglStyle_backColor            = styleUnset;   // 0xRRGGBB background colour
+    inline int reverse asI6 _bglStyle_reverse              = styleUnset;   // bool: swap fore/back
 }
 
 // Apply the set fields of `s` to (wintype, st) via glk_stylehint_set. Hint indices are the fixed glk

@@ -24,9 +24,12 @@
 #   • Example smoke:     ../examples/*.bgl            — must compile. Examples are shipped docs and
 #                                                    used to rot unnoticed.
 #
-# The execution tier needs two external tools, discovered in this order:
+# The execution tier needs these external tools, discovered in this order:
 #   Inform 6:     $INFORM6, then `inform6` on PATH, then ../../inform6/inform6
-#   Interpreter:  $ZVM,     then `zvm` on PATH,     then ../../beguilex/node_modules/.bin/zvm
+#   Z-code:       $ZVM,     then `zvm` on PATH,     then ../../beguilex/node_modules/.bin/zvm
+#   Glulx:        node + Quixe via tools/glulx-run.js — $QUIXE_DIR, else ../../beguilex/node_modules/quixe.
+#                 A test whose settings say `target = glulx` runs here; it includes run/glulxConsole.bgl
+#                 and calls glulxConsole() first, since nothing opens a window without a library.
 #
 # Usage:
 #   ./run_tests.sh              — run all tests
@@ -200,6 +203,12 @@ if [ "$CAPTURE" != true ]; then
     RUN_DIR="$SCRIPT_DIR/run"
     INFORM6="${INFORM6:-$(command -v inform6 || echo "$SCRIPT_DIR/../../inform6/inform6")}"
     ZVM="${ZVM:-$(command -v zvm || echo "$SCRIPT_DIR/../../beguilex/node_modules/.bin/zvm")}"
+    # Glulx stories run under Quixe through tools/glulx-run.js (same beguilex install as zvm).
+    GLULX_RUN="$SCRIPT_DIR/tools/glulx-run.js"
+    QUIXE_DIR="${QUIXE_DIR:-$SCRIPT_DIR/../../beguilex/node_modules/quixe}"
+    GLULX_OK=false
+    if command -v node >/dev/null && [ -f "$QUIXE_DIR/app.js" ]; then GLULX_OK=true; fi
+    export QUIXE_DIR
 
     shopt -s nullglob
     run_tests=("$RUN_DIR"/run_*.bgl)
@@ -224,6 +233,14 @@ if [ "$CAPTURE" != true ]; then
                     ERRORS=$((ERRORS + 1)); continue
                 fi
 
+                # A test targets Glulx when its settings say so; everything else runs as Z5.
+                isGlulx=false
+                if grep -qiE 'target[[:space:]]*=[[:space:]]*"?glulx' "$src"; then isGlulx=true; fi
+                if [ "$isGlulx" = true ] && [ "$GLULX_OK" != true ]; then
+                    echo "  SKIP: $name — no Glulx interpreter (node + beguilex/node_modules/quixe, or set \$QUIXE_DIR)"
+                    continue
+                fi
+
                 rm -rf "${RUN_OUT:?}"/*
                 cd "$SCRIPT_DIR"
                 if ! err=$("$BEGUILER" -o "$RUN_OUT" "$src" 2>&1 >/dev/null); then
@@ -232,17 +249,19 @@ if [ "$CAPTURE" != true ]; then
                     ERRORS=$((ERRORS + 1)); continue
                 fi
                 inf="$RUN_OUT/${name}.transpiled.inf"
-                story="$RUN_OUT/${name}.z5"
+                if [ "$isGlulx" = true ]; then story="$RUN_OUT/${name}.ulx"; i6flag="-G"
+                else                          story="$RUN_OUT/${name}.z5";  i6flag="-v5"; fi
                 # Inform 6 reports errors on stdout and still exits 0 in some builds,
                 # so the story file's existence is what decides success.
-                i6out=$("$INFORM6" -v5 "$inf" "$story" 2>&1)
+                i6out=$("$INFORM6" $i6flag "$inf" "$story" 2>&1)
                 if [ ! -f "$story" ]; then
                     echo "  FAIL: $name — Inform 6 rejected the emitted code"
                     echo "    $(echo "$i6out" | grep -iE 'error' | head -2)"
                     FAIL=$((FAIL + 1)); continue
                 fi
 
-                actual=$(echo "" | "$ZVM" "$story" 2>&1)
+                if [ "$isGlulx" = true ]; then actual=$(echo "" | node "$GLULX_RUN" "$story" 2>&1)
+                else                          actual=$(echo "" | "$ZVM" "$story" 2>&1); fi
                 all_matched=true
                 while IFS= read -r needle; do
                     [ -z "$needle" ] && continue
@@ -255,9 +274,9 @@ if [ "$CAPTURE" != true ]; then
 
                 # A Z-machine trap prints a diagnostic and keeps going, so matching the
                 # expected text is not on its own proof the run was clean.
-                if [ "$all_matched" = true ] && echo "$actual" | grep -q "Programming error"; then
-                    echo "  FAIL: $name — run produced a Z-machine programming error"
-                    echo "    $(echo "$actual" | grep 'Programming error' | head -1)"
+                if [ "$all_matched" = true ] && echo "$actual" | grep -qE "Programming error|Glulx fatal error"; then
+                    echo "  FAIL: $name — run produced a programming error or a fatal VM error"
+                    echo "    $(echo "$actual" | grep -E 'Programming error|Glulx fatal error' | head -1)"
                     all_matched=false
                 fi
 

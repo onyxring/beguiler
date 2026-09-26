@@ -1858,7 +1858,12 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
 
     // parse argument list (handles named args via name: value syntax; and a bare
     // `{ … }` arg inferred from the method's parameter type — §6.2.1)
-    ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(objType, methName)));
+    // A receiver that is itself an object (`bgl.ui.statusBar` → `_bglStatus`) resolves to its class,
+    // but its methods may be declared on the object; look there too.
+    vector<functionDef*> argCandidates = collectMethodCandidates(objType, methName);
+    if(argCandidates.empty() && languageService.findObjectType(objName) != nullptr)
+        argCandidates = collectMethodCandidates(objName, methName);
+    ParsedArgList pal = parseCallArgList(func, body, braceArgHints(argCandidates));
     vector<expression*>& callArgs = pal.args;
     functionDef* method = nullptr;
     if(opaqueRecv){

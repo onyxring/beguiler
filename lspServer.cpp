@@ -1353,6 +1353,14 @@ string LspServer::hoverBeguilerSettingsMember(const string& uri, int line, int c
     return typeInfo;
 }
 
+// A parameter as shown in hover and signature help: `type name`, plus ` = default` when it has one,
+// so an optional parameter reads as optional.
+static string paramDisplay(const paramDef* p){
+    string out = typeDisplay(p->type.name) + " " + (p->displayName.empty() ? p->name : p->displayName);
+    if(!p->defaultValue.empty()) out += " = " + (p->defaultSource.empty() ? p->defaultValue : p->defaultSource);
+    return out;
+}
+
 // Hover case: `owner.member` — resolve the owner chain, then the member on it.
 string LspServer::hoverDottedMember(const string& uri, int line, const string& lower,
                                     const string& ownerName, string& docComment) {
@@ -1363,7 +1371,7 @@ string LspServer::hoverDottedMember(const string& uri, int line, const string& l
             sig += "(";
             for(size_t i = 0; i < fd->params.size(); i++) {
                 if(i > 0) sig += ", ";
-                sig += typeDisplay(fd->params[i]->type.name) + " " + fd->params[i]->dName();
+                sig += paramDisplay(fd->params[i]);
             }
             sig += ")";
         }
@@ -1535,8 +1543,7 @@ string LspServer::hoverIdentifier(const string& uri, int line, const string& wor
                                    (fd->displayName.empty() ? fd->name : fd->displayName) + "(";
                         for(size_t i = 0; i < fd->params.size(); i++) {
                             if(i > 0) typeInfo += ", ";
-                            typeInfo += typeDisplay(fd->params[i]->type.name) + " " +
-                                        (fd->params[i]->displayName.empty() ? fd->params[i]->name : fd->params[i]->displayName);
+                            typeInfo += paramDisplay(fd->params[i]);
                         }
                         typeInfo += ")";
                         if(fd->isEmitter) typeInfo = "emitter " + typeInfo;
@@ -2132,41 +2139,14 @@ json LspServer::completeEnumArgument(const string& uri, int line, int col, const
     return json();
 }
 
-// Completion case: a call argument whose parameter type is known (and not an enum) -> the in-scope
-// symbols assignable to it: locals, parameters, enclosing-type members, globals, objects, #using
-// members, and functions returning a compatible type. Fires only while the slot holds nothing but an
-// identifier prefix, so an expression in progress (`f(a + |`) falls through untouched.
-json LspServer::completeTypedArgument(const string& uri, int line, int col, const string& lineText,
-                                      const string& docText, bool& handled) {
-    handled = false;
-    string funcName, objName;
-    int argIndex = 0, slotStart = 0;
-    if(!findCallSlot(lineText, col, funcName, objName, argIndex, slotStart)) return json();
-    int end = std::min(col, (int)lineText.size());
-    for(int i = slotStart; i < end; i++) {
-        unsigned char c = (unsigned char)lineText[i];
-        if(!(isalnum(c) || c == '_' || isspace(c))) return json();
-    }
-    // The slot's accepted types, across every overload that has this many parameters.
-    vector<string> ptypes;
-    for(functionDef* fd : resolveCallees(uri, line, funcName, objName, docText)) {
-        if(argIndex >= (int)fd->params.size()) continue;
-        const string& t = fd->params[argIndex]->type.name;
-        if(t.empty() || t == "var") return json();   // an untyped overload accepts anything: nothing to narrow
-        if(std::find(ptypes.begin(), ptypes.end(), t) == ptypes.end()) ptypes.push_back(t);
-    }
-    if(ptypes.empty()) return json();
-    auto fits = [&](const string& type) {
-        for(const string& pt : ptypes) if(parser.isTypeCompatible(type, pt)) return true;
-        return false;
-    };
-    auto wants = [&](const char* t) { return std::find(ptypes.begin(), ptypes.end(), t) != ptypes.end(); };
-
-    json items = json::array();
-    std::set<string> seen;
+// Append the symbols in scope at `line` — locals declared above it, parameters, members of the enclosing
+// class or object, file-scope globals/functions/objects, #using-imported members — that `fits` accepts.
+// `typed` completes a typed slot, so values with no type (void, var) are left out as noise.
+void LspServer::appendScopeItems(json& items, std::set<string>& seen, const string& uri, int line,
+                                 const string& docText, const std::function<bool(const string&)>& fits, bool typed) {
     auto accept = [&](const string& name, const string& type) {
         if(name.empty() || name[0] == '_' || !isalpha((unsigned char)name[0])) return false;
-        if(type.empty() || type == "void" || type == "var") return false;   // untyped values fit anywhere: noise
+        if(typed && (type.empty() || type == "void" || type == "var")) return false;   // untyped values fit anywhere: noise
         if(seen.count(name)) return false;
         if(!fits(type)) return false;
         seen.insert(name);
@@ -2196,14 +2176,6 @@ json LspServer::completeTypedArgument(const string& uri, int line, int col, cons
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)) addVar(vd, 5);   // Field
         else if(auto* fd = dynamic_cast<functionDef*>(m)) addFn(fd);
     };
-
-    // Literals first — the most common thing handed to a typed slot.
-    if(wants("string"))
-        items.push_back({{"label", "\"\""}, {"kind", 12}, {"detail", "string literal"},
-                         {"insertText", "\"$0\""}, {"insertTextFormat", 2}, {"sortText", "0"}});
-    if(wants("bool"))
-        for(const char* b : {"true", "false"})
-            items.push_back({{"label", b}, {"kind", 14}, {"detail", "bool"}, {"sortText", "0"}});
 
     // Locals (declared above the cursor) and parameters of the enclosing function, then the
     // members of the class/object that owns it.
@@ -2262,6 +2234,49 @@ json LspServer::completeTypedArgument(const string& uri, int line, int col, cons
     }
     for(objectDef* ns : activeUsingNamespaces(docText, line))
         for(typeMember* m : ns->members) addMember(m);
+}
+
+// Completion case: a call argument whose parameter type is known (and not an enum) -> the in-scope
+// symbols assignable to it: locals, parameters, enclosing-type members, globals, objects, #using
+// members, and functions returning a compatible type. Fires only while the slot holds nothing but an
+// identifier prefix, so an expression in progress (`f(a + |`) falls through untouched.
+json LspServer::completeTypedArgument(const string& uri, int line, int col, const string& lineText,
+                                      const string& docText, bool& handled) {
+    handled = false;
+    string funcName, objName;
+    int argIndex = 0, slotStart = 0;
+    if(!findCallSlot(lineText, col, funcName, objName, argIndex, slotStart)) return json();
+    int end = std::min(col, (int)lineText.size());
+    for(int i = slotStart; i < end; i++) {
+        unsigned char c = (unsigned char)lineText[i];
+        if(!(isalnum(c) || c == '_' || isspace(c))) return json();
+    }
+    // The slot's accepted types, across every overload that has this many parameters.
+    vector<string> ptypes;
+    for(functionDef* fd : resolveCallees(uri, line, funcName, objName, docText)) {
+        if(argIndex >= (int)fd->params.size()) continue;
+        const string& t = fd->params[argIndex]->type.name;
+        if(t.empty() || t == "var") return json();   // an untyped overload accepts anything: nothing to narrow
+        if(std::find(ptypes.begin(), ptypes.end(), t) == ptypes.end()) ptypes.push_back(t);
+    }
+    if(ptypes.empty()) return json();
+    auto fits = [&](const string& type) {
+        for(const string& pt : ptypes) if(parser.isTypeCompatible(type, pt)) return true;
+        return false;
+    };
+    auto wants = [&](const char* t) { return std::find(ptypes.begin(), ptypes.end(), t) != ptypes.end(); };
+
+    json items = json::array();
+    // Literals first — the most common thing handed to a typed slot.
+    if(wants("string"))
+        items.push_back({{"label", "\"\""}, {"kind", 12}, {"detail", "string literal"},
+                         {"insertText", "\"$0\""}, {"insertTextFormat", 2}, {"sortText", "0"}});
+    if(wants("bool"))
+        for(const char* b : {"true", "false"})
+            items.push_back({{"label", b}, {"kind", 14}, {"detail", "bool"}, {"sortText", "0"}});
+
+    std::set<string> seen;
+    appendScopeItems(items, seen, uri, line, docText, fits, /*typed*/true);
 
     handled = true;
     return json{{"isIncomplete", false}, {"items", items}};
@@ -3067,7 +3082,7 @@ json LspServer::completeKeywordSnippet(int col, const string& lineText, bool& ha
 }
 
 // Completion case: bare-identifier position -> members imported by active `#using` directives.
-json LspServer::completeUsingImports(int line, const string& docText, bool& handled) {
+json LspServer::completeUsingImports(const string& uri, int line, const string& docText, bool& handled) {
     handled = false;
     // ── Phase 4: bare-identifier position — offer #using-imported type aliases ──
     // Scan the doc above the cursor for active `#using <path>` directives and surface
@@ -3175,7 +3190,23 @@ json LspServer::completeUsingImports(int line, const string& docText, bool& hand
             }
 
             if(!items.empty()){
-                // isIncomplete:true lets VS Code keep re-querying and merges with word-based.
+                // A list from here replaces VS Code's word-based suggestions, so it must carry what
+                // those would have offered: every name in scope (locals, parameters, members,
+                // globals) and the keywords — not only the #using imports.
+                std::set<string> seen;
+                for(const json& it : items) {
+                    string l = it["label"].get<string>();
+                    transform(l.begin(), l.end(), l.begin(), ::tolower);
+                    seen.insert(l);
+                }
+                appendScopeItems(items, seen, uri, line, docText, [](const string&){ return true; }, /*typed*/false);
+                static const char* kKeywords[] = {
+                    "if", "else", "for", "in", "while", "do", "switch", "case", "default", "break",
+                    "continue", "return", "new", "delete", "try", "catch", "throw", "true", "false",
+                    "null", "self", "auto", "var", "const", "static", "int", "bool", "char", "string",
+                    "float", "void", "object", "array" };
+                for(const char* k : kKeywords)
+                    if(!seen.count(k)) items.push_back({{"label", k}, {"kind", 14}});
                 handled = true; return json{{"isIncomplete", true}, {"items", items}};
             }
         }
@@ -3237,7 +3268,7 @@ json LspServer::handleCompletion(const json& params) {
     if(json r = completeMemberModifiers(line, col, docText, insideBsBlock, handled); handled) return r;
     if(json r = completeBeguilerSettingsBlock(col, lineText, insideBsBlock, handled); handled) return r;
     if(json r = completeKeywordSnippet(col, lineText, handled); handled) return r;
-    if(json r = completeUsingImports(line, docText, handled); handled) return r;
+    if(json r = completeUsingImports(uri, line, docText, handled); handled) return r;
 
     return nullptr;
 }
@@ -3636,8 +3667,7 @@ json LspServer::handleSignatureHelp(const json& params) {
         for(size_t i = 0; i < fd->params.size(); i++) {
             if(i > 0) { label += ", "; labelStart = (int)label.size(); }
             else labelStart = (int)label.size();
-            string paramLabel = typeDisplay(fd->params[i]->type.name) + " " +
-                                (fd->params[i]->displayName.empty() ? fd->params[i]->name : fd->params[i]->displayName);
+            string paramLabel = paramDisplay(fd->params[i]);
             label += paramLabel;
             parameters.push_back({
                 {"label", {labelStart, (int)label.size()}}

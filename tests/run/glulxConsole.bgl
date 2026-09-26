@@ -1,0 +1,12 @@
+/*  glulxConsole — output for a library-free Glulx execution test.
+
+    Z-code prints to the screen from the first instruction. Glulx prints nowhere until the story
+    selects Glk as its output system and opens a window, which a library binding normally does.
+    An execution test that targets Glulx includes this file and calls glulxConsole() first.  */
+#once
+
+void glulxConsole() {
+    #i6 { @setiosys 2 0; }
+    bgl.ui.mainWin.id = bgl.asm.windowOpen(0, eGlulxWindowType.textBuffer, 0, noBorder, 0);
+    bgl.asm.setWindow(bgl.ui.mainWin.id);
+}

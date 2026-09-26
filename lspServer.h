@@ -4,6 +4,7 @@
 // To remove: delete lspServer.h/cpp, json.hpp, and the --lsp check in beguiler.cpp.
 
 #include <string>
+#include <set>
 #include <map>
 #include <vector>
 #include <utility>
@@ -101,6 +102,9 @@ private:
     // Completion case: a call argument whose parameter type is an enum -> that enum's members.
     json completeEnumArgument(const std::string& uri, int line, int col, const std::string& lineText,
                               const std::string& docText, bool& handled);
+    // Append the in-scope symbols `fits` accepts (see definition).
+    void appendScopeItems(json& items, std::set<std::string>& seen, const std::string& uri, int line,
+                          const std::string& docText, const std::function<bool(const std::string&)>& fits, bool typed);
     // Completion case: a typed (non-enum) call argument -> in-scope symbols assignable to that type.
     json completeTypedArgument(const std::string& uri, int line, int col, const std::string& lineText,
                                const std::string& docText, bool& handled);
@@ -123,7 +127,7 @@ private:
     // Completion case: a bare prefix of `enum` -> the keyword syntax snippet + doc popup.
     json completeKeywordSnippet(int col, const std::string& lineText, bool& handled);
     // Completion case: bare-identifier position -> members imported by active `#using` directives.
-    json completeUsingImports(int line, const std::string& docText, bool& handled);
+    json completeUsingImports(const std::string& uri, int line, const std::string& docText, bool& handled);
     json handleDefinition(const json& params);
     json handleDocumentSymbol(const json& params);
     json handleSignatureHelp(const json& params);

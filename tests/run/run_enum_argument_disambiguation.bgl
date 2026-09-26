@@ -1,0 +1,29 @@
+/*  run_enum_argument_disambiguation — a bare enum member resolves by its parameter's type.
+
+    `fixed` is a member of two enumerations here and also a #using-imported print style, the shape of
+    <glulxWindow>'s bGlulxWindowScale / eGlulxStyleType with bgl.printRules. An argument used to be
+    parsed with no expected type, so `split(5, fixed)` was reported ambiguous or took the print style.
+    Covers a function call, a method call through a namespace object, and the expression form.  */
+// EXPECT_OUTPUT: 16 16 16
+#beguilerSettings { target = z5; informName = "none"; }
+
+enum eScale { fixed = 16, proportional = 32 }
+enum eFace  { plain = 1, fixed = 2 }
+
+object looks {
+    emitter void fixed { print "STYLE"; }
+}
+#using looks
+
+int scaleOf(eScale s) { return (int)s; }
+
+object panel {
+    int split(int size, eScale s) { return (int)s; }
+}
+
+void main() {
+    print($"{scaleOf(fixed)} ");
+    int r = panel.split(5, fixed);
+    print($"{r} ");
+    print(panel.split(5, fixed));
+}

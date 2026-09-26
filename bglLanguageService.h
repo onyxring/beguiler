@@ -119,6 +119,7 @@ extern beguilerSettingsDef beguilerSettings;
 // True when compiling for the Z-machine. Glulx is the default target, and the Glulx-shaped output
 // of every caller is valid I6 on any target, so an as-yet-unresolved (empty) target reads as Glulx.
 bool targetIsZcode();
+bool targetIsGlulx();   // the target is known to be Glulx (false while it is still unset)
 
 // The kind of literal a `#beguilerSettings.<property>` reference resolves to.
 enum class eSettingKind { unknown, str, integer, boolean };

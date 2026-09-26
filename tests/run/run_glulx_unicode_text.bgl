@@ -1,0 +1,14 @@
+/*  run_glulx_unicode_text — any Unicode character typed into a string prints on Glulx.
+
+    Characters typed directly went through the Z-machine's character table on every target, so a
+    Glulx game could not write ©, — or ✓ without the `\$XX` escape. Glulx text is Unicode; outside
+    the table a character is emitted by code point. Covers plain and interpolated strings.  */
+// EXPECT_OUTPUT: © 2027 — café ✓ | ©ä
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+
+void main() {
+    glulxConsole();
+    print("© 2027 — café ✓ | ");
+    print($"{bgl.printRules.bold}©{bgl.printRules.roman}ä");
+}

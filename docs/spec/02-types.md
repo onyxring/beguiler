@@ -88,7 +88,7 @@ void Main() {
     float b = 5;                    // → 5.0
     float c = (float)314 / 100;     // → 3.14: one float operand makes the division float
     int   d = 314 / 100;            // → 3: two ints divide as integers
-    print(b / a);                   // → 2
+    print(b / a);                   // → 2.0000
     if(b > a) print("^bigger^");
     int n = (int)c;                 // → 3
 }

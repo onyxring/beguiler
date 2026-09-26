@@ -1,0 +1,26 @@
+/*  run_accessor_as_argument — a property accessor read as a call argument runs its getter.
+
+    Inside an object's own method, `self.id` has the accessor's type; its conversion to int is applied
+    where the value lands. Assignment and return applied it, but an argument applied only an EMITTER
+    conversion, so an accessor with a method getter passed the accessor object itself. That is how
+    <glulxWindow>'s `_splitFrom(self.id, …)` on bgl.ui.statusBar handed Glk a bogus window
+    ("glk_window_open: splitwin must not be null").  */
+// EXPECT_OUTPUT: 14 14
+#beguilerSettings { target = z5; informName = "none"; }
+
+int backing = 7;
+int twice(int n) { return n * 2; }
+
+object thing {
+    auto id = {
+        int operator()         { return backing; }
+        void operator = (int v){ backing = v; }
+    }
+}
+extend thing {
+    int viaArgument() { return twice(self.id); }
+}
+
+void main() {
+    print($"{thing.viaArgument()} {twice(thing.id)}");
+}
