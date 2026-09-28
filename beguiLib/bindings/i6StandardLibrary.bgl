@@ -54,8 +54,7 @@ extern attribute absent;        // object is currently out of scope
 // of the base `object`. Doing so would let *any* object read *any* of them regardless of
 // whether it actually defines them — the opposite of the property-membership discipline.
 // Declare each property on the specific class/object that provides it. `short_name` is the
-// one exception and lives on core `object` (it backs the compiler's `(name)` rule) — see
-// __beguileCore.bgl.
+// one exception: every object has a printing name, so _commonBindings declares it on `object`.
 
 //-- Game state ---------------------------------------------------------------
 extern object location;             // current room (must be first global)
@@ -115,6 +114,7 @@ extern int    before_first_turn;    // true before first LOOK
 extern int    gg_mainwin;           // main window handle
 extern int    gg_statuswin;         // status window handle
 extern int    gg_statuswin_cursize; // current status-window height, in lines (tracked by StatusLineHeight)
+extern int    gg_statuswin_size;    // the height DrawStatusLine restores on every redraw
 extern int    gg_quotewin;          // quote window handle
 
 //-- Objects ------------------------------------------------------------------
@@ -453,7 +453,7 @@ extend _bglStatus {
     }
     replace auto height = {
         int operator()        { return gg_statuswin_cursize; }
-        void operator = (int v){ StatusLineHeight(v); }
+        void operator = (int v){ gg_statuswin_size = v; StatusLineHeight(v); }   // DrawStatusLine re-applies gg_statuswin_size each turn
     }
 }
 #else //Z-code
@@ -461,7 +461,7 @@ extend _bglStatus {
     replace auto id = null; //zcode doesn't maintain ids for windows    
     replace auto height = {
         int operator()        { return gg_statuswin_cursize; }
-        void operator = (int v){ StatusLineHeight(v); }
+        void operator = (int v){ gg_statuswin_size = v; StatusLineHeight(v); }   // DrawStatusLine re-applies gg_statuswin_size each turn
     }
 }
 #endif
@@ -569,6 +569,18 @@ extern int HDR_GAMESERIAL;
 #emitfirst {
     Constant story    = ##beguilerSettings.title;
     Constant headline = ##beguilerSettings.headline;
+}
+
+// This banner replaces the library's, so orLibrary's forced banner hook (#orExtensionFramework) is
+// switched off; orLibrary's bindings add their line on top of this one instead.
+#emitfirst {
+    Constant orLib_suppress_forced_banner_hook;
+}
+replace void Banner(){
+    print($"^{bgl.printRules.bold}{story}{bgl.printRules.roman}{headline}");    
+    print($"Release {bgl.story.release} / Serial number {bgl.story.printSerial()}");
+    print($"^{bgl.printRules.italics}Written in{bgl.printRules.roman} Beguile v{beguilerMajor}.{beguilerMinor}.{beguilerPatch}");
+    print($"^{bgl.printRules.italics}Compiled with{bgl.printRules.roman} Inform v{informVersion} / Library v{LibRelease}^");
 }
 
 // The BLR wraps main to run bglInit() before the game's own main. Gated on `bglAutoInitialize`

@@ -104,10 +104,6 @@ struct Qualifiers {
     bool isRef      = false;  // `ref` qualifier on a local variable declaration: opt-in
                               // reference semantics (skip operator= dispatch, skip backing
                               // synthesis, plain pointer-assign). Valid only on locals.
-    bool isByVal    = false;  // `byVal` qualifier on a class declaration: instances of
-                              // this class get value-semantics when passed as function
-                              // parameters (backing + copy-in via operator= at entry).
-                              // Mutually exclusive with extern/emitter/extend/: object.
     bool isSuperposed = false; // `superposed` qualifier on a function: the routine materializes
                                // into the story file only if something calls it; unused => elided.
     bool isTypeSealed = false; // `typesealed` qualifier on a base-class member: the slot type is
@@ -119,10 +115,12 @@ struct Qualifiers {
                                // I6 `Property additive foo;`, so the property slot accumulates values
                                // across the class hierarchy (obj + ancestors) rather than overriding.
                                // Directive-only in I6 — valid only on a non-extern `property`.
+    bool isValue = false;      // `value class`: instances are copied; variables own one (type kinds)
+    bool isPrimitive = false;  // `primitive class`: the value itself, no instance (implies extern emitter)
     bool anySet() const {      // true if ANY qualifier was consumed before the current token
         return isReplace || isExplicit || isExtern || isEmitter || isConst || isStatic || isInline
-            || isExtend || isAlias || isDefault || isRef || isByVal || isSuperposed || isTypeSealed
-            || isAdditive;
+            || isExtend || isAlias || isDefault || isRef || isSuperposed || isTypeSealed
+            || isAdditive || isValue || isPrimitive;
     }
 };
 
@@ -256,13 +254,13 @@ class bglParser {
         // on the property name. Called from resolution paths (bindMethodCall + optional
         // chain) so the mangled i6name is set by the time the call site bakes its text.
         void mangleOverloadSetForReceiver(const string& receiverTypeName, const string& methodName);
-        // For each param of `funcDef` whose type is a `byVal class` (not extern, not
-        // emitter, not on operator= itself — recursion guard), synthesize a per-(function,
-        // param) backing global and wire param.i6name to it. The emitter emits copy-in
-        // via operator= at routine entry. `classContext` is the enclosing class name when
+        // For each class-typed, non-`ref` param of `funcDef` whose class copies (not extern, not
+        // emitter, not on operator= itself — recursion guard), synthesize a per-(function, param)
+        // instance and its copy-in, which the emitter runs at routine entry. `classContext` is the enclosing class name when
         // funcDef is a class member (used to disambiguate same-method-name across classes
         // in the backing-global name); empty for top-level functions.
         void synthesizeParamBackings(functionDef& funcDef, const string& classContext = "");
+        bool synthesizeLifecycleParamCopy(functionDef& funcDef, paramDef& p, classDef* cls);
         int readCompileTimeInt(const std::string& what);
         // Deinit text for class-typed locals declared in a NESTED block, keyed by that block. A
         // nested block parses against a throwaway functionDef, so its cleanups cannot live on
@@ -341,7 +339,7 @@ class bglParser {
         bool processFunc(vector<token>& t, Qualifiers& q, abstractObject& c);
 
         // Parser handler methods — called from grammar handlers and processNextStatement.
-        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool isByVal=false, bool allowNested=false, bool isSuperposed=false);
+        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool allowNested=false, bool isSuperposed=false, bool isValue=false, bool isPrimitive=false);
         // --- processClassDeclaration / processObjectDeclaration / processObjectExtension helpers ---
         // Parse the optional `<T, ...>` type-parameter clause of a class declaration; no-op if absent.
         void parseClassTypeParameters(classDef& newClass, token nameTok, bool isExtend, bool isAlias);
@@ -518,6 +516,14 @@ class bglParser {
         // declaration into `members` and returns false.
         // Promote a member array too large for an I6 property into a synthesized global.
         void promoteMemberArrayIfOversized(arrayDeclaration& arrDecl);
+        void addInlineOrder(classDef& cls, const string& name);
+        bool notePositional(classDef& cls, const string& name);
+        map<classDef*, set<string>> positionalNoted;
+        bool startsPositionalSection(token tok);
+        token parseDeclarationPositionals(objectDef& obj, token tok);
+        string bakeMemberValue(objectDef& od, variableDeclaration* target, token vt, const string& typeDisplay,
+                               functionDef* func, statementBlock* body);
+        vector<variableDeclaration*> positionalMembers(classDef* cls);
         bool processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
                                 abstractObject* ctx = nullptr, Qualifiers* q = nullptr, bool declIsRaw = false);
         void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false, bool isRef = false);
@@ -577,6 +583,7 @@ class bglParser {
             bool lhsIsByteArray = false;    // the target is an array<char> (byteArray)
             string emitterSelf;             // $self for the target's operator= emitter
             classDef* classType = nullptr;  // class used for operator= dispatch
+            classDef* ancestorCast = nullptr;   // `(Base)x = v;`: Base, a strict ancestor of x's class
         };
         // `++x;` / `--x;` — prefix increment or decrement as a whole statement.
         bool processPrefixIncDec(token op, StatementContext& sc);
@@ -859,6 +866,13 @@ class bglParser {
         // True when paramType's class hierarchy has an `operator =` that accepts argType —
         // exact name match, base-class upcast, then the `var` wildcard, in that order.
         bool compatibleViaAssignmentOperator(const string& argType, const string& paramType);
+        // The `operator =` that assigns a `valueType` value to a slot of class `cls`, or null. See the
+        // definition for the rules; `accept` filters candidates, `allowInherited` admits an operator
+        // declared for an ancestor of `cls` (a pass-through store such as _bglObject's).
+        bool isPlainAssignOperator(classDef* cls, functionDef* fn);
+        functionDef* findAssignOperator(classDef* cls, const string& valueType,
+                                        const function<bool(functionDef*)>& accept, bool allowInherited,
+                                        const string& targetType = "");
         // `obj.member()` where `member` is a `func<...>` property: a synthesized functionDef
         // carrying the func's return type, so the call emits verbatim. nullptr when absent.
         functionDef* synthesizeFuncPropertyCall(const string& objType, const string& methodName);
@@ -928,6 +942,11 @@ class bglParser {
         bool templateArgsFit(const string& valueType, const string& targetType);
         string elementAwareType(const expression* e, functionDef* func, statementBlock* body);
         bool genericValueFits(const expression* e, const string& targetType, functionDef* func, statementBlock* body);
+        // Returns the classDef whose member/operator hierarchy applies to `typeName`-typed
+        // values. For a classDef-typed name, returns that classDef. For an objectDef-typed
+        // name, returns the objectDef's `objectClass`. nullptr if `typeName` isn't a class
+        // or instance type. Use anywhere dispatch needs to walk methods/operators by type.
+        classDef* getDispatchClass(const string& typeName);
     private:
         static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
         static std::vector<std::string> splitUnionType(const std::string& t);  // split a union name into its member type names
@@ -940,11 +959,6 @@ class bglParser {
         // For a byte array (`array<char>`) element, if `elem` is an integer literal outside 0..255,
         // raise a compile error. No-op for non-char element types and non-literal values.
         void checkByteElementRange(expression* elem, const string& elementType);
-        // Returns the classDef whose member/operator hierarchy applies to `typeName`-typed
-        // values. For a classDef-typed name, returns that classDef. For an objectDef-typed
-        // name, returns the objectDef's `objectClass`. nullptr if `typeName` isn't a class
-        // or instance type. Use anywhere dispatch needs to walk methods/operators by type.
-        classDef* getDispatchClass(const string& typeName);
         // Property-class discriminator (generic; the specifics live in the BLR). A "property-class"
         // is an emitter class whose no-arg, non-explicit `operator()` read emitter reads through the
         // OWNER and transforms it (body references `$self` and isn't a bare `$self`/`$val` identity —
@@ -1120,7 +1134,7 @@ class bglParser {
         // One handler per declaration shape preScanGlobalLoop recognizes; each consumes the whole declaration.
         void preScanExtend(token& tok);                                             // extend enum / extend <object> / extend [extern] class
         bool preScanGlobalEmitterObject(token& tok);                                // `emitter Foo { … }`; false (nothing consumed) if no '{' follows
-        void preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClass);    // class declaration + its member stubs
+        void preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClass, bool isValue = false, bool isPrimitive = false);    // class declaration + its member stubs
         void preScanEnum(token& tok, bool isExtern);                                // enum / bnum declaration
         void preScanObject(token& tok, bool isExtern);                              // `object Name {…}` / `ClassName Name {…}` / `ClassName Name;`
         void preScanProperty(bool isExtern);                                        // `property [type] name;`
@@ -1172,6 +1186,18 @@ class bglParser {
         // reconciles these stubs (processObjectExtension drops a stub once its real member lands).
         void preScanExtendObjectMembers(objectDef* obj);
         void drainDeferredObjectExtends();  // replay queued forward-extends onto now-registered targets
+        // A class's declared bases, noted by the pre-scan and linked once every class is registered, so
+        // an object of a class declared further down already converts to that class's bases.
+        struct DeferredClassBases { classDef* cls; vector<std::string> baseNames; };
+        vector<DeferredClassBases> deferredClassBases;
+        void drainDeferredClassBases();
+        // True when `#using` brings in a value emitter (no parameter list) of this name. A call never
+        // targets one, so a call of the name belongs to a same-named function.
+        bool isUsingImportedValueEmitter(const string& name);
+        std::set<std::string> paramBackingNames;   // parameter instances already named (overloads repeat a name)
+        string listElementType(const string& typeName);
+        initializerList* asSingleElementList(expression* expr, const string& typeName);
+        variableDeclaration* asInheritedArrayOverride(variableDeclaration& value, const vector<classDef*>& bases);
 
         vector<statement*> pendingInjections;  // pre-statements to emit before next main statement (e.g. from ternary lowering)
         vector<statement*> postInjections;     // post-statements to emit after next main statement (e.g. closing braces for ?. guards)

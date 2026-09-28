@@ -7,7 +7,7 @@
 // EXPECT_OUTPUT: c2: 5 6
 #beguilerSettings { target = z5; }
 
-class vec { inline int x = 0; inline int y = 0; vec operator=(vec v){ self.x=v.x; self.y=v.y; return self; } }
+value class vec { inline int x = 0; inline int y = 0; vec operator=(vec v){ self.x=v.x; self.y=v.y; return self; } }
 
 int addUp(vec v){ return v.x + v.y; }
 

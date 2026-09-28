@@ -289,7 +289,8 @@ class withemptymethod
         return 0;
     ]
 ;
-withemptymethod wem;
+withemptymethod wem
+;
 [main;
     emptyfn();
     if(emptyboolfn() == true) print "true"; else print "false";

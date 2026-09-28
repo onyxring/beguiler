@@ -1140,7 +1140,7 @@ extend class string {
 /// Text you build at run time. Unlike `string`, which points at fixed text in the story file, a
 /// `stringObj` owns a buffer from the string pool: it is taken when the variable is declared and
 /// given back when its block ends. Assigning copies the TEXT in.
-emitter class stringObj : _bglObject {
+emitter class stringObj {
     // Lifecycle
     /// Take a buffer from the pool. Runs automatically at the declaration.
     emitter void init()   { $self = _bglStr.new(); }

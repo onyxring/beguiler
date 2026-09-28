@@ -285,7 +285,8 @@ class other
   with
     hook 'aa' 'bb' 
 ;
-other otherInst;
+other otherInst
+;
 [main;
     bglinit();
 ];

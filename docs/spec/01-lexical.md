@@ -100,8 +100,11 @@ words alphabetically, with the section that defines each.
 
 **Declaration words** begin or qualify a declaration.
 
-`alias` `asBgl` `asI6` `byVal` `class` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
-`operator` `ref` `replace` `static` `superposed` `typesealed`
+`alias` `asBgl` `asI6` `class` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
+`operator` `primitive` `ref` `replace` `static` `superposed` `typesealed` `value`
+
+`primitive` and `value` are keywords only directly before `class`; elsewhere they are ordinary names
+(`int value;`).
 
 **Type-forming words** build a type rather than name one.
 

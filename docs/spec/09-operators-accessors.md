@@ -68,6 +68,20 @@ compile-time error. The valid operator tokens `?.`, `??`, `=>`, and the referenc
 
 The `==` row's `static` shape is the form a generic container calls (§9.6, §12.10).
 
+**Choosing `operator =`.** An assignment `x = v` uses the `operator =` of `x`'s class (or one it
+inherits) whose parameter is the type of `v` — or, failing that, the nearest ancestor of that type, so
+the most specific parameter wins. Every class inherits a root assignment from its root, `_bglObject` or
+`_bglPrimitive` (§21.5.8). An operator whose parameter is `x`'s class or one of its ancestors assigns a value *of that
+class*, so it applies only when `v` is one: the shared root doesn't make unrelated classes assignable.
+An `operator =` taking another type is a conversion (a setter's `operator = (int)`). One taking `var`
+would never be chosen, and declaring it is a compile-time error.
+
+An `operator =` taking the class itself (or an ancestor) is a **copy operator**. Only a value class
+(§8.2.7) may declare one — in a reference class `=` already means "refer to", so declaring one there is
+a compile-time error — and a value class never falls back to the root assignment: without a copy
+operator of its own or from a value ancestor, it can't be assigned. A subclass chains to its
+ancestor's copy operator with a cast, `(Base)self = o;`.
+
 **See also** §4.4 — binary operator resolution; Appendix C — the same table as a quick reference.
 
 ## 9.2 Emitter and Non-Emitter Operators
@@ -97,12 +111,13 @@ class Animal : object {
 
 > **Which overload wins.** When a type declares several overloads of one operator, the right-hand
 > operand selects between them in four passes: the operand's **exact** type; the **base type of a
-> literal** (`intLiteral` → `int`); a type the base is **convertible** to; and finally a parameter
-> declared `var`. `var` accepts anything, so it is the last resort rather than an exact match — which
-> is what lets a subclass override an operator it inherits. `object` declares
-> `emitter eBool operator == (var v)`, and were `var` treated as exact, a class deriving from
-> `object` could never give `==` its own meaning. An operand whose type is itself `var`, or whose
-> type is unknown, still matches in the first pass; there is nothing more specific to prefer.
+> literal** (`intLiteral` → `int`); a type the base is **convertible** to, or an **ancestor** of the
+> operand's class; and finally a parameter declared `var`. Each pass looks at the type's own operators
+> before inherited ones, so a subclass overrides what it inherits. `_bglObject` declares
+> `emitter eBool operator == (_bglObject v)` (identity), found in the third pass for any object
+> operand; a class that declares `==` for its own type, or for a specific other type, is matched
+> first. An operand whose type is itself `var`, or whose type is unknown, still matches in the first
+> pass; there is nothing more specific to prefer.
 
 ## 9.3 Subscript: `operator []` and `operator []=`
 
@@ -166,11 +181,11 @@ operator resolution, casts — are in §2.10.1 and §2.10.2.
 **Example**
 
 ```bgl
-class MyType : _bglObject {
+class MyType {
     emitter int operator ();                   // implicit
     explicit emitter string operator ();       // only via (string)x
 }
-MyType t;
+MyType t { }
 int    n = t;              // OK
 string s = (string)t;      // OK; `string s = t;` is a compile-time error
 
@@ -304,7 +319,7 @@ them as a regular method is a compile-time error:
 
 A **property accessor** is a member that reads and writes like a plain member but runs code on each
 access. It is built from a regular-method `operator ()` (the getter, §9.4) and an `operator =` (the
-setter) declared on a value class (§8.2.1), and the value class is then used as an owned member
+setter) declared on a value class (§8.2.7), and that class is then used as an owned member
 (§8.3.4) of the host class or object. A read of the member dispatches the getter; a write dispatches
 the setter, never the getter.
 
@@ -318,7 +333,7 @@ through `outer` (§9.9.3).
 **Syntax**
 
 ```syntax
-class ⟨accessor⟩ {
+value class ⟨accessor⟩ {
     [ ⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ] ; … ]
     ⟨type⟩ operator ( ) { ⟨statement⟩ … }
     ⟨type⟩ operator = ( ⟨type⟩ ⟨value⟩ ) { ⟨statement⟩ … }
@@ -336,16 +351,17 @@ second form declares the accessor as an owned member of a host class or object.
   member reads as.
 - The setter is an `operator =` taking one parameter. It runs on every assignment to the member; the
   assigned value is its argument.
-- The accessor class must be a value class with at least one stored member, and the member must be
-  declared without an initializer, so that it is owned (§8.3.4); otherwise the member is an ordinary
-  reference slot and no accessor dispatch occurs.
+- The accessor class must be a value class (§8.2.7) with at least one stored member, and the member
+  must be declared without an initializer or `ref`, so that it is owned (§8.3.4); otherwise the member
+  refers to an instance owned elsewhere and no accessor dispatch occurs. An in-place accessor (§9.9.2)
+  is a value class implicitly.
 - Inside either operator, `self` is the accessor instance and its backing members. A named accessor
   class has no access to its host; `outer` (§9.9.3) is available only to an inline accessor.
 
 **Example**
 
 ```bgl
-class heightProxy {
+value class heightProxy {
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v * 2; }

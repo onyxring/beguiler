@@ -1,0 +1,21 @@
+/*  run_order_forward_class_base — an object whose class is declared further down converts to that
+    class's base.
+
+    The pre-scan registered each class without its `: Base` clause, so until the main pass reached
+    the class, its objects were unrelated to the base, and `take(early)` found no overload.  */
+// EXPECT_OUTPUT: 3 3
+#beguilerSettings { target = z5; informName = "none"; }
+
+class base : object { int x; }
+void take(base b) { print(b.x); }
+
+void main() {
+    take(early);
+    print(" ");
+    take(late);
+}
+
+class mid : base { x = 3; }
+class leaf : mid { }
+mid early { }
+leaf late { }

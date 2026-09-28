@@ -31,7 +31,7 @@ class Npc : object {
 emitter void trigger(Npc n){ $i6Expr($n.notifyEvent()); }  // void global emitter
 emitter int  rateOf (Npc n){ $i6Expr($n.rate()) }          // value global emitter
 
-Npc robot;
+Npc robot { }
 
 void main(){
     robot.score = 7;

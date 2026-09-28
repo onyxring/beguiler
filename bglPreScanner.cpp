@@ -5,6 +5,7 @@
 
 #include "bglParser.h"
 #include "bglLanguageService.h"
+#include "bglParserHelpers.h"
 #include "settings.h"
 #include <filesystem>
 #include <iostream>
@@ -422,6 +423,7 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
         if(t.is("explicit")) t = file.getToken();
         if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
         if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
+        if(t.is("typesealed")) t = file.getToken();   // `typesealed` member qualifier — likewise
 
         // Namespace-redirect members become resolution stubs so dotted resolution (bgl.asm,
         // bgl.glulx, bgl.util.*) works before the real `extend` runs in the main pass. Gate STRICTLY
@@ -537,6 +539,31 @@ void bglParser::drainDeferredObjectExtends(){
     deferredObjectExtends.clear();
 }
 
+// Link the bases the pre-scan noted for each class (`_bglObject` for a class declared without one). A
+// base that is still unknown, or that would close an inheritance cycle, is left for the main pass.
+void bglParser::drainDeferredClassBases(){
+    function<bool(classDef*, classDef*, set<classDef*>&)> reaches = [&](classDef* from, classDef* target, set<classDef*>& seen){
+        if(from == target) return true;
+        if(!seen.insert(from).second) return false;
+        for(classDef* b : from->baseClasses) if(reaches(b, target, seen)) return true;
+        return false;
+    };
+    for(const DeferredClassBases& db : deferredClassBases){
+        vector<string> baseNames = db.baseNames;
+        if(baseNames.empty() && !db.cls->isAlias)
+            if(string root = implicitRootName(db.cls); !root.empty()) baseNames.push_back(root);
+        for(const string& baseName : baseNames){
+            classDef* base = languageService.findClass(baseName);
+            if(base == nullptr) continue;
+            if(find(db.cls->baseClasses.begin(), db.cls->baseClasses.end(), base) != db.cls->baseClasses.end()) continue;
+            set<classDef*> seen;
+            if(reaches(base, db.cls, seen)) continue;
+            db.cls->baseClasses.push_back(base);
+        }
+    }
+    deferredClassBases.clear();
+}
+
 void bglParser::preScanFile(string filename, const std::string* contentOverride){
     string absPath;
     try { absPath = filesystem::canonical(filesystem::absolute(filename)).string(); }
@@ -572,6 +599,7 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
         catch(...){ file.close(); preScanDepth--; throw; }
         file.close();
         drainDeferredObjectExtends();   // all decls registered — replay forward extends
+        drainDeferredClassBases();
         preScanDepth--;
         return;
     }
@@ -595,7 +623,7 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
 
     // Top-level entry only: the whole include tree is now pre-scanned, so every `extend` target is
     // registered. Replay any forward extends captured while their target was still undeclared.
-    if(isFirst) drainDeferredObjectExtends();
+    if(isFirst){ drainDeferredObjectExtends(); drainDeferredClassBases(); }
 
     file.close();
     preScanDepth--;
@@ -702,10 +730,23 @@ void bglParser::preScanExtend(token& tok){
         while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
             bool memberIsEmitter = false;
             bool memberIsReplace = false;
-            if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
-            if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
-            if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
-            if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
+            bool memberIsInline  = false;
+            // Member qualifiers, in any order. `inline` is recorded: an instance declared before
+            // this extend still has to see the class's extended positional order.
+            while(t.is("replace") || t.is("explicit") || t.is("emitter") || t.is("ref") || t.is("typesealed")
+                  || t.is("inline") || t.is("const") || t.is("static")){
+                if(t.is("replace")) memberIsReplace = true;
+                if(t.is("emitter")) memberIsEmitter = true;
+                if(t.is("inline"))  memberIsInline  = true;
+                t = file.getToken();
+            }
+            // `inline name;` makes an existing member positional.
+            if(memberIsInline && (t.is(eTokenType::identifier) || t.isDataType()) && file.peekToken().is(token::endStatement)){
+                addInlineOrder(*cls, t.value);
+                file.getToken();
+                t = file.getToken();
+                continue;
+            }
             // `hide <member>[.operator <op>][(types)];` — an access-control directive, not a
             // member. Consume it so the pre-scan doesn't register a bogus `hide`-typed member
             // (which would shadow the real inherited member). Recorded in the main pass.
@@ -762,7 +803,22 @@ void bglParser::preScanExtend(token& tok){
                     }
                     if(!exists) cls->members.push_back(&fd);
                 } else {
-                    // Property — skip to ;
+                    // Property. A positional one gets a stub now, so the class's order is complete
+                    // for instances parsed before the main pass reaches this extend.
+                    if(memberIsInline){
+                        bool exists = false;
+                        for(typeMember* m : cls->members) if(m->name == memberName.value){ exists = true; break; }
+                        if(!exists){
+                            variableDeclaration& vd = *(new variableDeclaration());
+                            vd.name = memberName.value;
+                            vd.type.name = t.value;
+                            vd.isInline = true;
+                            vd.isPrePassStub = true;
+                            cls->members.push_back(&vd);
+                        }
+                        addInlineOrder(*cls, memberName.value);
+                    }
+                    // skip to ;
                     while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
                         if(afterName.is(token::braceOpen)){ file.getRawTextThroughClosingBrace(); break; }
                         afterName = file.getToken();
@@ -782,7 +838,7 @@ void bglParser::preScanExtend(token& tok){
 }
 
 // class declaration — register the class stub, its type parameters, and a stub per member.
-void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClass){
+void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClass, bool isValue, bool isPrimitive){
     token nameTok = file.getToken();
     string nameStr = nameTok.value;
     classDef* cls = nullptr;
@@ -791,6 +847,8 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
         stub.isPrePassStub = true;
         if(isEmitter)     stub.isEmitterClass = true;
         if(isAliasClass)  stub.isAlias = true;
+        if(isValue)       stub.isValue = true;       // the kind is known from the first use, not only after the declaration
+        if(isPrimitive)   stub.isPrimitive = true;
         cls = &stub;
     } else {
         cls = languageService.findClass(nameStr);
@@ -812,8 +870,19 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
             if(!sep.is(token::comma)) break; // malformed — let main pass produce the diagnostic
         }
     }
-    // Skip past any inheritance clause to find '{'
+    // Note the inheritance clause (`: Base, …`, or `for Parent` on an alias class) and skip to '{'
     { token t = file.getToken();
+      if(t.is(":") || t.is("for")){
+          DeferredClassBases db{cls, {}};
+          do {
+              token baseTok = file.getToken();
+              if(!baseTok.is(eTokenType::identifier) && !baseTok.isDataType()){ t = baseTok; break; }
+              db.baseNames.push_back(baseTok.value);
+              t = file.getToken();
+          } while(t.is(","));
+          if(cls != nullptr && !db.baseNames.empty()) deferredClassBases.push_back(db);
+      }
+      else if(cls != nullptr) deferredClassBases.push_back({cls, {}});   // no base: derives _bglObject
       while(!t.is(token::braceOpen) && !t.is(token::endStatement) && !t.is(eTokenType::eof))
           t = file.getToken();
       if(t.is(token::braceOpen)) {
@@ -896,6 +965,12 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                   if(bt.isDataType() || bt.is(eTokenType::identifier)){
                       token typeTok = bt;
                       token afterType = file.getToken();
+                      // `inline name;` re-lists an inherited member as positional.
+                      if(sawInline && afterType.is(token::endStatement)){
+                          addInlineOrder(*cls, typeTok.value);
+                          bt = file.getToken();
+                          continue;
+                      }
                       // Operator declarations — register a stub so forward references resolve.
                       // The full-pass name conventions are mirrored here (see bglParser.cpp:2244+):
                       //   operator(<>)        → "operator()"
@@ -1011,6 +1086,7 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                               vd.isPrePassStub = true;
                               cls->members.push_back(&vd);
                           }
+                          if(sawInline) addInlineOrder(*cls, pname);
                           // Skip to ';' — handle initializer, brace block, or bare decl
                           token s = file.getToken();
                           while(!s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
@@ -1157,6 +1233,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                 if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
                 if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
                 if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
+                if(t.is("typesealed")) t = file.getToken();   // `typesealed` member qualifier — likewise
                 if(t.isDataType()){
                     preScanConsumeGenericSuffix(t);
                     token memberName = file.getToken();
@@ -1529,7 +1606,7 @@ void bglParser::preScanGlobalLoop(){
         if(tok.is("alias")) { isAliasClass = true; tok = file.getToken(); } // consume 'class'
 
         // class declaration
-        if(tok.is(token::classDeclaration)){ preScanClassHead(isExtern, isEmitter, isAliasClass); continue; }
+        if(tok.is(token::classDeclaration)){ preScanClassHead(isExtern || q.isPrimitive, isEmitter || q.isPrimitive, isAliasClass, q.isValue, q.isPrimitive); continue; }
 
         // enum / bnum declaration
         if(tok.is(token::enumDeclaration) || tok.is(token::bnumDeclaration)){ preScanEnum(tok, isExtern); continue; }

@@ -13,9 +13,9 @@
 }
 
 class Room : object { int visits = 0; }
-Room r1;
-Room r2;
-Room r3;
+Room r1 { }
+Room r2 { }
+Room r3 { }
 
 void main(){
     int total = 0;

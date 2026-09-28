@@ -1,0 +1,5 @@
+// An I6 class can't give its instances a header name; each object names itself.
+// EXPECT_ERROR: a class can't set 'instanceName'
+#beguilerSettings { target = z5; informName = "none"; }
+class Lamp : object { instanceName = "lamp"; }
+void main(){ }

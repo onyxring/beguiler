@@ -8,7 +8,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 
 class Celsius { int degrees = 100; int operator () { return degrees * 9 / 5 + 32; } }
-Celsius boiling;
+Celsius boiling { }
 
 class Animal : object { }
 class Dog : Animal { }

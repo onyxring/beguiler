@@ -13,8 +13,8 @@ class Room : object {
     Room next;
 }
 
-Room foyer;
-Room cloakroom;
+Room foyer { }
+Room cloakroom { }
 
 void main(){
     // Optional chaining in expression — method call through ?.

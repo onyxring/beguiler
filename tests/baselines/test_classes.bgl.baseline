@@ -324,13 +324,15 @@ class delta
   with
     valD 4
 ;
-delta g_delta;
+delta g_delta
+;
 class box
   class object
   with
     capacity 0
 ;
-box g_box;
+box g_box
+;
 global _bgl_Tally_total = 0;
 class tally
   class object
@@ -339,7 +341,8 @@ class tally
         _bgl_Tally_total=_bgl_Tally_total + 1;
     ]
 ;
-tally g_tally;
+tally g_tally
+;
 class greeter
   class object
   with
@@ -347,7 +350,8 @@ class greeter
         print (string)"howdy";
     ]
 ;
-greeter g_greeter;
+greeter g_greeter
+;
 object myHelper
   with value 0,
        getValue [;
@@ -359,7 +363,8 @@ place testRoom
        description "A room for testing."
   has light
 ;
-flyingfish g_ff;
+flyingfish g_ff
+;
 [main v a d total t;
     _bgl_animal_count=_bgl_animal_count + 1;
     v=myhelper.getvalue();

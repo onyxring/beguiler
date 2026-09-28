@@ -1,0 +1,28 @@
+/*  run_class_default_root — a class declared with no base derives _bglObject, the root of every class.
+
+    Before, a class with no base derived nothing, so it wasn't a _bglObject. Assignment is the class's
+    `operator =`: `counter` declares none, so it takes the root's and `b = a` makes `b` refer to `a`'s
+    instance; `tally` declares one, so assignment copies.  */
+// EXPECT_OUTPUT: root ok, shared 7, copied 1
+#beguilerSettings { target = z5; informName = "none"; }
+
+class counter[2] { int n = 1; }               // no base: derives _bglObject; root assignment
+value class tally {                           // a value class: copies through operator = (tally)
+    int n = 1;
+    tally operator = (tally o){ n = o.n; return self; }
+}
+
+bool isRooted(_bglObject o){ return true; }
+
+void main() {
+    counter a = new counter();
+    if(isRooted(a)) print("root ok, ");
+    counter b = a;          // the root assignment: b refers to a's instance
+    b.n = 7;
+    print($"shared {a.n}, ");
+    tally c;
+    c.n = 1;
+    tally d = c;            // a copy
+    d.n = 9;
+    print($"copied {c.n}");
+}

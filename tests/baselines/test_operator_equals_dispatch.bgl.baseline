@@ -273,7 +273,6 @@ object bgl
   with zcode _zcode
 ;
 class point
-  class object
   with
     x,
     y,
@@ -288,12 +287,17 @@ class wrapper
   with
     inner
 ;
-point pa;
-point pb;
-point _bglField_w_inner;
-wrapper w with inner _bglField_w_inner;
+point _bglGlobal_pa;
+global pa = _bglGlobal_pa;
+point _bglGlobal_pb;
+global pb = _bglGlobal_pb;
+point _w_inner;
+wrapper w
+  with inner _w_inner
+;
 [makePoint p;
-    p = pa;
+    p = _bglLocal_makepoint_p;
+    p._opeq(pa);
     p.x = 7;
     return p;
 ];
@@ -301,3 +305,4 @@ wrapper w with inner _bglField_w_inner;
     pb._opeq(makepoint());
     w.inner._opeq(makepoint());
 ];
+point _bglLocal_makepoint_p;

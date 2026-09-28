@@ -231,19 +231,28 @@ bool bglLanguageService::isKnownPropertyName(const string& name) const {
     for(typeDef* g : globals)
         if(auto* vd = dynamic_cast<variableDeclaration*>(g))
             if(vd->type.name == "property" && vd->name == name) return true;
-    // Class members — every member name auto-registers in I6's property table when its class
-    // is emitted, so any of them is a valid `provides()` operand.
+    // Only a member that is emitted as an I6 property counts. An emitter, an alias or a static
+    // member has no property, so a bare `bold` naming bgl.printRules' emitter is not one — it must
+    // stay unresolved rather than be emitted as an undefined I6 name.
+    auto isProperty = [&](typeMember* m){
+        if(m->name != name) return false;
+        if(auto* fd = dynamic_cast<functionDef*>(m)) return !fd->isEmitter && !fd->isStatic;
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m)) return !vd->isAlias && !vd->isValueAlias && !vd->isStatic;
+        return true;
+    };
+    // Class members — every such member name auto-registers in I6's property table when its
+    // class is emitted, so any of them is a valid `provides()` operand.
     for(typeDef* t : objectTypes){
         if(auto* cd = dynamic_cast<classDef*>(t))
             for(typeMember* m : cd->members)
-                if(m->name == name) return true;
+                if(isProperty(m)) return true;
     }
     // Object instance members — a stand-alone `object foo { int bar; }` registers `bar`
     // in the I6 property table just like a class member would.
     for(typeDef* t : objectInstances){
         if(auto* od = dynamic_cast<objectDef*>(t))
             for(typeMember* m : od->members)
-                if(m->name == name) return true;
+                if(isProperty(m)) return true;
     }
     return false;
 }

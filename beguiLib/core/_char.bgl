@@ -1,13 +1,13 @@
 #once
 /// The type of a `'x'` literal, before it is assigned or compared. Converts to `char`.
-extern emitter class charLiteral:_bglObject{
+primitive class charLiteral {
     emitter char operator();                   //implicitly converts to char type
     char operator auto();
     replace emitter void print(){ print (char)$val; }
 }
 /// A single character, held as its ZSCII code. Arithmetic with `int` works: `c + 1` is the next
 /// character. A `char` and an `int` are indistinguishable at run time.
-extern emitter class char : _bglObject{
+primitive class char {
     emitter char operator = (char c){ $target=$c; }
     //emitter char operator = (int v){ $val=$v; } //we avoid:  char c = 45;  Enforce: char c ='\45';
 

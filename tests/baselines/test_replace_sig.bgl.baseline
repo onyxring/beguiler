@@ -273,10 +273,10 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-[add a b;
+[_bgl_replaced_add_0 a b;
     return a + b;
 ];
-[add x;
+[_bgl_replaced_add_1 x;
     return _bgl_replaced_add_0(x,10);
 ];
 [add;

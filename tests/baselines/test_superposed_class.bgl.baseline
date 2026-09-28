@@ -276,7 +276,8 @@ class widget
   with
     weight 4
 ;
-widget gizmo;
+widget gizmo
+;
 object rock
 ;
 [main;

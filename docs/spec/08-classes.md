@@ -8,9 +8,9 @@
   - [8.2.2 `extern class`](#822-extern-class)
   - [8.2.3 `emitter class`](#823-emitter-class)
   - [8.2.4 `alias class`](#824-alias-class)
-  - [8.2.5 Veneer Classes (`extern emitter class`)](#825-veneer-classes-extern-emitter-class)
+  - [8.2.5 Primitive Classes (`primitive class`)](#825-primitive-classes-primitive-class)
   - [8.2.6 Pooled Classes](#826-pooled-classes)
-  - [8.2.7 `byVal class`](#827-byval-class)
+  - [8.2.7 Value Classes (`value class`)](#827-value-classes-value-class)
   - [8.2.8 `typesealed` Members](#828-typesealed-members)
 - [8.3 Members](#83-members)
   - [8.3.1 Member Variables](#831-member-variables)
@@ -31,7 +31,7 @@
 
 A class declares a type: the members its instances hold, the methods and emitters that act on them,
 and the parents it inherits from. This chapter specifies the declaration and its forms (normal,
-`extern`, `emitter`, `alias`, veneer, pooled and `byVal`), the kinds of member, methods, the `init`
+`extern`, `emitter`, `alias`, primitive, value and pooled), the kinds of member, methods, the `init`
 and `deinit` lifecycle, inheritance, and extending and replacing members. Two further topics have
 chapters of their own: overloaded operators and property accessors, which are class members, are
 specified in §9; the use of objects and emitter classes as namespaces is specified in §10. Objects,
@@ -58,7 +58,7 @@ form `[` and `]` are literal: `[⟨n⟩]` declares a pool size (§8.2.6).
 A class declares a new type. Its members are member variables, methods, emitters, and operators (§9).
 The class name must be unique among types; it is the type name used to declare instances. Member
 variables follow the same `⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ]` form as global variables (§3.3). Qualifiers
-(`extern`, `emitter`, `alias`, `byVal`, `extend`, `replace`, `superposed`, …) are the declaration
+(`extern`, `emitter`, `alias`, `extend`, `replace`, `superposed`, …) are the declaration
 qualifiers of §3.2 and may appear in any order.
 
 **Example**
@@ -114,13 +114,13 @@ Box<int>  scoreBox;     // T = int
 
 | Form | Syntax | Instances | Members permitted |
 |---|---|---|---|
-| Normal | `class Foo` | Objects with their own storage | Variables (with or without initializers), methods, emitters |
+| Normal | `class Foo` | Objects with their own storage, shared by reference | Variables (with or without initializers), methods, emitters |
+| Value | `value class Foo` | Objects each variable owns, copied on assignment | As normal class; a copy operator to be assigned |
 | Extern | `extern class Foo` | Defined outside Beguile (I6) | Variable declarations, emitters, `static` methods |
 | Emitter | `emitter class Foo` | None (type label only) | Emitters (`emitter` implied), `static` methods, alias members |
 | Alias | `alias class Foo for Parent` | Same as `Parent` | Variable declarations (no initializer), emitters, `static` methods |
-| Veneer | `extern emitter class Foo : Base` | A bare word | As emitter class |
+| Primitive | `primitive class Foo` | None: a variable holds the value itself | As emitter class |
 | Pooled | `class Foo[N]` | `N` preallocated slots | As normal class, plus `create()`/`destroy()` |
-| By value | `byVal class Foo` | As normal; parameters copy | As normal class; `operator =` required |
 
 Normal, `extern`, and `emitter` classes may inherit with `: Parent` (§8.6). An alias class names
 exactly one `Parent` after `for`; this is a type-aliasing relationship, not inheritance. Every form
@@ -139,12 +139,10 @@ class ⟨name⟩ [ : ⟨parent⟩ [ , ⟨parent⟩ … ] ] { ⟨member⟩ … }
 A class with no form qualifier supports the full member set: variables with initializers, methods
 with statement bodies, and emitters. Instances are objects with their own storage.
 
-A normal class that derives from neither `object` nor `_bglObject` (§21.5.8) is a **value class**:
-an instance holds its members directly, a local or member of the type is an instance in its own
-right, and assignment copies the members through the class's `operator =` (§2.10.3). A class derived
-from `object` or `_bglObject` has reference semantics: a variable of the type holds a reference to an
-instance owned elsewhere. The term *value class* is used throughout this specification for the
-former.
+A normal class is a **reference class** (§2.10.3): a global, local, member or parameter of the type
+refers to an instance owned elsewhere, is empty until assigned, and assignment makes it refer to the
+assigned instance. A reference class may not declare a copy operator (§9.1). To make the instances
+values instead — owned by each variable and copied — declare the class `value` (§8.2.7).
 
 **Example**
 
@@ -211,7 +209,8 @@ emitter class ⟨name⟩ [ : ⟨parent⟩ ] { ⟨member⟩ … }
 
 An `emitter class` is a type with no instance storage: it exists to give a name to a set of emitters
 and operators. Every method is an emitter; the `emitter` keyword on a member is optional. A member
-variable is a compile-time error, except an **alias member** (§10.3). An emitter class is used as
+variable is a compile-time error, except an **alias member** (§10.3), which has no storage of its own
+and may be `const` or `inline` (the root `_bglObject` declares the object name this way, §11.5.4). An emitter class is used as
 a type — variables may be declared of it — which distinguishes it from an emitter namespace (§7.7),
 which is only called by name.
 
@@ -256,38 +255,43 @@ worldObject foyer {
 }
 ```
 
-### 8.2.5 Veneer Classes (`extern emitter class`)
+### 8.2.5 Primitive Classes (`primitive class`)
 
 **Syntax**
 
 ```syntax
-extern emitter class ⟨name⟩ : ⟨base⟩ { ⟨member⟩ … }
+primitive class ⟨name⟩ [ : ⟨base⟩ ] { ⟨member⟩ … }
 ```
 
 **Description**
 
-A class declared `extern emitter` is a **veneer class**: a distinct type with no representation of
-its own. Its value *is* the word it wraps; the class adds a type and behavior (emitters, operators)
-but no storage. An instance is a bare variable, not a world-tree object. The primitive types (`int`,
-`bool`, `char`, `string`, the literal pseudo-types) are declared this way, naming `_bglObject` as
-their base to take the shared member surface (§21.5.8).
+A `primitive class` declares a **primitive type** (§2.10.3): a variable of the type holds the value
+itself, one word. There is no instance and nothing is allocated; assignment and passing copy the word;
+`ref` is a compile-time error. The class adds a type and behavior (emitters, operators), not storage.
+`primitive` implies `extern emitter`: I6 already knows the representation, and every member is an
+emitter. The primitive types are `int`, `uint`, `bool`, `char`, `float`, `string`, `dictionaryWord`,
+`attribute`, `property`, `bglClass` (a class name's value), the literal pseudo-types and `glulxImage`;
+enums are primitive by nature.
 
-Because a veneer has nothing to initialize beyond the word it wraps, a value of the base type is a
-complete instance: given a matching `operator =`, a veneer over `int` accepts an `int` (or any
-int-compatible value such as an enum member) directly.
+A value of the base type is a complete instance: given a matching `operator =`, a primitive over `int`
+accepts an `int` (or any int-compatible value such as an enum member) directly.
 
-A veneer is a *newtype*, not an alias: `glulxImage` and `int` are different types that share a
-representation, and conversion between them is explicit (`operator()` to the base, `operator =(base)`
-from it). An `alias class` (§8.2.4) is the *same* type under another name.
+A primitive over another type is a *newtype*, not an alias: `glulxImage` and `int` are different types
+that share a representation, and conversion between them is explicit (`operator()` to the base,
+`operator =(base)` from it). An `alias class` (§8.2.4) is the *same* type under another name.
+
+A type label over a word that is *not* a primitive value — a class that manages its own storage
+through `init`/`deinit`, such as `array<T>` — is declared `extern emitter class`; such labels are
+sometimes called *veneer classes*.
 
 **Example**
 
 ```bgl
-extern emitter class int : _bglObject {
+primitive class int {
     emitter int operator + (int v){ $val + $v }
 }
 
-glulxImage cover = eAssets.coverArt;    // a veneer over int accepts the int
+glulxImage cover = eAssets.coverArt;    // a primitive over int accepts the int
 int w = cover.width();                  // behavior without storage
 ```
 
@@ -353,41 +357,52 @@ void Main(){
 
 **Notes**
 
-A file-scope instance of a pooled type (`Name m;` at file scope, not obtained from `new`) is not part
+A file-scope instance of a pooled type (`Name m { }` at file scope, not obtained from `new`) is not part
 of the pool. Passing such an instance to `delete`, or otherwise mixing file-scope and pooled instances
 of one type, is not detected at compile time and the behavior is undefined.
 
-### 8.2.7 `byVal class`
+### 8.2.7 Value Classes (`value class`)
 
 **Syntax**
 
 ```syntax
-byVal class ⟨name⟩ { ⟨member⟩ … }
+value class ⟨name⟩ [ : ⟨parent⟩ [ , ⟨parent⟩ … ] ] { ⟨member⟩ … }
 ```
 
 **Description**
 
-By default a class-typed parameter is passed by reference. A `byVal class` parameter is passed by
-**value**: at each call the argument is copied into the parameter through the class's `operator =`,
-so mutations inside the callee do not affect the caller's instance.
+A `value class` declares a **value type** (§2.10.3): a global, local, member or parameter of the type
+owns an instance of its own, whose members are zeroed (a local's at routine entry), and assignment and
+passing copy into that instance through the class's **copy operator** — `operator =` taking the class.
+A value class with no copy operator can't be assigned or passed; that is a compile-time error.
 
-- `operator =` accepting the class (or `var`) is required; declaring a `byVal class` without one is a
-  compile-time error.
-- A `byVal class` cannot inherit from `object`.
-- `byVal` cannot be combined with `extern`, `emitter`, `extend`, or `alias`.
-- The marker is not inherited; a subclass must declare `byVal` itself.
+- `value` is inherited: a subclass of a value class is a value class. A class can't have both a value
+  base and a reference base.
+- A subclass that adds members but declares no copy operator runs its ancestor's, which copies the
+  ancestor's members only. To copy its own too, a subclass declares a copy operator and chains to the
+  ancestor's with a cast: `(Base)self = o;` calls `Base`'s `operator =`.
+- A `ref` variable, parameter or member of a value class refers to an instance owned elsewhere instead:
+  it is bound with `:=`, and `=` through it copies into the referent (§3.7).
+- `value` cannot be combined with `extern`, `emitter`, `alias` or `primitive`, and belongs on the
+  original declaration, not on `extend`.
 
 **Example**
 
 ```bgl
-byVal class Temperature {
-    int degrees = 0;
-    emitter Temperature operator = (Temperature v){ $target = $v; }
+value class Vec2 {
+    int x; int y;
+    Vec2 operator = (Vec2 o){ x = o.x; y = o.y; return self; }
 }
-void heatUp(Temperature t){ t.degrees = t.degrees + 10; }   // local copy only
+value class Vec3 : Vec2 {
+    int z;
+    Vec3 operator = (Vec3 o){ z = o.z; (Vec2)self = o; return self; }   // copies z, then x and y
+}
 
-Temperature room;
-heatUp(room);       // room.degrees unchanged
+Vec2 a;                     // owns an instance
+Vec2 b = a;                 // a copy
+void nudge(Vec2 v){ v.x++; }
+nudge(a);                   // the function gets a copy: a.x unchanged
+ref Vec2 p := a;            // p refers to a's instance
 ```
 
 ### 8.2.8 `typesealed` Members
@@ -460,7 +475,9 @@ const ⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ] ;
 **Description**
 
 A `const` member may be initialized in the class or in an object declaration and cannot be assigned
-afterwards; assignment is a compile-time error. `const` and `static` are mutually exclusive.
+afterwards; assignment is a compile-time error. A value an object declaration gives an inherited
+`const` member is that member's one assignment: it stays `const`. `const` and `static` are mutually
+exclusive.
 
 **Example**
 
@@ -469,7 +486,7 @@ class Config {
     const int    maxScore = 100;
     const string title    = "My Game";
 }
-Config config;
+Config config { }
 config.maxScore = 200;      // compile-time error
 ```
 
@@ -513,12 +530,12 @@ class Counter {
 
 **Description**
 
-A class-typed member is an **owned member** when all three hold: its type is a value class (§8.2.1),
-that type has stored members, and the member is declared without an initializer. An owned member is
-a live instance of its own — every instance of the enclosing class has an independent backing —
-rather than a bare reference slot, so methods and operators may be called on it. Ownership is
-detected structurally; there is no keyword. To keep reference semantics instead, derive the member's
-type from `object` or initialize the member to an existing instance.
+A class-typed member is an **owned member** when its type is a value class (§8.2.7) with stored
+members and the member is declared without an initializer and without `ref`. An owned member is a
+live instance of its own — every instance of the enclosing class has an independent backing — rather
+than a bare reference slot, so methods and operators may be called on it. A member of a reference class
+refers to an instance owned elsewhere and is empty until assigned; so is a `ref` member of a value
+class.
 
 Owned members are what make property accessors work (§9.9). In a pooled class each slot has its own
 backing, reset on `new` (§8.2.6). Owned members are not permitted on an identifier-sized pool.
@@ -526,7 +543,7 @@ backing, reset on `new` (§8.2.6). Owned members are not permitted on an identif
 **Example**
 
 ```bgl
-class Box { int _val = 0; void set(int v){ _val = v; } }
+value class Box { int _val = 0; void set(int v){ _val = v; } }
 class thing : object { Box b; }         // b is owned: each thing has its own Box
 thing t1 {}
 thing t2 {}                              // t1.b and t2.b are distinct instances
@@ -538,21 +555,52 @@ thing t2 {}                              // t1.b and t2.b are distinct instances
 
 ```syntax
 inline ⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ] ;
+inline ⟨existing-member⟩ ;
 ```
 
 **Description**
 
-An `inline` member is a positional slot for inline object construction: when an instance is written
-as `Type{ a, b, … }`, the positional values fill the class's `inline` members in declaration order,
-base class first. A member that is not `inline` can be set only by name. `inline` may be declared on
-an `object`-derived class or on a value class; an `array<T>` member may be `inline`. The positional
-and named forms, their separators and the error cases are specified in §11.3.1.
+An `inline` member is a positional slot: when an instance is written with positional values, in a
+declaration body (`Pet rex { "rex", 3; }`, §11.2) or an inline object (`Pet{ "rex", 3 }`, §11.3), the
+values fill the class's positional members in order. A member that is not positional can be set only
+by name. `inline` may be declared on any class; an `array<T>` member may be `inline`.
+
+The second form, with no type, **re-lists** an existing member — inherited, or the class's own — as
+positional at that point in this class's order; the member itself is unchanged (it keeps its type,
+its `const`, and where it is declared). Naming a member the class doesn't have, or one already
+positional in this class, is a compile-time error.
+
+A class's positional order is its own list — its `inline` members and the members it re-lists, in
+declaration order — followed by each base's order, **subclass first**. A member appears once, where it
+is first listed, so a subclass that re-lists an inherited member decides its position; one that
+doesn't places its own `inline` members ahead of the inherited ones. The positional and named forms,
+their separators and the error cases are specified in §11.3.1. A positional value is type-checked
+against the member it fills, as a named one is.
+
+**With `extend class`** (§8.7.1), both forms append to the extended class's own list:
+`extend class A { inline int a2; }` adds `a2` after A's existing positional members, and
+`extend class A { inline n; }` makes the existing member `n` positional there. The order is a property
+of the program, not of source position: every instance of the class, or of a class derived from it,
+uses the extended order, including instances declared before the `extend`. Extending a base therefore
+moves the later slots of its subclasses — the name, always last, included.
 
 **Example**
 
 ```bgl
 class point : object { inline int x; inline int y; string label; }
 point origin = point{ 0, 0 };            // x, y positional; label by name only
+
+// `_bglObject` declares `inline const string instanceName;` (§11.5.4), so every class ends with it.
+object lamp { "brass lamp"; }                                    // the name is object's only slot
+class Animal : object { inline int legs; }                       // legs, then the name
+class Pet : object { inline instanceName; inline int legs; }     // name first: re-listed
+Animal cat { 4, "the cat"; }
+Pet rex { "rex", 3; }
+
+class A : object { inline int a1; int n; }
+class B : A { inline int b1; }
+extend class A { inline int a2; inline n; }   // A: a1, a2, n
+B x { 1, 2, 3, 4, "the x"; }                   // b1, a1, a2, n, name
 ```
 
 ## 8.4 Methods
@@ -595,13 +643,26 @@ static ⟨type⟩ deinit( ⟨type⟩ ⟨value⟩ ) { ⟨statement⟩ … }
 
 **Description**
 
-A class of any form may declare `init` and `deinit`, which run automatically for a local variable of
-that type.
+A class of any form may declare `init` and `deinit`, which run automatically for a variable of that
+type: a class that manages its own storage (such as `stringObj`, which holds a pool buffer) uses them
+to acquire and release it.
 
-- `init` fires immediately after the variable is declared, before any initializer assignment.
-- `deinit` fires at the end of the block the variable was declared in, and before any `return` that
-  leaves that block. For a variable declared at the routine's top level these are the same thing:
-  the routine's end and every `return` in it. Releases run in reverse declaration order.
+- **Local.** `init` fires immediately after the variable is declared, before any initializer
+  assignment. `deinit` fires at the end of the block the variable was declared in, and before any
+  `return` that leaves that block. For a variable declared at the routine's top level these are the
+  same thing: the routine's end and every `return` in it. Releases run in reverse declaration order.
+- **Parameter.** A parameter that owns its instance (a value class, §8.2.7, or an emitter class with
+  both `init` and `deinit`) runs them as a local does: `init` fires at entry, before the argument is
+  copied in through the class's `operator =` taking its own type, and `deinit` fires at the
+  routine's end and before every `return`. For an emitter class, `init` is what gives the parameter
+  its own instance, so changes inside the routine don't reach the caller; such a class with no copy
+  operator can be passed only by `ref` (a compile-time error otherwise). A reference-class parameter
+  shares its argument, so neither fires.
+- **Global.** `init` fires at startup, in `bglInit`, before the declared value is applied. A global
+  is never released.
+- **`ref`.** A `ref` local or parameter owns nothing, so neither fires: it shares the referent.
+- **Returned value.** A local returned from a routine has already been released when the caller
+  receives it: the caller must copy it at once (the ephemeral pattern, §22.3).
 - In these instance forms both must be emitters and declare no parameters; either violation is a
   compile-time error. `init` has no other form and cannot be `static`.
 
@@ -612,16 +673,21 @@ owns storage generally declares both.
 **Example**
 
 ```bgl
-extend extern class string {
-    emitter void init()   { $self = GetNewString(); }
-    emitter void deinit() { FreeString($self); }
+emitter class stringObj {
+    emitter void init()   { $self = _bglStr.new(); }
+    emitter void deinit() { $self.free(); }
+    emitter stringObj operator = (stringObj v){ $self.setFromStr($v); }
+    …
 }
 
 void doSomething(){
-    string s;           // init fires
+    stringObj s;        // init fires
     s = "hello";
     return;             // deinit fires first
 }                       // deinit also fires on fall-through
+
+void shout(stringObj s){ s += "!"; }     // s is a copy: init, then the argument copied in
+void shoutHere(ref stringObj s){ s += "!"; }   // shares the caller's buffer
 ```
 
 **See also** §9.8 — `init` and `deinit` among the members that must be emitters; §12.10 — the value
@@ -638,7 +704,7 @@ class ⟨name⟩ : ⟨parent⟩ [ , ⟨parent⟩ … ] { ⟨member⟩ … }
 **Description**
 
 A class inherits every member of the parents listed after the colon. Multiple inheritance is
-permitted. Member lookup walks the hierarchy depth-first, left to right, and the first match wins;
+permitted. A class declared without a parent derives a root (§21.5.8): `_bglPrimitive` for a `primitive` class and `_bglObject` for any other. Member lookup walks the hierarchy depth-first, left to right, and the first match wins;
 when two parents declare the same member name, the first-listed parent's member is used. Inside a
 method, bare identifiers resolve inherited **variable** members from all bases by this search;
 inherited methods resolve through method dispatch.
@@ -668,13 +734,24 @@ extend [ extern ] class ⟨name⟩ { ⟨member⟩ … }
 
 **Description**
 
-`extend class` adds members to an already-declared class; the name must already be a type. An
-`extern` class accepts only emitters and `static` members; a class declared in Beguile accepts any
-member. `extend class` may not change a type parameter (§8.1.1) or a pool size (§8.2.6).
+`extend class` adds members to an already-declared class. An `extern` class accepts what its
+declaration does (§8.2.2): member declarations, emitters and `static` members; a class declared in
+Beguile accepts any member. `extend class` may not change a type parameter (§8.1.1), a pool size
+(§8.2.6) or the class's form (`value`, `primitive`, `superposed`). An `inline` member or
+`inline name;` appends to the class's positional order (§8.3.5). `replace` replaces an existing
+member; a `replace` that names no existing member is a warning, and the member is added.
+
+**Order.** Source order matters only while a class's definition is being assembled: its declaration
+comes first, then its `extend`s, applied in the order they appear. An `extend` that precedes the
+declaration is a compile-time error. Every use of the class — its instances, subclasses, method calls
+and positional values — works on the class's **final** definition, wherever the use appears: an
+instance declared between the class and an `extend` has the members and the positional order the
+`extend` adds.
 
 **Example**
 
 ```bgl
+class Counter { int value; }
 extend class Counter {
     emitter bool isZero(){ $self.value == 0 }
 }
@@ -704,8 +781,8 @@ a compile-time error. `replace` on a member that does not exist is a warning, an
 **Example**
 
 ```bgl
-extend extern class string {
-    replace emitter string operator = (stringLiteral v){ $self.set(v); }
+extend class stringObj {
+    replace emitter stringObj operator = (stringLiteral v){ $self.setFromLit($v); }
 }
 ```
 
@@ -775,7 +852,7 @@ that does not hide it reaches it, whether by upcast or by passing the value to a
 **Example**
 
 ```bgl
-class dim {                           // a value class with a getter and a setter (§9.9.1)
+class dim {                           // a getter and a setter (§9.9.1)
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v; }

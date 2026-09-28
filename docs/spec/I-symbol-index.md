@@ -87,6 +87,7 @@ and `clear()` come from `<array>`.
 | `_bglGlobalDeclaration()` | emitter hook on a class (one top-level I6 declaration per instance; `$selfsub`) | core | §15.8 |
 | `bglInit()` | function | core | §21.2, §18.8 |
 | `_bglObject` | type (emitter class) | core | §21.5.8 |
+| `_bglPrimitive` | type (emitter class) | core | §21.5.8 |
 | `bglSize` | type (value class) | core | §21.12 |
 | `bglStringDefaultSize` | constant (I6, set before the include) | `<buf>` | §22.2 |
 | `bglStringPoolReserve` | constant (I6, set before the include) | `<string>` | §22.3 |
@@ -143,7 +144,7 @@ and `clear()` come from `<array>`.
 | `getLength()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `gg_mainwin`, `gg_statuswin`, … | variable (Glulx window globals) | binding (`i6StandardLibrary`) | §23.2 |
 | `give(attr)`, `ungive(attr)` | method on `object`, `attributeList` | core | §21.5.1, §11.5.3 |
-| `glulxImage` | type (veneer class) | `<glulxImage>` | §22.8 |
+| `glulxImage` | type (primitive class) | `<glulxImage>` | §22.8 |
 | `grammar` | member on `verb` | core | §13.2, §13.4.5 |
 | `grammarRule` | type | core | §13.4.1, §21.5.5 |
 | `grammarRuleList` | type | core | §13.4.1, §21.5.5 |
@@ -216,7 +217,8 @@ and `clear()` come from `<array>`.
 | `setBackgroundColor(color)` | method on `graphicsWindow` | `<glulxWindow>` | §22.7.5 |
 | `setLength(n)` | method on `array<T>` | core; `<array>` | §12.3, §22.4 |
 | `setStyle(styleType, style {…})`, `clearStyle(styleType)` | method on the text window types, the roots, `bgl.ui.screen` | `<glulxWindow>` | §22.7.7 |
-| `short_name` | member on `object` | core | §21.4 |
+| `short_name` | member on `object` | library bindings | §21.4, §23.3.4 |
+| `instanceName` | member on `_bglObject` (`inline const string`) | core | §8.3.5, §11.5.4 |
 | `size()` | method on `array<T>` | core | §12.3 |
 | `size()` | method on `glulxImage`, `eImages` | `<glulxImage>` | §22.8 |
 | `size()`, `length()`, `setLength(n)`, `isTracked()` | method on `array<char>` | `<buf>` | §22.2 |

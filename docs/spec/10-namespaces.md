@@ -121,6 +121,9 @@ delegates to sub-namespaces, and combine with `#using` (§10.4).
 - No initializer is permitted.
 - Alias members are valid only on emitter classes; an object uses value aliases (§10.2) instead.
 - Aliases chain: `a.b.c.method()` resolves through any number of hops.
+- `const` and `inline` apply as on any member (§8.3.2, §8.3.5). `_bglObject`'s
+  `inline const string instanceName;` is an alias member of this kind: it has no storage, and each
+  object's value becomes its I6 header name (§11.5.4).
 
 **Example**
 

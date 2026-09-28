@@ -433,8 +433,13 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         if(exact) return false;                          // exact already claimed in mode 0
         string base = literalBase(rhsType);
         if(widenMode == 1) return !base.empty() && paramT == base;   // prefer the literal-base overload
-        if(widenMode == 2) return !base.empty() && paramT != base    // convertible only
-                               && isTypeCompatible(base, paramT);
+        if(widenMode == 2){
+            if(!base.empty() && paramT != base && isTypeCompatible(base, paramT)) return true;   // convertible
+            // A parameter of an ancestor class accepts an instance of a class derived from it.
+            classDef* argCls = getDispatchClass(rhsType);
+            classDef* paramCls = languageService.findClass(paramT);
+            return argCls != nullptr && paramCls != nullptr && argCls != paramCls && argCls->hasAncestor(paramCls);
+        }
         return paramT == "var";                          // mode 3: the universal accepter, last
     };
     // Exact first, then base-exact widen, then convertible widen — so every resolution that already
@@ -753,6 +758,8 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
         // one, a question only the arguments answer.
         if(resolvedGlobal != nullptr && !resolvedGlobal->i6name.empty() && !resolvedGlobal->isEmitter)
             callEmit = resolvedGlobal->i6name;
+        else if(resolvedGlobal != nullptr && isUsingImportedValueEmitter(callName))
+            ;   // the call is the global function's; a value emitter of the same name is never called
         else {
             string q = qualifyIdentifier(callName, func, body);
             if(!q.empty()) callEmit = q;
@@ -2178,6 +2185,10 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
                 member.value, cur.value, recvType));
         }
     }
+    // An object's name is part of its I6 header, not a property: I6 can print it but not hand it back.
+    if(member.value == "instancename" && !propType.empty() && func != nullptr)
+        parsingError("'instanceName' can't be read: it is the object's I6 header name, which can only be "
+                     "printed. Use print(obj).");
     // A computed access emits I6's parenthesised form, `obj.(expr)`. The bare
     // `obj.p` would work in I6 too, but the emitter renames a local whose name
     // matches a dotted-access name (maybeRename, to keep locals from being

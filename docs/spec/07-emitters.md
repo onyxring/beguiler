@@ -69,7 +69,7 @@ class Counter {
     emitter void increment(){ $self.value++ }
 }
 
-Counter c;
+Counter c { }
 c.increment();      // the body is substituted here with $self = c
 ```
 
@@ -172,7 +172,7 @@ emitter void sort()          { _bglArray.sortDefault($self, $prop, $oprefReq(<=>
 **Example**
 
 ```bgl
-extern class int : _bglObject {
+primitive class int {
     emitter int  operator +  (int v){ $val + $v }
     emitter int  operator =  (int v){ $target = $v; }
 }
@@ -485,7 +485,7 @@ The literal pseudo-types declare it so that `auto x = 5;` infers `int` rather th
 **Example**
 
 ```bgl
-extern class intLiteral : _bglObject {
+primitive class intLiteral {
     emitter int operator();     // implicit conversion to int
     int operator auto();        // auto infers int
 }

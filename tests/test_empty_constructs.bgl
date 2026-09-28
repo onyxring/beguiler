@@ -27,7 +27,7 @@ class WithEmptyMethod {
     int alwaysZero(){ return 0; }
 }
 
-WithEmptyMethod wem;
+WithEmptyMethod wem { }
 
 void main(){
     emptyFn();

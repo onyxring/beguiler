@@ -187,6 +187,8 @@ bool classHasStoredFields(classDef* cls){
         if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue;
         return true;
     }
+    for(classDef* base : cls->baseClasses)        // inherited fields are stored in the instance too
+        if(classHasStoredFields(base)) return true;
     return false;
 }
 
@@ -202,28 +204,43 @@ bool inheritsFromObject(classDef* cls){
     return false;
 }
 
-// True when `cls` is a REFERENCE type — one that carries object identity/backing rather than
-// value-copy semantics for LOCALS. This roots at the compiler's own base type `_bglObject` (the
-// empty root of all Beguile objects), NOT the library's world-tree `object`: a reference type need
-// not be a world-tree citizen (e.g. a Glulx `window` declared `: _bglObject`). Bare value structs
-// (`bglSize`, a value-helper proxy) do NOT derive `_bglObject`, so they keep value semantics.
-// `object : _bglObject`, so world-tree objects still qualify via the base chain.
+// True when `cls` is a value class: declared `value`, or derived from one. Its variables, parameters
+// and members own an instance, and assignment copies into it.
+bool isValueClass(classDef* cls){
+    if(!cls) return false;
+    if(cls->isValue) return true;
+    for(classDef* base : cls->baseClasses)
+        if(isValueClass(base)) return true;
+    return false;
+}
+
+// Why `ref` can't apply to a slot of this type, or empty when it can. `ref` shares an instance: a
+// primitive has none (the value is held directly), and a reference type already refers to one.
+// Types that manage their own storage (emitter classes such as stringObj, array<T>) may be
+// `ref`: the slot then aliases storage owned elsewhere.
+std::string implicitRootName(classDef* cls){
+    if(cls->name == "_bglobject" || cls->name == "_bglprimitive") return "";
+    return cls->isPrimitive ? "_bglprimitive" : "_bglobject";
+}
+
+std::string refNotApplicable(classDef* cls, const std::string& typeShown){
+    if(cls == nullptr) return "";
+    if(cls->isPrimitive)
+        return "'" + typeShown + "' is a primitive type — its value is held directly, so there is nothing to refer to.";
+    if(!cls->isEmitterClass && !cls->isAlias && !isValueClass(cls))
+        return "'" + typeShown + "' is a reference class, so it is already a reference: drop 'ref'.";
+    return "";
+}
+
+// True when a slot of `cls` refers to an instance rather than owning one: every class except a value
+// class (and an alias class, which dissolves into its parent).
 //
-// This is DISTINCT from inheritsFromObject(): that one gates inline-OBJECT `{…}` inference and must
-// stay keyed on the world-tree `object`, because collection/value types (array<T>, char, …) also
-// derive `_bglObject` yet must NOT be treated as inline-object-backed. Only the reference-vs-value
-// LOCAL decision uses this predicate.
+// This is DISTINCT from inheritsFromObject(), which gates inline-OBJECT `{…}` inference on the
+// world tree.
 bool isReferenceBacked(classDef* cls){
     if(!cls) return false;
-    // Match the single root `_bglObject` (the compiler's base of all Beguile objects). Since
-    // `object : _bglObject` IS linked in the classDef graph, world-tree objects qualify via the base
-    // chain too — no need to also name "object". Bare value structs don't derive `_bglObject`, so
-    // they stay value types. Type names are stored lowercased in the graph, so compare lowercase.
-    if(cls->name == "_bglobject") return true;
     if(cls->isAlias) return true;
-    for(classDef* base : cls->baseClasses)
-        if(isReferenceBacked(base)) return true;
-    return false;
+    return !isValueClass(cls);
 }
 
 // True iff `ancestor` is a STRICT (transitive) base of `descendant`. Walks descendant's base

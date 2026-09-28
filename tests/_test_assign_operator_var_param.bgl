@@ -1,0 +1,5 @@
+// An assignment operator is chosen by the value's type, so one taking `var` would never be chosen.
+// EXPECT_ERROR: 'operator = (var …)' is never chosen
+#beguilerSettings { target = z5; informName = "none"; }
+class box { int n; box operator = (var v) { return self; } }
+void main() { }

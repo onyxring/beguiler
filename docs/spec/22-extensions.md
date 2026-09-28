@@ -143,7 +143,7 @@ Two types, for two different things:
 | `string` | a reference to static text (a literal) | no | none; nothing is owned |
 | `stringObj` | a buffer of its own, taken from the string pool | yes | allocated on declaration, released at scope exit |
 
-A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7).
+A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7). A `stringObj` parameter is a copy too — it gets its own buffer at entry, released on return (§8.5) — so changing it doesn't reach the caller; a `ref stringObj` parameter shares the caller's. A `stringObj` global is allocated at startup.
 
 `s == null` and `s != null` remain identity tests on both types (there is no content to compare against `null`).
 
@@ -643,7 +643,7 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 
 **Description**
 
-`glulxImage` is a veneer class over the resource id (§8.2.5): it adds a type and methods but no storage, and it converts implicitly to `eImages`, so a `glulxImage` is accepted wherever an image asset is (`drawImage`, `bgl.printRules.img`). It is assigned from an `eImages` value or a raw `int` id, and converts to `int` with `(int)img`.
+`glulxImage` is a primitive class over the resource id (§8.2.5): it adds a type and methods but no storage, and it converts implicitly to `eImages`, so a `glulxImage` is accepted wherever an image asset is (`drawImage`, `bgl.printRules.img`). It is assigned from an `eImages` value or a raw `int` id, and converts to `int` with `(int)img`.
 
 | Member | Returns | Description |
 |---|---|---|

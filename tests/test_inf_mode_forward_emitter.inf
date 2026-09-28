@@ -13,7 +13,7 @@
 #bgl{
     #include <bindings/i6StandardLibrary>
 
-    object myObj;
+    object myObj { }
 
     // Use of `myArticle(myObj)` precedes its declaration. The auto-detector treats this
     // whole island as declarations because the first content token is a directive.

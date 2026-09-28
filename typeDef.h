@@ -66,13 +66,8 @@ class classDef:public typeDef{
         bool isEmitterClass = false;        // true for 'emitter class': no I6 backing, emitter members only
         bool isGlobalEmitterObject = false; // true for 'emitter Foo { }': singleton emitter namespace; accessed as Foo.method(), no instances
         bool isAlias = false;               // true for 'alias Foo : Parent { }': Beguile type that dissolves to parent for emission
-        // `byVal class Foo { ... }`: class instances passed as function parameters get
-        // copy-in via operator= at routine entry (value semantics). Default for classes
-        // is reference semantics (bare slot, mutations leak to caller). The marker is
-        // class-identity-only: NOT inherited by subclasses, NOT propagated through
-        // bases. Mutually exclusive with `extern`, `emitter`, `extend`, and inheriting
-        // from `object`. See languageSpec.md §5.2.6 "`byVal class` - Value-Semantic Class Parameters".
-        bool isByVal = false;
+        bool isValue = false;               // `value class`: instances are copied; variables own one (inherited)
+        bool isPrimitive = false;           // `primitive class`: a variable holds the value itself; no instance
         // `superposed` class: withhold the I6 `Class` directive from the source-order emit and let it
         // materialize only when a backing instance is baked for it (inside its host's create+populate,
         // or via the lazy instance→class path). A synthesized `auto {}` accessor class is auto-marked
@@ -88,6 +83,9 @@ class classDef:public typeDef{
         }
         vector<typeMember*> members;
         vector<classDef*> baseClasses;
+        // This class's positional members, in order: its own `inline` members and the inherited ones it
+        // re-lists (`inline name;`). The full order is this list, then each base's (positionalMembers).
+        vector<string> inlineOrder;
         // `hide` directives declared on THIS class (subclass body or `extend class`). Each blocks an
         // inherited member/operator from this type's static surface; validated post-parse (unresolved
         // → warning, dropped). Enforced at method-call / operator= / member-access resolution.
@@ -135,6 +133,8 @@ class classDef:public typeDef{
         // True iff `ancestor` is a STRICT (transitive) base of this class — the same class is
         // NOT its own ancestor. The single implementation behind free function isAncestorClass().
         bool hasAncestor(const classDef* ancestor) const;
+        // Every strict ancestor, nearest first (breadth-first over the bases, each once).
+        std::vector<classDef*> ancestorsNearestFirst() const;
         // The class in this hierarchy (self first, then bases depth-first) whose `members` holds
         // `m` by POINTER identity — i.e. the class that declares it. nullptr if no class does.
         classDef* declaringClassOf(const typeMember* m);
@@ -157,19 +157,25 @@ class objectDef: public typeDef{
 };
 
 //a parameter of a function
+// Stands for the scratch that holds an argument during a lifecycle copy-in; the emitter replaces it
+// with the name the `paramCopyIn.arg` builtin template gives.
+inline constexpr const char* kParamArgMarker = "@@PARAMARG@@";
+
 class paramDef:public abstractObject{
     public:
         typeDef type;
         string defaultValue;  // "" if no default; otherwise the default expression text
         string defaultSource; // the default as written, when it was one token (for hover / signature help)
-        // Set by synthesizeParamBackings when the param's class is `byVal`. The compiler
-        // synthesizes a per-(function, param) global I6 backing object and emits a
-        // copy-in (`backing._opeq(passedArg)`) at routine entry, then routes source
-        // references to the param through `i6name` (the backing's name). Result:
-        // mutations inside the function body affect the local copy, not the caller's
-        // instance. Mirrors `variableDeclaration::isClassLocalWithBacking`.
+        // Set by synthesizeParamBackings when the param's class copies (its `operator =` is not the
+        // root's): the param owns an instance, a per-(function, param) global I6 object, and at
+        // routine entry the argument is copied into it and the param pointed at it, so changes
+        // inside the function don't reach the caller. Mirrors `isClassLocalWithBacking`.
         bool isClassParamWithBacking = false;
         string i6name;  // backing's I6 name when isClassParamWithBacking is true
+        class functionDef* copyInOperator = nullptr;   // the `operator =` the copy-in calls
+        string backingName;   // the parameter's own instance, when its class copies
+        string copyInText;    // copies the argument into backingName at entry (kParamArgMarker: the scratch)
+        bool isRef = false;   // `ref` parameter: refers to the argument, never copies
 };
 
 //the function body
@@ -280,6 +286,8 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         // bare-int-slot semantics + reference-semantics via inherited operator=(object).
         // See languageSpec.md §9.2.1 "Class-Typed Locals and Reference Semantics".
         bool isClassLocalWithBacking = false;
+        string backingName;   // the local's backing instance; the local is set to it at routine entry
+        bool isInstanceBacking = false;   // this global IS an instance (a local's or parameter's backing), not a variable
         // `ref` local: the user opted in to reference semantics for this variable. Skip
         // backing synthesis, skip operator= dispatch on assignment, skip the no-operator=
         // error — every assignment is plain pointer-alias. Same I6 emission as object-
@@ -443,8 +451,10 @@ class forInStatement : public statement {
         string arrayVar;     // array name, e.g. "scores"
         string counterVar;   // unique index variable, e.g. "_bglfi0"
         bool isByteArray = false; // true when iterating array<char> — use byte for-in template
-        bool isStringForIn = false; // true when the container is a <string> object — iterate via
-                                    // getLength()/getChar() dispatch rather than raw buffer reads
+        bool isStringForIn = false; // true when the container is a string — iterate through its class's
+                                    // getLength() and operator[] emitters rather than raw buffer reads
+        string stringLengthText;    // the container's getLength(), with $val = the container marker
+        string stringCharText;      // the container's operator[](i), with $val/$pos = the markers
         bool isChildrenForIn = false; // true when iterating `container.children` — the world-tree
                                       // child collection; lowers to I6 `objectloop(el in <container>)`.
                                       // `arrayVar` holds the container's emitted name.

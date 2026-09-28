@@ -19,7 +19,7 @@ menu child = { root, "a child", {.foo, .bar, .baz} };
 menu{ root, "text to display", {.type, .kind} };
 
 // a lonely baked object (no name, no link) — allowed; just unreferenced compile-time data
-menu{ "lonely" };
+menu{ title = "lonely"; };
 
 // nested INLINE OBJECT as an object-typed field value (positional first, then a named nested array).
 // `w.head` reads the member at run time — an inline member is storage that construction fills, not

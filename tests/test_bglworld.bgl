@@ -19,15 +19,16 @@
 
 class Animal : object {
     int legs = 4;
+    string short_name;
 }
 
 object cage {
     string short_name = "cage";
 }
 
-Animal dog { string short_name = "dog"; object parent = cage; }
-Animal cat { string short_name = "cat"; object parent = cage; }
-Animal fish { string short_name = "fish"; }       // not in cage
+Animal dog { short_name = "dog"; object parent = cage; }
+Animal cat { short_name = "cat"; object parent = cage; }
+Animal fish { short_name = "fish"; }       // not in cage
 
 object stone { string short_name = "stone"; object parent = cage; }
 
@@ -44,7 +45,7 @@ void main(){
 
     // for-in works because the result is a tracked array.
     print("named animals:^");
-    for(object o in bgl.world.instances(Animal)){
+    for(Animal o in bgl.world.instances(Animal)){
         print(" - "); print(o.short_name); print("^");
     }
 
@@ -67,7 +68,7 @@ void main(){
     // a second bgl.world query each pass. The rotating buffer pool keeps the two
     // snapshots on different buffers, so the outer loop is not corrupted.
     print("nested walk:^");
-    for(object o in bgl.world.instances(Animal)){
+    for(Animal o in bgl.world.instances(Animal)){
         int here = bgl.world.inParent(o.parent).length();
         print(" - "); print(o.short_name); print(" shares its parent with ");
         print(here); print(" objects^");

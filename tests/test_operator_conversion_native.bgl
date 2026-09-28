@@ -7,8 +7,8 @@
 */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-class nativeBox { int _v = 7; int operator(){ return _v * 3; } }   // regular-method conversion
-class emitBox   { int _v = 9; emitter int operator(){ $self._v } } // emitter conversion
+value class nativeBox { int _v = 7; int operator(){ return _v * 3; } }   // regular-method conversion
+value class emitBox   { int _v = 9; emitter int operator(){ $self._v } } // emitter conversion
 
 class holder : object { nativeBox n; emitBox e; }
 holder h {}

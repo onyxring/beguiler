@@ -283,8 +283,10 @@ class room
         return self.visits;
     ]
 ;
-room r1;
-room r2;
+room r1
+;
+room r2
+;
 array g_rooms table r1 r2 2 $9084;
 [main v v2;
      g_rooms-->(0+1) .visit();

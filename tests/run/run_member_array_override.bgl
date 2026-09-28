@@ -1,0 +1,23 @@
+/*  run_member_array_override — a member value that reassigns an inherited array declares that array
+    again, with the same layout.
+
+    The override was recorded as a plain value, so a tracked array lost its length word (an object
+    setting `nums = {5, 6}` reported length 6), a subclass's override couldn't be read at all
+    ("not a declared property"), and a raw one refused length(). `name` is additive: each layer's
+    words accumulate, the object's first.  */
+// EXPECT_OUTPUT: obj 2 6, sub 1 5, name lamp 2 1, name gadget 2 1, name rock 1 1
+#beguilerSettings { target = z5; informName = "none"; }
+
+class thing : object { array<int> nums = {1}; rawArray<dictionaryWord> name = .thing; }
+class gadget : thing { nums = {5}; name = .gadget; }
+thing t { nums = {5, 6}; }
+thing lamp { name = .lamp; }
+gadget widget { }
+object rock { rawArray<dictionaryWord> name = .rock; }
+
+void main() {
+    print($"obj {t.nums.length()} {t.nums[1]}, sub {widget.nums.length()} {widget.nums[0]}, ");
+    print($"name lamp {lamp.name.length()} {(lamp.name[0] == .lamp)}, ");
+    print($"name gadget {widget.name.length()} {(widget.name[0] == .gadget)}, ");
+    print($"name rock {rock.name.length()} {(rock.name[0] == .rock)}");
+}

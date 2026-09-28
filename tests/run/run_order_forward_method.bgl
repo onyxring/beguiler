@@ -9,7 +9,7 @@
 // EXPECT_OUTPUT: m=5,6
 #beguilerSettings { target = z5; informName = "none"; }
 
-class Pt {
+value class Pt {
     inline int x = 0;
     inline int y = 0;
     Pt operator = (Pt o){ self.x = o.x; self.y = o.y; return self; }

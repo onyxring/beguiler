@@ -15,7 +15,7 @@
     outputPath = "tests/output";
 }
 
-class sizeRec {
+value class sizeRec {
     int width = 0;
     int height = 0;
     sizeRec operator = (sizeRec s){ self.width = s.width; self.height = s.height; return self; }

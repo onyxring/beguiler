@@ -1,0 +1,31 @@
+/*  run_positional_extend — how `extend class` changes a class's positional order.
+
+    `extend class A { inline int a2; }` adds a member at the END of A's own positional list, so every
+    instance of A or of a class derived from it sees it — including instances declared before the
+    extend (`early`), since positional order is fixed for the whole program. `inline name;` in an
+    extend makes an existing member positional, the class's own (`n`) or an inherited one (`a1`
+    re-listed on B2), appended to that class's list — so the `inline n` below also moves the name
+    one slot later for B's instances above it. `replace` in an extend replaces the member.  */
+// EXPECT_OUTPUT: early 1 2 3 x; late 4 5 6 y; b1 7 a1 8 z; a1 9 a2 10 n 11 w; c1 12 b1 13 a1 14 a2 15 v; k 7
+#beguilerSettings { target = z5; informName = "none"; }
+
+class A : object { inline int a1; int n; int k = 1; }
+class B : A { inline int b1; }
+class B2 : A { inline int b1; }
+class C : B2 { inline int c1; }
+
+B early { 1, 2, 3, 0, "x"; }              // b1, a1, a2, n, name — a2 and n come from extends below
+extend class A { inline int a2; }
+B late { 4, 5, 6, 0, "y"; }
+extend class B2 { inline a1; }            // B2: b1, a1, then A's rest (a2, then n — below)
+B2 z { 7, 8; instanceName = "z"; }
+extend class A { inline n; replace int k = 7; }
+A w { 9, 10, 11, "w"; }
+C v { 12, 13, 14, 15; instanceName = "v"; }
+
+void main(){
+    bglInit();
+    print($"early {early.b1} {early.a1} {early.a2} {early}; late {late.b1} {late.a1} {late.a2} {late}; ");
+    print($"b1 {z.b1} a1 {z.a1} {z}; a1 {w.a1} a2 {w.a2} n {w.n} {w}; ");
+    print($"c1 {v.c1} b1 {v.b1} a1 {v.a1} a2 {v.a2} {v}; k {w.k}");
+}

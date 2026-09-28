@@ -34,7 +34,7 @@ class FlyingFish : Flyer, Swimmer {
     }
 }
 
-FlyingFish g_ff;
+FlyingFish g_ff { }
 
 void main(){
     g_ff.describe();

@@ -10,7 +10,7 @@
 // windows (`window.drawImage`) and in print rules (`bgl.printRules.img`) — a
 // glulxImage passes straight into those because it IS the raw resource int.
 //
-// Representation: `extern emitter class … : _bglObject` — a zero-overhead newtype
+// Representation: `primitive class` — a zero-overhead newtype
 // over the asset id. The value is literally the int, so there is NO backing, NO
 // pool, NO emitted I6 class; every member inlines to a `$self`-based call. A
 // glulxImage therefore flows anywhere an image id (var/int) is expected.
@@ -36,7 +36,7 @@ int _imgHeight(int imgId){ return _bglGetImageInfo(imgId).height; }
 // The image handle. Assign it a blorb asset (or a raw resource id); query its size.
 /// A picture from the blorb file. Ask it how big it is; draw it through a window's `drawImage()`
 /// or a print rule.
-extern emitter class glulxImage : _bglObject {
+primitive class glulxImage {
     emitter void operator = (eImages a){ $self = $a; }        // glulxImage pic = eImages.logo;
     emitter void operator = (int id)   { $self = $id; }       // …or a raw resource id
     emitter int  operator ()           { ($self) }            // → int: the raw resource id

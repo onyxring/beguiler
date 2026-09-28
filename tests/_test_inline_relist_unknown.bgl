@@ -1,0 +1,5 @@
+// `inline name;` re-lists an inherited member as positional; there has to be one to re-list.
+// EXPECT_ERROR: 'Bad' has no member 'nosuch'
+#beguilerSettings { target = z5; informName = "none"; }
+class Bad : object { inline nosuch; }
+void main(){ }

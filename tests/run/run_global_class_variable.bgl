@@ -1,0 +1,39 @@
+/*  run_global_class_variable — a class-typed global is a variable.
+
+    `Window globalA;` was emitted as an I6 object named `globalA` — a constant — so it could not be
+    re-pointed or assigned. Now a value-class global owns an instance the variable starts out holding,
+    and assignment copies into it; a reference-class global is empty until assigned, and assignment
+    makes it refer to the assigned instance. Static data that names an owning global (the array below)
+    names its instance, which is what it holds at compile time.  */
+// EXPECT_OUTPUT: own 3, copy 5, independent 5, refers 7, init 5, array 3
+#beguilerSettings { target = z5; informName = "none"; }
+
+value class Window {
+    int width;
+    Window operator = (Window o){ width = o.width; return self; }
+}
+class Room : object { int visits; }
+Room kitchen { visits = 7; }
+
+Window globalA;
+Window globalB;
+Window globalC = globalB;   // an initialized global holds what its initializer names
+Room here;                  // a reference: empty until assigned
+array<Window> wins = {globalA};
+
+void main() {
+    bglInit();
+    globalA.width = 3;
+    print($"own {globalA.width}, ");
+    int first = wins[0].width;
+    globalB.width = 5;
+    globalA = globalB;       // copies
+    print($"copy {globalA.width}, ");
+    globalB.width = 6;
+    print($"independent {globalA.width}, ");
+    here = kitchen;
+    print($"refers {here.visits}, ");
+    globalB.width = 5;
+    print($"init {globalC.width}, ");
+    print($"array {first}");
+}

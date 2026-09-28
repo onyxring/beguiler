@@ -46,8 +46,49 @@ _bglObject bgl{ // bgl is root
 superposed _bglObject _bglUtil{}    //actual bgl.util object, defined here so other extensions can hook into it
 
 //-- Base object types ---------------------------------------------------------
-emitter class _bglObject{}                      //Root of REFERENCE-semantics types (object identity + pointer locals). Intentionally empty. Deriving it opts a stored-field class into reference semantics; `object` (below) adds world-tree citizenship on top. A bare `class Foo{}` (no base) is a VALUE struct (copied). Built-in wrappers (int/char/array/…) also derive it but are `emitter`/`extern` (inlined, no backing), so the reference-vs-value decision skips them. NOT auto-inherited — that's what keeps value structs value-typed. (Base class of `object`; Beguile is order independent.)
-extern emitter class bglClass : _bglObject{ }   //the base type of all class references, used in cases where the type is checked (e.g. .is(bglClass))
+// Two roots. A class whose values are I6 objects derives _bglObject; a class with no instances (a
+// primitive or emitter class: its value is a word the emitters interpret) derives _bglPrimitive.
+// A class declared without a base derives the one that fits its form (spec 8.6).
+
+/// The root of every class with no instances: primitive classes (int, bool, string…) and emitter
+/// classes (stringObj, array<T>…).
+emitter class _bglPrimitive{
+    /// Assignment: the slot takes the value's word.
+    emitter _bglPrimitive operator = (_bglPrimitive v){ $target = $v }
+}
+
+/// The root of every class whose values are I6 objects: what I6 gives any object (identity, class
+/// and property tests, its name). `object` (in _object.bgl) adds world-tree citizenship on top.
+emitter class _bglObject{
+    /// The object's name: what `print(obj)` prints (I6's `(name)`), with or without a library. A
+    /// library prints `short_name` instead when the object has one. Set in an object's declaration
+    /// body, as a string literal: it is fixed when the program is compiled. Positional, and last:
+    /// `object lamp { "brass lamp"; }`; a class that adds positional members of its own can re-list
+    /// it (`inline instanceName;`) to put it first.
+    inline const string instanceName;
+
+    /// Assignment: the variable refers to the assigned instance (spec 2.10.3). A value class copies
+    /// instead, through its own `operator =` taking its own type.
+    emitter _bglObject operator = (_bglObject v){ $target = $v }
+
+    emitter eBool operator ?() { $val ~= nothing }
+    emitter eBool operator == (_bglObject v){ $val == $v }
+    emitter eBool operator != (_bglObject v){ $val ~= $v }
+
+    /// True when this object declares `prop`, so reading it is safe.
+    emitter bool provides(property prop){
+        $val provides $prop
+    }
+    /// True when this object is a `cls`, including any class derived from it.
+    emitter bool is(bglClass cls){
+        ($val ofclass $cls)
+    }
+    /// Print this object's short name. What `print(obj)` calls.
+    emitter void print(){
+        print (name)$val;
+    }
+}
+primitive class bglClass{ }   //the base type of all class references, used in cases where the type is checked (e.g. .is(bglClass))
 
 //-- Print routines ---------------------------------------------------------------------------
 emitter void print(var val){ print $val; } //the default, which will be used for all data types not defined
@@ -74,8 +115,14 @@ enum eUnknownAsset { }  // Data resource ids — the open catch-all: any file th
 union eAssets = eImages | eSounds | eUnknownAsset;
 extern void bglInit(); // bglInit() is a special, compiler built routine used to initialize the BLR
 
+// Holds an argument while a parameter of a class with init/deinit is given its own copy (§8.5).
+// Emitted only when such a parameter exists (the paramCopyIn.arg builtin template triggers it).
+#storedEmitFirst paramCopySupport {
+    Global _bglParamArg;
+}
+
 //-- Utility types
-superposed class bglSize{
+superposed value class bglSize{
     inline int width=0;
     inline int height=0;
     bglSize operator = (bglSize s){

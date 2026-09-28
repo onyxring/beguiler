@@ -1,0 +1,6 @@
+// An extend applies to a class as declared so far, so the class has to be declared first.
+// EXPECT_ERROR: 'A' is declared later; a class must be declared before it is extended
+#beguilerSettings { target = z5; informName = "none"; }
+extend class A { int a2; }
+class A : object { int a1; }
+void main(){ }

@@ -42,7 +42,7 @@ array<int> _glkWinSizeBuf[2];
 // split along is resizable — Left/Right → width, Above/Below → height — because the cross axis is
 // dictated by the sibling window. A write to the cross axis is a no-op (with a debug-only diagnostic),
 // rather than a compile error, keeping the uniform `.width`/`.height` API on all window types.
-class _winDim {
+value class _winDim {
     int _id = 0;
     int _axis = 0;      // 0 = width, 1 = height
     int _method = 0;    // the owning window's split method (placement|scale|border)
@@ -63,10 +63,8 @@ class _winDim {
 }
 
 // ---- base window (pooled) + Axis-A subtypes ----
-// Rooted at `_bglObject` (reference semantics) NOT `object`: a window is a reference-identity UI
-// entity, not an IF world-tree citizen — it has no `parent`/`children`/attributes and isn't
-// `remove`-able from the object tree. Reference locals (`window w = mainWin.split…()`) work because
-// reference semantics roots at `_bglObject` (see isReferenceBacked in the compiler).
+// Rooted at `_bglObject`, NOT `object`: a window is a UI entity, not an IF world-tree citizen — it
+// has no `parent`/`children`/attributes and isn't `remove`-able from the object tree.
 /// A Glk window. Split an existing one to make another (`splitUpGrid`, `splitRightBuffer`, …); the
 /// split method's name picks the new window's content type and where it goes.
 class window[16] : _bglObject {
@@ -272,10 +270,10 @@ enum eGlulxStyleHint {
 }
 
 // Declarative style bag — set only the fields you want; omitted fields keep the interpreter default.
-// A value struct (copied), used as `win.setStyle(styleType, style{ backColor = $111111; italics = true; })`.
+// Copied on assignment (its `operator =`), used as `win.setStyle(styleType, style{ backColor = $111111; italics = true; })`.
 // Each member emits under a `_bglStyle_` name: I6 properties share one global namespace, and plain
 // words such as `italics` or `reverse` are routine names in other libraries (orLibrary has `italics`).
-class style {
+value class style {
     inline int justify asI6 _bglStyle_justify              = styleUnset;   // an eGlulxJustify value (cast to int)
     inline int indentation asI6 _bglStyle_indentation          = styleUnset;   // left-margin indent
     inline int paragraphIndentation asI6 _bglStyle_paragraphIndentation = styleUnset;   // first-line extra indent
@@ -286,6 +284,14 @@ class style {
     inline int foreColor asI6 _bglStyle_foreColor            = styleUnset;   // 0xRRGGBB text colour
     inline int backColor asI6 _bglStyle_backColor            = styleUnset;   // 0xRRGGBB background colour
     inline int reverse asI6 _bglStyle_reverse              = styleUnset;   // bool: swap fore/back
+    style operator = (style s){
+        self.justify = s.justify;                           self.indentation = s.indentation;
+        self.paragraphIndentation = s.paragraphIndentation; self.sizeAdjustment = s.sizeAdjustment;
+        self.fontWeight = s.fontWeight;                     self.italics = s.italics;
+        self.fixedWidth = s.fixedWidth;                     self.foreColor = s.foreColor;
+        self.backColor = s.backColor;                       self.reverse = s.reverse;
+        return self;
+    }
 }
 
 // Apply the set fields of `s` to (wintype, st) via glk_stylehint_set. Hint indices are the fixed glk

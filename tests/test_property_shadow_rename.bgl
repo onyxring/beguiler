@@ -22,7 +22,7 @@ class _info {
     int width;
     int height;
 }
-_info info;
+_info info { }
 
 // Params named the same as accessed properties — both must be mangled.
 void scaleAndCheck(int width, int height, int a){

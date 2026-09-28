@@ -18,7 +18,7 @@ void show(string tag, point p) {
 class drawer : object {
     void at(point p) { print("method: "); print(p.x); print(" "); print(p.y); print("^"); }
 }
-drawer theDrawer;   // file-scope instance (a local object-class var would be a bare reference)
+drawer theDrawer { }   // file-scope instance
 
 void main() {
     show("pos", {3, 4});             // bare positional  -> point

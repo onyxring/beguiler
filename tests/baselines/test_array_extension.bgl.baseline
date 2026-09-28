@@ -291,9 +291,12 @@ class room
   with
     visits 0
 ;
-room r1;
-room r2;
-room r3;
+room r1
+;
+room r2
+;
+room r3
+;
 array g_nums table 10 20 30 40 50 5 $9084;
 array g_sparse table 10;
 array g_partial table 7 8 0 9 0 5 $9084;

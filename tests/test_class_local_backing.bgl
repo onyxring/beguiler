@@ -28,7 +28,7 @@
 }
 
 // Plain class with non-emitter user-declared operator= → backing synthesized.
-class Window {
+value class Window {
     int width;
     int height;
     Window operator = (Window v){
@@ -38,7 +38,7 @@ class Window {
     }
 }
 
-Window source;
+Window source { }
 Window mkWin(int w, int h){
     source.width = w;
     source.height = h;
@@ -47,19 +47,19 @@ Window mkWin(int w, int h){
 
 // Plain class with EMITTER operator= → backing synthesized; emitter body substitutes
 // $self/$val with the backing name at emit time (i6Emitter.cpp:1271-1278).
-class Tag {
+value class Tag {
     int n;
     emitter Tag operator = (Tag v){ $self.n = $v.n }
 }
-Tag tagSrc;
+Tag tagSrc { }
 Tag mkTag(int n){ tagSrc.n = n; return tagSrc; }
 
 // Tree-citizen class → backing NOT synthesized (object inheritance exempts it).
 class Room : object {
     int visits = 0;
 }
-Room r1;
-Room r2;
+Room r1 { }
+Room r2 { }
 
 void main(){
     // Assignment-statement form: dispatch via _opeq against backing.

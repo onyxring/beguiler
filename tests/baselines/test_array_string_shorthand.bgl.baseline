@@ -276,16 +276,17 @@ array greetings table "hello" 1 $9084;
 array payload table "opaque" 1 $9084;
 class tagged
   with
-    tags "solo" 
+    tags "solo" 1 
 ;
-tagged t;
+tagged t
+;
 class holder
   class object
   with
     items 0 
 ;
 holder h
-  with items "single" 
+  with items "single" 1 
 ;
 [_bgl_float__oplteqgt a b;
     

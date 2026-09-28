@@ -34,7 +34,7 @@ class Risk : object {
     int n = 0;
     void trigger() { if(n == 0) throw 101; }
 }
-Risk g_risk;
+Risk g_risk { }
 
 void main(){
     // Test 1: basic catch

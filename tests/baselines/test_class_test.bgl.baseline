@@ -280,7 +280,8 @@ class box
   with
     weight
 ;
-box g_box;
+box g_box
+;
 [main;
     if ((g_box ofclass container)) {
         print (string)"box is container";

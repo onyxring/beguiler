@@ -1,0 +1,5 @@
+// A value class owns its members; a member of its own type would own another without end.
+// EXPECT_ERROR: which would own another 'V' without end; declare it 'ref'
+#beguilerSettings { target = z5; informName = "none"; }
+value class V { V next; int id; V operator = (V o){ id = o.id; return self; } }
+void main(){ }

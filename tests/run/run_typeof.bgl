@@ -9,7 +9,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 
 object thing {
-    short_name = "thing";
+    string short_name = "thing";
 }
 
 void helper(){ print("hi"); }

@@ -1,21 +1,19 @@
 /*
     _test_ref_requires_bind.bgl  (negative)
-    `=` through a reference assigns INTO the referent, so it needs the type to define
-    copy semantics. `Box` declares no `operator =`, so there is nothing to assign with
-    and the write is rejected — pointing at the two ways forward: define `operator =`,
-    or use `:=` to rebind rather than copy.
+    `=` through a reference assigns INTO the referent, so it needs the value class's copy
+    operator. `Box` declares none, so the write is rejected, pointing at `:=` to re-point.
 
     (A type that DOES define `operator =` assigns through a ref slot normally — see
     run_ref_binding.)
 */
 #beguilerSettings { informName = "none"; }
 
-class Box { int x = 0; }
+value class Box { int x = 0; }
 object b1 : Box { x = 1; }
 object holder { ref Box slot; }
 
 void f() {
     holder.slot = b1;
 }
-// EXPECT_ERROR: Type 'Box' has no operator=, so there are no copy semantics to assign with
-// EXPECT_ERROR: bind a reference instead
+// EXPECT_ERROR: 'Box' is a value class with no copy operator
+// EXPECT_ERROR: to re-point a 'ref', use ':='

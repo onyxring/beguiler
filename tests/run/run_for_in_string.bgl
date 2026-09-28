@@ -1,0 +1,18 @@
+/*  run_for_in_string — `for (char c in s)` over a string reads each character.
+
+    A string is a primitive: the address of fixed text. The loop was emitted as I6 message sends
+    (`s.getLength()`, `s.getChar(i)`) to an object that isn't there, so it ran with "has no property"
+    errors and printed nothing. It now goes through the string class's own `getLength()` and
+    `operator[]` emitters, which `<string>` provides.  */
+// EXPECT_OUTPUT: [Beguile] 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+void main(){
+    bglInit();
+    string phrase = "Beguile";
+    int n = 0;
+    print("[");
+    for(char ch in phrase){ print(ch); n++; }
+    print($"] {n}");
+}

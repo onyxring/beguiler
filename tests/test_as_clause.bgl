@@ -14,7 +14,7 @@ class Widget : object {
     bool operator == (int o) asI6 _bogus { return count == o; }
 }
 object plain { void ping() asI6 _plainPing { } }
-Widget w;
+Widget w { }
 
 void main(){
     w.count = 5;

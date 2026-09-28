@@ -6,7 +6,7 @@
 */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-class clamped { int _raw = 0; void operator = (int v){ _raw = (v > 100 ? 100 : v); } }
+value class clamped { int _raw = 0; void operator = (int v){ _raw = (v > 100 ? 100 : v); } }
 class widget : object { clamped value; }
 widget w {}
 

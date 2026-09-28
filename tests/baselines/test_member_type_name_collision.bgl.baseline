@@ -298,9 +298,12 @@ class win
         return 3;
     ]
 ;
-thing tg;
-color cx;
-win wn;
+thing tg
+;
+color cx
+;
+win wn
+;
 [take n;
 ];
 [main a b d e;

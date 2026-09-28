@@ -282,17 +282,17 @@ class sizerec
         return self;
     ]
 ;
-[_getInfo;
-    _bglLocal__getinfo_s.width = 0;
-    _bglLocal__getinfo_s.height = 0;
-    return _bglLocal__getinfo_s;
+[_getInfo s;
+    s = _bglLocal__getinfo_s;
+    return s;
 ];
 object drawer
   with img [_l_width _l_height sz;
+    sz = _bglLocal__sz;
     if (_l_width == 0) {
-        _bglLocal__sz._opeq(_getinfo());
-        _l_width=_bglLocal__sz.width;
-        _l_height=_bglLocal__sz.height;
+        sz._opeq(_getinfo());
+        _l_width=sz.width;
+        _l_height=sz.height;
     }
     print _l_width;
     print _l_height;

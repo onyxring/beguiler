@@ -28,11 +28,11 @@ class Meter : object {
 }
 class Plain : object { int unused; }                     // no own ==; inherits object's
 
-Counter c;
-Gauge   g;
-Meter   m;
-Plain   p1;
-Plain   p2;
+Counter c { }
+Gauge   g { }
+Meter   m { }
+Plain   p1 { }
+Plain   p2 { }
 
 void main(){
     c.count = 6;  g.level = 7;  m.reading = 8;

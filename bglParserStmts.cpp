@@ -306,10 +306,19 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
     forStmt.src = stmtLoc;
     string initText = loopVarName;
     token tt = file.getToken();
-    while(tt.isNot(token::endStatement)){
-        if(!initText.empty()) initText += " ";
-        initText += tt.value;
-        tt = file.getToken();
+    if(!loopVarName.empty() && tt.is(token::assignment)){
+        // `name = expr`: parse the value like any other expression, so calls, member access and
+        // emitters in it are translated (the raw token text reached I6 as written).
+        expression* initExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
+        for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+        pendingInjections.clear();
+        initText = loopVarName + " = " + (initExpr ? initExpr->text() : "");
+    } else {
+        while(tt.isNot(token::endStatement)){
+            if(!initText.empty()) initText += " ";
+            initText += tt.value;
+            tt = file.getToken();
+        }
     }
     forStmt.initText = initText;
     forStmt.condition = parseExpression(file.getToken(), {token::endStatement}, func, body);
@@ -583,9 +592,30 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
     fi.elementVar = elemVarName;
     fi.arrayVar   = arrName;
     fi.counterVar = counterName;
-    // A <string> is a managed object: iterate via getLength()/getChar() dispatch
-    // (handled in the emitter), not the raw byte template.
+    // A string is iterated through its class's own emitters — `getLength()` bounds the loop and
+    // `operator[](i)` reads each char — expanded here with markers the emitter replaces by the
+    // container's and the counter's emitted names. `<string>` provides both.
     fi.isStringForIn = isStringContainer;
+    if(isStringContainer){
+        classDef* strCls = languageService.findClass("string");
+        auto emitterNamed = [&](const string& nm, size_t params) -> functionDef* {
+            if(strCls == nullptr) return nullptr;
+            return dynamic_cast<functionDef*>(findMemberInHierarchy(strCls, [&](typeMember* m){
+                auto* fn = dynamic_cast<functionDef*>(m);
+                return fn && fn->isEmitter && fn->name == nm && fn->params.size() == params
+                       && dynamic_cast<i6Block*>(fn->body) != nullptr;
+            }));
+        };
+        functionDef* lenFn  = emitterNamed("getlength", 0);   // member names are stored folded
+        functionDef* charFn = emitterNamed("[]", 1);
+        if(lenFn == nullptr || charFn == nullptr)
+            parsingError("'for … in' over a string needs `#include <string>`, which gives string its length and characters.");
+        emitterBindings lb; lb.self = "@@CONTAINER@@"; lb.val = "@@CONTAINER@@"; lb.trim = emitterTrim::wsSemi;
+        fi.stringLengthText = expandEmitterBody(dynamic_cast<i6Block*>(lenFn->body), lb);
+        emitterBindings cb; cb.self = "@@CONTAINER@@"; cb.val = "@@CONTAINER@@"; cb.trim = emitterTrim::wsSemi;
+        cb.fn = charFn; cb.args.push_back("@@COUNTER@@");
+        fi.stringCharText = expandEmitterBody(dynamic_cast<i6Block*>(charFn->body), cb);
+    }
     fi.isChildrenForIn = isChildrenSource;
     // Byte iteration for array<char> (hybrid layout: length word -->0, data bytes
     // ->WORDSIZE). The elemVarType clause catches array<char> reached as an
@@ -1764,13 +1794,24 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
     // registered), which would silently skip copy semantics. getDispatchClass strips the
     // <...> and resolves the base class. (For non-template names this is equivalent.)
     t.classType = leftType != nullptr ? getDispatchClass(leftType->name) : nullptr;
+    // `(Base)x = v;` — assign through Base's `operator =`, as `(Base)x.method()` calls Base's method: how
+    // a subclass's copy operator chains to its ancestor's.
+    // `self` has no declared type here; its class is the enclosing one.
+    classDef* castFrom = t.classType;
+    if(castFrom == nullptr && lhsOriginal == "self")
+        castFrom = currentClass != nullptr ? currentClass : (currentObject != nullptr ? currentObject->objectClass : nullptr);
+    if(!stmtCastType.empty() && castFrom != nullptr)
+        if(classDef* cast = getDispatchClass(stmtCastType); cast != nullptr && castFrom->hasAncestor(cast)){
+            t.ancestorCast = cast;
+            if(leftType == nullptr){ leftType = &languageService.getType(castFrom->name); t.classType = castFrom; }
+        }
     return t;
 }
 
 // Applies `operator =` dispatch (emitter, method, or conversion) to one assignment node.
 void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* val, const AssignTarget& t, bool isBindAssign){
     const string& emitterSelfForLhs = t.emitterSelf;
-    classDef* classType = t.classType;
+    classDef* classType = t.ancestorCast != nullptr ? t.ancestorCast : t.classType;
     typeDef* leftType   = t.leftType;
     const bool lhsIsByteArray = t.lhsIsByteArray;
     a.emitterSelf = emitterSelfForLhs;  // always record $self for this assignment
@@ -1790,30 +1831,29 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
     if(classType != nullptr && val != nullptr && !isBindAssign){
         string valueTypeName = val->resolvedType;
         if(!valueTypeName.empty()){
-            // Two-pass emitter lookup first — explicit operator= emitters always beat raw type compatibility
+            // The class's `operator =` for this value, most specific parameter first (findAssignOperator):
+            // an emitter expands inline; a regular method is called once, through its mangled name, on
+            // the full LHS path ($target) so a member assignment dispatches on the property.
             bool found = false;
-            {
-                typeMember* m = findMemberInHierarchy(classType, [&](typeMember* m){
-                    auto* opFunc = dynamic_cast<functionDef*>(m);
-                    return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
-                           && opFunc->params[0]->type.name==valueTypeName && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
-                });
-                if(!m) m = findMemberInHierarchy(classType, [&](typeMember* m){
-                    auto* opFunc = dynamic_cast<functionDef*>(m);
-                    return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
-                           && opFunc->params[0]->type.name=="var" && dynamic_cast<i6Block*>(opFunc->body)!=nullptr;
-                });
-                if(m){
-                    auto* opFunc = dynamic_cast<functionDef*>(m);
-                    auto* blk = dynamic_cast<i6Block*>(opFunc->body);
+            if(functionDef* opFunc = findAssignOperator(classType, valueTypeName, [](functionDef* f){
+                   return !f->isEmitter || dynamic_cast<i6Block*>(f->body) != nullptr; }, /*allowInherited*/true,
+                   leftType->name)){
+                if(opFunc->isEmitter){
                     // Pre-substitute $class with the LHS's declared type. $self / $param /
                     // $target are substituted later at emit time (i6Emitter), but $class
                     // resolves at parse time because it depends on the static type known here.
-                    emitterBindings cb; if(classType != nullptr) cb.cls = classType->i6Name();
-                    a.emitterBody = expandEmitterBody(blk, cb);
+                    emitterBindings cb; cb.cls = classType->i6Name();
+                    a.emitterBody = expandEmitterBody(dynamic_cast<i6Block*>(opFunc->body), cb);
                     a.emitterParam = opFunc->params[0]->name;
-                    found = true;
+                } else {
+                    if(opFunc->i6name.empty()) opFunc->i6name = mangleOperatorName(opFunc->name);
+                    string paramName = opFunc->params[0]->name;
+                    // An ancestor cast calls THAT class's routine statically (I6 `obj.Base::prop`).
+                    string routine = t.ancestorCast != nullptr ? t.ancestorCast->i6Name() + "::" + opFunc->i6name : opFunc->i6name;
+                    a.emitterBody  = format("$target.{0}(${1});", routine, paramName);
+                    a.emitterParam = paramName;
                 }
+                found = true;
             }
             // Template-aware emitter match: an emitter operator= whose parameter and the RHS
             // resolve to the SAME dispatch class (e.g. `operator=(array<T>)` for an `array<int>`
@@ -1841,56 +1881,6 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                     }
                 }
             }
-            // Non-emitter operator=: dispatch via a mangled method call so the routine runs
-            // exactly once and the RHS is evaluated exactly once. We synthesize a one-line
-            // emitter body using $target (the full LHS path, e.g. retval.parentWin) so that
-            // member-access assignments dispatch on the property, not its owner.
-            if(!found){
-                typeMember* m = findMemberInHierarchy(classType, [&](typeMember* m){
-                    auto* opFunc = dynamic_cast<functionDef*>(m);
-                    return opFunc && opFunc->name=="=" && !opFunc->isEmitter
-                           && opFunc->params.size()==1 && opFunc->params[0]->type.name==valueTypeName;
-                });
-                if(!m) m = findMemberInHierarchy(classType, [&](typeMember* m){
-                    auto* opFunc = dynamic_cast<functionDef*>(m);
-                    return opFunc && opFunc->name=="=" && !opFunc->isEmitter
-                           && opFunc->params.size()==1 && opFunc->params[0]->type.name=="var";
-                });
-                if(m){
-                    auto* opFunc = dynamic_cast<functionDef*>(m);
-                    if(opFunc->i6name.empty()) opFunc->i6name = mangleOperatorName(opFunc->name);
-                    string paramName = opFunc->params[0]->name;
-                    a.emitterBody  = format("$target.{0}(${1});", opFunc->i6name, paramName);
-                    a.emitterParam = paramName;
-                    found = true;
-                }
-            }
-            // Last resort — subclass upcast into an emitter operator=(Base): reached only when no
-            // exact/var operator= (emitter or non-emitter) matched, so a derived class's own
-            // operator= always wins first. This is what lets `obj.parent = someRoom` invoke
-            // `parentProp operator=(object)` (→ `move obj to someRoom`) with a place/thing RHS.
-            // Without it the assignment falls through to isTypeCompatible with NO emitter body and
-            // silently emits a raw `lhs = rhs` (which, for a declared-`parent` object, even
-            // constant-folds the LHS to its initial-parent value). Mirrors isTypeCompatible's upcast.
-            if(!found){
-                typeMember* m = findMemberInHierarchy(classType, [&](typeMember* mm){
-                    auto* opFunc = dynamic_cast<functionDef*>(mm);
-                    if(!(opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
-                         && dynamic_cast<i6Block*>(opFunc->body)!=nullptr)) return false;
-                    classDef* paramCls = getDispatchClass(opFunc->params[0]->type.name);
-                    classDef* valCls   = getDispatchClass(valueTypeName);
-                    if(!paramCls || !valCls || paramCls == valCls) return false;
-                    return valCls->hasAncestor(paramCls);
-                });
-                if(m){
-                    auto* opFunc = dynamic_cast<functionDef*>(m);
-                    auto* blk = dynamic_cast<i6Block*>(opFunc->body);
-                    emitterBindings cb; if(classType != nullptr) cb.cls = classType->i6Name();
-                    a.emitterBody = expandEmitterBody(blk, cb);
-                    a.emitterParam = opFunc->params[0]->name;
-                    found = true;
-                }
-            }
             // Compatible-arg operator= match: an operator= whose parameter is isTypeCompatible
             // with the RHS but not caught by the exact/var/template/upcast passes above. The key
             // case is a LITERAL RHS into a value-typed setter — `obj.height = 5` where `height`'s
@@ -1908,6 +1898,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                     auto* opFunc = dynamic_cast<functionDef*>(mm);
                     return opFunc && opFunc->name=="=" && opFunc->isEmitter && opFunc->params.size()==1
                            && dynamic_cast<i6Block*>(opFunc->body)!=nullptr
+                           && !isPlainAssignOperator(classType, opFunc)
                            && isTypeCompatible(valueTypeName, opFunc->params[0]->type.name);
                 });
                 if(m){
@@ -1923,6 +1914,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                         auto* opFunc = dynamic_cast<functionDef*>(mm);
                         return opFunc && opFunc->name=="=" && !opFunc->isEmitter
                                && opFunc->params.size()==1
+                               && !isPlainAssignOperator(classType, opFunc)
                                && isTypeCompatible(valueTypeName, opFunc->params[0]->type.name);
                     });
                     if(m){
@@ -1950,10 +1942,8 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
             // reference semantics by convention). Force the user to declare
             // operator= so copy semantics aren't a surprise.
             if(found && !foundViaOperatorEq && classHasStoredFields(classType) && !isReferenceBacked(classType))
-                parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to assign with. "
-                                    "Declare 'operator =' on the class to define them; bind a reference instead "
-                                    "(`ref {0} x := …`, then `:=` to rebind); or inherit from '_bglObject' "
-                                    "(reference) / 'object' (world-tree reference) for reference semantics.",
+                parsingError(format("'{0}' is a value class with no copy operator ('operator =' taking '{0}'), so there "
+                                    "is nothing to copy with. Declare one; or, to re-point a 'ref', use ':='.",
                     typeDisplayName(leftType->name)));
             if(!found){
                 // Fallback: check if RHS type has emitter LhsType operator(){}
@@ -2366,6 +2356,18 @@ bool bglParser::processPostfixIncDec(token tok, token symbol, StatementContext& 
 
 // Computes the called name of a call statement: the `replaced()` rewrite, then qualification of
 // a bare name (an instance method becomes `self.name`).
+bool bglParser::isUsingImportedValueEmitter(const string& name){
+    auto isValueEmitter = [&](typeMember* m){
+        auto* fd = dynamic_cast<functionDef*>(m);
+        return fd != nullptr && fd->name == name && fd->isEmitter && fd->isValueEmitter;
+    };
+    for(classDef* imp : usingImports)
+        for(typeMember* m : imp->members) if(isValueEmitter(m)) return true;
+    for(objectDef* imp : usingObjectImports)
+        for(typeMember* m : imp->members) if(isValueEmitter(m)) return true;
+    return false;
+}
+
 string bglParser::qualifyCallName(token tok, StatementContext& sc){
     functionDef* func = sc.func;
     statementBlock* body = sc.body;
@@ -2376,6 +2378,7 @@ string bglParser::qualifyCallName(token tok, StatementContext& sc){
         currentFunc->replacedWasCalled = true;
     }
     if(func != nullptr && rawName.find('.') == string::npos){
+        if(languageService.findGlobalAs<functionDef>(rawName) && isUsingImportedValueEmitter(rawName)) return rawName;
         string qualified = qualifyIdentifier(rawName, func, body);
         // qualifyIdentifier walks inherited VARIABLES but not functions.
         // For call-form resolution, also check the class hierarchy for inherited methods.

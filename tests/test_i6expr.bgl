@@ -25,7 +25,7 @@ class Npc : object {
     int seen;
     int score(){ return seen; }
 }
-Npc robot;
+Npc robot { }
 // A METHOD CALL on a bound token. The token is rewritten to a placeholder declared in a synthetic
 // scope; that placeholder was spelled mixed-case while Beguile folds identifiers, so the receiver
 // of a method call failed to resolve and the placeholder leaked out as
@@ -38,7 +38,7 @@ class Counter : object {
     emitter int doubled(){ $i6Expr(bgl.asm.add($self.value, $self.value)) }   // $self, typed
     emitter int plus(int n){ $i6Expr(bgl.asm.add($self.value, $n)) }          // $self + a parameter
 }
-Counter globalC;
+Counter globalC { }
 
 void main(){
     Counter localC;

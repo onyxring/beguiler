@@ -1,0 +1,7 @@
+// An object's name is fixed when the program is compiled: `instanceName` is a const member.
+// EXPECT_ERROR: Cannot assign to const member
+#beguilerSettings { target = z5; informName = "none"; }
+object lamp { instanceName = "brass lamp"; }
+void main(){
+    lamp.instanceName = "rusty lamp";
+}

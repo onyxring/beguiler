@@ -24,21 +24,21 @@
 }
 
 // Plain class — no operator= defined. Would normally error on class-typed assignment.
-class Box {
+value class Box {
     int x;
     int y;
 }
-Box boxSrc;
+Box boxSrc { }
 Box mkBox(int x, int y){ boxSrc.x = x; boxSrc.y = y; return boxSrc; }
 
 // Class WITH operator=. Used both as value (backing synthesis) and ref (pointer-alias)
 // in main below.
-class Window {
+value class Window {
     int w;
     int h;
     Window operator = (Window v){ self.w = v.w; self.h = v.h; return self; }
 }
-Window winSrc;
+Window winSrc { }
 Window mkWin(int w, int h){ winSrc.w = w; winSrc.h = h; return winSrc; }
 
 void main(){

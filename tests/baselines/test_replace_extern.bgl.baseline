@@ -274,7 +274,7 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-[localOnly;
+[_bgl_replaced_localonly_0;
     print (string)"first";
 ];
 [main;

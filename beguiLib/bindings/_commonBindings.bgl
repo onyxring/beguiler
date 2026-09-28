@@ -15,6 +15,12 @@
 // routine to run (the description/short_name/cant_go family). Assign either;
 // `print(x)` prints the string or runs the routine (I6 PrintOrRun semantics,
 // done inline via metaclass).
+// The printing name both libraries honour: each replaces I6's PrintShortName to consult it before
+// the object's header name. Without a library, `(name)` never reads it.
+extend extern class object {
+    string short_name;
+}
+
 union stringOrRoutine = string | func<void> {
     emitter bool isRoutine() { metaclass($val) == Routine }   // runtime discriminator
 }

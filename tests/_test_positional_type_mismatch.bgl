@@ -1,0 +1,6 @@
+// A positional value is type-checked against the member it fills, like a named one.
+// EXPECT_ERROR: member 'legs' is 'int', so it can't take a value of type 'stringLiteral'
+#beguilerSettings { target = z5; informName = "none"; }
+class Pet : object { inline int legs; }
+Pet rex { "rex"; }
+void main(){ }

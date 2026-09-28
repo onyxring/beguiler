@@ -23,7 +23,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
 
-class inventory {
+value class inventory {
     int gold = 0;
     int arrows = 12;
     void operator = (inventory o) { gold = o.gold; arrows = o.arrows; }   // claims `=` for copying
@@ -32,7 +32,7 @@ class pooled[4] : bglAllocated { int v = 0; }
 
 object spare  : inventory { arrows = 99; }
 object second : inventory { arrows = 42; }
-object holder { ref inventory pack; ref pooled slot; }   // both empty
+object holder { ref inventory pack; pooled slot; }   // both empty (pooled is a reference class)
 object owner  { inventory pack; }          // owns an instance
 
 void main(){
@@ -56,9 +56,9 @@ void main(){
     holder.pack := second;
     print("rebound: "); print(holder.pack.arrows); print("^");
 
-    // pooled allocation bound into a ref slot, then deleted through the member path —
+    // pooled allocation held in a reference slot, then deleted through the member path —
     // `delete obj.member` used to type the path from its head and reject it.
-    holder.slot := new pooled();
+    holder.slot = new pooled();       // a reference class: `=` points the slot at it
     holder.slot.v = 7;
     print("pooled: "); print(holder.slot.v); print("^");
     delete holder.slot;

@@ -1,0 +1,7 @@
+// A class can't place its instances in the world tree: `parent = X` in a class body is rejected.
+// EXPECT_ERROR: a class can't set 'parent'
+#beguilerSettings { target = z5; informName = "none"; }
+object room { }
+class thing : object { parent = room; }
+thing t { }
+void main() { }

@@ -43,7 +43,7 @@ object j {
 // Declared on a CLASS, not the instance — the common shape, and the one that was missed:
 // the class-level default bakes the literal into the I6 Class, so reads looked correct
 // while writes failed. Each instance must get its OWN allocation.
-class Room { stringObj desc = "a room"; }
+value class Room { stringObj desc = "a room"; }
 object r1 : Room {}
 object r2 : Room {}
 object r3 : Room { desc = "special"; }        // instance overrides the class default
@@ -51,7 +51,7 @@ object r3 : Room { desc = "special"; }        // instance overrides the class de
 // A class-typed member that itself holds one needing init. Backing synthesis reaches one
 // level for an object member, so the sweep matches that depth: `player.info.title` has an
 // instance to initialise, and going deeper would write through a slot that is still 0.
-class Inner { stringObj title = "hero"; }
+value class Inner { stringObj title = "hero"; }
 object player { Inner info; }
 
 // The same shape reached through an inline auto-typed object.
@@ -59,13 +59,14 @@ object hero { auto card = { stringObj motto = "brave"; } }
 
 // Several levels down. Backings nest as far as the init sweep descends, so the two stop at
 // the same place and an init is never emitted for a path whose instance was not created.
-class L3 { stringObj tag = "4"; }
-class L2 { stringObj tag = "3"; L3 next; }
-class L1 { stringObj tag = "2"; L2 next; }
+value class L3 { stringObj tag = "4"; }
+value class L2 { stringObj tag = "3"; L3 next; }
+value class L1 { stringObj tag = "2"; L2 next; }
 object deep { L1 top; }
 
-// A class holding its own type must not recurse forever in either pass.
-class Cycle { stringObj tag = "n"; Cycle child; }
+// A value class holds its own type by `ref` (owning one would own another without end — a
+// compile-time error, _test_value_self_member); the ref member starts empty and neither pass recurses.
+value class Cycle { stringObj tag = "n"; ref Cycle child; }
 object cyc { Cycle top; }
 
 void main(){

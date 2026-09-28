@@ -323,7 +323,6 @@ object bgl
     ev-->3 = 0;
     _bglFrameFree(4);
     return  ev-->0 ;
-    _bglFrameFree(4);
 ];
 [_bgl_float__oplteqgt a b;
     

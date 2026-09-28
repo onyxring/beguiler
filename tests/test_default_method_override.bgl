@@ -24,8 +24,8 @@ class LittleCircle : Circle {
     void describe() { print("a little circle"); }
 }
 
-LittleCircle lc;
-Circle c;
+LittleCircle lc { }
+Circle c { }
 
 void main() {
     lc.describe();

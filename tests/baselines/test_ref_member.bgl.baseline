@@ -290,9 +290,12 @@ class node
         return self.next.id;
     ]
 ;
-node n1;
-node n2;
-payload pl;
+node n1
+;
+node n2
+;
+payload pl
+;
 [main x y;
     n1.id = 1;
     n2.id = 2;

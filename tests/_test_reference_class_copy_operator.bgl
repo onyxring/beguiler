@@ -1,0 +1,8 @@
+// In a reference class `=` already means "refer to", so it can't also declare a copy operator.
+// EXPECT_ERROR: class 'Room' is a reference class: '=' already means "refer to", so it can't declare a copy operator
+#beguilerSettings { target = z5; informName = "none"; }
+class Room : object {
+    int visits;
+    Room operator = (Room o){ visits = o.visits; return self; }
+}
+void main(){ }

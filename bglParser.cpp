@@ -642,17 +642,10 @@ void bglParser::recordObjectMemberInits(){
             if(vd->declaredExpressionValue != nullptr){
                 string rhsText = vd->declaredExpressionValue->text();
                 string rhsType = vd->declaredExpressionValue->resolvedType;
-                auto findAssign = [&](const string& want) -> functionDef* {
-                    typeMember* am = findMemberInHierarchy(cls, [&](typeMember* mm){
-                        auto* f = dynamic_cast<functionDef*>(mm);
-                        return f && f->name == "=" && f->isEmitter && f->params.size() == 1
-                               && f->params[0]->type.name == want
-                               && dynamic_cast<i6Block*>(f->body) != nullptr;
-                    });
-                    return am ? dynamic_cast<functionDef*>(am) : nullptr;
-                };
-                functionDef* opFn = findAssign(rhsType);
-                if(opFn == nullptr) opFn = findAssign("var");
+                // The class's own emitter operator (an inherited pass-through store changes nothing
+                // the static property doesn't already hold).
+                functionDef* opFn = findAssignOperator(cls, rhsType, [](functionDef* f){
+                    return f->isEmitter && dynamic_cast<i6Block*>(f->body) != nullptr; }, /*allowInherited*/false);
                 if(opFn != nullptr){
                     emitterBindings ob; ob.self = path; ob.val = path;
                     ob.fn = opFn; ob.args.push_back(rhsText);
@@ -724,6 +717,47 @@ void bglParser::assignObjectMethodOverloadMangling(){
 }
 
 
+// A class that manages its own storage (an `init`/`deinit` emitter pair) copies a parameter the way
+// it initializes a local: at entry the parameter gets its own instance from `init` and the argument
+// is copied in through `operator =`; `deinit` runs on every exit. The argument is held across the
+// two steps in a scratch the emitter names (kParamArgMarker). False when the class has no lifecycle.
+// The class's own `init` or `deinit` emitter (the forms §8.5 allows), or null.
+static functionDef* lifecycleEmitter(classDef* cls, const string& name){
+    for(typeMember* m : cls->members)
+        if(auto* fn = dynamic_cast<functionDef*>(m))
+            if(fn->isEmitter && fn->name == name && fn->params.empty() && dynamic_cast<i6Block*>(fn->body))
+                return fn;
+    return nullptr;
+}
+
+bool bglParser::synthesizeLifecycleParamCopy(functionDef& funcDef, paramDef& p, classDef* cls){
+    functionDef* initFn = lifecycleEmitter(cls, "init");
+    functionDef* deinitFn = lifecycleEmitter(cls, "deinit");
+    if(initFn == nullptr || deinitFn == nullptr) return false;
+    functionDef* op = findAssignOperator(cls, p.type.name, [](functionDef* f){
+        return !f->isEmitter || dynamic_cast<i6Block*>(f->body) != nullptr; }, /*allowInherited*/false);
+    if(op == nullptr){
+        parsingError(format("Parameter '{0}' of '{1}' can't be copied: the class has no copy operator "
+                            "('operator =' taking '{1}'). Declare one, or make the parameter 'ref'.",
+                            p.name, typeDisplayName(p.type.name)));
+        return true;
+    }
+    auto expand = [&](functionDef* fn, const string& arg){
+        emitterBindings b; b.self = p.name; b.val = p.name; b.selfType = p.type.name; b.trim = emitterTrim::wsSemi;
+        if(!arg.empty()){ b.fn = fn; b.args.push_back(arg); }
+        return expandEmitterBody(dynamic_cast<i6Block*>(fn->body), b) + ";";
+    };
+    if(!op->isEmitter && op->i6name.empty())
+        op->i6name = mangleOperatorName(op->name);
+    const string arg = kParamArgMarker;
+    string copy = op->isEmitter ? expand(op, arg) : format("{0}.{1}({2});", p.name, op->i6name, arg);
+    p.isClassParamWithBacking = true;
+    p.copyInOperator = op;
+    p.copyInText = format("{0} = {1}; {2} {3}", arg, p.name, expand(initFn, ""), copy);
+    funcDef.cleanups.push_back({p.name, expand(deinitFn, "")});
+    return true;
+}
+
 void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& classContext){
     // operator= IS the field-copy machinery — its body is what the value-semantic
     // copy-in dispatches to. If we synthesized param backing for operator=, the
@@ -737,24 +771,22 @@ void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& clas
     // to insert copy-in code at their entry.
     if(funcDef.isExternal) return;
 
+    // A class-typed parameter owns an instance unless it is `ref`, like any class-typed variable, and
+    // the argument is assigned to it through the class's `operator =`. The root assignment makes the
+    // parameter refer to the argument, which it already does, so only a class with a copying
+    // `operator =` needs an instance: the argument is copied into it at entry.
     for(paramDef* p : funcDef.params){
+        if(p->isRef) continue;
         classDef* cls = languageService.findClass(p->type.name);
-        if(!cls) continue;
-        if(!cls->isByVal) continue;  // class-level opt-in is the gate
-
-        // Look up operator=(SameType) for the entry copy-in, then var-wildcard fallback.
-        // Required for byVal classes when used as a param — error if missing.
-        functionDef* assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [&](typeMember* m){
-            auto* fn = dynamic_cast<functionDef*>(m);
-            return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name==p->type.name;
-        }));
-        if(!assignOp) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [&](typeMember* m){
-            auto* fn = dynamic_cast<functionDef*>(m);
-            return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name=="var";
-        }));
+        // Only an emitter class manages its own storage: a reference class's parameter shares, and a value
+        // class's gets a backing instance (below), so `init` there is no allocation to copy into.
+        if(cls && cls->isEmitterClass && synthesizeLifecycleParamCopy(funcDef, *p, cls)) continue;
+        if(!cls || cls->isEmitterClass || cls->isAlias || cls->isExternal || !isValueClass(cls)) continue;   // a reference: shares
+        functionDef* assignOp = findAssignOperator(cls, p->type.name, [](functionDef*){ return true; }, /*allowInherited*/true);
         if(!assignOp){
-            parsingError(format("byVal class '{0}' used as parameter '{1}' has no operator=. Declare 'operator =' on the class to define copy-in semantics for value-typed parameters.",
-                typeDisplayName(p->type.name), p->name));
+            parsingError(format("Parameter '{0}' of value class '{1}' can't be copied: the class has no copy operator "
+                                "('operator =' taking '{1}'). Declare one, or make the parameter 'ref'.",
+                                p->name, typeDisplayName(p->type.name)));
             continue;
         }
         if(!assignOp->isEmitter && assignOp->i6name.empty())
@@ -763,17 +795,51 @@ void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& clas
         // so same-method-name across different classes doesn't collide:
         //   top-level fn `f` with param `p` → `_bglParam_f_p`
         //   class `Foo` method `f` with param `p` → `_bglParam_Foo_f_p`
+        // An operator's name is its symbol, so it goes by its mangled routine name (`==` → `_opeqeq`);
+        // overloads share a name, so a repeat gets a numeric suffix.
+        bool isOperator = funcDef.name == "operator()"
+            || (!funcDef.name.empty() && !isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_');
+        string fnPart = isOperator ? mangleOperatorName(funcDef.name) : funcDef.name;
         string backingName = classContext.empty()
-            ? "_bglParam_" + funcDef.name + "_" + p->name
-            : "_bglParam_" + classContext + "_" + funcDef.name + "_" + p->name;
+            ? "_bglParam_" + fnPart + "_" + p->name
+            : "_bglParam_" + classContext + "_" + fnPart + "_" + p->name;
+        if(!paramBackingNames.insert(backingName).second){
+            int n = 2;
+            while(!paramBackingNames.insert(backingName + "_" + to_string(n)).second) n++;
+            backingName += "_" + to_string(n);
+        }
         variableDeclaration* backing = new variableDeclaration();
         backing->name = backingName;
         backing->displayName = backingName;
         backing->type = p->type;
         backing->src = funcDef.src;
+        backing->isInstanceBacking = true;
         languageService.registerInstance(*backing);
-        p->i6name = backingName;
+        p->backingName = backingName;
         p->isClassParamWithBacking = true;
+        p->copyInOperator = assignOp;
+        // The copy-in, run at entry: the argument (still in the parameter) is copied into the
+        // parameter's own instance, then the parameter is pointed at it.
+        if(assignOp->isEmitter){
+            emitterBindings cb; cb.self = backingName; cb.val = backingName;
+            cb.fn = assignOp; cb.args.push_back(p->name); cb.trim = emitterTrim::wsSemi;
+            string body = expandEmitterBody(dynamic_cast<i6Block*>(assignOp->body), cb);
+            for(size_t at = body.find("$target"); at != string::npos; at = body.find("$target", at + backingName.size()))
+                body.replace(at, 7, backingName);
+            p->copyInText = body + ";";
+        } else {
+            p->copyInText = format("{0}.{1}({2});", backingName, assignOp->i6name, p->name);
+        }
+        // The instance's lifecycle, as for a local of the class: `init` before the copy-in, `deinit`
+        // on every exit.
+        auto hook = [&](functionDef* fn, const string& self){
+            emitterBindings b; b.self = self; b.val = self; b.selfType = p->type.name; b.trim = emitterTrim::wsSemi;
+            return expandEmitterBody(dynamic_cast<i6Block*>(fn->body), b) + ";";
+        };
+        if(functionDef* initFn = lifecycleEmitter(cls, "init"))
+            p->copyInText = hook(initFn, backingName) + " " + p->copyInText;
+        if(functionDef* deinitFn = lifecycleEmitter(cls, "deinit"))
+            funcDef.cleanups.push_back({p->name, hook(deinitFn, p->name)});
     }
 }
 
@@ -1465,7 +1531,8 @@ GrammarMatch bglParser::matchGrammar(token& firstToken) {
 bool bglParser::processEnum(vector<token>& t, Qualifiers& q, abstractObject&)
     { return processEnumDeclaration(t[0], q.isExtern, t[1]); }
 bool bglParser::processClass(vector<token>& t, Qualifiers& q, abstractObject&)
-    { return processClassDeclaration(t[0], q.isExtern, q.isExtend, q.isEmitter, q.isAlias, t[1], q.isByVal, /*allowNested*/false, q.isSuperposed); }
+    { return processClassDeclaration(t[0], q.isExtern || q.isPrimitive, q.isExtend, q.isEmitter || q.isPrimitive, q.isAlias, t[1],
+                                     /*allowNested*/false, q.isSuperposed, q.isValue, q.isPrimitive); }
 bool bglParser::processGrammar(vector<token>& t, Qualifiers&, abstractObject&)
     { return processGrammarDeclaration(t[1]); }
 bool bglParser::processArray(vector<token>& t, Qualifiers& q, abstractObject& c)
@@ -1889,6 +1956,8 @@ bool bglParser::processParameterList(functionDef& funcDef){
     while(tok.isNot(token::parenClose)){
         paramDef& param=*new paramDef();
         param.docComment = tok.docComment;  // doc-comment attached to this param's leading type token
+        // `ref` parameter: refers to the argument even when its class copies (spec 3.7).
+        if(tok.is("ref")){ param.isRef = true; tok = file.getToken(); }
         tok = consumeTypeToken(tok);
         if(!tok.is(eTokenType::dataType))
             tok.assertDataType(); // original error path for non-type tokens
@@ -1913,6 +1982,10 @@ bool bglParser::processParameterList(functionDef& funcDef){
         paramTypeName = maybeParseUnionTail(paramTypeName);  // A | B | ... union parameter type
         param.type=languageService.getType(paramTypeName);
         if(param.type.name.empty()) param.type.name = paramTypeName; // for func<...> and union types
+        if(param.isRef){
+            string why = refNotApplicable(getDispatchClass(param.type.name), typeDisplayName(param.type.name));
+            if(!why.empty()) parsingError("'ref': " + why);
+        }
         tok=file.getToken(); // name, "=", ",", or ")"
         // Accept both identifier and dataType tokens for the parameter name. A dataType here
         // means the name collides with a registered class (e.g., parameter 'b' when 'class B'
@@ -1981,6 +2054,11 @@ bool bglParser::processParameterList(functionDef& funcDef){
             tok=file.getToken(); // tok was ","; read next param's type
         }
     }
+    // An assignment operator is chosen by the value's type and its ancestors (findAssignOperator), so
+    // one taking `var` would never be chosen. Every class derives _bglObject: name the type accepted.
+    if(funcDef.name == "=" && funcDef.params.size() == 1 && funcDef.params[0]->type.name == "var")
+        parsingError("'operator = (var …)' is never chosen: an assignment operator is picked by the value's type. "
+                     "Declare the parameter as the type it accepts (any class: '_bglObject').");
     return false;
 }
 
@@ -2196,10 +2274,12 @@ Qualifiers bglParser::parseQualifiers(token& tok){
         else if(tok.is("alias"))                   { q.isAlias    = true; advance(); }
         else if(tok.is("default"))                 { q.isDefault  = true; advance(); }
         else if(tok.is("ref"))                     { q.isRef      = true; advance(); }
-        else if(tok.is("byval"))                   { q.isByVal    = true; advance(); }
         else if(tok.is("superposed"))              { q.isSuperposed = true; advance(); }
         else if(tok.is("typesealed"))              { q.isTypeSealed = true; advance(); }
         else if(tok.is("additive"))                { q.isAdditive   = true; advance(); }
+        // `value` and `primitive` are keywords only in front of `class`: both are ordinary names elsewhere.
+        else if(tok.is("value") && file.peekToken().is(token::classDeclaration))     { q.isValue     = true; advance(); }
+        else if(tok.is("primitive") && file.peekToken().is(token::classDeclaration)) { q.isPrimitive = true; advance(); }
         else break;
     }
     // Validate nonsensical combinations

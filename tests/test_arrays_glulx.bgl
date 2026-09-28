@@ -22,10 +22,10 @@
 class Room : object {
     int visits = 0;
 }
-Room r1;
-Room r2;
-object plainObj1;
-object plainObj2;
+Room r1 { }
+Room r2 { }
+object plainObj1 { }
+object plainObj2 { }
 
 array<int>    g_nums    = {10, 20, 30, 40, 50};
 array<int>    g_sized[8];

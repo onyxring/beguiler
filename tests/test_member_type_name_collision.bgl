@@ -18,7 +18,7 @@
     outputPath = "tests/output";
 }
 
-class Color { int r; }        // makes `color` lex as a dataType
+value class Color { int r; }        // makes `color` lex as a dataType
 class Draw  { int n; }        // makes `draw` lex as a dataType
 
 class Thing {
@@ -34,9 +34,9 @@ class Win {
     int draw(){ return 3; }   // METHOD name collides with class Draw
 }
 
-Thing tg;
-Color cx;
-Win   wn;
+Thing tg { }
+Color cx { }
+Win   wn { }
 
 void take(int n){ }
 

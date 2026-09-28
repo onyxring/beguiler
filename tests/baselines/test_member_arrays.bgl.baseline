@@ -358,9 +358,10 @@ class gadget
            }
         return t;
     ],
-    readings 1 2 3 4 
+    readings 1 2 3 4 4 
 ;
-gadget g1;
+gadget g1
+;
 array g_nums table 7 8 9 3 $9084;
 [main ra loc rb;
     loc = _bglArrayLocalAlloc(2);

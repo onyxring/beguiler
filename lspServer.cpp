@@ -3917,7 +3917,7 @@ static const set<string> bglModifiers = {
     "replace", "extend", "explicit", "default",
     // The rest of Appendix A's qualifier set, which this list had drifted behind.
     // `asI6`/`asBgl` are stored folded, as every keyword comparison here is.
-    "additive", "alias", "asbgl", "asi6", "byval", "hide", "ref",
+    "additive", "alias", "asbgl", "asi6", "hide", "primitive", "ref",
     "superposed", "synonyms", "typesealed"
 };
 // No `#ifdef` / `#ifndef`, in either hash form: `#if SYMBOL` and `#if !SYMBOL` test definedness

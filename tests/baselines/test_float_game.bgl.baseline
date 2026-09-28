@@ -312,8 +312,10 @@ class marker
     x,
     y
 ;
-marker home;
-marker treasure;
+marker home
+;
+marker treasure
+;
 [distance a b dx dy;
     dx = _bglFloatFsub(a.x, b.x);
     dy = _bglFloatFsub(a.y, b.y);
@@ -328,7 +330,8 @@ class runningavg
     total,
     count 0
 ;
-runningavg avg;
+runningavg avg
+;
 [addSample a v;
     a.total = _bglFloatFadd(a.total, v);
     a.count++;

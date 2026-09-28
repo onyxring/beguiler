@@ -6,7 +6,7 @@
 
 // Used via a file-scope static instance → emitted in-place, before the instance.
 superposed class Widget { int weight = 4; }
-Widget gizmo;
+Widget gizmo { }
 
 // Used only via `ofclass` on an unrelated object → revived at end; base Tool must precede Hammer.
 superposed class Tool : object { }

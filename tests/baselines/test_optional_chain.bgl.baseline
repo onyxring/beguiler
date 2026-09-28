@@ -294,12 +294,10 @@ class room
     up,
     next
 ;
-room _bglField_foyer_up;
-room _bglField_foyer_next;
-room foyer with up _bglField_foyer_up, next _bglField_foyer_next;
-room _bglField_cloakroom_up;
-room _bglField_cloakroom_next;
-room cloakroom with up _bglField_cloakroom_up, next _bglField_cloakroom_next;
+room foyer
+;
+room cloakroom
+;
 [main x lit target r first dest pick desc gp d2 d3 result nested;
     x = nothing;
     _bgl_temp0 = x; if (_bgl_temp0 ~= nothing) { _bgl_temp0 = (_bgl_temp0 has light); }

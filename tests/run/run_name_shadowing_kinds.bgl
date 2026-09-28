@@ -32,7 +32,7 @@ object apple { }
 class W : object { int c; }
 
 int a;                                   // shadows the BLR print rule `a`
-W the;                                   // class-typed, shadows the BLR print rule `the`
+W the { }                                // class-typed, shadows the BLR print rule `the`
 
 object myRules { emitter void mark(object o){ print (the)$o; } }
 #using myRules;

@@ -1,0 +1,7 @@
+// A primitive type holds its value directly, so there is no instance for `ref` to refer to.
+// EXPECT_ERROR: 'int' is a primitive type — its value is held directly, so there is nothing to refer to
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    int n = 3;
+    ref int r := n;
+}

@@ -275,7 +275,8 @@ object bgl
 class animal
   class object
   with
-    legs 4
+    legs 4,
+    short_name
 ;
 object cage
   with short_name "cage"

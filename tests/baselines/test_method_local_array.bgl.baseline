@@ -322,24 +322,22 @@ class widget
         buf-->0 = 5;
         _bglFrameFree(3);
         return  buf-->0 ;
-        _bglFrameFree(3);
     ]
 ;
-widget w;
+widget w
+;
 object gadget
   with viaObjectMethod [buf;
     buf = _bglRawArrayLocalAlloc(3);
     buf-->0 = 9;
     _bglFrameFree(3);
     return  buf-->0 ;
-    _bglFrameFree(3);
   ],
        viaTracked [nums;
     nums = _bglArrayLocalAlloc(4);
     nums-->(0+1) = 1;
     _bglFrameFree(7);
     return nums;
-    _bglFrameFree(7);
   ]
 ;
 [_bgl_float__oplteqgt a b;

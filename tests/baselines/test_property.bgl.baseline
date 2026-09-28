@@ -285,8 +285,10 @@ class crate
   with
     volume
 ;
-box g_box;
-crate g_crate;
+box g_box
+;
+crate g_crate
+;
 [main;
     if (g_box provides weight) {
         print (string)"box has weight";

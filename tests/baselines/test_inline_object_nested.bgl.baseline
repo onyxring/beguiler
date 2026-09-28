@@ -303,7 +303,7 @@ menu _bglanon3
        words 'type' 'kind' 2 
 ;
 menu _bglanon4
-  with linkto "lonely"
+  with title "lonely"
 ;
 wrapper w
   with head _bglanon5

@@ -1,0 +1,48 @@
+/*  run_param_copy — a class-typed parameter owns its argument the way any class-typed variable does.
+
+    Passing an argument assigns it to the parameter through the class's `operator =`. A class that
+    copies gets a copy, so changes inside the function stay there; a class with the root assignment
+    shares, so they reach the caller; a `ref` parameter always shares. (This was `byVal class`,
+    which marked the copying classes; now the class's `operator =` says it.) A method parameter and
+    an operator= parameter (exempt: it would recurse) are covered too.  */
+// EXPECT_OUTPUT: copy 1, shared 999, ref 999, method 5, op 7
+#beguilerSettings { target = z5; informName = "none"; }
+
+value class Vec {
+    int x;
+    Vec operator = (Vec v){ self.x = v.x; return self; }     // copies
+}
+class Window { int w; }                                      // root assignment: shares
+
+void mutateVec(Vec v){ v.x = 999; }
+void mutateWin(Window wnd){ wnd.w = 999; }
+void mutateRef(ref Vec v){ v.x = 999; }
+
+class Mat {
+    int a;
+    int take(Vec other){ other.x = 0; return self.a; }      // method param: copied too
+}
+
+Vec vec1;
+Vec vec2;
+Window win { }
+Mat m1 { }
+
+void main() {
+    vec1.x = 1;
+    mutateVec(vec1);
+    print($"copy {vec1.x}, ");
+    mutateWin(win);
+    print($"shared {win.w}, ");
+    vec2.x = 1;
+    mutateRef(vec2);
+    print($"ref {vec2.x}, ");
+    vec1.x = 5;
+    m1.a = 3;
+    m1.take(vec1);
+    print($"method {vec1.x}, ");
+    Vec v3;
+    v3.x = 7;
+    vec1 = v3;              // operator = (Vec v): its own parameter is not copied in
+    print($"op {vec1.x}");
+}

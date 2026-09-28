@@ -6,7 +6,7 @@
 */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-class Box {                                         // no `: object` → owned instance, baked per host
+value class Box {                                         // value class → owned instance, baked per host
     int _val = 0;
     int  operator()        { return _val; }
     void operator = (int v){ _val = v; }

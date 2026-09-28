@@ -278,10 +278,14 @@ class room
   with
     visits 0
 ;
-room r1;
-room r2;
-object plainObj1;
-object plainObj2;
+room r1
+;
+room r2
+;
+object plainObj1
+;
+object plainObj2
+;
 array g_nums table 1 2 3 4 5 5 $9084;
 array g_sized table 12;
 array g_flags table true false true 3 $9084;
@@ -296,7 +300,7 @@ object inventory
     bglinit();
     i= g_nums-->(0+1);
     b= g_flags-->(1+1);
-    r =  g_rooms-->(0+1) ;
+    r =  g_rooms-->(0+1);
     o =  g_objs-->(0+1);
     g_nums-->(0+1) = 42;
     g_flags-->(0+1) = false;

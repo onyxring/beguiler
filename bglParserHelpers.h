@@ -48,6 +48,11 @@ bool classHasStoredFields(classDef* cls);
 bool inheritsFromObject(classDef* cls);
 // Reference-vs-value semantics for LOCALS — roots at the compiler's `_bglObject` base, so a
 // reference type need not be a world-tree `object` (e.g. a Glulx `window`). See the .cpp.
+bool isValueClass(classDef* cls);
+// The root a class declared without a base derives: _bglPrimitive for a primitive class, else
+// _bglObject. Empty for the roots themselves.
+std::string implicitRootName(classDef* cls);
+std::string refNotApplicable(classDef* cls, const std::string& typeShown);
 bool isReferenceBacked(classDef* cls);
 
 // True iff `ancestor` is a STRICT (transitive) base class of `descendant` — i.e. `ancestor`

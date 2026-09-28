@@ -1,0 +1,24 @@
+/*  run_replace_chain — each `replace` can call the version it replaced, through any number of levels.
+
+    A replaced Beguile function is renamed so replaced() can reach it, but the emitter wrote the old
+    name, so a chain produced two routines of one name and Inform 6 rejected it. (The emission
+    baseline had recorded that output.) Covers a Beguile chain and a chain over an I6 routine — the
+    shape of a binding replacing a library routine and a second binding replacing that.  */
+// EXPECT_OUTPUT: ABC I6BC
+#beguilerSettings { target = z5; informName = "none"; }
+
+#i6 { [ Hello; print "I6"; ]; }
+extern void Hello();
+
+void greet() { print("A"); }
+replace void greet() { replaced(); print("B"); }
+replace void greet() { replaced(); print("C"); }
+
+replace void Hello() { replaced(); print("B"); }
+replace void Hello() { replaced(); print("C"); }
+
+void main() {
+    greet();
+    print(" ");
+    Hello();
+}

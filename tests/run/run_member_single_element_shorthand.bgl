@@ -1,0 +1,24 @@
+/*  run_member_single_element_shorthand — a single element on a list-typed member is the
+    one-element list: `attributes = lit` ≡ `attributes = {lit}`, as `array<int> x = 3` ≡ `= {3}`.
+    Member values accepted only a string in this form, so `attributes = male` was rejected as an
+    attribute assigned to an attributeList; in a class body it was dropped, and a typed member array
+    (`rawArray<dictionaryWord> name = .widget;`) demanded braces.  */
+// EXPECT_OUTPUT: lamp lit, box open, word ok, count 1, nums 3/1
+#beguilerSettings { target = z5; informName = "none"; }
+
+attribute lit;
+attribute opened;
+
+class box : object { attributes = opened; }
+object lamp { attributes = lit; }
+box crate { }
+object widget { rawArray<dictionaryWord> name = .widget; }
+class counter : object { array<int> nums = 3; }
+counter tally { }
+
+void main() {
+    if(lamp.has(lit)) print("lamp lit, ");
+    if(crate.has(opened)) print("box open, ");
+    if(widget.name[0] == .widget) print("word ok, ");
+    print($"count {widget.name.length()}, nums {tally.nums[0]}/{tally.nums.length()}");
+}

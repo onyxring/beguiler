@@ -22,7 +22,6 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `bnum` | type | §2.7.2 |
 | `bool` | type | §2.2 |
 | `break` | control | §5.13 |
-| `byVal` | qualifier | §8.2.7 |
 | `case` | control | §5.12 |
 | `catch` | control | §5.16 |
 | `char` | type | §2.2 |
@@ -61,6 +60,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `object` | type, I6 | §11.2 |
 | `operator` | qualifier (operator member) | §9 |
 | `outer` | value (soft: inside a property accessor body) | §9.9.3 |
+| `primitive` | qualifier (soft: before `class`) | §8.2.5 |
 | `property` | type, I6 | §11.7.1 |
 | `rawArray` | type | §12.8 |
 | `ref` | qualifier | §3.7 |
@@ -85,6 +85,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `uint` | type | §2.2, §21.6.1 |
 | `union` | type (soft) | §2.8.2 |
 | `until` | control | §5.11 |
+| `value` | qualifier (soft: before `class`) | §8.2.7 |
 | `var` | type | §2.6 |
 | `verb` | type, I6 | §13.2 |
 | `void` | type | §2.2, §6.2 |

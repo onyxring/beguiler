@@ -1,0 +1,6 @@
+// A value-class parameter is a copy of its argument, so the class needs a copy operator.
+// EXPECT_ERROR: Parameter 'v' of value class 'Vec' can't be copied: the class has no copy operator
+#beguilerSettings { target = z5; informName = "none"; }
+value class Vec { int x; }
+void nudge(Vec v){ v.x++; }
+void main(){ }

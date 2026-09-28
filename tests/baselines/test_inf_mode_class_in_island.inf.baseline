@@ -311,8 +311,10 @@ class doubler
 
 ! File-scope instance of counter (Beguile-side declaration, but referenced from raw I6).
 
-counter myCounter;
-doubler myDoubler;
+counter myCounter
+;
+doubler myDoubler
+;
 
 
 [ Main x;

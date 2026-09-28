@@ -77,7 +77,8 @@ There is no unary bitwise-not operator.
 
 A binary operator is resolved against the resolved type of its left operand:
 
-1. Look for `operator op` (emitter or method) on the left type whose parameter accepts the right type.
+1. Look for `operator op` (emitter or method) on the left type whose parameter accepts the right type:
+   its exact type, a literal's base type, a type it converts to, or a class it derives from (§9.2).
 2. Otherwise, if the left type has a conversion operator (`operator()`) to the right type, fall back
    to the built-in operator.
 3. Otherwise, if the right type has a conversion operator to a type for which the left type does

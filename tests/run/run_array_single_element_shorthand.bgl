@@ -15,7 +15,7 @@
 #include <array>
 
 class Room : object { int visits = 9; }
-Room r1;
+Room r1 { }
 
 array<int>  aBare  = 3;       // == {3}
 array<int>  aBrace = {3};      // control

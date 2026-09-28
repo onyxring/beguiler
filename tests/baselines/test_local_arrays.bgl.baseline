@@ -325,7 +325,6 @@ object bgl
     rest=sumdown(n - 1);
     _bglFrameFree(7);
     return  acc-->(0+1)  + rest;
-    _bglFrameFree(7);
 ];
 [useTwoLocals a b first second;
     first = _bglArrayLocalAlloc(3);
@@ -336,8 +335,6 @@ object bgl
     _bglFrameFree(6);
     _bglFrameFree(6);
     return  first-->(0+1)  +  first-->(1+1)  +  second-->(0+1) ;
-    _bglFrameFree(6);
-    _bglFrameFree(6);
 ];
 [earlyReturn flag buf;
     buf = _bglArrayLocalAlloc(5);
@@ -349,7 +346,6 @@ object bgl
     _bglArray.append(buf, 0, 200, 0);
     _bglFrameFree(8);
     return  buf-->(1+1) ;
-    _bglFrameFree(8);
 ];
 [sumAll data total i;
     total = 0;
@@ -368,7 +364,6 @@ object bgl
     primes-->6 = 5;
     _bglFrameFree(8);
     return _bglArray.length(primes, 0) * 100 + sumall(primes);
-    _bglFrameFree(8);
 ];
 [localByteArray buf c0 c1;
     buf = _bglByteArrayLocalAlloc(8);
@@ -382,7 +377,6 @@ object bgl
     }
     _bglByteArrayLocalFree(8);
     return 0;
-    _bglByteArrayLocalFree(8);
 ];
 [main;
     print sumdown(5);

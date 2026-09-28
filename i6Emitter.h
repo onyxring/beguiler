@@ -86,6 +86,7 @@ class i6Emitter{
         map<string, vector<string>> builtinTemplateTriggers;
         void loadBuiltinTemplates(string path);
         void applyTemplate(string name, map<string,string> args, string indent);
+        string templateText(const string& name);
         void to(ostream&);
         // Resolve the buffered output: substitute the stored-emit-first/last placeholders
         // with the concatenated bodies of stored blocks whose names appear in firedStoredNames.
@@ -153,9 +154,14 @@ class i6Emitter{
         // sub-blocks of control-flow statements (if/for/while/do/switch/try-catch). Deduped by name
         // so the first occurrence wins — matches I6's single-declaration-per-header requirement.
         void collectBodyLocals(statementBlock* body, vector<variableDeclaration*>& out, set<string>& seen);
-        // Emit copy-in for each byVal-class param of the function — `backing._opeq(paramSlot)`
-        // — at routine entry. Called from both emitFunction (top-level routines) and emitClass
+        // Emit the copy-in for each param that owns an instance (its class copies) — `backing._opeq(param);
+        // param = backing;` — at routine entry. Called from both emitFunction (top-level routines) and emitClass
         // (class member methods) with their respective body-indentation strings.
+        string globalInstanceName(variableDeclaration* varNode);
+        bool globalOwnsInstance(variableDeclaration* vd);
+        string staticText(expression* e);
+        map<string, string> ownedGlobalInstances;   // class-typed global (I6 name, lowercase) → its instance
+        void emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, const string& indent);
         void emitParamCopyIns(functionDef* fd, const string& indent);
         // Emit framePool-backed allocation for each local array in `locals`, registering the matching
         // free in `fn->cleanups`. Shared by top-level functions AND class/object member methods so a

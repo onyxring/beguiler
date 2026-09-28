@@ -17,9 +17,9 @@
 #include <array>
 
 class Room : object { int visits = 0; }
-Room r1;
-Room r2;
-Room r3;
+Room r1 { }
+Room r2 { }
+Room r3 { }
 
 // Under the length-tracking model, the compiler sets length = element count
 // at allocation time for list-init arrays. Zero is just data — not a sentinel.

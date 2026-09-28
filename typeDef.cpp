@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "platform.h"
 #include "typeDef.h"
 
@@ -36,6 +37,22 @@ bool classDef::hasAncestor(const classDef* ancestor) const{
         if(base != nullptr && base->hasAncestor(ancestor)) return true;
     }
     return false;
+}
+
+std::vector<classDef*> classDef::ancestorsNearestFirst() const{
+    std::vector<classDef*> out;
+    std::vector<const classDef*> frontier{this};
+    while(!frontier.empty()){
+        std::vector<const classDef*> next;
+        for(const classDef* c : frontier)
+            for(classDef* base : c->baseClasses)
+                if(base != nullptr && base != this && std::find(out.begin(), out.end(), base) == out.end()){
+                    out.push_back(base);
+                    next.push_back(base);
+                }
+        frontier = next;
+    }
+    return out;
 }
 
 classDef* classDef::declaringClassOf(const typeMember* m){

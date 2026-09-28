@@ -272,7 +272,8 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-object hook;
+object hook
+;
 [helperRoutine a;
     return a + 1;
 ];

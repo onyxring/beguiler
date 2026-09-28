@@ -277,7 +277,8 @@ class _info
     width,
     height
 ;
-_info info;
+_info info
+;
 [scaleAndCheck _l_width _l_height a height2 width2;
     if (_l_width == 0 && _l_height == 0) {
         _l_width=info.width;

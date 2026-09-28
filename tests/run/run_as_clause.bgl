@@ -35,7 +35,7 @@ object plain {                                   // as on an OBJECT method
     void ping() asI6 _plainPing { seen = 1; }
 }
 
-Widget w;
+Widget w { }
 
 void main(){
     w.count = 5;

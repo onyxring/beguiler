@@ -1,0 +1,6 @@
+// The header name is compile-time text, so only a string literal can give it.
+// EXPECT_ERROR: 'instanceName' takes a string literal
+#beguilerSettings { target = z5; informName = "none"; }
+string s = "brass lamp";
+object lamp { instanceName = s; }
+void main(){ }

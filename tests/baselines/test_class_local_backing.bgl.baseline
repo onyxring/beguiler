@@ -282,7 +282,8 @@ class window
         return self;
     ]
 ;
-window source;
+window source
+;
 [mkWin w h;
     source.width=w;
     source.height=h;
@@ -292,7 +293,8 @@ class tag
   with
     n
 ;
-tag tagSrc;
+tag tagSrc
+;
 [mkTag n;
     tagsrc.n=n;
     return tagsrc;
@@ -302,27 +304,26 @@ class room
   with
     visits 0
 ;
-room r1;
-room r2;
-[main aw ah bw bh cw tn here there;
-    _bglLocal_main_boxa.width = 0;
-    _bglLocal_main_boxa.height = 0;
-    _bglLocal_main_boxb.width = 0;
-    _bglLocal_main_boxb.height = 0;
-    _bglLocal_main_boxc.width = 0;
-    _bglLocal_main_boxc.height = 0;
-    _bglLocal_main_t1.n = 0;
-    _bglLocal_main_boxa._opeq(mkwin(100,200));
-    _bglLocal_main_boxb._opeq(mkwin(300,400));
-    aw=_bglLocal_main_boxa.width;
-    ah=_bglLocal_main_boxa.height;
-    bw=_bglLocal_main_boxb.width;
-    bh=_bglLocal_main_boxb.height;
-    _bglLocal_main_boxa.height=_bglLocal_main_boxa.width;
-    _bglLocal_main_boxc._opeq(mkwin(500,600));
-    cw=_bglLocal_main_boxc.width;
-    _bglLocal_main_t1.n = mktag(42).n;
-    tn=_bglLocal_main_t1.n;
+room r1
+;
+room r2
+;
+[main boxA boxB aw ah bw bh boxC cw t1 tn here there;
+    boxA = _bglLocal_main_boxa;
+    boxB = _bglLocal_main_boxb;
+    boxC = _bglLocal_main_boxc;
+    t1 = _bglLocal_main_t1;
+    boxA._opeq(mkwin(100,200));
+    boxB._opeq(mkwin(300,400));
+    aw=boxa.width;
+    ah=boxa.height;
+    bw=boxb.width;
+    bh=boxb.height;
+    boxa.height=boxa.width;
+    boxC._opeq(mkwin(500,600));
+    cw=boxc.width;
+    t1.n = mktag(42).n;
+    tn=t1.n;
     here = r1;
     here = r2;
     there = r1;

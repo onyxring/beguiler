@@ -20,6 +20,6 @@ object leaf : Base { rawArray<int> hook = {3}; }        // agrees with Base — 
 
 // A second, unrelated hierarchy fixes the SAME additive property to a DIFFERENT element type.
 class Other { rawArray<dictionaryWord> hook = {.aa,.bb}; }
-Other otherInst;
+Other otherInst { }
 
 void main(){ bglInit(); }

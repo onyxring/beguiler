@@ -277,7 +277,8 @@ class box
     x,
     y
 ;
-box boxSrc;
+box boxSrc
+;
 [mkBox x y;
     boxsrc.x=x;
     boxsrc.y=y;
@@ -293,15 +294,15 @@ class window
         return self;
     ]
 ;
-window winSrc;
+window winSrc
+;
 [mkWin w h;
     winsrc.w=w;
     winsrc.h=h;
     return winsrc;
 ];
-[main br bx br2 wr wH wvW;
-    _bglLocal_main_wv.w = 0;
-    _bglLocal_main_wv.h = 0;
+[main br bx br2 wr wH wv wvW;
+    wv = _bglLocal_main_wv;
     br = mkbox(10,20);
     bx=br.x;
     br.x = 99;
@@ -309,7 +310,7 @@ window winSrc;
     br2.y = 7;
     wr = mkwin(300,400);
     wH=wr.h;
-    _bglLocal_main_wv._opeq(mkwin(100,200));
-    wvW=_bglLocal_main_wv.w;
+    wv._opeq(mkwin(100,200));
+    wvW=wv.w;
 ];
 window _bglLocal_main_wv;

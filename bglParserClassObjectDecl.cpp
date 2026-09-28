@@ -6,7 +6,7 @@
 // helpers that walk their bodies.
 //
 // Top-level declarations:
-//   processClassDeclaration         - class Foo { ... }, extern/extend/emitter/alias/byVal
+//   processClassDeclaration         - class Foo { ... }, extern/extend/emitter/alias
 //   processObjectDeclaration        - object Foo { ... }, including typed instances
 //   processObjectExtension          - extend object Foo { ... } adds members to an existing object
 //   processExtendCompoundAssignment - handle `attributes += {...}` etc. on extended objects
@@ -211,22 +211,30 @@ void bglParser::parseClassInheritance(classDef& newClass, token& tok, token name
             parsingError(format("class '{0}': circular inheritance — '{1}' transitively inherits from '{0}'",
                                 newClass.dName(), parentDisplay));
     };
+    // The pre-scan may already have linked these bases (drainDeferredClassBases); add each once.
+    auto addBase = [&](classDef* parent){
+        if(find(newClass.baseClasses.begin(), newClass.baseClasses.end(), parent) == newClass.baseClasses.end())
+            newClass.baseClasses.push_back(parent);
+    };
     if(tok.is("for")){
         // alias class single-parent clause
         token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
         classDef* parent = languageService.findClass(parentTok.value);
         if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
-        else { checkInheritanceCycle(parent, parentTok.originalValue); newClass.baseClasses.push_back(parent); }
+        else { checkInheritanceCycle(parent, parentTok.originalValue); addBase(parent); }
         tok = file.getToken();
     } else if(tok.is(":")){
         do {
             token parentTok = file.getToken({eTokenType::dataType, eTokenType::identifier});
             classDef* parent = languageService.findClass(parentTok.value);
             if(!parent) parsingError(format("Unknown base class '{0}'", parentTok.value));
-            else { checkInheritanceCycle(parent, parentTok.originalValue); newClass.baseClasses.push_back(parent); }
+            else { checkInheritanceCycle(parent, parentTok.originalValue); addBase(parent); }
             tok = file.getToken();
         } while(tok.is(","));
     }
+    if(newClass.baseClasses.empty())
+        if(string root = implicitRootName(&newClass); !root.empty())
+            if(classDef* rc = languageService.findClass(root)) addBase(rc);
 }
 
 // Decode an `operator …` member name into `name` (the already-consumed `operator` token) and
@@ -313,7 +321,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
         parsingError("'explicit' is only valid on conversion operators (operator())");
     processParameterList(funcDef);
     consumeMethodI6Alias(funcDef);      // `Type method(...) as <i6name> { … }` (§3.11)
-    // Synthesize per-(class, method, param) backing globals for byVal-class params.
+    // Synthesize the instance and copy-in for each param whose class copies.
     // Same machinery as the top-level call from processRoutineDeclaration; pass the
     // enclosing class name as context so backings on same-named methods across
     // classes don't collide.
@@ -506,6 +514,70 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
 
 // Parse one variable (or emitter-class alias) member of a class body; `tok` is the '=' or ';'
 // following the member name. Returns true when the member is fully handled.
+// The element type of a list-typed member: T of array<T>/rawArray<T>, or the parameter of a list
+// class's single-parameter method (attributeList's element is an attribute). Empty if not a list.
+string bglParser::listElementType(const string& typeName){
+    if((typeName.rfind("array<",0)==0 || typeName.rfind("rawarray<",0)==0) && typeName.back()=='>'){
+        size_t lt = typeName.find('<');
+        return typeName.substr(lt+1, typeName.size()-lt-2);
+    }
+    if(classDef* listClass = languageService.findClass(typeName))
+        for(typeMember* m : listClass->members)
+            if(auto* fd = dynamic_cast<functionDef*>(m))
+                if(fd->params.size() == 1) return fd->params[0]->type.name;
+    return "";
+}
+
+// One-element shorthand for a member value: a single element on a list-typed member is the
+// one-element list, `attributes = light` ≡ `attributes = {light}`, `describe = "s"` ≡ `describe = {"s"}`,
+// as `array<int> x = 3` ≡ `= {3}` for a declaration. A value of the member's own type (a string on a
+// string member, an array or var pointer on an array) stays a plain value. Returns the list, or null.
+initializerList* bglParser::asSingleElementList(expression* expr, const string& typeName){
+    if(expr == nullptr || expr->resolvedType.empty()) return nullptr;
+    string elem = listElementType(typeName);
+    if(elem.empty()) return nullptr;
+    bool isArrayType = typeName.rfind("array<",0)==0 || typeName.rfind("rawarray<",0)==0;
+    bool isString = expr->resolvedType == "stringliteral" || expr->resolvedType == "string";
+    bool isElement = (isArrayType && isString && (elem == "var" || elem == "string" || elem == "stringliteral"))
+        || (!isTypeCompatible(expr->resolvedType, typeName) && isArrayElementCompatible(expr->resolvedType, elem));
+    if(!isElement) return nullptr;
+    initializerList* list = new initializerList();
+    list->elements.push_back(expr);
+    checkByteElementRange(expr, elem);
+    return list;
+}
+
+// A member value that reassigns an inherited array (`name = {.lamp}`, `nums = {5, 6}`) declares that
+// array again for this class or object: same element type, raw/tracked layout and I6 name, new
+// contents. Returned as an array declaration so it is emitted and typed like the one it overrides
+// (a tracked array keeps its length word; reads know T). Null when `value` isn't such an override.
+variableDeclaration* bglParser::asInheritedArrayOverride(variableDeclaration& value, const vector<classDef*>& bases){
+    auto* list = dynamic_cast<initializerList*>(value.declaredExpressionValue);
+    if(list == nullptr) return nullptr;
+    arrayDeclaration* base = nullptr;
+    for(classDef* b : bases){
+        typeMember* m = findMemberInHierarchy(b, [&](typeMember* mm){
+            return mm->name == value.name && dynamic_cast<arrayDeclaration*>(mm) != nullptr;
+        });
+        if(m){ base = dynamic_cast<arrayDeclaration*>(m); break; }
+    }
+    if(base == nullptr || base->isByteArray) return nullptr;
+    arrayDeclaration& arr = *(new arrayDeclaration());
+    arr.name = value.name;
+    arr.displayName = value.displayName.empty() ? base->displayName : value.displayName;
+    arr.i6name = value.i6name.empty() ? base->i6name : value.i6name;
+    arr.src = value.src;
+    arr.docComment = value.docComment;
+    arr.type = base->type;
+    arr.elementType = base->elementType;
+    arr.isRaw = base->isRaw;
+    arr.isRefLocal = base->isRefLocal;
+    arr.declaredExpressionValue = list;
+    arr.arraySize = max(base->arraySize, (int)list->elements.size());
+    promoteMemberArrayIfOversized(arr);
+    return &arr;
+}
+
 bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias){
     bool isReplace = q.isReplace;
     bool isMemberConst = q.isConst;
@@ -535,17 +607,32 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
         aliasDef.name = (string)name;
         aliasDef.type = languageService.getType(aliasTypeName);
         aliasDef.isExternal = true;  // no I6 emission
+        aliasDef.isConst = isMemberConst;
+        aliasDef.isInline = q.isInline;
+        if(q.isInline){ notePositional(newClass, aliasDef.name); addInlineOrder(newClass, aliasDef.name); }
         if(tok.is(token::assignment) && aliasTypeName != "auto")
             parsingError(format("Alias member '{0}' on emitter class cannot have an initializer; use 'auto' to infer type", (string)name));
         // Consume ; if present
         if(tok.isNot(token::endStatement))
             parsingError(format("Expected ';' after alias member '{0}'", (string)name));
-        newClass.members.push_back(&aliasDef);
+        // Replace the pre-scan's stub of this member, as a class's other members do, so lookups find
+        // the declaration (and its `const`) rather than the stub.
+        auto stub = find_if(newClass.members.begin(), newClass.members.end(), [&](typeMember* m){
+            return m->isPrePassStub && m->name == aliasDef.name && dynamic_cast<variableDeclaration*>(m); });
+        if(stub != newClass.members.end()) *stub = &aliasDef;
+        else newClass.members.push_back(&aliasDef);
         tok = file.getToken();
         return true;
     }
     if(tok.isNot(token::endStatement) && tok.isNot(token::assignment))
         parsingError(format("Expected '=' or ';' after member '{0}'", (string)name));
+    // An object's `parent` is its place in the world tree, emitted as its I6 declaration's position.
+    // An I6 class can't place its instances, so a class-level value would be emitted as a plain
+    // property that places nothing.
+    if(name.value == "parent" && tok.is(token::assignment))
+        parsingError(format("class '{0}': a class can't set 'parent'; set it on each object", newClass.dName()));
+    if(name.value == "instancename" && tok.is(token::assignment))
+        parsingError(format("class '{0}': a class can't set 'instanceName'; set it on each object", newClass.dName()));
     // Note: alias-class members may carry a default value (e.g. `int priority = 10;` on
     // `class verb`). The value is a compile-time default consulted by the emitter when
     // lifting the field from an instance body; it is not emitted as an I6 property.
@@ -555,12 +642,24 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     varDef.i6name = i6alias;        // `Type member as <i6name>;` — empty leaves the Beguile name
     varDef.src = name.src.line > 0 ? name.src : file.currentLocation();
     varDef.type=languageService.getType((string) returnType);
-    if(((string)returnType).rfind("func<", 0) == 0) varDef.type.name = (string)returnType;  // keep parameterized func type
+    // Keep a parameterized type's full name (getType gives the bare base): func<…> so the member is
+    // callable, array<T>/rawArray<T> (an inherited array reassigned here) so reads know T.
+    if(((string)returnType).rfind("func<", 0) == 0 || ((string)returnType).rfind("array<", 0) == 0
+       || ((string)returnType).rfind("rawarray<", 0) == 0) varDef.type.name = (string)returnType;
     if(isMemberConst) varDef.isConst = true;
     varDef.isStatic = isMemberStatic;
     varDef.isInline = q.isInline;   // participates in positional inline construction (§6.2.1)
+    if(q.isInline){ notePositional(newClass, varDef.name); addInlineOrder(newClass, varDef.name); }
+    // A value class owns its members: one of its own type would own another, without end.
+    if(!q.isRef && !isMemberStatic && varDef.type.name == newClass.name && isValueClass(&newClass))
+        parsingError(format("value class '{0}': member '{1}' is a '{0}', which would own another '{0}' without end; declare it 'ref'",
+                            newClass.dName(), varDef.dName()));
     if(q.isTypeSealed) varDef.isTypeSealed = true;
     varDef.isRefLocal = q.isRef;   // `ref` member: assignments are pointer-copy (opt out of operator=)
+    if(q.isRef){
+        string why = refNotApplicable(getDispatchClass(varDef.type.name), typeDisplayName(varDef.type.name));
+        if(!why.empty()) parsingError("'ref': " + why);
+    }
     // A subclass re-declaring a base member that was marked `typesealed` keeps the sealed
     // type (and gets a warning) — mirrors the object-instance rule in processMemberVariable.
     {
@@ -616,9 +715,8 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
             // values (e.g. `name = {.gadget, noun}` where `noun` is a grammarToken).
             {
                 string rtStr = (string)returnType;
-                string expectedElemType;
-                if(rtStr.size() > 6 && rtStr.substr(0, 6) == "array<" && rtStr.back() == '>')
-                    expectedElemType = rtStr.substr(6, rtStr.size() - 7);
+                string expectedElemType = (rtStr.rfind("array<",0)==0 || rtStr.rfind("rawarray<",0)==0)
+                                          ? listElementType(rtStr) : "";
                 if(!expectedElemType.empty())
                     for(size_t i = 0; i < list->elements.size(); i++){
                         expression* elem = list->elements[i];
@@ -631,18 +729,27 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
             }
             varDef.declaredExpressionValue = list;
         } else {
-            varDef.declaredExpressionValue = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+            expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
+            if(initializerList* list = asSingleElementList(expr, (string)returnType))
+                varDef.declaredExpressionValue = list;
+            else
+                varDef.declaredExpressionValue = expr;
         }
     }
+    variableDeclaration* member = &varDef;
+    if(variableDeclaration* arr = asInheritedArrayOverride(varDef, newClass.baseClasses)) member = arr;
     if(isExtend){
         typeMember* existing = nullptr;
         for(typeMember* m : newClass.members){
             variableDeclaration* vd = dynamic_cast<variableDeclaration*>(m);
             if(vd && vd->name == varDef.name){ existing = m; break; }
         }
-        if(existing && !isReplace)
+        bool existingIsStub = existing != nullptr && existing->isPrePassStub;
+        if(existing && !existingIsStub && !isReplace)
             parsingError(format("extend class '{0}': member '{1}' is already defined; use 'replace' to override", newClass.dName(), varDef.dName()));
         if(!existing && isReplace)
+            parsingWarning(format("extend class '{0}': 'replace' specified but there is no member '{1}' to replace; it is added",
+                                  newClass.dName(), varDef.dName()));
         if(existing)
             for(auto it=newClass.members.begin(); it!=newClass.members.end(); ++it)
                 if(*it==existing){ newClass.members.erase(it); break; }
@@ -653,7 +760,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
             if(auto* vd = dynamic_cast<variableDeclaration*>(newClass.members[i])){
                 if(vd->name == varDef.name){
                     if(vd->isPrePassStub){
-                        newClass.members[i] = (typeMember*)&varDef;
+                        newClass.members[i] = (typeMember*)member;
                         replacedStub = true;
                     } else {
                         parsingError(format("class '{0}': member '{1}' is already defined", newClass.dName(), varDef.dName()));
@@ -662,11 +769,11 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
                 }
             }
         }
-        if(!replacedStub) newClass.members.push_back((typeMember*)&varDef);
+        if(!replacedStub) newClass.members.push_back((typeMember*)member);
         tok=file.getToken();
         return true;
     }
-    newClass.members.push_back((typeMember*)&varDef);
+    newClass.members.push_back((typeMember*)member);
     return false;
 }
 
@@ -728,6 +835,20 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
         tok = file.getToken();
         return;
     }
+    // `inline name;` re-lists an inherited member as positional, at this point in the class's order.
+    // The member itself stays where it is declared (and keeps its type and `const`).
+    if(q.isInline && (tok.is(eTokenType::identifier) || tok.is(eTokenType::dataType)) && file.peekToken().is(token::endStatement)){
+        string shown = tok.originalValue.empty() ? tok.value : tok.originalValue;
+        if(!newClass.findMember([&](typeMember* m){ return dynamic_cast<variableDeclaration*>(m) && m->name == tok.value; }))
+            parsingError(format("class '{0}': 'inline {1};' makes an existing member positional, but '{0}' has no member '{1}'",
+                                newClass.dName(), shown));
+        if(!notePositional(newClass, tok.value))
+            parsingError(format("class '{0}': '{1}' is already positional in '{0}'", newClass.dName(), shown));
+        addInlineOrder(newClass, tok.value);
+        file.getToken(token::endStatement);
+        tok = file.getToken();
+        return;
+    }
     // Check for inherited member type inference: if the token is an identifier (not a data type)
     // followed by '=' or ';', look up the member name in base classes to infer the type.
     if(tok.is(eTokenType::identifier) && !tok.isDataType()){
@@ -746,7 +867,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
                 });
                 if(m == nullptr) continue;
                 if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
-                    inferredType = "array<" + arr->elementType + ">";
+                    inferredType = (arr->isRaw ? "rawarray<" : "array<") + arr->elementType + ">";
                 else
                     inferredType = dynamic_cast<variableDeclaration*>(m)->type.name;
                 break;
@@ -815,7 +936,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
     tok=file.getToken();
 }
 
-bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool isByVal, bool allowNested, bool isSuperposed){
+bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool allowNested, bool isSuperposed, bool isValue, bool isPrimitive){
     // `allowNested` = synthesizing an inline accessor's anonymous class from inside an object body
     // (`auto name = { … }`); the class is still registered globally, it's just parsed nested. All
     // other class declarations must be at global scope.
@@ -826,6 +947,11 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     if(isExtend){
         classPtr = languageService.findClass((string)nameTok);
         if(classPtr == nullptr) parsingError(format("extend class '{0}': no previously defined class with that name", (string)nameTok));
+        // The pre-scan knows every class, but an extend applies to the class as declared so far: it
+        // has to come after the declaration.
+        if(classPtr->isPrePassStub)
+            parsingError(format("extend class '{0}': '{0}' is declared later; a class must be declared before it is extended",
+                                nameTok.originalValue.empty() ? (string)nameTok : nameTok.originalValue));
     } else {
         //create an empty class definition object and register it immediately, so that we can refer to this type within its own definition (e.g. comparison operators)
         classPtr = &languageService.registerClass((string)nameTok, isExternal, nameTok.originalValue);
@@ -839,25 +965,22 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     if(!isExtend){
         if(isEmitterClass) newClass.isEmitterClass = true;
         if(isAlias)        newClass.isAlias = true;
-        if(isByVal)        newClass.isByVal = true;
         if(isSuperposed)   newClass.isSuperposed = true;   // withhold source-order emit; revive on reference
+        if(isValue)        newClass.isValue = true;
+        if(isPrimitive)    newClass.isPrimitive = true;
     }
-    // `byVal` validation: rejects combinations that can't sensibly support a class-
-    // controlled copy-in path. `extend byVal class` is rejected because byVal is a
-    // class-identity decision that belongs on the original declaration; an extend
-    // should pick up the existing class's identity, not re-declare it.
+    if((isValue || isPrimitive) && isExtend)
+        parsingError(format("'extend class {0}': '{1}' belongs on the original class declaration.", (string)nameTok, isValue ? "value" : "primitive"));
+    if(isValue && isPrimitive)
+        parsingError(format("class '{0}': 'value' and 'primitive' are exclusive — a primitive holds its value directly.", (string)nameTok));
+    if(isValue && (isExternal || isEmitterClass || isAlias))
+        parsingError(format("'value class {0}': a value class has instances of its own; it can't be extern, emitter or alias.", (string)nameTok));
     // `superposed` only makes sense for a class that emits a revivable `Class` directive.
     if(isSuperposed){
         if(isExtend)       parsingError(format("'extend class {0}': 'superposed' belongs on the original class declaration, not on extend.", (string)nameTok));
         if(isExternal)     parsingError(format("'superposed extern class {0}': extern classes are I6-defined — Beguile emits no directive to withhold.", (string)nameTok));
         if(isEmitterClass) parsingError(format("'superposed emitter class {0}': emitter classes have no I6 backing to withhold.", (string)nameTok));
         if(isAlias)        parsingError(format("'superposed alias class {0}': alias classes dissolve to their parent for emission; nothing to withhold.", (string)nameTok));
-    }
-    if(isByVal){
-        if(isExtend)       parsingError(format("'extend class {0}': 'byVal' belongs on the original class declaration, not on extend.", (string)nameTok));
-        if(isExternal)     parsingError(format("'extern byVal class {0}': extern classes are I6-defined and Beguile can't insert copy-in code at their use sites.", (string)nameTok));
-        if(isEmitterClass) parsingError(format("'emitter byVal class {0}': emitter classes have no stored fields; value semantics has nothing to copy.", (string)nameTok));
-        if(isAlias)        parsingError(format("'alias byVal class {0}': alias classes dissolve to their parent for emission; the marker has no effect.", (string)nameTok));
     }
 
     classDef* savedClass = currentClass;
@@ -867,19 +990,17 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     parseClassTypeParameters(newClass, nameTok, isExtend, isAlias);
     parseClassPoolSize(newClass, tok, nameTok, isExternal, isExtend, isEmitterClass, isAlias);
     parseClassInheritance(newClass, tok, nameTok, isAlias);
-    // `byVal class Foo : object` — contradictory: object-derived classes are tree
-    // citizens (reference semantics via the world tree), and byVal is value semantics.
-    // Walk bases transitively for the check.
-    if(newClass.isByVal){
-        function<bool(classDef*)> inheritsObj = [&](classDef* c) -> bool {
-            if(!c) return false;
-            if(c->name == "object") return true;
-            for(classDef* base : c->baseClasses) if(inheritsObj(base)) return true;
-            return false;
-        };
-        for(classDef* base : newClass.baseClasses)
-            if(inheritsObj(base))
-                parsingError(format("'byVal class {0}': value-semantic classes cannot inherit from 'object' (tree-citizen reference semantics conflicts with value semantics).", newClass.dName()));
+    // `value` is inherited, and a class can't be both kinds: a value base and a reference base (one with
+    // instances that isn't a value class) don't mix.
+    if(!isExtend && !newClass.isEmitterClass && !newClass.isAlias){
+        bool anyValue = false, anyReference = false;
+        for(classDef* base : newClass.baseClasses){
+            if(isValueClass(base)) anyValue = true;
+            else if(!base->isEmitterClass && !base->isAlias) anyReference = true;
+        }
+        if(anyValue && anyReference)
+            parsingError(format("class '{0}': a value class and a reference class can't both be its bases.", newClass.dName()));
+        if(anyValue) newClass.isValue = true;
     }
     // Marker-form extern pool class (`extern class Foo[];`) allows no body — it's purely a
     // declaration that the type exists and is pooled in I6. Skip body parsing and return.
@@ -931,6 +1052,19 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         }
     }
 
+    // A reference class shares its instances: `=` already means "refer to", so it can't also declare a
+    // copy operator (one taking the class itself or an ancestor). A conversion from another type is fine.
+    if(!newClass.isEmitterClass && !newClass.isAlias && !newClass.isExternal && !newClass.isPrimitive
+       && !isValueClass(&newClass)){
+        for(typeMember* m : newClass.members)
+            if(auto* fn = dynamic_cast<functionDef*>(m))
+                if(fn->name == "=" && !fn->isStatic && !fn->isPrePassStub && fn->params.size() == 1)
+                    if(classDef* pc = getDispatchClass(fn->params[0]->type.name); pc != nullptr && (pc == &newClass || newClass.hasAncestor(pc)))
+                        parsingError(format("class '{0}' is a reference class: '=' already means \"refer to\", so it can't declare a "
+                                            "copy operator ('operator =' taking '{1}'). Declare it 'value class {0}' to copy, or write a "
+                                            "method (such as clone()) to duplicate an instance.", newClass.dName(), typeDisplayName(fn->params[0]->type.name)));
+    }
+
     currentClass = savedClass;
     closeCompileContext(eCompileContext::objectDef);
     return false;
@@ -960,12 +1094,12 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             token clsTok;  clsTok.tokenType  = eTokenType::identifier; clsTok.value  = "class";
             // Parse the brace body as a class body (full reuse of member/operator parsing), registering
             // the anonymous class globally. Stream is at the '{', which processClassDeclaration reads.
-            // No base → a non-`object` value-helper class, so create+populate bakes its instance.
+            // A value class owned by its host, so create+populate bakes one instance per host.
             // Capture the enclosing object so `outer` resolves to it inside the accessor's bodies.
             objectDef* savedAccOuter = accessorOuter;
             accessorOuter = currentObject;
             processClassDeclaration(clsTok, /*isExternal*/false, /*isExtend*/false, /*isEmitterClass*/false,
-                                    /*isAlias*/false, nameTok, /*isByVal*/false, /*allowNested*/true);
+                                    /*isAlias*/false, nameTok, /*allowNested*/true, /*isSuperposed*/false, /*isValue*/true);
             accessorOuter = savedAccOuter;
             prop.type = languageService.getType(anon);   // `name` is an instance of the synthesized class
             // registerClass only adds to the emit list (`globals`) at global scope; we're nested, so
@@ -1015,18 +1149,7 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
             t = file.getToken();
         }
         if(file.peekToken().is(token::endStatement)) file.getToken();
-        string expectedElemType;
-        // For array<T>, extract T as the expected element type
-        if(typeName.size() > 6 && typeName.substr(0, 6) == "array<" && typeName.back() == '>')
-            expectedElemType = typeName.substr(6, typeName.size() - 7);
-        // Fallback: infer from the class's single-param method
-        if(expectedElemType.empty()){
-            classDef* listClass = languageService.findClass(typeName);
-            if(listClass != nullptr)
-                for(typeMember* m : listClass->members)
-                    if(auto* fd = dynamic_cast<functionDef*>(m))
-                        if(fd->params.size() == 1){ expectedElemType = fd->params[0]->type.name; break; }
-        }
+        string expectedElemType = listElementType(typeName);
         for(size_t i = 0; i < list->elements.size(); i++){
             expression* elem = list->elements[i];
             if(elem->resolvedType.empty())
@@ -1038,21 +1161,15 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
         prop.declaredExpressionValue = list;
     } else {
         expression* expr = parseExpression(first, {token::endStatement}, nullptr, nullptr);
-        // One-element shorthand for a string on an array-typed property whose element accepts a
-        // string: `describe = "s"` ≡ `describe = {"s"}` — a single contribution to (often additive)
-        // parser/description vocabulary, emitting `with describe "s"`. Mirrors the array-declaration
-        // shorthand; scoped to strings so an array/var-pointer RHS stays a plain assignment.
-        string aElem;
-        if((typeName.rfind("array<",0)==0 || typeName.rfind("rawarray<",0)==0) && !typeName.empty() && typeName.back()=='>'){
-            size_t lt = typeName.find('<');
-            aElem = typeName.substr(lt+1, typeName.size()-lt-2);
+        // The object's I6 header name: text fixed when the program is compiled, so only a literal.
+        if(prop.name == "instancename"){
+            if(expr->resolvedType != "stringliteral")
+                parsingError("'instanceName' takes a string literal: the name is fixed when the program is compiled.");
+            prop.declaredExpressionValue = expr;
+            return;
         }
-        bool rhsIsString = expr->resolvedType == "stringliteral" || expr->resolvedType == "string";
-        if(!aElem.empty() && rhsIsString && (aElem == "var" || aElem == "string" || aElem == "stringliteral")){
-            initializerList* list = new initializerList();
-            list->elements.push_back(expr);
+        if(initializerList* list = asSingleElementList(expr, typeName))
             prop.declaredExpressionValue = list;
-        }
         // auto inference: if the property type is 'auto', adopt the expression's resolved type
         else if(typeName == "auto" && !expr->resolvedType.empty()){
             typeName = expr->resolvedType;
@@ -1217,6 +1334,8 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     arrDecl.src = file.currentLocation();   // so diagnostics on this member array report a line
     arrDecl.name = (string)propName;
     if(q) arrDecl.isInline = q->isInline;   // an `inline array<T>` member is a positional slot (§6.2.1)
+    if(q && q->isInline)
+        if(auto* ownerCls = dynamic_cast<classDef*>(ctx)){ notePositional(*ownerCls, arrDecl.name); addInlineOrder(*ownerCls, arrDecl.name); }
     arrDecl.isRaw = declIsRaw;             // `rawArray<T>` member: no tracking layer
     // `ref array<T> name;` — the slot holds a POINTER to an array owned elsewhere rather than
     // inline property data, so it is addressed as a value: (obj.prop, 0), not (obj, prop).
@@ -1253,6 +1372,14 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
                 parsingError(format("String initializer is only valid for array<char>; '{0}' cannot "
                     "hold a string element.", typeDisplayName(elemType)));
             }
+        } else if(!file.peekToken().is(token::braceOpen)){
+            // One-element shorthand: `array<int> nums = 3;` ≡ `= {3}`.
+            expression* expr = parseExpression(file.getToken(), {token::endStatement}, nullptr, nullptr);
+            initializerList* list = asSingleElementList(expr, (declIsRaw ? "rawarray<" : "array<") + elemType + ">");
+            if(list == nullptr)
+                parsingError(format("Cannot initialize member array '{0}' of {1} with a value of type '{2}'; "
+                    "use a list: {{ … }}", arrDecl.dName(), typeDisplayName(elemType), typeDisplayName(expr->resolvedType)));
+            arrDecl.declaredExpressionValue = list;
         } else {
             file.getToken(token::braceOpen);
             initializerList* list = new initializerList();
@@ -1407,6 +1534,10 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     prop.type = languageService.getType(typeName);
     if(typeName.rfind("func<", 0) == 0) prop.type.name = typeName;  // getType returns base "func"; keep the parameterized name
     prop.isRefLocal = isRef;  // `ref` member: assignments are pointer-copy (opt out of operator= dispatch)
+    if(isRef){
+        string why = refNotApplicable(getDispatchClass(typeName), typeDisplayName(typeName));
+        if(!why.empty()) parsingError("'ref': " + why);
+    }
     // Type-sealed inherited member: if a base class marked this member `typesealed`, the slot type is
     // locked — a re-typed declaration keeps the sealed type (and warns). This lets `object parent =
     // <room>` initialize the inherited `parentProp parent` (so `self.parent = X` later dispatches to
@@ -1428,12 +1559,21 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
             }
         }
     }
+    // A value given here for an inherited `const` member is its one assignment: the member stays const.
+    if(obj.objectClass)
+        if(auto* inh = dynamic_cast<variableDeclaration*>(findMemberInHierarchy(obj.objectClass, [&](typeMember* m){
+               auto* vd = dynamic_cast<variableDeclaration*>(m);
+               return vd && vd->name == name; })); inh && inh->isConst)
+            prop.isConst = true;
     if(hasValue) parsePropertyValue(prop, typeName);
+    variableDeclaration* member = &prop;
+    if(obj.objectClass)
+        if(variableDeclaration* arr = asInheritedArrayOverride(prop, {obj.objectClass})) member = arr;
     bool replaced = false;
     if(isReplace){
         for(size_t i = 0; i < obj.members.size(); i++)
             if(auto* vd = dynamic_cast<variableDeclaration*>(obj.members[i]))
-                if(vd->name == prop.name){ obj.members[i] = &prop; replaced = true; break; }
+                if(vd->name == prop.name){ obj.members[i] = member; replaced = true; break; }
         if(!replaced)
             parsingWarning(format("object '{0}': 'replace' specified but no existing member '{1}' to replace", obj.dName(), prop.dName()));
     }
@@ -1446,7 +1586,7 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
             if(obj.members[i]->name == prop.name){
                 if(auto* existingVd = dynamic_cast<variableDeclaration*>(obj.members[i])){
                     if(existingVd->isPrePassStub){
-                        obj.members[i] = &prop;
+                        obj.members[i] = member;
                         replaced = true;
                         break;
                     }
@@ -1454,7 +1594,7 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
                 parsingError(format("object '{0}': member '{1}' is already defined", obj.dName(), prop.dName()));
             }
         }
-        if(!replaced) obj.members.push_back((typeMember*)&prop);
+        if(!replaced) obj.members.push_back((typeMember*)member);
     }
 }
 
@@ -1767,6 +1907,137 @@ bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q
 }
 
 
+// Records, in the main pass, that `name` is positional in `cls`; false if it already was. (The
+// pre-scan fills inlineOrder too, so the order list can't answer this.)
+bool bglParser::notePositional(classDef& cls, const string& name){
+    return positionalNoted[&cls].insert(name).second;
+}
+
+void bglParser::addInlineOrder(classDef& cls, const string& name){
+    if(find(cls.inlineOrder.begin(), cls.inlineOrder.end(), name) == cls.inlineOrder.end())
+        cls.inlineOrder.push_back(name);
+}
+
+// The positional slots of `cls`, in order: the class's own list (its `inline` members and the
+// inherited ones it re-lists), then each base's, SUBCLASS FIRST. A member appears once, where it is
+// first listed, so a subclass that re-lists an inherited member decides its position.
+vector<variableDeclaration*> bglParser::positionalMembers(classDef* cls){
+    vector<variableDeclaration*> out;
+    set<string> placed;
+    function<void(classDef*)> walk = [&](classDef* c){
+        if(c == nullptr) return;
+        for(const string& n : c->inlineOrder){
+            if(placed.count(n)) continue;
+            auto* vd = dynamic_cast<variableDeclaration*>(c->findMember([&](typeMember* m){
+                return dynamic_cast<variableDeclaration*>(m) != nullptr && m->name == n; }));
+            if(vd != nullptr){ placed.insert(n); out.push_back(vd); }
+        }
+        for(classDef* base : c->baseClasses) walk(base);
+    };
+    walk(cls);
+    return out;
+}
+
+// One member value of an aggregate (positional or named), stored on `od` as the value of `target`.
+// On entry `vt` is the value's first token; returns the separator that ended it (',', ';' or '}').
+// True when an object body opens with positional values (`Pet rex { "rex", 4; … }`): a value, not a
+// member. Nothing that begins a member — a type, a name followed by '=', a qualifier, a directive —
+// looks like this, so the two can't be confused.
+bool bglParser::startsPositionalSection(token tok){
+    switch(tok.tokenType){
+        case eTokenType::quote: case eTokenType::rawQuote: case eTokenType::integer: case eTokenType::floatLiteral:
+        case eTokenType::dictionaryWord: case eTokenType::charLiteral:
+            return true;
+        default: break;
+    }
+    if(tok.is(token::braceOpen) || tok.is("-") || tok.is(token::parenOpen)) return true;
+    if(tok.is(eTokenType::identifier) || tok.is(eTokenType::dataType)){
+        token next = file.peekToken();
+        return next.is(",") || next.is(token::endStatement) || next.is(token::braceClose);
+    }
+    return false;
+}
+
+// The positional section of an object body: ','-separated values filling the class's positional
+// members in order (positionalMembers), ended by the first ';'. Returns the token after it — the
+// first member of the named section, or the body's '}'.
+token bglParser::parseDeclarationPositionals(objectDef& obj, token tok){
+    classDef* cls = getDispatchClass(obj.name);
+    vector<variableDeclaration*> slots = positionalMembers(cls);
+    string display = cls != nullptr ? cls->dName() : obj.dName();
+    size_t idx = 0;
+    while(true){
+        if(idx >= slots.size())
+            parsingError(format("'{0}': too many positional values — '{1}' has {2} positional member(s) (declared `inline`)",
+                                obj.dName(), display, (int)slots.size()));
+        string terminator = bakeMemberValue(obj, slots[idx++], tok, display, nullptr, nullptr);
+        if(terminator == token::braceClose){ token close; close.tokenType = eTokenType::symbol; close.value = token::braceClose; return close; }
+        if(terminator == token::endStatement) return file.getToken();
+        tok = file.getToken();
+    }
+}
+
+string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, token vt, const string& typeDisplay,
+                                  functionDef* func, statementBlock* body){
+    // The value is either a scalar expression or a NESTED `{ … }` aggregate. A nested aggregate
+    // takes its shape from the target member's type: an `array<T>` member → a braced array literal
+    // (baked as an array property), an object-backed member → a nested inline object (§6.2.1).
+    string terminator;
+    if(vt.is(token::braceOpen)){
+        if(arrayDeclaration* arrTarget = dynamic_cast<arrayDeclaration*>(target)){
+            // array-typed member: parse `{ v1, v2, … }` as an array literal → array property.
+            arrayDeclaration& amem = *(new arrayDeclaration());
+            amem.name = target->name;
+            amem.type = languageService.getType("array");
+            amem.elementType = arrTarget->elementType;
+            initializerList* list = new initializerList();
+            token t = file.getToken();
+            while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
+                expression* e = parseExpression(t, {",", token::braceClose}, func, body);
+                list->elements.push_back(e);
+                if(e->terminator == token::braceClose) break;
+                t = file.getToken();
+            }
+            amem.declaredExpressionValue = list;
+            od.members.push_back(&amem);
+        } else {
+            classDef* fcls = getDispatchClass(target->type.name);
+            if(fcls == nullptr || !inheritsFromObject(fcls))
+                parsingError(format("inline '{0}{{...}}': member '{1}' is neither an array nor an object-backed type, so it cannot take a '{{ … }}' value",
+                                    typeDisplay, target->name));
+            // object-typed member: a nested inline object (the '{' is already consumed as `vt`).
+            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            bakeInlineObjectAggregate(fcls, target->type.name, anonName, func, body);
+            variableDeclaration& mem = *(new variableDeclaration());
+            mem.name = target->name;
+            mem.type = target->type;
+            expression* ref = new expression();
+            ref->tokens.push_back(anonName);
+            ref->resolvedType = target->type.name;
+            mem.declaredExpressionValue = ref;
+            od.members.push_back(&mem);
+        }
+        token sep = file.getToken({",", token::endStatement, token::braceClose});   // outer separator after '}'
+        terminator = sep.value;
+    } else {
+        expression* val = parseExpression(vt, {",", token::endStatement, token::braceClose}, func, body);
+        if(target->name == "instancename" && val->resolvedType != "stringliteral")
+            parsingError("'instanceName' takes a string literal: the name is fixed when the program is compiled.");
+        else if(!target->type.name.empty() && target->type.name != "var" && !val->resolvedType.empty()
+                && !isTypeCompatible(val->resolvedType, target->type.name))
+            parsingError(format("'{0}': member '{1}' is '{2}', so it can't take a value of type '{3}'",
+                                typeDisplay, target->dName(), typeDisplayName(target->type.name), typeDisplayName(val->resolvedType)));
+        variableDeclaration& mem = *(new variableDeclaration());
+        mem.name = target->name;
+        mem.type = target->type;
+        mem.isConst = target->isConst;
+        mem.declaredExpressionValue = val;
+        od.members.push_back(&mem);
+        terminator = val->terminator;
+    }
+    return terminator;
+}
+
 void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDisplay, const string& objName,
                                           functionDef* func, statementBlock* body){
     objectDef& od = languageService.registerObject(objName, false, "");
@@ -1777,17 +2048,7 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
     // I6 output would then reference an object it never declares ("No such constant"). Force it in.
     if(std::find(languageService.globals.begin(), languageService.globals.end(), &od) == languageService.globals.end())
         languageService.globals.push_back(&od);
-    // Positional slots = the class's `inline` members, BASE CLASS FIRST, in declaration order
-    // (a subclass appends its own after its base's). Only `inline` members take positional values.
-    std::vector<variableDeclaration*> inlineFields;
-    std::function<void(classDef*)> collectInline = [&](classDef* c){
-        if(!c) return;
-        for(classDef* base : c->baseClasses) collectInline(base);   // base first
-        for(typeMember* m : c->members)
-            if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                if(vd->isInline) inlineFields.push_back(vd);
-    };
-    collectInline(cls);
+    std::vector<variableDeclaration*> inlineFields = positionalMembers(cls);
     auto findField = [](classDef* c, const std::string& fname) -> variableDeclaration* {
         if(!c) return nullptr;
         return dynamic_cast<variableDeclaration*>(c->findMember([&](typeMember* m){
@@ -1833,55 +2094,7 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
                                     typeDisplay, (int)inlineFields.size()));
             target = inlineFields[idx++];
         }
-        // The value is either a scalar expression or a NESTED `{ … }` aggregate. A nested aggregate
-        // takes its shape from the target member's type: an `array<T>` member → a braced array literal
-        // (baked as an array property), an object-backed member → a nested inline object (§6.2.1).
-        string terminator;
-        if(vt.is(token::braceOpen)){
-            if(arrayDeclaration* arrTarget = dynamic_cast<arrayDeclaration*>(target)){
-                // array-typed member: parse `{ v1, v2, … }` as an array literal → array property.
-                arrayDeclaration& amem = *(new arrayDeclaration());
-                amem.name = target->name;
-                amem.type = languageService.getType("array");
-                amem.elementType = arrTarget->elementType;
-                initializerList* list = new initializerList();
-                token t = file.getToken();
-                while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
-                    expression* e = parseExpression(t, {",", token::braceClose}, func, body);
-                    list->elements.push_back(e);
-                    if(e->terminator == token::braceClose) break;
-                    t = file.getToken();
-                }
-                amem.declaredExpressionValue = list;
-                od.members.push_back(&amem);
-            } else {
-                classDef* fcls = getDispatchClass(target->type.name);
-                if(fcls == nullptr || !inheritsFromObject(fcls))
-                    parsingError(format("inline '{0}{{...}}': member '{1}' is neither an array nor an object-backed type, so it cannot take a '{{ … }}' value",
-                                        typeDisplay, target->name));
-                // object-typed member: a nested inline object (the '{' is already consumed as `vt`).
-                string anonName = format("_bglanon{0}", anonObjectCounter++);
-                bakeInlineObjectAggregate(fcls, target->type.name, anonName, func, body);
-                variableDeclaration& mem = *(new variableDeclaration());
-                mem.name = target->name;
-                mem.type = target->type;
-                expression* ref = new expression();
-                ref->tokens.push_back(anonName);
-                ref->resolvedType = target->type.name;
-                mem.declaredExpressionValue = ref;
-                od.members.push_back(&mem);
-            }
-            token sep = file.getToken({",", token::endStatement, token::braceClose});   // outer separator after '}'
-            terminator = sep.value;
-        } else {
-            expression* val = parseExpression(vt, {",", token::endStatement, token::braceClose}, func, body);
-            variableDeclaration& mem = *(new variableDeclaration());
-            mem.name = target->name;
-            mem.type = target->type;
-            mem.declaredExpressionValue = val;
-            od.members.push_back(&mem);
-            terminator = val->terminator;
-        }
+        string terminator = bakeMemberValue(od, target, vt, typeDisplay, func, body);
         if(terminator == token::braceClose) break;
         if(inNamed){
             // Named section: ';'-separated. A ',' between named members is an error.
@@ -2390,6 +2603,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     openCompileContext(eCompileContext::objectDef);
 
     token tok = file.getToken();
+    if(startsPositionalSection(tok)) tok = parseDeclarationPositionals(newObj, tok);
     while(tok.isNot(token::braceClose)) parseObjectMember(newObj, tok);
 
     closeCompileContext(eCompileContext::objectDef);

@@ -7,7 +7,7 @@
 */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-class statBlock { int strength = 10; int agility = 7; }
+value class statBlock { int strength = 10; int agility = 7; }
 object player { statBlock stats; }
 
 void main() {

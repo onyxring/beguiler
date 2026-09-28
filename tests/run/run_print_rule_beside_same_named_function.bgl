@@ -1,0 +1,21 @@
+/*  run_print_rule_beside_same_named_function — a `#using`-imported print rule next to a global
+    function of the same name.
+
+    orLibrary's orStylePrintRules declares `italics(var o)`, and `#using bgl.printRules` brings in the
+    `italics` print rule. The print rule is an emitter value, used like a variable, so the existing
+    "a value beats a function of the same name" rule should pick it. But type resolution counted it as a
+    function, and `{italics}` was rejected as an ambiguous bare function reference. A call still
+    reaches the function.  */
+// EXPECT_OUTPUT: The troll hit the table.
+// EXPECT_OUTPUT: [called][called]
+#beguilerSettings { target = z5; informName = "none"; }
+#using bgl.printRules;
+
+int italics(var o) { print("[called]"); return 0; }
+
+void main() {
+    bglInit();
+    print($"The troll {italics}hit{roman} the table.^");
+    italics(0);                    // statement call
+    int n = italics(0);            // expression call
+}

@@ -10,6 +10,7 @@
 #include "beguiler.h"
 #include "helpers.h"
 #include "bglLanguageService.h"
+#include "bglParserHelpers.h"
 
 using namespace std;
 
@@ -266,6 +267,18 @@ void i6Emitter::loadBuiltinTemplates(string path){
 }
 
 // Emit a named built-in template with $param substitution and indentation applied.
+// A parameterless template's body as text (trimmed), firing its triggers as applyTemplate does.
+string i6Emitter::templateText(const string& name){
+    auto it = builtinTemplates.find(name);
+    if(it == builtinTemplates.end()) return "[missing builtin template: " + name + "]";
+    if(auto trig = builtinTemplateTriggers.find(name); trig != builtinTemplateTriggers.end())
+        for(const string& tname : trig->second)
+            languageService.firedStoredNames.insert(tname);
+    const string& body = it->second.second;
+    size_t b = body.find_first_not_of(" \t\r\n"), e = body.find_last_not_of(" \t\r\n");
+    return b == string::npos ? "" : body.substr(b, e - b + 1);
+}
+
 void i6Emitter::applyTemplate(string name, map<string,string> args, string indent){
     auto it = builtinTemplates.find(name);
     if(it == builtinTemplates.end()){
@@ -365,28 +378,63 @@ void i6Emitter::collectBodyLocals(statementBlock* body, vector<variableDeclarati
     }
 }
 
-// Emit copy-in for each byVal-class param of `fd`. The param's bare I6 routine local
-// (`p->name`) still holds the caller's passed-in object reference; the call dispatches
-// operator= from the synthesized backing global (`p->i6name`) with the bare local as
-// source. After this, source references to the param resolve (via qualifyIdentifier) to
-// p->i6name — so reads/writes inside the body go through the local copy, not the
-// caller's instance. operator= methods are exempt at the synthesizeParamBackings level
-// (self-recursion guard), so this loop is a no-op for them.
+// Per-call set-up of class-typed locals that own an instance. The local is set to its backing (a
+// file-scope I6 object, `_bglLocal_<func>_<name>`), so it starts out owning it and an assignment can
+// still re-point it. The backing's stored fields are zeroed, since its state would otherwise persist
+// across calls: each call sees a fresh instance.
+void i6Emitter::emitOwnedLocalSetup(const vector<variableDeclaration*>& locals, const string& indent){
+    for(variableDeclaration* vd : locals){
+        if(!vd->isClassLocalWithBacking) continue;
+        classDef* cls = languageService.findClass(vd->type.name);
+        if(!cls) continue;
+        out << format("{0}{1} = {2};\n", indent, spillName(vd->name), vd->backingName);
+        function<void(classDef*)> zeroFields = [&](classDef* c){
+            if(!c) return;
+            for(classDef* base : c->baseClasses) zeroFields(base);
+            for(typeMember* m : c->members){
+                auto* fm = dynamic_cast<variableDeclaration*>(m);
+                if(!fm || fm->isStatic || fm->isPrePassStub) continue;
+                if(fm->type.name == "attributelist") continue;
+                if(fm->type.name == "grammarrulelist" || fm->type.name == "grammarrule") continue;
+                if(classDef* ft = languageService.findClass(fm->type.name); ft && ft->isEmitterClass) continue;   // compile-time members (parent, children): no property
+                out << format("{0}{1}.{2} = 0;\n", indent, vd->backingName, fm->dName());
+            }
+        };
+        zeroFields(cls);
+    }
+}
+
+// The copy-in for each param that owns an instance (its class copies): at entry the param still holds
+// the caller's argument, which is copied into the param's own instance before the param is pointed at
+// it. operator= methods are exempt (synthesizeParamBackings), so this is a no-op for them.
+// The fall-through cleanups after a body that ends in `return` could never run (the return ran them).
+static bool endsInReturn(statementBlock* body){
+    return body != nullptr && !body->statements.empty()
+        && dynamic_cast<returnStatement*>(body->statements.back()) != nullptr;
+}
+
 void i6Emitter::emitParamCopyIns(functionDef* fd, const string& indent){
     if(!fd) return;
     for(paramDef* p : fd->params){
         if(!p->isClassParamWithBacking) continue;
-        classDef* cls = languageService.findClass(p->type.name);
-        if(!cls) continue;
-        auto* assignOp = dynamic_cast<functionDef*>(cls->findMember([&](typeMember* m){
-            auto* fd = dynamic_cast<functionDef*>(m);
-            return fd != nullptr && fd->name == "=" && fd->params.size() == 1
-                   && (fd->params[0]->type.name == p->type.name || fd->params[0]->type.name == "var");
-        }));
-        if(!assignOp) continue;  // parser already errored if missing; defensive
-        const string& opName = assignOp->i6name.empty() ? assignOp->dName() : assignOp->i6name;
-        out << format("{0}{1}.{2}({3});\n", indent, p->i6name, opName, p->name);
+        // Copy the argument into the parameter's own instance, then point the parameter at it. A
+        // class with an init/deinit lifecycle has no backing: its copy-in allocates in place.
+        string text = p->copyInText;
+        if(text.find(kParamArgMarker) != string::npos){
+            string arg = templateText("paramCopyIn.arg");
+            for(size_t at = text.find(kParamArgMarker); at != string::npos; at = text.find(kParamArgMarker, at + arg.size()))
+                text.replace(at, strlen(kParamArgMarker), arg);
+        }
+        out << indent << text << "\n";
+        if(!p->backingName.empty())
+            out << format("{0}{1} = {2};\n", indent, p->name, p->backingName);
     }
+}
+
+// Members that belong to an object's I6 header (`Object name "instanceName" parent`) rather than its
+// `with` properties.
+bool isHeaderMember(const string& name){
+    return name == "parent" || name == "instancename";
 }
 
 // Check if a function would overflow Z-machine's 15-local limit (needs _bglFrm slot too → 14)
@@ -872,7 +920,7 @@ void i6Emitter::writeDebugBundle(const string& path){
             f << od->name << "\t" << od->name << "\tobject\n";
             for(typeMember* m : od->members){
                 if(auto* mv = dynamic_cast<variableDeclaration*>(m)){
-                    if(mv->name == "parent") continue;
+                    if(isHeaderMember(mv->name)) continue;
                     f << od->name << "." << mv->name << "\t" << mv->name << "\tproperty\n";
                 }
             }
@@ -938,7 +986,7 @@ void i6Emitter::writeDebugBundle(const string& path){
         for(typeMember* m : cd->members){
             auto* mv = dynamic_cast<variableDeclaration*>(m);
             if(!mv || mv->isExternal || mv->type.name.empty()) continue;
-            if(mv->name == "parent") continue; // positional arg, not a real property
+            if(isHeaderMember(mv->name)) continue; // part of the object's header, not a real property
             const string& i6n = mv->i6name.empty() ? mv->name : mv->i6name;
             f << "  prop " << mv->name << " " << i6n << " " << propTypeName(mv) << "\n";
         }
@@ -953,7 +1001,7 @@ void i6Emitter::writeDebugBundle(const string& path){
         // the object's class (so inference-typed assignments like `name = {.a,.b}` still emit). Empty
         // = skip (parent slot, grammar/attribute props, or genuinely untyped).
         auto memberDbgType = [&](variableDeclaration* mv) -> string {
-            if(!mv || mv->isExternal || mv->name == "parent") return "";
+            if(!mv || mv->isExternal || isHeaderMember(mv->name)) return "";
             string tn = !mv->type.name.empty() ? propTypeName(mv)
                                                : inheritedMemberType(od->objectClass, mv->name);
             if(tn.empty() || tn == "grammartable" || tn == "grammarrulelist"
@@ -1146,7 +1194,9 @@ for(typeDef* g : languageService.globals){
         // 3 skips the name once it is here. A global whose own initializer was deferred has had it
         // cleared, so it declares bare and bglInit assigns it.
         if(vd->declaredExpressionValue != nullptr)
-            out << format("global {0} = {1};\n", vd->dName(), vd->declaredExpressionValue->text());
+            out << format("global {0} = {1};\n", vd->dName(), staticText(vd->declaredExpressionValue));
+        else if(globalOwnsInstance(vd))
+            out << format("global {0} = {1};\n", vd->dName(), globalInstanceName(vd));   // its own instance (pass 3)
         else
             out << format("global {0};\n", vd->dName());
         earlyDeclaredGlobals.insert(vd->name);
@@ -1357,6 +1407,16 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // to every downstream emit path regardless of source order — grammar objects can target a
     // verb whose own-body declaration comes later in source.
     liftAllVerbCompileTimeFields();
+    // Class-typed globals that own an instance, by I6 name: static data (array initializers,
+    // property values, global initializers) names the instance, which is what the variable holds
+    // at compile time — a variable is not a constant.
+    for(typeDef* g : languageService.globals)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+            if(globalOwnsInstance(vd)){
+                string key = vd->i6name.empty() ? vd->dName() : vd->i6name;
+                transform(key.begin(), key.end(), key.begin(), ::tolower);
+                ownedGlobalInstances[key] = globalInstanceName(vd);
+            }
     synthesizeChildrenPlacement();
     synthesizePooledOwnedMembers();
 
@@ -1678,8 +1738,8 @@ for(typeMember* m : classNode->members)
     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
         if(vd->isStatic){
             out << format("global _bgl_{0}_{1}", classNode->dName(), vd->dName());
-            if(vd->declaredExpressionValue != nullptr && !vd->declaredExpressionValue->text().empty())
-                out << format(" = {0}", vd->declaredExpressionValue->text());
+            if(vd->declaredExpressionValue != nullptr && !staticText(vd->declaredExpressionValue).empty())
+                out << format(" = {0}", staticText(vd->declaredExpressionValue));
             out << ";\n";
         }
 }
@@ -1699,7 +1759,7 @@ for(typeMember* m : classNode->members){
             } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
                 out << format("Array {0} buffer", mangledName);
                 for(expression* elem : list->elements){
-                    string t = elem->text();
+                    string t = staticText(elem);
                     if(!t.empty() && t.front() == '-') out << " (" << t << ")";
                     else                                out << " " << t;
                 }
@@ -1774,15 +1834,17 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
                 // which is the very thing promotion exists to avoid.
             } else if(extIt != externalArrayNames.end()){
                 out << extIt->second;
-            } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-                for(expression* elem : list->elements) out << elem->text() << " ";
             } else {
-                // capacity + the trailing length slot (see the member length-slot rule)
+                // capacity + the trailing length slot (see the member length-slot rule). A
+                // list-initialised member is full, so its length is the seeded count.
                 bool trackedMember = languageService.arrayInUse && !arr->isRaw
                                   && !languageService.isAdditiveProperty(
                                          arr->i6name.empty() ? arr->name : arr->i6name);
-                for(int k = 0; k < arr->arraySize; k++) out << "0 ";
-                if(trackedMember) out << "0 ";
+                int seeded = 0;
+                if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue))
+                    for(expression* elem : list->elements){ out << staticText(elem) << " "; seeded++; }
+                for(int k = seeded; k < arr->arraySize; k++) out << "0 ";
+                if(trackedMember) out << seeded << " ";
             }
             out << sep << "\n";
         }
@@ -1798,9 +1860,9 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             // values land in the `with` clause.
             if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
                 out << " ";
-                for(expression* elem : list->elements) out << elem->text() << " ";
+                for(expression* elem : list->elements) out << staticText(elem) << " ";
             } else if(vd->declaredExpressionValue != nullptr && !vd->declaredExpressionValue->text().empty())
-                out << format(" {0}", vd->declaredExpressionValue->text());
+                out << format(" {0}", staticText(vd->declaredExpressionValue));
             out << sep << "\n";
         }
         else if(auto* fd = dynamic_cast<functionDef*>(m)){
@@ -1823,8 +1885,9 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             out << ";\n";
             if(currentSpillCount > 0)
                 out << format("        _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
-            // Per-call copy-in for byVal-class params on class/object member methods (same
+            // Per-call copy-in for params that own an instance, on class/object member methods (same
             // shape as top-level functions, just with a deeper indent).
+            emitOwnedLocalSetup(locals, "        ");
             emitParamCopyIns(fd, "        ");
             // Allocate method-local arrays — without this a method-local
             // array<T>/rawArray<T>/array<char> is left as an unallocated null slot (a
@@ -1835,7 +1898,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             if(body != nullptr)
                 for(statement* s : body->statements)
                     emitStatement(s, "        ");
-            if(currentCleanups != nullptr)
+            if(currentCleanups != nullptr && !endsInReturn(body))
                 for(auto& [varName, cbody] : *currentCleanups)
                     out << "        " << cbody << "\n";
             currentCleanups = nullptr;
@@ -1946,10 +2009,6 @@ void i6Emitter::emitFunction(functionDef* funcNode){
         set<string> seen;
         collectBodyLocals(body, locals, seen);
         for(variableDeclaration* vd : locals){
-            // Class-typed locals with synthesized backing aren't I6 routine locals — they
-            // emit as references to a global I6 object (the backing was registered at parse
-            // time as `_bglLocal_<func>_<name>`). Skip them from the local-vars list.
-            if(vd->isClassLocalWithBacking) continue;
             if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
                 out << format(" {0}", spillName(vd->name));
         }
@@ -1959,32 +2018,9 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     if(currentSpillCount > 0)
         out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
 
-    // Per-call zero-init of class-typed local backings. Backing instances are file-scope
-    // I6 objects (so their state would persist across calls without this). Zeroing every
-    // stored field at routine entry restores value-semantics: each call sees a fresh
-    // local. Walks class hierarchy so derived classes zero inherited fields too — safe
-    // here because the synthesis is gated on !inheritsFromObject upstream.
-    if(body != nullptr){
-        for(variableDeclaration* vd : locals){
-            if(!vd->isClassLocalWithBacking) continue;
-            classDef* cls = languageService.findClass(vd->type.name);
-            if(!cls) continue;
-            function<void(classDef*)> zeroFields = [&](classDef* c){
-                if(!c) return;
-                for(classDef* base : c->baseClasses) zeroFields(base);
-                for(typeMember* m : c->members){
-                    auto* fm = dynamic_cast<variableDeclaration*>(m);
-                    if(!fm || fm->isStatic) continue;
-                    if(fm->type.name == "attributelist") continue;
-                    if(fm->type.name == "grammarrulelist" || fm->type.name == "grammarrule") continue;
-                    out << format("    {0}.{1} = 0;\n", vd->i6name, fm->dName());
-                }
-            };
-            zeroFields(cls);
-        }
-    }
+    emitOwnedLocalSetup(locals, "    ");
 
-    // Per-call copy-in for byVal-class params (top-level functions). Same shape applies
+    // Per-call copy-in for params that own an instance (top-level functions). Same shape applies
     // to class member methods — emitClass calls the same helper with its own indent.
     emitParamCopyIns(funcNode, "    ");
 
@@ -2005,7 +2041,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
         for(statement* stmt : body->statements)
             emitStatement(stmt, "    ");
     // emit deinit cleanups at implicit end of function (fall-through path)
-    if(currentCleanups != nullptr)
+    if(currentCleanups != nullptr && !endsInReturn(body))
         for(auto& [varName, body] : *currentCleanups)
             out << "    " << body << "\n";
     if(currentSpillCount > 0)
@@ -2101,8 +2137,7 @@ void i6Emitter::emitLocalDeclaration(variableDeclaration* var, const string& ind
     // against `nothing.field`, the synthesized `$target._opeq(...)` dispatch
     // misses the backing entirely, and the bare-assign fallback writes to the
     // unused local slot while the backing stays at its zero-init state.
-    const string& selfText = var->isClassLocalWithBacking && !var->i6name.empty()
-                               ? var->i6name : spillName(var->name);
+    const string selfText = spillName(var->name);
     // emit initializer assignment if present
     if(var->declaredExpressionValue != nullptr && (!var->declaredExpressionValue->text().empty() || !var->interpSegments.empty())){
         if(!var->interpSegments.empty() && !var->initEmitterBody.empty()){
@@ -2283,17 +2318,20 @@ void i6Emitter::emitForStatement(forStatement* forNode, const string& indent){
 }
 // A `for(x in c)` loop over a string, world-tree children, a member array, or a word/byte array.
 void i6Emitter::emitForInStatement(forInStatement* fi, const string& indent){
-    // String container: a <string> is a managed object, not a raw buffer, so
-    // iterate via its object dispatch — bound by getLength(), each char via
-    // getChar(i). (getChar is what `str[i]`'s operator[] lowers to.) This is a
-    // deliberate compiler↔<string>-BLR coupling on those two method names.
+    // String container: iterated through its class's `getLength()` and `operator[]` emitters, expanded
+    // by the parser with markers for the container and the counter.
     if(fi->isStringForIn){
         string c   = spillName(fi->counterVar);
         string el  = spillName(fi->elementVar);
         string str = spillName(fi->arrayVar);
+        auto fill = [&](string t){
+            for(size_t at = t.find("@@CONTAINER@@"); at != string::npos; at = t.find("@@CONTAINER@@", at + str.size())) t.replace(at, 13, str);
+            for(size_t at = t.find("@@COUNTER@@"); at != string::npos; at = t.find("@@COUNTER@@", at + c.size())) t.replace(at, 11, c);
+            return t;
+        };
         out << indent << c << " = 0;\n";
-        out << indent << "for (: " << c << " < " << str << ".getLength() : " << c << "++) {\n";
-        out << indent << "    " << el << " = " << str << ".getChar(" << c << ");\n";
+        out << indent << "for (: " << c << " < " << fill(fi->stringLengthText) << " : " << c << "++) {\n";
+        out << indent << "    " << el << " = " << fill(fi->stringCharText) << ";\n";
         if(fi->body != nullptr)
             for(statement* s : fi->body->statements)
                 emitStatement(s, indent + "    ");
@@ -2556,12 +2594,19 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
             string rt = seg.expr->resolvedType;
             string exprStr = exprText(seg.expr);
 
-            classDef* cls = languageService.findClass(rt);
-            if(cls != nullptr){
-                auto* printFn = dynamic_cast<functionDef*>(cls->findMember([](typeMember* m){
-                    auto* fd = dynamic_cast<functionDef*>(m);
-                    return fd != nullptr && fd->name == "print" && fd->params.empty();
-                }));
+            // The value's own print(): an object declared as its own type looks at its members, then its
+            // class's.
+            auto isPrint = [](typeMember* m){
+                auto* fd = dynamic_cast<functionDef*>(m);
+                return fd != nullptr && fd->name == "print" && fd->params.empty();
+            };
+            functionDef* printFn = nullptr;
+            if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(rt)))
+                for(typeMember* m : od->members) if(isPrint(m)){ printFn = dynamic_cast<functionDef*>(m); break; }
+            classDef* cls = parser.getDispatchClass(rt);
+            if(printFn == nullptr && cls != nullptr)
+                printFn = dynamic_cast<functionDef*>(cls->findMember(isPrint));
+            if(printFn != nullptr){
 
                 if(printFn != nullptr && printFn->isEmitter){
                     if(auto* blk = dynamic_cast<i6Block*>(printFn->body)){
@@ -2749,7 +2794,7 @@ void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
                    "`array<char> name = {...}` to size it from the seed, or assign elements at runtime.");
         out << format("array {0} buffer", arr->dName());
         for(expression* elem : byteSeed->elements){
-            string t = elem->text();
+            string t = staticText(elem);
             if(!t.empty() && t.front() == '-') out << " (" << t << ")";
             else                                out << " " << t;
         }
@@ -2777,7 +2822,7 @@ void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
     if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
         out << format("array {0} buffer", arr->dName());
         for(expression* elem : list->elements){
-            string t = elem->text();
+            string t = staticText(elem);
             if(!t.empty() && t.front() == '-') out << " (" << t << ")";
             else                                out << " " << t;
         }
@@ -2826,7 +2871,7 @@ if(list != nullptr){
     int cap = arr->arraySize > 0 ? arr->arraySize : len;
     out << format("array {0} {1}", arr->dName(), arr->isRaw ? "-->" : "table");
     for(expression* elem : list->elements){
-        string t = elem->text();
+        string t = staticText(elem);
         // Wrap negative-leading elements in parens so I6 can't read them as
         // a binary minus against the previous element ("...without bracketing,
         // the minus sign '-' is ambiguous").
@@ -2918,7 +2963,7 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
     if(varNode->isConst){
         out << format("constant {0}", varNode->dName());
         if(varNode->declaredExpressionValue != nullptr)
-            out << format(" = {0}", varNode->declaredExpressionValue->text());
+            out << format(" = {0}", staticText(varNode->declaredExpressionValue));
         out << ";\n";
         return;
     }
@@ -2939,23 +2984,54 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         return;
     }
     const string& varI6Name = varNode->i6name.empty() ? varNode->dName() : varNode->i6name;
-    // Emit as an I6 object instance when the declared type is a user class with stored
-    // (non-emitter, non-static, non-attribute) members. Primitive classes (int, bool, char,
-    // string, etc.) have emitter-only bodies and emit as plain globals. This lets user
-    // code write `Foo x;` without forcing `class Foo : object`.
-    bool emitAsObjectInstance = globalEmitsAsObjectInstance(varNode);
-    if(emitAsObjectInstance){
+    // A class-typed global is a variable, like a local. A value-class one without an initializer owns an
+    // instance, emitted as its own object (`_bglGlobal_<name>`) that the variable starts out holding;
+    // any other refers to an instance: empty until assigned, or holding what its initializer names.
+    if(varNode->isInstanceBacking){                     // a local's or parameter's instance: the object itself
         emitGlobalObjectInstanceHead(varNode, varI6Name);
+        out << ";\n";
+        return;
     }
-    else {
-        // Already declared ahead of bglInit so the routine had a valid lvalue to assign to
-        // (see the early-declaration pass). Re-declaring here would collide.
+    if(globalOwnsInstance(varNode)){
+        emitGlobalObjectInstanceHead(varNode, globalInstanceName(varNode));
+        out << ";\n";
         if(earlyDeclaredGlobals.count(varNode->name)) return;
-        out<<format("global {0}", varI6Name);
+        out << format("global {0} = {1};\n", varI6Name, globalInstanceName(varNode));
+        return;
     }
+    // Already declared ahead of bglInit so the routine had a valid lvalue to assign to
+    // (see the early-declaration pass). Re-declaring here would collide.
+    if(earlyDeclaredGlobals.count(varNode->name)) return;
+    out<<format("global {0}", varI6Name);
     if(varNode->declaredExpressionValue != nullptr)
-        out<<format(" = {0}", varNode->declaredExpressionValue->text());
+        out<<format(" = {0}", staticText(varNode->declaredExpressionValue));
     out<<";\n";
+}
+
+// An expression's text for static data: a bare reference to a class-typed global that owns an
+// instance names the instance, since static data needs a constant.
+string i6Emitter::staticText(expression* e){
+    if(e == nullptr) return "";
+    string t = e->text();
+    string key = t;
+    key.erase(0, key.find_first_not_of(" \t"));
+    key.erase(key.find_last_not_of(" \t") + 1);
+    transform(key.begin(), key.end(), key.begin(), ::tolower);
+    auto it = ownedGlobalInstances.find(key);
+    return it != ownedGlobalInstances.end() ? it->second : t;
+}
+
+// True when a class-typed global owns an instance: its class is a value class and it has no initializer.
+bool i6Emitter::globalOwnsInstance(variableDeclaration* vd){
+    if(vd == nullptr || vd->isExternal || vd->isInstanceBacking || vd->declaredExpressionValue != nullptr) return false;
+    if(dynamic_cast<arrayDeclaration*>(vd) != nullptr) return false;
+    classDef* cls = languageService.findClass(vd->type.name);
+    return cls != nullptr && !cls->isEmitterClass && !cls->isAlias && !cls->isExternal && isValueClass(cls);
+}
+
+// The object a class-typed global owns: `_bglGlobal_<name>`.
+string i6Emitter::globalInstanceName(variableDeclaration* varNode){
+    return "_bglGlobal_" + (varNode->i6name.empty() ? varNode->dName() : varNode->i6name);
 }
 // Standalone tracked globals backing this instance's promoted member arrays (own and inherited).
 void i6Emitter::emitObjectPromotedArrays(objectDef* obj){
@@ -2995,7 +3071,7 @@ if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
         } else if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
             out << format("Array {0} buffer", mangledName);
             for(expression* elem : list->elements){
-                string t = elem->text();
+                string t = staticText(elem);
                 if(!t.empty() && t.front() == '-') out << " (" << t << ")";
                 else                                out << " " << t;
             }
@@ -3011,12 +3087,6 @@ if(auto* arr = dynamic_cast<arrayDeclaration*>(m)){
 
 // Bakes one backing instance per owned value-helper member (own and inherited), recording name + decl.
 void i6Emitter::emitObjectOwnedMemberInstances(objectDef* obj, map<string, string>& ownedInstanceNames, map<string, variableDeclaration*>& ownedMemberDecl){
-std::function<bool(classDef*)> inheritsObj = [&](classDef* c) -> bool {
-    if(!c) return false;
-    for(classDef* b : c->baseClasses)
-        if(b->name == "object" || b->name == "_bglobject" || inheritsObj(b)) return true;
-    return false;
-};
 // Does this instance override the member with an initializer (→ a reference/value it points
 // at, not an owned instance)? Then leave it alone.
 auto overriddenWithInit = [&](const string& mname) -> bool {
@@ -3026,7 +3096,7 @@ auto overriddenWithInit = [&](const string& mname) -> bool {
     return false;
 };
 auto consider = [&](variableDeclaration* vd){
-    if(!vd || vd->isExternal || vd->name == "parent" || vd->type.name.empty()) return;
+    if(!vd || vd->isExternal || isHeaderMember(vd->name) || vd->type.name.empty()) return;
     if(ownedInstanceNames.count(vd->name)) return;         // already baked (own beats inherited)
     if(overriddenWithInit(vd->name)) return;               // instance points it elsewhere
     // `ref` members are bare pointer slots: they name something owned elsewhere, so they
@@ -3035,8 +3105,8 @@ auto consider = [&](variableDeclaration* vd){
     // from a bound one. Matches synthesizeFieldBackings, which already skips them.
     if(vd->isRefLocal) return;
     auto* cls = languageService.findClass(vd->type.name);
-    if(!cls || cls->name == "object" || cls->name == "_bglobject") return;
-    if(inheritsObj(cls)) return;                            // world-tree reference, not owned
+    if(!cls || cls->isEmitterClass || cls->isAlias || cls->isExternal) return;   // nothing to instantiate
+    if(!isValueClass(cls)) return;                          // a reference: refers to an instance owned elsewhere
     // Bake a backing instance when the member needs one to be a live object: it has stored
     // state, OR it has a non-emitter method/operator that dispatches ON an instance (e.g. a
     // fieldless getter/setter accessor whose bodies reach the host through `outer`). A class
@@ -3133,7 +3203,7 @@ for(typeMember* m : obj->members){
                                      arr->i6name.empty() ? arr->name : arr->i6name);
             int seeded = 0;
             if(auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue)){
-                for(expression* elem : list->elements){ out << elem->text() << " "; seeded++; }
+                for(expression* elem : list->elements){ out << staticText(elem) << " "; seeded++; }
                 for(int k = seeded; k < arr->arraySize; k++) out << "0 ";
             } else {
                 // N zero slots (capacity is encoded via obj.#prop, not in element 0)
@@ -3148,7 +3218,7 @@ for(typeMember* m : obj->members){
         if(vd->isExternal) continue; // alias members: compile-time indirection only
         if(vd->type.name == "attributelist") continue; // handled separately below
         if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") continue; // emitted as I6 Verb directives
-        if(vd->name == "parent") continue; // emitted as positional argument, not 'with' property
+        if(isHeaderMember(vd->name)) continue; // emitted in the object's header, not as a 'with' property
         if(isVerbInstance && (vd->name == "meta" || vd->name == "priority")) continue; // compile-time-only verb fields
         out << (first ? "  with " : ",\n       ");
         // Honor an explicit i6name (`Type member as <i6name>;`) so the emitted I6 property
@@ -3165,8 +3235,8 @@ for(typeMember* m : obj->members){
         if(ownIt != ownedInstanceNames.end()){
             out << ownIt->second;
         } else if(auto* list = dynamic_cast<initializerList*>(vd->declaredExpressionValue)){
-            for(expression* elem : list->elements) out << elem->text() << " ";
-        } else if(vd->declaredExpressionValue) out << vd->declaredExpressionValue->text();
+            for(expression* elem : list->elements) out << staticText(elem) << " ";
+        } else if(vd->declaredExpressionValue) out << staticText(vd->declaredExpressionValue);
         first = false;
     } else if(auto* fd = dynamic_cast<functionDef*>(m)){
         if(fd->isEmitter) continue; // emitter methods are inlined at call sites, not emitted as properties
@@ -3196,6 +3266,8 @@ for(typeMember* m : obj->members){
         out << ";\n";
         if(currentSpillCount > 0)
             out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+        emitOwnedLocalSetup(locals, "    ");
+        emitParamCopyIns(fd, "    ");
         // Allocate object-method-local arrays — was SKIPPED here too, so an object property
         // routine (e.g. `extend _bglUi { waitForKey() }`) with a local rawArray<int> buffer
         // got a null slot that crashed glk_select. Frees run on every exit via currentCleanups.
@@ -3204,7 +3276,7 @@ for(typeMember* m : obj->members){
         if(body)
             for(statement* s : body->statements)
                 emitStatement(s, "    ");
-        if(currentCleanups != nullptr)
+        if(currentCleanups != nullptr && !endsInReturn(body))
             for(auto& [varName, cbody] : *currentCleanups)
                 out << "    " << cbody << "\n";
         currentCleanups = nullptr;
@@ -3274,12 +3346,13 @@ void i6Emitter::emitObject(objectDef* obj){
     // any other array through the `ref` addressing its declaration was marked with.
     emitObjectPromotedArrays(obj);
 
-    // find initial parent member, if set
-    string parentValue;
+    // The header members: the object's name and its initial parent, when set.
+    string parentValue, instanceName;
     for(typeMember* m : obj->members)
-        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-            if(vd->name == "parent" && vd->declaredExpressionValue)
-                { parentValue = vd->declaredExpressionValue->text(); break; }
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->declaredExpressionValue){
+            if(vd->name == "parent") parentValue = staticText(vd->declaredExpressionValue);
+            else if(vd->name == "instancename") instanceName = vd->declaredExpressionValue->text();
+        }
 
     // Emit external global arrays for byte-array (array<char>) member arrays.
     // Byte arrays can't be stored as inline property values (those are word-sized),
@@ -3314,10 +3387,10 @@ void i6Emitter::emitObject(objectDef* obj){
                           && obj->objectClass->name != "_bglobject")
                          ? obj->objectClass->i6Name() : "object";
     const string& objI6Name = obj->i6name.empty() ? obj->dName() : obj->i6name;
-    if(parentValue.empty())
-        out << format("{0} {1}\n", i6ClassName, objI6Name);
-    else
-        out << format("{0} {1} {2}\n", i6ClassName, objI6Name, parentValue);
+    string header = i6ClassName + " " + objI6Name;
+    if(!instanceName.empty()) header += " " + instanceName;
+    if(!parentValue.empty())  header += " " + parentValue;
+    out << header << "\n";
 
     // collect property members (includes raw i6 blocks, which emit as 'with' properties)
     // 'parent' is excluded — it's emitted as a positional argument, not a 'with' property
@@ -3329,7 +3402,7 @@ void i6Emitter::emitObject(objectDef* obj){
         if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
             if(vd->isExternal) continue; // alias members have no I6 backing
             if(isVerbInstance && (vd->name == "meta" || vd->name == "priority")) continue;
-            if(vd->type.name != "attributelist" && vd->type.name != "grammarrulelist" && vd->type.name != "grammarrule" && vd->name != "parent") { hasProps = true; break; }
+            if(vd->type.name != "attributelist" && vd->type.name != "grammarrulelist" && vd->type.name != "grammarrule" && !isHeaderMember(vd->name)) { hasProps = true; break; }
         } else if(auto* fd = dynamic_cast<functionDef*>(m)){ if(!fd->isEmitter) { hasProps = true; break; } }
           else if(dynamic_cast<i6RawNode*>(m))  { hasProps = true; break; }
 
@@ -3425,21 +3498,15 @@ void i6Emitter::synthesizeChildrenPlacement(){
 }
 
 void i6Emitter::synthesizePooledOwnedMembers(){
-    // World-tree reference? (member of an `object`-derived class keeps reference semantics.)
-    std::function<bool(classDef*)> inheritsObj = [&](classDef* c) -> bool {
-        if(!c) return false;
-        for(classDef* b : c->baseClasses)
-            if(b->name == "object" || b->name == "_bglobject" || inheritsObj(b)) return true;
-        return false;
-    };
     // An owned value-helper member: a non-`object`, non-initialized member whose class needs a live
     // instance — it has stored state, OR a non-emitter method/operator that dispatches on an instance
     // (e.g. a fieldless getter/setter accessor that reaches the host through `outer`).
     auto ownedClass = [&](variableDeclaration* vd) -> classDef* {
-        if(!vd || vd->isExternal || vd->isStatic || vd->name == "parent") return nullptr;
+        if(!vd || vd->isExternal || vd->isStatic || isHeaderMember(vd->name)) return nullptr;
         if(vd->type.name.empty() || vd->declaredExpressionValue) return nullptr;
         auto* cls = languageService.findClass(vd->type.name);
-        if(!cls || cls->name == "object" || cls->name == "_bglobject" || inheritsObj(cls)) return nullptr;
+        if(!cls || cls->isEmitterClass || cls->isAlias || cls->isExternal) return nullptr;   // nothing to instantiate
+        if(!isValueClass(cls)) return nullptr;             // a reference: refers to an instance owned elsewhere
         for(typeMember* cm : cls->members){
             if(auto* cvd = dynamic_cast<variableDeclaration*>(cm))
                 if(!cvd->isExternal && !cvd->isStatic) return cls;   // has stored storage
@@ -3514,7 +3581,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                 if(!fvd || fvd->isExternal || fvd->isStatic) continue;
                 if(ownedClass(fvd)) continue;   // nested owned instance: keeps its baked backing
                 string fi6 = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
-                string def = fvd->declaredExpressionValue ? fvd->declaredExpressionValue->text() : "0";
+                string def = fvd->declaredExpressionValue ? staticText(fvd->declaredExpressionValue) : "0";
                 if(def.empty()) def = "0";
                 createInject += format("self.{0}.{1} = {2};\n", memI6, fi6, def);
             }

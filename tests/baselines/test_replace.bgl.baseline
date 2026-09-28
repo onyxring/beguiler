@@ -273,13 +273,13 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-[greet x;
+[_bgl_replaced_greet_0 x;
     return x + 1;
 ];
-[step n;
+[_bgl_replaced_step_0 n;
     return n;
 ];
-[calculate n;
+[_bgl_replaced_calculate_0 n;
     return n + 1;
 ];
 [main a b c d;
@@ -295,7 +295,7 @@ object bgl
 [compute a b;
     return a * b;
 ];
-[step n;
+[_bgl_replaced_step_1 n;
     return _bgl_replaced_step_0(n) + 100;
 ];
 [step n;

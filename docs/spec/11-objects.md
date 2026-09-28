@@ -11,10 +11,11 @@
   - [11.3.5 Nested Aggregates](#1135-nested-aggregates)
   - [11.3.6 Standalone Declarations](#1136-standalone-declarations)
 - [11.4 Members and Type Inference](#114-members-and-type-inference)
-- [11.5 Special Members: `parent`, `children`, `attributes`](#115-special-members-parent-children-attributes)
+- [11.5 Special Members: `parent`, `children`, `attributes`, `instanceName`](#115-special-members-parent-children-attributes-instancename)
   - [11.5.1 `parent`](#1151-parent)
   - [11.5.2 `children`](#1152-children)
   - [11.5.3 `attributes`](#1153-attributes)
+  - [11.5.4 `instanceName`](#1154-instancename)
 - [11.6 Attribute Declarations](#116-attribute-declarations)
 - [11.7 Property Declarations](#117-property-declarations)
   - [11.7.1 `property` and `extern property`](#1171-property-and-extern-property)
@@ -43,9 +44,9 @@ the two declaration forms is used (§11.2).
 **Syntax**
 
 ```syntax
-object ⟨name⟩ [ asI6 ⟨i6name⟩ ] { ⟨member⟩ … }
-object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { ⟨member⟩ … }
-⟨class⟩ ⟨name⟩ [ asI6 ⟨i6name⟩ ] { ⟨member⟩ … }
+object ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
+object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
+⟨class⟩ ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
 ```
 
 **Description**
@@ -54,6 +55,16 @@ An object is declared at global scope. The name becomes a globally visible ident
 an `object`-typed value is expected. The body holds member declarations in the same form as a class
 body (§8.3.1): a member is written `Type name [= value];` and members are `;`-separated. A member
 with no initializer defaults to `0`, `false` or `null` according to its type.
+
+The body may open with a **positional section**: `,`-separated values filling the class's positional
+members in order (§8.3.5), ended by the first `;`, exactly as in an inline object (§11.3.1). Members
+follow as usual. A member given positionally can't also be given by name.
+
+```bgl
+class Pet : object { inline instanceName; inline int legs; string owner; }
+Pet rex { "rex", 3; owner = "Jim"; parent = hall; }
+object lamp { "brass lamp"; }        // the name, positional on every class (§11.5.4)
+```
 
 The class an object instantiates is given in one of two equivalent ways. Using the class name as the
 type keyword (`ClassName Name { … }`) is the usual form. The inheritance form (`object Name : Base`)
@@ -128,14 +139,15 @@ A member is given *positionally* or *by name*, and the separators carry meaning:
 
 | Form | Separator | Fills |
 |---|---|---|
-| Positional: `{ 3, 4 }` | `,` | The next `inline` member (§8.3.5), in declaration order, base class first. Only `inline` members participate. |
+| Positional: `{ 3, 4 }` | `,` | The next positional member (§8.3.5): the class's own `inline` and re-listed members, then its bases', subclass first. Only positional members participate. |
 | Named: `{ x = 1; y = 2; }` | `;` | The member named, `inline` or not. The `=` is required. |
 | Combined: `{ 5, 6; label = "p"; }` | `,` then a single `;` | Positional values first; the first `;` ends the positional section and begins the named section. |
 
 Supplying more positional values than there are `inline` members is a compile-time error. After the
 `;` that ends the positional section only named members may follow; a `,` before or among named
-members is a compile-time error, as is a named member before a positional one. Ordinary object and
-class bodies remain `;`-only; `,` is never a member separator there.
+members is a compile-time error, as is a named member before a positional one. A declaration body
+takes the same positional section (§11.2); a class body is `;`-only, and `,` is never a member
+separator there.
 
 **Example**
 
@@ -312,11 +324,12 @@ gameState.sys.activate();
 
 **See also** §8.3.4 — owned members; §3.7 — `ref` members; §11.8 — array members.
 
-## 11.5 Special Members: `parent`, `children`, `attributes`
+## 11.5 Special Members: `parent`, `children`, `attributes`, `instanceName`
 
-Three members declared on the base `object` class have compiler-level support tied to the world model:
-`parent` and `children` place objects in the object tree, and `attributes` sets the object's attribute
-flags. They are available on every object.
+Four members have compiler-level support. Three are declared on the base `object` class and tied to
+the world model: `parent` and `children` place objects in the object tree, and `attributes` sets the
+object's attribute flags. The fourth, `instanceName`, is declared on `_bglObject` (§21.5.8), so it is
+available on every object, world-model or not: it gives the object its name.
 
 ### 11.5.1 `parent`
 
@@ -396,6 +409,7 @@ bowl.children += { apple, pear };
 
 ```syntax
 attributes = { [ ! ] ⟨attribute⟩ , … } ;
+attributes = [ ! ] ⟨attribute⟩ ;
 ```
 
 **Description**
@@ -407,6 +421,9 @@ kept unless negated, and `attributes = {}` clears nothing. In an `extend` block,
 permitted only when the object's own declaration has no `attributes` member; otherwise it is a
 compile-time error, even with `replace`.
 
+A single attribute needs no braces: `attributes = light;` is `attributes = {light};`. This is the
+one-element form every list-typed member accepts (§12.2): `name = .lamp;` is `name = {.lamp};`.
+
 `attributeList` accepts `=` only; `+=` and `-=` are not permitted. To change attributes at run time
 use `give(attr)` and `ungive(attr)`, and test them with `has(attr)` (§21.5.1).
 
@@ -416,12 +433,62 @@ use `give(attr)` and `ungive(attr)`, and test them with `has(attr)` (§21.5.1).
 object foyer {
     attributes = {light};
 }
+object pantry {
+    attributes = light;                 // one element: the same as {light}
+}
 
 class post : object { attributeList attributes = {scenery}; }
 post lampPost {}
 
 extend lampPost {
     attributes = {light, !scenery};
+}
+```
+
+### 11.5.4 `instanceName`
+
+**Syntax**
+
+```syntax
+instanceName = ⟨string-literal⟩ ;
+```
+
+The form appears only in an object body. The name is also positional (§8.3.5): `_bglObject` declares it
+`inline`, so it is the last positional member of every class. An object whose class adds no positional
+members of its own takes it alone, `object lamp { "brass lamp"; }`; otherwise it follows them,
+`point p { 3, 4, "origin"; }`. A class that adds positional members re-lists it
+(`inline instanceName;`) to put it first.
+
+**Description**
+
+`instanceName` is the object's name: what `print(obj)` prints, and what an interpolated `{obj}` prints.
+It becomes the name in the object's I6 header (`Object lamp "brass lamp"`), which I6's `(name)` rule
+prints with or without a library. An object without one prints as its identifier in parentheses,
+`(lamp)`.
+
+It is a `const string` member, fixed when the program is compiled:
+
+- its value must be a string literal;
+- assigning it anywhere else is a compile-time error (§8.3.2);
+- it can't be read as a value, since I6 can print a header name but not return it; `print(obj)`
+  prints it;
+- a class body can't set it: each object names itself.
+
+A library binding (§23.3.4) adds `short_name`. When an object has both, the library prints
+`short_name`, which may also be a routine that prints a name computed at run time.
+
+**Example**
+
+```bgl
+object hall { instanceName = "Great Hall"; }
+object lamp { "brass lamp"; parent = hall; }           // positional
+
+class Pet : object { inline instanceName; inline int legs; }
+Pet rex { "rex", 3; }
+
+void Main(){
+    print(lamp);                   // → brass lamp
+    print($"You see {lamp}.");     // → You see brass lamp.
 }
 ```
 
@@ -490,7 +557,7 @@ property hidden_flag;
 extern property libDefinedProp;
 
 class Box : object { int weight; }
-Box g_box;
+Box g_box { }
 
 void Main() {
     if (g_box.provides(weight))         { … }   // class member
@@ -695,7 +762,7 @@ class Logger {
     void log(int n, int m) { print(n); print(":"); print(m); }
 }
 
-Logger lg;
+Logger lg { }
 lg.log(5);          // log(int)
 lg.log("hi");       // log(string)
 lg.log(3, 7);       // log(int, int)

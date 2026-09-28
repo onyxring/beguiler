@@ -17,7 +17,7 @@ array<var>    payload   = "opaque";          // var element accepts a string →
 class Tagged {
     array<string> tags = "solo";             // member shorthand → {"solo"}
 }
-Tagged t;
+Tagged t { }
 
 // Bare instance assignment to an array-typed property (parsePropertyValue path) — the additive
 // `describe = "s"` shape. Must emit one contribution: `with items "s"`, not a type error.

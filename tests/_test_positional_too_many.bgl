@@ -1,0 +1,6 @@
+// A declaration body's positional values fill the class's positional members: legs, then the name.
+// EXPECT_ERROR: too many positional values
+#beguilerSettings { target = z5; informName = "none"; }
+class Pet : object { inline int legs; }
+Pet rex { 3, "rex", 9; }
+void main(){ }

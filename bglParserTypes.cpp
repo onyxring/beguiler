@@ -764,7 +764,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         bool added = false;
         for(typeMember* m : imp->members){
             if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(fd->name == name){ candidates.push_back({fd->returnType.name, format("#using-imported method '{0}.{1}'", imp->dName(), name), false, /*isObject=*/false, /*isFunction=*/true}); added = true; break; }
+                if(fd->name == name){ candidates.push_back({fd->returnType.name, format("#using-imported method '{0}.{1}'", imp->dName(), name), false, /*isObject=*/false, /*isFunction=*/!(fd->isValueEmitter && fd->isEmitter)}); added = true; break; }   // a value emitter expands to a value
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(vd->name == name){ candidates.push_back({vd->type.name, format("#using-imported variable '{0}.{1}'", imp->dName(), name), false}); added = true; break; }
         }
@@ -775,7 +775,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         bool added = false;
         for(typeMember* m : imp->members){
             if(auto* fd = dynamic_cast<functionDef*>(m))
-                if(fd->name == name){ candidates.push_back({fd->returnType.name, format("#using-imported method '{0}.{1}'", imp->name, name), false, /*isObject=*/false, /*isFunction=*/true}); added = true; break; }
+                if(fd->name == name){ candidates.push_back({fd->returnType.name, format("#using-imported method '{0}.{1}'", imp->name, name), false, /*isObject=*/false, /*isFunction=*/!(fd->isValueEmitter && fd->isEmitter)}); added = true; break; }   // a value emitter expands to a value
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 if(vd->name == name){ candidates.push_back({vd->type.name, format("#using-imported member '{0}.{1}'", imp->name, name), false}); added = true; break; }
         }
@@ -1028,11 +1028,12 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
     // value class declaring `inline` members (positional slots) — both bake through
     // bakeInlineObjectAggregate. Value/collection types with `operator=(initializerList)` use the
     // braced-LIST path instead and are intentionally excluded here.
-    auto hasInlineMember = [](classDef* k) -> bool {
-        return k != nullptr && k->findMember([](typeMember* m){
-            auto* vd = dynamic_cast<variableDeclaration*>(m);
-            return vd != nullptr && vd->isInline;
-        }) != nullptr;
+    // A positional member with storage: the root's positional `instanceName` is a header slot, and
+    // doesn't make an array or a value class an aggregate.
+    auto hasInlineMember = [&](classDef* k) -> bool {
+        if(k == nullptr) return false;
+        for(variableDeclaration* vd : positionalMembers(k)) if(!vd->isExternal) return true;
+        return false;
     };
     auto inlineConstructible = [&](classDef* c){ return c && (inheritsFromObject(c) || hasInlineMember(c)); };
     for(auto* fd : candidates){
@@ -2078,25 +2079,22 @@ string bglParser::qualifyDottedPath(const string& name, size_t dot, functionDef*
     return qualifiedHead + "." + tail;
 }
 
-// Tier 1a: params of current (possibly nested) context. byVal-class params have
-// a synthesized backing (isClassParamWithBacking); substitute the backing's i6name
-// so source references resolve to the local copy instead of the bare routine local
-// (which still holds the caller's object reference for the copy-in to read).
+// Tier 1a: params of current (possibly nested) context. A parameter is a routine local; one that
+// owns an instance is pointed at it at entry (emitParamCopyIns).
 optional<string> bglParser::qualifyFromParams(const string& name, functionDef* func){
     if(func == nullptr) return nullopt;
     for(paramDef* p : func->params)
-        if(p->name == name) return p->isClassParamWithBacking && !p->i6name.empty() ? p->i6name : name;
+        if(p->name == name) return name;
     return nullopt;
 }
 
-// Tier 1b: locals in current block. For class-typed locals with synthesized static
-// backing (isClassLocalWithBacking), substitute the i6name so source references like
-// `w.width` emit against the global backing object instead of the bare-int local slot.
+// Tier 1b: locals in current block. A local is a routine local; one that owns an instance is set to
+// it at entry (emitOwnedLocalSetup).
 optional<string> bglParser::qualifyFromBodyLocals(const string& name, statementBlock* body){
     if(body == nullptr) return nullopt;
     for(statement* s : body->statements)
         if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-            if(vd->name == name) return vd->isClassLocalWithBacking && !vd->i6name.empty() ? vd->i6name : name;
+            if(vd->name == name) return name;
     return nullopt;
 }
 
@@ -2109,7 +2107,7 @@ optional<string> bglParser::qualifyFromAncestorBlocks(const string& name, statem
         if(blk != nullptr && blk != body)
             for(statement* s : blk->statements)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
-                    if(vd->name == name) return vd->isClassLocalWithBacking && !vd->i6name.empty() ? vd->i6name : name;
+                    if(vd->name == name) return name;
     return nullopt;
 }
 
@@ -2719,40 +2717,80 @@ std::vector<std::string> bglParser::splitUnionType(const std::string& t){
     return out;
 }
 
-// Check target type's operator = (argType)
-// Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all
+// The `operator =` that assigns a value of `valueType` to a slot of class `cls`, or null.
+//
+// The search walks the value's type and then its ancestors, and takes the first `operator =` on
+// `cls` (or inherited by it) whose parameter is that type — so the most specific parameter wins.
+// An operator whose parameter is `cls` itself or one of its ancestors is plain assignment of a
+// `cls`: it applies only to a value that IS a `cls` (derives from it), so an unrelated object isn't
+// accepted just because every class shares a root. An operator taking any other type is a
+// conversion (a setter, `parentProp`'s `operator = (object)`) and applies to that type's values.
+//
+// An operator declared for a strict ancestor of `cls` (e.g. `_bglObject`'s pass-through store) is
+// inherited assignment; `allowInherited` false skips it. A `var` (untyped) value has no chain, so it
+// takes the class's own assignment.
+functionDef* bglParser::findAssignOperator(classDef* cls, const string& valueType,
+                                           const function<bool(functionDef*)>& accept, bool allowInherited,
+                                           const string& targetType){
+    if(cls == nullptr || valueType.empty()) return nullptr;
+    classDef* valCls = valueType == "var" ? nullptr : getDispatchClass(valueType);
+    bool valueIsCls = valueType == "var" || (valCls != nullptr && (valCls == cls || valCls->hasAncestor(cls)));
+    // The value's type, then its class and that class's ancestors, nearest first.
+    vector<string> chain;
+    auto addType = [&](const string& t){ if(find(chain.begin(), chain.end(), t) == chain.end()) chain.push_back(t); };
+    if(valueType == "var"){
+        addType(cls->name);
+        for(classDef* c : cls->ancestorsNearestFirst()) addType(c->name);
+    } else {
+        addType(valueType);
+        if(valCls != nullptr){
+            addType(valCls->name);
+            for(classDef* c : valCls->ancestorsNearestFirst()) addType(c->name);
+        }
+    }
+    for(const string& t : chain){
+        typeMember* m = findMemberInHierarchy(cls, [&](typeMember* mm){
+            auto* fn = dynamic_cast<functionDef*>(mm);
+            if(!fn || fn->name != "=" || fn->isStatic || fn->params.size() != 1) return false;
+            const string& pt = fn->params[0]->type.name;
+            classDef* paramCls = getDispatchClass(pt);
+            // A templated parameter (`array<T>`) matches by class: on an ancestor step, or on the value's
+            // own class when its element types fit the target's (`array<int>` into `array<int>`).
+            bool templated = pt.find('<') != string::npos && paramCls != nullptr && valCls != nullptr
+                             && getDispatchClass(t) == paramCls;
+            bool matches = pt == t
+                || (templated && paramCls != valCls && valCls->hasAncestor(paramCls))
+                || (templated && paramCls == valCls && !targetType.empty() && templateArgsFit(valueType, targetType));
+            if(!matches || !accept(fn)) return false;
+            bool paramIsClsOrAncestor = paramCls != nullptr && (paramCls == cls || cls->hasAncestor(paramCls));
+            if(paramIsClsOrAncestor && !valueIsCls) return false;                 // not a `cls`: no plain assignment
+            bool inherited = paramCls != nullptr && paramCls != cls && cls->hasAncestor(paramCls);
+            if(inherited && !allowInherited) return false;
+            // A value class copies through a copy operator: never through an inherited reference
+            // assignment (such as _bglObject's), which would re-point instead.
+            if(inherited && isValueClass(cls))
+                if(classDef* decl = cls->declaringClassOf(fn); decl != nullptr && !isValueClass(decl)) return false;
+            return true;
+        });
+        if(m) return dynamic_cast<functionDef*>(m);
+    }
+    return nullptr;
+}
+
+// True when `fn` is plain assignment for class `cls`: its parameter is `cls` itself or one of its
+// ancestors (as opposed to a conversion from some other type, such as a setter's `operator = (int)`).
+bool bglParser::isPlainAssignOperator(classDef* cls, functionDef* fn){
+    if(cls == nullptr || fn == nullptr || fn->params.size() != 1) return false;
+    classDef* paramCls = getDispatchClass(fn->params[0]->type.name);
+    return paramCls != nullptr && (paramCls == cls || cls->hasAncestor(paramCls));
+}
+
+// Does the target type's `operator =` accept an `argType` value? Only a conversion counts here — plain
+// assignment of the class's own values is the class hierarchy's business (isTypeCompatible).
 bool bglParser::compatibleViaAssignmentOperator(const string& argType, const string& paramType){
     classDef* cls = getDispatchClass(paramType);
-    if(cls != nullptr){
-        if(findMemberInHierarchy(cls, [&](typeMember* m){
-            auto* fn = dynamic_cast<functionDef*>(m);
-            return fn && fn->name == "=" && !fn->params.empty() && fn->params[0]->type.name == argType;
-        })) return true;
-        // Subclass upcast into an operator= parameter: an operator=(Base) accepts a Base-subclass
-        // argument. e.g. `parentProp operator=(object)` accepts a `place`/`thing`/… value, so
-        // `obj.parent = someRoom` type-checks. Uses a direct base-chain walk (non-recursive) to
-        // stay clear of re-entering isTypeCompatible.
-        {
-            classDef* argClsOp = getDispatchClass(argType);
-            if(argClsOp && findMemberInHierarchy(cls, [&](typeMember* m){
-                auto* fn = dynamic_cast<functionDef*>(m);
-                if(!(fn && fn->name == "=" && !fn->params.empty())) return false;
-                classDef* parCls = getDispatchClass(fn->params[0]->type.name);
-                if(!parCls) return false;
-                // arg's dispatch class IS the operator= param class. The exact-match check above
-                // compares type NAMES, so it misses an instance whose type name differs from its
-                // class name — e.g. a bare objectDef `m` (type "m", class `object`) into
-                // `operator=(object)`. Accept it here by class identity.
-                if(parCls == argClsOp) return true;
-                return argClsOp->hasAncestor(parCls);
-            })) return true;
-        }
-        if(findMemberInHierarchy(cls, [&](typeMember* m){
-            auto* fn = dynamic_cast<functionDef*>(m);
-            return fn && fn->name == "=" && !fn->params.empty() && fn->params[0]->type.name == "var";
-        })) return true;
-    }
-    return false;
+    if(cls == nullptr) return false;
+    return findAssignOperator(cls, argType, [](functionDef*){ return true; }, /*allowInherited*/false) != nullptr;
 }
 
 // The type of a global function's NAME used as a value: its signature, `func<ret,param,…>`, so a
@@ -3059,7 +3097,8 @@ bool bglParser::applyAssignOperatorAsValue(expression* e, const string& targetTy
         op = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [&](typeMember* m){
             if(!isAssignEmitter(m)) return false;
             const string& pt = dynamic_cast<functionDef*>(m)->params[0]->type.name;
-            return pt != "var" && pt != targetType && isTypeCompatible(argType, pt);
+            return pt != targetType && !isPlainAssignOperator(cls, dynamic_cast<functionDef*>(m))
+                   && isTypeCompatible(argType, pt);
         }));
     if(op == nullptr) return false;
     string body = dynamic_cast<i6Block*>(op->body)->i6Body;

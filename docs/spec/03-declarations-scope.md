@@ -60,7 +60,8 @@ the construct it modifies.
 | `explicit` | A conversion operator that fires only under a cast. | §9.4 |
 | `superposed` | A routine, global, object or class that is emitted only if it is used. | §3.12 |
 | `typesealed` | A member whose type a derived class may not change. | §8.2.8 |
-| `byVal` | A class whose parameters are passed by value. | §8.2.7 |
+| `primitive` | A class whose variables hold the value itself (`primitive class`). | §8.2.5 |
+| `value` | A class whose instances are owned by each variable and copied (`value class`). | §8.2.7 |
 | `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §11.3.1 |
 | `ref` | A local or member that references an instance owned elsewhere. | §3.7 |
 | `additive` | A property whose values accumulate along the class chain. | §11.7.2 |
@@ -187,27 +188,29 @@ ref ⟨type⟩ ⟨name⟩ ;                    // member: starts empty
 
 **Description**
 
-A class-typed slot is either an **owning slot** or a **reference slot**.
+A slot of a value class (§8.2.7) is either an **owning slot** or a **reference slot**. A slot of a
+reference class always refers to an instance, and a slot of a primitive type holds the value itself
+(§2.10.3); neither takes `ref`.
 
-**Owning slots.** A local or member of a class type normally owns an instance: a local's members are
-zero-initialized at routine entry, and a class-typed member is created with its host (§8.3.4). `=`
-copies into an owning slot by dispatching the type's `operator =`. A class that has stored members,
-does not inherit from `object`, and declares no `operator =` has no copy semantics, so assigning into
-a slot of that type is a compile-time error; the remedies are to declare `operator =`, mark the slot
-`ref`, or inherit from `object`. Classes derived from `object` use reference semantics, and classes
-with no stored members have nothing to copy.
+**Owning slots.** A global, local, member or parameter of a value class owns an instance: it starts out
+holding an instance of its own, whose members are zero-initialized (a local's at routine entry), and a
+member is created with its host (§8.3.4). `=` and passing copy into that instance through the class's
+copy operator (§9.1). A slot with an initializer starts as a copy of it.
 
 **Reference slots.** A slot declared `ref` owns nothing; it names an instance owned elsewhere. It is
 empty (`null`) until bound, so `if (!slot)` distinguishes an unbound slot from a bound one. `ref` is
-valid on local variable declarations and on class and object members; on a parameter or on an `extern`
-or `const` declaration it is a compile-time error. A member whose type is its own class must be `ref`.
+valid on local variable declarations, on parameters, and on class and object members, when their type
+is a value class or a type that manages its own storage (`stringObj`, `array<T>`); on a
+primitive type, a reference class, or an `extern` or `const` declaration it is a compile-time error. A
+`ref` parameter is bound to its argument. A member of a value class whose type is that class must be
+`ref`: owning one would own another without end.
 
 **Binding and assignment.** `:=` binds a reference: it stores the reference and never dispatches
 `operator =`. Both sides must be the same class, or the right side a subclass; binding an unrelated
 class or a non-instance value is a compile-time error. `:=` is not overloadable. A plain `=` on a
-bound reference assigns *through* it, dispatching `operator =` into the referent exactly as on an
-owning slot, and so requires the type to have copy semantics. Reads and member writes through a
-reference chain normally (`node.next.id`).
+bound reference assigns *through* it, copying into the referent through the class's copy operator,
+exactly as on an owning slot; a class with no copy operator can't be assigned this way ("use `:=`").
+Reads and member writes through a reference chain normally (`node.next.id`).
 
 **Declaration pairing.** A `ref` declaration binds with `:=`; `=` on a `ref` declaration is a
 compile-time error, and so is `:=` on a slot that is not `ref`.
@@ -215,7 +218,7 @@ compile-time error, and so is `:=` on a slot that is not `ref`.
 **Example**
 
 ```bgl
-class Node { int id; ref Node next; }
+value class Node { int id; ref Node next; Node operator = (Node o){ id = o.id; return self; } }
 
 Node first;   first.id = 1;
 Node second;  second.id = 2;
@@ -227,9 +230,8 @@ first.next := second;         // a ref member is bound the same way
 
 **Notes**
 
-A `ref` slot may be bound to a pooled-class instance created with `new`
-(`holder.slot := new pooled();`); pooled classes are specified in §8.2.6. Parameters of class type are
-passed by reference unless the class is declared `byVal` (§8.2.7).
+A parameter of a value class is a copy of its argument, as any owning slot is (§2.10.3); a `ref`
+parameter refers to the argument instead. A parameter of a reference class refers to its argument.
 
 **See also** §4.13, §5.15.
 

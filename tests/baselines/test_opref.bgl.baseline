@@ -1405,15 +1405,27 @@ class _bglstring(bglstringpoolreserve)
 ;
 class point
   with
-    x
+    x,
+    _opeq[o;
+        self.x=o.x;
+        return self;
+    ]
 ;
 class tagged
   with
     v,
+    _opeq[o;
+        self.v=o.v;
+        return self;
+    ],
     _opeqeq[o;
+        _bglParam_Tagged__opeqeq_o._opeq(o);
+        o = _bglParam_Tagged__opeqeq_o;
         return self.v == o.v;
     ],
     _oplteqgt[o;
+        _bglParam_Tagged__oplteqgt_o._opeq(o);
+        o = _bglParam_Tagged__oplteqgt_o;
         if (self.v < o.v) {
             return -1;
         }
@@ -1425,26 +1437,36 @@ class tagged
 ;
 class money
   with
-    cents
+    cents,
+    _opeq[o;
+        self.cents=o.cents;
+        return self;
+    ]
 ;
 class plain
   with
     v,
+    _opeq[o;
+        self.v=o.v;
+        return self;
+    ],
     _opeqeq[o;
+        _bglParam_Plain__opeqeq_o._opeq(o);
+        o = _bglParam_Plain__opeqeq_o;
         return self.v == o.v;
     ]
 ;
-[exerciseArrayIndexOf strs ints pts tags viaStatic viaNone viaUserStat viaUserInst;
-    _bglLocal_exercisearrayindexof_pc.x = 0;
-    _bglLocal_exercisearrayindexof_tagc.v = 0;
+[exerciseArrayIndexOf strs ints pts tags pc tagc viaStatic viaNone viaUserStat viaUserInst;
+    pc = _bglLocal_exercisearrayindexof_pc;
+    tagc = _bglLocal_exercisearrayindexof_tagc;
     strs = _bglArrayLocalAlloc(4);
     ints = _bglArrayLocalAlloc(4);
     pts = _bglArrayLocalAlloc(4);
     tags = _bglArrayLocalAlloc(4);
     viaStatic=_bglArray.indexOf(strs, 0, "apple", _bgl_string__opeqeq);
     viaNone=_bglArray.indexOf(ints, 0, 20, 0);
-    viaUserStat=_bglArray.indexOf(pts, 0, _bglLocal_exercisearrayindexof_pc, _bgl_Point__opeqeq);
-    viaUserInst=_bglArray.indexOf(tags, 0, _bglLocal_exercisearrayindexof_tagc, _opeqeq);
+    viaUserStat=_bglArray.indexOf(pts, 0, pc, _bgl_Point__opeqeq);
+    viaUserInst=_bglArray.indexOf(tags, 0, tagc, _opeqeq);
     _bglArray.sortDefault(tags, 0, _oplteqgt);
     _bglArray.sortDefault(pts, 0, _bgl_Point__oplteqgt);
     _bglFrameFree(7);
@@ -1452,13 +1474,13 @@ class plain
     _bglFrameFree(7);
     _bglFrameFree(7);
 ];
-[exerciseBareRefs refM refC refP eq;
-    _bglLocal_exercisebarerefs_m.cents = 0;
-    _bglLocal_exercisebarerefs_p.v = 0;
+[exerciseBareRefs m p refM refC refP eq;
+    m = _bglLocal_exercisebarerefs_m;
+    p = _bglLocal_exercisebarerefs_p;
     refM=_bgl_Money__opeqeq_money_money;
     refC=_bgl_Money__opeqeq_money_int;
     refP=_opeqeq;
-    eq=(_bgl_Money__opeqeq_money_money(_bglLocal_exercisebarerefs_m, _bglLocal_exercisebarerefs_m));
+    eq=(_bgl_Money__opeqeq_money_money(m, m));
 ];
 [exerciseUserFacing names cmp pe me mi;
     names = _bglArrayLocalAlloc(4);
@@ -1475,15 +1497,25 @@ class plain
     exercisebarerefs();
     exerciseuserfacing();
 ];
+point _bglParam_Point__opeqeq_a;
+point _bglParam_Point__opeqeq_b;
+point _bglParam_Point__oplteqgt_a;
+point _bglParam_Point__oplteqgt_b;
+tagged _bglParam_Tagged__opeqeq_o;
+tagged _bglParam_Tagged__oplteqgt_o;
+money _bglParam_Money__opeqeq_a;
+money _bglParam_Money__opeqeq_b;
+money _bglParam_Money__opeqeq_a_2;
+plain _bglParam_Plain__opeqeq_o;
 point _bglLocal_exercisearrayindexof_pc;
 tagged _bglLocal_exercisearrayindexof_tagc;
 money _bglLocal_exercisebarerefs_m;
 plain _bglLocal_exercisebarerefs_p;
-[_bgl_string__opeqeq a b;
-    return _bglstr.areequal(a, b, false);
-];
 [_bgl_string__oplteqgt a b;
     return _bglstr.comparevalues(a, b, false);
+];
+[_bgl_string__opeqeq a b;
+    return _bglstr.areequal(a, b, false);
 ];
 [_bgl_stringObj__opeqeq a b;
     return _bglstr.areequal(a, b, false);
@@ -1506,9 +1538,17 @@ plain _bglLocal_exercisebarerefs_p;
     return _bglstr.new(v);
 ];
 [_bgl_Point__opeqeq a b;
+    _bglParam_Point__opeqeq_a._opeq(a);
+    a = _bglParam_Point__opeqeq_a;
+    _bglParam_Point__opeqeq_b._opeq(b);
+    b = _bglParam_Point__opeqeq_b;
     return a.x == b.x;
 ];
 [_bgl_Point__oplteqgt a b;
+    _bglParam_Point__oplteqgt_a._opeq(a);
+    a = _bglParam_Point__oplteqgt_a;
+    _bglParam_Point__oplteqgt_b._opeq(b);
+    b = _bglParam_Point__oplteqgt_b;
     if (a.x < b.x) {
         return -1;
     }
@@ -1518,9 +1558,15 @@ plain _bglLocal_exercisebarerefs_p;
     return 0;
 ];
 [_bgl_Money__opeqeq_money_money a b;
+    _bglParam_Money__opeqeq_a._opeq(a);
+    a = _bglParam_Money__opeqeq_a;
+    _bglParam_Money__opeqeq_b._opeq(b);
+    b = _bglParam_Money__opeqeq_b;
     return a.cents == b.cents;
 ];
 [_bgl_Money__opeqeq_money_int a b;
+    _bglParam_Money__opeqeq_a_2._opeq(a);
+    a = _bglParam_Money__opeqeq_a_2;
     return a.cents == b;
 ];
 [_bglCharToLower c;

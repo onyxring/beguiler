@@ -1,7 +1,8 @@
-/*  test_ref_string_no_own.bgl — a `ref` local owns nothing.
+/*  test_ref_stringobj_no_own.bgl — a `ref` local owns nothing.
 
     Regression test: the local-declaration path used to run the type's init/deinit
-    emitters for `ref` locals too. For `string` that meant
+    emitters for `ref` locals too. For a type with a lifecycle — `stringObj` owns a pool
+    buffer — that meant
       • init  → `_bglStr.new()`, allocating an instance the initializer immediately
                 overwrote (a leaked pool slot per declaration), and
       • deinit → `h.free()`, handing the REFERENT back to the pool, so the next
@@ -9,27 +10,29 @@
                 began reading another string's text.
 
     The emitted `aliasOnly` routine must contain NO `_bglStr.new()` and NO `.free()`
-    — only the alias assignment. Ordinary (non-ref) locals must still do both.  */
+    — only the alias assignment. Ordinary (non-ref) locals must still do both.
+    (`string` has no lifecycle — it is a primitive, a word pointing at fixed text — so
+    `ref string` is not allowed.)  */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 #include <array>
 #include <string>
 
-array<string> shelf[4];
+array<stringObj> shelf[4];
 
 void aliasOnly(){
-    ref string h := shelf[0];     // pointer alias — owns nothing
+    ref stringObj h := shelf[0];  // pointer alias — owns nothing
     print(h);
 }
 
 void ownsLocals(){
-    string a = "one";            // ordinary local — allocates and frees
-    string b = "two";
+    stringObj a = "one";         // ordinary local — allocates and frees
+    stringObj b = "two";
     print(a); print(b);
 }
 
 void main(){
     bglInit();
-    string kept = "payload";
+    stringObj kept = "payload";
     shelf.enqueue(kept);
     aliasOnly();
     ownsLocals();

@@ -39,8 +39,32 @@ function finish(){
     process.exit(0);
 }
 
+// With GLULX_RUN_GRIDS=1, text-grid windows (status bars, menus) are tracked too, and a snapshot of
+// each is printed whenever the story waits for input.
+const showGrids = process.env.GLULX_RUN_GRIDS === '1';
+const grids = new Map();   // window id → array of line strings
+function gridText(content){
+    let t = '';
+    for(let i = 0; i < content.length; i++){
+        const item = content[i];
+        if(typeof item === 'object' && item) { if(item.text) t += item.text; }
+        else if(i % 2 === 1) t += item;
+    }
+    return t;
+}
+function snapshotGrids(){
+    for(const [id, lines] of grids)
+        out.push(`\n[grid ${id}]\n` + lines.map(l => '|' + (l || '') + '|').join('\n') + '\n');
+}
+
 function collect(content){
     for(const win of content || []){
+        if(showGrids && win.lines){
+            const g = grids.get(win.id) || [];
+            if(win.clear) g.length = 0;
+            for(const ln of win.lines) g[ln.line] = gridText(ln.content || []);
+            grids.set(win.id, g);
+        }
         for(const para of win.text || []){
             if(!para.append) out.push('\n');
             const c = para.content || [];
@@ -57,12 +81,22 @@ let iface = null;
 const glkote = global.GlkOte;
 const origInit = glkote.init;
 glkote.init = (i) => { iface = i; origInit(i); };
-glkote.error = (msg) => { out.push(`\nGlulx fatal error: ${msg}\n`); finish(); };
+glkote.error = (msg) => {
+    // Text printed just before the fault is still in Glk's buffers; flush it so the transcript shows
+    // where the story was.
+    const glkUpdate = glkote.update;
+    glkote.update = (arg) => collect(arg.content);
+    try { global.Glk.update(); } catch(e) { /* the VM may be too far gone to flush */ }
+    glkote.update = glkUpdate;
+    out.push(`\nGlulx fatal error: ${msg}\n`);
+    finish();
+};
 glkote.update = (arg) => {
     collect(arg.content);
     if(arg.disable) return finish();                     // the story exited
     const req = (arg.input || [])[0];
     if(!req) return;
+    if(showGrids) snapshotGrids();
     if(inputLines.length === 0) return finish();
     const line = inputLines.shift();
     const value = req.type === 'char' ? (line.length ? line[0] : 'return') : line;

@@ -9,7 +9,7 @@
    so dotted assignment dispatches on the property, not its owner. */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-class point : object {
+value class point {
     int x;
     int y;
     point operator = (point other){
@@ -25,7 +25,7 @@ class wrapper : object {
 
 point pa;
 point pb;
-wrapper w;
+wrapper w { }
 
 point makePoint(){
     point p = pa;

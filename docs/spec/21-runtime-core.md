@@ -13,7 +13,7 @@
   - [21.5.5 Grammar Types](#2155-grammar-types)
   - [21.5.6 `bglClass`](#2156-bglclass)
   - [21.5.7 `parentProp` and `childrenProp`](#2157-parentprop-and-childrenprop)
-  - [21.5.8 `_bglObject`](#2158-bglobject)
+  - [21.5.8 `_bglObject` and `_bglPrimitive`](#2158-bglobject-and-bglprimitive)
   - [21.5.9 `eType` and `typeof()`](#2159-etype-and-typeof)
   - [21.5.10 `stringOrRoutine`](#21510-stringorroutine)
 - [21.6 Numeric Utilities](#216-numeric-utilities)
@@ -40,7 +40,7 @@ The core provides:
 
 - the `bgl` namespace and its target-specific branches (§21.3);
 - the output routines `print()` and `log()` and the article helpers (§21.4);
-- the IF-domain types: `attribute`, `property`, `dictionaryWord`, `verb`, the grammar types, `bglClass`, `parentProp`, `childrenProp`, `_bglObject`, `eType` (§21.5);
+- the IF-domain types: `attribute`, `property`, `dictionaryWord`, `verb`, the grammar types, `bglClass`, `parentProp`, `childrenProp`, `_bglObject`, `_bglPrimitive`, `eType` (§21.5);
 - the numeric, character and allocation utilities: `uint`, `bgl.util.math`, `bgl.util.random`, the `char` methods, `bglAllocated` (§21.6–§21.8);
 - object-tree queries, `bgl.world` (§21.9);
 - the user-interface roots `bgl.ui.mainWin` / `bgl.ui.statusBar` and the print rules (§21.10–§21.11);
@@ -127,9 +127,9 @@ bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 
 `print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce (`<string>` replaces `print(string)`; a binding adds `print(stringOrRoutine)`). An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
 
-`print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's short name. A class therefore customizes how its instances print by defining `void print()`.
+`print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's name with I6's `(name)` rule. A class therefore customizes how its instances print by defining `void print()`.
 
-The core declares `short_name` as a `string` member of `object`: the text (or routine) the article helpers and `printName()` print as the object's name. No binding redeclares it (§23.3.4).
+The name `(name)` prints is the object's `instanceName` (§11.5.4); an object without one prints as `(lamp)`. Both library bindings declare `short_name` on `object` (§23.3.4): the text (or routine) the library prints in its place when the object has one, and what the article helpers and `printName()` print.
 
 `log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined (§14.2.1). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
 
@@ -300,14 +300,14 @@ grammar extraLines {
 
 **Description**
 
-`bglClass` is the parameter type of `object.is()`, the runtime class test (true when `obj` is an instance of the class or of any subclass). Every registered class — declared with `class Name {…}` or `extern class Name : object {…}` — is type-compatible with `bglClass`, so any class name is accepted as the argument. In default mode the class must be declared; in loose identifier mode (§15.3.3) the name passes through unchecked.
+`bglClass` is the parameter type of `is()` on `_bglObject` (§21.5.8), the runtime class test (true when `obj` is an instance of the class or of any subclass). It is a primitive class: a class name's value is the number I6 assigns the class, held directly like an enum value, with nothing behind it to allocate or refer to. Every registered class — declared with `class Name {…}` or `extern class Name : object {…}` — is type-compatible with `bglClass`, so any class name is accepted as the argument. In default mode the class must be declared; in loose identifier mode (§15.3.3) the name passes through unchecked.
 
 **Example**
 
 ```bgl
 class Container : object { }
 class Box : Container { int weight; }
-Box crate;
+Box crate { }
 
 void Main() {
     if (crate.is(Container)) print("a container");   // true: Box inherits Container
@@ -349,19 +349,43 @@ void Main() {
 
 **See also** §11.5.
 
-### 21.5.8 `_bglObject`
+### 21.5.8 `_bglObject` and `_bglPrimitive`
 
 **Syntax**
 
 ```syntax
 class ⟨name⟩ : _bglObject { … }
+primitive class ⟨name⟩ : _bglPrimitive { … }
 ```
 
 **Description**
 
-`_bglObject` is the root base class of the runtime: an empty `emitter class` from which `object`, the primitive wrappers (`int`, `char`, `string`, …), the IF-domain types above and the runtime's own namespace objects derive.
+Every class derives one of two roots, both `emitter class`es. A class declared without a base derives
+the one that fits its form (§8.6):
 
-Deriving from `_bglObject` gives a class with stored members **reference semantics**: locals and members of the type hold an identity, not a copy. `object` adds world-tree citizenship (`parent`, `children`, attributes) on top of that. A class with no base is a value class and is copied on assignment. The veneer classes `int`, `bool`, `char` and `string` (§8.2.5) also derive from `_bglObject` but have no stored members, so there is nothing to share and they behave as values. `_bglObject` is never inherited implicitly; a program names it as a base only to obtain reference semantics without the world tree — the window types of `<glulxWindow>` are an example (§22.7.1).
+- **`_bglObject`** — the root of every other class, whose values are I6 objects: reference and value
+  classes, `object`, `bglSize`, windows, `stringObj` (a pooled string instance) and the runtime's
+  namespace objects (`bgl`, `_bglUtil`, …). An emitter class derives
+  it too unless it is `primitive`. It carries
+  what I6 gives any object:
+
+  | Member | Meaning |
+  |---|---|
+  | `instanceName` (`inline const string`) | the object's name, set in its body; the last positional member (§11.5.4) |
+  | `operator =` (`_bglObject`) | the root assignment: the variable refers to the assigned instance |
+  | `operator ?()` | true unless `nothing` |
+  | `operator ==` / `operator !=` (`_bglObject`) | identity: the same instance |
+  | `provides(property)` | the object declares the property, so reading it is safe |
+  | `is(bglClass)` | the object is of the class, or of one derived from it |
+  | `print()` | prints the object's short name; what `print(obj)` calls |
+
+  A value class copies through its own copy operator instead of the root assignment (§2.10.3, §9.1).
+  `object` adds world-tree citizenship (`parent`, `children`, attributes) on top.
+
+- **`_bglPrimitive`** — the root of every primitive class (`int`, `char`, `string`, `bglClass`, …, §8.2.5), whose
+  value is held directly. It declares only the root assignment, which copies the word. Everything
+  else a primitive supports, it declares itself, so an `int` has no `is()` or `print()` it didn't ask
+  for.
 
 `print(x)` dispatches on `_bglObject` as described in §21.4.
 

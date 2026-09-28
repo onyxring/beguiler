@@ -26,7 +26,7 @@
 //=============================================================================
 
 
-extern emitter class float : _bglObject {
+primitive class float {
     emitter int operator = (float v){ $target = $v; }
     // int → float assignment (`x = n;` for an int var → exact match here) routed through @numtof
     // so the stored bits are the float VALUE (5 → 5.0), never a raw bit-copy. Int LITERALS carry

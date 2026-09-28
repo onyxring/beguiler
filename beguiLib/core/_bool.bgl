@@ -7,7 +7,7 @@ extern enum eBool{
     false
 }
 /// A true/false value. One machine word, like every Beguile value.
-extern emitter class bool : _bglObject{ //--Beguile-side type label over I6's word-sized truthiness; instances emit as `global X;`
+primitive class bool { //--Beguile-side type label over I6's word-sized truthiness; instances emit as `global X;`
     replace emitter void print(){
         if($val == true)
             print "true";

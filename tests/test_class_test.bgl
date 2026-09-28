@@ -17,7 +17,7 @@ extern class libDefinedClass : object { }
 class Container : object { }
 class Box : Container { int weight; }
 
-Box g_box;
+Box g_box { }
 
 void main(){
     // Bucket 1 — class declared in this file

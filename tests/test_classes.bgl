@@ -53,7 +53,7 @@ class Alpha : object { int valA = 1; }
 class Beta  : Alpha  { int valB = 2; }
 class Gamma : Beta   { int valG = 3; }
 class Delta : Gamma  { int valD = 4; }
-Delta g_delta;
+Delta g_delta { }
 
 // Emitter method with parameter substitution — the emitter body uses $self (receiver)
 // and $amt (parameter name). Compiler substitutes both at call site. Spec §7.3.
@@ -62,7 +62,7 @@ class Box : object {
     emitter void fillTo(int amt) { $self.capacity = $amt; }
     emitter void scale(int factor) { $self.capacity = $self.capacity * $factor; }
 }
-Box g_box;
+Box g_box { }
 
 // Self-implicit static member access. Static members on a class are normally referenced
 // as `ClassName.member`, but inside an instance method of the same class, a bare identifier
@@ -74,7 +74,7 @@ class Tally : object {
         total = total + 1;
     }
 }
-Tally g_tally;
+Tally g_tally { }
 
 // `replace` on a `default` method. Spec §5.7.1 allows overriding a default method without
 // `replace`; this case exercises the opposite — explicitly replacing a default. The replaced
@@ -85,7 +85,7 @@ class Greeter : object {
 extend class Greeter {
     replace void greet() { print("howdy"); }
 }
-Greeter g_greeter;
+Greeter g_greeter { }
 
 // Alias class
 alias class room for object {}
@@ -112,7 +112,7 @@ place testRoom {
 
 // Instance of a multiply-inherited class. Note: `g_ff` to avoid name-collision
 // with the FlyingFish class's lowercased form.
-FlyingFish g_ff;
+FlyingFish g_ff { }
 
 void main(){
     Animal.count = Animal.count + 1;

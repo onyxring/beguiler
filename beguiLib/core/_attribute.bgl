@@ -4,7 +4,7 @@
     
     /// A named on/off flag an object can carry, such as `light` or `open`. Declare one with
     /// `attribute name;`, set it in an object body's `attributes = {…}`, and test it with `.has()`.
-    extern emitter class attribute : _bglObject{
+    primitive class attribute {
         // Prefix `!` inside an attributeList initializer marks an inherited
         // attribute to be turned off on this instance/class:
         //   attributes = {light, !scenery};   // has light, but NOT scenery
@@ -27,7 +27,7 @@
     extern const attribute NO_ATTRIBUTE;
 
     /// The type of an object's `attributes` member — the set of flags it carries.
-    extern emitter class attributeList : _bglObject{
+    extern emitter class attributeList{
         /// Add a flag to this set.
         emitter void give(attribute attr){
             give $self $attr

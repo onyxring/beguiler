@@ -335,7 +335,6 @@ object bgl
     }
     _bglFrameFree(3);
     return 0;
-    _bglFrameFree(3);
 ];
 [fromVariable e z;
     e = 2;

@@ -22,18 +22,18 @@
 }
 
 // Plain value class with no operator= — used as a ref member below so no copy is needed.
-class Payload {
+value class Payload {
     int a;
     int b;
 }
 
-class Node {
+value class Node {
     int id;
     ref Node next;        // self-referential: a pointer to another Node (no copy)
     ref Payload load;     // ref to a plain class with no operator= (no copy)
 
     // Bind ref members from a method body — must emit a pointer store, not operator=.
-    void link(Node n, Payload p){
+    void link(ref Node n, ref Payload p){
         self.next := n;
         self.load := p;
     }
@@ -42,9 +42,9 @@ class Node {
     int nextId(){ return self.next.id; }
 }
 
-Node n1;
-Node n2;
-Payload pl;
+Node n1 { }
+Node n2 { }
+Payload pl { }
 
 void main(){
     n1.id = 1;

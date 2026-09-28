@@ -284,8 +284,8 @@ object bgl
     random(-42);
     r=random(6);
     print r;
-    p3 = random(10, 20, 30);
-    p7 = random(1, 2, 3, 4, 5, 6, 7);
+    p3=random(10, 20, 30);
+    p7=random(1, 2, 3, 4, 5, 6, 7);
     print p3;
     print p7;
     u=200;

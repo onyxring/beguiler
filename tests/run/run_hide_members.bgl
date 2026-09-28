@@ -16,7 +16,7 @@
 // EXPECT_OUTPUT: ping=7
 #beguilerSettings { target = z5; informName = "none"; }
 
-class dim {                                 // value-helper proxy: read via operator(), write via operator=
+value class dim {                                 // value-helper proxy: read via operator(), write via operator=
     int val;
     int operator(){ return val; }
     void operator =(int n){ val = n; }

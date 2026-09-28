@@ -28,7 +28,7 @@ class gadget : object {
     void poke(int i, int v) { readings[i] = v; }   // self.&readings-->(i) = v
     int total() { int t = 0; int x; for(x in readings) { t = t + x; } return t; }
 }
-gadget g1;
+gadget g1 { }
 
 // Globals/locals MUST keep the count-prefixed table form (table => slot 0 = count,
 // data at -->(i+1)). Locked in here so the member fix can't regress them.

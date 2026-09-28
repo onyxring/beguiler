@@ -343,7 +343,8 @@ class risk
         }
     ]
 ;
-risk g_risk;
+risk g_risk
+;
 [main e a b c d e5;
     _bgl_cvs1 = _bgl_catch_cookie;
     @catch -> _bgl_cv1;

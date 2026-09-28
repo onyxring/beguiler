@@ -93,3 +93,11 @@ template forInList.make($target, $count) triggers scratchSupport {{{
 }}}
 
 // ---------------------------------------------------------------------------
+// paramCopyIn.arg — holds the argument while a parameter of a class with init/deinit gets its own
+// instance (`init`) and the argument is copied into it (`operator =`). Declared in
+// __beguileCore.bgl's paramCopySupport block.
+template paramCopyIn.arg() triggers paramCopySupport {{{
+_bglParamArg
+}}}
+
+// ---------------------------------------------------------------------------

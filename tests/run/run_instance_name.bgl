@@ -1,0 +1,21 @@
+/*  run_instance_name — `instanceName` sets an object's I6 header name, what print(obj) prints.
+
+    It works without a library (I6's `(name)` prints the header name), on plain objects, on
+    instances of `object`-derived classes, and on instances of classes that derive `_bglObject`
+    directly. An object without one prints I6's placeholder, its identifier in parentheses.  */
+// EXPECT_OUTPUT: brass lamp, shaggy dog, first foo, dark cave, (plain)
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Animal : object { int legs; }
+class Foo { int n; }
+
+object cave { instanceName = "dark cave"; }
+object lamp { instanceName = "brass lamp"; parent = cave; }
+Animal dog { instanceName = "shaggy dog"; }
+Foo f1 { instanceName = "first foo"; }
+object plain { }
+
+void main(){
+    bglInit();
+    print($"{lamp}, {dog}, {f1}, {cave}, {plain}");
+}

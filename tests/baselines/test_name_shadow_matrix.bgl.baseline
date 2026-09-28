@@ -283,7 +283,8 @@ class score
         return self.value * 2;
     ]
 ;
-score s;
+score s
+;
 [makeCount counter;
     return counter + 1;
 ];

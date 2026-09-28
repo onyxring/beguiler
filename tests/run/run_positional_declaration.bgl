@@ -1,0 +1,32 @@
+/*  run_positional_declaration — positional members in object declarations, subclass first.
+
+    A declaration body may open with positional values (','-separated, ended by the first ';'),
+    filling the class's positional members: its own `inline` members and the inherited ones it
+    re-lists, then its bases', SUBCLASS FIRST. `_bglObject` declares `instanceName` inline, so every
+    class ends with the name: a plain `object` takes it alone, `Animal` takes `legs` then the name,
+    and `Pet` re-lists the name to put it first. The `= { … }` form and inline objects use the same
+    order.  */
+// EXPECT_OUTPUT: brass lamp; the cat 4; rex 3 Jim; fido 4 Ann; a pebble; three-legged 3; (plain); origin 3,4
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Animal : object { inline int legs; }
+class Pet : object { inline instanceName; inline int legs; string owner; }
+class point : object { inline int x; inline int y; }
+
+object hall { instanceName = "Great Hall"; }
+object lamp { "brass lamp"; parent = hall; }
+Animal cat { 4, "the cat"; }
+Pet rex { "rex", 3; owner = "Jim"; parent = hall; }
+Pet fido = { "fido", 4; owner = "Ann"; };
+object pebble { "a pebble" }
+object plain { }
+point p { 3, 4, "origin"; }
+
+void show(Pet p){ print($"{p} {p.legs}"); }
+
+void main(){
+    bglInit();
+    print($"{lamp}; {cat} {cat.legs}; {rex} {rex.legs} {rex.owner}; {fido} {fido.legs} {fido.owner}; {pebble}; ");
+    show(Pet{ "three-legged", 3 });
+    print($"; {plain}; {p} {p.x},{p.y}");
+}

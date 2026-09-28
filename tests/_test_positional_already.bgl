@@ -1,0 +1,6 @@
+// `inline name;` makes a member positional; one that already is can't be placed a second time.
+// EXPECT_ERROR: 'a1' is already positional in 'A'
+#beguilerSettings { target = z5; informName = "none"; }
+class A : object { inline int a1; }
+extend class A { inline a1; }
+void main(){ }

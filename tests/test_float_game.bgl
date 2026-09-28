@@ -45,8 +45,8 @@ class Marker : object {
     float y;
 }
 
-Marker home;     // (0,0) — uninit = 0.0
-Marker treasure; // set to (6,8) in main(); distance from origin = 10.0
+Marker home { }     // (0,0) — uninit = 0.0
+Marker treasure { } // set to (6,8) in main(); distance from origin = 10.0
 
 float distance(Marker a, Marker b){
     float dx = a.x - b.x;
@@ -67,7 +67,7 @@ class RunningAvg : object {
     int   count = 0;
 }
 
-RunningAvg avg;
+RunningAvg avg { }
 
 void addSample(RunningAvg a, float v){
     a.total = a.total + v;

@@ -1,0 +1,45 @@
+/*  run_param_copy_stringobj — a parameter of a class with an init/deinit lifecycle (stringObj) is copied.
+
+    At entry the parameter gets its own buffer from `init` and the argument is copied in through
+    `operator =`, so changing it inside the function leaves the caller's text alone; `deinit` frees
+    that buffer on every exit, early return included (the loop would exhaust the pool otherwise). A
+    `ref` parameter shares the caller's buffer. A method parameter is copied too; a global stringObj
+    is allocated at startup.  */
+// EXPECT_OUTPUT: copy original, ref changed, method original, early 1000, global kept
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+
+void change(stringObj s){ s = "changed"; }
+void changeRef(ref stringObj s){ s = "changed"; }
+bool isLong(stringObj s){
+    if(s.getLength() > 3) return true;
+    s = "x";
+    return false;
+}
+
+class Editor {
+    int n;
+    void clobber(stringObj s){ s = "clobbered"; }
+}
+Editor ed { }
+
+stringObj kept;
+
+void main() {
+    bglInit();
+    stringObj a = "original";
+    change(a);
+    print($"copy {a}, ");
+    stringObj b = "original";
+    changeRef(b);
+    print($"ref {b}, ");
+    stringObj c = "original";
+    ed.clobber(c);
+    print($"method {c}, ");
+    int longs = 0;
+    for(int i = 0; i < 1000; i++)
+        if(isLong(a)) longs++;
+    print($"early {longs}, ");
+    kept = "kept";
+    print($"global {kept}");
+}

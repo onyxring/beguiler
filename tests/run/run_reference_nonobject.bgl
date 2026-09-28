@@ -14,7 +14,7 @@
 class handle[4] : _bglObject {          // reference type, NOT object-derived, NO operator=
     int v = 0;
 }
-class box {                             // bare value struct
+value class box {                             // bare value struct
     inline int v = 0;
     box operator = (box o){ v = o.v; return self; }
 }

@@ -355,7 +355,8 @@ rules are specific to `extern`:
 - The marker form `extern class Name[];` declares that the class is pooled in I6, with a pool size
   the I6 declaration owns. It enables `new Name(…)` and `delete` (§8.2.6). `extern class Name[N]`
   with a size is a compile-time error.
-- `extern emitter class` declares a veneer class over a primitive or value (§8.2.5).
+- `primitive class` declares a primitive type, the value itself (§8.2.5); `extern emitter class`
+  declares a type label over a word that manages its own storage, such as `array<T>`.
 
 **Example**
 

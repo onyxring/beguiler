@@ -61,7 +61,7 @@ classDef* bglParser::enumCompanion(enumDef& en){
 
 bool bglParser::isEnumMemberQualifier(token t){
     return t.is("static") || t.is("inline") || t.is("explicit") || t.is("default")
-        || t.is("alias")  || t.is("byval")  || t.is("superposed") || t.is("additive")
+        || t.is("alias")  || t.is("superposed") || t.is("additive")
         || t.is("typesealed") || t.is("ref")
         || t.is(token::constantDeclararion) || t.is(token::replace) || t.is(token::external);
 }
@@ -623,16 +623,9 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
     if(classType != nullptr && rhs != nullptr && !isRef){
         string valueTypeName = rhs->resolvedType;
         if(!valueTypeName.empty()){
-            // Two-pass: exact type match first, then var wildcard — so specific overloads always beat the catch-all.
-            // Always run findMemberInHierarchy so we can capture the emitter body if found.
-            functionDef* assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
-                auto* fn = dynamic_cast<functionDef*>(m);
-                return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name==valueTypeName;
-            }));
-            if(!assignOp) assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
-                auto* fn = dynamic_cast<functionDef*>(m);
-                return fn && fn->name=="=" && fn->params.size()==1 && fn->params[0]->type.name=="var";
-            }));
+            // The class's `operator =` for this value, most specific parameter first (findAssignOperator).
+            functionDef* assignOp = findAssignOperator(classType, valueTypeName,
+                [](functionDef*){ return true; }, /*allowInherited*/true, (string)dataType);
             // Template-aware match: param and RHS resolving to the same dispatch class
             // (e.g. operator=(array<T>) for an array<int> RHS). Mirrors the assignment-
             // statement path — backs `array<int> keep = chain;` copy-on-assign.
@@ -692,10 +685,8 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
             // operator= on a stored-field, non-tree-citizen class would emit silent
             // pointer-assign and surprise the user expecting value-semantics.
             if(found && assignOp == nullptr && classHasStoredFields(classType) && !isReferenceBacked(classType))
-                parsingError(format("Type '{0}' has no operator=, so there are no copy semantics to initialise with. "
-                                    "Declare 'operator =' on the class to define them; bind a reference instead "
-                                    "(`ref {0} x := …`); or inherit from '_bglObject' (reference) / 'object' "
-                                    "(world-tree reference) for reference semantics.",
+                parsingError(format("'{0}' is a value class with no copy operator ('operator =' taking '{0}'), so there "
+                                    "is nothing to initialise with. Declare one, or bind a reference ('ref {0} x := …').",
                     typeDisplayName((string)dataType)));
             if(!found){
                 // Fallback: check if RHS type has emitter DeclaredType operator(){}
@@ -843,8 +834,9 @@ void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool i
             backing->displayName = backingName;
             backing->type = varDecl.type;
             backing->src = varDecl.src;
+            backing->isInstanceBacking = true;
             languageService.registerInstance(*backing);
-            varDecl.i6name = backingName;
+            varDecl.backingName = backingName;   // the local itself stays a variable, set to this at entry
             varDecl.isClassLocalWithBacking = true;
         }
     }
@@ -972,6 +964,7 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
                 string subbed = expandEmitterBody(blk, gb);
                 if(subbed.empty()) continue;
                 languageService.globalInits.push_back({varDecl.name, subbed});
+                varDecl.needsEarlyGlobalDecl = true;   // bglInit writes to it, so declare it first
                 // The declared value has to be applied through the type's operator= AFTER
                 // init has run, not baked into the I6 `global` directive. For a type whose
                 // init allocates (stringObj), the slot holds that allocation — writing the
@@ -980,19 +973,8 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
                 if(varDecl.declaredExpressionValue != nullptr){
                     string rhsText = varDecl.declaredExpressionValue->text();
                     string rhsType = varDecl.declaredExpressionValue->resolvedType;
-                    typeMember* opm = findMemberInHierarchy(cls, [&](typeMember* mm){
-                        auto* f = dynamic_cast<functionDef*>(mm);
-                        return f && f->name == "=" && f->isEmitter && f->params.size() == 1
-                               && f->params[0]->type.name == rhsType
-                               && dynamic_cast<i6Block*>(f->body) != nullptr;
-                    });
-                    if(opm == nullptr)
-                        opm = findMemberInHierarchy(cls, [&](typeMember* mm){
-                            auto* f = dynamic_cast<functionDef*>(mm);
-                            return f && f->name == "=" && f->isEmitter && f->params.size() == 1
-                                   && f->params[0]->type.name == "var"
-                                   && dynamic_cast<i6Block*>(f->body) != nullptr;
-                        });
+                    typeMember* opm = findAssignOperator(cls, rhsType, [](functionDef* f){
+                        return f->isEmitter && dynamic_cast<i6Block*>(f->body) != nullptr; }, /*allowInherited*/false);
                     if(opm != nullptr){
                         auto* opFn = dynamic_cast<functionDef*>(opm);
                         emitterBindings ab_; ab_.self = varDecl.name; ab_.val = varDecl.name;
@@ -1087,6 +1069,8 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
             parsingError("'ref' cannot be combined with 'const'");
         if(isExternal)
             parsingError("'ref' cannot be combined with 'extern'");
+        string why = refNotApplicable(getDispatchClass(varDecl.type.name), typeDisplayName(varDecl.type.name));
+        if(!why.empty()) parsingError("'ref': " + why);
     }
 
     checkLocalVariableShadowing(varDecl, func, body);
@@ -1264,9 +1248,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         }
     }
 
-    // Synthesize per-(function, param) backing globals for any byVal-class params,
-    // BEFORE body parsing so identifier resolution inside the body sees param.i6name
-    // (the backing's name) and routes reads/writes through the copy.
+    // Synthesize the instance and copy-in for each param whose class copies, before the body is parsed.
     synthesizeParamBackings(funcDef);
 
     // ── replace chaining (non-emitter): rename existing before body parse ──
@@ -1309,6 +1291,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
                     if(fd->name.rfind(prefix, 0) == 0) n++;
             string mangledName = prefix + to_string(n);
             existing->name = mangledName;
+            existing->i6name = mangledName;   // emitted under this; messages keep the author's name
             funcDef.replacedTarget = mangledName;
             funcDef.replacedFunc = existing;
         } else {

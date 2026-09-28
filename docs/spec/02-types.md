@@ -22,7 +22,7 @@
 - [2.10 Type Rules](#210-type-rules)
   - [2.10.1 Type Compatibility](#2101-type-compatibility)
   - [2.10.2 Conversion](#2102-conversion)
-  - [2.10.3 Value and Reference Semantics](#2103-value-and-reference-semantics)
+  - [2.10.3 Primitive, Reference and Value Types](#2103-primitive-reference-and-value-types)
 <!-- /toc -->
 
 
@@ -591,7 +591,7 @@ Dog d2 = pet;                    // compile-time error: an Animal need not be a 
 
 // 6. conversion operator
 class Celsius { int degrees = 0; int operator () { return degrees * 9 / 5 + 32; } }
-Celsius t;
+Celsius t { }
 int degrees = t;                 // Celsius converts to int
 string s = t;                    // compile-time error: no conversion to string
 
@@ -641,51 +641,56 @@ class Celsius {
     explicit string operator () { return "a temperature"; }   // explicit: only under a cast
 }
 
-Celsius t;
+Celsius t { }
 int n = t;              // implicit conversion
 string s = t;           // compile-time error
 string u = (string)t;   // explicit cast
 ```
 
-### 2.10.3 Value and Reference Semantics
+### 2.10.3 Primitive, Reference and Value Types
 
 **Description**
 
-Assigning a class-typed value either copies it or shares it, depending on the class:
+Every type can have methods (`3.print()` is valid); what differs is what a variable of the type holds.
+There are three kinds:
 
-- **Value semantics: the target gets a copy.** A class that does not derive from `object`, or
-  otherwise from the runtime's root class `_bglObject` (§21.5.8), is a **value class**. A local
-  variable of a value class holds its own members, zeroed when the routine starts. Assigning to it runs
-  the class's `operator =`, which copies the members; afterwards the two variables are independent. A
-  value class with stored members must declare `operator =` for such an assignment; without one it is
-  a compile-time error.
-- **Reference semantics: the target shares the instance.** A class derived from `_bglObject`, which
-  includes every class derived from `object`, has reference semantics. The variable refers to an
-  instance, and assignment makes it refer to the same instance as the right-hand side, so a change made
-  through either variable is seen through both.
+| Declaration | Kind | A variable holds | `=` and passing | `ref` |
+|---|---|---|---|---|
+| `primitive class int` | primitive | the value itself | copies the value | compile-time error |
+| `class Room` | reference (the default) | a reference to an instance | refers to the same instance | compile-time error |
+| `value class Vec2` | value | its own instance | copies into its own instance | shares one instance |
 
-Two cases fall outside this:
+- **Primitive types** (§8.2.5) — `int`, `uint`, `bool`, `char`, `float`, `string` (the address of
+  fixed text), `dictionaryWord`, `attribute`, `property`, `bglClass`, the literal pseudo-types, `glulxImage`, and
+  every enum. A variable holds the value; there is no instance,
+  so nothing is allocated and there is nothing for `ref` to refer to.
+- **Reference classes** — every class not declared `value`. A global, local, member or parameter
+  refers to an instance owned elsewhere: it is empty (`nothing`) until assigned, and nothing is
+  allocated for it. Assignment and passing make it refer to the assigned instance, through the root
+  assignment that `_bglObject` declares (§21.5.8). A reference class may not declare a copy operator
+  (§9.1).
+- **Value classes** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
+  members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
+  through the class's copy operator, `operator =` taking the class; a value class that has none can't
+  be assigned or passed. A `ref` variable of a value class shares an instance instead (§3.7).
 
-- A class with no stored members has nothing to copy. The veneer classes `int`, `bool`, `char` and
-  `string` (§8.2.5) are of this kind: a variable holds the bare value, and assignment copies it.
-- A local declared `ref` has reference semantics whatever its class, and is bound with `:=` (§3.7).
-
-Parameters follow the same model; a `byVal class` uses value semantics when passed as an argument
-(§8.2.7).
+Classes that manage their own storage through `init`/`deinit` emitters — `stringObj`, `array<T>` —
+follow their own emitters: a local gets storage from `init` and releases it through `deinit`, a
+parameter is given its own copy (§8.5), and a `ref` variable aliases storage owned elsewhere.
 
 **Example**
 
 ```bgl
-class Vec2 {                         // a value class
+value class Vec2 {                   // copies: operator = (Vec2)
     int x = 0; int y = 0;
-    void operator = (Vec2 v) { x = v.x; y = v.y; }
+    Vec2 operator = (Vec2 v) { x = v.x; y = v.y; return self; }
 }
-class Marker : object { int x = 0; } // reference semantics
+class Marker : object { int x = 0; } // a reference class
 Marker home { }
 Vec2 unit;
 
 void compare() {
-    Vec2 v;              // x = 0, y = 0 on entry
+    Vec2 v;              // its own instance: x = 0, y = 0 on entry
     unit.x = 1;
     v = unit;            // copies the members: v.x → 1
     v.x = 5;             // unit.x is still 1

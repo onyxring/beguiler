@@ -297,7 +297,8 @@ class flyingfish
         d=self.depth;
     ]
 ;
-flyingfish g_ff;
+flyingfish g_ff
+;
 [main;
     g_ff.describe();
 ];

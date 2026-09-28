@@ -7,7 +7,7 @@
 */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-class heightProxy {                                // no `: object` → owned instance, baked
+value class heightProxy {                                // value class → owned instance, baked
     int _val = 0;
     int  operator()        { return _val; }
     void operator = (int v){ _val = v * 2; }

@@ -35,8 +35,8 @@
 
 ! File-scope instance of counter (Beguile-side declaration, but referenced from raw I6).
 #bglDecl{
-    counter myCounter;
-    doubler myDoubler;
+    counter myCounter { }
+    doubler myDoubler { }
 }
 
 [ Main x;

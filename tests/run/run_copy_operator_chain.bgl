@@ -1,0 +1,22 @@
+/*  run_copy_operator_chain — a subclass's copy operator copies its own field, then chains to its
+    ancestor's with a cast: `(Base)self = o;` calls Base's `operator =`, as `(Base)obj.method()` calls
+    Base's method.
+
+    The cast was dropped, so `(Vec2)self = o;` compiled to `self = o;` — the root assignment, which
+    re-pointed `self` and copied nothing — and only the subclass's own field arrived.  */
+// EXPECT_OUTPUT: 123
+#beguilerSettings { target = z5; informName = "none"; }
+
+value class Vec2 { int x; int y; Vec2 operator = (Vec2 o){ x = o.x; y = o.y; return self; } }
+class Vec3 : Vec2 {
+    int z;
+    Vec3 operator = (Vec3 o){ z = o.z; (Vec2)self = o; return self; }
+}
+Vec3 a;
+Vec3 b;
+
+void main(){
+    a.x = 1; a.y = 2; a.z = 3;
+    b = a;
+    print($"{b.x}{b.y}{b.z}");
+}

@@ -299,7 +299,8 @@ class deep
         return total;
     ]
 ;
-deep d;
+deep d
+;
 [main x y z;
     x=apply(_bglLambda_0,5);
     print x;

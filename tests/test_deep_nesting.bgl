@@ -35,7 +35,7 @@ class Deep {
     }
 }
 
-Deep d;
+Deep d { }
 
 void main(){
     // Lambda in lambda body

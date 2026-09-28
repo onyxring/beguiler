@@ -277,9 +277,12 @@ class room
   with
     visits 0
 ;
-room kitchen;
-room hall;
-room studio;
+room kitchen
+;
+room hall
+;
+room studio
+;
 array nums table 1 2 3 3 $9084;
 array flags table true false true 3 $9084;
 array names table "alpha" "beta" 2 $9084;
@@ -287,8 +290,8 @@ array rooms table kitchen hall studio 3 $9084;
 [main i b s r n1 n2;
     i= nums-->(0+1);
     b= flags-->(1+1);
-    s =  names-->(0+1) ;
-    r =  rooms-->(2+1) ;
+    s =  names-->(0+1);
+    r =  rooms-->(2+1);
     nums-->(0+1) = 42;
     flags-->(1+1) = false;
     names-->(0+1) = "gamma";

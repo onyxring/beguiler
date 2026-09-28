@@ -1,0 +1,8 @@
+// A reference class already refers to its instances, so `ref` adds nothing and is rejected.
+// EXPECT_ERROR: 'Room' is a reference class, so it is already a reference: drop 'ref'
+#beguilerSettings { target = z5; informName = "none"; }
+class Room : object { int visits; }
+Room kitchen { }
+void main(){
+    ref Room r := kitchen;
+}

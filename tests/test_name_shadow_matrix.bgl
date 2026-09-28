@@ -29,7 +29,7 @@ class Score {
     int doubled(){ return value * 2; }
 }
 
-Score s;
+Score s { }
 
 int makeCount(int counter){
     // `counter` here is a parameter shadowing the global counter — expected warning.

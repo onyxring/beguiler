@@ -1,0 +1,52 @@
+/*  run_param_value_lifecycle — a value-class parameter runs its class's init/deinit, like a local.
+
+    The parameter's own instance gets `init` before the argument is copied in, and `deinit` on
+    every exit, early return included. A `ref` parameter owns nothing, so neither runs.  */
+// EXPECT_OUTPUT: local 1/1, declared 2/1, param 3/2, early 4/3, ref 4/3, method 5/4, copied 8
+#beguilerSettings { target = z5; informName = "none"; }
+
+int inits;
+int deinits;
+
+value class Tally {
+    int n;
+    emitter void init()   { inits++; }
+    emitter void deinit() { deinits++; }
+    Tally operator = (Tally o){ n = o.n; return self; }
+}
+
+int take(Tally t){ return t.n; }
+bool early(Tally t){
+    if(t.n > 0) return true;
+    return false;
+}
+void shared(ref Tally t){ t.n++; }
+
+class Box {
+    int w;
+    void hold(Tally t){ w = t.n; }
+}
+Box holder { }
+
+void report(string what){ print($"{what} {inits}/{deinits}, "); }
+
+void main() {
+    bglInit();
+    if(true){
+        Tally a;
+        a.n = 7;
+    }
+    report("local");
+    Tally b;
+    b.n = 7;
+    report("declared");                   // b's init; its deinit comes at main's end
+    take(b);
+    report("param");
+    early(b);
+    report("early");
+    shared(b);
+    report("ref");
+    holder.hold(b);
+    report("method");
+    print($"copied {holder.w}");
+}

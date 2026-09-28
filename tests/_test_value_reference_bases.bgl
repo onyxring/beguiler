@@ -1,0 +1,7 @@
+// A class is either a value class or a reference class: a value base and a reference base don't mix.
+// EXPECT_ERROR: a value class and a reference class can't both be its bases
+#beguilerSettings { target = z5; informName = "none"; }
+value class Vec { int x; Vec operator = (Vec o){ x = o.x; return self; } }
+class Thing : object { int weight; }
+class Both : Vec, Thing { }
+void main(){ }

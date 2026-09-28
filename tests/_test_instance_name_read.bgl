@@ -1,0 +1,7 @@
+// The name lives in the object's I6 header, which I6 can print but not hand back as a value.
+// EXPECT_ERROR: 'instanceName' can't be read
+#beguilerSettings { target = z5; informName = "none"; }
+object lamp { instanceName = "brass lamp"; }
+void main(){
+    print(lamp.instanceName);
+}

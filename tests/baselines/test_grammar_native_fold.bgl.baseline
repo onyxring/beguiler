@@ -8,6 +8,10 @@ Constant beguiler = 5;
     Constant headline = "";
 
 
+    Constant orLib_suppress_forced_banner_hook;
+
+Replace banner;
+
     replace main _oldmain;
 
 global _bglInitDone = 0;
@@ -304,9 +308,66 @@ verb 'chime'
     * noun -> beep2;
 [main;
 ];
+[Banner;
+    print "^";
+    style bold;
+    print (string)story;
+    style roman;
+    print (string)headline;
+    print "Release ";
+    print _bglstory.release._opconv();
+    print " / Serial number ";
+    _bglstory.printserial();
+    print "^";
+    style underline;
+    print "Written in";
+    style roman;
+    print " Beguile v";
+    print 0;
+    print ".";
+    print 0;
+    print ".";
+    print 5;
+    print "^";
+    style underline;
+    print "Compiled with";
+    style roman;
+    print " Inform v";
+    inversion;
+    print " / Library v";
+    print (string)librelease;
+    print "^";
+];
 
     [main; 
         bglInit();
         _oldmain();
     ];
 
+class _bglaccessor5
+  with
+    _opconv[;
+        return _bgl_bglOpCodes_loadw(hdr_gamerelease, 0) & 1023;
+    ]
+;
+_bglaccessor5 __bglstory_release;
+object _bglStory
+  with release __bglstory_release,
+       serialChar [i;
+    return _bgl_bglOpCodes_loadb(hdr_gameserial, i);
+  ],
+       printSerial [i;
+    i = 0;
+    for (i = 0 : i < 6 : i++) {
+        print (char)self.serialchar(i);
+    }
+  ]
+;
+[_bgl_bglOpCodes_loadb arr idx result;
+     @loadb arr idx -> result; 
+    return result;
+];
+[_bgl_bglOpCodes_loadw arr idx result;
+     @loadw arr idx -> result; 
+    return result;
+];

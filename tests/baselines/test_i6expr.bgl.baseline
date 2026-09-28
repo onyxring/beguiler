@@ -280,13 +280,15 @@ class npc
         return self.seen;
     ]
 ;
-npc robot;
+npc robot
+;
 class counter
   class object
   with
     value
 ;
-counter globalC;
+counter globalC
+;
 [main localC;
     print ((5 * 2) * 2);
     print (40 + 2);

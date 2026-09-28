@@ -16,8 +16,8 @@ class Room : object {
     int getVisits() { return visits; }
 }
 
-Room r1;
-Room r2;
+Room r1 { }
+Room r2 { }
 array<Room> g_rooms = {r1, r2};
 
 void main() {

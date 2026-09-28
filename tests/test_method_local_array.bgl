@@ -20,7 +20,7 @@ class Widget {
         return buf[0];
     }
 }
-Widget w;
+Widget w { }
 
 object gadget {
     int viaObjectMethod(){

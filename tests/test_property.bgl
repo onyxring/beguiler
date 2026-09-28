@@ -29,8 +29,8 @@ class Crate : object {
     int volume;
 }
 
-Box g_box;
-Crate g_crate;
+Box g_box { }
+Crate g_crate { }
 
 void main(){
     // Bucket 1 — class member, in the same class as the receiver

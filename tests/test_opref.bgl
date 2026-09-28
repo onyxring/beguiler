@@ -23,23 +23,26 @@
 #include <array>
 
 // static operator → free-routine address
-class Point {
+value class Point {
     int x;
+    Point operator = (Point o) { x = o.x; return self; }
     static bool operator == (Point a, Point b) { return a.x == b.x; }
     static int  operator <=> (Point a, Point b) { if(a.x < b.x) return -1; if(a.x > b.x) return 1; return 0; }
 }
 
 // instance operator → property name. `<=>` has the same freedom as any other
 // operator: _bglArray routes a property form to the element as its receiver.
-class Tagged {
+value class Tagged {
     int v;
+    Tagged operator = (Tagged o) { v = o.v; return self; }
     bool operator == (Tagged o) { return v == o.v; }
     int  operator <=> (Tagged o) { if(v < o.v) return -1; if(v > o.v) return 1; return 0; }
 }
 
 // overloaded statics — the two-argument form selects between them
-class Money {
+value class Money {
     int cents;
+    Money operator = (Money o) { cents = o.cents; return self; }
     static bool operator == (Money a, Money b) { return a.cents == b.cents; }
     static bool operator == (Money a, int b)   { return a.cents == b; }
     emitter int refMoney() { $opref(==, Money) }
@@ -47,8 +50,9 @@ class Money {
 }
 
 // $opref with no element type in scope falls back to the receiver's type
-class Plain {
+value class Plain {
     int v;
+    Plain operator = (Plain o) { v = o.v; return self; }
     bool operator == (Plain o) { return v == o.v; }
     emitter int refEq() { $opref(==) }
 }

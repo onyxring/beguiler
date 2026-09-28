@@ -14,9 +14,9 @@
 }
 
 class Room : object { int visits = 0; }
-Room kitchen;
-Room hall;
-Room studio;
+Room kitchen { }
+Room hall { }
+Room studio { }
 
 array<int>    nums  = {1, 2, 3};
 array<bool>   flags = {true, false, true};
