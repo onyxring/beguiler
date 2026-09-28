@@ -1,0 +1,15 @@
+/*  run_inline_plain_class — a bare `{ … }` builds an instance of any reference class.
+
+    A class that doesn't derive `object` is still a reference class, whose instances are I6 objects,
+    so it can be declared anonymously: as an array element or an argument whose type is known.  */
+// EXPECT_OUTPUT: 1 4 second 11
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Pair { inline int a; inline int b; }
+array<Pair> pairs = { { 1, 2 }, { 3, 4; instanceName = "second"; } };
+int sum(Pair p){ return p.a + p.b; }
+
+void main(){
+    bglInit();
+    print($"{pairs[0].a} {pairs[1].b} {pairs[1]} {sum({ 5, 6 })}");
+}

@@ -192,16 +192,14 @@ bool classHasStoredFields(classDef* cls){
     return false;
 }
 
-bool inheritsFromObject(classDef* cls){
+// True when an instance of `cls` can be declared at compile time as an I6 object — a named object,
+// or an anonymous one from `{ … }`: a reference class. A primitive has no instance, an emitter class
+// no I6 class to instantiate, and a value class's instances belong to the variables that own them.
+// An alias class dissolves into its parent.
+bool isObjectBackedClass(classDef* cls){
     if(!cls) return false;
-    if(cls->name == "object") return true;
-    // Alias classes dissolve to their parent for I6 emission — fields live on the
-    // resolved parent (typically object). Treat them as tree citizens for the
-    // value-semantics check; they have no separate backing storage to copy.
     if(cls->isAlias) return true;
-    for(classDef* base : cls->baseClasses)
-        if(inheritsFromObject(base)) return true;
-    return false;
+    return !cls->isPrimitive && !cls->isEmitterClass && !isValueClass(cls);
 }
 
 // True when `cls` is a value class: declared `value`, or derived from one. Its variables, parameters
@@ -235,8 +233,7 @@ std::string refNotApplicable(classDef* cls, const std::string& typeShown){
 // True when a slot of `cls` refers to an instance rather than owning one: every class except a value
 // class (and an alias class, which dissolves into its parent).
 //
-// This is DISTINCT from inheritsFromObject(), which gates inline-OBJECT `{…}` inference on the
-// world tree.
+// This is DISTINCT from isObjectBackedClass(), which gates inline-OBJECT `{…}` inference.
 bool isReferenceBacked(classDef* cls){
     if(!cls) return false;
     if(cls->isAlias) return true;

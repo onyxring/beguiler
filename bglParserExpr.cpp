@@ -402,6 +402,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     auto literalBase = [](const string& t) -> string {
         if(t == "intliteral" || t == "negativeintliteral") return "int";
         if(t == "charliteral") return "char";
+        if(t == "nullliteral") return "_bglobject";
         return "";
     };
     // widenMode: 0 = exact only, 1 = exact literal-base (paramT == literalBase(rhsType)),
@@ -410,6 +411,10 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     // mode 1) beats `operator*(float)` (convertible only because float publishes an int→float path,
     // mode 2). Without this ordering the first-declared of two widen candidates won, which raw-
     // substituted the int into the float operator (denormal). Exact (mode 0) still always wins.
+    // An object declared as its own type matches its class's operators exactly.
+    string rhsClassName;
+    if(languageService.findObjectType(rhsType) != nullptr)
+        if(classDef* rc = languageService.classOf(rhsType)) rhsClassName = rc->name;
     auto opMatches = [&](typeMember* m, bool wantStatic, int widenMode){
         auto* opFn = dynamic_cast<functionDef*>(m);
         if(!opFn || opFn->name != opName) return false;
@@ -428,17 +433,18 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         // A genuinely untyped RHS still matches in mode 0 — there is nothing more specific to
         // prefer in that case.
         bool rhsUnknown = rhsType.empty() || rhsType == "var";
-        bool exact = rhsUnknown || paramT == rhsType;
+        bool exact = rhsUnknown || paramT == rhsType || (!rhsClassName.empty() && paramT == rhsClassName);
         if(widenMode == 0) return exact;
         if(exact) return false;                          // exact already claimed in mode 0
         string base = literalBase(rhsType);
         if(widenMode == 1) return !base.empty() && paramT == base;   // prefer the literal-base overload
         if(widenMode == 2){
             if(!base.empty() && paramT != base && isTypeCompatible(base, paramT)) return true;   // convertible
-            // A parameter of an ancestor class accepts an instance of a class derived from it.
-            classDef* argCls = getDispatchClass(rhsType);
+            // A parameter of a class accepts an instance of it or of a class derived from it — including
+            // an object declared as its own type, whose class is the parameter's.
+            classDef* argCls = languageService.classOf(rhsType);
             classDef* paramCls = languageService.findClass(paramT);
-            return argCls != nullptr && paramCls != nullptr && argCls != paramCls && argCls->hasAncestor(paramCls);
+            return argCls != nullptr && paramCls != nullptr && (argCls == paramCls || argCls->hasAncestor(paramCls));
         }
         return paramT == "var";                          // mode 3: the universal accepter, last
     };
@@ -2509,7 +2515,7 @@ bglParser::ExprStep bglParser::parseExprPostfixQuery(ExprParseState& st, token& 
             if(term == "?"){ qIsTerminator = true; break; }
     string varName = cur.value;
     string varType = resolveIdentifierType(varName, func, body);
-    classDef* cls = !varType.empty() ? languageService.findClass(varType) : nullptr;
+    classDef* cls = !varType.empty() ? languageService.classOf(varType) : nullptr;
     functionDef* queryFn = nullptr;
     if(cls != nullptr && !qIsTerminator)
         queryFn = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [](typeMember* m){
@@ -2753,7 +2759,7 @@ bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
     statementBlock* body = st.body;
 
     if(!expr->resolvedType.empty()){
-        classDef* cls = languageService.findClass(expr->resolvedType);
+        classDef* cls = languageService.classOf(expr->resolvedType);
         // Set expected type for the RHS so name resolution can disambiguate. Applies to
         // both classDef and enumDef LHS — most binary operators take same-type RHS.
         // The parseExpression-level RAII guard restores on exit; no manual restore here.
@@ -2938,19 +2944,19 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
             cur = exprNext(st);
             return ExprStep::Continue;
         }
-        // Member not found on an `object`-typed receiver. `object` is the universal
-        // supertype — a dynamically-typed value (e.g. from `.parent`), so a subtype
-        // member can't resolve without a cast. Error AT the member with a cast hint,
-        // instead of silently dropping it (which surfaces as a confusing
-        // "Cannot assign value of type 'object' ..." on the enclosing statement).
-        // Strict mode only — loose #bgl islands keep object passthrough.
-        if(expr->resolvedType == "object" && !looseIdentifierMode && func != nullptr){
+        // Member not found on a receiver of an object-backed class. Its static type may be a
+        // supertype of what it holds at run time (e.g. a value from `.parent`), so a subtype's member
+        // needs a cast. Error AT the member with a cast hint, instead of silently dropping it (which
+        // surfaces as a confusing type error on the enclosing statement). Strict mode only — loose
+        // #bgl islands keep passthrough.
+        classDef* recvCls = languageService.classOf(expr->resolvedType);
+        if(recvCls != nullptr && isObjectBackedClass(recvCls) && !looseIdentifierMode && func != nullptr){
             string recvText; for(const auto& t : expr->tokens) recvText += t;
-            parsingError(format("'{0}' is not a member of 'object'. This value is "
-                "dynamically typed (e.g. from '.parent') — its runtime type isn't known "
-                "statically. Cast to the concrete type to reach its members: "
+            string shown = typeDisplayName(expr->resolvedType);
+            parsingError(format("'{0}' is not a member of '{2}'. If this value holds a more specific "
+                "type at run time (e.g. from '.parent'), cast to it to reach its members: "
                 "((SomeType){1}).{0}  (or ((var){1}).{0} for an untyped read).",
-                member.value, recvText));
+                member.value, recvText, shown));
         }
     }
     // Not a method call (e.g. struct member) — emit '.' and re-process member

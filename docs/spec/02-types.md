@@ -170,7 +170,10 @@ non-emitter function is a compile-time error. The core `print()` and `log()` acc
 
 `null` is the absent or unset value, numerically `0`. For a reference it is the absent state (a failed
 `new` on a pooled class, §8.2.6; an unset member; a missing parent); for an integer it is `0`. Its
-resolved type (§4.1) is `object`, but it is compatible with every type.
+resolved type (§4.1) is the literal pseudo-type `nullLiteral`, which is compatible with every type.
+In an operator it takes the base type `_bglObject` (§21.5.8), as `intLiteral` takes `int`, so
+`x == null` uses an operator taking `_bglObject`: the root's identity comparison on any object, and
+the ones `string` and `obj.parent` declare.
 
 **Example**
 

@@ -3,7 +3,7 @@
 // error, not silent garbage. This is the safety upgrade over the untyped `(var)` escape — the
 // cast preserves the instance type (`library`), so the bogus member is rejected.
 //
-// EXPECT_ERROR: of type 'library'
+// EXPECT_ERROR: 'desks' is not a member of 'library'
 
 #beguilerSettings {
     target = z5;

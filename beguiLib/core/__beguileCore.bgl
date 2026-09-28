@@ -57,6 +57,11 @@ emitter class _bglPrimitive{
     emitter _bglPrimitive operator = (_bglPrimitive v){ $target = $v }
 }
 
+/// The type of `null`: the empty reference, which fits every type. Compared as an object (`x == null`).
+primitive class nullLiteral{
+    emitter _bglObject operator();
+}
+
 /// The root of every class whose values are I6 objects: what I6 gives any object (identity, class
 /// and property tests, its name). `object` (in _object.bgl) adds world-tree citizenship on top.
 emitter class _bglObject{

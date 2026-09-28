@@ -214,7 +214,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
 initializerList* bglParser::parseArrayInitializerList(const string& elementType, functionDef* func, statementBlock* body){
     initializerList* list = new initializerList();
     classDef* elemCls = getDispatchClass(elementType);
-    bool inferInlineObjects = elemCls != nullptr && inheritsFromObject(elemCls);
+    bool inferInlineObjects = elemCls != nullptr && isObjectBackedClass(elemCls);
     bool inferInlineArrays  = isArrayOfArraysElement(elementType);
     string nestedElem       = inferInlineArrays ? arrayInnerType(elementType) : "";
     token t = file.getToken();
@@ -544,7 +544,7 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
 bool bglParser::foldInlineObjectAggregateDeclaration(token dataType, token variableName, token first,
                                                      functionDef* func, statementBlock* body){
         classDef* declCls = getDispatchClass((string)dataType);
-        if(declCls != nullptr && inheritsFromObject(declCls)){
+        if(declCls != nullptr && isObjectBackedClass(declCls)){
             classDef* rhsCls = nullptr;
             bool bareBrace = first.is(token::braceOpen);
             bool explicitBrace = (first.is(eTokenType::dataType) || first.is(eTokenType::identifier))
@@ -594,7 +594,7 @@ void bglParser::inferAutoVariableType(variableDeclaration& varDecl, token& dataT
     if(isAuto && rhs != nullptr && !rhs->resolvedType.empty()){
         string inferredType = rhs->resolvedType;
         // Check if the RHS type has operator auto() — use its return type instead
-        classDef* rhsCls = languageService.findClass(inferredType);
+        classDef* rhsCls = languageService.classOf(inferredType);
         if(rhsCls){
             for(typeMember* m : rhsCls->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
@@ -661,12 +661,10 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
             // like `Window w = factory();` fell through to plain pointer-assign
             // even when the user had defined a copy operator on the class.
             //
-            // Gated on `classHasStoredFields && !inheritsFromObject` to match the
-            // backing-synthesis predicate: tree-citizen classes (`: object`) use
-            // reference semantics for locals — there's no per-local backing object
-            // to dispatch operator= on, so the call would target `nothing` and
-            // silently fail at runtime. Plain classes with stored fields DO have
-            // synthesized backing, so dispatch lands correctly.
+            // Gated on `classHasStoredFields && !isReferenceBacked` to match the
+            // backing-synthesis predicate: a reference class's local has no backing
+            // object to dispatch operator= on, so the call would target `nothing`.
+            // A value class with stored fields has one, so dispatch lands correctly.
             //
             // A pre-scan stub operator= is ACCEPTED here (order-independence): when the
             // class is defined after the use site it's only a stub at emit time, but the
@@ -690,7 +688,7 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
                     typeDisplayName((string)dataType)));
             if(!found){
                 // Fallback: check if RHS type has emitter DeclaredType operator(){}
-                classDef* rhsCls = languageService.findClass(valueTypeName);
+                classDef* rhsCls = languageService.classOf(valueTypeName);
                 if(rhsCls != nullptr)
                     if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
                         auto* opFn = dynamic_cast<functionDef*>(m);

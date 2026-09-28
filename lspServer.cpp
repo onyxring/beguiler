@@ -1248,7 +1248,7 @@ bool LspServer::resolveTierGlobal(const string& loweredName, LspSymbolRef& out) 
             out.docComment = fd->docComment;
             out.declSrc = fd->src;
         } else if(auto* od = dynamic_cast<objectDef*>(g)) {
-            out.typeName = od->objectClass ? od->objectClass->name : "object";
+            out.typeName = od->objectClass ? od->objectClass->name : "_bglobject";
             out.displayName = od->displayName.empty() ? od->name : od->displayName;
             out.docComment = od->docComment;
             out.declSrc = od->src;
@@ -1548,7 +1548,7 @@ string LspServer::hoverIdentifier(const string& uri, int line, const string& wor
                         typeInfo += ")";
                         if(fd->isEmitter) typeInfo = "emitter " + typeInfo;
                     } else if(auto* od = dynamic_cast<objectDef*>(g)) {
-                        typeInfo = typeDisplay(od->objectClass ? od->objectClass->name : "object") + " " +
+                        typeInfo = typeDisplay(od->objectClass ? od->objectClass->name : "_bglobject") + " " +
                                    (od->displayName.empty() ? od->name : od->displayName);
                     }
                 }
@@ -2229,7 +2229,7 @@ void LspServer::appendScopeItems(json& items, std::set<string>& seen, const stri
             string otype = od->objectClass ? od->objectClass->name : od->name;
             if(accept(od->name, otype))
                 items.push_back({{"label", od->dName()}, {"kind", 6},
-                                 {"detail", od->objectClass ? od->objectClass->dName() : string("object")}});
+                                 {"detail", od->objectClass ? od->objectClass->dName() : string("_bglObject")}});
         }
     }
     for(objectDef* ns : activeUsingNamespaces(docText, line))
@@ -3552,7 +3552,7 @@ json LspServer::handleDocumentSymbol(const json& params) {
     for(typeDef* t : languageService.objectInstances) {
         if(auto* od = dynamic_cast<objectDef*>(t)) {
             if(od->src.file.empty() || !isFromFile(od->src)) continue;
-            string className = od->objectClass ? od->objectClass->name : "object";
+            string className = od->objectClass ? od->objectClass->name : "_bglobject";
             json sym = {
                 {"name", od->displayName.empty() ? od->name : od->displayName},
                 {"kind", 19},  // Object
@@ -4904,7 +4904,7 @@ json LspServer::handleWorkspaceSymbol(const json& params) {
         if(auto* od = dynamic_cast<objectDef*>(t)) {
             string name = od->displayName.empty() ? od->name : od->displayName;
             if(!matchesQuery(name) || od->src.file.empty()) continue;
-            string container = od->objectClass ? od->objectClass->name : "object";
+            string container = od->objectClass ? od->objectClass->name : "_bglobject";
             symbols.push_back({
                 {"name", name},
                 {"kind", 19},  // Object

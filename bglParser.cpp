@@ -851,9 +851,17 @@ void bglParser::mangleOverloadSetForReceiver(const string& receiverTypeName, con
     string base = receiverTypeName;
     auto lt = base.find('<');
     if(lt != string::npos) base = base.substr(0, lt);
+    // Settle the set wherever the method is declared: an object's own members, then its class and
+    // the class's ancestors (an object declared as its own type inherits its methods from there).
     typeDef& td = languageService.getType(base);
-    if(auto* od = dynamic_cast<objectDef*>(&td))      mangleOverloadSet(od->members, methodName);
-    else if(auto* cd = dynamic_cast<classDef*>(&td))  mangleOverloadSet(cd->members, methodName);
+    if(auto* od = dynamic_cast<objectDef*>(&td)) mangleOverloadSet(od->members, methodName);
+    set<classDef*> seen;
+    function<void(classDef*)> walk = [&](classDef* c){
+        if(c == nullptr || !seen.insert(c).second) return;
+        mangleOverloadSet(c->members, methodName);
+        for(classDef* b : c->baseClasses) walk(b);
+    };
+    walk(languageService.classOf(base));
 }
 
 void bglParser::detectInfModeI6Collisions(){
@@ -2233,20 +2241,6 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
     return segments;
 }
 
-
-// True if a class has at least one stored (non-emitter, non-static, non-attribute, non-grammar)
-// data field declared directly on it — i.e. a field whose value would need to be copied for
-// a value-semantics assignment to be meaningful. Used by the operator= dispatch paths to
-// distinguish "this class carries state worth copying" from "this class is interface-like
-// (only emitter methods)". Own-members-only by design.
-
-// True if the class participates in the I6 world tree — direct or transitive inheritance
-// from `object`. Tree-citizen classes use reference semantics by convention (`Room a = b;`
-// means "a now refers to the same room as b," not "copy b's fields into a"); their stored
-// fields live as I6 properties on the underlying object and are never field-copied. This
-// gates the value-semantics-operator= error so it fires only for plain (non-tree) classes.
-// The hardcoded "object" name couples the compiler to the BLR's world-tree root; revisit
-// when the world-tree/utility split lands.
 
 
 

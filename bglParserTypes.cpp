@@ -303,7 +303,7 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
     // Three lookup strategies for finding the target objectDef:
     //   a) typeName itself resolves to an objectDef.
     //   b) objPath names a global objectDef (covers receivers like `_glulx.method()`).
-    //   c) self / current-object short-circuits.
+    //   c) self inside an object body.
     if(!result.method){
         string lowerPath = objPath;
         transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
@@ -311,10 +311,8 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
         // (a) Type-name is itself an objectDef.
         if(auto* od = languageService.findObjectType(typeName))
             targetObj = od;
-        // (c) self / "object" inside an object body
+        // (c) self inside an object body
         else if(lowerPath == "self" && currentObject != nullptr)
-            targetObj = currentObject;
-        else if(typeName == "object" && currentObject != nullptr)
             targetObj = currentObject;
         // (b) objPath names a global objectDef
         else
@@ -520,7 +518,7 @@ optional<string> bglParser::resolveTypeFromCaptures(const string& name){
     }
     // `self` type resolution for capture
     if(name == "self" && (currentClass != nullptr || currentObject != nullptr))
-        return currentClass ? currentClass->name : "object";
+        return currentClass ? currentClass->name : currentObject->name;
     return nullopt;
 }
 
@@ -546,16 +544,12 @@ void bglParser::collectTypeCandidatesFromGlobals(const string& name, vector<Type
         }
         else if(auto* od = dynamic_cast<objectDef*>(g)){
             isObj = true;
-            // Type-identity rule: an objectDef IS its own type unless it explicitly
-            // inherits from a non-`object` class. The implicit `object` parent doesn't
-            // count — it's the universal supertype, not a specific identity.
-            // (TODO: this `name != "object"` check is asymmetric and undermines the
-            // "object is not special" principle. Removing it requires teaching the ~80
-            // dynamic_cast<classDef*>(getType(...)) operator-dispatch sites to also walk
-            // an objectDef's objectClass — out of scope for now; resolveMethod already
-            // does this so unclassed `object Foo{}` reaches inherited methods.)
-            bool explicitNonObjectClass = od->objectClass && od->objectClass->name != "object";
-            ct = explicitNonObjectClass ? od->objectClass->name : od->name;
+            // A declared object is its own type: a one-instance subtype of its class, so members its
+            // body adds resolve, and it fits wherever its class or an ancestor is expected. Member
+            // and operator lookups reach the class through classOf/getDispatchClass. A verb is the
+            // exception: its value is an action, typed by its verb class, which grammar and action
+            // emission key on.
+            ct = dynamic_cast<verbObjectDef*>(od) != nullptr && od->objectClass != nullptr ? od->objectClass->name : od->name;
             origin = format("global object '{0}'", g->name);
         }
         else if(dynamic_cast<classDef*>(g) || dynamic_cast<enumDef*>(g)){
@@ -686,7 +680,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     // against file scope. Set on the head of a dotted path too (`::obj.member` → force-global `obj`).
     bool forceGlobalScope = false;
     if(name.size() > 2 && name[0]==':' && name[1]==':'){ forceGlobalScope = true; name = name.substr(2); }
-    if(name == "null") return "object";
+    if(name == "null") return "nullliteral";
     // `outer` inside an inline accessor's operator body = the enclosing (host) object; its type is
     // that object's own type. Only meaningful while synthesizing the accessor class body.
     if(name == "outer" && accessorOuter != nullptr) return accessorOuter->name;
@@ -696,7 +690,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         // whether the base is `object`, a user class, or anything else — no special-casing.
         if(currentObject != nullptr) return currentObject->name;
         if(currentClass != nullptr) return currentClass->name;
-        return "object";
+        return "_bglobject";
     }
 
     // ── LEXICAL SCOPE — first match wins absolutely ────────────────────────────
@@ -885,7 +879,7 @@ string bglParser::resolveArrayElementTypeDotted(const string& objName, const str
             }
     if(!cls) {
         string objType = resolveIdentifierType(objName, func, body);
-        cls = languageService.findClass(objType);
+        cls = languageService.classOf(objType);
     }
     function<string(classDef*)> walk = [&](classDef* c) -> string {
         if(!c) return "";
@@ -1035,7 +1029,7 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
         for(variableDeclaration* vd : positionalMembers(k)) if(!vd->isExternal) return true;
         return false;
     };
-    auto inlineConstructible = [&](classDef* c){ return c && (inheritsFromObject(c) || hasInlineMember(c)); };
+    auto inlineConstructible = [&](classDef* c){ return c && (isObjectBackedClass(c) || hasInlineMember(c)); };
     for(auto* fd : candidates){
         for(size_t i = 0; i < fd->params.size(); i++){
             classDef* cls = getDispatchClass(fd->params[i]->type.name);
@@ -1425,7 +1419,7 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
             // value, so the word-semantics default is the correct answer rather than a
             // silent wrong one. Same predicate emitClass uses to decide what it owns.
             if(required){
-                auto* cd = languageService.findClass(elemType);
+                auto* cd = languageService.classOf(elemType);
                 if(cd != nullptr && !cd->isExternal && !cd->isEmitterClass && !cd->isAlias)
                     parsingWarning(format(
                         "'{0}' publishes no 'operator {1}', so {2}falls back to word semantics "
@@ -2234,7 +2228,7 @@ optional<string> bglParser::qualifyFromCaptures(const string& name){
     // `self` capture: when a lambda is inside an object method, `self` refers to the
     // enclosing object. Capture it to a global.
     if(name == "self" && (currentClass != nullptr || currentObject != nullptr)){
-        string selfType = currentClass ? currentClass->name : "object";
+        string selfType = currentClass ? currentClass->name : currentObject->name;
         return addCapture("self", selfType);
     }
     return nullopt;
@@ -2267,10 +2261,8 @@ void bglParser::collectQualifyCandidatesFromGlobals(const string& name, vector<Q
             origin = format("global variable '{0}'", g->name);
         }
         else if(auto* od = dynamic_cast<objectDef*>(g)){
-            // Same type-identity rule as resolveIdentifierType: implicit `object`
-            // parent is not a distinguishing class. (Same TODO applies — see above.)
-            bool explicitNonObjectClass = od->objectClass && od->objectClass->name != "object";
-            ct = explicitNonObjectClass ? od->objectClass->name : od->name;
+            ct = dynamic_cast<verbObjectDef*>(od) != nullptr && od->objectClass != nullptr
+                 ? od->objectClass->name : od->name;   // its own type, a verb its class (see resolveIdentifierType)
             qual = g->i6name.empty() ? name : g->i6name;
             origin = format("global object '{0}'", g->name);
             isObj = true;
@@ -2628,15 +2620,7 @@ classDef* bglParser::getDispatchClass(const string& typeName){
     // its behavior (incl. bnum's built-in `|` handling) is unchanged. The companion holds only emitter
     // methods (no operators), so operator resolution finds nothing and falls through to int/bnum paths.
     if(auto* ed = dynamic_cast<enumDef*>(&td)) return ed->companion;   // null when the enum has no emitters
-    if(auto* obj = dynamic_cast<objectDef*>(&td)){
-        if(obj->objectClass) return obj->objectClass;
-        // A bare `object X {}` that is forward-referenced has a pre-scan stub whose objectClass was
-        // never set (the pre-scanner only records an explicit non-`object` class). Fall back to the
-        // `object` base so its inherited world-tree methods (remove/move/give/…) resolve regardless
-        // of declaration order — matching how a typed base class already resolves forward.
-        if(auto* baseCls = languageService.findClass("object")) return baseCls;
-        return nullptr;
-    }
+    if(dynamic_cast<objectDef*>(&td)) return languageService.classOf(typeName);
 
     // Generic specialization fallback: templated names like "array<int>" aren't
     // registered as their own typeDef — only the generic base ("array") is.
@@ -2805,6 +2789,7 @@ string bglParser::literalBaseType(const string& t){
     if(t == "intliteral" || t == "negativeintliteral") return "int";
     if(t == "stringliteral") return "string";
     if(t == "charliteral") return "char";
+    if(t == "nullliteral") return "_bglobject";
     return t;
 }
 
@@ -2892,6 +2877,7 @@ bool bglParser::funcSignaturesCompatible(const string& argType, const string& pa
 bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     if(paramType == "var") return true;  // var accepts any type without checking
     if(argType == "var") return true;    // var is assignable to any type (untyped source)
+    if(argType == "nullliteral") return true;   // `null`, the empty reference, fits every type
     if(argType == paramType) return true;
     // Named union → structural expansion: a named union (`union X = A|B`) is transparent for
     // assignment/passing (member lookup stays nominal elsewhere via its classDef). Expand here so
@@ -2945,11 +2931,12 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     // array<T> compatibility: array is compatible with array<T> param
     if(argType == "array" && paramType.rfind("array<", 0) == 0) return true;
     if(argType.rfind("array<", 0) == 0 && paramType.rfind("array<", 0) == 0) return templateArgsFit(argType, paramType);
-    // ObjectDef → object: every objectDef is implicitly an object, so any objectDef-typed
-    // value is assignable to a parameter of type 'object'. Mirrors class-hierarchy compatibility
-    // for instance objects that don't have an explicit class declaration.
-    if(paramType == "object" && languageService.findObjectType(argType) != nullptr)
-        return true;
+    // An object declared as its own type is compatible with its class and that class's ancestors.
+    if(languageService.findObjectType(argType) != nullptr){
+        classDef* oc = getDispatchClass(argType);
+        classDef* pc = languageService.findClass(paramType);
+        if(oc != nullptr && pc != nullptr && (oc == pc || oc->hasAncestor(pc))) return true;
+    }
     // Object subtyping is handled by the class hierarchy check below —
     // only classes that actually inherit from 'object' are compatible with it.
     // Class hierarchy: argType is compatible with paramType if argType inherits from paramType

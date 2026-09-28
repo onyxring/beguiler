@@ -1215,9 +1215,8 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                 objStub->isPrePassStub = true;
             }
             // Set objectClass from the declared type so forward references resolve correctly
-            if(classType != "object")
-                if(auto* cls = languageService.findClass(classType))
-                    objStub->objectClass = cls;
+            if(auto* cls = languageService.findClass(classType))
+                objStub->objectClass = cls;
         } else {
             // Already registered — find it
             if(auto* od = languageService.findGlobalAs<objectDef>(nameStr)) objStub = od;
@@ -1325,7 +1324,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
             if(!alreadyReg){
                 variableDeclaration& stub = *(new variableDeclaration());
                 stub.name = nameStr;
-                stub.type.name = "object";
+                stub.type.name = classType;
                 stub.isPrePassStub = true;
                 stub.isExternal = isExtern;
                 languageService.globals.push_back(&stub);
@@ -1530,10 +1529,8 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
             objectDef& stub = languageService.registerObject(nameStr, isExtern);
             stub.isPrePassStub = true;
             // Record the declared class so forward references resolve correctly
-            if(!typeName.empty() && typeName != "object"){
-                classDef* cls = languageService.findClass(typeName);
-                if(cls != nullptr) stub.objectClass = cls;
-            }
+            if(!typeName.empty())
+                if(classDef* cls = languageService.findClass(typeName)) stub.objectClass = cls;
         }
         preScanSkipBodyContents();
     } else if(sym.is(token::endStatement) || sym.is(token::assignment) ||
@@ -1611,12 +1608,18 @@ void bglParser::preScanGlobalLoop(){
         // enum / bnum declaration
         if(tok.is(token::enumDeclaration) || tok.is(token::bnumDeclaration)){ preScanEnum(tok, isExtern); continue; }
 
-        // object keyword: 'object Name { }' is an objectDef; 'object Name;' / 'extern object Name;' is a variable stub.
-        // A '(' after the name means it's a FUNCTION returning object (`object getW(){…}`), NOT an
-        // object/variable decl — exclude it so it falls through to the routine-stub path below.
-        if(!isEmitter && ((tok.is("object") && !file.peekToken(2).is(token::parenOpen))
-             || (tok.isDataType() && file.peekToken(1).is(eTokenType::identifier)
-             && (file.peekToken(2).is(token::braceOpen) || file.peekToken(2).is(":"))))){ preScanObject(tok, isExtern); continue; }
+        // An object-backed class followed by a name: `Room hall { }` / `Room hall : Base { }` is an
+        // objectDef; `Room r;` / `extern Room r;` is a variable stub. A '(' after the name means it's a
+        // FUNCTION returning the class (`Room getRoom(){…}`) — excluded, so it falls through to the
+        // routine-stub path below.
+        auto objectBackedType = [&](token t){
+            classDef* c = t.isDataType() || t.is(eTokenType::identifier) ? languageService.findClass(t.value) : nullptr;
+            return c != nullptr && isObjectBackedClass(c);
+        };
+        token declName = file.peekToken(1);
+        if(!isEmitter && (declName.is(eTokenType::identifier) || declName.isDataType()) && !file.peekToken(2).is(token::parenOpen)
+           && (objectBackedType(tok)
+               || (tok.isDataType() && (file.peekToken(2).is(token::braceOpen) || file.peekToken(2).is(":"))))){ preScanObject(tok, isExtern); continue; }
 
         // grammar, attribute, beguilerSettings — skip
         if(tok.is("grammar") || tok.value == "beguilerSettings"){

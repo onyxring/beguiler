@@ -38,10 +38,10 @@ extern emitter class parentProp{   //obj.parent=loc; -> move obj to loc;
     emitter parentProp operator = (object v){
         move $self to $v
     }
-    emitter eBool operator == (object v){
+    emitter eBool operator == (_bglObject v){   // any object, or null: `obj.parent == null`
         parent($self) == $v
     }
-    emitter eBool operator != (object v){
+    emitter eBool operator != (_bglObject v){
         parent($self) ~= $v
     }
     emitter object operator(){

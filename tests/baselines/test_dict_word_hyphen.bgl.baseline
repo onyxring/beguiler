@@ -283,7 +283,7 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-thing rock
+object rock
   with name 'rock' 'medium-sized' 'rocks' ,
        adjective 'medium' 'sized' 'well-worn' 'medium-sized' 4 
 ;

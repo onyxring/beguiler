@@ -1,0 +1,27 @@
+/*  run_object_identity — every declared object is its own type, whatever its class.
+
+    `object lamp { … }` and `Room hall { … }` behave alike: members the body adds resolve, and the
+    object passes wherever its class or an ancestor is expected, uses its class's operators, and
+    calls its class's overloaded methods.  */
+// EXPECT_OUTPUT: 3 glow 7 HALL room-param obj-param obj-param same-size room room2 5
+#beguilerSettings { target = z5; informName = "none"; }
+class Room : object {
+    int size;
+    bool operator == (Room o){ return size == o.size; }
+    void greet(){ print("room "); }
+    void greet(int n){ print("room"); print(n); print(" "); }
+}
+object lamp { int brightness = 3; void glow(){ print("glow "); } }
+Room hall { size = 5; int extra = 7; void shout(){ print("HALL "); } }
+Room cellar { size = 5; }
+void takeRoom(Room r){ print("room-param "); if(r.size < 0) print("?"); }
+void takeObj(object o){ if(o) print("obj-param "); }
+void main(){
+    bglInit();
+    print(lamp.brightness); print(" "); lamp.glow();
+    print(hall.extra); print(" "); hall.shout();
+    takeRoom(hall); takeObj(hall); takeObj(lamp);
+    if(hall == cellar) print("same-size ");
+    hall.greet(); hall.greet(2);
+    Room r = hall; print(r.size);
+}

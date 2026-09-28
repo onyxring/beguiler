@@ -287,7 +287,7 @@ class marble
   with
     name 'chocolate' 'covered' 'marble' 'marbles//p' 
 ;
-thing widget
+object widget
   with name 'gadget' 'gizmo' 
 ;
 [main;

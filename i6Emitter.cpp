@@ -936,7 +936,7 @@ void i6Emitter::writeDebugBundle(const string& path){
             if(!vd->isExternal) continue;
             // Extern variables of object type — emit as object so debugger can expand
             if(languageService.findObjectType(vd->type.name) != nullptr
-               || vd->type.name == "object")
+               || isObjectBackedClass(languageService.findClass(vd->type.name)))
                 f << vd->name << "\t" << vd->name << "\tobject\n";
             else
                 f << vd->name << "\t" << vd->name << "\tglobal\n";
@@ -3376,15 +3376,10 @@ void i6Emitter::emitObject(objectDef* obj){
     vector<pair<string,string>> inheritedOwned;   // (property short-name, backing object name)
     collectInheritedOwnedMembers(obj, ownedInstanceNames, ownedMemberDecl, inheritedOwned);
 
-    // Use the declared class name (if any) as the I6 object prefix; fall back to 'Object'.
-    // `_bglObject` is the backing-less type-tree root (below `object`; also the base of the
-    // primitive wrappers). Namespace objects (bgl/_bglUtil/_bglWorld/_glulx) are declared
-    // directly on it so they shed the `object` veneer + tree-citizen machinery at the Beguile
-    // type level, yet — being object *declarations* — still emit as plain I6 `Object`. Since
-    // `_bglObject` has no I6 `Class` backing, emit the bare `Object` keyword rather than the
-    // class name (which would reference an undefined I6 class).
-    string i6ClassName = (obj->objectClass && obj->objectClass->name != "object"
-                          && obj->objectClass->name != "_bglobject")
+    // The object's I6 directive is its class's name. An emitter class (such as `_bglObject`, which the
+    // runtime's namespace objects instantiate) has no I6 `Class`, so its instances are plain I6
+    // `Object`s. (`object` needs no case of its own: I6 reads `object lamp` as its Object directive.)
+    string i6ClassName = (obj->objectClass && !obj->objectClass->isEmitterClass)
                          ? obj->objectClass->i6Name() : "object";
     const string& objI6Name = obj->i6name.empty() ? obj->dName() : obj->i6name;
     string header = i6ClassName + " " + objI6Name;
@@ -3468,7 +3463,7 @@ void i6Emitter::synthesizeChildrenPlacement(){
             // Desugar: child.parent = container. The existing positional-parent emission does the rest.
             expression* pv = new expression();
             pv->tokens.push_back(containerI6);
-            pv->resolvedType = "object";
+            pv->resolvedType = container->name;
             variableDeclaration* pd = new variableDeclaration();
             pd->name = "parent";
             pd->type = languageService.getType("parentprop");

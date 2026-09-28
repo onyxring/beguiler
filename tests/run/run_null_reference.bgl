@@ -1,0 +1,21 @@
+/*  run_null_reference — `null`, the empty reference, fits every type.
+
+    It passes to a parameter of any class (not only `object`), defaults a `string` parameter, and
+    compares with `==`/`!=` against a class, a string and `obj.parent`.  */
+// EXPECT_OUTPUT: f null g null none placed ok
+#beguilerSettings { target = z5; informName = "none"; }
+class Room : object { int n; }
+Room hall { }
+object lamp { parent = hall; }
+void f(Room r){ if(r == null) print("f null "); }
+void g(object o){ if(o == null) print("g null "); }
+string h(string s = null){ if(s != null) return s; return "none"; }
+void main(){
+    bglInit();
+    f(null); g(null);
+    print(h()); print(" ");
+    if(lamp.parent != null) print("placed ");
+    Room r = null; r = hall; g(r); g(lamp);
+    object o = null; o = lamp;
+    print("ok");
+}

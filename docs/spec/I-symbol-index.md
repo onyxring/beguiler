@@ -165,6 +165,7 @@ and `clear()` come from `<array>`.
 | `insert(pos, src)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `int` | type | core | §2.2 |
 | `intLiteral`, `negativeIntLiteral`, `stringLiteral`, `charLiteral`, `dictionaryWordLiteral`, `interpolatedStringLiteral` | type (literal pseudo-type) | core | §2.4 |
+| `nullLiteral` | type (literal pseudo-type: the type of `null`) | core | §2.5 |
 | `is(Class)` | method on `object` | core | §21.5.6 |
 | `isEmpty()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `isLower()`, `isUpper()`, `isAlpha()`, `isNumeric()`, `isAlphaNumeric()`, `isVowel()`, `isConsonant()` | method on `char` | core | §21.7 |

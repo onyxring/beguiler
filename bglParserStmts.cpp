@@ -387,7 +387,7 @@ bool bglParser::processForInLiteralList(const std::string& elemVarName, std::str
 
     if(elemVarType == "auto" && !elements.empty() && !elements[0]->resolvedType.empty()){
         elemVarType = elements[0]->resolvedType;
-        classDef* elemCls = languageService.findClass(elemVarType);
+        classDef* elemCls = languageService.classOf(elemVarType);
         if(elemCls)
             for(typeMember* m : elemCls->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
@@ -522,7 +522,15 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         isChildrenSource = true;
         string owner = arrExprText.substr(0, arrExprText.size() - 9);
         arrName = func != nullptr ? qualifyIdentifier(owner, func, body) : owner;   // container's emitted name
-        arrElemType = "object";
+        // Each child is an instance of the class that declares `children` (the world-tree root).
+        function<classDef*(classDef*)> declaring = [&](classDef* c) -> classDef* {
+            if(c == nullptr) return nullptr;
+            for(typeMember* m : c->members) if(m->name == "children") return c;
+            for(classDef* b : c->baseClasses) if(classDef* d = declaring(b)) return d;
+            return nullptr;
+        };
+        classDef* decl = declaring(getDispatchClass(resolveIdentifierType(owner, func, body)));
+        arrElemType = decl != nullptr ? decl->name : "_bglobject";
     }
 
     if(!isChildrenSource && arrName.empty()){
@@ -543,7 +551,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
             elemVarType = "var";
         else {
             elemVarType = arrElemType;
-            classDef* elemCls = languageService.findClass(elemVarType);
+            classDef* elemCls = languageService.classOf(elemVarType);
             if(elemCls)
                 for(typeMember* m : elemCls->members)
                     if(auto* fd = dynamic_cast<functionDef*>(m))
@@ -830,7 +838,7 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
     swStmt.src = stmtLoc;
     swStmt.condition = parseExpression(file.getToken(), {token::parenClose}, func, body);
     string conditionType = swStmt.condition->resolvedType;
-    classDef* condCls = !conditionType.empty() ? languageService.findClass(conditionType) : nullptr;
+    classDef* condCls = !conditionType.empty() ? languageService.classOf(conditionType) : nullptr;
     if(condCls != nullptr){
         condCls->forEachMember([&](typeMember* m){
             if(auto* fn = dynamic_cast<functionDef*>(m))
@@ -1062,7 +1070,7 @@ bool bglParser::processDelete(vector<token>& t, Qualifiers& q, abstractObject& c
                        : resolvePathType(varName, func, body);
     if(varTypeName.empty())
         parsingError(format("'delete {0}': unknown variable", nameTok.originalValue.empty() ? varName : nameTok.originalValue));
-    classDef* cls = languageService.findClass(varTypeName);
+    classDef* cls = languageService.classOf(varTypeName);
     if(cls == nullptr || cls->poolSize == 0)
         parsingError(format("'delete {0}': '{1}' is not a pooled class. delete is only valid for instances of classes declared with `[N]` or `extern[]`.",
             nameTok.originalValue.empty() ? varName : nameTok.originalValue, varTypeName));
@@ -1096,7 +1104,7 @@ bool bglParser::processPrefixIncDec(token op, StatementContext& sc){
     // Try emitter lookup for "prefix++" / "prefix--" on the LHS type, falling back to the
     // plain "++" / "--" emitter if no prefix-specific override is defined.
     string lhsTypeName = resolveIdentifierType(varName.value, func, body);
-    classDef* lhsClass = languageService.findClass(lhsTypeName);
+    classDef* lhsClass = languageService.classOf(lhsTypeName);
     bool emitterFound = false;
     string prefixOpName = "prefix" + tok.value;  // e.g. "prefix++"
     auto tryEmitter = [&](const string& opName) -> bool {
@@ -1166,7 +1174,7 @@ token bglParser::parseStatementPath(token& tok, StatementContext& sc){
             if(pathSoFar.empty()) pathSoFar = tok.value;
             string pathType = resolveIdentifierType(tok.value, func, body);
             if(pathType.empty()) pathType = resolvePathType(tok.value, func, body);
-            classDef* cls = !pathType.empty() ? languageService.findClass(pathType) : nullptr;
+            classDef* cls = !pathType.empty() ? languageService.classOf(pathType) : nullptr;
             functionDef* nullTestFn = nullptr;
             if(cls != nullptr)
                 nullTestFn = dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [](typeMember* m){
@@ -1268,7 +1276,7 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
     file.getToken(); // consume '.'
     // Build subscript-read I6 text (same emitter expansion as expression-level path)
     string arrType = resolvePathType(arrPath, func, body);
-    classDef* arrCls = languageService.findClass(arrType);
+    classDef* arrCls = languageService.classOf(arrType);
     string elemType;
     size_t dotPos = arrPath.find('.');
     if(dotPos == string::npos) elemType = resolveArrayElementType(arrPath, func, body);
@@ -1297,7 +1305,7 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
     token afterMember = file.getToken();
     if(afterMember.is(token::parenOpen)){
         // Method call: arr[i].method(args)
-        classDef* elemCls = languageService.findClass(elemType);
+        classDef* elemCls = languageService.classOf(elemType);
         ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(elemType, memberName)));
         vector<string> namedArgNames = pal.namedArgNames;
         vector<vector<interpolatedSegment>> interpSegs = pal.interpSegmentsPerArg;
@@ -1947,7 +1955,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                     typeDisplayName(leftType->name)));
             if(!found){
                 // Fallback: check if RHS type has emitter LhsType operator(){}
-                classDef* rhsCls = languageService.findClass(valueTypeName);
+                classDef* rhsCls = languageService.classOf(valueTypeName);
                 if(rhsCls != nullptr)
                     if(typeMember* m = findMemberInHierarchy(rhsCls, [&](typeMember* m){
                         auto* opFn = dynamic_cast<functionDef*>(m);
@@ -2012,7 +2020,7 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
     if(!isBindAssign && file.peekToken().is(token::braceOpen)){
         string aType = resolveIdentifierType(tok.value, func, body);
         if(isWordArrayType(aType) || aType == "bytearray"){
-            classDef* ac = languageService.findClass(aType);
+            classDef* ac = languageService.classOf(aType);
             auto* clearFn = ac ? dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
                 auto* f = dynamic_cast<functionDef*>(m);
                 return f && f->name == "clear" && f->isEmitter && f->params.empty()
@@ -2103,7 +2111,8 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
             parsingError(format("cannot bind '{0}' to '{1}': the reference binding operator ':=' "
                                 "requires the same class (or a subclass). Use '=' to copy values "
                                 "between types.",
-                                typeDisplayName(rhsT), typeDisplayName(lhsCls->name)));
+                                typeDisplayName(languageService.findObjectType(rhsT) != nullptr ? languageService.classOf(rhsT)->name : rhsT),
+                                typeDisplayName(lhsCls->name)));
     }
     assignExpr.assignedExpression = rhs;
     // Skip operator= emitter if RHS contains $target — the opcode handles its own store
@@ -2153,7 +2162,7 @@ bool bglParser::processArrayBracedCompound(token tok, token symbol, const string
     if((symbol.value == "+=" || symbol.value == "-=") && file.peekToken().is(token::braceOpen)){
         string aType = resolveIdentifierType(tok.value, func, body);
         if(isWordArrayType(aType) || aType == "bytearray"){
-            classDef* ac = languageService.findClass(aType);
+            classDef* ac = languageService.classOf(aType);
             typeMember* opm = ac ? findMemberInHierarchy(ac, [&](typeMember* m){
                 auto* f = dynamic_cast<functionDef*>(m);
                 return f && f->name == symbol.value && f->isEmitter && f->params.size() == 1
@@ -2232,7 +2241,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
     string lhsTypeName = tok.value.find('.') == string::npos
                        ? resolveIdentifierType(tok.value, func, body)
                        : resolvePathType(tok.value, func, body);
-    classDef* lhsClass = languageService.findClass(lhsTypeName);
+    classDef* lhsClass = languageService.classOf(lhsTypeName);
     bool emitterFound = false;
     if(lhsClass != nullptr && rhs != nullptr && !rhs->resolvedType.empty()){
         string rhsType = rhs->resolvedType;
@@ -2245,7 +2254,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
         });
         // Conversion fallback: check if RHS type converts to a type the operator accepts
         if(!m){
-            classDef* rhsCls = languageService.findClass(rhsType);
+            classDef* rhsCls = languageService.classOf(rhsType);
             if(rhsCls != nullptr)
                 for(typeMember* rm : rhsCls->members){
                     auto* convFn = dynamic_cast<functionDef*>(rm);
@@ -2323,7 +2332,7 @@ bool bglParser::processPostfixIncDec(token tok, token symbol, StatementContext& 
         parsingError(format("Cannot assign to const variable '{0}'", tok.value));
     // Try emitter lookup for this operator on the LHS type
     string lhsTypeName = resolveIdentifierType(tok.value, func, body);
-    classDef* lhsClass = languageService.findClass(lhsTypeName);
+    classDef* lhsClass = languageService.classOf(lhsTypeName);
     bool emitterFound = false;
     if(lhsClass != nullptr){
         if(typeMember* m = findMemberInHierarchy(lhsClass, [&](typeMember* m){
@@ -2610,7 +2619,7 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
         if(ancestorDispatchClass != nullptr && method->isEmitter)
             parsingError(format("Ancestor-qualified dispatch '({0}){1}.{2}(...)' is not supported: '{2}' is an emitter method (inlined at the call site), so there is no routine for the ancestor cast to select. Ancestor dispatch works on regular (non-emitter) methods.",
                                 ancestorDispatchClass->dName(), objectPath, methodName));
-        cls = languageService.findClass(objectType);
+        cls = languageService.classOf(objectType);
         // Rebuild the call statement's functionName from the (possibly namespace-resolved)
         // objectPath so emission targets the backing object — e.g. `bgl.ui.pressAnyKey()`
         // becomes `_bglUi.pressAnyKey()` rather than a literal runtime chain. Overload sets
@@ -2720,7 +2729,7 @@ void bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
             if(arg->terminator == token::parenClose) break;
             chainArgTok = file.getToken();
         }
-        classDef* chainCls = languageService.findClass(chainReturnType);
+        classDef* chainCls = languageService.classOf(chainReturnType);
         if(chainCls == nullptr)
             parsingError(format("Type '{0}' is not a class (cannot chain method '{1}')", chainReturnType, chainMember.value));
         string chainMethodName = chainMember.value;
@@ -2742,7 +2751,7 @@ void bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
                 auto* convOp = dynamic_cast<functionDef*>(m);
                 if(convOp && convOp->name == "operator()" && convOp->isEmitter && !convOp->isExplicit){
                     string convertedType = convOp->returnType.name;
-                    classDef* convCls = languageService.findClass(convertedType);
+                    classDef* convCls = languageService.classOf(convertedType);
                     if(convCls){
                         findMemberInHierarchy(convCls, [&](typeMember* m2) -> bool {
                             auto* fd = dynamic_cast<functionDef*>(m2);

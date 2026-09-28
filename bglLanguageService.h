@@ -75,6 +75,15 @@ class bglLanguageService{
         classDef*  findClass(const std::string& name){ return dynamic_cast<classDef*>(&getType(name)); }
         enumDef*   findEnum(const std::string& name){ return dynamic_cast<enumDef*>(&getType(name)); }
         objectDef* findObjectType(const std::string& name){ return dynamic_cast<objectDef*>(&getType(name)); }
+        // The class whose members and operators a value of type `type` has: the class itself, or — for
+        // an object declared as its own type — the object's class (the root, if it has none). Use it
+        // wherever a value's type is looked up for dispatch; findClass answers "is this a class?".
+        classDef*  classOf(const std::string& type){
+            typeDef& td = getType(type);
+            if(auto* c = dynamic_cast<classDef*>(&td)) return c;
+            if(auto* o = dynamic_cast<objectDef*>(&td)) return o->objectClass != nullptr ? o->objectClass : findClass("_bglobject");
+            return nullptr;
+        }
         // True when `name` is a property Inform 6 treats as ADDITIVE, so its contributions
         // accumulate instead of replacing. Declared by `additive property` / `extern additive
         // property` (the core BLR declares `name`, which the I6 compiler itself makes additive).

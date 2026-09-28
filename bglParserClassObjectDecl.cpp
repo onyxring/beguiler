@@ -1771,11 +1771,7 @@ void bglParser::processInheritedMember(objectDef& obj, token nameTok){
         else
             propTypeName = dynamic_cast<variableDeclaration*>(m)->type.name;
     };
-    searchClass(obj.objectClass);
-    if(propTypeName.empty()){
-        classDef* baseObj = languageService.findClass("object");
-        searchClass(baseObj);
-    }
+    searchClass(obj.objectClass != nullptr ? obj.objectClass : languageService.findClass("_bglobject"));
     if(propTypeName.empty())
         parsingError(format("'{0}' is not a property defined on the object class or its bases; add a type specifier (e.g. 'object {0} = ...')", nameTok.value));
     // grammarRule/grammarRuleList with inferred type: route to grammar-specific parsing
@@ -2002,7 +1998,7 @@ string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, to
             od.members.push_back(&amem);
         } else {
             classDef* fcls = getDispatchClass(target->type.name);
-            if(fcls == nullptr || !inheritsFromObject(fcls))
+            if(fcls == nullptr || !isObjectBackedClass(fcls))
                 parsingError(format("inline '{0}{{...}}': member '{1}' is neither an array nor an object-backed type, so it cannot take a '{{ … }}' value",
                                     typeDisplay, target->name));
             // object-typed member: a nested inline object (the '{' is already consumed as `vt`).
@@ -2695,7 +2691,7 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
             expression* elem;
             std::string clauseStr;
             classDef* elemCls = getDispatchClass(arr->elementType);
-            if(elemTok.is(token::braceOpen) && elemCls != nullptr && inheritsFromObject(elemCls)){
+            if(elemTok.is(token::braceOpen) && elemCls != nullptr && isObjectBackedClass(elemCls)){
                 // Inferred inline object: a bare `{ … }` takes the array's element type (the '{' is
                 // already consumed). Bake an anon object and inject a reference, just like the explicit
                 // `Type{ … }` form below. The clause keyword (or ';') follows the closing '}'.

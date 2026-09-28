@@ -73,9 +73,16 @@ is required when the object inherits from more than one base. An object declared
 
 An object declared with no base, or with a base that derives from `object`, is an instance of
 `object` and carries `parent`, `children` and `attributes` (§11.5). `object` is **not** added
-implicitly: an object whose bases do not derive from `object` has the static type of its first base,
-is not assignable to an `object` variable, and lacks the `object` members. Give such a declaration
-`object` as an explicit base when the world-model members are wanted.
+implicitly: an object whose bases do not derive from `object` is not assignable to an `object`
+variable and lacks the `object` members. Give such a declaration `object` as an explicit base when
+the world-model members are wanted.
+
+**Every declared object is its own type**, whichever form declares it: a type with one instance,
+derived from the object's class. So `object lamp { … }` and `Room hall { … }` behave alike: members
+the body adds are members of that type (`lamp.brightness`, `hall.extra`), and the object fits
+wherever its class or an ancestor of it is expected — a parameter, a variable, an operator's operand
+— using the class's methods and operators. A verb object (§13) is the exception: its value is an
+action, typed by its verb class.
 
 The optional `as i6name` clause names the object differently in the emitted I6 (§3.11).
 
