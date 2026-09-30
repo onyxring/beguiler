@@ -354,7 +354,7 @@ appendices are for lookup.
   - [21.1 Overview](21-runtime-core.md#211-overview)
   - [21.2 `bglInit()`](21-runtime-core.md#212-bglinit)
   - [21.3 The `bgl` Namespace](21-runtime-core.md#213-the-bgl-namespace)
-  - [21.4 `print()`, `log()` and Article Helpers](21-runtime-core.md#214-print-log-and-article-helpers)
+  - [21.4 `print()`, `printLine()`, `log()` and Article Helpers](21-runtime-core.md#214-print-printline-log-and-article-helpers)
   - [21.5 IF-Domain Types](21-runtime-core.md#215-if-domain-types)
     - [21.5.1 `attribute` and `attributeList`](21-runtime-core.md#2151-attribute-and-attributelist)
     - [21.5.2 `property`](21-runtime-core.md#2152-property)

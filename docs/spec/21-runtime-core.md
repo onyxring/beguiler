@@ -4,7 +4,7 @@
 - [21.1 Overview](#211-overview)
 - [21.2 `bglInit()`](#212-bglinit)
 - [21.3 The `bgl` Namespace](#213-the-bgl-namespace)
-- [21.4 `print()`, `log()` and Article Helpers](#214-print-log-and-article-helpers)
+- [21.4 `print()`, `printLine()`, `log()` and Article Helpers](#214-print-printline-log-and-article-helpers)
 - [21.5 IF-Domain Types](#215-if-domain-types)
   - [21.5.1 `attribute` and `attributeList`](#2151-attribute-and-attributelist)
   - [21.5.2 `property`](#2152-property)
@@ -110,13 +110,14 @@ int roll = bgl.util.random.get(6);       // 1..6
 
 **See also** §10, §10.4, §22.
 
-## 21.4 `print()`, `log()` and Article Helpers
+## 21.4 `print()`, `printLine()`, `log()` and Article Helpers
 
 **Syntax**
 
 ```syntax
 print( ⟨value⟩ ) ;
 print( $"⟨text⟩ {⟨expr⟩} ⟨text⟩" ) ;
+printLine( [ ⟨value⟩ ] ) ;
 log( ⟨value⟩ ) ;
 printName( ⟨obj⟩ ) ;
 bgl.printRules.a( ⟨obj⟩ ) ;   bgl.printRules.cA( ⟨obj⟩ ) ;
@@ -130,6 +131,8 @@ bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 `print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's name with I6's `(name)` rule. A class therefore customizes how its instances print by defining `void print()`.
 
 The name `(name)` prints is the object's `instanceName` (§11.5.4); an object without one prints as `(lamp)`. Both library bindings declare `short_name` on `object` (§23.3.4): the text (or routine) the library prints in its place when the object has one, and what the article helpers and `printName()` print.
+
+`printLine(v)` prints `v` exactly as `print(v)` would, through whichever overload is current for its type, then a newline; `printLine()` prints just the newline. It takes an interpolated string too. It is not I6's `print_ret`: it does not return from the enclosing function.
 
 `log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined (§14.2.1). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
 
@@ -146,6 +149,7 @@ object lamp { short_name = "brass lamp"; }
 void Main() {
     print($"You see {bgl.printRules.a(lamp)}.");   // → You see a brass lamp.
     bgl.printRules.cThe(lamp); print(" glows.");   // → The brass lamp glows.
+    printLine($"Weight: {2}");                     // → Weight: 2, then a newline
     log("reached Main");                           // output only with #define DEBUG
 }
 ```

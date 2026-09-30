@@ -1,0 +1,29 @@
+/*  run_printline — printLine(v) prints v exactly as print(v) would, then a newline.
+
+    One `var` emitter serves every type: $i6Expr parses a `var` parameter as the caller's argument
+    type, so `print($val)` in its body reaches the overload that type selects. Before, it reached
+    print(var) and printed a string's address and a bool as 1.  */
+// EXPECT_OUTPUT: [hi
+// EXPECT_OUTPUT: ][lit
+// EXPECT_OUTPUT: ][42
+// EXPECT_OUTPUT: ][true
+// EXPECT_OUTPUT: ][x
+// EXPECT_OUTPUT: ][65535
+// EXPECT_OUTPUT: ][interp 43
+// EXPECT_OUTPUT: ][2
+// EXPECT_OUTPUT: [end]
+#beguilerSettings { target = z5; informName = "none"; }
+enum eDir { north = 1, south }
+void main(){
+    string s = "hi"; int n = 42; bool b = true; char c = 'x'; uint u = 65535;
+    print("["); printLine(s); print("]");
+    print("["); printLine("lit"); print("]");
+    print("["); printLine(n); print("]");
+    print("["); printLine(b); print("]");
+    print("["); printLine(c); print("]");
+    print("["); printLine(u); print("]");
+    print("["); printLine($"interp {n + 1}"); print("]");
+    print("["); printLine(eDir.south); print("]");
+    printLine();
+    print("[end]");
+}

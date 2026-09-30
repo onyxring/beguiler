@@ -176,6 +176,10 @@ struct emitterBindings {
     // the funnel must then leave a token alone when a parameter of that name will claim it later.
     const functionDef* fn = nullptr;
     vector<string> args;
+    // The arguments' Beguile types, positionally. $i6Expr parses a `var` parameter as its argument's
+    // type, so a forwarding emitter (`printLine(var v)` → `print($v)`) reaches the overload the
+    // caller's value selects. May be present when args is not (the deferred statement case).
+    vector<string> argTypes;
     // array<T> element type for the $opref pass. Unset skips the pass; set-but-EMPTY still runs it,
     // because an empty element type is how $opref resolves to 0 for a type that publishes no operator.
     optional<string> elemType;

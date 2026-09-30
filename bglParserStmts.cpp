@@ -1330,6 +1330,7 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
                 emitterBindings sb; sb.self = subscriptText; sb.val = subscriptText;
                 sb.fn = method;
                 for(expression* a : pal.args) sb.args.push_back(a->text());
+                for(expression* a : pal.args) sb.argTypes.push_back(a->resolvedType);
                 callStmt.emitterBody = expandEmitterBody(blk, sb);
             }
         file.getToken(token::endStatement);
@@ -1439,6 +1440,7 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPath, expression* 
                         emitterBindings eb3; eb3.self = recv; eb3.val = recv;
                         eb3.fn = method;
                         for(expression* a : pal.args) eb3.args.push_back(a->text());
+                        for(expression* a : pal.args) eb3.argTypes.push_back(a->resolvedType);
                         cs.emitterBody = expandEmitterBody(mblk, eb3);
                     }
                 file.getToken(token::endStatement);
@@ -1580,6 +1582,7 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
             emitterBindings ab; ab.self = selfValue; ab.val = arrPath; ab.prop = propValue;
             ab.fn = setMethod;
             for(expression* a : callStmt.args) ab.args.push_back(a->text());
+            for(expression* a : callStmt.args) ab.argTypes.push_back(a->resolvedType);
             ab.elemType = elemType;   // one substitution covers every $opref in the body
             callStmt.emitterBody = expandEmitterBody(blk, ab);
         }
@@ -2682,6 +2685,7 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
                 // parameters at emit time, so the funnel must leave $val / $prop alone when a
                 // parameter of that name will claim them (e.g. `orArray.set(…, var val)`).
                 mb.fn = method;
+                for(expression* a : callStmt.args) mb.argTypes.push_back(a->resolvedType);
                 string b = expandEmitterBody(blk, mb);
                 callStmt.emitterBody = b;
                 for(paramDef* p : method->params)
@@ -2717,6 +2721,7 @@ void bglParser::bindGlobalCallStatement(functionCallStatement& callStmt, token t
             // can produce final argument text (i6Emitter::exprText applies the per-routine
             // display-name, spill and rename maps).
             emitterBindings sb; sb.fn = gcb.method;
+            for(expression* a : callStmt.args) sb.argTypes.push_back(a->resolvedType);
             callStmt.emitterBody = expandEmitterBody(blk, sb);
             for(paramDef* p : gcb.method->params) callStmt.emitterParams.push_back(p->name);
         }
@@ -2811,6 +2816,7 @@ void bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
         emitterBindings chb; chb.self = selfText; chb.val = selfText;
         chb.fn = chainMethod;
         for(expression* a : chainArgs) chb.args.push_back(a->text());
+        for(expression* a : chainArgs) chb.argTypes.push_back(a->resolvedType);
         callStmt.emitterBody = expandEmitterBody(chainBlk, chb);
         callStmt.emitterParams.clear();
         callStmt.args.clear();

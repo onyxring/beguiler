@@ -1688,9 +1688,16 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
         // Every parameter, whether or not this site has its argument yet: a body reached as a bare
         // statement stages its `$param` tokens for the deferred pass, and $i6Expr has to parse
         // against the same signature there as anywhere else.
+        // A `var` parameter is parsed as the caller's argument type, when the site knows it: `var`
+        // says "any value", so the argument is the only thing that says which value this is. A
+        // literal argument keeps its literal pseudo-type, which overload resolution already ranks.
         if(b.fn != nullptr)
-            for(paramDef* p : b.fn->params)
-                bind("$" + p->name, p->type.name);
+            for(size_t i = 0; i < b.fn->params.size(); i++){
+                paramDef* p = b.fn->params[i];
+                string type = p->type.name;
+                if(type == "var" && i < b.argTypes.size() && !b.argTypes[i].empty()) type = b.argTypes[i];
+                bind("$" + p->name, type);
+            }
         // A token the caller never bound is not substitutable here, and leaving it would reach I6
         // as a literal `$name`. Say so where the author can act on it.
         if(size_t stray = payload.find('$'); stray != string::npos){

@@ -203,6 +203,7 @@ and `clear()` come from `<array>`.
 | `print()` | method on `_bglObject` (author-defined override) | core | §21.4 |
 | `print()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `print(v)` | function (overloaded by type) | core | §21.4 |
+| `printLine([v])` | function (`print(v)`, then a newline) | core | §21.4 |
 | `printName(obj)` | function | core | §21.4 |
 | `priority` | member on `verb` | core | §13.2.5 |
 | `property` | type | core | §11.7, §21.5.2 |

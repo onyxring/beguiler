@@ -271,7 +271,10 @@ every caller.
 
 **Binding.** The body's tokens stand for **typed values** inside the payload: `$v` denotes a value of
 `v`'s declared type whose emitted text is the argument at that use site, and `$self`/`$val`/`$host`
-likewise at the receiver's type. The payload may therefore mention only this emitter's own
+likewise at the receiver's type. A parameter declared `var` takes the type of the argument at that
+use site instead, since `var` says only that any value is accepted. This is what lets one emitter
+forward to an overloaded one: `emitter void printLine(var v){ $i6Expr(print($v)); print "^"; }`
+reaches `print(string)` for a string argument and `print(bool)` for a bool. The payload may therefore mention only this emitter's own
 parameters and receiver; any other `$name` is a compile-time error. It may not mention a bare I6
 identifier either, since that is not a Beguile symbol — `$i6Expr(__glkHook(33, $a))` resolves only
 because `__glkHook` *is* a Beguile function.

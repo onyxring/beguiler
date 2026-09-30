@@ -763,6 +763,7 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
                 emitterBindings sb; sb.self = "self"; sb.val = "self"; sb.trim = emitterTrim::wsSemi;
                 sb.fn = selfMethod;
                 for(expression* a : pal.args) sb.args.push_back(a->text());
+                for(expression* a : pal.args) sb.argTypes.push_back(a->resolvedType);
                 expr->tokens.push_back(expandEmitterBody(blk, sb));
                 if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
                 return true; // emitter inlined — caller should continue
@@ -784,6 +785,7 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
             if(auto* blk = dynamic_cast<i6Block*>(gcb.method->body)){
                 emitterBindings gb; gb.fn = gcb.method; gb.trim = emitterTrim::wsSemi;
                 for(expression* a : pal.args) gb.args.push_back(a->text());
+                for(expression* a : pal.args) gb.argTypes.push_back(a->resolvedType);
                 expr->tokens.push_back(expandEmitterBody(blk, gb));
                 if(expr->resolvedType.empty() && !retType.empty()) expr->resolvedType = retType;
                 return true; // emitter inlined — caller should continue
@@ -1476,6 +1478,7 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
                     if(isArrayOfArraysElement(elemType) || elemType == "bytearray") em.prop = "0";
                     em.fn = method;
                     for(expression* a : pal.args) em.args.push_back(a->text());
+                    for(expression* a : pal.args) em.argTypes.push_back(a->resolvedType);
                     em.trim = emitterTrim::wsSemi;
                     expr->tokens.push_back(expandEmitterBody(blk, em));
                 }
@@ -1654,6 +1657,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                     emitterBindings mb; mb.self = optTemp; mb.val = optTemp; mb.trim = emitterTrim::wsSemi;
                     mb.fn = method;
                     for(expression* a : callArgs) mb.args.push_back(a->text());
+                    for(expression* a : callArgs) mb.argTypes.push_back(a->resolvedType);
                     injText += " " + optTemp + " = " + expandEmitterBody(blk, mb) + ";";
                 }
             } else {
@@ -1719,6 +1723,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                         emitterBindings mb; mb.self = optTemp; mb.val = optTemp; mb.trim = emitterTrim::wsSemi;
                         mb.fn = method;
                         for(expression* a : callArgs) mb.args.push_back(a->text());
+                        for(expression* a : callArgs) mb.argTypes.push_back(a->resolvedType);
                         injText += " " + optTemp + " = " + expandEmitterBody(blk, mb) + ";";
                     }
                 } else {
@@ -2060,6 +2065,7 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
             mb.selfType = objType;
             mb.fn = method;
             for(expression* a : callArgs) mb.args.push_back(a->text());
+            for(expression* a : callArgs) mb.argTypes.push_back(a->resolvedType);
             // $prop is substituted after the parameters, so an emitter with a `prop`
             // parameter (e.g. `provides(property prop)`) wins over the fallback.
             mb.prop = exprPropValue;
@@ -3137,6 +3143,7 @@ bglParser::ExprStep bglParser::parseExprDotChainCall(ExprParseState& st, token& 
             cb.selfType = chainTypeName;
             cb.fn = method;
             for(expression* a : callArgs) cb.args.push_back(a->text());
+            for(expression* a : callArgs) cb.argTypes.push_back(a->resolvedType);
             cb.elemType = chainElem;   // one substitution covers every $opref in the body
             cb.trim = emitterTrim::ws;
             string b = expandEmitterBody(blk, cb);

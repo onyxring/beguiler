@@ -1,0 +1,17 @@
+/*  run_printline_glulx — printLine follows whichever print overload is current: float (Glulx
+    only), and the print(string) that <string> replaces.  */
+// EXPECT_OUTPUT: [2.5000
+// EXPECT_OUTPUT: ][owned
+// EXPECT_OUTPUT: ][plain
+// EXPECT_OUTPUT: ]
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <string>
+void main(){
+    glulxConsole();
+    bglInit();
+    float f = 2.5; stringObj o = "owned"; string s = "plain";
+    print("["); printLine(f); print("]");
+    print("["); printLine(o); print("]");
+    print("["); printLine(s); print("]");
+}
