@@ -116,6 +116,7 @@ struct Qualifiers {
                                // across the class hierarchy (obj + ancestors) rather than overriding.
                                // Directive-only in I6 — valid only on a non-extern `property`.
     bool isValue = false;      // `value class`: instances are copied; variables own one (type kinds)
+    bool isLiteral = false;    // `literal` variable or member: holds only values known at compile time (§6.3)
     bool isPrimitive = false;  // `primitive class`: the value itself, no instance (implies extern emitter)
     bool anySet() const {      // true if ANY qualifier was consumed before the current token
         return isReplace || isExplicit || isExtern || isEmitter || isConst || isStatic || isInline
@@ -556,6 +557,30 @@ class bglParser {
         grammarLine parseGrammarLineContent();  // parses single grammar line (trigger + pattern tokens); assumes '{' consumed
 
         string parseFuncType();             // reads <ReturnType,ParamType,...> from stream; returns "func<...>"
+        bool isLiteralQualifierAhead();     // after `literal`: a type follows, so it qualifies that type
+        vector<string> pendingLiteralMembers; // union members read with `literal`, for the parameter being parsed
+        bool declLiteral = false;             // the declaration being parsed was qualified `literal`
+        bool pendingLiteralElements = false;  // the array type just read was `array<literal T>`
+        // Reads an array's element type after `<`, noting a leading `literal` in pendingLiteralElements.
+        string readArrayElementType();
+        // The declaration a statement's assignment target names (local, member, global), or nullptr.
+        class variableDeclaration* findAssignedDeclaration(const string& path, class functionDef* func, class statementBlock* body);
+        // Errors when `value`, stored into a slot of type `slotType` whose `literalMembers` apply, is not
+        // known at compile time. `what` describes the slot for the message.
+        void checkLiteralValue(const vector<string>& literalMembers, const string& slotType,
+                               const class expression* value, const string& what);
+        // Set by bindMethodCall while binding a call on an `array<literal T>` receiver, so parameters
+        // declared `literal T` are enforced for it.
+        bool bindingLiteralElements = false;
+        // Checks each value stored into an `array<literal T>`.
+        void checkLiteralElements(const class arrayDeclaration& arr, const vector<class expression*>& values);
+        // True when `e` is known at compile time, as a `literal` parameter requires; otherwise `why`
+        // says what is not (a variable, or a lambda's capture).
+        bool isLiteralValue(const class expression* e, string& why);
+        string capturedByLambdaIn(const class expression* e);  // a capturing lambda's variable, or ""
+        // A lambda that captures variables may only run while they exist: not stored in a global or
+        // member, not returned. `where` names the store for the error.
+        void rejectEscapingLambda(const class expression* e, const string& where);
         string parseArrayTypeTail(const std::string& base);  // base ("array"/"rawarray") read; consumes <Elem>, returns "array<Elem>" (nests + splits ">>")
         // Union types (A | B | ...): after a complete first type is read at a declaration site,
         // if the next token is '|', consume the '|'-separated members and return the canonical
@@ -563,7 +588,7 @@ class bglParser {
         // firstType unchanged) when no '|' follows, so call sites stay cheap and low-risk.
         string maybeParseUnionTail(const std::string& firstType);
         string readUnionMemberType();       // reads one complete member type (base + func<>/array<> tail) after a '|'
-        string parseLambdaExpr(functionDef* func, statementBlock* body);  // parses lambda, lifts to global, returns lifted name
+        string parseLambdaExpr(functionDef* func, statementBlock* body, bool bareArrow = false);  // parses lambda, lifts to global, returns lifted name
 
         bool processStatement(token, abstractObject& = emptyContainer);
         // Per-statement context shared by the processStatement branch methods.
@@ -707,6 +732,7 @@ class bglParser {
         // One per branch of parseExpression's main loop, dispatched on the current token's kind.
         ExprStep parseExprOperatorRef(ExprParseState& st);
         ExprStep parseExprParenOpen(ExprParseState& st);
+        ExprStep parseExprBareLambda(ExprParseState& st);
         ExprStep parseExprParenClose(ExprParseState& st);
         ExprStep parseExprIntLiteral(ExprParseState& st);
         ExprStep parseExprFloatLiteral(ExprParseState& st);
@@ -1078,6 +1104,13 @@ class bglParser {
         // Used to put back a terminator token that an inner construct (e.g. an arrow-body lambda
         // in function-argument position) consumed but the enclosing parser still needs to see.
         std::optional<token> stashedToken;
+        // Set while an expression-bodied lambda's body is parsed as a call statement (it holds an
+        // interpolated-string argument, which only a statement can expand); the call then ends at
+        // `,` or `)` rather than `;`.
+        bool lambdaBodyStatement = false;
+        // An interpolated-string argument expands to a block of print statements, so it cannot
+        // sit inside an expression; reports it rather than dropping the text.
+        void rejectInterpolatedArgsInExpression(const ParsedArgList& pal, const string& callee);
         // Expected-type hint for the expression currently being parsed. Set by call sites that know
         // the type they need (e.g. variable initializer RHS, operator RHS). Used by name resolution
         // as a final tie-breaker when multiple candidates remain after memberHint filtering.
@@ -1103,7 +1136,7 @@ class bglParser {
         // Stack of enclosing functions for nested lambda capture resolution. Each entry is an
         // outer function scope that may contain capturable variables. Innermost (most recent) first.
         vector<functionDef*> lambdaOuterFuncStack;
-        string addCapture(const string& outerName, const string& typeName); // register a closure capture, return global name
+        string addCapture(const string& outerName, const string& typeName, class variableDeclaration* vd = nullptr); // register a closure capture, return global name
         sourceLocation currentStatementSrc;  // location of the first token of the current statement
 
         map<string,string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value

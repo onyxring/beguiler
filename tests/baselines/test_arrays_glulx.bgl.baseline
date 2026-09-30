@@ -3,6 +3,9 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
+
+    Replace HandleGlkEvent _bglAuthorGlkEvent;
+
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -270,6 +273,41 @@ object _bglArray
 global _bglWorldBufIdx = -1;
 object _glulx
 ;
+[_bglSuspendLineInput buffer;
+    return 0;
+];
+[_bglResumeLineInput buffer typed;
+];
+[_bglGlkEvent event context buffer target typed;
+    if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
+        return false;
+    }
+    target = _bgl_bglOpCodes_aload(event, 2);
+    __glkHook(258, _bgl_bglOpCodes_aload(event, 1));
+    if (~~(metaclass(target) == Routine)) {
+        return false;
+    }
+    typed = 0;
+    if (context == 0) {
+        typed = _bglsuspendlineinput(buffer);
+    }
+     target(); 
+    if (context == 0) {
+        _bglresumelineinput(buffer, typed);
+    }
+    return true;
+];
+[_bglCurrentWindow stream win;
+    stream=__glkHook(72);
+    win=__glkHook(32, 0, 0);
+    while (win ~= 0) {
+        if (__glkHook(44, win) == stream) {
+            return win;
+        }
+        win = __glkHook(32, win, 0);
+    }
+    return 0;
+];
 object bgl
   with glulx _glulx
 ;
@@ -323,9 +361,26 @@ object inventory
             return 0;
         
 ];
+
+    [ HandleGlkEvent event context buffer;
+        if (_bglGlkEvent(event, context, buffer)) return -1;
+        if (_bglAuthorGlkEvent) return _bglAuthorGlkEvent(event, context, buffer);
+        return 0;
+    ];
+
+[__glkHook _vararg_count api args retval;
+    @copy sp api;
+    args=_vararg_count - 1;
+    @glk api args retval;
+    return retval;
+];
 [_bglFloatGt x y;
      @jfgt x y ?yes; rfalse; .yes; rtrue; 
 ];
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
+];
+[_bgl_bglOpCodes_aload addr idx result;
+     @aload addr idx result; 
+    return result;
 ];

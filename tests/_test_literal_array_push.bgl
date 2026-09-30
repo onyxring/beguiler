@@ -1,0 +1,8 @@
+// An `array<literal T>` keeps only values known at compile time; `push` stores its argument, so a
+// variable is rejected. (Reading methods such as indexOf take any value.)
+// EXPECT_ERROR: 'push' needs a literal function for 'item', known at compile time: 'f' is a variable
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+void r1(){ }
+array<literal func<void>> rules = { r1 };
+void main(){ func<void> f = r1; int i = rules.indexOf(f); rules.push(f); }

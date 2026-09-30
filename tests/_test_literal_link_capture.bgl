@@ -1,0 +1,7 @@
+// A link's function runs when the player clicks, long after the print: it may not capture a variable.
+// EXPECT_ERROR: 'link' needs a literal function for 'target', known at compile time: the lambda captures 'dir'
+#beguilerSettings { target = glulx; informName = "none"; }
+#using bgl.printRules;
+void main(){
+    for(string dir in {"north", "south"}) print($"{link(dir, => print(dir))} ");
+}

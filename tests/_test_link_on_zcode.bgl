@@ -1,0 +1,5 @@
+// `link` is a Glulx print rule: the Z-machine has no hyperlinks, so using it there is a compile error.
+// EXPECT_ERROR: Undeclared function 'link'
+#beguilerSettings { target = z5; informName = "none"; }
+#using bgl.printRules;
+void main(){ print($"A {link("door", 1)}."); }

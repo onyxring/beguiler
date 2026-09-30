@@ -80,7 +80,7 @@ extend extern class array {
     // `operator =` (stringObj). core's raw `$val-->($i+1) = $v` still handles every plain
     // element type, so array<int> keeps its inline word write and pays nothing — the
     // compiler picks between the two by asking the element type, not by replacing core's.
-    emitter void setOwnedAt(int i, T v) { _bglArray.setOwned($self, $prop, $i, $v, $opref(=)) }
+    emitter void setOwnedAt(int i, literal T v) { _bglArray.setOwned($self, $prop, $i, $v, $opref(=)) }
 
     // Search
     /// The position of the first `item`, or -1. Uses the element type's `==`.
@@ -109,11 +109,11 @@ extend extern class array {
     // Length-changing mutators — each grows or shrinks the explicit length.
     // append / prepend / insert return false on a full array (no growth happened).
     /// Add `item` at the end. False when the array is already full — it does not grow.
-    emitter bool append(T item)             { _bglArray.append($self, $prop, $item, $opref(=)) }
+    emitter bool append(literal T item)             { _bglArray.append($self, $prop, $item, $opref(=)) }
     /// Add `item` at the front, shifting the rest up. False when full.
-    emitter bool prepend(T item)            { _bglArray.prepend($self, $prop, $item, $opref(=)) }
+    emitter bool prepend(literal T item)            { _bglArray.prepend($self, $prop, $item, $opref(=)) }
     /// Insert `item` at `pos`, shifting the rest up. False when full or `pos` is out of range.
-    emitter bool insert(int pos, T item)    { _bglArray.insert($self, $prop, $pos, $item, $opref(=)) }
+    emitter bool insert(int pos, literal T item)    { _bglArray.insert($self, $prop, $pos, $item, $opref(=)) }
     /// Take out the element at `pos`, closing the gap. Releases it if the element type owns storage.
     emitter void remove(int pos)            { _bglArray.remove($self, $prop, $pos, $opref(deinit)) }
     /// Take out EVERY element equal to `item`, closing the gaps.
@@ -122,13 +122,13 @@ extend extern class array {
     // Deque view (orLibrary convention — push/peek/pop at the front;
     // enqueue/peekEnd/popEnd at the back).
     /// Stack push — onto the FRONT. `pop()` takes it back off.
-    emitter void push(T item)               { _bglArray.push($self, $prop, $item) }
+    emitter void push(literal T item)               { _bglArray.push($self, $prop, $item) }
     /// Stack pop — take the front element off and return it. 0 when empty.
     emitter T    pop()                      { _bglArray.pop($self, $prop) }
     /// Queue take — the front element, removed. Pairs with `enqueue`.
     emitter T    dequeue()                  { _bglArray.dequeue($self, $prop) }
     /// Queue add — onto the END. Pairs with `dequeue`.
-    emitter void enqueue(T item)            { _bglArray.enqueue($self, $prop, $item) }
+    emitter void enqueue(literal T item)            { _bglArray.enqueue($self, $prop, $item) }
     /// The front element, left in place. 0 when empty.
     emitter T    peek()                     { _bglArray.peek($self, $prop) }
     /// The last element, left in place. 0 when empty.

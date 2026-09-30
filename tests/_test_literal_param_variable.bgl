@@ -1,0 +1,5 @@
+// A `literal int` parameter takes only values known at compile time, not a variable.
+// EXPECT_ERROR: 'size' needs a literal int for 'n', known at compile time: 'count' is a variable
+#beguilerSettings { target = z5; informName = "none"; }
+void size(literal int n){ }
+void main(){ int count = 3; size(count); }

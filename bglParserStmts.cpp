@@ -166,6 +166,13 @@ bool bglParser::processReturnVoid(vector<token>& t, Qualifiers&, abstractObject&
     return false;
 }
 
+void bglParser::rejectEscapingLambda(const expression* e, const string& where){
+    string captured = capturedByLambdaIn(e);
+    if(!captured.empty())
+        parsingError(format("A lambda {0} runs after the variables it captures are gone, so it cannot "
+            "capture them; this one captures '{1}'.", where, captured));
+}
+
 bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     if(getCurrentCompileContext() == eCompileContext::global)
         parsingError("'return' is not valid at global scope");
@@ -186,6 +193,7 @@ bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject&
     token first = file.getToken();
     expression* retExpr = parseExpression(first, {token::endStatement}, func, body);
     allowVoidReturnExpr = savedAllowVoid;
+    rejectEscapingLambda(retExpr, format("returned from '{0}'", currentFunc ? currentFunc->dName() : funcName));
     if(func != nullptr && func->returnType.name == "void"){
         // Allow `return <void-typed expr>;` as the C/I6 idiom shorthand. In loose-mode
         // contexts (`#bgl{}` islands and `.inf` precompiler mode), unresolved identifiers
@@ -1476,6 +1484,8 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     statementBlock* body = sc.body;
     file.getToken(token::assignment);
     expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
+    if(auto* arr = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(arrPath, func, body)))
+        if(arr->literalElements) checkLiteralElements(*arr, {valExpr});
 
     // Resolve array type and compute $self/$prop
     string arrType = resolvePathType(arrPath, func, body);
@@ -2062,6 +2072,17 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
     if(leftType != nullptr) currentExpectedType = leftType->name;
     expression* rhs = parseExpression(file.getToken(), {token::endStatement, "?"}, func, body);
     currentExpectedType = savedExpectedAssign;
+    {
+        string head = lhsOriginal.substr(0, lhsOriginal.find('.'));
+        bool isLocal = lhsOriginal.find('.') == string::npos
+            && (qualifyFromParams(head, func) || qualifyFromBodyLocals(head, body) || qualifyFromAncestorBlocks(head, body));
+        if(!isLocal) rejectEscapingLambda(rhs, format("stored in '{0}'", lhsOriginal));
+        if(variableDeclaration* vd = findAssignedDeclaration(lhsOriginal, func, body))
+            if(vd->isLiteral)
+                checkLiteralValue(isUnionType(vd->type.name) ? splitUnionType(vd->type.name) : vector<string>{vd->type.name},
+                    vd->type.name, rhs, format("'{0}' is literal: it needs a literal {{KIND}}",
+                                              tok.originalValue.empty() ? lhsOriginal : tok.originalValue));
+    }
 
     if(rhs->terminator == "?"){
         // conditional assignment: lhs = condition ? trueVal : falseVal
@@ -2175,9 +2196,12 @@ bool bglParser::processArrayBracedCompound(token tok, token symbol, const string
             lb.elemType = resolveArrayElementType(tok.value, func, body);
             string opBody = expandEmitterBody(dynamic_cast<i6Block*>(opFunc->body), lb);
             file.getToken();  // consume '{'
+            auto* literalArr = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(tok.value, func, body));
+            if(literalArr != nullptr && (!literalArr->literalElements || symbol.value != "+=")) literalArr = nullptr;
             token et = file.getToken();
             while(!et.is(token::braceClose)){
                 expression* elem = parseExpression(et, {",", token::braceClose}, func, body);
+                if(literalArr != nullptr) checkLiteralElements(*literalArr, {elem});
                 assignmentStatement& a = *(new assignmentStatement());
                 a.src = stmtLoc;
                 a.variableLeft = lhs;
@@ -2233,6 +2257,9 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
     if(processArrayBracedCompound(tok, symbol, lhs, sc)) return false;
 
     expression* rhs = parseExpression(file.getToken(), {token::endStatement}, func, body);
+    if(symbol.value == "+=")
+        if(auto* arr = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(tok.value, func, body)))
+            if(arr->literalElements) checkLiteralElements(*arr, {rhs});
 
     // Try emitter lookup for this compound operator on the LHS type. A dotted path names
     // a member, which resolveIdentifierType does not resolve — so `shelf.items += x` found
@@ -2789,6 +2816,12 @@ void bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
         callStmt.args.clear();
         chainReturnType = chainMethod->returnType.name;
         chainTok = file.getToken();
+    }
+    // A lambda body parsed as a statement ends at the enclosing argument list's `,` or `)`, which
+    // is handed back for that list to read.
+    if(lambdaBodyStatement && (chainTok.is(token::comma) || chainTok.is(token::parenClose))){
+        stashedToken = chainTok;
+        return;
     }
     chainTok.assert(token::endStatement);
 }

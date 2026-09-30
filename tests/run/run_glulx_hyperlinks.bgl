@@ -1,0 +1,43 @@
+/*  run_glulx_hyperlinks — the `link` print rule with no IF library, executed.
+
+    A function target (a lambda, bare `=>` or with a parameter list, or a named function) is called
+    by the BLR on click. Any other value reaches the author's HandleGlkEvent unchanged, the
+    established I6 way. Clicks arrive while bgl.ui.waitForKey waits, whose loop hands every
+    non-key event to HandleGlkEvent. Each click must also renew the window's hyperlink request, or
+    the next click is ignored (the runner reports that and stops).  */
+// EXPECT_OUTPUT: [Pushed.]
+// EXPECT_OUTPUT: [Pulled.]
+// EXPECT_OUTPUT: [Broom 2.]
+// EXPECT_OUTPUT: [Blocked.]
+// EXPECT_OUTPUT: [Pushed.]
+// EXPECT_OUTPUT: [Done.]
+// INPUT: @link 1
+// INPUT: @link 2
+// INPUT: @link 3
+// INPUT: @link 4
+// INPUT: @link 1
+// INPUT: x
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <ui>
+#using bgl.printRules;
+
+enum eLinks { broom = 2 }
+
+void handlePullLever(){ print("[Pulled.]^"); }
+
+int HandleGlkEvent(var event, var context, var buffer){
+    if(bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink && bgl.asm.aload(event, 2) == (int)eLinks.broom)
+        print("[Broom 2.]^");
+    return 0;
+}
+
+void main(){
+    glulxConsole();
+    print($"There's a {link("button", => { print("[Pushed.]^"); })} on the machine.^");
+    print($"There's a {link("lever", handlePullLever)} near it.^");
+    print($"Under it is {link("broom", eLinks.broom)}.^");
+    print($"And a {link("door", () => print("[Blocked.]^"))}.^");
+    bgl.ui.waitForKey();
+    print("[Done.]^");
+}

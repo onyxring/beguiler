@@ -33,6 +33,8 @@ and `clear()` come from `<array>`.
 | `bgl.printRules` | namespace | core | §21.11 |
 | `bgl.printRules.bold`, `italics`, `underline`, `reverse`, `fixed`, `roman` | print rule | core | §21.11 |
 | `bgl.printRules.img(image[, align[, width[, height]]])` | print rule | core (Glulx) | §21.11 |
+| `bgl.printRules.link(text, target)` | print rule | core (Glulx) | §21.11 |
+| `HandleGlkEvent(event, context, buffer)` | function (`extern default` entry point; author-overridable) | core (Glulx) | §21.11 |
 | `bgl.story` | namespace | binding (`i6StandardLibrary`) | §23.3.9 |
 | `bgl.story.printSerial()` | method on `bgl.story` | binding (`i6StandardLibrary`) | §23.3.9 |
 | `bgl.story.release` | member on `bgl.story` | binding (`i6StandardLibrary`) | §23.3.9 |

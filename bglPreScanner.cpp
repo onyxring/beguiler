@@ -171,6 +171,7 @@ void bglParser::preScanCaptureParams(vector<paramDef*>& out){
         token t = file.getToken();
         if(t.is(token::parenClose) || t.is(eTokenType::eof)) return;
         if(t.is(token::comma)) continue;
+        if(t.value == "literal") t = file.getToken();   // `literal` qualifier on the parameter type
         if(!t.isDataType() && !t.is(eTokenType::identifier)){
             // Unrecognized token in param position — bail out safely by skipping to ')'
             int depth = 1;
@@ -224,6 +225,7 @@ void bglParser::preScanConsumeGenericSuffix(const token& typeTok){
             token t = file.getToken();
             if(t.value == "<") depth++;
             else if(t.value == ">") depth--;
+            else if(t.value == ">>") depth -= 2;   // `array<func<void>>` closes two levels in one token
             else if(t.is(eTokenType::eof)) return;
         }
     }

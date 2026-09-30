@@ -8,6 +8,11 @@
 // line's first character, or Return for an empty line). When stdin runs out and the story asks for
 // more, the run ends. A fatal VM error is printed as "Glulx fatal error: …" so a test fails on it.
 //
+// A line `@link N [partial]` clicks the Nth hyperlink printed so far (1-based) instead. `partial` is
+// text the player has typed at a pending line prompt without pressing Return; the story sees it if it
+// cancels the line input. A click with no hyperlink request pending prints a note and ends the run,
+// and a line request that resumes with pre-entered text prints it as `[initial: …]`.
+//
 // Quixe comes from $QUIXE_DIR, else beguilex's node_modules (the same install that provides zvm).
 'use strict';
 const fs = require('fs');
@@ -43,13 +48,18 @@ function finish(){
 // each is printed whenever the story waits for input.
 const showGrids = process.env.GLULX_RUN_GRIDS === '1';
 const grids = new Map();   // window id → array of line strings
+// A GlkOte content array mixes { style, text, hyperlink? } objects with bare `style, text` string
+// pairs, so a pair's position cannot be read from the array index.
+function eachRun(content, fn){
+    for(let i = 0; i < content.length; ){
+        const item = content[i];
+        if(typeof item === 'object' && item){ fn(item); i++; }
+        else { fn({ style: item, text: content[i + 1] }); i += 2; }
+    }
+}
 function gridText(content){
     let t = '';
-    for(let i = 0; i < content.length; i++){
-        const item = content[i];
-        if(typeof item === 'object' && item) { if(item.text) t += item.text; }
-        else if(i % 2 === 1) t += item;
-    }
+    eachRun(content, run => { if(run.text) t += run.text; });
     return t;
 }
 function snapshotGrids(){
@@ -67,15 +77,15 @@ function collect(content){
         }
         for(const para of win.text || []){
             if(!para.append) out.push('\n');
-            const c = para.content || [];
-            for(let i = 0; i < c.length; i++){
-                const item = c[i];
-                if(typeof item === 'object' && item) { if(item.text) out.push(item.text); }
-                else if(i % 2 === 1) out.push(item);   // [style, text, style, text, …]
-            }
+            eachRun(para.content || [], run => {
+                if(run.text) out.push(run.text);
+                if(run.hyperlink) links.push({ win: win.id, value: run.hyperlink });
+            });
         }
     }
 }
+
+const links = [];   // every hyperlinked run of text printed, in order: { win, value }
 
 let iface = null;
 const glkote = global.GlkOte;
@@ -94,11 +104,25 @@ glkote.error = (msg) => {
 glkote.update = (arg) => {
     collect(arg.content);
     if(arg.disable) return finish();                     // the story exited
-    const req = (arg.input || [])[0];
+    const inputs = arg.input || [];
+    const req = inputs.find(r => r.type);
     if(!req) return;
+    if(req.type === 'line' && req.initial) out.push(`[initial: ${req.initial}]`);
     if(showGrids) snapshotGrids();
     if(inputLines.length === 0) return finish();
     const line = inputLines.shift();
+    const click = /^@link\s+(\d+)(?:\s(.*))?$/.exec(line);
+    if(click){
+        const link = links[Number(click[1]) - 1];
+        if(!link){ out.push(`\n[glulx-run: no hyperlink #${click[1]}]\n`); return finish(); }
+        if(!inputs.some(r => r.id === link.win && r.hyperlink)){
+            out.push(`\n[glulx-run: hyperlink #${click[1]} clicked with no hyperlink request pending]\n`);
+            return finish();
+        }
+        const partial = (click[2] !== undefined && req.type === 'line') ? { [req.id]: click[2] } : undefined;
+        setImmediate(() => iface.accept({ type: 'hyperlink', gen: arg.gen, window: link.win, value: link.value, partial }));
+        return;
+    }
     const value = req.type === 'char' ? (line.length ? line[0] : 'return') : line;
     setImmediate(() => iface.accept({ type: req.type, gen: arg.gen, window: req.id, value }));
 };

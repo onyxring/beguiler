@@ -1,0 +1,40 @@
+/*  run_glulx_hyperlinks_stdlib — the `link` print rule under the I6 standard library, executed.
+
+    Clicks arrive while the library waits for a command, so a function target runs with line
+    input suspended: what the player had typed is echoed, the handler prints, and the prompt comes
+    back with the typed text restored ([initial: pu]). An enum target reaches the author's own
+    HandleGlkEvent, which handles it the established I6 way: cancel the line, write a command into
+    the buffer, return 2. Its return value must pass through the BLR's wrapper for "wait" to run.  */
+// EXPECT_OUTPUT: >pu
+// EXPECT_OUTPUT: [Pushed.]
+// EXPECT_OUTPUT: [initial: pu]
+// EXPECT_OUTPUT: Time passes.
+// INPUT: @link 1 pu
+// INPUT: @link 2
+#beguilerSettings { target = glulx; informName = "none"; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#using bgl.printRules;
+#includeI6 "parser"
+#includeI6 "verblib"
+
+enum eLinks { wait = 2 }
+
+#i6 { Object Lab "Lab" with description "A lab.", has light; }
+
+int HandleGlkEvent(var event, var context, var buffer){
+    if(bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink && bgl.asm.aload(event, 2) == (int)eLinks.wait
+       && context == 0){
+        rawArray<int> cancelled[4];
+        bgl.asm.cancelLineEvent(gg_mainwin, &cancelled);
+        #i6 { PrintToBuffer(buffer, INPUT_BUFFER_LEN, "wait"); }
+        return 2;
+    }
+    return 0;
+}
+
+void initialise(){
+    #i6 { location = Lab; }
+    print($"A {link("button", => { print("[Pushed.]^"); })} and a {link("pause", eLinks.wait)}.^");
+}
+
+#includeI6 "grammar"

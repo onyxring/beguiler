@@ -1,0 +1,42 @@
+/*  run_literal_params — `literal` parameters accept values known at compile time, executed.
+
+    A `literal func` may be passed on through another `literal` parameter and stored, and a lambda
+    may capture a `const` local whose value is a literal (every load writes the same value, so the
+    capture cannot go stale). A `literal int` takes a #define, an enum member or constant
+    arithmetic. An `array<literal T>` and a `literal` global or member take literal values through
+    push, subscript writes, `+=` and assignment.  */
+// EXPECT_OUTPUT: [north] [14] [4] [14] [d][b][a][c] [a] [b]
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#define LIMIT 7
+enum eK { a = 1, b }
+
+func<void> saved;
+void keep(literal func<void> fn){ saved = fn; }
+void keepVia(literal func<void> fn){ keep(fn); }
+int twice(literal int n){ return n * 2; }
+
+void ra(){ print("[a]"); }
+void rb(){ print("[b]"); }
+void rc(){ print("[c]"); }
+array<literal func<void>> rules[6] = { ra };
+literal func<void> onStart = ra;
+class door[2] : _bglObject { literal func<void> onOpen; }
+
+void main(){
+    const string d = "north";
+    keepVia(=> { print($"[{d}] "); });
+    saved();
+    print($"[{twice(LIMIT)}] [{twice((int)eK.b)}] [{twice(3 + 4)}] ");
+    rules.push(rb);
+    rules += rc;
+    rules.push(=> { print("[d]"); });
+    for(func<void> r in rules) r();
+    print(" ");
+    onStart();
+    onStart = rb;
+    door dr = new door();
+    dr.onOpen = onStart;
+    print(" ");
+    dr.onOpen();
+}

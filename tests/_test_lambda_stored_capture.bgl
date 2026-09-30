@@ -1,0 +1,7 @@
+// A lambda stored in a global can run after the function that made it has returned, so it may not
+// capture that function's variables.
+// EXPECT_ERROR: A lambda stored in 'handler' runs after the variables it captures are gone
+#beguilerSettings { target = z5; informName = "none"; }
+func<void> handler;
+void setUp(int n){ handler = => print(n); }
+void main(){ setUp(3); handler(); }

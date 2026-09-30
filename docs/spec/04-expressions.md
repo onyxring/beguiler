@@ -320,6 +320,8 @@ if (m == null) print("The pool is exhausted.");
 (⟨type⟩ ⟨param⟩, …) => { ⟨body⟩ }
 (⟨type⟩ ⟨param⟩, …) => ⟨expr⟩
 () => { ⟨body⟩ }
+=> { ⟨body⟩ }
+=> ⟨expr⟩
 ```
 
 **Description**
@@ -331,14 +333,21 @@ A lambda in argument position is passed by reference, like a named `func<>` valu
 
 The expression-bodied form `(⟨params⟩) => ⟨expr⟩` is equivalent to
 `(⟨params⟩) => { return ⟨expr⟩; }`; the return type is inferred from the expression. In both forms
-every parameter is typed; `x => …` is not a lambda.
+every parameter is typed; `x => …` is not a lambda. A lambda with no parameters may omit the empty
+parameter list: `=> ⟨body⟩` is equivalent to `() => ⟨body⟩`. An expression body with no value, such as
+a call to a `void` function, is the lambda's body rather than its return value; this includes a call
+passing an interpolated string (§1.6.5), such as `=> print($"Hello, {name}.")`.
 
 **Capture.** A lambda body may use locals and parameters of the enclosing function, wherever in that
 function the lambda appears, including inside loop and `if` bodies. Each captured variable's value is
 copied when the lambda is created. For a lambda passed directly as an argument, changes the body makes
-to a captured variable are visible in the enclosing scope after the call returns. Captures are
-intended for immediate callbacks: for a lambda stored and invoked later, the behavior is undefined. A
-lambda that captures nothing costs nothing extra.
+to a captured variable are visible in the enclosing scope after the call returns. A lambda that
+captures nothing costs nothing extra. Inside a method, a lambda that reads a member captures `self`.
+
+Captures are for callbacks that run before the enclosing function moves on. A lambda that captures a
+variable may not outlive it, so it is a compile-time error to return one, to store one in a global or
+a member, or to pass one to a `literal` parameter (§6.3). Storing one in a local is allowed. A capture
+of a `const` local initialized from a compile-time value is exempt: every copy is the same value.
 
 **Constraints.** A lambda literal may not be invoked immediately (`((int n) => { … })(42)`); assign it
 or pass it first.

@@ -37,10 +37,10 @@ enum eType {
 // Raw-I6 metaclass probes. Emitter bodies are raw I6, so `metaclass`/`Routine`/
 // `String`/`Object`/`Class` (I6 built-ins) are referenced directly here without
 // polluting the Beguile namespace — the same idiom the array/string libraries use.
-emitter bool _bglMcRoutine(var v) { metaclass($v) == Routine }
-emitter bool _bglMcString(var v)  { metaclass($v) == String }
-emitter bool _bglMcObject(var v)  { metaclass($v) == Object }
-emitter bool _bglMcClass(var v)   { metaclass($v) == Class }
+emitter bool _bglMcRoutine(var v) { (metaclass($v) == Routine) }
+emitter bool _bglMcString(var v)  { (metaclass($v) == String) }
+emitter bool _bglMcObject(var v)  { (metaclass($v) == Object) }
+emitter bool _bglMcClass(var v)   { (metaclass($v) == Class) }
 
 // typeof — the public primitive.
 /// The machine category of `v` — how to tell apart the members of a union (2.8.1).

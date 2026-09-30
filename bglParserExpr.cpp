@@ -120,9 +120,10 @@ bool bglParser::tryConsumePropertyClassReadChain(token first, functionDef* func,
 // ===============================================================================
 // parseLambdaExpr - lift lambda expression to a global functionDef
 // ===============================================================================
-// Parse a lambda expression. The opening '(' has already been consumed.
+// Parse a lambda expression. The opening '(' has already been consumed — or, for the bare
+// `=> body` form (bareArrow), the `=>` itself, and there is no parameter list.
 // Builds a lifted global functionDef, adds it to languageService.globals, returns its name.
-string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerBody){
+string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerBody, bool bareArrow){
     functionDef& fd = *(new functionDef());
     fd.name = format("_bglLambda_{0}", lambdaCounter++);
     fd.isEmitter = false;
@@ -130,8 +131,8 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
     fd.src = file.currentLocation();
 
     // Parse parameter list: (type name, type name, ...) or ()
-    token t = file.getToken(); // first type token or ')'
-    while(t.isNot(token::parenClose)){
+    token t = bareArrow ? token() : file.getToken(); // first type token or ')'
+    while(!bareArrow && t.isNot(token::parenClose)){
         paramDef& p = *(new paramDef());
         string typeName = t.value;
         if(typeName == "func") typeName = parseFuncType();
@@ -145,7 +146,7 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
     }
 
     // Consume =>
-    file.getToken("=>");
+    if(!bareArrow) file.getToken("=>");
 
     statementBlock* lambdaBody = new statementBlock();
     fd.body = lambdaBody;
@@ -183,22 +184,61 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
         // For arg-position lambdas, the `,` or `)` terminator must be visible to the
         // enclosing arg parser — we stash it on the parser-level token slot, which the
         // caller's next getNext() will pick up before reading more from the lexer.
-        expression* retExpr = parseExpression(bodyStart, {token::endStatement, token::comma, token::parenClose}, &fd, lambdaBody);
-        // Stash whatever terminator the inner parseExpression consumed so the enclosing
-        // parser still sees it. Applies to all three: ';' (assignment RHS), ',' (next arg),
-        // ')' (close of enclosing call). Without this, the outer parse loses sync and
-        // misreads subsequent statements as part of the lambda's expression.
-        if(retExpr->terminator == ";" || retExpr->terminator == "," || retExpr->terminator == ")"){
-            token t;
-            t.value = retExpr->terminator;
-            t.tokenType = eTokenType::symbol;
-            stashedToken = t;
+        functionDef* savedFunc = currentFunc;
+        currentFunc = &fd;   // as for a block body: captures are recorded on the lambda
+        // An interpolated-string argument (`=> print($"…")`) expands only in a call statement, so a
+        // body holding one is parsed as that statement.
+        bool hasInterpolation = false;
+        for(int k = 0, depth = 0; ; k++){
+            token pk = k == 0 ? bodyStart : file.peekToken(k);
+            if(pk.is(eTokenType::eof)) break;
+            if(pk.is(token::parenOpen) || pk.is(token::braceOpen) || pk.is(token::bracketOpen)) depth++;
+            else if(pk.is(token::parenClose) || pk.is(token::braceClose) || pk.is(token::bracketClose)){ if(depth == 0) break; depth--; }
+            else if(depth == 0 && (pk.is(token::comma) || pk.is(token::endStatement))) break;
+            if(pk.is("$") && file.peekToken(k + 1).is(eTokenType::quote)){ hasInterpolation = true; break; }
         }
-        returnStatement& ret = *(new returnStatement());
-        ret.src = fd.src;
-        ret.returnExpression = retExpr->text();
-        lambdaBody->statements.push_back(&ret);
-        fd.returnType.name = retExpr->resolvedType.empty() ? "var" : literalBaseType(retExpr->resolvedType);
+        if(hasInterpolation){
+            vector<statement*> savedPending = pendingInjections, savedPost = postInjections;
+            pendingInjections.clear(); postInjections.clear();
+            bool savedBodyStmt = lambdaBodyStatement;
+            lambdaBodyStatement = true;
+            openCompileContext(eCompileContext::codeBlock, lambdaBody);
+            processStatement(bodyStart, fd);
+            closeCompileContext(eCompileContext::codeBlock);
+            lambdaBodyStatement = savedBodyStmt;
+            pendingInjections = savedPending; postInjections = savedPost;
+            currentFunc = savedFunc;
+            fd.returnType.name = "void";
+            if(!stashedToken)
+                parsingError("A lambda whose body passes an interpolated string must be a single call, "
+                             "such as `=> print($\"…\")`; use a block body `=> { … }` otherwise.");
+        } else {
+            expression* retExpr = parseExpression(bodyStart, {token::endStatement, token::comma, token::parenClose}, &fd, lambdaBody);
+            currentFunc = savedFunc;
+            // Stash whatever terminator the inner parseExpression consumed so the enclosing
+            // parser still sees it. Applies to all three: ';' (assignment RHS), ',' (next arg),
+            // ')' (close of enclosing call). Without this, the outer parse loses sync and
+            // misreads subsequent statements as part of the lambda's expression.
+            if(retExpr->terminator == ";" || retExpr->terminator == "," || retExpr->terminator == ")"){
+                token t;
+                t.value = retExpr->terminator;
+                t.tokenType = eTokenType::symbol;
+                stashedToken = t;
+            }
+            if(retExpr->resolvedType == "void"){
+                // `=> print("…")`: a call with no value is the body itself, not something to return.
+                i6RawNode* stmt = new i6RawNode();
+                stmt->text = retExpr->text() + ";";
+                lambdaBody->statements.push_back(stmt);
+                fd.returnType.name = "void";
+            } else {
+                returnStatement& ret = *(new returnStatement());
+                ret.src = fd.src;
+                ret.returnExpression = retExpr->text();
+                lambdaBody->statements.push_back(&ret);
+                fd.returnType.name = retExpr->resolvedType.empty() ? "var" : literalBaseType(retExpr->resolvedType);
+            }
+        }
     }
 
     // Restore outer scope context
@@ -695,6 +735,7 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
     }
     // Parse args as proper expressions (shared with statement-level path)
     ParsedArgList pal = parseCallArgList(func, body, braceHints);
+    rejectInterpolatedArgsInExpression(pal, callName);
     // Resolve and validate
     string retType;
     if(isSelfCall){
@@ -1069,6 +1110,23 @@ bglParser::ExprStep bglParser::parseExprOperatorRef(ExprParseState& st){
     return ExprStep::Continue;
 }
 
+void bglParser::rejectInterpolatedArgsInExpression(const ParsedArgList& pal, const string& callee){
+    for(auto& segs : pal.interpSegmentsPerArg)
+        if(!segs.empty())
+            parsingError(format("An interpolated string ($\"…\") can be passed to '{0}' only in a call that "
+                "is a statement of its own, such as `{0}($\"…\");`, not inside an expression.", callee));
+}
+
+// `=> body` at the start of an operand — a parameterless lambda, the same as `() => body`.
+bglParser::ExprStep bglParser::parseExprBareLambda(ExprParseState& st){
+    expression* expr = st.expr;
+    string lambdaName = parseLambdaExpr(st.func, st.body, true);
+    expr->tokens.push_back(lambdaName);
+    expr->resolvedType = funcValueType(lambdaName);
+    st.cur = exprNext(st);
+    return ExprStep::Continue;
+}
+
 // '(' — a lambda literal, a cast prefix, or a structural paren group.
 bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
     expression* expr = st.expr;
@@ -1261,6 +1319,7 @@ bglParser::ExprStep bglParser::parseExprNew(ExprParseState& st){
         parsingError(format("'new {0}': class is not pooled. Declare with `class {0}[N]` (sized pool) or `extern class {0}[]` (extern marker) to enable allocation.", cls->dName()));
     file.getToken(token::parenOpen);
     ParsedArgList pal = parseCallArgList(func, body);
+    rejectInterpolatedArgsInExpression(pal, "new");
     string call = cls->i6Name() + ".create(";
     for(size_t i = 0; i < pal.args.size(); i++){
         if(i > 0) call += ", ";
@@ -1401,6 +1460,7 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
             // Method call: arr[0].method(args) — resolve via bindMethodCall
             file.getToken(); // consume '('
             ParsedArgList pal = parseCallArgList(func, body, braceArgHints(collectMethodCandidates(elemType, member.value)));
+            rejectInterpolatedArgsInExpression(pal, member.value);
             vector<string> namedArgNames = pal.namedArgNames;
             vector<vector<interpolatedSegment>> interpSegs = pal.interpSegmentsPerArg;
             functionDef* method = bindMethodCall(elemType, subscriptText, member.value,
@@ -1877,6 +1937,7 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
     if(argCandidates.empty() && languageService.findObjectType(objName) != nullptr)
         argCandidates = collectMethodCandidates(objName, methName);
     ParsedArgList pal = parseCallArgList(func, body, braceArgHints(argCandidates));
+    rejectInterpolatedArgsInExpression(pal, methName);
     vector<expression*>& callArgs = pal.args;
     functionDef* method = nullptr;
     if(opaqueRecv){
@@ -3282,6 +3343,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
         if((cur.is(eTokenType::identifier) || cur.is(eTokenType::dataType))
            && file.peekToken(1).value == "::operator")    step = parseExprOperatorRef(st);
         else if(cur.is(token::parenOpen))                 step = parseExprParenOpen(st);
+        else if(cur.value == "=>" && expr->tokens.empty()) step = parseExprBareLambda(st);
         else if(cur.is(token::parenClose))                step = parseExprParenClose(st);
         else if(cur.is(eTokenType::integer))              step = parseExprIntLiteral(st);
         else if(cur.is(eTokenType::floatLiteral))         step = parseExprFloatLiteral(st);

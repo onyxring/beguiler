@@ -499,9 +499,26 @@ extern default void TimePasses();                             // each turn, afte
 extern default int  UnknownVerb(var word);                    // remap an unknown verb word
 extern default int  AfterSave(var arg);                       // after a SAVE
 extern default int  AfterRestore(var arg);                    // after a RESTORE
-extern default int  HandleGlkEvent(var event, var context);   // Glulx: custom Glk event handling
 extern default int  IdentifyGlkObject(var phase, var typ, var ref, var value); // Glulx: Glk object tracking
 extern default int  InitGlkWindow(var rock);                  // Glulx: window setup
+// (HandleGlkEvent is declared by the Glulx core, which wraps it for hyperlinks.)
+
+#if TARGET_GLULX
+// A link handler clicked at the prompt (core's _bglGlkEvent) runs with the library's line input
+// suspended. KeyboardPrimitive reads lines in the main window into `buffer`, after its length word.
+extern int  INPUT_BUFFER_LEN;
+extern void DrawStatusLine();
+replace int _bglSuspendLineInput(var buffer){
+    rawArray<int> event[4];
+    bgl.asm.cancelLineEvent(gg_mainwin, &event);
+    return event[2];   // characters typed so far; Glk left them in the buffer
+}
+replace void _bglResumeLineInput(var buffer, int typed){
+    DrawStatusLine();
+    #i6 { L__M(##Prompt); }
+    bgl.asm.requestLineEvent(gg_mainwin, buffer + bgl.wordsize, INPUT_BUFFER_LEN - bgl.wordsize, typed);
+}
+#endif
 // Message verb-conjugation helper (English.h). Prints the subject + a verb conjugated for the
 // object's person/tense. The verb-form params (v1/v2/v3/past) are string-or-0 (0 = "reuse v1"), so
 // they're `var`.

@@ -1,0 +1,22 @@
+/*  run_bare_lambda — `=> body` is a parameterless lambda, the same as `() => body`. A block body, a
+    value-bearing expression body, and a void expression body (a call with no value is the body,
+    not a value to return — `return print …` is not I6). An expression body passing an interpolated
+    string is parsed as a call statement, the only place such an argument expands; before, its text
+    was silently dropped.  */
+// EXPECT_OUTPUT: [block] [42] [void] [paren void] [interp 2] [captured 7] [then 3]
+#beguilerSettings { target = z5; informName = "none"; }
+
+void run(func<void> fn){ fn(); }
+void runThen(func<void> fn, int n){ fn(); print($"[then {n}]"); }
+
+void main(){
+    run(=> { print("[block] "); });
+    func<int> answer = => 42;
+    print($"[{answer()}] ");
+    run(=> print("[void] "));
+    run(() => print("[paren void] "));
+    int k = 7;
+    run(=> print($"[interp {1 + 1}] "));
+    run(() => print($"[captured {k}] "));
+    runThen(=> print($""), 3);
+}

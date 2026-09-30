@@ -285,6 +285,8 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     arrDecl.elementType = elementType;
     arrDecl.isExternal = isExternal;
     arrDecl.isSuperposed = isSuperposed;
+    arrDecl.literalElements = pendingLiteralElements;
+    pendingLiteralElements = false;
     if(elementType == "char") arrDecl.isByteArray = true;
     // A file-scope `rawArray<T>` literal is an UNTRACKED `array<T>`: same count-prefixed layout
     // (word0 = count, data at 1..N, subscript `-->(i+1)`) but with NO <len>+<magic> trailer, even
@@ -433,6 +435,10 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
        && (!arrDecl.stringInitializer.empty() || dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue)))
         parsingError("Initialized local byte arrays (array<char> = \"...\" or {...}) are not yet supported. "
                      "Declare it at file scope, or use a sized local (array<char> buf[N]) and assign elements.");
+
+    if(arrDecl.literalElements)
+        if(auto* list = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue))
+            checkLiteralElements(arrDecl, list->elements);
 
     if(body != nullptr)
         body->statements.push_back(&arrDecl);
@@ -843,6 +849,9 @@ void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool i
 // Places the finished declaration into the enclosing body (local) or the global registry, then for a
 // local injects the type's init emitter ahead of it and registers its deinit emitter as a cleanup.
 void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool isConst, functionDef* func, statementBlock* body){
+    if(varDecl.isLiteral)
+        checkLiteralValue(isUnionType(varDecl.type.name) ? splitUnionType(varDecl.type.name) : vector<string>{varDecl.type.name},
+            varDecl.type.name, varDecl.declaredExpressionValue, format("'{0}' is literal: it needs a literal {{KIND}}", varDecl.dName()));
     if(body != nullptr)
         body->statements.push_back(&varDecl);
     else
@@ -1026,6 +1035,8 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     varDecl.src = file.currentLocation();
     varDecl.name=(string) variableName;
     varDecl.displayName = variableName.originalValue;
+    varDecl.isLiteral = declLiteral;
+    declLiteral = false;
     if(!dataType.docComment.empty())          varDecl.docComment = dataType.docComment;
     else if(!variableName.docComment.empty()) varDecl.docComment = variableName.docComment;
     varDecl.type=languageService.getType((string) dataType);
@@ -1142,6 +1153,10 @@ int bglParser::readCompileTimeInt(const string& what){
 }
 
 bool bglParser::processRoutineDeclaration(token returnType, token name, abstractObject& contextObject, bool isExternal, bool isEmitter, bool isReplace, bool isDefault, bool isSuperposed){
+    if(declLiteral){
+        declLiteral = false;
+        parsingError(format("'literal' qualifies the type of a parameter, variable or member, not the return type of '{0}'", (string)name));
+    }
     functionDef& funcDef=*(new functionDef());
     funcDef.name=(string) name; funcDef.displayName=name.originalValue;
     funcDef.isDefault=isDefault;

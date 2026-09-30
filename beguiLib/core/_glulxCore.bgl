@@ -40,6 +40,80 @@ enum eGlulxStyleType{
 #include<core/_glulxOpCodes>
 extend bgl { emitter auto asm = bglOpCodes; } //attach the opcodes to the namespace
 
+//=============================================================================
+// Hyperlinks — the `link` print rule and the Glk event plumbing behind it.
+//
+// A link's value is its handler when it is a routine (a lambda or a named function): the BLR calls
+// it on click. Any other value (an enum, an int, an object) is left to the author's HandleGlkEvent,
+// the established I6 way. Both run through one HandleGlkEvent, defined at the very end of the
+// program so that it wraps whatever the author wrote; I6's `Replace` renames the author's routine
+// to _bglAuthorGlkEvent. With no author routine the renamed symbol is 0 (a library `Stub` is not
+// renamed), hence the guard.
+//=============================================================================
+
+/// Glk's event hook, called for every event while the story waits for input. `event` is the
+/// four-word Glk event (type, window, val1, val2); `context` is 0 while waiting for a line and 1
+/// while waiting for a key; `buffer` is the input buffer. Return 0 to carry on as normal, 2 to end
+/// the input (with the result in `buffer`), or -1 to keep waiting.
+extern default int HandleGlkEvent(var event, var context, var buffer);
+
+#emitfirst {
+    Replace HandleGlkEvent _bglAuthorGlkEvent;
+}
+#emitlast {
+    [ HandleGlkEvent event context buffer;
+        if (_bglGlkEvent(event, context, buffer)) return -1;
+        if (_bglAuthorGlkEvent) return _bglAuthorGlkEvent(event, context, buffer);
+        return 0;
+    ];
+}
+
+// Glk forbids printing to a window while it waits for a line, so a link handler clicked at the
+// prompt runs with line input suspended. A binding that reads lines replaces these two: suspend
+// returns how many characters the player had typed, and resume re-prompts with them restored.
+int  _bglSuspendLineInput(var buffer){ return 0; }
+void _bglResumeLineInput(var buffer, int typed){ }
+
+// The BLR's share of HandleGlkEvent: true when it handled the event.
+bool _bglGlkEvent(var event, int context, var buffer){
+    if(bgl.asm.aload(event, 0) != (int)eGlulxEventType.hyperlink) return false;
+    var target = bgl.asm.aload(event, 2);
+    bgl.asm.requestHyperlinkEvent(bgl.asm.aload(event, 1));   // a request lasts for one click
+    if(!_bglMcRoutine(target)) return false;
+
+    int typed = 0;
+    if(context == 0) typed = _bglSuspendLineInput(buffer);
+    #i6 { target(); }
+    if(context == 0) _bglResumeLineInput(buffer, typed);
+    return true;
+}
+
+// The window the current output stream belongs to, or 0 (a file or memory stream).
+int _bglCurrentWindow(){
+    int stream = bgl.asm.streamGetCurrent();
+    int win = bgl.asm.windowIterate(0, 0);
+    while(win != 0){
+        if(bgl.asm.windowGetStream(win) == stream) return win;
+        win = bgl.asm.windowIterate(win, 0);
+    }
+    return 0;
+}
+
+extend _bglPrintRules {
+    /// Print `text` as a hyperlink. When it is clicked, a function `target` is called: a named
+    /// function, or a lambda that captures no variables, since it runs long after this call. An int
+    /// or enum `target` reaches HandleGlkEvent as the event's link value. A `target` of 0 makes no
+    /// link. Plain text on an interpreter without hyperlinks.
+    void link(string text, literal func<void> | int target){
+        if(bgl.asm.gestalt(11, 0) == 0){ print(text); return; }   // 11: gestalt_Hyperlinks
+        int win = _bglCurrentWindow();
+        if(win != 0) bgl.asm.requestHyperlinkEvent(win);
+        bgl.asm.setHyperlink((int)target);
+        print(text);
+        bgl.asm.setHyperlink(0);
+    }
+}
+
 #if (generateBlorb == true) //no blorb, no images; so don't bother including the code
 bglSize scaleVectors(bglSize specified, bglSize imgSize){
     float scaleX=1.0;

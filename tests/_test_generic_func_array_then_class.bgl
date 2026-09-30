@@ -1,0 +1,9 @@
+// Pre-scan: `array<func<void>>` ends in `>>`, one token. Counting only `>` left the pre-scan inside
+// the generic suffix, and the class declared next failed ("expected type name").
+// EXPECT_ERROR: Undeclared function 'nothere'
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+void r1(){ }
+array<func<void>> handlers = { r1 };
+class box[2] : _bglObject { int n; }
+void main(){ box b = new box(); nothere(); }

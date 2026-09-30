@@ -1,0 +1,5 @@
+// `literal` qualifies a stored value's type; a function's return type is not one.
+// EXPECT_ERROR: 'literal' qualifies the type of a parameter, variable or member, not the return type of 'three'
+#beguilerSettings { target = z5; informName = "none"; }
+literal int three(){ return 3; }
+void main(){ }

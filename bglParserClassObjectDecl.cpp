@@ -655,6 +655,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
         parsingError(format("value class '{0}': member '{1}' is a '{0}', which would own another '{0}' without end; declare it 'ref'",
                             newClass.dName(), varDef.dName()));
     if(q.isTypeSealed) varDef.isTypeSealed = true;
+    varDef.isLiteral = q.isLiteral;
     varDef.isRefLocal = q.isRef;   // `ref` member: assignments are pointer-copy (opt out of operator=)
     if(q.isRef){
         string why = refNotApplicable(getDispatchClass(varDef.type.name), typeDisplayName(varDef.type.name));
@@ -1238,9 +1239,9 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     // tracking layer, giving the bare I6 property array (`obj.&prop-->n`, no header) that an I6
     // library reads directly; `array<T>` keeps Beguile's semantics.
     file.getToken("<");
-    string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
-    if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
-    else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
+    string elemType = readArrayElementType();
+    bool literalElements = pendingLiteralElements;
+    pendingLiteralElements = false;
     file.getToken(">");
     token propName = file.getToken(eTokenType::identifier);
 
@@ -1333,6 +1334,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
     arrDecl.src = file.currentLocation();   // so diagnostics on this member array report a line
     arrDecl.name = (string)propName;
+    arrDecl.literalElements = literalElements;
     if(q) arrDecl.isInline = q->isInline;   // an `inline array<T>` member is a positional slot (§6.2.1)
     if(q && q->isInline)
         if(auto* ownerCls = dynamic_cast<classDef*>(ctx)){ notePositional(*ownerCls, arrDecl.name); addInlineOrder(*ownerCls, arrDecl.name); }
@@ -1886,9 +1888,7 @@ bool bglParser::processEmitterValueDeclaration(token typeTok, token nameTok){
 
 bool bglParser::processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx){
     // Entered after "array" "<" have been consumed. Reads: elementType > name symbol
-    string elemType = file.getToken({eTokenType::dataType, eTokenType::identifier}).value;
-    if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
-    else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
+    string elemType = readArrayElementType();
     file.getToken(">");
     // Build the full generic type token (e.g. "array<int>" or "rawarray<int>") so downstream sees it.
     // arrayTok is the base-name token ("array" or "rawarray"), routed here by the grammar table.

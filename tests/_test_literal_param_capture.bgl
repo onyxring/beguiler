@@ -1,0 +1,6 @@
+// A `literal func` parameter takes only functions known at compile time: a lambda that captures a
+// variable is not one, since the callee keeps it and runs it later.
+// EXPECT_ERROR: 'later' needs a literal function for 'fn', known at compile time: the lambda captures 'n'
+#beguilerSettings { target = z5; informName = "none"; }
+void later(literal func<void> fn){ }
+void main(){ int n = 3; later(=> print(n)); }

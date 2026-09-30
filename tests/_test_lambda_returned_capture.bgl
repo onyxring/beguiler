@@ -1,0 +1,8 @@
+// A lambda returned from a function outlives the variables it captures, so it may not capture any.
+// (Formerly test 5 of test_closures, which pinned the broken emission as a baseline.)
+// EXPECT_ERROR: A lambda returned from 'makeAdder' runs after the variables it captures are gone
+#beguilerSettings { target = z5; informName = "none"; }
+func<int,int> makeAdder(int n){
+    return (int x) => { int r = x + n; return r; };
+}
+void main(){ func<int,int> add5 = makeAdder(5); int y = add5(10); }

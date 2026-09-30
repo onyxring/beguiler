@@ -1916,14 +1916,42 @@ string bglParser::parseArrayTypeTail(const string& base){
 // standalone declaration of the same type.
 string bglParser::readUnionMemberType(){
     token t = file.getToken({eTokenType::dataType, eTokenType::identifier});
-    string tn = t.value;
-    if(tn == "func") return parseFuncType();
-    if(tn == "array" || tn == "rawarray"){
-        string full = parseArrayTypeTail(tn);            // "array<Elem>" / "rawarray<Elem>"
-        if(full == "array<char>" || full == "array<charliteral>") return "bytearray";
-        return full;
+    bool isLiteral = false;
+    if(t.value == "literal" && isLiteralQualifierAhead()){
+        isLiteral = true;
+        t = file.getToken({eTokenType::dataType, eTokenType::identifier});
     }
+    string tn = t.value;
+    if(tn == "func") tn = parseFuncType();
+    else if(tn == "array" || tn == "rawarray"){
+        tn = parseArrayTypeTail(tn);                     // "array<Elem>" / "rawarray<Elem>"
+        if(tn == "array<char>" || tn == "array<charliteral>") tn = "bytearray";
+    }
+    if(isLiteral) pendingLiteralMembers.push_back(tn);
     return tn;
+}
+
+string bglParser::readArrayElementType(){
+    token t = file.getToken({eTokenType::dataType, eTokenType::identifier});
+    pendingLiteralElements = false;
+    if(t.value == "literal" && isLiteralQualifierAhead()){
+        pendingLiteralElements = true;
+        t = file.getToken({eTokenType::dataType, eTokenType::identifier});
+    }
+    string elemType = t.value;
+    if(elemType == "func") elemType = parseFuncType();  // func<...> element: consume its own <...>
+    else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
+    return elemType;
+}
+
+// After a `literal` token: true when a type follows, so `literal` is the qualifier rather than a
+// name (it is not a reserved word).
+bool bglParser::isLiteralQualifierAhead(){
+    token next = file.peekToken();
+    if(next.is(eTokenType::dataType) || next.value == "func" || next.value == "array" || next.value == "rawarray") return true;
+    // A generic type parameter (`literal T item`) is an identifier followed by the declared name.
+    token after = file.peekToken(2);
+    return next.is(eTokenType::identifier) && (after.is(eTokenType::identifier) || after.is(eTokenType::dataType));
 }
 
 // If a '|' follows the just-read first type, consume the '|'-separated members and return
@@ -1966,6 +1994,9 @@ bool bglParser::processParameterList(functionDef& funcDef){
         param.docComment = tok.docComment;  // doc-comment attached to this param's leading type token
         // `ref` parameter: refers to the argument even when its class copies (spec 3.7).
         if(tok.is("ref")){ param.isRef = true; tok = file.getToken(); }
+        pendingLiteralMembers.clear();
+        bool firstIsLiteral = false;
+        if(tok.value == "literal" && isLiteralQualifierAhead()){ firstIsLiteral = true; tok = file.getToken(); }
         tok = consumeTypeToken(tok);
         if(!tok.is(eTokenType::dataType))
             tok.assertDataType(); // original error path for non-type tokens
@@ -1987,7 +2018,10 @@ bool bglParser::processParameterList(functionDef& funcDef){
             else
                 paramTypeName = format("{0}<{1}>", base, elemType);
         }
+        if(firstIsLiteral) pendingLiteralMembers.push_back(paramTypeName);
         paramTypeName = maybeParseUnionTail(paramTypeName);  // A | B | ... union parameter type
+        param.literalMembers = pendingLiteralMembers;
+        pendingLiteralMembers.clear();
         param.type=languageService.getType(paramTypeName);
         if(param.type.name.empty()) param.type.name = paramTypeName; // for func<...> and union types
         if(param.isRef){
@@ -2271,11 +2305,13 @@ Qualifiers bglParser::parseQualifiers(token& tok){
         else if(tok.is("superposed"))              { q.isSuperposed = true; advance(); }
         else if(tok.is("typesealed"))              { q.isTypeSealed = true; advance(); }
         else if(tok.is("additive"))                { q.isAdditive   = true; advance(); }
+        else if(tok.value == "literal" && isLiteralQualifierAhead()) { q.isLiteral = true; advance(); }
         // `value` and `primitive` are keywords only in front of `class`: both are ordinary names elsewhere.
         else if(tok.is("value") && file.peekToken().is(token::classDeclaration))     { q.isValue     = true; advance(); }
         else if(tok.is("primitive") && file.peekToken().is(token::classDeclaration)) { q.isPrimitive = true; advance(); }
         else break;
     }
+    declLiteral = q.isLiteral;
     // Validate nonsensical combinations
     if(q.isConst && q.isStatic)
         parsingError("A member cannot be both 'const' and 'static'");

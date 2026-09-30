@@ -1,0 +1,6 @@
+// A `literal` member holds only values known at compile time.
+// EXPECT_ERROR: 'b.onOpen' is literal: it needs a literal function, known at compile time: 'f' is a variable
+#beguilerSettings { target = z5; informName = "none"; }
+void r1(){ }
+class box[2] : _bglObject { literal func<void> onOpen; }
+void main(){ func<void> f = r1; box b = new box(); b.onOpen = r1; b.onOpen = f; }

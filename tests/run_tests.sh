@@ -260,8 +260,11 @@ if [ "$CAPTURE" != true ]; then
                     FAIL=$((FAIL + 1)); continue
                 fi
 
-                if [ "$isGlulx" = true ]; then actual=$(echo "" | node "$GLULX_RUN" "$story" 2>&1)
-                else                          actual=$(echo "" | "$ZVM" "$story" 2>&1); fi
+                # `// INPUT:` lines are the story's input, one per line, in order (default: one empty line).
+                input=$(grep -E '^[[:space:]]*//[[:space:]]*INPUT:' "$src" \
+                    | sed -E 's|^[[:space:]]*//[[:space:]]*INPUT:[[:space:]]?||')
+                if [ "$isGlulx" = true ]; then actual=$(printf '%s\n' "$input" | node "$GLULX_RUN" "$story" 2>&1)
+                else                          actual=$(printf '%s\n' "$input" | "$ZVM" "$story" 2>&1); fi
                 all_matched=true
                 while IFS= read -r needle; do
                     [ -z "$needle" ] && continue

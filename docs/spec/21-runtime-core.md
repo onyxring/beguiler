@@ -679,6 +679,7 @@ bgl.ui.statusBar.height = 2;
 ```syntax
 $"… {bgl.printRules.⟨rule⟩} …"
 $"… {bgl.printRules.img( ⟨image⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨height⟩ ] ] ] )} …"
+$"… {bgl.printRules.link( ⟨text⟩ , ⟨target⟩ )} …"
 ```
 
 **Description**
@@ -698,6 +699,7 @@ $"… {bgl.printRules.img( ⟨image⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨he
 | `fixed` | Fixed-pitch text. |
 | `roman` | Return to plain text. |
 | `img(image[, align[, width[, height]]])` | Draw an image inline in the main window. **[Glulx]**, and only when `generateBlorb` is true (§17.6). `image` is an `eImages` value; `align` is an `eGlulxImageAlign` (default `inlineCenter`); a `0` dimension is computed from the other, preserving aspect ratio, and `0, 0` draws at natural size. |
+| `link(text, target)` | Print `text` as a hyperlink. **[Glulx]**; a compile-time error on the Z-machine. `target` is a `literal func<void> \| int`; what a click does depends on it. See *Hyperlinks* below. |
 
 **Example**
 
@@ -708,7 +710,27 @@ print($"{bold}Warning{roman}");
 print($"You cannot open {the(noun)}.");
 ```
 
-**See also** §1.6.5, §17.6, §22.8.
+**Hyperlinks**
+
+The `target` of a `link` decides what a click does:
+
+- A **function**, whether a lambda (§4.14) or a named function, is called. The parameter is `literal` (§6.3): the function runs when the player clicks, long after the `print`, so a lambda that captures a variable is a compile-time error.
+- An **`int`** or an **enum value** is delivered to `HandleGlkEvent` as the event's link value. This is the Inform 6 way of handling links, and a program that handles its links there keeps working unchanged. A `target` of `0` makes no link.
+
+```bgl
+#using bgl.printRules;
+print($"There's a {link("button", => { print("Click.^"); })} on the machine.");  // run code
+print($"There's a {link("lever", handlePullLever)} near it.");                   // call a function
+print($"Under it is {link("broom", eLinks.broom)}.");                            // HandleGlkEvent
+```
+
+`HandleGlkEvent(event, context, buffer)` is an `extern default` entry point declared by the Glulx core, with the Inform 6 library's meaning: `event` is the four-word Glk event, `context` is `0` while a line is being read and `1` while a key is awaited, and the return value is `0` to carry on, `2` to end the input, or `-1` to keep waiting. The runtime wraps whatever `HandleGlkEvent` the program defines. On a hyperlink event it renews the window's hyperlink request, calls a function target itself, and passes every other event to the program's function. The same wrapper serves the Inform 6 library's input loops and the runtime's own (`bgl.ui.waitForKey`), so a program behaves the same with a library or without one.
+
+Glk does not allow printing to a window that is waiting for a line. When a function target is clicked at a command prompt, the runtime suspends line input while the function runs. The player's partial input is echoed, and the prompt is then reprinted with that input restored. The library binding provides this for the Inform 6 library. A program's own `HandleGlkEvent` that prints at the prompt must cancel line input itself, as in Inform 6.
+
+The link text is printed plainly on an interpreter without hyperlink support.
+
+**See also** §1.6.5, §4.14, §17.6, §22.8.
 
 ## 21.12 Utility Types
 

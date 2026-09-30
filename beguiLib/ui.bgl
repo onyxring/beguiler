@@ -75,7 +75,8 @@ extend _bglUi {
     
     #if TARGET_GLULX
 
-        rawArray<int> eventPayload[3];  //allocate space for the glk events.
+        rawArray<int> eventPayload[4];  // a Glk event: type, window, val1, val2
+        rawArray<int> keyResult[1];     // HandleGlkEvent returning 2 puts the key here
 
         int inputWin = bgl.ui.hideCursor();
         if(inputWin == 0) inputWin = bgl.ui.mainWin.id;
@@ -85,11 +86,10 @@ extend _bglUi {
         while (true) { 
             bgl.asm.select(&eventPayload); //get the next event in the queue
 
-            if(eventPayload[0]==(int)eGlulxEventType.charInput && eventPayload[1] == inputWin)  //if its a keypress from the window we asked, return it; otherwise discard it. 
+            if(eventPayload[0]==(int)eGlulxEventType.charInput && eventPayload[1] == inputWin)  //if its a keypress from the window we asked, return it
                 return (char)eventPayload[2]; 
-            else{
-                ; //no-op; TODO: add some generic processor to handle background events
-            }
+            if(HandleGlkEvent(&eventPayload, 1, &keyResult) == 2)   // any other event: hyperlinks, then the author's handler
+                return (char)keyResult[0];
         }
     #else
         bgl.ui.hideCursor();

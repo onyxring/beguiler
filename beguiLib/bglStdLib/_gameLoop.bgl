@@ -47,7 +47,7 @@ eVerdict continueTurn() {
                         // A future quit / game-over rule returns `stop` to end it.
 }
 
-array<func<eVerdict>> gameTurnRulebook = {
+array<literal func<eVerdict>> gameTurnRulebook = {
     getInput,
     printInput,
     continueTurn,
@@ -69,7 +69,7 @@ eVerdict gameTurnLoop() {
     return proceed;
 }
 
-array<func<eVerdict>> rootRulebook = {
+array<literal func<eVerdict>> rootRulebook = {
     configureUi,
     gameTurnLoop,
 };

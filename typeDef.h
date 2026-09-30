@@ -176,6 +176,9 @@ class paramDef:public abstractObject{
         string backingName;   // the parameter's own instance, when its class copies
         string copyInText;    // copies the argument into backingName at entry (kParamArgMarker: the scratch)
         bool isRef = false;   // `ref` parameter: refers to the argument, never copies
+        // Members of the parameter's type declared `literal` (the whole type when it is not a union):
+        // an argument fitting one of them must be known at compile time.
+        vector<string> literalMembers;
 };
 
 //the function body
@@ -271,6 +274,8 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         bool isValueAlias = false; // value alias member: `alias name = objectOrClass;` — a namespace hook, no I6 backing
         bool isNamespaceAlias() const { return isAlias || isValueAlias; }  // either form: a path through it redirects
         bool isTypeSealed = false; // `typesealed` base-class member: subclass/instance re-declarations keep this type (and warn)
+        bool isLiteral = false;       // `literal` global/member/local: holds only values known at compile time
+        bool literalElements = false; // `array<literal T>`: every element stored is known at compile time
         bool isAdditive = false;   // `additive` file-scope `property` decl: emits I6 `Property additive foo;`
                                    // so the slot accumulates values across the class hierarchy instead of overriding
         bool isSynthetic = false;  // compiler-generated local (e.g. for-in temps), not user-written; the debug
@@ -348,7 +353,9 @@ class functionDef:public typeMember, public typeDef{
         bool isReplacedDead = false;          // true when this replaced version is unreachable (no successor calls replaced())
         // Closure captures: variables from the enclosing scope referenced by a lambda.
         // Each entry maps: {outer variable name, capture global name, type name}
-        struct Capture { string outerName; string globalName; string typeName; };
+        // isConstant: a `const` local with a compile-time initializer — every load writes the same
+        // value, so the capture cannot go stale and still counts as `literal`.
+        struct Capture { string outerName; string globalName; string typeName; bool isConstant = false; };
         vector<Capture> captures;
 
     using abstractObject::name;

@@ -64,7 +64,8 @@ int  sign(int n)        { if (n < 0) return -1; }   // compile-time error: no re
 **Syntax**
 
 ```syntax
-(⟨type⟩ ⟨name⟩ [ = ⟨default⟩ ], …)
+( [ literal ] ⟨type⟩ ⟨name⟩ [ = ⟨default⟩ ], …)
+( literal ⟨type⟩ | ⟨type⟩ … ⟨name⟩, … )
 ()
 ```
 
@@ -95,12 +96,55 @@ changes through a reference-class or `ref` parameter do.
 
 Parameter names may be omitted in non-emitter declarations inside an `extern class` (§15.4.3).
 
+**Literal parameters.** A parameter whose type is qualified `literal` accepts only a value known at
+compile time. For a data type, that is a literal, constant arithmetic, a `#define` value, an enum
+member or a `const` initialized from one of these; a variable, a member read or a call is a
+compile-time error. For a function type, it is a named function, or a lambda whose captured variables
+(§4.14) are all `const` locals with such a value.
+
+A function declares a `literal func` parameter when it keeps the function to call later, after the
+caller's locals have changed or gone: a callback registered for an event, or a hyperlink's action
+(§21.11). A function that calls its argument before returning, as `filter` and `sort` do, leaves the
+parameter unqualified, so a lambda passed to it may capture freely.
+
+In a union, `literal` qualifies the one member it precedes. An argument is checked when it fits a
+`literal` member and no other: in `literal func<void> | int`, a function must be literal and an `int`
+may be a variable. A `literal` parameter is itself literal inside the function, so it may be passed on
+to another `literal` parameter or stored; an unqualified parameter may not be passed to one.
+
+**Literal storage.** `literal` also qualifies a variable, a member or an array's element type, for
+values kept to use later, such as event handlers or a rulebook's rules. On a variable or member it
+covers the whole type:
+
+```bgl
+literal func<void> onStart = intro;              // a global
+class door { literal func<void> onOpen; }        // a member
+array<literal func<eVerdict>> rules = { r1 };    // the elements
+```
+
+An initializer, an assignment, a subscript write, `+=`, or an array method that stores its argument
+must then supply a literal value. Reading a `literal` variable or member yields a literal value, so it
+may be stored in another. In a generic class, a library marks the parameter of each method that stores
+an element `literal T`: `void push(literal T item)`. The mark applies only when the receiver's element
+type is `literal`, so `push` takes any value on an `array<func<void>>` and only a literal one on an
+`array<literal func<void>>`, while `indexOf`, which does not store, takes any value on either.
+
 **Example**
 
 ```bgl
 void spawn(string name, int x, int y, bool hostile = false) { … }
 spawn(x: 10, y: 20, name: "goblin", hostile: true);   // spawn("goblin", 10, 20, true)
+
+void onClick(literal func<void> action) { … }        // keeps `action` to call later
+onClick(=> print("Click."));                          // accepted: captures nothing
+string dir = "north";
+onClick(=> print(dir));                               // error: the lambda captures 'dir'
 ```
+
+> **Why `literal`, not closures.** A capturing lambda keeps its captured values in one slot per
+> lambda, not one per call, so a kept lambda reads whatever was captured last. Giving each call its own
+> copy would allocate memory that nothing could free. `literal` turns that runtime surprise into a
+> compile-time error at the call that would cause it.
 
 ## 6.4 Overload Resolution
 

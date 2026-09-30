@@ -13,9 +13,10 @@
   and the pipeline's before/check books use.  Run-all strategies (carryOut,
   report, react) and the accumulate strategy (verify) come later.
 
-  A rulebook is `array<func<eVerdict>>`: a plain, typed array of zero-arg rule
-  bodies.  (Relies on `func<...>` as a generic type argument and a directly
-  callable func-typed for-in loop var, both of which beguiler gained 2026-08-22.)
+  A rulebook is `array<literal func<eVerdict>>`: a plain, typed array of zero-arg
+  rule bodies.  `literal` because a rule runs long after it is added: a rule is a
+  named function or a lambda that captures no variables.  (Relies on `func<...>` as
+  a generic type argument and a directly callable func-typed for-in loop var.)
   ============================================================================*/
 
 eVerdict runRulebook(array<func<eVerdict>> book) {

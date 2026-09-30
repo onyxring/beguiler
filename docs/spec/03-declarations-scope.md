@@ -65,6 +65,7 @@ the construct it modifies.
 | `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §11.3.1 |
 | `ref` | A local or member that references an instance owned elsewhere. | §3.7 |
 | `additive` | A property whose values accumulate along the class chain. | §11.7.2 |
+| `literal` | A parameter, variable, member or array element type that holds only values known at compile time. | §6.3 |
 
 The following combinations are compile-time errors: `explicit` on anything but `operator()`; `const`
 with `static`; `static` with `emitter`; `explicit` with `const` or `static`; `alias` with `extern`;

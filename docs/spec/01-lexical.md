@@ -279,7 +279,10 @@ an expression span is a compile-time error.
 
 An interpolated string has the pseudo-type `interpolatedStringLiteral` (§2.4.2), which may be passed
 only to an emitter declaring a parameter of that type; passing it to a non-emitter function is a
-compile-time error. `print()` and `log()` accept it in the core runtime (§21.4).
+compile-time error. `print()` and `log()` accept it in the core runtime (§21.4). The emitter expands
+it to a sequence of statements, so the call must be a statement of its own; a call inside an
+expression is a compile-time error. An expression-bodied lambda whose body is such a call,
+`=> print($"…")`, is that statement (§4.14).
 
 **Example**
 

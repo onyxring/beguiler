@@ -1,0 +1,5 @@
+// An interpolated-string argument expands to a block of print statements, so it cannot sit inside an
+// expression; it used to be dropped silently.
+// EXPECT_ERROR: An interpolated string ($"…") can be passed to 'print' only in a call that is a statement of its own
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ int n = 1; if(print($"x{n}") == 0) n = 2; }

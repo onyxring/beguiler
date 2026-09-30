@@ -1,0 +1,7 @@
+// A subscript write into an `array<literal T>` stores the value, so it must be known at compile time.
+// EXPECT_ERROR: 'rules' holds literal elements: it needs a literal function, known at compile time: 'f' is a variable
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+void r1(){ }
+array<literal func<void>> rules = { r1 };
+void main(){ func<void> f = r1; rules[0] = f; }

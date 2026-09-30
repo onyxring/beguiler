@@ -127,6 +127,7 @@ static functionDef* substituteMethodForBindings(functionDef* fd, const unordered
         pc->displayName = fd->params[i]->displayName;
         pc->type.name = newParamTypes[i];
         pc->defaultValue = fd->params[i]->defaultValue;
+        pc->literalMembers = fd->params[i]->literalMembers;   // `literal T` stays a placeholder (see finalizeCallArgs)
         clone->params.push_back(pc);
     }
     return clone;
@@ -2177,7 +2178,7 @@ optional<string> bglParser::qualifyFromCaptures(const string& name){
         for(statement* s : lambdaOuterBody->statements)
             if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                 if(vd->name == name)
-                    return addCapture(name, vd->type.name);
+                    return addCapture(name, vd->type.name, vd);
     // Check function root body recursively — covers locals declared before/outside the
     // enclosing block (e.g. `int base = 10;` declared before a for-loop).
     statementBlock* rootBody = dynamic_cast<statementBlock*>(lambdaOuterFunc->body);
@@ -2206,7 +2207,7 @@ optional<string> bglParser::qualifyFromCaptures(const string& name){
             return nullptr;
         };
         if(auto* vd = findInBlock(rootBody))
-            return addCapture(name, vd->type.name);
+            return addCapture(name, vd->type.name, vd);
     }
     // Capture chaining: walk the full lambda nesting stack.
     for(int si = (int)lambdaOuterFuncStack.size() - 1; si >= 0; si--){
@@ -2220,7 +2221,7 @@ optional<string> bglParser::qualifyFromCaptures(const string& name){
             for(statement* s : ancestorBody->statements)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
                     if(vd->name == name)
-                        return addCapture(name, vd->type.name);
+                        return addCapture(name, vd->type.name, vd);
         for(auto& cap : ancestor->captures)
             if(cap.outerName == name)
                 return addCapture(cap.globalName, cap.typeName);
@@ -2515,8 +2516,14 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
         if(auto r = qualifyFromParams(name, func))          return *r;
         if(auto r = qualifyFromBodyLocals(name, body))      return *r;
         if(auto r = qualifyFromAncestorBlocks(name, body))  return *r;
-        if(auto r = qualifyFromCurrentObject(name))         return *r;
-        if(auto r = qualifyFromCurrentClass(name))          return *r;
+        // A member read inside a lambda goes through `self`, which the lambda must capture like the
+        // explicit `self.member` form does: it may run when `self` is some other object.
+        auto viaSelf = [&](const string& q){
+            if(lambdaOuterFunc != nullptr && q.rfind("self.", 0) == 0) qualifyFromCaptures("self");
+            return q;
+        };
+        if(auto r = qualifyFromCurrentObject(name))         return viaSelf(*r);
+        if(auto r = qualifyFromCurrentClass(name))          return viaSelf(*r);
         if(auto r = qualifyFromCaptures(name))              return *r;
     }
 
@@ -2598,7 +2605,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
 // Returns the global name. Deduplicates: if the same outer variable is captured
 // multiple times in the same lambda, returns the existing global.
 
-string bglParser::addCapture(const string& outerName, const string& typeName){
+string bglParser::addCapture(const string& outerName, const string& typeName, variableDeclaration* vd){
     // Check if already captured in this lambda
     for(auto& cap : currentFunc->captures)
         if(cap.outerName == outerName) return cap.globalName;
@@ -2607,7 +2614,10 @@ string bglParser::addCapture(const string& outerName, const string& typeName){
     if(currentLoopVars.count(outerName))
         parsingWarning(format("Lambda captures loop variable '{0}'. Modifications inside the lambda will affect loop progression via capture round-trip.", outerName));
     string globalName = format("_bglCap{0}", languageService.captureCounter++);
-    currentFunc->captures.push_back({outerName, globalName, typeName});
+    string why;
+    bool isConstant = vd != nullptr && vd->isConst && vd->declaredExpressionValue != nullptr
+                      && isLiteralValue(vd->declaredExpressionValue, why);
+    currentFunc->captures.push_back({outerName, globalName, typeName, isConstant});
     return globalName;
 }
 
@@ -3187,6 +3197,143 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
 // prevents the drift of a caller forgetting one step (e.g. default fill missing from the
 // expression path, silently zeroing omitted args at runtime).
 
+void bglParser::checkLiteralValue(const vector<string>& literalMembers, const string& slotType,
+                                  const expression* value, const string& what){
+    if(value == nullptr) return;
+    const string& valueType = value->resolvedType;
+    if(valueType.empty()) return;
+    // The value is checked when it fits a literal member of the slot's type and no other member.
+    vector<string> members = isUnionType(slotType) ? splitUnionType(slotType) : vector<string>{slotType};
+    bool fitsLiteral = false, fitsOther = false;
+    string literalMember;
+    for(const string& m : members){
+        if(valueType != m && !isTypeCompatible(valueType, m)) continue;
+        if(find(literalMembers.begin(), literalMembers.end(), m) != literalMembers.end()){
+            fitsLiteral = true;
+            if(literalMember.empty()) literalMember = m;
+        }
+        else fitsOther = true;
+    }
+    string why;
+    if(!fitsLiteral || fitsOther || isLiteralValue(value, why)) return;
+    string kind = literalMember.rfind("func<", 0) == 0 ? "function" : typeDisplayName(literalMember);
+    string msg = what;
+    size_t k = msg.find("{KIND}");
+    if(k != string::npos) msg.replace(k, 6, kind);
+    parsingError(format("{0}, known at compile time: {1}.", msg, why));
+}
+
+void bglParser::checkLiteralElements(const arrayDeclaration& arr, const vector<expression*>& values){
+    const string& t = arr.elementType;
+    vector<string> members = isUnionType(t) ? splitUnionType(t) : vector<string>{t};
+    for(expression* v : values)
+        checkLiteralValue(members, t, v, format("'{0}' holds literal elements: it needs a literal {{KIND}}", arr.dName()));
+}
+
+// The declaration an assignment target names: a local, a member of `self` or of a named object or
+// class-typed value, or a global.
+variableDeclaration* bglParser::findAssignedDeclaration(const string& path, functionDef* func, statementBlock* body){
+    auto memberOf = [&](classDef* cls, const string& name) -> variableDeclaration* {
+        if(cls == nullptr) return nullptr;
+        return dynamic_cast<variableDeclaration*>(findMemberInHierarchy(cls, [&](typeMember* m){ return m->name == name; }));
+    };
+    auto objectMember = [&](objectDef* od, const string& name) -> variableDeclaration* {
+        if(od == nullptr) return nullptr;
+        for(typeMember* m : od->members)
+            if(m->name == name) if(auto* vd = dynamic_cast<variableDeclaration*>(m)) return vd;
+        return memberOf(od->objectClass, name);
+    };
+    size_t dot = path.rfind('.');
+    if(dot == string::npos){
+        function<variableDeclaration*(statementBlock*)> inBlock = [&](statementBlock* blk) -> variableDeclaration* {
+            if(blk == nullptr) return nullptr;
+            for(statement* st : blk->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(st)) if(vd->name == path) return vd;
+            return nullptr;
+        };
+        if(auto* vd = inBlock(body)) return vd;
+        for(statementBlock* blk : activeBlockStack) if(auto* vd = inBlock(blk)) return vd;
+        if(currentFunc != nullptr) if(auto* vd = inBlock(dynamic_cast<statementBlock*>(currentFunc->body))) return vd;
+        if(auto* vd = objectMember(currentObject, path)) return vd;
+        if(auto* vd = memberOf(currentClass, path)) return vd;
+        return languageService.findGlobalAs<variableDeclaration>(path);
+    }
+    string head = path.substr(0, dot), member = path.substr(dot + 1);
+    if(head == "self"){
+        if(auto* vd = objectMember(currentObject, member)) return vd;
+        return memberOf(currentClass, member);
+    }
+    if(auto* od = languageService.findObjectType(head)) if(auto* vd = objectMember(od, member)) return vd;
+    return memberOf(languageService.classOf(resolveIdentifierType(head, func, body)), member);
+}
+
+// The variable a lambda in `e` captures (other than a `const` with a compile-time value), or "".
+string bglParser::capturedByLambdaIn(const expression* e){
+    if(e == nullptr) return "";
+    for(const string& t : e->tokens){
+        if(t.rfind("_bglLambda_", 0) != 0) continue;
+        for(typeDef* g : languageService.globals)
+            if(auto* fd = dynamic_cast<functionDef*>(g))
+                if(fd->name == t)
+                    for(auto& cap : fd->captures)
+                        if(!cap.isConstant) return cap.outerName;
+    }
+    return "";
+}
+
+// A `literal` value is known at compile time: a literal, a constant, an enum member, an object or
+// class, a named function, a lambda that captures nothing, or a `literal` parameter passed on. The
+// expression's emitted tokens are checked one by one; operators and punctuation are skipped.
+bool bglParser::isLiteralValue(const expression* e, string& why){
+    auto sameName = [](const string& a, const string& b){ return strcasecmp(a.c_str(), b.c_str()) == 0; };
+    for(size_t ti = 0; ti < e->tokens.size(); ti++){
+        const string& t = e->tokens[ti];
+        if(t.empty()) continue;
+        char c = t[0];
+        if((isalpha((unsigned char)c) || c == '_') && ti + 1 < e->tokens.size() && e->tokens[ti + 1] == "("){
+            why = format("'{0}()' is a call, evaluated at run time", t);
+            return false;
+        }
+        if(c == '"' || c == '\'' || c == '$' || isdigit((unsigned char)c)) continue;   // literal text or number
+        if(!isalpha((unsigned char)c) && c != '_') continue;                           // operator, punctuation
+        // A `literal` variable or member holds only literal values, so reading one is literal too.
+        auto readsLiteralSlot = [&](){
+            variableDeclaration* vd = findAssignedDeclaration(t, currentFunc, nullptr);
+            return vd != nullptr && vd->isLiteral;
+        };
+        if(t.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != string::npos){
+            if(readsLiteralSlot()) continue;
+            why = format("'{0}' is read at run time", t);                             // a member or property read
+            return false;
+        }
+        if(t.rfind("_bglLambda_", 0) == 0){
+            expression one; one.tokens.push_back(t);
+            string captured = capturedByLambdaIn(&one);
+            if(!captured.empty()){ why = format("the lambda captures '{0}'", captured); return false; }
+            continue;
+        }
+        if(currentFunc != nullptr){
+            bool isParam = false;
+            for(paramDef* p : currentFunc->params)
+                if(sameName(p->name, t)){
+                    isParam = true;
+                    if(p->literalMembers.empty()){ why = format("'{0}' is a variable", p->displayName.empty() ? p->name : p->displayName); return false; }
+                }
+            if(isParam) continue;
+        }
+        bool known = false;
+        for(typeDef* g : languageService.globals){
+            if(!sameName(g->name, t) && !sameName(g->i6name, t)) continue;
+            known = true;
+            if(auto* vd = dynamic_cast<variableDeclaration*>(g))
+                if(!vd->isConst && !vd->isNamespaceAlias() && !vd->isLiteral){ why = format("'{0}' is a variable", vd->dName()); return false; }
+            break;
+        }
+        if(!known && !readsLiteralSlot()){ why = format("'{0}' is a variable", t); return false; }   // a local
+    }
+    return true;
+}
+
 void bglParser::finalizeCallArgs(vector<expression*>& args, vector<string>& namedArgNames,
                                   vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
                                   functionDef* fd){
@@ -3206,6 +3353,23 @@ void bglParser::finalizeCallArgs(vector<expression*>& args, vector<string>& name
         defExpr->tokens.push_back(fd->params[i]->defaultValue);
         args.push_back(defExpr);
         if(interpSegmentsPerArg.size() < args.size()) interpSegmentsPerArg.push_back({});
+    }
+    // `literal` parameters. A literal member that is not one of the parameter's (substituted) type
+    // members is a generic placeholder — `literal T` on a storing array method — and applies only
+    // while binding a call on an `array<literal T>` receiver.
+    for(size_t i = 0; i < args.size() && i < fd->params.size(); i++){
+        paramDef* p = fd->params[i];
+        if(p->literalMembers.empty()) continue;
+        vector<string> members = isUnionType(p->type.name) ? splitUnionType(p->type.name) : vector<string>{p->type.name};
+        vector<string> literal;
+        for(const string& m : p->literalMembers){
+            if(find(members.begin(), members.end(), m) != members.end()) literal.push_back(m);
+            else if(bindingLiteralElements) literal.insert(literal.end(), members.begin(), members.end());
+        }
+        if(!literal.empty())
+            checkLiteralValue(literal, p->type.name, args[i],
+                format("'{0}' needs a literal {{KIND}} for '{1}'", fd->dName(),
+                       p->displayName.empty() ? p->name : p->displayName));
     }
     // Property-identifier arguments: a parameter typed `property` wants the BARE I6 property
     // constant (its slot number), not a `self.<name>` value read. Inside an object method body,
@@ -3309,6 +3473,15 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
                                         vector<expression*>& args, vector<string>& namedArgNames,
                                         vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
                                         const string& elementType){
+    // On an `array<literal T>` receiver, the methods that store an element (declared `literal T`)
+    // take only literal values; finalizeCallArgs reads this while binding.
+    struct LiteralElementsGuard {
+        bool& slot; bool saved;
+        LiteralElementsGuard(bool& s, bool v) : slot(s), saved(s) { slot = v; }
+        ~LiteralElementsGuard() { slot = saved; }
+    };
+    auto* recvArr = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(objPath, currentFunc, nullptr));
+    LiteralElementsGuard literalGuard(bindingLiteralElements, recvArr != nullptr && recvArr->literalElements);
     // A rawArray<T> is a bare I6 word pointer with no length header, so its extent
     // isn't recoverable at runtime: there is no count slot to read, and I6's `.#`
     // operator is property-only (it needs an object.property operand, not a bare
