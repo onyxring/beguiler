@@ -387,7 +387,14 @@ compile-time error: listing an object in two containers' `children`, or listing 
 (`kitchen.children = { table }` and `table.parent = kitchen`) is accepted.
 
 **Reading.** `obj.children` is a collection: it is iterated with `for … in`, and `.length()` (or its
-synonym `.size()`) returns the number of direct children.
+synonym `.size()`) returns the number of direct children. It is the live tree, not an array, so it
+cannot initialize or be assigned to an `array<object>`; `bgl.world.inParent(obj)` returns one (§21.9).
+
+**Iterating while moving.** `for … in obj.children` reads each child's next sibling before running
+the body, so the body may move the current child elsewhere: `for (object o in kitchen.children)
+o.parent = bowl;` moves every child. A body that moves *other* children of `obj`, or adds new ones,
+changes what the remaining iterations see; to visit exactly the children present at the start, iterate
+the snapshot `bgl.world.inParent(obj)` instead.
 
 **Run-time placement.** `obj.children += { … }` moves each listed object into `obj`. `=` on
 `children` is permitted only in an object body, and `-=` is not permitted; to remove an object, move

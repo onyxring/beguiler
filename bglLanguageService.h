@@ -88,6 +88,8 @@ class bglLanguageService{
         // accumulate instead of replacing. Declared by `additive property` / `extern additive
         // property` (the core BLR declares `name`, which the I6 compiler itself makes additive).
         bool isAdditiveProperty(const std::string& name) const;
+        // "file:line" of the class, object or enum registered as `name`, for redefinition messages.
+        string declaredAt(const string& name);
         bool isObjectType(string);
         bool isClassType(string);  // true for classes/enums/types only, not object instances
         

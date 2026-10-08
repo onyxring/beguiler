@@ -1559,6 +1559,7 @@ string LspServer::hoverIdentifier(const string& uri, int line, const string& wor
             for(auto* v : languageService.verbs)
                 if(v->name == lower) {
                     typeInfo = "verb " + (v->displayName.empty() ? v->name : v->displayName);
+                    docComment = v->docComment;
                     break;
                 }
         }
@@ -3924,7 +3925,7 @@ static const set<string> bglModifiers = {
 // (appendix A, 14.2.5). Colouring them as directives told the author they existed. `readonly` is
 // likewise not a qualifier — the parser answers "Illegal global identifier".
 static const set<string> bglDirectives = {
-    "#include", "#once", "#define", "#declare", "#if", "#else", "#endif",
+    "#include", "#once", "#define", "#defineI6", "#declare", "#if", "#else", "#endif",
     "#i6", "#startup", "#emitfirst", "#emitlast", "#using", "#exit"
 };
 

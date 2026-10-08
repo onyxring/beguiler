@@ -417,7 +417,7 @@ Glk arranges the screen as a binary tree of windows: a window is never resized d
 
 The types are also reachable as `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow` and `bgl.glulx.graphicsWindow`. Windows derive from `_bglObject`, not from `object`: they are not world-tree objects and have no `parent`, `children` or attributes.
 
-Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13).
+Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13), and so does a split the interpreter refuses (a graphics window where it has no graphics): either way the result is `null`, so `?.` or a `null` test guards the window's use.
 
 ### 22.7.2 Roots
 

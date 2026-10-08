@@ -4,20 +4,53 @@
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 global _bgl_catch_cookie;
-global _bgl_cv0;
-global _bgl_cvs0;
-global _bgl_cv1;
-global _bgl_cvs1;
-global _bgl_cv2;
-global _bgl_cvs2;
-global _bgl_cv3;
-global _bgl_cvs3;
-global _bgl_cv4;
-global _bgl_cvs4;
-global _bgl_cv5;
-global _bgl_cvs5;
-global _bgl_cv6;
-global _bgl_cvs6;
+global _bgl_throwv;
+global _bgl_thrown;
+global _bgl_tryrc;
+global _bgl_tryret;
+   Array _bglFramePool --> 64;
+   Global _bglFrameTop = 0;
+   [ _bglFrameAlloc size r;
+      if (_bglFrameTop + size > 64) {
+         print "^[Beguile runtime error: frame pool exhausted]^";
+         quit;
+      }
+      r = _bglFrameTop;
+      _bglFrameTop = _bglFrameTop + size;
+      return _bglFramePool + (r * WORDSIZE);
+   ];
+   [ _bglFrameFree size;
+      _bglFrameTop = _bglFrameTop - size;
+   ];
+   [ _bglArrayLocalAlloc size r i;
+      r = _bglFrameAlloc(size + 3);
+      r-->0 = size + 2;
+      for (i = 1: i <= size: i++) r-->i = 0;
+      r-->(size + 1) = 0;
+      r-->(size + 2) = $9084;
+      return r;
+   ];
+   [ _bglArrayLocalAllocPlain size r i;
+      r = _bglFrameAlloc(size + 1);
+      r-->0 = size;
+      for (i = 1: i <= size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglRawArrayLocalAlloc size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglByteArrayLocalAlloc nbytes words r i;
+      words = 1 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+      r = _bglFrameAlloc(words);
+      for (i = 0: i < words: i++) r-->i = 0;
+      r-->0 = nbytes;
+      return r;
+   ];
+   [ _bglByteArrayLocalFree nbytes;
+      _bglFrameFree(1 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+   ];
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -293,38 +326,40 @@ object bgl
             print "^[Unhandled exception]^";
             quit;
         }
-        @throw x _bgl_catch_cookie;
+        _bgl_throwv = x;
+        _bgl_thrown = 1;
+        @throw _bgl_throwv _bgl_catch_cookie;
     }
 ];
-[doubleRisky x inner;
-    _bgl_cvs0 = _bgl_catch_cookie;
-    @catch -> _bgl_cv0;
-    if (_bgl_catch_cookie == _bgl_cv0) {
-        _bgl_catch_cookie = _bgl_cv0;
-        if (x > 20) {
-            if (_bgl_catch_cookie == 0) {
-                print "^[Unhandled exception]^";
-                quit;
-            }
-            @throw 99 _bgl_catch_cookie;
-        }
-        _bgl_catch_cookie = _bgl_cvs0;
-    } else {
-        _bgl_catch_cookie = _bgl_cvs0;
-        inner = _bgl_cv0;
+[doubleRisky x _bglFrm;
+    _bglFrm = _bglFrameAlloc(4);
+    _bglFrm-->0 = x;
+    _bglFrm-->2 = _bgl_catch_cookie;
+    _bglFrm-->3 = _bglFrameTop;
+    _bgl_tryrc = _bgl_try0(_bglFrm);
+    _bgl_catch_cookie = _bglFrm-->2;
+    if (_bgl_thrown) {
+        _bgl_thrown = 0;
+        _bglFrameTop = _bglFrm-->3;
+        _bglFrm-->1 = _bgl_tryrc;
         if (_bgl_catch_cookie == 0) {
             print "^[Unhandled exception]^";
             quit;
         }
-        @throw inner _bgl_catch_cookie;
+        _bgl_throwv = _bglFrm-->1;
+        _bgl_thrown = 1;
+        @throw _bgl_throwv _bgl_catch_cookie;
     }
+    _bglFrameFree(4);
 ];
 [deep;
     if (_bgl_catch_cookie == 0) {
         print "^[Unhandled exception]^";
         quit;
     }
-    @throw 7 _bgl_catch_cookie;
+    _bgl_throwv = 7;
+    _bgl_thrown = 1;
+    @throw _bgl_throwv _bgl_catch_cookie;
 ];
 [middle;
     deep();
@@ -339,82 +374,134 @@ class risk
                 print "^[Unhandled exception]^";
                 quit;
             }
-            @throw 101 _bgl_catch_cookie;
+            _bgl_throwv = 101;
+            _bgl_thrown = 1;
+            @throw _bgl_throwv _bgl_catch_cookie;
         }
     ]
 ;
 risk g_risk
 ;
-[main e a b c d e5;
-    _bgl_cvs1 = _bgl_catch_cookie;
-    @catch -> _bgl_cv1;
-    if (_bgl_catch_cookie == _bgl_cv1) {
-        _bgl_catch_cookie = _bgl_cv1;
-        risky(5);
-        risky(15);
-        _bgl_catch_cookie = _bgl_cvs1;
-    } else {
-        _bgl_catch_cookie = _bgl_cvs1;
-        e = _bgl_cv1;
+[main _bglFrm;
+    _bglFrm = _bglFrameAlloc(18);
+    _bglFrm-->6 = _bgl_catch_cookie;
+    _bglFrm-->7 = _bglFrameTop;
+    _bgl_tryrc = _bgl_try1(_bglFrm);
+    _bgl_catch_cookie = _bglFrm-->6;
+    if (_bgl_thrown) {
+        _bgl_thrown = 0;
+        _bglFrameTop = _bglFrm-->7;
+        _bglFrm-->0 = _bgl_tryrc;
     }
-    _bgl_cvs2 = _bgl_catch_cookie;
-    @catch -> _bgl_cv2;
-    if (_bgl_catch_cookie == _bgl_cv2) {
-        _bgl_catch_cookie = _bgl_cv2;
-        _bgl_cvs3 = _bgl_catch_cookie;
-        @catch -> _bgl_cv3;
-        if (_bgl_catch_cookie == _bgl_cv3) {
-            _bgl_catch_cookie = _bgl_cv3;
-            if (_bgl_catch_cookie == 0) {
-                print "^[Unhandled exception]^";
-                quit;
-            }
-            @throw 42 _bgl_catch_cookie;
-            _bgl_catch_cookie = _bgl_cvs3;
-        } else {
-            _bgl_catch_cookie = _bgl_cvs3;
-            a = _bgl_cv3;
-            if (_bgl_catch_cookie == 0) {
-                print "^[Unhandled exception]^";
-                quit;
-            }
-            @throw a _bgl_catch_cookie;
+    _bglFrm-->8 = _bgl_catch_cookie;
+    _bglFrm-->9 = _bglFrameTop;
+    _bgl_tryrc = _bgl_try2(_bglFrm);
+    _bgl_catch_cookie = _bglFrm-->8;
+    if (_bgl_thrown) {
+        _bgl_thrown = 0;
+        _bglFrameTop = _bglFrm-->9;
+        _bglFrm-->2 = _bgl_tryrc;
+    }
+    _bglFrm-->12 = _bgl_catch_cookie;
+    _bglFrm-->13 = _bglFrameTop;
+    _bgl_tryrc = _bgl_try4(_bglFrm);
+    _bgl_catch_cookie = _bglFrm-->12;
+    if (_bgl_thrown) {
+        _bgl_thrown = 0;
+        _bglFrameTop = _bglFrm-->13;
+        _bglFrm-->3 = _bgl_tryrc;
+    }
+    _bglFrm-->14 = _bgl_catch_cookie;
+    _bglFrm-->15 = _bglFrameTop;
+    _bgl_tryrc = _bgl_try5(_bglFrm);
+    _bgl_catch_cookie = _bglFrm-->14;
+    if (_bgl_thrown) {
+        _bgl_thrown = 0;
+        _bglFrameTop = _bglFrm-->15;
+        _bglFrm-->4 = _bgl_tryrc;
+    }
+    _bglFrm-->16 = _bgl_catch_cookie;
+    _bglFrm-->17 = _bglFrameTop;
+    _bgl_tryrc = _bgl_try6(_bglFrm);
+    _bgl_catch_cookie = _bglFrm-->16;
+    if (_bgl_thrown) {
+        _bgl_thrown = 0;
+        _bglFrameTop = _bglFrm-->17;
+        _bglFrm-->5 = _bgl_tryrc;
+    }
+    _bglFrameFree(18);
+];
+[ _bgl_try0 _bglFrm _bgl_cv;
+    @catch -> _bgl_cv;
+    _bgl_catch_cookie = _bgl_cv;
+    if (_bglFrm-->0 > 20) {
+        if (_bgl_catch_cookie == 0) {
+            print "^[Unhandled exception]^";
+            quit;
         }
-        _bgl_catch_cookie = _bgl_cvs2;
-    } else {
-        _bgl_catch_cookie = _bgl_cvs2;
-        b = _bgl_cv2;
+        _bgl_throwv = 99;
+        _bgl_thrown = 1;
+        @throw _bgl_throwv _bgl_catch_cookie;
     }
-    _bgl_cvs4 = _bgl_catch_cookie;
-    @catch -> _bgl_cv4;
-    if (_bgl_catch_cookie == _bgl_cv4) {
-        _bgl_catch_cookie = _bgl_cv4;
-        middle();
-        _bgl_catch_cookie = _bgl_cvs4;
-    } else {
-        _bgl_catch_cookie = _bgl_cvs4;
-        c = _bgl_cv4;
-    }
-    _bgl_cvs5 = _bgl_catch_cookie;
-    @catch -> _bgl_cv5;
-    if (_bgl_catch_cookie == _bgl_cv5) {
-        _bgl_catch_cookie = _bgl_cv5;
-        risky(3);
-        _bgl_catch_cookie = _bgl_cvs5;
-    } else {
-        _bgl_catch_cookie = _bgl_cvs5;
-        d = _bgl_cv5;
-    }
-    _bgl_cvs6 = _bgl_catch_cookie;
-    @catch -> _bgl_cv6;
-    if (_bgl_catch_cookie == _bgl_cv6) {
-        _bgl_catch_cookie = _bgl_cv6;
-        if (g_risk ~= nothing) {
-        g_risk.trigger();
+    return 0;
+];
+[ _bgl_try1 _bglFrm _bgl_cv;
+    @catch -> _bgl_cv;
+    _bgl_catch_cookie = _bgl_cv;
+    risky(5);
+    risky(15);
+    return 0;
+];
+[ _bgl_try2 _bglFrm _bgl_cv;
+    @catch -> _bgl_cv;
+    _bgl_catch_cookie = _bgl_cv;
+    _bglFrm-->10 = _bgl_catch_cookie;
+    _bglFrm-->11 = _bglFrameTop;
+    _bgl_tryrc = _bgl_try3(_bglFrm);
+    _bgl_catch_cookie = _bglFrm-->10;
+    if (_bgl_thrown) {
+        _bgl_thrown = 0;
+        _bglFrameTop = _bglFrm-->11;
+        _bglFrm-->1 = _bgl_tryrc;
+        if (_bgl_catch_cookie == 0) {
+            print "^[Unhandled exception]^";
+            quit;
         }
-        _bgl_catch_cookie = _bgl_cvs6;
-    } else {
-        _bgl_catch_cookie = _bgl_cvs6;
-        e5 = _bgl_cv6;
+        _bgl_throwv = _bglFrm-->1;
+        _bgl_thrown = 1;
+        @throw _bgl_throwv _bgl_catch_cookie;
     }
+    return 0;
+];
+[ _bgl_try3 _bglFrm _bgl_cv;
+    @catch -> _bgl_cv;
+    _bgl_catch_cookie = _bgl_cv;
+    if (_bgl_catch_cookie == 0) {
+        print "^[Unhandled exception]^";
+        quit;
+    }
+    _bgl_throwv = 42;
+    _bgl_thrown = 1;
+    @throw _bgl_throwv _bgl_catch_cookie;
+    return 0;
+];
+[ _bgl_try4 _bglFrm _bgl_cv;
+    @catch -> _bgl_cv;
+    _bgl_catch_cookie = _bgl_cv;
+    middle();
+    return 0;
+];
+[ _bgl_try5 _bglFrm _bgl_cv;
+    @catch -> _bgl_cv;
+    _bgl_catch_cookie = _bgl_cv;
+    risky(3);
+    return 0;
+];
+[ _bgl_try6 _bglFrm _bgl_cv;
+    @catch -> _bgl_cv;
+    _bgl_catch_cookie = _bgl_cv;
+    if (g_risk ~= nothing) {
+    g_risk.trigger();
+    }
+    return 0;
 ];

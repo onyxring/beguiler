@@ -1,62 +1,32 @@
+/* -----------------------------------------------------------------------------
+    _float.bgl - Floating-point numbers
+    Declares `float`, a single-precision floating-point number, and adds float
+    forms of the `bgl.util.math` functions. Glulx only.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// type float — IEEE 754 single-precision, ALWAYS present on Glulx, no include.
-//
-// Glulx-only (the Z-machine has no float opcodes); this file is pulled into core
-// under `#if TARGET_GLULX`. Everything is zero-cost until used: the `float` type
-// and its operators/casts are emitters (they emit nothing of their own), and the
-// backing routines are `superposed` (emitted only when a call site names them).
-// A Glulx game that never touches float pays nothing.
-//
-// Storage is a single native word, same width as int; the operators reinterpret the bits as
-// IEEE 754 single. int → float assignment is value-preserving via @numtof: `float x = 5;` (and
-// `x = n;`) gives 5.0. That is done in the LIBRARY, not the compiler — the float class publishes
-// `operator=(int)` below, which the assignment matcher selects for an int / int-literal RHS and
-// lowers to @numtof. The int→float CONVERSION operator (`(float)i`) stays `explicit` on purpose:
-// a non-explicit one would make `isTypeCompatible(int,float)` true and let a raw bit-copy slip
-// through (int 5's bit pattern is a denormal ≈ 7e-45) — the explicit form + `operator=(int)` keeps
-// every int→float path routed through @numtof. float → int stays EXPLICIT too (`(int)f`, truncating
-// via @ftonumz). Float LITERALS are written directly (`1.0`, `.3`, `-1.2`); the compiler lowers
-// them to Glulx `$+`/`$-` constants.
-//
-// The Glulx float opcodes (@fadd, @jflt, …) are statement/branch-form (they need
-// a target slot or a branch), so each is wrapped in a `superposed` routine that
-// returns a value; that lets the operator emitters be expression-form and compose
-// under nested expressions like `(int)(a + b * c)`.
-//=============================================================================
 
-
+//-- The float type ------------------------------------------------------------
+/// A single-precision floating-point number, written `1.5`, `.3` or `-2.0`.
 primitive class float {
-    emitter int operator = (float v){ $target = $v; }
-    // int → float assignment (`x = n;` for an int var → exact match here) routed through @numtof
-    // so the stored bits are the float VALUE (5 → 5.0), never a raw bit-copy. Int LITERALS carry
-    // their own pseudo-types (`intliteral` / `negativeintliteral`) that aren't isTypeCompatible with
-    // `int`, so `float x = 5;` / `float x = -3;` need their own exact overloads below.
-    emitter int operator = (int v){ $target = _bglFloatNumtof($v); }
-    emitter int operator = (intLiteral v){ $target = _bglFloatNumtof($v); }
-    emitter int operator = (negativeIntLiteral v){ $target = _bglFloatNumtof($v); }
+    emitter int operator = (float v){ $target = $v; }                                /// Assignment: the variable takes the value.
+    emitter int operator = (int v){ $target = _bglFloatNumtof($v); }                 /// Assignment: the variable takes the int's value as a float.
+    emitter int operator = (intLiteral v){ $target = _bglFloatNumtof($v); }          /// Assignment: the variable takes the number as a float.
+    emitter int operator = (negativeIntLiteral v){ $target = _bglFloatNumtof($v); }  /// Assignment: the variable takes the number as a float.
 
-    // Arithmetic — call the standalone routines directly (these are emitters and
-    // can't nest-call the _bglFloat facade, so they target the routines below).
-    emitter float operator + (float v){ _bglFloatFadd($val, $v) }
-    emitter float operator - (float v){ _bglFloatFsub($val, $v) }
-    emitter float operator * (float v){ _bglFloatFmul($val, $v) }
-    emitter float operator / (float v){ _bglFloatFdiv($val, $v) }
-    emitter float operator % (float v){ _bglFloatFmod($val, $v) }
+    emitter float operator + (float v){ _bglFloatFadd($val, $v) }  /// The sum.
+    emitter float operator - (float v){ _bglFloatFsub($val, $v) }  /// The difference.
+    emitter float operator * (float v){ _bglFloatFmul($val, $v) }  /// The product.
+    emitter float operator / (float v){ _bglFloatFdiv($val, $v) }  /// The quotient.
+    emitter float operator % (float v){ _bglFloatFmod($val, $v) }  /// The remainder.
 
-    // Equality — bit-equality (I6 `==`/`~=`). The hardware @jfeq opcode takes an
-    // epsilon parameter which makes it awkward for strict comparison; bit-compare
-    // is correct for the common case of matching a known value.
-    emitter bool operator == (float v){ $val == $v }
-    emitter bool operator != (float v){ $val ~= $v }
+    emitter bool operator == (float v){ $val == $v }  /// True when the values are equal.
+    emitter bool operator != (float v){ $val ~= $v }  /// True when the values differ.
 
-    /// Print as a decimal (four places), as `print(f)` does. This member is what an interpolated
-    /// string calls for a `{float}` segment.
-    replace emitter void print(){ _bglFloatPrintDecimal($val); }
+    replace emitter void print(){ _bglFloatPrintDecimal($val); }  /// Print the value as a decimal with four places.
 
-    // Comparison published for generic containers (array<T>.sort()). Without it sort()
-    // falls back to a signed-word compare, which is WRONG for IEEE 754: negatives are
-    // sign-magnitude, so they order backwards as signed words.
+    /// Compare two floats for sorting: -1, 0 or 1.
     static int operator <=> (var a, var b) {
         #i6 {
             if(_bglFloatLt(a, b)) return -1;
@@ -65,79 +35,60 @@ primitive class float {
         }
     }
 
-    // Ordering — Glulx @jflt/@jfle/@jfgt/@jfge are branch-form, so they live in
-    // helper routines that return rtrue/rfalse.
-    emitter bool operator <  (float v){ _bglFloatLt($val, $v) }
-    emitter bool operator <= (float v){ _bglFloatLe($val, $v) }
-    emitter bool operator >  (float v){ _bglFloatGt($val, $v) }
-    emitter bool operator >= (float v){ _bglFloatGe($val, $v) }
+    emitter bool operator <  (float v){ _bglFloatLt($val, $v) }  /// True when this is less than `v`.
+    emitter bool operator <= (float v){ _bglFloatLe($val, $v) }  /// True when this is at most `v`.
+    emitter bool operator >  (float v){ _bglFloatGt($val, $v) }  /// True when this is greater than `v`.
+    emitter bool operator >= (float v){ _bglFloatGe($val, $v) }  /// True when this is at least `v`.
 
-    // Compound assignment — recurses through the scalar operators.
-    emitter float operator += (float v){ $val = $val + $v }
-    emitter float operator -= (float v){ $val = $val - $v }
-    emitter float operator *= (float v){ $val = $val * $v }
-    emitter float operator /= (float v){ $val = $val / $v }
-    emitter float operator %= (float v){ $val = $val % $v }
+    emitter float operator += (float v){ $val = $val + $v }  /// Add `v` to the variable.
+    emitter float operator -= (float v){ $val = $val - $v }  /// Subtract `v` from the variable.
+    emitter float operator *= (float v){ $val = $val * $v }  /// Multiply the variable by `v`.
+    emitter float operator /= (float v){ $val = $val / $v }  /// Divide the variable by `v`.
+    emitter float operator %= (float v){ $val = $val % $v }  /// Set the variable to its remainder after dividing by `v`.
 
-    // Mixed float⊙int operators (float LHS, int RHS): promote the int operand to float via
-    // @numtof, then run the float op. This is the established pattern — a type publishes an
-    // operator per operand type it accepts (cf. int's own operators). Result stays float.
-    emitter float operator + (int v){ _bglFloatFadd($val, _bglFloatNumtof($v)) }
-    emitter float operator - (int v){ _bglFloatFsub($val, _bglFloatNumtof($v)) }
-    emitter float operator * (int v){ _bglFloatFmul($val, _bglFloatNumtof($v)) }
-    emitter float operator / (int v){ _bglFloatFdiv($val, _bglFloatNumtof($v)) }
-    emitter float operator % (int v){ _bglFloatFmod($val, _bglFloatNumtof($v)) }
-    emitter bool  operator == (int v){ $val == _bglFloatNumtof($v) }
-    emitter bool  operator != (int v){ $val ~= _bglFloatNumtof($v) }
-    emitter bool  operator <  (int v){ _bglFloatLt($val, _bglFloatNumtof($v)) }
-    emitter bool  operator <= (int v){ _bglFloatLe($val, _bglFloatNumtof($v)) }
-    emitter bool  operator >  (int v){ _bglFloatGt($val, _bglFloatNumtof($v)) }
-    emitter bool  operator >= (int v){ _bglFloatGe($val, _bglFloatNumtof($v)) }
-    emitter float operator += (int v){ $val = $val + _bglFloatNumtof($v) }
-    emitter float operator -= (int v){ $val = $val - _bglFloatNumtof($v) }
-    emitter float operator *= (int v){ $val = $val * _bglFloatNumtof($v) }
-    emitter float operator /= (int v){ $val = $val / _bglFloatNumtof($v) }
+    emitter float operator + (int v){ _bglFloatFadd($val, _bglFloatNumtof($v)) }  /// The sum.
+    emitter float operator - (int v){ _bglFloatFsub($val, _bglFloatNumtof($v)) }  /// The difference.
+    emitter float operator * (int v){ _bglFloatFmul($val, _bglFloatNumtof($v)) }  /// The product.
+    emitter float operator / (int v){ _bglFloatFdiv($val, _bglFloatNumtof($v)) }  /// The quotient.
+    emitter float operator % (int v){ _bglFloatFmod($val, _bglFloatNumtof($v)) }  /// The remainder.
+    emitter bool  operator == (int v){ $val == _bglFloatNumtof($v) }              /// True when the values are equal.
+    emitter bool  operator != (int v){ $val ~= _bglFloatNumtof($v) }              /// True when the values differ.
+    emitter bool  operator <  (int v){ _bglFloatLt($val, _bglFloatNumtof($v)) }   /// True when this is less than `v`.
+    emitter bool  operator <= (int v){ _bglFloatLe($val, _bglFloatNumtof($v)) }   /// True when this is at most `v`.
+    emitter bool  operator >  (int v){ _bglFloatGt($val, _bglFloatNumtof($v)) }   /// True when this is greater than `v`.
+    emitter bool  operator >= (int v){ _bglFloatGe($val, _bglFloatNumtof($v)) }   /// True when this is at least `v`.
+    emitter float operator += (int v){ $val = $val + _bglFloatNumtof($v) }        /// Add `v` to the variable.
+    emitter float operator -= (int v){ $val = $val - _bglFloatNumtof($v) }        /// Subtract `v` from the variable.
+    emitter float operator *= (int v){ $val = $val * _bglFloatNumtof($v) }        /// Multiply the variable by `v`.
+    emitter float operator /= (int v){ $val = $val / _bglFloatNumtof($v) }        /// Divide the variable by `v`.
 
-    // Explicit cast: (int)f — truncate toward zero via @ftonumz. Use the raw
-    // opcode bgl.asm.ftonumn() if nearest-even rounding is wanted instead.
-    explicit emitter int operator(){ _bglFloatFtonumz($val) }
+    explicit emitter int operator(){ _bglFloatFtonumz($val) }  /// Convert to an `int`, truncating toward zero.
 }
 
-// Reverse cast: (float)i — @numtof on a regular int variable. `explicit` (see the header note):
-// int→float goes through `operator=(int)` for assignment and this cast for expressions; keeping
-// it explicit stops a raw int→float bit-copy from ever type-checking as "compatible".
+//-- Conversions and mixed arithmetic ----------------------------------------
 extend extern class int {
-    explicit emitter float operator(){ _bglFloatNumtof($val) }
+    explicit emitter float operator(){ _bglFloatNumtof($val) }  /// Convert to a `float`.
 
-    // Mixed int⊙float operators (int LHS, float RHS): promote self to float via @numtof, then
-    // run the float op. Result is float. Same pattern as float's int-accepting operators above.
-    emitter float operator + (float v){ _bglFloatFadd(_bglFloatNumtof($val), $v) }
-    emitter float operator - (float v){ _bglFloatFsub(_bglFloatNumtof($val), $v) }
-    emitter float operator * (float v){ _bglFloatFmul(_bglFloatNumtof($val), $v) }
-    emitter float operator / (float v){ _bglFloatFdiv(_bglFloatNumtof($val), $v) }
-    emitter float operator % (float v){ _bglFloatFmod(_bglFloatNumtof($val), $v) }
-    emitter bool  operator == (float v){ _bglFloatNumtof($val) == $v }
-    emitter bool  operator != (float v){ _bglFloatNumtof($val) ~= $v }
-    emitter bool  operator <  (float v){ _bglFloatLt(_bglFloatNumtof($val), $v) }
-    emitter bool  operator <= (float v){ _bglFloatLe(_bglFloatNumtof($val), $v) }
-    emitter bool  operator >  (float v){ _bglFloatGt(_bglFloatNumtof($val), $v) }
-    emitter bool  operator >= (float v){ _bglFloatGe(_bglFloatNumtof($val), $v) }
+    emitter float operator + (float v){ _bglFloatFadd(_bglFloatNumtof($val), $v) }  /// The sum.
+    emitter float operator - (float v){ _bglFloatFsub(_bglFloatNumtof($val), $v) }  /// The difference.
+    emitter float operator * (float v){ _bglFloatFmul(_bglFloatNumtof($val), $v) }  /// The product.
+    emitter float operator / (float v){ _bglFloatFdiv(_bglFloatNumtof($val), $v) }  /// The quotient.
+    emitter float operator % (float v){ _bglFloatFmod(_bglFloatNumtof($val), $v) }  /// The remainder.
+    emitter bool  operator == (float v){ _bglFloatNumtof($val) == $v }              /// True when the values are equal.
+    emitter bool  operator != (float v){ _bglFloatNumtof($val) ~= $v }              /// True when the values differ.
+    emitter bool  operator <  (float v){ _bglFloatLt(_bglFloatNumtof($val), $v) }   /// True when this is less than `v`.
+    emitter bool  operator <= (float v){ _bglFloatLe(_bglFloatNumtof($val), $v) }   /// True when this is at most `v`.
+    emitter bool  operator >  (float v){ _bglFloatGt(_bglFloatNumtof($val), $v) }   /// True when this is greater than `v`.
+    emitter bool  operator >= (float v){ _bglFloatGe(_bglFloatNumtof($val), $v) }   /// True when this is at least `v`.
 }
-// Literal cast: (float)5 — explicit for the same reason.
 extend extern class intLiteral {
-    explicit emitter float operator(){ _bglFloatNumtof($val) }
+    explicit emitter float operator(){ _bglFloatNumtof($val) }  /// Convert to a `float`.
 }
-// Negative literal: (float)-3 — explicit for the same reason.
 extend extern class negativeIntLiteral {
-    explicit emitter float operator(){ _bglFloatNumtof($val) }
+    explicit emitter float operator(){ _bglFloatNumtof($val) }  /// Convert to a `float`.
 }
 
-//=============================================================================
-// Backing routines — all `superposed`, so each is emitted only when referenced.
-// Each returns a value so the operator emitters above stay expression-form. The
-// double-semicolon inside #i6 is harmless: the first ends the opcode, the second
-// is the implicit statement terminator.
-//=============================================================================
+//-- Implementation ------------------------------------------------------------
 superposed float _bglFloatFadd(float x, float y){ float r; #i6 { @fadd x y r; } return r; }
 superposed float _bglFloatFsub(float x, float y){ float r; #i6 { @fsub x y r; } return r; }
 superposed float _bglFloatFmul(float x, float y){ float r; #i6 { @fmul x y r; } return r; }
@@ -166,7 +117,7 @@ superposed float _bglFloatAbs(float v){
     return v;
 }
 
-// Ordering via the Glulx branch opcodes. NaN propagates as false through every branch.
+// Comparisons; NaN compares false.
 superposed bool _bglFloatLt(float x, float y){
     #i6 { @jflt x y ?yes; rfalse; .yes; rtrue; }
 }
@@ -180,9 +131,7 @@ superposed bool _bglFloatGe(float x, float y){
     #i6 { @jfge x y ?yes; rfalse; .yes; rtrue; }
 }
 
-// Print `v` in decimal: sign, integer part, `.`, then 4 fractional digits. A simple
-// display printer (not a full IEEE 754 round-trip); values beyond ±2.1e9 lose
-// integer-part precision.
+// Prints a float as a decimal with four places.
 superposed void _bglFloatPrintDecimal(float v){
     bool isNeg = _bglFloatLt(v, (float)0);
     if(isNeg) v = (float)0 - v;
@@ -201,69 +150,23 @@ superposed void _bglFloatPrintDecimal(float v){
     print(fdigits);
 }
 
-//=============================================================================
-// _bglFloat — the nicely-named facade (float math functions: sqrt/sin/cos/…).
-// Each method is an emitter that inlines to its `superposed` routine above, so
-// the facade emits nothing on its own and only the called routines materialize.
-//=============================================================================
-emitter class _bglFloat {
-    /// Add two floats (`x + y`). Backs the `+` operator.
-    emitter float fadd(float x, float y){ _bglFloatFadd($x, $y) }
-    /// Subtract (`x - y`). Backs the `-` operator.
-    emitter float fsub(float x, float y){ _bglFloatFsub($x, $y) }
-    /// Multiply (`x * y`). Backs the `*` operator.
-    emitter float fmul(float x, float y){ _bglFloatFmul($x, $y) }
-    /// Divide (`x / y`). Backs the `/` operator.
-    emitter float fdiv(float x, float y){ _bglFloatFdiv($x, $y) }
-    /// Floating-point remainder of `x / y`. Backs the `%` operator.
-    emitter float fmod(float x, float y){ _bglFloatFmod($x, $y) }
-
-    /// Convert an `int` to `float` (Glulx `@numtof`). Backs the `(float)i` cast.
-    emitter float numtof(int n){ _bglFloatNumtof($n) }
-    /// Convert a `float` to `int`, truncating toward zero (Glulx `@ftonumz`). Backs the `(int)f` cast.
-    emitter int ftonumz(float f){ _bglFloatFtonumz($f) }
-
-    /// Square root of `v`.
-    emitter float sqrt(float v){ _bglFloatSqrt($v) }
-    /// e raised to the power `v` (natural exponential).
-    emitter float exp(float v) { _bglFloatExp($v) }
-    /// Natural logarithm (base e) of `v`.
-    emitter float log(float v) { _bglFloatLog($v) }
-    /// `a` raised to the power `b`.
-    emitter float pow(float a, float b){ _bglFloatPow($a, $b) }
-    /// Sine of `v` (radians).
-    emitter float sin(float v) { _bglFloatSin($v) }
-    /// Cosine of `v` (radians).
-    emitter float cos(float v) { _bglFloatCos($v) }
-    /// Tangent of `v` (radians).
-    emitter float tan(float v) { _bglFloatTan($v) }
-    /// Arcsine of `v`, result in radians.
-    emitter float asin(float v){ _bglFloatAsin($v) }
-    /// Arccosine of `v`, result in radians.
-    emitter float acos(float v){ _bglFloatAcos($v) }
-    /// Arctangent of `v`, result in radians.
-    emitter float atan(float v){ _bglFloatAtan($v) }
-    /// Arctangent of `y/x` using the signs of both arguments to pick the quadrant, in radians.
-    emitter float atan2(float y, float x){ _bglFloatAtan2($y, $x) }
-    /// Smallest integer-valued float ≥ `v` (rounds up).
-    emitter float ceil(float v) { _bglFloatCeil($v) }
-    /// Largest integer-valued float ≤ `v` (rounds down).
-    emitter float floor(float v){ _bglFloatFloor($v) }
-    /// Absolute value of `v`.
-    emitter float abs(float v){ _bglFloatAbs($v) }
-
-    /// True if `x < y` (NaN compares false). Backs the `<` operator.
-    emitter bool lt(float x, float y){ _bglFloatLt($x, $y) }
-    /// True if `x <= y` (NaN compares false). Backs the `<=` operator.
-    emitter bool le(float x, float y){ _bglFloatLe($x, $y) }
-    /// True if `x > y` (NaN compares false). Backs the `>` operator.
-    emitter bool gt(float x, float y){ _bglFloatGt($x, $y) }
-    /// True if `x >= y` (NaN compares false). Backs the `>=` operator.
-    emitter bool ge(float x, float y){ _bglFloatGe($x, $y) }
-
-    /// Print `v` in decimal (sign, integer part, `.`, 4 fractional digits).
-    emitter void printDecimal(float v){ _bglFloatPrintDecimal($v) }
+//-- Float math ----------------------------------------------------------------
+// Float forms of the bgl.util.math helpers.
+extend class _bglMath {
+    emitter float sqrt(float v)          { _bglFloatSqrt($v) }      /// Return the square root of `v`.
+    emitter float exp(float v)           { _bglFloatExp($v) }       /// Return e raised to the power `v`.
+    emitter float log(float v)           { _bglFloatLog($v) }       /// Return the natural logarithm of `v`.
+    emitter float pow(float a, float b)  { _bglFloatPow($a, $b) }   /// Return `a` raised to the power `b`.
+    emitter float sin(float v)           { _bglFloatSin($v) }       /// Return the sine of `v`, in radians.
+    emitter float cos(float v)           { _bglFloatCos($v) }       /// Return the cosine of `v`, in radians.
+    emitter float tan(float v)           { _bglFloatTan($v) }       /// Return the tangent of `v`, in radians.
+    emitter float asin(float v)          { _bglFloatAsin($v) }      /// Return the arcsine of `v`, in radians.
+    emitter float acos(float v)          { _bglFloatAcos($v) }      /// Return the arccosine of `v`, in radians.
+    emitter float atan(float v)          { _bglFloatAtan($v) }      /// Return the arctangent of `v`, in radians.
+    emitter float atan2(float y, float x){ _bglFloatAtan2($y, $x) } /// Return the arctangent of `y/x`, in radians, using both signs to find the quadrant.
+    emitter float ceil(float v)          { _bglFloatCeil($v) }      /// Return `v` rounded up to a whole number.
+    emitter float floor(float v)         { _bglFloatFloor($v) }     /// Return `v` rounded down to a whole number.
+    emitter float abs(float v)           { _bglFloatAbs($v) }       /// Return the absolute value of `v`.
 }
 
-// Overload print() for the float type so callers can pass a float directly.
-emitter void print(float c){ _bglFloatPrintDecimal($c); }
+emitter void print(float c){ _bglFloatPrintDecimal($c); }  /// Print `c` as a decimal with four places.

@@ -107,6 +107,22 @@ class i6Emitter{
         // access stays direct. Populated by buildLocalRenameMap, consulted by spillName.
         map<string,string> currentLocalRenames;
         int currentSpillCount = 0;
+        // Z-machine try/catch. @throw returns from the routine that ran @catch rather than resuming
+        // after it, so each try body is lifted into its own routine `_bgl_tryN(_bglFrm)`. The
+        // enclosing function keeps every param and local in its frame, where the lifted body
+        // reaches them through the same `_bglFrm-->N` aliases.
+        map<string,string> currentTryParamRaw;             // param → its header local, copied into the frame at entry
+        map<int,pair<int,int>> currentTrySlots;            // try id → frame slots saving the catch cookie and _bglFrameTop
+        bool inLiftedTry = false;                          // emitting a lifted try body
+        int liftedLoopDepth = 0;                           // loops entered within the current lifted body
+        bool funcHasZTry(functionDef* fd);
+        // Glulx try/catch: @catch resumes in place, so the body stays inline. Its cookie, the saved
+        // outer cookie and the saved _bglFrameTop are routine locals (recursion-safe). Every exit
+        // from a try body restores the outer cookie; the stack holds each active try's save local
+        // and the loop depth it was entered at.
+        vector<string> glulxTryLocals(functionDef* fd);
+        vector<pair<string,int>> glulxTryStack;
+        void emitTryParamCopyIns(const string& indent);
         bool frameAllocEmitted = false;
         // Per-routine snapshots of the spill map, persisted from currentSpillAliases at emit time so
         // writeDebugBundle can record each local's storage location (the transient maps are cleared
@@ -133,6 +149,10 @@ class i6Emitter{
         vector<string> trackedByteArraysNeedingMagicInit;
 
         static string replaceWord(string str, const string& from, const string& to);
+        // replaceWord for an expression value: each substitution is bracketed when the operators
+        // beside it in str bind at least as tightly as the value's own loosest operator, so the body
+        // can't regroup it (`$b == true` with `x ~= 0`).
+        static string replaceOperand(string str, const string& from, const string& to);
         void buildSpillMap(functionDef* fd);
         void clearSpillMap();
         // Build the local-rename map for property-shadow avoidance. Walks the function body

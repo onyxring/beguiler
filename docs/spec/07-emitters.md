@@ -334,6 +334,8 @@ Inside an emitter body, the double-hash directives select which body text is sub
 parentheses, with the same definedness-versus-value rule. They are evaluated when the emitter is
 substituted, and are not valid in ordinary Beguile source, where the conditional is `#if` (§14.2.5).
 `##ifdef` and `##ifndef` do not exist at all: use `##if SYMBOL` here, `#if SYMBOL` there.
+As with `#if`, the condition runs to the end of its line, so the text it controls starts on the next
+line; text after the condition on the same line is a compile-time error.
 
 Single-hash directives are raw I6 and pass through to the output, where they act as I6 compile-time
 conditionals. Any other `##name` (for instance an I6 action constant such as `##Take`) also passes

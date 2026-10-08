@@ -53,6 +53,10 @@ class fileLexer{
         // token's docComment field. Cleared when consumed or when a blank line orphans it.
         std::string pendingDocComment;
         int         pendingDocLastLine = -1;  // last source line of the captured doc; -1 = none
+        // Where the last token getToken() delivered sits. A doc comment that starts on that line
+        // is a trailing doc (`int x; /// …`), which belongs to the line's first token, not the next.
+        int         lastTokenLine = -1;
+        std::string lastTokenFile;
 
         void open(std::string);
         void openText(const std::string& content, const std::string& virtualName, int startLine = 1);

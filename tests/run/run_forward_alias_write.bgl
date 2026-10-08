@@ -1,0 +1,15 @@
+/*  run_forward_alias_write — a write through a namespace `alias` declared later in the source.
+
+    The read already resolved through the pre-scanned alias; the write emitted the raw path
+    (`ns.th.a = …`), a property that does not exist.  */
+// EXPECT_OUTPUT: 4 9
+#beguilerSettings { target = z5; informName = "none"; }
+object thing { int a = 0; }
+superposed _bglObject keeper {
+    auto b = { int _b = 0; int operator() { return _b; }
+               void operator = (int v){ _b = v; ns.th.a = v; } }
+}
+void f(){ ns.th.a = 4; print($"{ns.th.a} "); }
+superposed _bglObject ns { }
+extend ns { alias th = thing; }
+void main(){ bglInit(); f(); keeper.b = 9; print(thing.a); }

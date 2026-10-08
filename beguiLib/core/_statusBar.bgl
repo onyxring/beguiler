@@ -1,28 +1,28 @@
+/* -----------------------------------------------------------------------------
+    _statusBar.bgl - Status bar
+    Provides `bgl.ui.statusBar`, the status line at the top of the screen.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-/*-----------------------------------------------------------------------------
-    bgl.ui.statusBar - core implementation.
 
-    This is overridden by the i6 Standard Library and puny libraries to map to their
-    implementations.
- -----------------------------------------------------------------------------*/
-extend _bglUi { alias statusBar = _bglStatus; } //bgl.ui.statusBar
+extend _bglUi {
+    alias statusBar = _bglStatus;   /// The status line at the top of the screen.
+}
 
-/// `bgl.ui.statusBar` — the status line. The IF library bindings replace this with their own.
+/// The status line at the top of the screen.
 superposed _bglObject _bglStatus {
-    /// The status window's handle. 0 on the Z-machine; a Glk window id on Glulx.
-     auto id  = {   // id  getter/setter 
-        int _id   = 0;                 
+    /// The status window's handle: a Glk window id on Glulx, 0 on the Z-machine.
+    auto id  = {
+        int _id   = 0;
         int operator() { return _id; }
         void operator = (int newId){
             _id=newId;
         }
     }
-    /// The status bar's height in lines. Writing it opens or resizes the window.
-    auto height = {   // height  getter/setter 
-        int _h   = 0;                 
-        #if TARGET_GLULX
-            int _win = 0;           
-        #endif
+    /// The status bar's height, in lines; setting it opens or resizes the window.
+    auto height = {
+        int _h   = 0;
 
         int operator() { return _h; }
 
@@ -30,10 +30,11 @@ superposed _bglObject _bglStatus {
             _h = v;
             #if TARGET_GLULX
                 bGlulxWindowMethodFlags winMethod = bGlulxWindowPlacement.above | bGlulxWindowScale.fixed | bGlulxWindowBorder.noBorder;
-                if(_win == 0)
-                    _win = bgl.asm.windowOpen(bgl.asm.windowGetRoot(), eGlulxWindowType.textGrid, v, winMethod, 0);
+                int win = bgl.ui.statusBar.id;
+                if(win == 0)
+                    bgl.ui.statusBar.id = bgl.asm.windowOpen(bgl.asm.windowGetRoot(), eGlulxWindowType.textGrid, v, winMethod, 0);
                 else
-                    bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(_win), winMethod, v, _win);
+                    bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(win), winMethod, v, win);
             #else
                 bgl.asm.splitWindow(v);
             #endif

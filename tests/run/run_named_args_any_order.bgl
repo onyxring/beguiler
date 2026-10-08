@@ -1,0 +1,24 @@
+/*  run_named_args_any_order — named arguments fill their parameter wherever they appear (§6.3).
+
+    A named argument may skip a defaulted parameter, come before a positional one's name, or be
+    reordered entirely; overload resolution places the names before type-checking. Covers a global
+    function (which matched names by position), an overload set told apart by a named parameter's
+    type, and a method.  */
+// EXPECT_OUTPUT: g,3,10,1 1,0,1 g,3,10,0 g,10,20,1 h,8,10,0 i5 sYes m:1,9
+#beguilerSettings { target = z5; informName = "none"; }
+void spawn(string name, int x, int y = 10, bool hostile = false) { print($"{name},{x},{y},{(int)hostile} "); }
+void f3(int a, int b = 0, bool c = false) { print($"{a},{b},{(int)c} "); }
+void pick(int n, int w = 0)    { print($"i{n} "); }
+void pick(string s, int w = 0) { print($"s{s} "); }
+class Pen { void draw(int x, int y = 1, int z = 2) { print($"m:{y},{z}"); } }
+Pen quill { }
+void main(){
+    spawn("g", 3, hostile: true);
+    f3(1, c: true);
+    spawn(x: 3, name: "g");
+    spawn(x: 10, y: 20, name: "g", hostile: true);
+    int v = 7; spawn(name: "h", x: v + 1);
+    pick(w: 1, n: 5);
+    pick(w: 1, s: "Yes");
+    quill.draw(z: 9, x: 0);
+}

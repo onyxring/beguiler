@@ -1,0 +1,5 @@
+// A `##if` condition ends at the end of its line; code written on the same line is an error, not a false condition.
+// EXPECT_ERROR: A condition ends at the end of its line
+#beguilerSettings { target = z5; informName = "none"; }
+emitter void note(var v){ ##if DEBUG print $v; ##endif }
+void main(){ note(1); }

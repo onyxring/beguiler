@@ -301,7 +301,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     // (`$val-->$i`, indexing from word 0, no count slot) and size()/length()/for-in are rejected —
     // matching the parameter form. (Members are unaffected: they use the property `.&prop-->n`
     // mechanism, already flat.) type is a per-node value copy, so this doesn't touch the shared type.
-    if(arrDecl.isRaw && elementType != "char")
+    if(arrDecl.isRaw)
         arrDecl.type.name = "rawarray<" + elementType + ">";
 
     functionDef* func = dynamic_cast<functionDef*>(&contextObj);
@@ -403,6 +403,19 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                                     arrDecl.name));
             } else {
                 string target = (string)dataType + "<" + elementType + ">";
+                // genericValueFits compares template arguments only; a value that isn't an array at
+                // all (no `[]`) would alias as one and index wild memory.
+                const string& vt = expr->resolvedType;
+                if(!vt.empty() && vt != "var" && vt != "nullliteral" && vt.find('<') == string::npos)
+                    if(classDef* vc = getDispatchClass(vt);
+                       vc && !findMemberInHierarchy(vc, [](typeMember* m){ return m->name == "[]"; })){
+                        if(vt == "childrenprop")
+                            parsingError(format("Cannot assign '{0}' to array '{1}': `children` is the live object "
+                                "tree, not an array. Take a snapshot with `bgl.world.inParent(…)`.",
+                                expr->text(), arrDecl.name));
+                        parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'",
+                            typeDisplayName(vt), typeDisplayName(target)));
+                    }
                 if(!elementType.empty() && !genericValueFits(expr, target, func, body))
                     parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'",
                         typeDisplayName(elementAwareType(expr, func, body)), typeDisplayName(target)));
@@ -1620,10 +1633,13 @@ grammarLine bglParser::parseGrammarLineContent(){
             // name (the I6 runtime `noun` object). In a grammar line position the token
             // meaning always wins; outside grammar lines the global wins via normal
             // ambiguity resolution.
+            // grammarToken is searched first, so another enum's same-named member (eParserError.number)
+            // can't take the place of a grammar token (NUMBER).
             string resolvedType;
+            for(int pass = 0; pass < 2 && resolvedType.empty(); pass++)
             for(typeDef* t : languageService.objectTypes){
                 auto* ed = dynamic_cast<enumDef*>(t);
-                if(!ed) continue;
+                if(!ed || (pass == 0) != (ed->name == "grammartoken")) continue;
                 bool found = false;
                 for(enumValueDef* v : ed->namedValues)
                     if(v->name == tokenStr){

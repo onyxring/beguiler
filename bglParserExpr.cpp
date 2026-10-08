@@ -455,9 +455,10 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     string rhsClassName;
     if(languageService.findObjectType(rhsType) != nullptr)
         if(classDef* rc = languageService.classOf(rhsType)) rhsClassName = rc->name;
+    string matchName = opName;   // `<=>` while deriving an ordering operator (below)
     auto opMatches = [&](typeMember* m, bool wantStatic, int widenMode){
         auto* opFn = dynamic_cast<functionDef*>(m);
-        if(!opFn || opFn->name != opName) return false;
+        if(!opFn || opFn->name != matchName) return false;
         if(opFn->isStatic != wantStatic) return false;
         // Pre-scan stubs have no params — match by name only (exact phase, as before).
         if(opFn->isPrePassStub) return widenMode == 0;
@@ -491,13 +492,25 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     // Exact first, then base-exact widen, then convertible widen — so every resolution that already
     // worked resolves identically (exact always wins), and among widen candidates the more specific
     // one wins. Within each phase, non-static wins: an instance operator inlines, a static costs a call.
-    for(int widenMode : {0, 1, 2, 3}){
-        if(matchedOp != nullptr) break;
-        for(bool wantStatic : {false, true}){
+    auto findOperator = [&]{
+        for(int widenMode : {0, 1, 2, 3}){
             if(matchedOp != nullptr) break;
-            if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* mm){ return opMatches(mm, wantStatic, widenMode); }))
-                matchedOp = dynamic_cast<functionDef*>(m);
+            for(bool wantStatic : {false, true}){
+                if(matchedOp != nullptr) break;
+                if(typeMember* m = findMemberInHierarchy(cls, [&](typeMember* mm){ return opMatches(mm, wantStatic, widenMode); }))
+                    matchedOp = dynamic_cast<functionDef*>(m);
+            }
         }
+    };
+    findOperator();
+    // A type without its own `<`, `>`, `<=` or `>=` gets it from its `<=>`: `a < b` is
+    // `(a <=> b) < 0`. A declared ordering operator, inherited or not, always wins.
+    bool derivedFromCompare = false;
+    if(!matchedOp && (opName == "<" || opName == ">" || opName == "<=" || opName == ">=")){
+        matchName = "<=>";
+        findOperator();
+        derivedFromCompare = matchedOp != nullptr;
+        matchName = opName;
     }
 
     // LHS conversion fallback: if LHS has operator() → convertedType, retry operator search on that type.
@@ -613,7 +626,8 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         }
         // Separate leading structural tokens (parens) from the actual operand
         vector<string> prefix;
-        while(expr->tokens.size() > 1 && expr->tokens.front() == "(")
+        // `!(` arrives as its own `~~` ahead of the parens; it applies to the whole group too.
+        while(expr->tokens.size() > 1 && (expr->tokens.front() == "(" || expr->tokens.front() == "~~"))
             { prefix.push_back(expr->tokens.front()); expr->tokens.erase(expr->tokens.begin()); }
         string lhsText = expr->text();
         // $self = host of property access (parentProp's `parent($self) == $v` etc.).
@@ -637,7 +651,8 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         // Separate leading structural parens from the operand, as the emitter branch does —
         // otherwise `(a <=> b) < 0` folds the '(' into the LHS and emits `routine((a, b))`.
         vector<string> prefix;
-        while(expr->tokens.size() > 1 && expr->tokens.front() == "(")
+        // `!(` arrives as its own `~~` ahead of the parens; it applies to the whole group too.
+        while(expr->tokens.size() > 1 && (expr->tokens.front() == "(" || expr->tokens.front() == "~~"))
             { prefix.push_back(expr->tokens.front()); expr->tokens.erase(expr->tokens.begin()); }
         string lhsText = expr->text();
         // Settle the overload set's names BEFORE reading i6name. An operator carries a
@@ -661,6 +676,10 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         // No operator found on this type
         parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'",
             opName, cls->dName(), typeDisplayName(rhsType.empty() ? "unknown" : rhsType)));
+    }
+    if(derivedFromCompare){
+        expr->tokens.back() = "(" + expr->tokens.back() + ") " + opName + " 0";
+        expr->resolvedType = "bool";
     }
     return true;
 }
@@ -1629,6 +1648,19 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
     // Build the guarded chain
     string injText = optTemp + " = " + lhsName + ";";
     string currentType = lhsType;
+    // One property step off optTemp. A property-class member (e.g. `parent`) reads through its
+    // operator() emitter, exactly as a plain `.` read does; propType becomes the read's type.
+    auto chainPropertyRead = [&](const string& memberName, string& propType) -> string {
+        if(classDef* cls = getDispatchClass(currentType))
+            if(auto* vd = dynamic_cast<variableDeclaration*>(findMemberInHierarchy(cls, [&](typeMember* m){
+                    auto* v = dynamic_cast<variableDeclaration*>(m); return v && v->name == memberName; })))
+                propType = vd->type.name;
+        string readRet;
+        string read = applyPropertyClassRead(optTemp, propType, readRet);
+        if(read.empty()) return optTemp + "." + memberI6Name(currentType, memberName);
+        if(!readRet.empty()) propType = readRet;
+        return read;
+    };
     // Process chain steps: each is ?.member, ?.method(), or a trailing .member/.method()
     while(true){
         string nullTest = getNullTest(nullTestFn, optTemp);
@@ -1673,15 +1705,9 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
             currentType = method->returnType.name;
             afterMember = exprNext(st);
         } else {
-            // ?.property — simple property access
+            // ?.property
             string propType = resolvePathType("_x_." + member.value, func, body);
-            // We can't resolve the runtime path, so check the class for a member
-            classDef* cls = getDispatchClass(currentType);
-            if(cls != nullptr)
-                for(typeMember* m : cls->members)
-                    if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                        if(vd->name == member.value){ propType = vd->type.name; break; }
-            injText += " " + optTemp + " = " + optTemp + "." + member.value + ";";
+            injText += " " + optTemp + " = " + chainPropertyRead(member.value, propType) + ";";
             currentType = propType;
         }
         // Check for continuation: another ?. or regular .
@@ -1740,13 +1766,8 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 else prefetched = afterMember;
             } else {
                 // .property
-                classDef* cls = getDispatchClass(currentType);
                 string propType;
-                if(cls != nullptr)
-                    for(typeMember* m : cls->members)
-                        if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                            if(vd->name == nextMember.value){ propType = vd->type.name; break; }
-                injText += " " + optTemp + " = " + optTemp + "." + nextMember.value + ";";
+                injText += " " + optTemp + " = " + chainPropertyRead(nextMember.value, propType) + ";";
                 currentType = propType;
                 prefetched = afterNext;
             }

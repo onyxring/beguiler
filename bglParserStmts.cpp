@@ -74,7 +74,7 @@ bool bglParser::processRtrue(vector<token>& t, Qualifiers&, abstractObject& ctx)
         parsingError("'rtrue' is not valid at global scope");
     functionDef* func = dynamic_cast<functionDef*>(&ctx);
     if(func != nullptr && func->returnType.name == "void")
-        parsingError(format("Cannot use 'rtrue' in void routine '{0}'", func->name));
+        parsingError(format("Cannot use 'rtrue' in void routine '{0}'", (currentFunc ? currentFunc : func)->dName()));
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
     returnStatement& rt = *(new returnStatement());
     rt.src = file.currentLocation();
@@ -88,7 +88,7 @@ bool bglParser::processRfalse(vector<token>& t, Qualifiers&, abstractObject& ctx
         parsingError("'rfalse' is not valid at global scope");
     functionDef* func = dynamic_cast<functionDef*>(&ctx);
     if(func != nullptr && func->returnType.name == "void")
-        parsingError(format("Cannot use 'rfalse' in void routine '{0}'", func->name));
+        parsingError(format("Cannot use 'rfalse' in void routine '{0}'", (currentFunc ? currentFunc : func)->dName()));
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
     returnStatement& rf = *(new returnStatement());
     rf.src = file.currentLocation();
@@ -106,7 +106,7 @@ void bglParser::emitRtrueRfalseWithMessage(abstractObject& ctx, const string& wh
         parsingError(format("'{0}' is not valid at global scope", which));
     functionDef* func = dynamic_cast<functionDef*>(&ctx);
     if(func != nullptr && func->returnType.name == "void")
-        parsingError(format("Cannot use '{0}' in void routine '{1}'", which, func->name));
+        parsingError(format("Cannot use '{0}' in void routine '{1}'", which, (currentFunc ? currentFunc : func)->dName()));
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
     sourceLocation stmtLoc = file.currentLocation();
 
@@ -2418,6 +2418,18 @@ string bglParser::qualifyCallName(token tok, StatementContext& sc){
     }
     if(func != nullptr && rawName.find('.') == string::npos){
         if(languageService.findGlobalAs<functionDef>(rawName) && isUsingImportedValueEmitter(rawName)) return rawName;
+        // A global overload set is bound by its arguments (bindGlobalCall), not by name: once
+        // mangled, its overloads no longer collapse to one qualification. Unless something
+        // nearer shadows the name, leave it for the call binding.
+        {
+            int overloads = 0;
+            for(typeDef* g : languageService.globals)
+                if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == rawName) overloads++;
+            if(overloads > 1 && !qualifyFromParams(rawName, func) && !qualifyFromBodyLocals(rawName, body)
+               && !qualifyFromAncestorBlocks(rawName, body) && !qualifyFromCurrentObject(rawName)
+               && !qualifyFromCurrentClass(rawName) && !qualifyFromCaptures(rawName))
+                return rawName;
+        }
         string qualified = qualifyIdentifier(rawName, func, body);
         // qualifyIdentifier walks inherited VARIABLES but not functions.
         // For call-form resolution, also check the class hierarchy for inherited methods.
@@ -2896,6 +2908,7 @@ bool bglParser::processCallStatement(token tok, StatementContext& sc){
 bool bglParser::processStatement(token tok, abstractObject& contextObj){
     StatementContext sc;
     sc.src  = tok.src.line > 0 ? tok.src : file.currentLocation();
+    if(tok.src.line > 0) sc.src.col = max(1, sc.src.col - (int)tok.originalValue.size());
     currentStatementSrc = sc.src;
     sc.func = dynamic_cast<functionDef*>(&contextObj);
     sc.body = sc.func ? dynamic_cast<statementBlock*>(sc.func->body) : nullptr;

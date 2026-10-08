@@ -1,81 +1,40 @@
+/* -----------------------------------------------------------------------------
+    _array.bgl - Arrays
+    Declares `array<T>`, the fixed-capacity array, and `rawArray<T>`, a bare
+    block of memory for passing to and from Inform 6 code. `#include <array>`
+    adds appending, sorting and the other array operations.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// type array<T>
-//-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
-// Core declaration — zero-byte: emitter and extern only, no I6 routines
-// emitted unless the <array> extension is included.
-//
-// Without `#include <array>`: plain N-slot I6 tables. size() and length()
-// both return the raw slot count. for-in walks every slot.
-//
-// With `#include <array>`: the extension `replace`s size()/length() with
-// tracked-length-aware versions that probe a magic marker, and the
-// compiler emits arrays with the layout
-//   [I6-header=N+2, data×N, length, $9084(magic)]
-//
-// In both cases, operator[] is `$val-->($i+1)` — the data slot offset is
-// the same whether or not the extra length+magic slots are present.
-//
-// `array<char>` routes to the byteArray subclass below, which overrides the
-// subscript and size emitters with byte-access (`->` instead of `-->`).
-//=============================================================================
-/// A fixed-capacity array of `T`. Declare it sized (`array<int> a[8]`) or from a list
-/// (`array<int> a = {1,2,3}`). `#include <array>` adds append/insert/sort and the rest.
+
+/// A fixed-capacity array of `T`, declared sized (`array<int> a[8]`) or from a list (`array<int> a = {1,2,3}`).
 extern emitter class array<T>{
-    replace emitter T    operator[](int i)        { $val-->($i+1) }
-    replace emitter T    operator[]=(int i, T v)  { $val-->($i+1) = $v }
-    /// How many elements the array can hold.
-    replace emitter int  size()                   { $val-->0 }
-    /// How many elements are in use. Equals `size()` until `<array>` starts tracking it.
-    replace emitter int  length()                 { $val-->0 }
+    replace emitter T    operator[](int i)        { $val-->($i+1) }       /// The element at `i`.
+    replace emitter T    operator[]=(int i, T v)  { $val-->($i+1) = $v }  /// Set the element at `i`.
+    replace emitter int  size()                   { $val-->0 }             /// Return how many elements the array can hold.
+    replace emitter int  length()                 { $val-->0 }             /// Return how many elements are in use; the same as `size()` unless `<array>` is included.
 }
 
-// rawArray<T> — a raw I6 word array with NO length header, mapping directly onto I6's `Array X -->`.
-// Interop type for raw I6 word arrays (parse results, tables, pointers passed from I6) where YOU own
-// the bounds. operator[i] indexes with no offset ($val-->i, vs array<T>'s $val-->(i+1)). A rawArray is
-// a bare pointer with no recoverable extent — I6 stores no length for `-->` arrays, and its `.#`
-// operator is property-only, so `(ptr.#)` will not compile. size()/length()/for-in are therefore
-// rejected at compile time on a rawArray (see bindMethodCall / processFor); pass the length explicitly.
-// (A file-scope rawArray *literal* is count-prefixed and reaches size() through the <array> path
-// instead — `_bglArray.size(arr, 0)` reading word 0 — so it is unaffected by that rejection.)
-/// An array with no count word and no tracking — element 0 is the first word. For handing a bare
-/// block of memory to an I6 routine that expects one (15.10).
+/// A bare block of memory with no length, for passing to and from Inform 6 code; `rawArray<char>` holds bytes.
 extern emitter class rawArray<T> {
-    emitter T   operator[](int i)        { $val-->$i }
-    emitter T   operator[]=(int i, T v)  { $val-->$i = $v }
+    // The char forms come first: a subscript takes the first operator[] whose result type matches.
+    emitter char operator[](int i)          { $val->$i }        /// The byte at `i`.
+    emitter char operator[]=(int i, char v) { $val->$i = $v }   /// Set the byte at `i`.
+    emitter T    operator[](int i)          { $val-->$i }       /// The element at `i`.
+    emitter T    operator[]=(int i, T v)    { $val-->$i = $v }  /// Set the element at `i`.
 }
 
-// byteArray — byte-sized element array, used internally for array<char>.
-// Overrides array's word-access emitters with byte-access (`->`).
-// I6 hybrid buffer layout (since I6 6.30): the first WORD ($val-->0) holds
-// the current length, and data follows starting at byte WORDSIZE. WORDSIZE
-// is 2 on Z, 4 on Glulx — `bgl.wordsize` resolves to the right offset for
-// both targets. (Previously hardcoded `+2` was a Z-machine assumption that
-// silently read the middle of the length WORD on Glulx.)
-//
-// size() returns the runtime length WORD. This is the count of chars
-// actually present in the buffer (per I6 print_to_array's convention),
-// not the allocated capacity. For tracked sized buffers (`#include <buf>`),
-// `<buf>` adds size()/length() that distinguish capacity from used space
-// via the orLibrary SizedBuffer prefix at negative offsets.
-/// The `array<char>` shape: one BYTE per element rather than one word. Used for text buffers.
+/// The type of `array<char>`: one byte per element, for text.
 extern emitter class byteArray : array {
-    replace emitter char operator[](int i)          { $val->($i + WORDSIZE) }
-    replace emitter char operator[]=(int i, char v) { $val->($i + WORDSIZE) = $v }
-    replace emitter int  size()                     { $val-->0 }
-    // A byte array uses I6's `buffer` layout (length WORD at offset 0, bytes from
-    // WORDSIZE on) — NOT the tracked word-array layout (data, then length+magic
-    // trailer). So it reads its length the same way as size(), from WORD 0, and must
-    // NOT inherit the `<array>` extension's tracked `length()` (which dispatches through
-    // `_bglArray` with a `$prop` this layout can't supply — emitting `<$prop undefined>`).
-    replace emitter int  length()                   { $val-->0 }
+    replace emitter char operator[](int i)          { $val->($i + WORDSIZE) }       /// The character at `i`.
+    replace emitter char operator[]=(int i, char v) { $val->($i + WORDSIZE) = $v }  /// Set the character at `i`.
+    replace emitter int  size()                     { $val-->0 }                     /// Return how many characters the array holds.
+    // Kept here so byte arrays don't take `<array>`'s length(), which suits word arrays only.
+    replace emitter int  length()                   { $val-->0 }                     /// Return how many characters the array holds.
 }
-//-----------------------------------------------------------------------------
-// This #storedEmitFirst block emits a stack used to manage the array behaviors.
-// Capacity (max elements per literal-list for-in) is _BGL_FORIN_SCRATCH_CAP, emitted by the
-// compiler from #beguilerSettings.forInScratchSize (default 31) whenever this block is used.
-// Table size = cap + 2 (one slot each for length and the magic marker); _bglScratchMake writes
-// those two relative to the array header (-->0), so they track the size automatically.
+//-- Implementation ------------------------------------------------------------
+// Scratch storage for `for(x in {a, b, c})` lists.
 #storedEmitFirst scratchSupport {
     Array _bglScratchStack table (_BGL_FORIN_SCRATCH_CAP + 2);
     Global _bglScratchTop = 0;

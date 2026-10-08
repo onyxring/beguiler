@@ -1,30 +1,37 @@
+/* -----------------------------------------------------------------------------
+    _bool.bgl - Booleans
+    Declares `bool` and the values `true` and `false`.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// type bool
-/// The two boolean values. `true` and `false` are usable bare; the enum name is rarely written.
+
+/// The two boolean values, written bare as `true` and `false`.
 extern enum eBool{
     true,
     false
 }
-/// A true/false value. One machine word, like every Beguile value.
-primitive class bool { //--Beguile-side type label over I6's word-sized truthiness; instances emit as `global X;`
+
+/// A true or false value.
+primitive class bool {
+    /// Print `true` or `false`.
     replace emitter void print(){
         if($val == true)
             print "true";
         else
             print "false";
     }
-    emitter eBool operator == (bool v){ $val == $v }
-    emitter eBool operator == (eBool v){ $val == $v }
-    emitter eBool operator != (bool v){ $val ~= $v }
-    emitter eBool operator != (eBool v){ $val ~= $v }
-    emitter bool operator = (bool v){ $target=$v; }
-    emitter bool operator = (eBool v){ $target=$v; }
-    emitter eBool operator && (bool v){ $val && $v }
-    emitter eBool operator && (eBool v){ $val && $v }
-    emitter eBool operator || (bool v){ $val || $v }
-    emitter eBool operator || (eBool v){ $val || $v }
-    emitter eBool operator ! (){ ~~$val }
+    emitter eBool operator == (bool v){ $val == $v }   /// True when the values are equal.
+    emitter eBool operator == (eBool v){ $val == $v }  /// True when the values are equal.
+    emitter eBool operator != (bool v){ $val ~= $v }   /// True when the values differ.
+    emitter eBool operator != (eBool v){ $val ~= $v }  /// True when the values differ.
+    emitter bool operator = (bool v){ $target=$v; }    /// Assignment: the variable takes the value.
+    emitter bool operator = (eBool v){ $target=$v; }   /// Assignment: the variable takes the value.
+    emitter eBool operator && (bool v){ $val && $v }   /// True when both are true.
+    emitter eBool operator && (eBool v){ $val && $v }  /// True when both are true.
+    emitter eBool operator || (bool v){ $val || $v }   /// True when either is true.
+    emitter eBool operator || (eBool v){ $val || $v }  /// True when either is true.
+    emitter eBool operator ! (){ ~~$val }              /// True when the value is false.
 }
 
-emitter void print(bool b){ if($b == true) print "true"; else print "false"; }
+emitter void print(bool b){ if($b == true) print "true"; else print "false"; }   /// Print `true` or `false`.

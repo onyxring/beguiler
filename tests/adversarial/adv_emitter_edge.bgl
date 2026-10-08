@@ -10,7 +10,11 @@ class Counter : object {
 }
 
 // Global emitter with $param substitution
-emitter void logValue(int v) { ##if DEBUG print $v; ##endif }
+emitter void logValue(int v) {
+    ##if DEBUG
+    print $v;
+    ##endif
+}
 
 Counter c { n = 10; }
 

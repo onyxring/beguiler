@@ -286,18 +286,18 @@ class rule
         return 2;
     ]
 ;
-array book table _bglanon3 _bglanon4 2 $9084;
+array book table _bglanon4 _bglanon5 2 $9084;
 [main v;
     print ( book-->(1+1) ).pri;
     if(( book-->(0+1) ).matcher provides print) ( book-->(0+1) ).matcher.print(); else print (name)( book-->(0+1) ).matcher;
     v = ( book-->(0+1) ).run();
     print v;
 ];
-rule _bglanon3
+rule _bglanon4
   with matcher shirt,
        pri 5
 ;
-rule _bglanon4
+rule _bglanon5
   with matcher shirt,
        pri 7
 ;

@@ -1,28 +1,20 @@
-#once
-//=============================================================================
-// Math — ALWAYS present, no manual include. Both the `superposed` implementation
-// routines below AND the nicely-named _bglMath facade (bgl.util.math) that wraps
-// them are auto-loaded in core, yet nothing is emitted unless referenced:
-//
-//   • the facade is emitters — inlined at the call site, zero footprint of its own;
-//   • each routine is `superposed` — materialized only when a call site names it.
-//
-// So the developer can reach for `_bglMath.pow(...)` (or the standalones, for
-// other BLR like uint's unsigned operators) anywhere, and a game that never
-// touches math pays nothing. There is no `<math>` include — math is always here.
-//=============================================================================
+/* -----------------------------------------------------------------------------
+    _math.bgl - Integer math
+    Integer helpers I6 has no operator for: unsigned comparison and division, powers,
+    shifts, min, max and clamp. Reach them as `bgl.util.math`.
 
-// Target-specific mask clearing the sign bit of a word (16-bit Z, 32-bit Glulx).
-// Top-level #if because inline ##if is only honored inside emitter bodies.
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
+#once
+
+//-- Implementation routines ---------------------------------------------------
+// The sign bit of a word is masked off by BGL_SIGN_MASK.
 #if TARGET_GLULX
     #define BGL_SIGN_MASK $7FFFFFFF
 #else
     #define BGL_SIGN_MASK $7FFF
 #endif
 
-// Compare two int values as if they were unsigned, returning -1 / 0 / 1
-// (x<y / x==y / x>y). Ported from the standard library's UnsignedCompare so the
-// comparison is target-agnostic and free of parser.h symbols.
 superposed int _bglUnsignedCompare(int x, int y){
     if(x == y) return 0;
     if(x < 0 && y >= 0) return 1;
@@ -33,32 +25,22 @@ superposed int _bglUnsignedCompare(int x, int y){
     return -1;
 }
 
-// Unsigned division: a / b treating both as unsigned. Fast path for the common
-// case (both non-negative uses native /). Sign-bit cases use an algebraic split
-// instead of binary long division. At most one recursive call.
 superposed int _bglUnsignedDiv(int a, int b){
     if(b == 0) return 0;
     if(a >= 0 && b > 0) return a / b;
-    // b has sign bit: b_unsigned >= HIGHBIT, so a/b is 0 or 1.
-    // (Plain if/else, not a ternary: ternary lowering allocates a `_bgl_temp`
-    // global at parse time that `superposed` does NOT withhold — it would leak
-    // into every story file since this routine lives in always-parsed core.)
     if(b < 0){
         if(_bglUnsignedCompare(a, b) >= 0) return 1;
         return 0;
     }
-    // a has sign bit, b is positive: split a into lowHalf + HIGHBIT
     int lowHalf = a & BGL_SIGN_MASK;
     int hq = BGL_SIGN_MASK / b;
     int hr = BGL_SIGN_MASK % b + 1;
     if(hr >= b){ hq = hq + 1; hr = hr - b; }
     int combined = lowHalf + hr;
     if(combined >= 0) return hq + combined / b;
-    // combined overflowed (sign bit set) — recurse once
     return hq + _bglUnsignedDiv(combined, b);
 }
 
-// Unsigned modulo: a % b treating both as unsigned.
 superposed int _bglUnsignedMod(int a, int b){
     if(b == 0) return 0;
     if(a >= 0 && b > 0) return a % b;
@@ -76,58 +58,41 @@ superposed int _bglPow(int i, int p){
     return retval;
 }
 
-// Plain if/else rather than a ternary — see the note in _bglUnsignedDiv: ternary
-// lowering leaks a `_bgl_temp` global that superposition can't withhold.
 superposed int _bglAbs(int p){ if(p < 0) return -p; return p; }
 superposed int _bglShiftLeft(int i, int numBits){ return i * _bglPow(2, numBits); }
 superposed int _bglShiftRight(int i, int numBits){ return i / _bglPow(2, numBits); }
 
-// Logical (zero-fill) right shift — divides as UNSIGNED, so a value with the sign
-// bit set does not sign-extend. This is what `uint >>` needs; signed `_bglShiftRight`
-// (native `/`) would smear the sign bit. Left shift is bit-identical either way, so
-// uint reuses `_bglShiftLeft`.
 superposed int _bglUnsignedShiftRight(int i, int numBits){ return _bglUnsignedDiv(i, _bglPow(2, numBits)); }
 
-// Plain if/else, never ternary — see the _bglUnsignedDiv note: ternary lowering leaks
-// a `_bgl_temp` global that superposition can't withhold, which would land in every
-// story file since this is always-parsed core.
 superposed int _bglMin(int a, int b){ if(a < b) return a; return b; }
 superposed int _bglMax(int a, int b){ if(a > b) return a; return b; }
 superposed int _bglClamp(int v, int lo, int hi){ if(v < lo) return lo; if(v > hi) return hi; return v; }
 superposed int _bglSign(int v){ if(v < 0) return -1; if(v > 0) return 1; return 0; }
 
-//=============================================================================
-// _bglMath — the nicely-named facade (also reachable as bgl.util.math). Each
-// method is an emitter that inlines to its `superposed` implementation above, so
-// the facade emits nothing on its own and only the called routines materialize.
-// (Emitter bodies can't nest-call other emitters, so BLR code that is itself an
-// emitter — e.g. uint's operators — calls the standalone routines directly.)
-//=============================================================================
-/// `bgl.util.math` — integer helpers I6 has no operator for.
+//-- The math facade -----------------------------------------------------------
+/// The `bgl.util.math` helpers: integer operations I6 has no operator for.
 emitter class _bglMath {
-    /// Compare two words as UNSIGNED: -1, 0 or 1. Beguile's `<` and `>` read ints as signed, so
-    /// 40000 looks negative to them; this is the comparison for addresses and bit patterns.
+    /// Compare two words as unsigned, returning -1, 0 or 1; `<` and `>` read ints as signed.
     emitter int unsignedCompare(int x, int y){ _bglUnsignedCompare($x, $y) }
-    /// Divide, reading both words as unsigned.
+    /// Divide `a` by `b`, reading both as unsigned.
     emitter int unsignedDiv(int a, int b)    { _bglUnsignedDiv($a, $b) }
-    /// Remainder, reading both words as unsigned.
+    /// Return the remainder of `a` divided by `b`, reading both as unsigned.
     emitter int unsignedMod(int a, int b)    { _bglUnsignedMod($a, $b) }
-    /// `i` raised to the power `p`. Integer only, and it will overflow silently.
+    /// Return `i` raised to the power `p`.
     emitter int pow(int i, int p)            { _bglPow($i, $p) }
-    /// Absolute value.
+    /// Return the absolute value of `p`.
     emitter int abs(int p)                   { _bglAbs($p) }
-    /// Shift `i` left by `numBits`, filling with zeros.
+    /// Shift `i` left by `numBits` bits.
     emitter int shiftLeft(int i, int numBits) { _bglShiftLeft($i, $numBits) }
-    /// Shift `i` right by `numBits`, filling with zeros — a LOGICAL shift, so the sign bit is not
-    /// carried down.
+    /// Shift `i` right by `numBits` bits.
     emitter int shiftRight(int i, int numBits){ _bglShiftRight($i, $numBits) }
-    /// The smaller of two ints.
+    /// Return the smaller of `a` and `b`.
     emitter int min(int a, int b)            { _bglMin($a, $b) }
-    /// The larger of two ints.
+    /// Return the larger of `a` and `b`.
     emitter int max(int a, int b)            { _bglMax($a, $b) }
-    /// `v` held inside `lo`..`hi` inclusive.
+    /// Return `v` limited to the range `lo` to `hi`.
     emitter int clamp(int v, int lo, int hi) { _bglClamp($v, $lo, $hi) }
-    /// -1, 0 or 1 according to the sign of `v`.
+    /// Return -1, 0 or 1 according to the sign of `v`.
     emitter int sign(int v)                  { _bglSign($v) }
 }
 

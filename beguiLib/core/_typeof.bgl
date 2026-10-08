@@ -1,55 +1,34 @@
-#once
-//=============================================================================
-// typeof — runtime type discrimination (Layer 0 of the union-type feature).
-//
-// `typeof(v)` reports the *machine category* of a value as an `eType`, wrapping
-// I6's one-opcode `metaclass()`. It is the general primitive behind union-typed
-// parameters: discriminate with `typeof(x)` / `switch`, then consume with a
-// `(T)x` cast. Works on both Z-machine and Glulx (metaclass is provided by the
-// I6 veneer on Glulx). ALWAYS present, no include; `superposed` so a game that
-// never calls it pays nothing, and the metaclass helpers are emitters (inlined).
-//
-// Contract: return a DEFINITE category, or `unknown` — never guess. A value that
-// is `nothing`/0 reports `unknown` (so it coincides with null; `eType.unknown` is
-// 0 and eType defines `operator ?()`, letting `typeof(x) ?? eType.int` fall back).
-//
-// LIMITATION — reports machine categories, not source types. `bool`, `char` and
-// `enum` values are indistinguishable from `int` at runtime and all report as
-// `eType.int`. A scalar that happens to equal a valid object number / packed
-// string or routine address is reported as that reference category (the classic
-// Z/Glulx metaclass ambiguity); discriminate such unions with a `(T)x` cast plus
-// your own residence check rather than relying on `typeof`.
-//=============================================================================
+/* -----------------------------------------------------------------------------
+    _typeof.bgl - Run-time type tests
+    Provides `typeof()`, which reports what kind of value a variable holds, for
+    telling apart the members of a union.
 
-// unknown = 0 so it coincides with null/nothing. (A null-coalescing `operator ?()`
-// over eType is deferred to Phase 2 with the safe-cast family; for now discriminate
-// with `== eType.unknown`.)
-/// What `typeof()` reports: a value's machine category, not its Beguile type.
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
+#once
+
+/// What `typeof()` reports: a value's kind at run time, not its declared type.
 enum eType {
-    unknown = 0,   // nothing/null, or a category metaclass cannot determine
-    int,           // a scalar word (also bool / char / enum — same representation)
-    string,        // a packed string address
-    routine,       // a routine address
-    object,        // an object
-    class          // a class
+    unknown = 0,   /// Null, or a value whose kind can't be told.
+    int,           /// A plain value; bool, char and enum values report this too.
+    string,        /// A string.
+    routine,       /// A routine.
+    object,        /// An object.
+    class          /// A class.
 }
 
-// Raw-I6 metaclass probes. Emitter bodies are raw I6, so `metaclass`/`Routine`/
-// `String`/`Object`/`Class` (I6 built-ins) are referenced directly here without
-// polluting the Beguile namespace — the same idiom the array/string libraries use.
+// Kind tests behind typeof().
 emitter bool _bglMcRoutine(var v) { (metaclass($v) == Routine) }
 emitter bool _bglMcString(var v)  { (metaclass($v) == String) }
 emitter bool _bglMcObject(var v)  { (metaclass($v) == Object) }
 emitter bool _bglMcClass(var v)   { (metaclass($v) == Class) }
 
-// typeof — the public primitive.
-/// The machine category of `v` — how to tell apart the members of a union (2.8.1).
-/// `bool`, `char` and enum values all report `int`; they share one representation at run time.
+/// Return what kind of value `v` holds; bool, char and enum values report `int`.
 superposed eType typeof(var v) {
     if (v == null)          return eType.unknown;
     if (_bglMcRoutine(v))   return eType.routine;
     if (_bglMcString(v))    return eType.string;
     if (_bglMcClass(v))     return eType.class;   // test Class before Object
     if (_bglMcObject(v))    return eType.object;
-    return eType.int;                              // none of the above: a scalar word
+    return eType.int;
 }

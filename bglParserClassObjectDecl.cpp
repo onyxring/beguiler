@@ -832,7 +832,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
     // tracking layer — the plain I6 property array an I6 library expects to read as
     // `obj.&prop-->n`. Both route through processArrayMember, which records which.
     if((tok.is("array") || tok.is("rawarray")) && file.peekToken().is("<")){
-        processArrayMember(newClass.members, newClass.dName(), nullptr, &newClass, &q, tok.is("rawarray"));
+        processArrayMember(newClass.members, newClass.dName(), nullptr, &newClass, &q, tok.is("rawarray"), tok.docComment);
         tok = file.getToken();
         return;
     }
@@ -1234,7 +1234,7 @@ void bglParser::promoteMemberArrayIfOversized(arrayDeclaration& arrDecl){
 }
 
 bool bglParser::processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
-                                   abstractObject* ctx, Qualifiers* q, bool declIsRaw){
+                                   abstractObject* ctx, Qualifiers* q, bool declIsRaw, const string& docComment){
     // `declIsRaw` distinguishes the keyword the caller consumed. `rawArray<T>` opts out of the
     // tracking layer, giving the bare I6 property array (`obj.&prop-->n`, no header) that an I6
     // library reads directly; `array<T>` keeps Beguile's semantics.
@@ -1259,6 +1259,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
         funcDef.displayName = propName.originalValue;
         funcDef.src = propName.src.line > 0 ? propName.src : file.currentLocation();
         funcDef.returnType.name = "array<" + elemType + ">";
+        funcDef.docComment = docComment;
         funcDef.isEmitter  = q->isEmitter;
         funcDef.isExternal = q->isExtern;
 
@@ -1332,6 +1333,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
 
     token sym = file.getToken({token::bracketOpen, token::assignment, token::endStatement});
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
+    arrDecl.docComment = docComment;
     arrDecl.src = file.currentLocation();   // so diagnostics on this member array report a line
     arrDecl.name = (string)propName;
     arrDecl.literalElements = literalElements;
@@ -2300,6 +2302,8 @@ void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
         funcDef.isEmitter = true;
         funcDef.isExplicit = q.isExplicit;
         funcDef.isDefault = q.isDefault;
+        if(!retType.docComment.empty())       funcDef.docComment = retType.docComment;
+        else if(!propName.docComment.empty()) funcDef.docComment = propName.docComment;
         token sym = file.getToken();
         bool funcHasParens = false;
         if(sym.is(token::parenOpen)){ funcHasParens = true; processParameterList(funcDef); sym = file.getToken(); }
@@ -2325,6 +2329,8 @@ void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
             funcDef.name = propName.value;
             funcDef.returnType = languageService.getType(tok.value);
             funcDef.isExternal = true;
+            if(!tok.docComment.empty())           funcDef.docComment = tok.docComment;
+            else if(!propName.docComment.empty()) funcDef.docComment = propName.docComment;
             processParameterList(funcDef);
             // Body is not allowed on non-emitter methods in extern objects
             token after = file.getToken();
@@ -2348,6 +2354,8 @@ void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
         prop.name = propName.value;
         prop.type = languageService.getType(tok.value);
         prop.isExternal = true;
+        if(!tok.docComment.empty())           prop.docComment = tok.docComment;
+        else if(!propName.docComment.empty()) prop.docComment = propName.docComment;
         bool propReplaced = false;
         for(size_t i = 0; i < newObj.members.size(); i++)
             if(newObj.members[i]->name == prop.name)
@@ -2469,7 +2477,7 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
         // and fail. Mirrors the same routing done for non-emitter `array<T>` at the
         // bottom of this loop.
         if((tok.value == "array" || tok.value == "rawarray") && file.peekToken().is("<")){
-            processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray");
+            processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray", tok.docComment);
             tok = file.getToken();
             return;
         }
@@ -2532,7 +2540,7 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
         if(!replaceStubMember(newObj.members, funcDef))
             newObj.members.push_back((typeMember*)&funcDef);
     } else if(tok.value == "array" || tok.value == "rawarray")
-        processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray");
+        processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray", tok.docComment);
     else if(tok.isDataType())
         processTypedMember(newObj, tok, memberIsReplace, q.isRef);
     else if(tok.is(eTokenType::identifier))
@@ -2852,7 +2860,7 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
             if(!replaced) obj->members.push_back((typeMember*)&funcDef);
         }
     } else if(tok.value == "array" || tok.value == "rawarray")
-        processArrayMember(obj->members, obj->dName(), dynamic_cast<verbObjectDef*>(obj), obj, &q, tok.value == "rawarray");
+        processArrayMember(obj->members, obj->dName(), dynamic_cast<verbObjectDef*>(obj), obj, &q, tok.value == "rawarray", tok.docComment);
     else if(tok.isDataType()){
         // Check for += / -= compound assignment on a typed member
         token peekName = file.peekToken();

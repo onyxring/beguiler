@@ -1,15 +1,20 @@
+/* -----------------------------------------------------------------------------
+    _object.bgl - Objects
+    Declares `object`, a thing in the game world, with its attributes and its
+    place in the world tree.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
 
-//--the base I6 object; supports a name, attributes, and placement in the world map
-extern class object:_bglObject{ 
-    //
-    typesealed parentProp parent;
-    typesealed childrenProp children;       
-    typesealed attributeList attributes; 
-    
-    emitter void give(attribute attr){ give $val $attr }
-    
-    emitter void ungive(attribute attr){ give $val ~$attr }
+/// A thing in the game world: it has a name, attributes, and a place in the world tree.
+extern class object:_bglObject{
+    typesealed parentProp parent;          /// The object that contains this one; assigning to it moves this object.
+    typesealed childrenProp children;      /// The objects directly inside this one.
+    typesealed attributeList attributes;   /// The flags this object carries.
+
+    emitter void give(attribute attr){ give $val $attr }      /// Give this object `attr`.
+    emitter void ungive(attribute attr){ give $val ~$attr }   /// Take `attr` away from this object.
     /// True when this object has `attr`.
     emitter bool has(attribute attr){
         ($val has $attr)
@@ -18,74 +23,42 @@ extern class object:_bglObject{
     emitter bool hasnt(attribute attr){
         ($val hasnt $attr)
     }
-    /// Take this object out of the world tree. Its members are untouched; `.parent = X` puts it back.
+    /// Take this object out of the world tree; assigning `.parent` puts it back.
     emitter void remove(){
         remove $val
     }
-    /// This object's first child, or `nothing`. For all of them, iterate `.children`.
+    /// This object's first child, or null; iterate `.children` for all of them.
     emitter object child{
         child($val)
     }
-    /// The next object under the same parent, or `nothing`.
+    /// The next object with the same parent, or null.
     emitter object sibling{
         sibling($val)
     }
 }
 
-//--setters
-/// The type of `object.parent`. Assigning to it moves the object in the world tree.
-extern emitter class parentProp{   //obj.parent=loc; -> move obj to loc;
+/// The type of `object.parent`: assigning to it moves the object.
+extern emitter class parentProp{
+    /// Move the object into `v`.
     emitter parentProp operator = (object v){
         move $self to $v
     }
-    emitter eBool operator == (_bglObject v){   // any object, or null: `obj.parent == null`
+    /// True when the parent is `v`; compare with null to test for no parent.
+    emitter eBool operator == (_bglObject v){
         parent($self) == $v
     }
+    /// True unless the parent is `v`.
     emitter eBool operator != (_bglObject v){
         parent($self) ~= $v
     }
+    /// The parent object.
     emitter object operator(){
         parent($self)
     }
 }
 
-//--the world-tree child collection. `obj.children` is iterable (the compiler lowers
-//  `for(o in obj.children)` to an I6 objectloop); placement (`children = {a,b}` in a body,
-//  `.children += {x}` at runtime) is compiler-tracked. `length()`/`size()` report the child
-//  count — routines like `<array>`'s, using `$host` (the object the proxy member is read on,
-//  i.e. `obj` in `obj.children`) since the proxy has no storage of its own. size()==length()
-//  here: a world-tree collection has no capacity-vs-in-use distinction.
-/// The type of `object.children` — the world-tree child collection.
+/// The type of `object.children`: the objects directly inside an object, iterable with `for … in`.
 extern emitter class childrenProp{
-    /// How many children this object has.
-    emitter int length(){ children($host) }
-    /// How many children this object has. Same as `length()`: a world-tree collection has no spare capacity.
-    emitter int size()  { children($host) }
+    emitter int length(){ children($host) }   /// Return how many children the object has.
+    emitter int size()  { children($host) }   /// Return how many children the object has; the same as `length()`.
 }
-
-
-/*
-then we can add some follow ups...  
-
-we now have clear copy and ref semantics.  But...
-
-Some types make more sense to pass by reference by default.  For
-example, copying a room makes little sense, so making ref be declared is burdensome.
-
-Another thought: copy semantics don't cover all values automatically, since new properties can be declared 
-on an object.
-
-So maybe we still need some work to do on the byRef, byVal concepts.
-
-Also: classes using root assignment behave as byRef, even though they aren't specified that way feels
-like a bit of hidden logic.  We could fire an error, like we do for ref, an object-copy expected value can't 
-be ref-copied (counterpoint to the ref rule).
-
-I'm coming around to the idea of identifying a class as ref or val, possibly the rule we just removed.  But I'd
-need clear understanding about what the identifier did. For example, if it is marked as default ref, would 
-we even allow copy operators?
-
-okay.  three new types?  ref value and primitive.  Primitive forces the value behavior, and blocks the ref behavior.  Right?  
-
-
-*/

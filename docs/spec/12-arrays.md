@@ -278,7 +278,9 @@ rawArray<⟨type⟩> ⟨name⟩
 
 **Description**
 
-`rawArray<T>` is a typed view over a bare I6 word array: no length header and no tracking. It is
+`rawArray<T>` is a typed view over a bare I6 word array: no length header and no tracking.
+`rawArray<char>` is the byte form, a view over a bare I6 byte array (`Array X ->`, or an address inside
+the input buffer); like `array<char>` (§12.4) it is indexed by byte, from offset 0. It is
 declarable at file scope, as an `extern`, as a parameter type, and as a class or object member. Its
 purpose is interoperability: an I6 buffer handed to Beguile (the `results` array of a `parse_error`
 entry point, a library table, an array declared in an `#i6` island, §15.2) has no count word, and
@@ -297,8 +299,8 @@ type-checked at every subscript and may be cast like any other value.
 **Example**
 
 ```bgl
-bool ext_parsererror(int etype, rawArray<var> results) {      // NOTHING_PE, PutOn, Insert: library names
-    if (etype == NOTHING_PE && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
+bool ext_parsererror(eParserError etype, rawArray<var> results) {   // PutOn, Insert: library actions
+    if (etype == eParserError.nothing && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
         rtrue("You are not holding one.");
     rfalse;
 }

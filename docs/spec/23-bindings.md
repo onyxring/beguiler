@@ -12,7 +12,8 @@
   - [23.3.6 Verbs and Grammar Tokens](#2336-verbs-and-grammar-tokens)
   - [23.3.7 Shared Types](#2337-shared-types)
   - [23.3.8 Status Bar and Main Window](#2338-status-bar-and-main-window)
-  - [23.3.9 `bgl.story`](#2339-bglstory)
+  - [23.3.9 Banner Texts](#2339-banner-texts)
+  - [23.3.10 Library Options and Debug Builds](#23310-library-options-and-debug-builds)
 - [23.4 Differences Between the Bindings](#234-differences-between-the-bindings)
 - [23.5 Writing a Binding](#235-writing-a-binding)
 <!-- /toc -->
@@ -38,7 +39,6 @@ Bindings are optional. A program that manages its own `extern` declarations, or 
 |---|---|---|---|
 | `bindings/i6StandardLibrary.bgl` | The Inform 6 standard library | `parser`, `verblib`, `grammar` | Z-machine and Glulx. Declares the Glulx window globals (`gg_mainwin`, `gg_statuswin`, …). |
 | `bindings/punyInform.bgl` | PunyInform | `globals`, `puny` | Z-machine. PunyInform uses no classes; objects are distinguished by attributes alone. |
-| `bindings/_commonBindings.bgl` | — | — | Shared declarations both bindings include (§23.3.7). Not included directly. |
 
 Each binding is `#once`-guarded.
 
@@ -88,7 +88,7 @@ A binding declares, as `extern`:
 - its **objects**: `thedark`, `selfobj`, and (standard library only) the compass direction objects `n_obj` … `d_obj`;
 - its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions: a program overrides one by defining a function of that name (§15.4.1).
 
-Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1). The one exception is `short_name`, which both bindings declare on `object` (through `bindings/_commonBindings`), since each library prints it as the object's name (§21.4).
+Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1). The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
 
 ### 23.3.5 Additive Properties
 
@@ -104,11 +104,11 @@ extern verb Look { .look|.l }
 extern verb Receive;                    // a fake action: no grammar of its own
 ```
 
-It also declares the `grammarToken` enum (§21.5.5) with the parser's token names — `noun`, `held`, `creature`, `topic`, `multi`, `multiheld`, `multiexcept`, `multiinside`, `special`, `anynumber`, `number`, `scope`, `reverse` — for use in grammar patterns.
+It also declares the `grammarToken` enum (§21.5.5) with the parser's token names — `NOUN`, `HELD`, `CREATURE`, `TOPIC`, `MULTI`, `MULTIHELD`, `MULTIEXCEPT`, `MULTIINSIDE`, `SPECIAL`, `ANYNUMBER`, `NUMBER`, `SCOPE`, `REVERSE` — for use in grammar patterns.
 
 ### 23.3.7 Shared Types
 
-`bindings/_commonBindings.bgl`, included by both bindings, declares `stringOrRoutine` (§21.5.10) with its `print()` overload. Its behavior does not depend on either library.
+Each binding declares `stringOrRoutine` (§21.5.10) with its `print()` overload. Its behavior does not depend on either library; a program includes only one binding, so the two declarations never meet.
 
 ### 23.3.8 Status Bar and Main Window
 
@@ -121,19 +121,30 @@ The core's `bgl.ui.statusBar.height` and `bgl.ui.mainWin.id` / `bgl.ui.statusBar
 | `bgl.ui.statusBar.id` | the library's status window (Glulx); `null` (Z-machine) | `null` |
 | `bgl.ui.mainWin.id` | the library's main window | the core's (`0`) |
 
-### 23.3.9 `bgl.story`
+### 23.3.9 Banner Texts
 
-The `i6StandardLibrary` binding adds `bgl.story`, the story file's identity values read from the story header:
+The `i6StandardLibrary` binding binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and replaces the library's banner with one that also names the Beguile version. It reads the release number and serial code through `bgl.header` (§21.14).
 
-| Member | Returns | Description |
-|---|---|---|
-| `bgl.story.release` | `int` | The release number. |
-| `bgl.story.serialChar(i)` | `char` | Character `i` (`0..5`) of the six-character serial. |
-| `bgl.story.printSerial()` | `void` | Print the serial. |
+### 23.3.10 Library Options and Debug Builds
 
-It also binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and provides `informVersion`, a value-less emitter that prints the Inform 6 compiler version, usable inside an interpolated string like a print rule (§21.11).
+Parts of a library exist only when an I6 option constant is set, or only in a debug build. A binding
+declares such parts under the symbol that enables them, so a program that names one in a build that
+lacks it fails with a Beguile error instead of an Inform 6 one:
 
-> **[Z-machine/Glulx difference]** The header addresses differ per target; `bgl.story` hides the difference.
+| Parts | Declared under |
+|---|---|
+| Debugging verbs (`tree`, `purloin`, `actions`, …) and debug-only globals and constants | `#if DEBUG` (§20.3) |
+| Standard library: `objects` and `places` | `#if !NO_PLACES` |
+| PunyInform: `recording`, `replay`, `objects` and `places` | `#if OPTIONAL_EXTENDED_METAVERBS`; `objects` and `places` also `#if !NO_PLACES` |
+
+A program sets a library option with `#defineI6` (§14.2.1), before the binding's `#include`:
+
+```bgl
+#defineI6 OPTIONAL_EXTENDED_METAVERBS
+#includeI6 @"globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+```
 
 ## 23.4 Differences Between the Bindings
 
@@ -152,7 +163,7 @@ It also binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRel
 
 A binding for another library follows these rules:
 
-1. **Guard the file with `#once`** (§14.1.6), and include `<bindings/_commonBindings>` for the shared types.
+1. **Guard the file with `#once`** (§14.1.6), and declare the shared types (§23.3.7).
 2. **Advertise the library with `#declare`** (§14.2.3): a bare capability symbol that other files can test regardless of include order.
 3. **Declare names, not behavior.** Use `extern attribute`, `extern object`, `extern int` / `bool` / `string`, `extern const`, `extern property`, `extern additive property`, `extern verb` and `extern` routines (§15.4). Give `action` the type `verb`. Declare each additive property the library defines (§11.7.2). Do not declare the library's object properties on `object`.
 4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions as bodiless `extern verb Name;`, so that grammar added by a program extends the library's verbs instead of colliding with them.
@@ -161,5 +172,6 @@ A binding for another library follows these rules:
 7. **Run `bglInit()`.** Wrap the library's `main` with `#emitfirst { replace main _oldmain; }` and `#emitlast { [main; bglInit(); _oldmain(); ]; }`, gated on `#if bglAutoInitialize` so that `autoInitialize = false` disables it (§23.3.1).
 8. **Route the status bar** by replacing `bgl.ui.statusBar`'s `id` and `height` accessors, and `bgl.ui.mainWin.id`, with the library's own state (§23.3.8), so that the core, the `<ui>` extension and `<glulxWindow>` operate on the library's windows.
 9. **Declare the library's optional entry points** as `extern default` functions, so that a program overrides one by defining it (§15.4.1).
+10. **Declare optional parts under the symbol that enables them**: `#if DEBUG` for what exists only in a debug build, and `#if ⟨OPTION⟩` / `#if !⟨OPTION⟩` for what a library option constant adds or removes (§23.3.10).
 
 **See also** §11.7, §13.2.3, §14.4, §15.4, §17.7, §21.5.

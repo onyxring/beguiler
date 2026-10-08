@@ -274,14 +274,6 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-[_bgl_replaced_localonly_0;
-    print (string)"first";
-];
-[main;
-    gameepilogue();
-    drawstatusline();
-    localonly();
-];
 [GameEpilogue;
     print (string)"my epilogue";
 ];
@@ -289,6 +281,14 @@ object bgl
     print (string)"before ";
     _bgl_replaced_drawstatusline_0();
     print (string)" after";
+];
+[_bgl_replaced_localonly_0;
+    print (string)"first";
+];
+[main;
+    gameepilogue();
+    drawstatusline();
+    localonly();
 ];
 [localOnly;
     _bgl_replaced_localonly_0();

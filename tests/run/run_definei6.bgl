@@ -1,0 +1,18 @@
+/*  run_definei6 — `#defineI6` defines a Beguile symbol and emits it to I6 as a Constant.
+
+    The symbol works like `#define` on the Beguile side (`#if`, value substitution), and the I6
+    constant is in place before any library include, so I6 code sees it too.  */
+// EXPECT_OUTPUT: flag 3 hi / 3 hi
+#beguilerSettings { target = z5; informName = "none"; }
+#defineI6 MY_FLAG
+#defineI6 COUNT 3
+#defineI6 GREETING "hi"
+
+void main(){
+    bglInit();
+    #if MY_FLAG
+    print("flag ");
+    #endif
+    print($"{COUNT} {GREETING} / ");
+    #i6 { print COUNT, " ", (string) GREETING; }
+}

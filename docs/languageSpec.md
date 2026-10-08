@@ -77,7 +77,7 @@ of contents.
   - [2.10 Type Rules](#210-type-rules)
     - [2.10.1 Type Compatibility](#2101-type-compatibility)
     - [2.10.2 Conversion](#2102-conversion)
-    - [2.10.3 Value and Reference Semantics](#2103-value-and-reference-semantics)
+    - [2.10.3 Primitive, Reference and Value Types](#2103-primitive-reference-and-value-types)
 - [3 Declarations, Variables and Scope](#3-declarations-variables-and-scope)
   - [3.1 Program Structure](#31-program-structure)
   - [3.2 Declaration Qualifiers](#32-declaration-qualifiers)
@@ -159,9 +159,9 @@ of contents.
     - [8.2.2 `extern class`](#822-extern-class)
     - [8.2.3 `emitter class`](#823-emitter-class)
     - [8.2.4 `alias class`](#824-alias-class)
-    - [8.2.5 Veneer Classes (`extern emitter class`)](#825-veneer-classes-extern-emitter-class)
+    - [8.2.5 Primitive Classes (`primitive class`)](#825-primitive-classes-primitive-class)
     - [8.2.6 Pooled Classes](#826-pooled-classes)
-    - [8.2.7 `byVal class`](#827-byval-class)
+    - [8.2.7 Value Classes (`value class`)](#827-value-classes-value-class)
     - [8.2.8 `typesealed` Members](#828-typesealed-members)
   - [8.3 Members](#83-members)
     - [8.3.1 Member Variables](#831-member-variables)
@@ -207,10 +207,11 @@ of contents.
     - [11.3.5 Nested Aggregates](#1135-nested-aggregates)
     - [11.3.6 Standalone Declarations](#1136-standalone-declarations)
   - [11.4 Members and Type Inference](#114-members-and-type-inference)
-  - [11.5 Special Members: `parent`, `children`, `attributes`](#115-special-members-parent-children-attributes)
+  - [11.5 Special Members: `parent`, `children`, `attributes`, `instanceName`](#115-special-members-parent-children-attributes-instancename)
     - [11.5.1 `parent`](#1151-parent)
     - [11.5.2 `children`](#1152-children)
     - [11.5.3 `attributes`](#1153-attributes)
+    - [11.5.4 `instanceName`](#1154-instancename)
   - [11.6 Attribute Declarations](#116-attribute-declarations)
   - [11.7 Property Declarations](#117-property-declarations)
     - [11.7.1 `property` and `extern property`](#1171-property-and-extern-property)
@@ -250,7 +251,7 @@ of contents.
     - [13.4.1 Grammar Types](#1341-grammar-types)
     - [13.4.2 Pattern Tokens](#1342-pattern-tokens)
     - [13.4.3 Alternation and Multi-trigger Lines](#1343-alternation-and-multi-trigger-lines)
-    - [13.4.4 Line Modifiers: `reverse`, `withI6Synonyms`](#1344-line-modifiers-reverse-withi6synonyms)
+    - [13.4.4 Line Modifiers: `REVERSE`, `withI6Synonyms`](#1344-line-modifiers-reverse-withi6synonyms)
     - [13.4.5 Grammar on Verbs and Grammar Objects](#1345-grammar-on-verbs-and-grammar-objects)
   - [13.5 Extending Grammar](#135-extending-grammar)
     - [13.5.1 `grammar +=`](#1351-grammar-)
@@ -266,7 +267,7 @@ of contents.
     - [14.1.5 `#includeI6`](#1415-includei6)
     - [14.1.6 `#once`](#1416-once)
   - [14.2 Symbols and Conditional Compilation](#142-symbols-and-conditional-compilation)
-    - [14.2.1 `#define`](#1421-define)
+    - [14.2.1 `#define`, `#defineI6`](#1421-define-definei6)
     - [14.2.2 `#redef` and `#undef`](#1422-redef-and-undef)
     - [14.2.3 `#declare`](#1423-declare)
     - [14.2.4 Pre-defined Symbols](#1424-pre-defined-symbols)
@@ -365,7 +366,7 @@ of contents.
   - [21.1 Overview](#211-overview)
   - [21.2 `bglInit()`](#212-bglinit)
   - [21.3 The `bgl` Namespace](#213-the-bgl-namespace)
-  - [21.4 `print()`, `log()` and Article Helpers](#214-print-log-and-article-helpers)
+  - [21.4 `print()`, `printLine()`, `log()` and Article Helpers](#214-print-printline-log-and-article-helpers)
   - [21.5 IF-Domain Types](#215-if-domain-types)
     - [21.5.1 `attribute` and `attributeList`](#2151-attribute-and-attributelist)
     - [21.5.2 `property`](#2152-property)
@@ -374,7 +375,7 @@ of contents.
     - [21.5.5 Grammar Types](#2155-grammar-types)
     - [21.5.6 `bglClass`](#2156-bglclass)
     - [21.5.7 `parentProp` and `childrenProp`](#2157-parentprop-and-childrenprop)
-    - [21.5.8 `_bglObject`](#2158-bglobject)
+    - [21.5.8 `_bglObject` and `_bglPrimitive`](#2158-bglobject-and-bglprimitive)
     - [21.5.9 `eType` and `typeof()`](#2159-etype-and-typeof)
     - [21.5.10 `stringOrRoutine`](#21510-stringorroutine)
   - [21.6 Numeric Utilities](#216-numeric-utilities)
@@ -391,6 +392,7 @@ of contents.
     - [21.13.1 Glulx Opcodes](#21131-glulx-opcodes)
     - [21.13.2 Glk Calls](#21132-glk-calls)
     - [21.13.3 Z-machine Opcodes](#21133-z-machine-opcodes)
+  - [21.14 `bgl.header`](#2114-bglheader)
 - [22 Language Extensions](#22-language-extensions)
   - [22.1 Overview](#221-overview)
   - [22.2 `<buf>`](#222-buf)
@@ -422,7 +424,8 @@ of contents.
     - [23.3.6 Verbs and Grammar Tokens](#2336-verbs-and-grammar-tokens)
     - [23.3.7 Shared Types](#2337-shared-types)
     - [23.3.8 Status Bar and Main Window](#2338-status-bar-and-main-window)
-    - [23.3.9 `bgl.story`](#2339-bglstory)
+    - [23.3.9 Banner Texts](#2339-banner-texts)
+    - [23.3.10 Library Options and Debug Builds](#23310-library-options-and-debug-builds)
   - [23.4 Differences Between the Bindings](#234-differences-between-the-bindings)
   - [23.5 Writing a Binding](#235-writing-a-binding)
 
@@ -658,11 +661,28 @@ a compile-time error.
 ```syntax
 // ⟨text to end of line⟩
 /* ⟨text⟩ */
+/// ⟨documentation to end of line⟩
+/** ⟨documentation⟩ */
 ```
 
 **Description**
 
-Beguile has two comment forms. Comments are discarded and have no effect on compilation.
+Beguile has two comment forms, the line comment `//` and the block comment `/* */`. Comments are
+discarded and have no effect on compilation.
+
+A comment that opens with a third character, `///` or `/**`, is a *doc comment*: it documents a
+declaration. Doc comments have no effect on compilation either; the language server (§16.6) shows the
+text, formatted as Markdown, wherever the declared name is hovered. In a `/** */` comment, a leading `*`
+on each line is not part of the text.
+
+A doc comment documents a declaration in one of two positions:
+
+- **Before it.** Doc comments on the lines directly above a declaration document it; consecutive doc
+  comments join into one text. A blank line between a doc comment and the next declaration detaches the
+  comment, which then documents nothing.
+- **After it, on the same line.** A doc comment that follows code on its line documents the declaration
+  that starts on that line, never the next one. A declaration documented both ways shows the text
+  above it first.
 
 **Example**
 
@@ -671,6 +691,14 @@ Beguile has two comment forms. Comments are discarded and have no effect on comp
 
 /* to the closing
    delimiter */
+
+/// The room the player is in.
+extern object location;
+extern int    score;      /// Points earned so far.
+
+/** Prints the banner.
+ * Called once, at startup. */
+void showBanner(){ print("Welcome."); }
 ```
 
 ## 1.3 Case-Insensitivity
@@ -725,8 +753,11 @@ words alphabetically, with the section that defines each.
 
 **Declaration words** begin or qualify a declaration.
 
-`alias` `asBgl` `asI6` `byVal` `class` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
-`operator` `ref` `replace` `static` `superposed` `typesealed`
+`alias` `asBgl` `asI6` `class` `const` `default` `emitter` `explicit` `extend` `extern` `inline`
+`operator` `primitive` `ref` `replace` `static` `superposed` `typesealed` `value`
+
+`primitive` and `value` are keywords only directly before `class`; elsewhere they are ordinary names
+(`int value;`).
 
 **Type-forming words** build a type rather than name one.
 
@@ -901,7 +932,10 @@ an expression span is a compile-time error.
 
 An interpolated string has the pseudo-type `interpolatedStringLiteral` (§2.4.2), which may be passed
 only to an emitter declaring a parameter of that type; passing it to a non-emitter function is a
-compile-time error. `print()` and `log()` accept it in the core runtime (§21.4).
+compile-time error. `print()` and `log()` accept it in the core runtime (§21.4). The emitter expands
+it to a sequence of statements, so the call must be a statement of its own; a call inside an
+expression is a compile-time error. An expression-bodied lambda whose body is such a call,
+`=> print($"…")`, is that statement (§4.14).
 
 **Example**
 
@@ -1153,7 +1187,10 @@ non-emitter function is a compile-time error. The core `print()` and `log()` acc
 
 `null` is the absent or unset value, numerically `0`. For a reference it is the absent state (a failed
 `new` on a pooled class, §8.2.6; an unset member; a missing parent); for an integer it is `0`. Its
-resolved type (§4.1) is `object`, but it is compatible with every type.
+resolved type (§4.1) is the literal pseudo-type `nullLiteral`, which is compatible with every type.
+In an operator it takes the base type `_bglObject` (§21.5.8), as `intLiteral` takes `int`, so
+`x == null` uses an operator taking `_bglObject`: the root's identity comparison on any object, and
+the ones `string` and `obj.parent` declare.
 
 **Example**
 
@@ -1574,7 +1611,7 @@ Dog d2 = pet;                    // compile-time error: an Animal need not be a 
 
 // 6. conversion operator
 class Celsius { int degrees = 0; int operator () { return degrees * 9 / 5 + 32; } }
-Celsius t;
+Celsius t { }
 int degrees = t;                 // Celsius converts to int
 string s = t;                    // compile-time error: no conversion to string
 
@@ -1624,51 +1661,56 @@ class Celsius {
     explicit string operator () { return "a temperature"; }   // explicit: only under a cast
 }
 
-Celsius t;
+Celsius t { }
 int n = t;              // implicit conversion
 string s = t;           // compile-time error
 string u = (string)t;   // explicit cast
 ```
 
-### 2.10.3 Value and Reference Semantics
+### 2.10.3 Primitive, Reference and Value Types
 
 **Description**
 
-Assigning a class-typed value either copies it or shares it, depending on the class:
+Every type can have methods (`3.print()` is valid); what differs is what a variable of the type holds.
+There are three kinds:
 
-- **Value semantics: the target gets a copy.** A class that does not derive from `object`, or
-  otherwise from the runtime's root class `_bglObject` (§21.5.8), is a **value class**. A local
-  variable of a value class holds its own members, zeroed when the routine starts. Assigning to it runs
-  the class's `operator =`, which copies the members; afterwards the two variables are independent. A
-  value class with stored members must declare `operator =` for such an assignment; without one it is
-  a compile-time error.
-- **Reference semantics: the target shares the instance.** A class derived from `_bglObject`, which
-  includes every class derived from `object`, has reference semantics. The variable refers to an
-  instance, and assignment makes it refer to the same instance as the right-hand side, so a change made
-  through either variable is seen through both.
+| Declaration | Kind | A variable holds | `=` and passing | `ref` |
+|---|---|---|---|---|
+| `primitive class int` | primitive | the value itself | copies the value | compile-time error |
+| `class Room` | reference (the default) | a reference to an instance | refers to the same instance | compile-time error |
+| `value class Vec2` | value | its own instance | copies into its own instance | shares one instance |
 
-Two cases fall outside this:
+- **Primitive types** (§8.2.5) — `int`, `uint`, `bool`, `char`, `float`, `string` (the address of
+  fixed text), `dictionaryWord`, `attribute`, `property`, `bglClass`, the literal pseudo-types, `glulxImage`, and
+  every enum. A variable holds the value; there is no instance,
+  so nothing is allocated and there is nothing for `ref` to refer to.
+- **Reference classes** — every class not declared `value`. A global, local, member or parameter
+  refers to an instance owned elsewhere: it is empty (`nothing`) until assigned, and nothing is
+  allocated for it. Assignment and passing make it refer to the assigned instance, through the root
+  assignment that `_bglObject` declares (§21.5.8). A reference class may not declare a copy operator
+  (§9.1).
+- **Value classes** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
+  members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
+  through the class's copy operator, `operator =` taking the class; a value class that has none can't
+  be assigned or passed. A `ref` variable of a value class shares an instance instead (§3.7).
 
-- A class with no stored members has nothing to copy. The veneer classes `int`, `bool`, `char` and
-  `string` (§8.2.5) are of this kind: a variable holds the bare value, and assignment copies it.
-- A local declared `ref` has reference semantics whatever its class, and is bound with `:=` (§3.7).
-
-Parameters follow the same model; a `byVal class` uses value semantics when passed as an argument
-(§8.2.7).
+Classes that manage their own storage through `init`/`deinit` emitters — `stringObj`, `array<T>` —
+follow their own emitters: a local gets storage from `init` and releases it through `deinit`, a
+parameter is given its own copy (§8.5), and a `ref` variable aliases storage owned elsewhere.
 
 **Example**
 
 ```bgl
-class Vec2 {                         // a value class
+value class Vec2 {                   // copies: operator = (Vec2)
     int x = 0; int y = 0;
-    void operator = (Vec2 v) { x = v.x; y = v.y; }
+    Vec2 operator = (Vec2 v) { x = v.x; y = v.y; return self; }
 }
-class Marker : object { int x = 0; } // reference semantics
+class Marker : object { int x = 0; } // a reference class
 Marker home { }
 Vec2 unit;
 
 void compare() {
-    Vec2 v;              // x = 0, y = 0 on entry
+    Vec2 v;              // its own instance: x = 0, y = 0 on entry
     unit.x = 1;
     v = unit;            // copies the members: v.x → 1
     v.x = 5;             // unit.x is still 1
@@ -1723,10 +1765,12 @@ the construct it modifies.
 | `explicit` | A conversion operator that fires only under a cast. | §9.4 |
 | `superposed` | A routine, global, object or class that is emitted only if it is used. | §3.12 |
 | `typesealed` | A member whose type a derived class may not change. | §8.2.8 |
-| `byVal` | A class whose parameters are passed by value. | §8.2.7 |
+| `primitive` | A class whose variables hold the value itself (`primitive class`). | §8.2.5 |
+| `value` | A class whose instances are owned by each variable and copied (`value class`). | §8.2.7 |
 | `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §11.3.1 |
 | `ref` | A local or member that references an instance owned elsewhere. | §3.7 |
 | `additive` | A property whose values accumulate along the class chain. | §11.7.2 |
+| `literal` | A parameter, variable, member or array element type that holds only values known at compile time. | §6.3 |
 
 The following combinations are compile-time errors: `explicit` on anything but `operator()`; `const`
 with `static`; `static` with `emitter`; `explicit` with `const` or `static`; `alias` with `extern`;
@@ -1850,27 +1894,29 @@ ref ⟨type⟩ ⟨name⟩ ;                    // member: starts empty
 
 **Description**
 
-A class-typed slot is either an **owning slot** or a **reference slot**.
+A slot of a value class (§8.2.7) is either an **owning slot** or a **reference slot**. A slot of a
+reference class always refers to an instance, and a slot of a primitive type holds the value itself
+(§2.10.3); neither takes `ref`.
 
-**Owning slots.** A local or member of a class type normally owns an instance: a local's members are
-zero-initialized at routine entry, and a class-typed member is created with its host (§8.3.4). `=`
-copies into an owning slot by dispatching the type's `operator =`. A class that has stored members,
-does not inherit from `object`, and declares no `operator =` has no copy semantics, so assigning into
-a slot of that type is a compile-time error; the remedies are to declare `operator =`, mark the slot
-`ref`, or inherit from `object`. Classes derived from `object` use reference semantics, and classes
-with no stored members have nothing to copy.
+**Owning slots.** A global, local, member or parameter of a value class owns an instance: it starts out
+holding an instance of its own, whose members are zero-initialized (a local's at routine entry), and a
+member is created with its host (§8.3.4). `=` and passing copy into that instance through the class's
+copy operator (§9.1). A slot with an initializer starts as a copy of it.
 
 **Reference slots.** A slot declared `ref` owns nothing; it names an instance owned elsewhere. It is
 empty (`null`) until bound, so `if (!slot)` distinguishes an unbound slot from a bound one. `ref` is
-valid on local variable declarations and on class and object members; on a parameter or on an `extern`
-or `const` declaration it is a compile-time error. A member whose type is its own class must be `ref`.
+valid on local variable declarations, on parameters, and on class and object members, when their type
+is a value class or a type that manages its own storage (`stringObj`, `array<T>`); on a
+primitive type, a reference class, or an `extern` or `const` declaration it is a compile-time error. A
+`ref` parameter is bound to its argument. A member of a value class whose type is that class must be
+`ref`: owning one would own another without end.
 
 **Binding and assignment.** `:=` binds a reference: it stores the reference and never dispatches
 `operator =`. Both sides must be the same class, or the right side a subclass; binding an unrelated
 class or a non-instance value is a compile-time error. `:=` is not overloadable. A plain `=` on a
-bound reference assigns *through* it, dispatching `operator =` into the referent exactly as on an
-owning slot, and so requires the type to have copy semantics. Reads and member writes through a
-reference chain normally (`node.next.id`).
+bound reference assigns *through* it, copying into the referent through the class's copy operator,
+exactly as on an owning slot; a class with no copy operator can't be assigned this way ("use `:=`").
+Reads and member writes through a reference chain normally (`node.next.id`).
 
 **Declaration pairing.** A `ref` declaration binds with `:=`; `=` on a `ref` declaration is a
 compile-time error, and so is `:=` on a slot that is not `ref`.
@@ -1878,7 +1924,7 @@ compile-time error, and so is `:=` on a slot that is not `ref`.
 **Example**
 
 ```bgl
-class Node { int id; ref Node next; }
+value class Node { int id; ref Node next; Node operator = (Node o){ id = o.id; return self; } }
 
 Node first;   first.id = 1;
 Node second;  second.id = 2;
@@ -1890,9 +1936,8 @@ first.next := second;         // a ref member is bound the same way
 
 **Notes**
 
-A `ref` slot may be bound to a pooled-class instance created with `new`
-(`holder.slot := new pooled();`); pooled classes are specified in §8.2.6. Parameters of class type are
-passed by reference unless the class is declared `byVal` (§8.2.7).
+A parameter of a value class is a copy of its argument, as any owning slot is (§2.10.3); a `ref`
+parameter refers to the argument instead. A parameter of a reference class refers to its argument.
 
 **See also** §4.13, §5.15.
 
@@ -2182,7 +2227,8 @@ There is no unary bitwise-not operator.
 
 A binary operator is resolved against the resolved type of its left operand:
 
-1. Look for `operator op` (emitter or method) on the left type whose parameter accepts the right type.
+1. Look for `operator op` (emitter or method) on the left type whose parameter accepts the right type:
+   its exact type, a literal's base type, a type it converts to, or a class it derives from (§9.2).
 2. Otherwise, if the left type has a conversion operator (`operator()`) to the right type, fall back
    to the built-in operator.
 3. Otherwise, if the right type has a conversion operator to a type for which the left type does
@@ -2424,6 +2470,8 @@ if (m == null) print("The pool is exhausted.");
 (⟨type⟩ ⟨param⟩, …) => { ⟨body⟩ }
 (⟨type⟩ ⟨param⟩, …) => ⟨expr⟩
 () => { ⟨body⟩ }
+=> { ⟨body⟩ }
+=> ⟨expr⟩
 ```
 
 **Description**
@@ -2435,14 +2483,21 @@ A lambda in argument position is passed by reference, like a named `func<>` valu
 
 The expression-bodied form `(⟨params⟩) => ⟨expr⟩` is equivalent to
 `(⟨params⟩) => { return ⟨expr⟩; }`; the return type is inferred from the expression. In both forms
-every parameter is typed; `x => …` is not a lambda.
+every parameter is typed; `x => …` is not a lambda. A lambda with no parameters may omit the empty
+parameter list: `=> ⟨body⟩` is equivalent to `() => ⟨body⟩`. An expression body with no value, such as
+a call to a `void` function, is the lambda's body rather than its return value; this includes a call
+passing an interpolated string (§1.6.5), such as `=> print($"Hello, {name}.")`.
 
 **Capture.** A lambda body may use locals and parameters of the enclosing function, wherever in that
 function the lambda appears, including inside loop and `if` bodies. Each captured variable's value is
 copied when the lambda is created. For a lambda passed directly as an argument, changes the body makes
-to a captured variable are visible in the enclosing scope after the call returns. Captures are
-intended for immediate callbacks: for a lambda stored and invoked later, the behavior is undefined. A
-lambda that captures nothing costs nothing extra.
+to a captured variable are visible in the enclosing scope after the call returns. A lambda that
+captures nothing costs nothing extra. Inside a method, a lambda that reads a member captures `self`.
+
+Captures are for callbacks that run before the enclosing function moves on. A lambda that captures a
+variable may not outlive it, so it is a compile-time error to return one, to store one in a global or
+a member, or to pass one to a `literal` parameter (§6.3). Storing one in a local is allowed. A capture
+of a `const` local initialized from a compile-time value is exempt: every copy is the same value.
 
 **Constraints.** A lambda literal may not be invoked immediately (`((int n) => { … })(42)`); assign it
 or pass it first.
@@ -2684,6 +2739,7 @@ Iterates over every element of `⟨source⟩`, which is one of:
 | An inline list `{a, b, …}` | The type of the first element; each element is checked against `v` |
 | A call expression returning an array | `var`: any declared type for `v` is accepted |
 | A range `first to last` | Integer; inclusive at both ends; the bounds are any expressions |
+| An object's `children` | The class that declares `children`; the body may move the current child (§11.5.2) |
 
 The loop variable may be declared in the loop head or beforehand. Its type must be compatible with
 the element type or it is a compile-time error; `var` matches any element type, and `auto` infers the
@@ -2972,7 +3028,8 @@ int  sign(int n)        { if (n < 0) return -1; }   // compile-time error: no re
 **Syntax**
 
 ```syntax
-(⟨type⟩ ⟨name⟩ [ = ⟨default⟩ ], …)
+( [ literal ] ⟨type⟩ ⟨name⟩ [ = ⟨default⟩ ], …)
+( literal ⟨type⟩ | ⟨type⟩ … ⟨name⟩, … )
 ()
 ```
 
@@ -2988,14 +3045,70 @@ parameters in order, and named arguments fill their target parameter. It is an e
 parameter the function does not have, to supply a parameter both positionally and by name, or to omit
 a required parameter.
 
+**Passing.** An argument is passed as its type's kind dictates (§2.10.3):
+
+- a primitive value is copied;
+- a reference-class parameter refers to the argument's instance;
+- a value-class parameter owns an instance of its own, into which the argument is copied through the
+  class's copy operator; the class's `init` and `deinit`, if it has them, run at entry and exit (§8.5);
+- a parameter of a class that manages its own storage (`stringObj`) is given its own copy the same way
+  (§8.5);
+- a `ref` parameter of a value class or storage-managing class is bound to the argument itself (§3.7).
+
+So changes a function makes to a value-class or `stringObj` parameter don't reach the caller, and
+changes through a reference-class or `ref` parameter do.
+
 Parameter names may be omitted in non-emitter declarations inside an `extern class` (§15.4.3).
+
+**Literal parameters.** A parameter whose type is qualified `literal` accepts only a value known at
+compile time. For a data type, that is a literal, constant arithmetic, a `#define` value, an enum
+member or a `const` initialized from one of these; a variable, a member read or a call is a
+compile-time error. For a function type, it is a named function, or a lambda whose captured variables
+(§4.14) are all `const` locals with such a value.
+
+A function declares a `literal func` parameter when it keeps the function to call later, after the
+caller's locals have changed or gone: a callback registered for an event, or a hyperlink's action
+(§21.11). A function that calls its argument before returning, as `filter` and `sort` do, leaves the
+parameter unqualified, so a lambda passed to it may capture freely.
+
+In a union, `literal` qualifies the one member it precedes. An argument is checked when it fits a
+`literal` member and no other: in `literal func<void> | int`, a function must be literal and an `int`
+may be a variable. A `literal` parameter is itself literal inside the function, so it may be passed on
+to another `literal` parameter or stored; an unqualified parameter may not be passed to one.
+
+**Literal storage.** `literal` also qualifies a variable, a member or an array's element type, for
+values kept to use later, such as event handlers or a rulebook's rules. On a variable or member it
+covers the whole type:
+
+```bgl
+literal func<void> onStart = intro;              // a global
+class door { literal func<void> onOpen; }        // a member
+array<literal func<eVerdict>> rules = { r1 };    // the elements
+```
+
+An initializer, an assignment, a subscript write, `+=`, or an array method that stores its argument
+must then supply a literal value. Reading a `literal` variable or member yields a literal value, so it
+may be stored in another. In a generic class, a library marks the parameter of each method that stores
+an element `literal T`: `void push(literal T item)`. The mark applies only when the receiver's element
+type is `literal`, so `push` takes any value on an `array<func<void>>` and only a literal one on an
+`array<literal func<void>>`, while `indexOf`, which does not store, takes any value on either.
 
 **Example**
 
 ```bgl
 void spawn(string name, int x, int y, bool hostile = false) { … }
 spawn(x: 10, y: 20, name: "goblin", hostile: true);   // spawn("goblin", 10, 20, true)
+
+void onClick(literal func<void> action) { … }        // keeps `action` to call later
+onClick(=> print("Click."));                          // accepted: captures nothing
+string dir = "north";
+onClick(=> print(dir));                               // error: the lambda captures 'dir'
 ```
+
+> **Why `literal`, not closures.** A capturing lambda keeps its captured values in one slot per
+> lambda, not one per call, so a kept lambda reads whatever was captured last. Giving each call its own
+> copy would allocate memory that nothing could free. `literal` turns that runtime surprise into a
+> compile-time error at the call that would cause it.
 
 ## 6.4 Overload Resolution
 
@@ -3178,7 +3291,7 @@ class Counter {
     emitter void increment(){ $self.value++ }
 }
 
-Counter c;
+Counter c { }
 c.increment();      // the body is substituted here with $self = c
 ```
 
@@ -3281,7 +3394,7 @@ emitter void sort()          { _bglArray.sortDefault($self, $prop, $oprefReq(<=>
 **Example**
 
 ```bgl
-extern class int : _bglObject {
+primitive class int {
     emitter int  operator +  (int v){ $val + $v }
     emitter int  operator =  (int v){ $target = $v; }
 }
@@ -3380,7 +3493,10 @@ every caller.
 
 **Binding.** The body's tokens stand for **typed values** inside the payload: `$v` denotes a value of
 `v`'s declared type whose emitted text is the argument at that use site, and `$self`/`$val`/`$host`
-likewise at the receiver's type. The payload may therefore mention only this emitter's own
+likewise at the receiver's type. A parameter declared `var` takes the type of the argument at that
+use site instead, since `var` says only that any value is accepted. This is what lets one emitter
+forward to an overloaded one: `emitter void printLine(var v){ $i6Expr(print($v)); print "^"; }`
+reaches `print(string)` for a string argument and `print(bool)` for a bool. The payload may therefore mention only this emitter's own
 parameters and receiver; any other `$name` is a compile-time error. It may not mention a bare I6
 identifier either, since that is not a Beguile symbol — `$i6Expr(__glkHook(33, $a))` resolves only
 because `__glkHook` *is* a Beguile function.
@@ -3440,6 +3556,8 @@ Inside an emitter body, the double-hash directives select which body text is sub
 parentheses, with the same definedness-versus-value rule. They are evaluated when the emitter is
 substituted, and are not valid in ordinary Beguile source, where the conditional is `#if` (§14.2.5).
 `##ifdef` and `##ifndef` do not exist at all: use `##if SYMBOL` here, `#if SYMBOL` there.
+As with `#if`, the condition runs to the end of its line, so the text it controls starts on the next
+line; text after the condition on the same line is a compile-time error.
 
 Single-hash directives are raw I6 and pass through to the output, where they act as I6 compile-time
 conditionals. Any other `##name` (for instance an I6 action constant such as `##Take`) also passes
@@ -3594,7 +3712,7 @@ The literal pseudo-types declare it so that `auto x = 5;` infers `int` rather th
 **Example**
 
 ```bgl
-extern class intLiteral : _bglObject {
+primitive class intLiteral {
     emitter int operator();     // implicit conversion to int
     int operator auto();        // auto infers int
 }
@@ -3664,7 +3782,7 @@ block inside a function body see `#i6` (§15.2).
 
 A class declares a type: the members its instances hold, the methods and emitters that act on them,
 and the parents it inherits from. This chapter specifies the declaration and its forms (normal,
-`extern`, `emitter`, `alias`, veneer, pooled and `byVal`), the kinds of member, methods, the `init`
+`extern`, `emitter`, `alias`, primitive, value and pooled), the kinds of member, methods, the `init`
 and `deinit` lifecycle, inheritance, and extending and replacing members. Two further topics have
 chapters of their own: overloaded operators and property accessors, which are class members, are
 specified in §9; the use of objects and emitter classes as namespaces is specified in §10. Objects,
@@ -3691,7 +3809,7 @@ form `[` and `]` are literal: `[⟨n⟩]` declares a pool size (§8.2.6).
 A class declares a new type. Its members are member variables, methods, emitters, and operators (§9).
 The class name must be unique among types; it is the type name used to declare instances. Member
 variables follow the same `⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ]` form as global variables (§3.3). Qualifiers
-(`extern`, `emitter`, `alias`, `byVal`, `extend`, `replace`, `superposed`, …) are the declaration
+(`extern`, `emitter`, `alias`, `extend`, `replace`, `superposed`, …) are the declaration
 qualifiers of §3.2 and may appear in any order.
 
 **Example**
@@ -3747,13 +3865,13 @@ Box<int>  scoreBox;     // T = int
 
 | Form | Syntax | Instances | Members permitted |
 |---|---|---|---|
-| Normal | `class Foo` | Objects with their own storage | Variables (with or without initializers), methods, emitters |
+| Normal | `class Foo` | Objects with their own storage, shared by reference | Variables (with or without initializers), methods, emitters |
+| Value | `value class Foo` | Objects each variable owns, copied on assignment | As normal class; a copy operator to be assigned |
 | Extern | `extern class Foo` | Defined outside Beguile (I6) | Variable declarations, emitters, `static` methods |
 | Emitter | `emitter class Foo` | None (type label only) | Emitters (`emitter` implied), `static` methods, alias members |
 | Alias | `alias class Foo for Parent` | Same as `Parent` | Variable declarations (no initializer), emitters, `static` methods |
-| Veneer | `extern emitter class Foo : Base` | A bare word | As emitter class |
+| Primitive | `primitive class Foo` | None: a variable holds the value itself | As emitter class |
 | Pooled | `class Foo[N]` | `N` preallocated slots | As normal class, plus `create()`/`destroy()` |
-| By value | `byVal class Foo` | As normal; parameters copy | As normal class; `operator =` required |
 
 Normal, `extern`, and `emitter` classes may inherit with `: Parent` (§8.6). An alias class names
 exactly one `Parent` after `for`; this is a type-aliasing relationship, not inheritance. Every form
@@ -3772,12 +3890,10 @@ class ⟨name⟩ [ : ⟨parent⟩ [ , ⟨parent⟩ … ] ] { ⟨member⟩ … }
 A class with no form qualifier supports the full member set: variables with initializers, methods
 with statement bodies, and emitters. Instances are objects with their own storage.
 
-A normal class that derives from neither `object` nor `_bglObject` (§21.5.8) is a **value class**:
-an instance holds its members directly, a local or member of the type is an instance in its own
-right, and assignment copies the members through the class's `operator =` (§2.10.3). A class derived
-from `object` or `_bglObject` has reference semantics: a variable of the type holds a reference to an
-instance owned elsewhere. The term *value class* is used throughout this specification for the
-former.
+A normal class is a **reference class** (§2.10.3): a global, local, member or parameter of the type
+refers to an instance owned elsewhere, is empty until assigned, and assignment makes it refer to the
+assigned instance. A reference class may not declare a copy operator (§9.1). To make the instances
+values instead — owned by each variable and copied — declare the class `value` (§8.2.7).
 
 **Example**
 
@@ -3844,7 +3960,8 @@ emitter class ⟨name⟩ [ : ⟨parent⟩ ] { ⟨member⟩ … }
 
 An `emitter class` is a type with no instance storage: it exists to give a name to a set of emitters
 and operators. Every method is an emitter; the `emitter` keyword on a member is optional. A member
-variable is a compile-time error, except an **alias member** (§10.3). An emitter class is used as
+variable is a compile-time error, except an **alias member** (§10.3), which has no storage of its own
+and may be `const` or `inline` (the root `_bglObject` declares the object name this way, §11.5.4). An emitter class is used as
 a type — variables may be declared of it — which distinguishes it from an emitter namespace (§7.7),
 which is only called by name.
 
@@ -3889,38 +4006,43 @@ worldObject foyer {
 }
 ```
 
-### 8.2.5 Veneer Classes (`extern emitter class`)
+### 8.2.5 Primitive Classes (`primitive class`)
 
 **Syntax**
 
 ```syntax
-extern emitter class ⟨name⟩ : ⟨base⟩ { ⟨member⟩ … }
+primitive class ⟨name⟩ [ : ⟨base⟩ ] { ⟨member⟩ … }
 ```
 
 **Description**
 
-A class declared `extern emitter` is a **veneer class**: a distinct type with no representation of
-its own. Its value *is* the word it wraps; the class adds a type and behavior (emitters, operators)
-but no storage. An instance is a bare variable, not a world-tree object. The primitive types (`int`,
-`bool`, `char`, `string`, the literal pseudo-types) are declared this way, naming `_bglObject` as
-their base to take the shared member surface (§21.5.8).
+A `primitive class` declares a **primitive type** (§2.10.3): a variable of the type holds the value
+itself, one word. There is no instance and nothing is allocated; assignment and passing copy the word;
+`ref` is a compile-time error. The class adds a type and behavior (emitters, operators), not storage.
+`primitive` implies `extern emitter`: I6 already knows the representation, and every member is an
+emitter. The primitive types are `int`, `uint`, `bool`, `char`, `float`, `string`, `dictionaryWord`,
+`attribute`, `property`, `bglClass` (a class name's value), the literal pseudo-types and `glulxImage`;
+enums are primitive by nature.
 
-Because a veneer has nothing to initialize beyond the word it wraps, a value of the base type is a
-complete instance: given a matching `operator =`, a veneer over `int` accepts an `int` (or any
-int-compatible value such as an enum member) directly.
+A value of the base type is a complete instance: given a matching `operator =`, a primitive over `int`
+accepts an `int` (or any int-compatible value such as an enum member) directly.
 
-A veneer is a *newtype*, not an alias: `glulxImage` and `int` are different types that share a
-representation, and conversion between them is explicit (`operator()` to the base, `operator =(base)`
-from it). An `alias class` (§8.2.4) is the *same* type under another name.
+A primitive over another type is a *newtype*, not an alias: `glulxImage` and `int` are different types
+that share a representation, and conversion between them is explicit (`operator()` to the base,
+`operator =(base)` from it). An `alias class` (§8.2.4) is the *same* type under another name.
+
+A type label over a word that is *not* a primitive value — a class that manages its own storage
+through `init`/`deinit`, such as `array<T>` — is declared `extern emitter class`; such labels are
+sometimes called *veneer classes*.
 
 **Example**
 
 ```bgl
-extern emitter class int : _bglObject {
+primitive class int {
     emitter int operator + (int v){ $val + $v }
 }
 
-glulxImage cover = eAssets.coverArt;    // a veneer over int accepts the int
+glulxImage cover = eAssets.coverArt;    // a primitive over int accepts the int
 int w = cover.width();                  // behavior without storage
 ```
 
@@ -3986,41 +4108,52 @@ void Main(){
 
 **Notes**
 
-A file-scope instance of a pooled type (`Name m;` at file scope, not obtained from `new`) is not part
+A file-scope instance of a pooled type (`Name m { }` at file scope, not obtained from `new`) is not part
 of the pool. Passing such an instance to `delete`, or otherwise mixing file-scope and pooled instances
 of one type, is not detected at compile time and the behavior is undefined.
 
-### 8.2.7 `byVal class`
+### 8.2.7 Value Classes (`value class`)
 
 **Syntax**
 
 ```syntax
-byVal class ⟨name⟩ { ⟨member⟩ … }
+value class ⟨name⟩ [ : ⟨parent⟩ [ , ⟨parent⟩ … ] ] { ⟨member⟩ … }
 ```
 
 **Description**
 
-By default a class-typed parameter is passed by reference. A `byVal class` parameter is passed by
-**value**: at each call the argument is copied into the parameter through the class's `operator =`,
-so mutations inside the callee do not affect the caller's instance.
+A `value class` declares a **value type** (§2.10.3): a global, local, member or parameter of the type
+owns an instance of its own, whose members are zeroed (a local's at routine entry), and assignment and
+passing copy into that instance through the class's **copy operator** — `operator =` taking the class.
+A value class with no copy operator can't be assigned or passed; that is a compile-time error.
 
-- `operator =` accepting the class (or `var`) is required; declaring a `byVal class` without one is a
-  compile-time error.
-- A `byVal class` cannot inherit from `object`.
-- `byVal` cannot be combined with `extern`, `emitter`, `extend`, or `alias`.
-- The marker is not inherited; a subclass must declare `byVal` itself.
+- `value` is inherited: a subclass of a value class is a value class. A class can't have both a value
+  base and a reference base.
+- A subclass that adds members but declares no copy operator runs its ancestor's, which copies the
+  ancestor's members only. To copy its own too, a subclass declares a copy operator and chains to the
+  ancestor's with a cast: `(Base)self = o;` calls `Base`'s `operator =`.
+- A `ref` variable, parameter or member of a value class refers to an instance owned elsewhere instead:
+  it is bound with `:=`, and `=` through it copies into the referent (§3.7).
+- `value` cannot be combined with `extern`, `emitter`, `alias` or `primitive`, and belongs on the
+  original declaration, not on `extend`.
 
 **Example**
 
 ```bgl
-byVal class Temperature {
-    int degrees = 0;
-    emitter Temperature operator = (Temperature v){ $target = $v; }
+value class Vec2 {
+    int x; int y;
+    Vec2 operator = (Vec2 o){ x = o.x; y = o.y; return self; }
 }
-void heatUp(Temperature t){ t.degrees = t.degrees + 10; }   // local copy only
+value class Vec3 : Vec2 {
+    int z;
+    Vec3 operator = (Vec3 o){ z = o.z; (Vec2)self = o; return self; }   // copies z, then x and y
+}
 
-Temperature room;
-heatUp(room);       // room.degrees unchanged
+Vec2 a;                     // owns an instance
+Vec2 b = a;                 // a copy
+void nudge(Vec2 v){ v.x++; }
+nudge(a);                   // the function gets a copy: a.x unchanged
+ref Vec2 p := a;            // p refers to a's instance
 ```
 
 ### 8.2.8 `typesealed` Members
@@ -4093,7 +4226,9 @@ const ⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ] ;
 **Description**
 
 A `const` member may be initialized in the class or in an object declaration and cannot be assigned
-afterwards; assignment is a compile-time error. `const` and `static` are mutually exclusive.
+afterwards; assignment is a compile-time error. A value an object declaration gives an inherited
+`const` member is that member's one assignment: it stays `const`. `const` and `static` are mutually
+exclusive.
 
 **Example**
 
@@ -4102,7 +4237,7 @@ class Config {
     const int    maxScore = 100;
     const string title    = "My Game";
 }
-Config config;
+Config config { }
 config.maxScore = 200;      // compile-time error
 ```
 
@@ -4146,12 +4281,12 @@ class Counter {
 
 **Description**
 
-A class-typed member is an **owned member** when all three hold: its type is a value class (§8.2.1),
-that type has stored members, and the member is declared without an initializer. An owned member is
-a live instance of its own — every instance of the enclosing class has an independent backing —
-rather than a bare reference slot, so methods and operators may be called on it. Ownership is
-detected structurally; there is no keyword. To keep reference semantics instead, derive the member's
-type from `object` or initialize the member to an existing instance.
+A class-typed member is an **owned member** when its type is a value class (§8.2.7) with stored
+members and the member is declared without an initializer and without `ref`. An owned member is a
+live instance of its own — every instance of the enclosing class has an independent backing — rather
+than a bare reference slot, so methods and operators may be called on it. A member of a reference class
+refers to an instance owned elsewhere and is empty until assigned; so is a `ref` member of a value
+class.
 
 Owned members are what make property accessors work (§9.9). In a pooled class each slot has its own
 backing, reset on `new` (§8.2.6). Owned members are not permitted on an identifier-sized pool.
@@ -4159,7 +4294,7 @@ backing, reset on `new` (§8.2.6). Owned members are not permitted on an identif
 **Example**
 
 ```bgl
-class Box { int _val = 0; void set(int v){ _val = v; } }
+value class Box { int _val = 0; void set(int v){ _val = v; } }
 class thing : object { Box b; }         // b is owned: each thing has its own Box
 thing t1 {}
 thing t2 {}                              // t1.b and t2.b are distinct instances
@@ -4171,21 +4306,52 @@ thing t2 {}                              // t1.b and t2.b are distinct instances
 
 ```syntax
 inline ⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ] ;
+inline ⟨existing-member⟩ ;
 ```
 
 **Description**
 
-An `inline` member is a positional slot for inline object construction: when an instance is written
-as `Type{ a, b, … }`, the positional values fill the class's `inline` members in declaration order,
-base class first. A member that is not `inline` can be set only by name. `inline` may be declared on
-an `object`-derived class or on a value class; an `array<T>` member may be `inline`. The positional
-and named forms, their separators and the error cases are specified in §11.3.1.
+An `inline` member is a positional slot: when an instance is written with positional values, in a
+declaration body (`Pet rex { "rex", 3; }`, §11.2) or an inline object (`Pet{ "rex", 3 }`, §11.3), the
+values fill the class's positional members in order. A member that is not positional can be set only
+by name. `inline` may be declared on any class; an `array<T>` member may be `inline`.
+
+The second form, with no type, **re-lists** an existing member — inherited, or the class's own — as
+positional at that point in this class's order; the member itself is unchanged (it keeps its type,
+its `const`, and where it is declared). Naming a member the class doesn't have, or one already
+positional in this class, is a compile-time error.
+
+A class's positional order is its own list — its `inline` members and the members it re-lists, in
+declaration order — followed by each base's order, **subclass first**. A member appears once, where it
+is first listed, so a subclass that re-lists an inherited member decides its position; one that
+doesn't places its own `inline` members ahead of the inherited ones. The positional and named forms,
+their separators and the error cases are specified in §11.3.1. A positional value is type-checked
+against the member it fills, as a named one is.
+
+**With `extend class`** (§8.7.1), both forms append to the extended class's own list:
+`extend class A { inline int a2; }` adds `a2` after A's existing positional members, and
+`extend class A { inline n; }` makes the existing member `n` positional there. The order is a property
+of the program, not of source position: every instance of the class, or of a class derived from it,
+uses the extended order, including instances declared before the `extend`. Extending a base therefore
+moves the later slots of its subclasses — the name, always last, included.
 
 **Example**
 
 ```bgl
 class point : object { inline int x; inline int y; string label; }
 point origin = point{ 0, 0 };            // x, y positional; label by name only
+
+// `_bglObject` declares `inline const string instanceName;` (§11.5.4), so every class ends with it.
+object lamp { "brass lamp"; }                                    // the name is object's only slot
+class Animal : object { inline int legs; }                       // legs, then the name
+class Pet : object { inline instanceName; inline int legs; }     // name first: re-listed
+Animal cat { 4, "the cat"; }
+Pet rex { "rex", 3; }
+
+class A : object { inline int a1; int n; }
+class B : A { inline int b1; }
+extend class A { inline int a2; inline n; }   // A: a1, a2, n
+B x { 1, 2, 3, 4, "the x"; }                   // b1, a1, a2, n, name
 ```
 
 ## 8.4 Methods
@@ -4228,13 +4394,26 @@ static ⟨type⟩ deinit( ⟨type⟩ ⟨value⟩ ) { ⟨statement⟩ … }
 
 **Description**
 
-A class of any form may declare `init` and `deinit`, which run automatically for a local variable of
-that type.
+A class of any form may declare `init` and `deinit`, which run automatically for a variable of that
+type: a class that manages its own storage (such as `stringObj`, which holds a pool buffer) uses them
+to acquire and release it.
 
-- `init` fires immediately after the variable is declared, before any initializer assignment.
-- `deinit` fires at the end of the block the variable was declared in, and before any `return` that
-  leaves that block. For a variable declared at the routine's top level these are the same thing:
-  the routine's end and every `return` in it. Releases run in reverse declaration order.
+- **Local.** `init` fires immediately after the variable is declared, before any initializer
+  assignment. `deinit` fires at the end of the block the variable was declared in, and before any
+  `return` that leaves that block. For a variable declared at the routine's top level these are the
+  same thing: the routine's end and every `return` in it. Releases run in reverse declaration order.
+- **Parameter.** A parameter that owns its instance (a value class, §8.2.7, or an emitter class with
+  both `init` and `deinit`) runs them as a local does: `init` fires at entry, before the argument is
+  copied in through the class's `operator =` taking its own type, and `deinit` fires at the
+  routine's end and before every `return`. For an emitter class, `init` is what gives the parameter
+  its own instance, so changes inside the routine don't reach the caller; such a class with no copy
+  operator can be passed only by `ref` (a compile-time error otherwise). A reference-class parameter
+  shares its argument, so neither fires.
+- **Global.** `init` fires at startup, in `bglInit`, before the declared value is applied. A global
+  is never released.
+- **`ref`.** A `ref` local or parameter owns nothing, so neither fires: it shares the referent.
+- **Returned value.** A local returned from a routine has already been released when the caller
+  receives it: the caller must copy it at once (the ephemeral pattern, §22.3).
 - In these instance forms both must be emitters and declare no parameters; either violation is a
   compile-time error. `init` has no other form and cannot be `static`.
 
@@ -4245,16 +4424,21 @@ owns storage generally declares both.
 **Example**
 
 ```bgl
-extend extern class string {
-    emitter void init()   { $self = GetNewString(); }
-    emitter void deinit() { FreeString($self); }
+emitter class stringObj {
+    emitter void init()   { $self = _bglStr.new(); }
+    emitter void deinit() { $self.free(); }
+    emitter stringObj operator = (stringObj v){ $self.setFromStr($v); }
+    …
 }
 
 void doSomething(){
-    string s;           // init fires
+    stringObj s;        // init fires
     s = "hello";
     return;             // deinit fires first
 }                       // deinit also fires on fall-through
+
+void shout(stringObj s){ s += "!"; }     // s is a copy: init, then the argument copied in
+void shoutHere(ref stringObj s){ s += "!"; }   // shares the caller's buffer
 ```
 
 **See also** §9.8 — `init` and `deinit` among the members that must be emitters; §12.10 — the value
@@ -4271,7 +4455,7 @@ class ⟨name⟩ : ⟨parent⟩ [ , ⟨parent⟩ … ] { ⟨member⟩ … }
 **Description**
 
 A class inherits every member of the parents listed after the colon. Multiple inheritance is
-permitted. Member lookup walks the hierarchy depth-first, left to right, and the first match wins;
+permitted. A class declared without a parent derives a root (§21.5.8): `_bglPrimitive` for a `primitive` class and `_bglObject` for any other. Member lookup walks the hierarchy depth-first, left to right, and the first match wins;
 when two parents declare the same member name, the first-listed parent's member is used. Inside a
 method, bare identifiers resolve inherited **variable** members from all bases by this search;
 inherited methods resolve through method dispatch.
@@ -4301,13 +4485,24 @@ extend [ extern ] class ⟨name⟩ { ⟨member⟩ … }
 
 **Description**
 
-`extend class` adds members to an already-declared class; the name must already be a type. An
-`extern` class accepts only emitters and `static` members; a class declared in Beguile accepts any
-member. `extend class` may not change a type parameter (§8.1.1) or a pool size (§8.2.6).
+`extend class` adds members to an already-declared class. An `extern` class accepts what its
+declaration does (§8.2.2): member declarations, emitters and `static` members; a class declared in
+Beguile accepts any member. `extend class` may not change a type parameter (§8.1.1), a pool size
+(§8.2.6) or the class's form (`value`, `primitive`, `superposed`). An `inline` member or
+`inline name;` appends to the class's positional order (§8.3.5). `replace` replaces an existing
+member; a `replace` that names no existing member is a warning, and the member is added.
+
+**Order.** Source order matters only while a class's definition is being assembled: its declaration
+comes first, then its `extend`s, applied in the order they appear. An `extend` that precedes the
+declaration is a compile-time error. Every use of the class — its instances, subclasses, method calls
+and positional values — works on the class's **final** definition, wherever the use appears: an
+instance declared between the class and an `extend` has the members and the positional order the
+`extend` adds.
 
 **Example**
 
 ```bgl
+class Counter { int value; }
 extend class Counter {
     emitter bool isZero(){ $self.value == 0 }
 }
@@ -4337,8 +4532,8 @@ a compile-time error. `replace` on a member that does not exist is a warning, an
 **Example**
 
 ```bgl
-extend extern class string {
-    replace emitter string operator = (stringLiteral v){ $self.set(v); }
+extend class stringObj {
+    replace emitter stringObj operator = (stringLiteral v){ $self.setFromLit($v); }
 }
 ```
 
@@ -4408,7 +4603,7 @@ that does not hide it reaches it, whether by upcast or by passing the value to a
 **Example**
 
 ```bgl
-class dim {                           // a value class with a getter and a setter (§9.9.1)
+class dim {                           // a getter and a setter (§9.9.1)
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v; }
@@ -4521,6 +4716,20 @@ compile-time error. The valid operator tokens `?.`, `??`, `=>`, and the referenc
 
 The `==` row's `static` shape is the form a generic container calls (§9.6, §12.10).
 
+**Choosing `operator =`.** An assignment `x = v` uses the `operator =` of `x`'s class (or one it
+inherits) whose parameter is the type of `v` — or, failing that, the nearest ancestor of that type, so
+the most specific parameter wins. Every class inherits a root assignment from its root, `_bglObject` or
+`_bglPrimitive` (§21.5.8). An operator whose parameter is `x`'s class or one of its ancestors assigns a value *of that
+class*, so it applies only when `v` is one: the shared root doesn't make unrelated classes assignable.
+An `operator =` taking another type is a conversion (a setter's `operator = (int)`). One taking `var`
+would never be chosen, and declaring it is a compile-time error.
+
+An `operator =` taking the class itself (or an ancestor) is a **copy operator**. Only a value class
+(§8.2.7) may declare one — in a reference class `=` already means "refer to", so declaring one there is
+a compile-time error — and a value class never falls back to the root assignment: without a copy
+operator of its own or from a value ancestor, it can't be assigned. A subclass chains to its
+ancestor's copy operator with a cast, `(Base)self = o;`.
+
 **See also** §4.4 — binary operator resolution; Appendix C — the same table as a quick reference.
 
 ## 9.2 Emitter and Non-Emitter Operators
@@ -4550,12 +4759,13 @@ class Animal : object {
 
 > **Which overload wins.** When a type declares several overloads of one operator, the right-hand
 > operand selects between them in four passes: the operand's **exact** type; the **base type of a
-> literal** (`intLiteral` → `int`); a type the base is **convertible** to; and finally a parameter
-> declared `var`. `var` accepts anything, so it is the last resort rather than an exact match — which
-> is what lets a subclass override an operator it inherits. `object` declares
-> `emitter eBool operator == (var v)`, and were `var` treated as exact, a class deriving from
-> `object` could never give `==` its own meaning. An operand whose type is itself `var`, or whose
-> type is unknown, still matches in the first pass; there is nothing more specific to prefer.
+> literal** (`intLiteral` → `int`); a type the base is **convertible** to, or an **ancestor** of the
+> operand's class; and finally a parameter declared `var`. Each pass looks at the type's own operators
+> before inherited ones, so a subclass overrides what it inherits. `_bglObject` declares
+> `emitter eBool operator == (_bglObject v)` (identity), found in the third pass for any object
+> operand; a class that declares `==` for its own type, or for a specific other type, is matched
+> first. An operand whose type is itself `var`, or whose type is unknown, still matches in the first
+> pass; there is nothing more specific to prefer.
 
 ## 9.3 Subscript: `operator []` and `operator []=`
 
@@ -4619,11 +4829,11 @@ operator resolution, casts — are in §2.10.1 and §2.10.2.
 **Example**
 
 ```bgl
-class MyType : _bglObject {
+class MyType {
     emitter int operator ();                   // implicit
     explicit emitter string operator ();       // only via (string)x
 }
-MyType t;
+MyType t { }
 int    n = t;              // OK
 string s = (string)t;      // OK; `string s = t;` is a compile-time error
 
@@ -4647,7 +4857,7 @@ equivalent to `emitter T operator () { $val }`.
 | `operator ? ()` | `x?`, `x?.m`, `x ?? y` | Defines what "present" (non-null) means for the type, returning `eBool`. Evaluated at each step of `?.`, to decide whether `??` needs its fallback, and directly by postfix `?`. A type without it cannot use any of the three; doing so is a compile-time error. Must be an emitter. |
 | `operator switch (U v)` | `switch(x){ case v: }` | The comparison applied to each `case` value. Must be an emitter. Statement semantics: §5.12. |
 | `operator ?= (U v)` | `x ?= y` | A binary comparison at equality precedence with result `eBool`. No built-in type defines it; a class gives it a meaning. |
-| `operator <=> (U v)` | `x <=> y` | Three-way comparison, result `int`: negative when the left operand orders first, `0` when equivalent, positive otherwise. Declarable `static` or as an instance operator (§9.6). |
+| `operator <=> (U v)` | `x <=> y` | Three-way comparison, result `int`: negative when the left operand orders first, `0` when equivalent, positive otherwise. Declarable `static` or as an instance operator (§9.6). A type that declares `<=>` but not `<`, `>`, `<=` or `>=` gets each missing one from it. |
 | `operator ! ()` | `!x` | Prefix logical not. |
 
 `string` defines `operator ? ()` as a non-zero handle test. The language has no built-in notion of
@@ -4693,6 +4903,10 @@ consult which operator is tabulated in §12.10.
 
 `<=>` follows the same rule: `static`, or an instance operator with the left operand as receiver. Either
 form is usable in an expression or a comparator lambda.
+
+A type with `<=>` but without `<`, `>`, `<=` or `>=` gets the missing ones from it: `a < b` means
+`(a <=> b) < 0`, and likewise for the others. An ordering operator the type declares, or inherits,
+takes precedence. `==` and `!=` are never derived from `<=>`.
 
 **Example**
 
@@ -4757,7 +4971,7 @@ them as a regular method is a compile-time error:
 
 A **property accessor** is a member that reads and writes like a plain member but runs code on each
 access. It is built from a regular-method `operator ()` (the getter, §9.4) and an `operator =` (the
-setter) declared on a value class (§8.2.1), and the value class is then used as an owned member
+setter) declared on a value class (§8.2.7), and that class is then used as an owned member
 (§8.3.4) of the host class or object. A read of the member dispatches the getter; a write dispatches
 the setter, never the getter.
 
@@ -4771,7 +4985,7 @@ through `outer` (§9.9.3).
 **Syntax**
 
 ```syntax
-class ⟨accessor⟩ {
+value class ⟨accessor⟩ {
     [ ⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ] ; … ]
     ⟨type⟩ operator ( ) { ⟨statement⟩ … }
     ⟨type⟩ operator = ( ⟨type⟩ ⟨value⟩ ) { ⟨statement⟩ … }
@@ -4789,16 +5003,17 @@ second form declares the accessor as an owned member of a host class or object.
   member reads as.
 - The setter is an `operator =` taking one parameter. It runs on every assignment to the member; the
   assigned value is its argument.
-- The accessor class must be a value class with at least one stored member, and the member must be
-  declared without an initializer, so that it is owned (§8.3.4); otherwise the member is an ordinary
-  reference slot and no accessor dispatch occurs.
+- The accessor class must be a value class (§8.2.7) with at least one stored member, and the member
+  must be declared without an initializer or `ref`, so that it is owned (§8.3.4); otherwise the member
+  refers to an instance owned elsewhere and no accessor dispatch occurs. An in-place accessor (§9.9.2)
+  is a value class implicitly.
 - Inside either operator, `self` is the accessor instance and its backing members. A named accessor
   class has no access to its host; `outer` (§9.9.3) is available only to an inline accessor.
 
 **Example**
 
 ```bgl
-class heightProxy {
+value class heightProxy {
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v * 2; }
@@ -4996,6 +5211,9 @@ delegates to sub-namespaces, and combine with `#using` (§10.4).
 - No initializer is permitted.
 - Alias members are valid only on emitter classes; an object uses value aliases (§10.2) instead.
 - Aliases chain: `a.b.c.method()` resolves through any number of hops.
+- `const` and `inline` apply as on any member (§8.3.2, §8.3.5). `_bglObject`'s
+  `inline const string instanceName;` is an alias member of this kind: it has no storage, and each
+  object's value becomes its I6 header name (§11.5.4).
 
 **Example**
 
@@ -5093,9 +5311,9 @@ the two declaration forms is used (§11.2).
 **Syntax**
 
 ```syntax
-object ⟨name⟩ [ asI6 ⟨i6name⟩ ] { ⟨member⟩ … }
-object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { ⟨member⟩ … }
-⟨class⟩ ⟨name⟩ [ asI6 ⟨i6name⟩ ] { ⟨member⟩ … }
+object ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
+object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
+⟨class⟩ ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
 ```
 
 **Description**
@@ -5105,6 +5323,16 @@ an `object`-typed value is expected. The body holds member declarations in the s
 body (§8.3.1): a member is written `Type name [= value];` and members are `;`-separated. A member
 with no initializer defaults to `0`, `false` or `null` according to its type.
 
+The body may open with a **positional section**: `,`-separated values filling the class's positional
+members in order (§8.3.5), ended by the first `;`, exactly as in an inline object (§11.3.1). Members
+follow as usual. A member given positionally can't also be given by name.
+
+```bgl
+class Pet : object { inline instanceName; inline int legs; string owner; }
+Pet rex { "rex", 3; owner = "Jim"; parent = hall; }
+object lamp { "brass lamp"; }        // the name, positional on every class (§11.5.4)
+```
+
 The class an object instantiates is given in one of two equivalent ways. Using the class name as the
 type keyword (`ClassName Name { … }`) is the usual form. The inheritance form (`object Name : Base`)
 is required when the object inherits from more than one base. An object declared with neither
@@ -5112,9 +5340,16 @@ is required when the object inherits from more than one base. An object declared
 
 An object declared with no base, or with a base that derives from `object`, is an instance of
 `object` and carries `parent`, `children` and `attributes` (§11.5). `object` is **not** added
-implicitly: an object whose bases do not derive from `object` has the static type of its first base,
-is not assignable to an `object` variable, and lacks the `object` members. Give such a declaration
-`object` as an explicit base when the world-model members are wanted.
+implicitly: an object whose bases do not derive from `object` is not assignable to an `object`
+variable and lacks the `object` members. Give such a declaration `object` as an explicit base when
+the world-model members are wanted.
+
+**Every declared object is its own type**, whichever form declares it: a type with one instance,
+derived from the object's class. So `object lamp { … }` and `Room hall { … }` behave alike: members
+the body adds are members of that type (`lamp.brightness`, `hall.extra`), and the object fits
+wherever its class or an ancestor of it is expected — a parameter, a variable, an operator's operand
+— using the class's methods and operators. A verb object (§13) is the exception: its value is an
+action, typed by its verb class.
 
 The optional `as i6name` clause names the object differently in the emitted I6 (§3.11).
 
@@ -5178,14 +5413,15 @@ A member is given *positionally* or *by name*, and the separators carry meaning:
 
 | Form | Separator | Fills |
 |---|---|---|
-| Positional: `{ 3, 4 }` | `,` | The next `inline` member (§8.3.5), in declaration order, base class first. Only `inline` members participate. |
+| Positional: `{ 3, 4 }` | `,` | The next positional member (§8.3.5): the class's own `inline` and re-listed members, then its bases', subclass first. Only positional members participate. |
 | Named: `{ x = 1; y = 2; }` | `;` | The member named, `inline` or not. The `=` is required. |
 | Combined: `{ 5, 6; label = "p"; }` | `,` then a single `;` | Positional values first; the first `;` ends the positional section and begins the named section. |
 
 Supplying more positional values than there are `inline` members is a compile-time error. After the
 `;` that ends the positional section only named members may follow; a `,` before or among named
-members is a compile-time error, as is a named member before a positional one. Ordinary object and
-class bodies remain `;`-only; `,` is never a member separator there.
+members is a compile-time error, as is a named member before a positional one. A declaration body
+takes the same positional section (§11.2); a class body is `;`-only, and `,` is never a member
+separator there.
 
 **Example**
 
@@ -5362,11 +5598,12 @@ gameState.sys.activate();
 
 **See also** §8.3.4 — owned members; §3.7 — `ref` members; §11.8 — array members.
 
-## 11.5 Special Members: `parent`, `children`, `attributes`
+## 11.5 Special Members: `parent`, `children`, `attributes`, `instanceName`
 
-Three members declared on the base `object` class have compiler-level support tied to the world model:
-`parent` and `children` place objects in the object tree, and `attributes` sets the object's attribute
-flags. They are available on every object.
+Four members have compiler-level support. Three are declared on the base `object` class and tied to
+the world model: `parent` and `children` place objects in the object tree, and `attributes` sets the
+object's attribute flags. The fourth, `instanceName`, is declared on `_bglObject` (§21.5.8), so it is
+available on every object, world-model or not: it gives the object its name.
 
 ### 11.5.1 `parent`
 
@@ -5417,7 +5654,14 @@ compile-time error: listing an object in two containers' `children`, or listing 
 (`kitchen.children = { table }` and `table.parent = kitchen`) is accepted.
 
 **Reading.** `obj.children` is a collection: it is iterated with `for … in`, and `.length()` (or its
-synonym `.size()`) returns the number of direct children.
+synonym `.size()`) returns the number of direct children. It is the live tree, not an array, so it
+cannot initialize or be assigned to an `array<object>`; `bgl.world.inParent(obj)` returns one (§21.9).
+
+**Iterating while moving.** `for … in obj.children` reads each child's next sibling before running
+the body, so the body may move the current child elsewhere: `for (object o in kitchen.children)
+o.parent = bowl;` moves every child. A body that moves *other* children of `obj`, or adds new ones,
+changes what the remaining iterations see; to visit exactly the children present at the start, iterate
+the snapshot `bgl.world.inParent(obj)` instead.
 
 **Run-time placement.** `obj.children += { … }` moves each listed object into `obj`. `=` on
 `children` is permitted only in an object body, and `-=` is not permitted; to remove an object, move
@@ -5446,6 +5690,7 @@ bowl.children += { apple, pear };
 
 ```syntax
 attributes = { [ ! ] ⟨attribute⟩ , … } ;
+attributes = [ ! ] ⟨attribute⟩ ;
 ```
 
 **Description**
@@ -5457,6 +5702,9 @@ kept unless negated, and `attributes = {}` clears nothing. In an `extend` block,
 permitted only when the object's own declaration has no `attributes` member; otherwise it is a
 compile-time error, even with `replace`.
 
+A single attribute needs no braces: `attributes = light;` is `attributes = {light};`. This is the
+one-element form every list-typed member accepts (§12.2): `name = .lamp;` is `name = {.lamp};`.
+
 `attributeList` accepts `=` only; `+=` and `-=` are not permitted. To change attributes at run time
 use `give(attr)` and `ungive(attr)`, and test them with `has(attr)` (§21.5.1).
 
@@ -5466,12 +5714,62 @@ use `give(attr)` and `ungive(attr)`, and test them with `has(attr)` (§21.5.1).
 object foyer {
     attributes = {light};
 }
+object pantry {
+    attributes = light;                 // one element: the same as {light}
+}
 
 class post : object { attributeList attributes = {scenery}; }
 post lampPost {}
 
 extend lampPost {
     attributes = {light, !scenery};
+}
+```
+
+### 11.5.4 `instanceName`
+
+**Syntax**
+
+```syntax
+instanceName = ⟨string-literal⟩ ;
+```
+
+The form appears only in an object body. The name is also positional (§8.3.5): `_bglObject` declares it
+`inline`, so it is the last positional member of every class. An object whose class adds no positional
+members of its own takes it alone, `object lamp { "brass lamp"; }`; otherwise it follows them,
+`point p { 3, 4, "origin"; }`. A class that adds positional members re-lists it
+(`inline instanceName;`) to put it first.
+
+**Description**
+
+`instanceName` is the object's name: what `print(obj)` prints, and what an interpolated `{obj}` prints.
+It becomes the name in the object's I6 header (`Object lamp "brass lamp"`), which I6's `(name)` rule
+prints with or without a library. An object without one prints as its identifier in parentheses,
+`(lamp)`.
+
+It is a `const string` member, fixed when the program is compiled:
+
+- its value must be a string literal;
+- assigning it anywhere else is a compile-time error (§8.3.2);
+- it can't be read as a value, since I6 can print a header name but not return it; `print(obj)`
+  prints it;
+- a class body can't set it: each object names itself.
+
+A library binding (§23.3.4) adds `short_name`. When an object has both, the library prints
+`short_name`, which may also be a routine that prints a name computed at run time.
+
+**Example**
+
+```bgl
+object hall { instanceName = "Great Hall"; }
+object lamp { "brass lamp"; parent = hall; }           // positional
+
+class Pet : object { inline instanceName; inline int legs; }
+Pet rex { "rex", 3; }
+
+void Main(){
+    print(lamp);                   // → brass lamp
+    print($"You see {lamp}.");     // → You see brass lamp.
 }
 ```
 
@@ -5540,7 +5838,7 @@ property hidden_flag;
 extern property libDefinedProp;
 
 class Box : object { int weight; }
-Box g_box;
+Box g_box { }
 
 void Main() {
     if (g_box.provides(weight))         { … }   // class member
@@ -5745,7 +6043,7 @@ class Logger {
     void log(int n, int m) { print(n); print(":"); print(m); }
 }
 
-Logger lg;
+Logger lg { }
 lg.log(5);          // log(int)
 lg.log("hi");       // log(string)
 lg.log(3, 7);       // log(int, int)
@@ -5862,13 +6160,17 @@ in; `setLength()`, `clear()`, value-semantic assignment and the remaining method
 ```syntax
 array<⟨type⟩> ⟨name⟩[⟨n⟩] ;
 array<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
+array<⟨type⟩> ⟨name⟩ = ⟨value⟩ ;
 array<⟨type⟩> ⟨name⟩ ;
 ```
 
 `<`, `>`, `[` and `]` are literal. The first form is a sized array: capacity `⟨n⟩`, zero-initialized,
 length 0. `⟨n⟩` is any compile-time integer: an integer literal, a `#define`d symbol whose value is
 an integer (§14.2.1), or an integer `#beguilerSettings` property (§17.7). The second is an initialized array: capacity and length equal to the number of values. The
-third is declared without capacity.
+third is the one-element form of the second: a single value of the element type needs no braces, so
+`array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
+from that array instead; the value's type decides which is meant. The same shorthand applies to a
+list-typed class or object member (§11.5.3, §12.7). The fourth is declared without capacity.
 
 **Description**
 
@@ -6100,7 +6402,9 @@ rawArray<⟨type⟩> ⟨name⟩
 
 **Description**
 
-`rawArray<T>` is a typed view over a bare I6 word array: no length header and no tracking. It is
+`rawArray<T>` is a typed view over a bare I6 word array: no length header and no tracking.
+`rawArray<char>` is the byte form, a view over a bare I6 byte array (`Array X ->`, or an address inside
+the input buffer); like `array<char>` (§12.4) it is indexed by byte, from offset 0. It is
 declarable at file scope, as an `extern`, as a parameter type, and as a class or object member. Its
 purpose is interoperability: an I6 buffer handed to Beguile (the `results` array of a `parse_error`
 entry point, a library table, an array declared in an `#i6` island, §15.2) has no count word, and
@@ -6119,8 +6423,8 @@ type-checked at every subscript and may be cast like any other value.
 **Example**
 
 ```bgl
-bool ext_parsererror(int etype, rawArray<var> results) {      // NOTHING_PE, PutOn, Insert: library names
-    if (etype == NOTHING_PE && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
+bool ext_parsererror(eParserError etype, rawArray<var> results) {   // PutOn, Insert: library actions
+    if (etype == eParserError.nothing && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
         rtrue("You are not holding one.");
     rfalse;
 }
@@ -6391,8 +6695,8 @@ shadows the verb (§3.10).
 ```bgl
 verb Examine {
     grammar = {
-        {.examine, noun},
-        {.x, noun},
+        {.examine, NOUN},
+        {.x, NOUN},
     };
     void handler() {
         print("You examine it closely.");
@@ -6404,9 +6708,9 @@ verb Examine {
 
 When the first token inside `grammar = { … }` is a dictionary-word literal, the
 outer braces are read as the braces of a single grammar line, so the inner braces may be omitted:
-`grammar = {.whistle, noun};` is equivalent to
-`grammar = { {.whistle, noun} };`. `|`-alternation is allowed in this form
-(`grammar = {.hum|.murmur, noun};`). It applies only when one line is being declared; several lines
+`grammar = {.whistle, NOUN};` is equivalent to
+`grammar = { {.whistle, NOUN} };`. `|`-alternation is allowed in this form
+(`grammar = {.hum|.murmur, NOUN};`). It applies only when one line is being declared; several lines
 use the full form with one pair of braces per line. The single-line form is recognized wherever a
 grammar line list is accepted: verb declarations, `extend` blocks (`grammar += { … }`,
 `grammar -= { … }`, `replace grammar = { … }`), grammar objects, and extern verb bodies.
@@ -6579,23 +6883,23 @@ come last. Per-rule and block-local priorities participate in the same ordering.
 ```bgl
 verb Take {
     priority = 5;
-    grammar = { {.take, noun}, {.grab, noun} };
+    grammar = { {.take, NOUN}, {.grab, NOUN} };
     void handler() { … }
 }
 
 extend Look {
     priority = 5;                              // before Look's own lines
-    grammar += { {.peek, noun} };
+    grammar += { {.peek, NOUN} };
 }
 
 extend Look {
     priority = 12;                             // after Look's own lines
-    grammar += { {.look, .carefully, noun} };
+    grammar += { {.look, .carefully, NOUN} };
 }
 
 grammar additions {
-    grammarRule r1 = {Take, {.nab, noun}};             // 10
-    grammarRule r2 = {Drop, {.toss, held}, 5};         // 5
+    grammarRule r1 = {Take, {.nab, NOUN}};             // 10
+    grammarRule r2 = {Drop, {.toss, HELD}, 5};         // 5
 }
 ```
 
@@ -6640,9 +6944,9 @@ on a verb (§13.4.5) or in a grammar object, and both forms have the same effect
 
 | Type | Purpose |
 |---|---|
-| `grammarToken` | An extern enum declared by the IF library binding (§23.3.6); its values are the parser tokens `noun`, `held`, `creature`, …. Both the bare value (`held`) and the qualified form (`grammarToken.held`) are valid in pattern position. `noun(Routine)` and `scope(Routine)` are its parameterized forms. |
-| `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, noun}`. |
-| `grammarRule` | One verb-targeted pattern, with an optional priority: `{Examine, {.examine, noun}}` or `{Examine, {.examine, noun}, 5}`. |
+| `grammarToken` | An extern enum declared by the IF library binding (§23.3.6); its values are the parser tokens `NOUN`, `HELD`, `CREATURE`, …. Both the bare value (`HELD`) and the qualified form (`grammarToken.HELD`) are valid in pattern position. `NOUN(Routine)` and `SCOPE(Routine)` are its parameterized forms. |
+| `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, NOUN}`. |
+| `grammarRule` | One verb-targeted pattern, with an optional priority: `{Examine, {.examine, NOUN}}` or `{Examine, {.examine, NOUN}, 5}`. |
 | `grammarRuleList` | A list of grammar rules; the type of the `grammar` member on `verb` and of a grammar object. |
 
 A `grammarRule` has two initializer forms:
@@ -6668,26 +6972,30 @@ Each element of a pattern is one of the following.
 | `.word` | the player typing that word |
 | `..words` | the plural form of the word |
 | `.w1 \| .w2` | any one of the listed words; may be parenthesized |
-| `noun` | any in-scope object |
-| `held` | a held object |
-| `creature` | a creature or actor |
-| `topic` | a topic phrase |
-| `multi` | one or more in-scope objects |
-| `multiheld` | one or more held objects |
-| `multiexcept` | one or more in-scope objects, excluding one already matched (used after a preposition: `multiexcept, .in, noun`) |
-| `multiinside` | one or more objects inside a specific container (used after a preposition: `multiinside, .from, noun`) |
-| `number` | a number typed by the player, range-checked |
-| `anynumber` | any number, no range check |
-| `special` | a number or a dictionary word |
+| `NOUN` | any in-scope object |
+| `HELD` | a held object |
+| `CREATURE` | a creature or actor |
+| `TOPIC` | a topic phrase |
+| `MULTI` | one or more in-scope objects |
+| `MULTIHELD` | one or more held objects |
+| `MULTIEXCEPT` | one or more in-scope objects, excluding one already matched (used after a preposition: `MULTIEXCEPT, .in, NOUN`) |
+| `MULTIINSIDE` | one or more objects inside a specific container (used after a preposition: `MULTIINSIDE, .from, NOUN`) |
+| `NUMBER` | a number typed by the player, range-checked |
+| `ANYNUMBER` | any number, no range check |
+| `SPECIAL` | a number or a dictionary word |
 | *attributeName* | an object that has that attribute (`container`, `animate`) |
 | *RoutineName* | a general parsing routine: a global `bool` function the parser calls to consume input words and report a match |
-| `noun(Routine)` | a noun filter: the parser matches nouns normally, then calls the global `bool` routine with each candidate object, which accepts or rejects it |
-| `scope(Routine)` | a scope setter: the global `bool` routine decides which objects are in scope for this line, using the library's scope routines (`PlaceInScope()`, `ScopeWithin()`) |
+| `NOUN(Routine)` | a noun filter: the parser matches nouns normally, then calls the global `bool` routine with each candidate object, which accepts or rejects it |
+| `SCOPE(Routine)` | a scope setter: the global `bool` routine decides which objects are in scope for this line, using the library's scope routines (`PlaceInScope()`, `ScopeWithin()`) |
 
 A bare identifier in a pattern must be declared as a `grammarToken`, an `attribute`, or a global
 function; any other declaration, or an undeclared name, is a compile-time error. In pattern position
-a bare `noun` resolves to the grammar token even when an `extern object noun` exists at file scope;
-outside a pattern the global wins, and `grammarToken.noun` selects the token explicitly.
+a bare `NOUN` resolves to the grammar token even when an `extern object noun` exists at file scope;
+outside a pattern the global wins, and `grammarToken.NOUN` selects the token explicitly.
+
+Grammar tokens are written in uppercase by convention (`NOUN`, `HELD`, `REVERSE`), which sets them
+apart from dictionary words and from same-named variables such as the `noun` global. Beguile is
+case-insensitive (§1.3), so `noun` in a pattern is the same token.
 
 **Example**
 
@@ -6695,19 +7003,19 @@ outside a pattern the global wins, and `grammarToken.noun` selects the token exp
 bool isEdible(object obj) { return obj.has(edible); }
 
 verb Taste {
-    grammar = { {.taste, noun(isEdible)} };
+    grammar = { {.taste, NOUN(isEdible)} };
     void handler() { … }
 }
 
 bool parseColor(int context) { … }
 
 verb Paint {
-    grammar = { {.paint, noun, parseColor} };      // "paint <object> <color>"
+    grammar = { {.paint, NOUN, parseColor} };      // "paint <object> <color>"
     void handler() { … }
 }
 
 verb Chat {
-    grammar = { {.chat, animate, .about, topic} };
+    grammar = { {.chat, animate, .about, TOPIC} };
     void handler() { … }
 }
 ```
@@ -6733,24 +7041,24 @@ same applies to multi-trigger lines inside `extend V { grammar += { … } }`.
 ```bgl
 verb Stow {
     grammar = {
-        {.stow, held, .on | .onto | .upon, noun},
-        {.stow, held, (.in | .into | .inside), noun},
+        {.stow, HELD, .on | .onto | .upon, NOUN},
+        {.stow, HELD, (.in | .into | .inside), NOUN},
     };
     void handler() { … }
 }
 
 verb TypeNum {                                     // three trigger words: one line per word
-    grammar = { {.type | .enter | .put, number, .into | .in | .on | .onto, noun} };
+    grammar = { {.type | .enter | .put, NUMBER, .into | .in | .on | .onto, NOUN} };
     void handler() { print("You can't type anything there."); }
 }
 ```
 
-### 13.4.4 Line Modifiers: `reverse`, `withI6Synonyms`
+### 13.4.4 Line Modifiers: `REVERSE`, `withI6Synonyms`
 
 **Syntax**
 
 ```syntax
-{ ⟨pattern⟩ [ , reverse ] [ , withI6Synonyms ] }
+{ ⟨pattern⟩ [ , REVERSE ] [ , withI6Synonyms ] }
 ```
 
 **Description**
@@ -6759,8 +7067,8 @@ Two pseudo-tokens may end a grammar line, in this order. Neither is matched agai
 `withI6Synonyms`, when present, must be last. The dotted forms `.reverse` and `.withI6Synonyms` are
 ordinary dictionary words and are unaffected.
 
-- `reverse` swaps `noun` and `second` when the action receives its parsed arguments:
-  `{.give, creature, held, reverse}`.
+- `REVERSE` swaps `noun` and `second` when the action receives its parsed arguments:
+  `{.give, CREATURE, HELD, REVERSE}`.
 - `withI6Synonyms` widens the line's effect on a library verb. A library verb may group several
   synonym words under one grammar table; when a line's trigger word belongs to such a group, the line
   affects only that word and its synonyms are untouched. With `withI6Synonyms` the line applies to
@@ -6777,11 +7085,11 @@ word as a fresh `Verb`. Background, non-normative: [Verbs and Grammar](../Verbs-
 
 ```bgl
 verb Keypad {
-    grammar = { {.enter, number, .into, noun} };    // "enter 5 into keypad"; "cross" unaffected
+    grammar = { {.enter, NUMBER, .into, NOUN} };    // "enter 5 into keypad"; "cross" unaffected
     void handler() { … }
 }
 
-extend Take { grammar += { {.take, .all, .from, noun, withI6Synonyms} }; }   // take/get/carry/…
+extend Take { grammar += { {.take, .all, .from, NOUN, withI6Synonyms} }; }   // take/get/carry/…
 ```
 
 ### 13.4.5 Grammar on Verbs and Grammar Objects
@@ -6811,10 +7119,10 @@ Per-rule priority is the optional third element (§13.2.5).
 
 ```bgl
 grammar customPatterns {
-    rule1 = {PutOn, {.hang, held, .on, noun}};
+    rule1 = {PutOn, {.hang, HELD, .on, NOUN}};
     array<grammarRule> rules = {
-        {PutOn,  {.put, held, .on, noun}},
-        {Insert, {.put, held, .in, noun}, 5},
+        {PutOn,  {.put, HELD, .on, NOUN}},
+        {Insert, {.put, HELD, .in, NOUN}, 5},
     };
 }
 ```
@@ -6858,7 +7166,7 @@ modifiers (§13.4.4) are accepted.
 ```bgl
 extern verb PutOn;
 extend PutOn {
-    grammar += { {.hang, held, .on, noun} };
+    grammar += { {.hang, HELD, .on, NOUN} };
 }
 ```
 
@@ -6869,20 +7177,20 @@ extend PutOn {
 `grammar -= { … }` removes grammar. The grain of the removal is set by how much of the line is named:
 
 - **Line-level** — `{.w, pattern…}` removes the one line that matches exactly: same trigger word,
-  same tokens, same `reverse` flag.
+  same tokens, same `REVERSE` flag.
 - **Word-level** — `{.w}` removes all of that word's grammar.
 
 A `-=` entry must match a line exactly; a partial (prefix) pattern matches nothing:
-`-= { {.give, noun} }` removes only the line whose pattern is exactly `noun`, never
-`{.give, noun, .to, noun}`. An alternation in a `-=` entry (`.a|.b|.c`) is one removal per word, each
+`-= { {.give, NOUN} }` removes only the line whose pattern is exactly `NOUN`, never
+`{.give, NOUN, .to, NOUN}`. An alternation in a `-=` entry (`.a|.b|.c`) is one removal per word, each
 matched and warned separately. Removal is source-ordered: a `-=` sees only lines declared before it,
 so a later `+=` of the same line is unaffected. A `-=` that matches nothing is a warning.
 
 **Example**
 
 ```bgl
-verb TypeNum { grammar = { {.type|.dial, .into, noun}, {.dial, .to, noun} }; void handler() { … } }
-extend TypeNum { grammar -= { {.dial, .into, noun} }; }   // that one dial line
+verb TypeNum { grammar = { {.type|.dial, .into, NOUN}, {.dial, .to, NOUN} }; void handler() { … } }
+extend TypeNum { grammar -= { {.dial, .into, NOUN} }; }   // that one dial line
 extend TypeNum { grammar -= { {.dial} }; }                // every dial line
 ```
 
@@ -6901,7 +7209,7 @@ Background, non-normative: [Verbs and Grammar](../Verbs-Grammar.md).
 
 ```bgl
 extend Enter  { grammar -= { {.enter} }; }      // evict 'enter' from the library verb …
-verb  Keypad  { grammar = { {.enter, number, .into, noun} }; void handler() { … } }   // … and reclaim it
+verb  Keypad  { grammar = { {.enter, NUMBER, .into, NOUN} }; void handler() { … } }   // … and reclaim it
 extend Disturb { grammar -= { {.xyzzy} }; }     // no reclaimer: 'xyzzy' is disabled
 ```
 
@@ -6921,13 +7229,13 @@ compile-time error.
 **Example**
 
 ```bgl
-verb TypeNum { grammar = { {.type|.dial, .into, noun} }; void handler() { … } }
+verb TypeNum { grammar = { {.type|.dial, .into, NOUN} }; void handler() { … } }
 extend TypeNum {
-    replace grammar = { {.dial, .to, noun} };     // 'type' is dropped
+    replace grammar = { {.dial, .to, NOUN} };     // 'type' is dropped
 }
 
 extend Take {
-    replace grammar = { {.take, .firmly, noun} };  // overrides the library's 'take'
+    replace grammar = { {.take, .firmly, NOUN} };  // overrides the library's 'take'
 }
 ```
 
@@ -6953,7 +7261,7 @@ There is no Beguile form for I6's `Extend 'w' only` directive; if needed, write 
 
 ```bgl
 extend Take { synonyms = {.steal, .grab, .pilfer}; }
-extend Take { grammar += { {.take, .quietly, noun} }; }   // also "steal quietly", "grab quietly"
+extend Take { grammar += { {.take, .quietly, NOUN} }; }   // also "steal quietly", "grab quietly"
 ```
 
 **See also** §13.2.3, §15.2.
@@ -7170,13 +7478,15 @@ all do.
 
 ## 14.2 Symbols and Conditional Compilation
 
-### 14.2.1 `#define`
+### 14.2.1 `#define`, `#defineI6`
 
 **Syntax**
 
 ```syntax
 #define ⟨name⟩
 #define ⟨name⟩ ⟨value⟩
+#defineI6 ⟨name⟩
+#defineI6 ⟨name⟩ ⟨value⟩
 ```
 
 **Description**
@@ -7191,11 +7501,26 @@ time: a numeric value is an integer literal, any other value a string literal. S
 removed it. Defining a symbol that is already defined is a compile-time error; use `#redef`
 (§14.2.2). Defining a symbol that was `#declare`d is a compile-time error (§14.2.3).
 
+`#defineI6` is `#define` that also passes the symbol to Inform 6 as a `Constant` of the same name and
+value, placed ahead of any I6 include. The Beguile symbol is an ordinary `#define`d symbol, so `#if`
+tests it and it follows the same linear rule. A later `#undef` or `#redef` affects only the Beguile
+symbol; the I6 constant stays.
+
+`#defineI6` is how a program sets an I6 library's option constants (`NO_PLACES`,
+`OPTIONAL_EXTENDED_METAVERBS`, …) so that the library and Beguile agree on them: the library bindings
+declare a library's optional parts only under the matching symbol (§23.3.10). Two consequences:
+
+- The `#defineI6` must come before the `#include` of the binding, or the binding's `#if` does not see
+  it.
+- A constant written in raw I6 (`#i6 { Constant NO_PLACES; }`) reaches only Inform 6. `#if` cannot see
+  it, so the binding still declares the parts it removes.
+
 **Example**
 
 ```bgl
-#define DEBUG          // DEBUG is true
+#define CHEATS         // CHEATS is true
 #define MAX_SCORE 100
+#defineI6 OPTIONAL_EXTENDED_METAVERBS   // also Constant OPTIONAL_EXTENDED_METAVERBS; in I6
 
 if(score >= MAX_SCORE) print("You win!");   // compiles as: if(score >= 100)
 const int maxScore = MAX_SCORE;
@@ -7316,13 +7641,16 @@ literal, an int property compares numerically, and a bool property tests on its 
 comparison ignores case, as everywhere else in Beguile. The property must be written with no space
 around the `.`; an undeclared property is a compile-time error, not a false condition.
 
+The condition runs to the end of its line. Anything after it on that line other than a comment is a
+compile-time error.
+
 A bare symbol name is true when the symbol is *defined*, whatever its value, so `#if V` is true even
 when `V` was defined as `0` or `false`. In a comparison the name resolves to the symbol's *value*; an
 undefined symbol compares as `0`. Thus after `#define V false`, `#if V` and `#if V == false` are both
 true and `#if V == true` is false.
 
 There is no `#ifdef` or `#ifndef`, in either the single- or double-hash form: `#if SYMBOL` and
-`#if !SYMBOL` test definedness. `#if` tests *Beguile* symbols; to emit a conditional for the Inform 6
+`#if !SYMBOL` test definedness. `#if` tests *Beguile* symbols (a symbol set with `#defineI6` is both, §14.2.1); to emit a conditional for the Inform 6
 compiler to evaluate — over one of its own constants, say — write it in an `#i6` island, where a
 single-hash directive is raw I6 and passes through (§7.4):
 
@@ -7333,11 +7661,11 @@ single-hash directive is raw I6 and passes through (§7.4):
 **Example**
 
 ```bgl
-#define DEBUG
+#define CHEATS
 #define FEATURE_LEVEL 3
 
-#if DEBUG && beguiler >= 1010
-    print("debug mode on Beguile 1.1+");
+#if CHEATS && beguiler >= 1010
+    print("cheats on, Beguile 1.1+");
 #endif
 
 #if FEATURE_LEVEL > 2
@@ -8007,7 +8335,8 @@ rules are specific to `extern`:
 - The marker form `extern class Name[];` declares that the class is pooled in I6, with a pool size
   the I6 declaration owns. It enables `new Name(…)` and `delete` (§8.2.6). `extern class Name[N]`
   with a size is a compile-time error.
-- `extern emitter class` declares a veneer class over a primitive or value (§8.2.5).
+- `primitive class` declares a primitive type, the value itself (§8.2.5); `extern emitter class`
+  declares a type label over a word that manages its own storage, such as `array<T>`.
 
 **Example**
 
@@ -8225,7 +8554,7 @@ through, unchanged, to the Inform 6 command line (§16.3.1).
 | `-inform=<name>` | The Inform 6 compiler to run. An absolute path is used verbatim; anything else is resolved relative to the directory containing the `beguiler` binary. The name `none` skips the Inform 6 hand-off: the transpiled `.inf` is written and compilation stops there. | `informName` / `informPath` |
 | `-includepaths=<dir>[,<dir>…]` | Adds one or more directories to the include search path (§18.4). Comma-separated; whitespace around each entry is trimmed; duplicates are ignored. Entries are taken as written: no separator rewriting, no relative-path resolution, no existence check. | `includePaths` |
 | `-lib=<dir>` | Location of the Beguile system library (the `beguiLib` tree). An absolute path is used verbatim; a relative path is anchored to the directory containing the `beguiler` binary. Surrounding `"` or `'` quotes are stripped. | `beguiLibPath` |
-| `--debug` | Debug build: Inform 6 is run with `-k`, and the debug bundle is written (§20.3). | none |
+| `--debug`, `-D` | Debug build (§20.3): Inform 6 is run with `-k` and `-D`, the debug bundle is written, and `DEBUG` is defined. The two spellings are equivalent. | none |
 | `--lsp` | Language-server mode (§16.6). No compilation takes place. | none |
 
 ### 16.3.1 Pass-through switches
@@ -9036,10 +9365,18 @@ hand-written `.inf` beside the source.
 
 ## 20.3 Debug Builds
 
-`--debug` (§16.3) changes two things: Inform 6 is run with `-k`, so it writes its own debug
-file, and the compiler writes its **debug bundle**, `<source file name>.bgldbg`, beside the transpiled
-file. Everything else about the build is unchanged; in particular `omitUnusedRoutines` still applies
-unless the program sets it `false` (§18.11).
+`--debug` (§16.3) changes three things:
+
+- Inform 6 is run with `-k`, so it writes its own debug file, and the compiler writes its **debug
+  bundle**, `<source file name>.bgldbg`, beside the transpiled file.
+- Inform 6 is run with `-D`, so the library's debugging features are present: its debugging verbs
+  (`tree`, `purloin`, `actions`, …) and action tracing.
+- The symbol `DEBUG` is defined (Appendix F), which turns on `log()` (§21.4). The library bindings
+  declare their debugging verbs only under it, so a program that names one outside `#if DEBUG` fails
+  to compile in an ordinary build.
+
+Everything else about the build is unchanged; in particular `omitUnusedRoutines` still applies unless
+the program sets it `false` (§18.11).
 
 The bundle is plain text in three sections, each introduced by a bracketed header:
 
@@ -9067,7 +9404,7 @@ story.
 A build reports, in order: the compiler banner; blorb scan and IFID notes when packaging is on; any
 compile-time diagnostics (§19.1); on a successful transpile, the exact Inform 6 command line that is
 about to run; Inform 6's own output, rewritten; and blorb assembly notes. Inform 6's command line
-shows the switches that were passed through unchanged (§16.3.1), the `-k` added
+shows the switches that were passed through unchanged (§16.3.1), the `-k` and `-D` added
 by `--debug`, and the `-e` added by `economy`.
 
 ---
@@ -9084,7 +9421,7 @@ The core provides:
 
 - the `bgl` namespace and its target-specific branches (§21.3);
 - the output routines `print()` and `log()` and the article helpers (§21.4);
-- the IF-domain types: `attribute`, `property`, `dictionaryWord`, `verb`, the grammar types, `bglClass`, `parentProp`, `childrenProp`, `_bglObject`, `eType` (§21.5);
+- the IF-domain types: `attribute`, `property`, `dictionaryWord`, `verb`, the grammar types, `bglClass`, `parentProp`, `childrenProp`, `_bglObject`, `_bglPrimitive`, `eType` (§21.5);
 - the numeric, character and allocation utilities: `uint`, `bgl.util.math`, `bgl.util.random`, the `char` methods, `bglAllocated` (§21.6–§21.8);
 - object-tree queries, `bgl.world` (§21.9);
 - the user-interface roots `bgl.ui.mainWin` / `bgl.ui.statusBar` and the print rules (§21.10–§21.11);
@@ -9141,7 +9478,7 @@ void Main() {
 | `bgl.world.*` | Object-tree queries (§21.9). | both |
 | `bgl.ui.*` | `mainWin`, `statusBar` (§21.10); `screen` with `<glulxWindow>` (§22.7.2); `hideCursor`, `showCursor`, `waitForKey` with `<ui>` (§22.6). | both |
 | `bgl.printRules.*` | Text-style print rules for interpolated strings (§21.11). | both |
-| `bgl.story.*` | Story-file identity values. Provided by the `i6StandardLibrary` binding (§23.3.9). | both |
+| `bgl.header.*` | The release number and serial code from the story file header (§21.14). | both |
 
 Only the branch for the active target is loaded: a Glulx build loads `bgl.glulx` and the Glulx `bgl.asm`; a Z-machine build loads `bgl.zcode` and the Z-machine `bgl.asm`. Referencing a member of the other target's branch is a compile-time error.
 
@@ -9154,13 +9491,14 @@ int roll = bgl.util.random.get(6);       // 1..6
 
 **See also** §10, §10.4, §22.
 
-## 21.4 `print()`, `log()` and Article Helpers
+## 21.4 `print()`, `printLine()`, `log()` and Article Helpers
 
 **Syntax**
 
 ```syntax
 print( ⟨value⟩ ) ;
 print( $"⟨text⟩ {⟨expr⟩} ⟨text⟩" ) ;
+printLine( [ ⟨value⟩ ] ) ;
 log( ⟨value⟩ ) ;
 printName( ⟨obj⟩ ) ;
 bgl.printRules.a( ⟨obj⟩ ) ;   bgl.printRules.cA( ⟨obj⟩ ) ;
@@ -9171,11 +9509,13 @@ bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 
 `print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce (`<string>` replaces `print(string)`; a binding adds `print(stringOrRoutine)`). An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
 
-`print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's short name. A class therefore customizes how its instances print by defining `void print()`.
+`print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's name with I6's `(name)` rule. A class therefore customizes how its instances print by defining `void print()`.
 
-The core declares `short_name` as a `string` member of `object`: the text (or routine) the article helpers and `printName()` print as the object's name. No binding redeclares it (§23.3.4).
+The name `(name)` prints is the object's `instanceName` (§11.5.4); an object without one prints as `(lamp)`. Both library bindings declare `short_name` on `object` (§23.3.4): the text (or routine) the library prints in its place when the object has one, and what the article helpers and `printName()` print.
 
-`log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined (§14.2.1). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
+`printLine(v)` prints `v` exactly as `print(v)` would, through whichever overload is current for its type, then a newline; `printLine()` prints just the newline. It takes an interpolated string too. It is not I6's `print_ret`: it does not return from the enclosing function.
+
+`log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined: in a debug build (§20.3), or when the program turns it on with `#redef DEBUG` (§14.2.2). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
 
 The article helpers print a world-tree object with an article: `a(obj)` → "a lamp", `cA(obj)` → "A lamp", `the(obj)` → "the lamp", `cThe(obj)` → "The lamp". They are members of `bgl.printRules` (§21.11), so they are written qualified, or `#using bgl.printRules;` (§10.4) brings the short spelling into a file — which is how they read best inside interpolated text. `printName(obj)` → "lamp" prints the bare short name with no article and is a file-scope function.
 
@@ -9190,7 +9530,8 @@ object lamp { short_name = "brass lamp"; }
 void Main() {
     print($"You see {bgl.printRules.a(lamp)}.");   // → You see a brass lamp.
     bgl.printRules.cThe(lamp); print(" glows.");   // → The brass lamp glows.
-    log("reached Main");                           // output only with #define DEBUG
+    printLine($"Weight: {2}");                     // → Weight: 2, then a newline
+    log("reached Main");                           // output only in a debug build
 }
 ```
 
@@ -9318,7 +9659,7 @@ void Main() {
 | Type | Purpose |
 |---|---|
 | `patternElement` | The base type of one element of a grammar pattern. A pattern element is a dictionary word, a grammar token, an attribute, or a parser-hook function. |
-| `grammarToken` | An `extern enum` of the parser's token names (`noun`, `held`, `creature`, …). It is declared by the library binding, not by the core (§23.3.6). |
+| `grammarToken` | An `extern enum` of the parser's token names (`NOUN`, `HELD`, `CREATURE`, …). It is declared by the library binding, not by the core (§23.3.6). |
 | `grammarRule` | One verb-targeted pattern with a priority: `{verb, {pattern}[, priority]}`. |
 | `grammarRuleList` | A list of grammar rules; the type of a verb's `grammar` member and of a grammar object. |
 
@@ -9330,7 +9671,7 @@ These types are the receivers of the grammar operators (`=`, `+=`, `-=`, `replac
 #include <i6StandardLibrary>
 
 grammar extraLines {
-    grammarRule hang = { PutOn, {.hang, held, .on, noun} };   // a verb and a pattern of pattern elements
+    grammarRule hang = { PutOn, {.hang, HELD, .on, NOUN} };   // a verb and a pattern of pattern elements
 }
 ```
 
@@ -9344,14 +9685,14 @@ grammar extraLines {
 
 **Description**
 
-`bglClass` is the parameter type of `object.is()`, the runtime class test (true when `obj` is an instance of the class or of any subclass). Every registered class — declared with `class Name {…}` or `extern class Name : object {…}` — is type-compatible with `bglClass`, so any class name is accepted as the argument. In default mode the class must be declared; in loose identifier mode (§15.3.3) the name passes through unchecked.
+`bglClass` is the parameter type of `is()` on `_bglObject` (§21.5.8), the runtime class test (true when `obj` is an instance of the class or of any subclass). It is a primitive class: a class name's value is the number I6 assigns the class, held directly like an enum value, with nothing behind it to allocate or refer to. Every registered class — declared with `class Name {…}` or `extern class Name : object {…}` — is type-compatible with `bglClass`, so any class name is accepted as the argument. In default mode the class must be declared; in loose identifier mode (§15.3.3) the name passes through unchecked.
 
 **Example**
 
 ```bgl
 class Container : object { }
 class Box : Container { int weight; }
-Box crate;
+Box crate { }
 
 void Main() {
     if (crate.is(Container)) print("a container");   // true: Box inherits Container
@@ -9393,19 +9734,43 @@ void Main() {
 
 **See also** §11.5.
 
-### 21.5.8 `_bglObject`
+### 21.5.8 `_bglObject` and `_bglPrimitive`
 
 **Syntax**
 
 ```syntax
 class ⟨name⟩ : _bglObject { … }
+primitive class ⟨name⟩ : _bglPrimitive { … }
 ```
 
 **Description**
 
-`_bglObject` is the root base class of the runtime: an empty `emitter class` from which `object`, the primitive wrappers (`int`, `char`, `string`, …), the IF-domain types above and the runtime's own namespace objects derive.
+Every class derives one of two roots, both `emitter class`es. A class declared without a base derives
+the one that fits its form (§8.6):
 
-Deriving from `_bglObject` gives a class with stored members **reference semantics**: locals and members of the type hold an identity, not a copy. `object` adds world-tree citizenship (`parent`, `children`, attributes) on top of that. A class with no base is a value class and is copied on assignment. The veneer classes `int`, `bool`, `char` and `string` (§8.2.5) also derive from `_bglObject` but have no stored members, so there is nothing to share and they behave as values. `_bglObject` is never inherited implicitly; a program names it as a base only to obtain reference semantics without the world tree — the window types of `<glulxWindow>` are an example (§22.7.1).
+- **`_bglObject`** — the root of every other class, whose values are I6 objects: reference and value
+  classes, `object`, `bglSize`, windows, `stringObj` (a pooled string instance) and the runtime's
+  namespace objects (`bgl`, `_bglUtil`, …). An emitter class derives
+  it too unless it is `primitive`. It carries
+  what I6 gives any object:
+
+  | Member | Meaning |
+  |---|---|
+  | `instanceName` (`inline const string`) | the object's name, set in its body; the last positional member (§11.5.4) |
+  | `operator =` (`_bglObject`) | the root assignment: the variable refers to the assigned instance |
+  | `operator ?()` | true unless `nothing` |
+  | `operator ==` / `operator !=` (`_bglObject`) | identity: the same instance |
+  | `provides(property)` | the object declares the property, so reading it is safe |
+  | `is(bglClass)` | the object is of the class, or of one derived from it |
+  | `print()` | prints the object's short name; what `print(obj)` calls |
+
+  A value class copies through its own copy operator instead of the root assignment (§2.10.3, §9.1).
+  `object` adds world-tree citizenship (`parent`, `children`, attributes) on top.
+
+- **`_bglPrimitive`** — the root of every primitive class (`int`, `char`, `string`, `bglClass`, …, §8.2.5), whose
+  value is held directly. It declares only the root assignment, which copies the word. Everything
+  else a primitive supports, it declares itself, so an `int` has no `is()` or `print()` it didn't ask
+  for.
 
 `print(x)` dispatches on `_bglObject` as described in §21.4.
 
@@ -9510,7 +9875,7 @@ uint w = (uint)-1;    // a negative literal requires the cast
 
 **Description**
 
-`bgl.util.math` holds the integer helpers that have no operator form.
+`bgl.util.math` holds the math helpers that have no operator form.
 
 | Function | Returns | Description |
 |---|---|---|
@@ -9525,6 +9890,10 @@ uint w = (uint)-1;    // a negative literal requires the cast
 | `bgl.util.math.unsignedDiv(a, b)` / `unsignedMod(a, b)` | `int` | Unsigned division / modulo; `b == 0` yields `0`. |
 
 The unsigned helpers are what the `uint` operators use; calling them directly is only needed for unsigned arithmetic on plain `int` values.
+
+> **[Glulx]** On Glulx `bgl.util.math` also takes `float` arguments: `abs(x)` and `pow(a, b)` have float
+> forms, and `sqrt(x)`, `exp(x)`, `log(x)`, `sin(x)`, `cos(x)`, `tan(x)`, `asin(x)`, `acos(x)`,
+> `atan(x)`, `atan2(y, x)`, `ceil(x)` and `floor(x)` take and return `float`. Angles are in radians.
 
 **Example**
 
@@ -9699,6 +10068,7 @@ bgl.ui.statusBar.height = 2;
 ```syntax
 $"… {bgl.printRules.⟨rule⟩} …"
 $"… {bgl.printRules.img( ⟨image⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨height⟩ ] ] ] )} …"
+$"… {bgl.printRules.link( ⟨text⟩ , ⟨target⟩ )} …"
 ```
 
 **Description**
@@ -9718,6 +10088,7 @@ $"… {bgl.printRules.img( ⟨image⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨he
 | `fixed` | Fixed-pitch text. |
 | `roman` | Return to plain text. |
 | `img(image[, align[, width[, height]]])` | Draw an image inline in the main window. **[Glulx]**, and only when `generateBlorb` is true (§17.6). `image` is an `eImages` value; `align` is an `eGlulxImageAlign` (default `inlineCenter`); a `0` dimension is computed from the other, preserving aspect ratio, and `0, 0` draws at natural size. |
+| `link(text, target)` | Print `text` as a hyperlink. **[Glulx]**; a compile-time error on the Z-machine. `target` is a `literal func<void> \| int`; what a click does depends on it. See *Hyperlinks* below. |
 
 **Example**
 
@@ -9728,7 +10099,27 @@ print($"{bold}Warning{roman}");
 print($"You cannot open {the(noun)}.");
 ```
 
-**See also** §1.6.5, §17.6, §22.8.
+**Hyperlinks**
+
+The `target` of a `link` decides what a click does:
+
+- A **function**, whether a lambda (§4.14) or a named function, is called. The parameter is `literal` (§6.3): the function runs when the player clicks, long after the `print`, so a lambda that captures a variable is a compile-time error.
+- An **`int`** or an **enum value** is delivered to `HandleGlkEvent` as the event's link value. This is the Inform 6 way of handling links, and a program that handles its links there keeps working unchanged. A `target` of `0` makes no link.
+
+```bgl
+#using bgl.printRules;
+print($"There's a {link("button", => { print("Click.^"); })} on the machine.");  // run code
+print($"There's a {link("lever", handlePullLever)} near it.");                   // call a function
+print($"Under it is {link("broom", eLinks.broom)}.");                            // HandleGlkEvent
+```
+
+`HandleGlkEvent(event, context, buffer)` is an `extern default` entry point declared by the Glulx core, with the Inform 6 library's meaning: `event` is the four-word Glk event, `context` is `0` while a line is being read and `1` while a key is awaited, and the return value is `0` to carry on, `2` to end the input, or `-1` to keep waiting. The runtime wraps whatever `HandleGlkEvent` the program defines. On a hyperlink event it renews the window's hyperlink request, calls a function target itself, and passes every other event to the program's function. The same wrapper serves the Inform 6 library's input loops and the runtime's own (`bgl.ui.waitForKey`), so a program behaves the same with a library or without one.
+
+Glk does not allow printing to a window that is waiting for a line. When a function target is clicked at a command prompt, the runtime suspends line input while the function runs. The player's partial input is echoed, and the prompt is then reprinted with that input restored. The library binding provides this for the Inform 6 library. A program's own `HandleGlkEvent` that prints at the prompt must cancel line input itself, as in Inform 6.
+
+The link text is printed plainly on an interpreter without hyperlink support.
+
+**See also** §1.6.5, §4.14, §17.6, §22.8.
 
 ## 21.12 Utility Types
 
@@ -9990,6 +10381,28 @@ but `z3` (§17.7).
 
 **See also** §3.12; §10.2; §22.7.
 
+## 21.14 `bgl.header`
+
+**Description**
+
+`bgl.header` reads fields of the story file header: the release number and serial code the game was
+compiled with (§17.3). It needs no library.
+
+| Member | Returns | Description |
+|---|---|---|
+| `bgl.header.release` | `int` | The release number. |
+| `bgl.header.serialChar(i)` | `char` | Character `i` (`0..5`) of the six-character serial code. |
+| `bgl.header.printSerial()` | `void` | Prints the serial code. |
+
+**Example**
+
+```bgl
+print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}");
+```
+
+> **[Z-machine/Glulx difference]** The header layout differs per target; `bgl.header` reads the right
+> fields on each.
+
 ---
 
 # 22 Language Extensions
@@ -10116,7 +10529,7 @@ Two types, for two different things:
 | `string` | a reference to static text (a literal) | no | none; nothing is owned |
 | `stringObj` | a buffer of its own, taken from the string pool | yes | allocated on declaration, released at scope exit |
 
-A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7).
+A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7). A `stringObj` parameter is a copy too — it gets its own buffer at entry, released on return (§8.5) — so changing it doesn't reach the caller; a `ref stringObj` parameter shares the caller's. A `stringObj` global is allocated at startup.
 
 `s == null` and `s != null` remain identity tests on both types (there is no content to compare against `null`).
 
@@ -10390,7 +10803,7 @@ Glk arranges the screen as a binary tree of windows: a window is never resized d
 
 The types are also reachable as `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow` and `bgl.glulx.graphicsWindow`. Windows derive from `_bglObject`, not from `object`: they are not world-tree objects and have no `parent`, `children` or attributes.
 
-Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13).
+Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13), and so does a split the interpreter refuses (a graphics window where it has no graphics): either way the result is `null`, so `?.` or a `null` test guards the window's use.
 
 ### 22.7.2 Roots
 
@@ -10616,7 +11029,7 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 
 **Description**
 
-`glulxImage` is a veneer class over the resource id (§8.2.5): it adds a type and methods but no storage, and it converts implicitly to `eImages`, so a `glulxImage` is accepted wherever an image asset is (`drawImage`, `bgl.printRules.img`). It is assigned from an `eImages` value or a raw `int` id, and converts to `int` with `(int)img`.
+`glulxImage` is a primitive class over the resource id (§8.2.5): it adds a type and methods but no storage, and it converts implicitly to `eImages`, so a `glulxImage` is accepted wherever an image asset is (`drawImage`, `bgl.printRules.img`). It is assigned from an `eImages` value or a raw `int` id, and converts to `int` with `(int)img`.
 
 | Member | Returns | Description |
 |---|---|---|
@@ -10668,7 +11081,6 @@ Bindings are optional. A program that manages its own `extern` declarations, or 
 |---|---|---|---|
 | `bindings/i6StandardLibrary.bgl` | The Inform 6 standard library | `parser`, `verblib`, `grammar` | Z-machine and Glulx. Declares the Glulx window globals (`gg_mainwin`, `gg_statuswin`, …). |
 | `bindings/punyInform.bgl` | PunyInform | `globals`, `puny` | Z-machine. PunyInform uses no classes; objects are distinguished by attributes alone. |
-| `bindings/_commonBindings.bgl` | — | — | Shared declarations both bindings include (§23.3.7). Not included directly. |
 
 Each binding is `#once`-guarded.
 
@@ -10718,7 +11130,7 @@ A binding declares, as `extern`:
 - its **objects**: `thedark`, `selfobj`, and (standard library only) the compass direction objects `n_obj` … `d_obj`;
 - its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions: a program overrides one by defining a function of that name (§15.4.1).
 
-Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1). The one exception is `short_name`, which the core declares on `object` (§21.4).
+Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1). The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
 
 ### 23.3.5 Additive Properties
 
@@ -10734,11 +11146,11 @@ extern verb Look { .look|.l }
 extern verb Receive;                    // a fake action: no grammar of its own
 ```
 
-It also declares the `grammarToken` enum (§21.5.5) with the parser's token names — `noun`, `held`, `creature`, `topic`, `multi`, `multiheld`, `multiexcept`, `multiinside`, `special`, `anynumber`, `number`, `scope`, `reverse` — for use in grammar patterns.
+It also declares the `grammarToken` enum (§21.5.5) with the parser's token names — `NOUN`, `HELD`, `CREATURE`, `TOPIC`, `MULTI`, `MULTIHELD`, `MULTIEXCEPT`, `MULTIINSIDE`, `SPECIAL`, `ANYNUMBER`, `NUMBER`, `SCOPE`, `REVERSE` — for use in grammar patterns.
 
 ### 23.3.7 Shared Types
 
-`bindings/_commonBindings.bgl`, included by both bindings, declares `stringOrRoutine` (§21.5.10) with its `print()` overload. Its behavior does not depend on either library.
+Each binding declares `stringOrRoutine` (§21.5.10) with its `print()` overload. Its behavior does not depend on either library; a program includes only one binding, so the two declarations never meet.
 
 ### 23.3.8 Status Bar and Main Window
 
@@ -10751,19 +11163,30 @@ The core's `bgl.ui.statusBar.height` and `bgl.ui.mainWin.id` / `bgl.ui.statusBar
 | `bgl.ui.statusBar.id` | the library's status window (Glulx); `null` (Z-machine) | `null` |
 | `bgl.ui.mainWin.id` | the library's main window | the core's (`0`) |
 
-### 23.3.9 `bgl.story`
+### 23.3.9 Banner Texts
 
-The `i6StandardLibrary` binding adds `bgl.story`, the story file's identity values read from the story header:
+The `i6StandardLibrary` binding binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and replaces the library's banner with one that also names the Beguile version. It reads the release number and serial code through `bgl.header` (§21.14).
 
-| Member | Returns | Description |
-|---|---|---|
-| `bgl.story.release` | `int` | The release number. |
-| `bgl.story.serialChar(i)` | `char` | Character `i` (`0..5`) of the six-character serial. |
-| `bgl.story.printSerial()` | `void` | Print the serial. |
+### 23.3.10 Library Options and Debug Builds
 
-It also binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and provides `informVersion`, a value-less emitter that prints the Inform 6 compiler version, usable inside an interpolated string like a print rule (§21.11).
+Parts of a library exist only when an I6 option constant is set, or only in a debug build. A binding
+declares such parts under the symbol that enables them, so a program that names one in a build that
+lacks it fails with a Beguile error instead of an Inform 6 one:
 
-> **[Z-machine/Glulx difference]** The header addresses differ per target; `bgl.story` hides the difference.
+| Parts | Declared under |
+|---|---|
+| Debugging verbs (`tree`, `purloin`, `actions`, …) and debug-only globals and constants | `#if DEBUG` (§20.3) |
+| Standard library: `objects` and `places` | `#if !NO_PLACES` |
+| PunyInform: `recording`, `replay`, `objects` and `places` | `#if OPTIONAL_EXTENDED_METAVERBS`; `objects` and `places` also `#if !NO_PLACES` |
+
+A program sets a library option with `#defineI6` (§14.2.1), before the binding's `#include`:
+
+```bgl
+#defineI6 OPTIONAL_EXTENDED_METAVERBS
+#includeI6 @"globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+```
 
 ## 23.4 Differences Between the Bindings
 
@@ -10782,7 +11205,7 @@ It also binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRel
 
 A binding for another library follows these rules:
 
-1. **Guard the file with `#once`** (§14.1.6), and include `<bindings/_commonBindings>` for the shared types.
+1. **Guard the file with `#once`** (§14.1.6), and declare the shared types (§23.3.7).
 2. **Advertise the library with `#declare`** (§14.2.3): a bare capability symbol that other files can test regardless of include order.
 3. **Declare names, not behavior.** Use `extern attribute`, `extern object`, `extern int` / `bool` / `string`, `extern const`, `extern property`, `extern additive property`, `extern verb` and `extern` routines (§15.4). Give `action` the type `verb`. Declare each additive property the library defines (§11.7.2). Do not declare the library's object properties on `object`.
 4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions as bodiless `extern verb Name;`, so that grammar added by a program extends the library's verbs instead of colliding with them.
@@ -10791,6 +11214,7 @@ A binding for another library follows these rules:
 7. **Run `bglInit()`.** Wrap the library's `main` with `#emitfirst { replace main _oldmain; }` and `#emitlast { [main; bglInit(); _oldmain(); ]; }`, gated on `#if bglAutoInitialize` so that `autoInitialize = false` disables it (§23.3.1).
 8. **Route the status bar** by replacing `bgl.ui.statusBar`'s `id` and `height` accessors, and `bgl.ui.mainWin.id`, with the library's own state (§23.3.8), so that the core, the `<ui>` extension and `<glulxWindow>` operate on the library's windows.
 9. **Declare the library's optional entry points** as `extern default` functions, so that a program overrides one by defining it (§15.4.1).
+10. **Declare optional parts under the symbol that enables them**: `#if DEBUG` for what exists only in a debug build, and `#if ⟨OPTION⟩` / `#if !⟨OPTION⟩` for what a library option constant adds or removes (§23.3.10).
 
 **See also** §11.7, §13.2.3, §14.4, §15.4, §17.7, §21.5.
 
@@ -10822,7 +11246,6 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `bnum` | type | §2.7.2 |
 | `bool` | type | §2.2 |
 | `break` | control | §5.13 |
-| `byVal` | qualifier | §8.2.7 |
 | `case` | control | §5.12 |
 | `catch` | control | §5.16 |
 | `char` | type | §2.2 |
@@ -10861,6 +11284,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `object` | type, I6 | §11.2 |
 | `operator` | qualifier (operator member) | §9 |
 | `outer` | value (soft: inside a property accessor body) | §9.9.3 |
+| `primitive` | qualifier (soft: before `class`) | §8.2.5 |
 | `property` | type, I6 | §11.7.1 |
 | `rawArray` | type | §12.8 |
 | `ref` | qualifier | §3.7 |
@@ -10885,6 +11309,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `uint` | type | §2.2, §21.6.1 |
 | `union` | type (soft) | §2.8.2 |
 | `until` | control | §5.11 |
+| `value` | qualifier (soft: before `class`) | §8.2.7 |
 | `var` | type | §2.6 |
 | `verb` | type, I6 | §13.2 |
 | `void` | type | §2.2, §6.2 |
@@ -10894,7 +11319,7 @@ The following identifiers are not reserved, although they carry meaning: `gramma
 `priority` are members of the `verb` class, and `handler` and `perform` are its methods (§13.2);
 `typeof` is a function of the runtime core (§2.8.1); `create` and `destroy` are the lifecycle methods of a pooled class (§8.2.6)
 and `init` and `deinit` the lifecycle emitters of any class (§8.5); `first`, `last`, `after` and
-`before` are the positions of an array `inject` (§12.11); `reverse` and `withI6Synonyms` are the
+`before` are the positions of an array `inject` (§12.11); `REVERSE` and `withI6Synonyms` are the
 pseudo-tokens that may end a grammar line (§13.4.4). The keyword `for` is reused, outside a loop, in
 `alias class Foo for Bar` (§8.2.4).
 
@@ -10917,6 +11342,7 @@ of islands and `extern`-related behavior are in §15.
 | `#bglStmt` | File-scope Beguile island, statements only | §14.5.2 |
 | `#declare` | Define an order-independent, immutable symbol | §14.2.3 |
 | `#define` | Define a compilation symbol (linear) | §14.2.1 |
+| `#defineI6` | `#define` that also emits the symbol to I6 as a `Constant` | §14.2.1 |
 | `#elif` | Alternative condition in an `#if` block | §14.2.5 |
 | `#else` | Fallback branch of an `#if` block | §14.2.5 |
 | `#emitfirst` | Raw I6 at the beginning of the generated program | §14.4.2 |
@@ -11214,6 +11640,7 @@ case-insensitive, like all Beguile identifiers.
 | `beguilerPatch` | `3` | Patch version component. |
 | `TARGET_GLULX` | (defined, no value) | Defined when the `target` setting is `Glulx`. |
 | `TARGET_ZCODE` | (defined, no value) | Defined when the `target` setting is a Z-machine version. |
+| `DEBUG` | (defined, no value) | Defined in a debug build (`--debug`, §20.3). A program can also turn it on itself with `#redef DEBUG` (§14.2.2), for example to keep `log()` output in an ordinary build (§21.4). |
 
 The version symbols are read-only and derived from the compiler's own version. The target symbols are
 set from the `target` setting (§17.3) before any source is read, so they are available to every `#if`
@@ -11230,7 +11657,8 @@ like any other bare symbol (§14.2.5). A finer question, such as Z5 versus Z8, i
 
 **Resolution rule.** Every symbol, pre-defined or `#define`d, that carries a value is resolved as an
 inline compile-time literal wherever it appears in a Beguile expression: the name is replaced by its
-value. A symbol never becomes an I6 `Constant` unless the program assigns it to a `const` variable.
+value. A symbol never becomes an I6 `Constant` unless it is defined with `#defineI6` (§14.2.1) or the
+program assigns it to a `const` variable.
 
 ```bgl
 if(beguiler >= 1010) { … }          // resolved at compile time to if(1010 >= 1010)
@@ -11300,9 +11728,8 @@ section with the full treatment.
 - **binding** — A BLR declaration layer that exposes one external Inform 6 library's symbols to Beguile as typed `extern` declarations and integrates it with the runtime core. See §23.1.
 - **BLR (Beguile Language Runtime)** — The library of Beguile source every program compiles against: the auto-loaded core, the opt-in extensions, and the IF library bindings. See §21.1, §22.1, §23.1.
 - **bnum** — A bit-flag enumeration: its values are powers of two, starting at `1` and doubling, so that they can be combined with `|`. See §2.7.2.
-- **byVal** — A class qualifier marking a class as value-semantic for parameter passing: a `byVal class` argument is copied into the callee through the class's `operator =`, so the callee's changes do not reach the caller's instance. See §8.2.7.
 - **claimed word** — A dictionary word that a verb, native or `extern`, has declared as one of its trigger words. A grammar line whose trigger word is already claimed extends that verb instead of declaring a new one. See §13.2.3.
-- **class form** — One of the seven kinds of class declaration (normal, `extern`, `emitter`, `alias`, veneer, pooled, `byVal`); the form fixes what instances of the class exist and which members it may declare. See §8.2.
+- **class form** — One of the seven kinds of class declaration (normal, `extern`, `emitter`, `alias`, primitive, value, pooled); the form fixes what instances of the class exist and which members it may declare. See §8.2.
 - **declaration** — A construct that introduces a named type, variable, constant, function, object, verb or grammar. See §3.1.
 - **default mode** — The normal compilation mode: the entry file is a `.bgl` file, and I6 is reached through `#i6` islands. Contrast **precompiler mode**. See §15.1.1.
 - **directive** — A `#name` instruction to the compiler (`#include`, `#define`, `#i6`, …); directives are not statements. See §14, Appendix B.
@@ -11322,24 +11749,29 @@ section with the full treatment.
 - **grammar line** — One pattern the player may type, declared on a verb or in a grammar object: a trigger word followed by pattern tokens. See §13.4.
 - **grammar object** — A standalone `grammar` declaration holding `grammarRule` entries that name their verbs explicitly, as opposed to grammar declared on the verb itself. See §13.4.5.
 - **`.i6b` template** — A built-in Inform 6 template, shipped with the runtime core, from which the compiler emits constructs that have no fixed I6 form until it knows how they are used (the frame pool, `for`-in loops, the literal-list scratch buffer). It is not `#include`d. See §18.9.
+- **`instanceName`** — An object's name: a `const string` member of `_bglObject`, fixed at compile time, that becomes the I6 header name `print(obj)` prints. Given in an object body by name or, as every class's last positional member, by position. See §11.5.4.
 - **island** — A region of one language embedded in a file written in the other: an `#i6` island is raw Inform 6 inside a Beguile file; a `#bgl` island is Beguile inside an Inform 6 file. See §15.2, §15.3.
 - **loose identifier mode** — The relaxed name resolution used inside `#bgl` islands and throughout precompiler mode, where an unresolved identifier passes through to Inform 6 rather than raising an error. See §15.3.3.
 - **materialize** — To make a `superposed` declaration part of the program, which happens the first time its name is referenced. See §3.12, §18.9.
 - **member** — Any named part of a class or object: a variable, method, operator or emitter. Beguile makes no property-versus-field distinction. See §8.3.
 - **meta verb** — A verb with `meta = true`: an out-of-world action that runs without advancing the turn counter or triggering daemons. See §13.2.4.
 - **named union** — A `union Name = A | B { … }` declaration: a union type with a name and a place to hang members. See §2.8.2.
-- **object-backed class** — A class whose instances are Inform 6 objects with storage of their own (a normal class, including a pooled one), as opposed to an emitter, alias or veneer class, whose instances are bare words or do not exist. See §8.2, §11.3.2.
+- **object-backed class** — A class whose instances are Inform 6 objects with storage of their own (a normal class, including a pooled one), as opposed to an emitter, alias or primitive class, whose instances are bare words or do not exist. See §8.2, §11.3.2.
 - **outer** — Inside a property accessor body, the host object the accessor is declared on, as distinct from `self`, the accessor instance itself; resolved at compile time and usable to read and write the host's other members. See §9.9.3.
 - **owned member** — A member whose type is a value class with stored members, declared without an initializer; each instance of the enclosing type gets its own backing instance, so the member is a live object rather than a bare slot. See §8.3.4.
 - **pass-through conversion** — A conversion operator declared without a body (`emitter T operator ();`): the value is left unchanged and merely retyped. See §2.10.2, §9.4.
 - **pooled class** — A class declared `class Name[N]`, which reserves `N` statically allocated instances that `new` and `delete` hand out and reclaim. See §8.2.6, §4.13.
+- **positional member** — A member an instance can be given by position rather than by name, in an inline object or a declaration body. A class's positional order is its own list — its `inline` members and the members it re-lists with `inline name;` — then each base's, subclass first. See §8.3.5, §11.3.1.
 - **precompiler mode** — The compilation mode where the entry file is an `.inf` (Inform 6) file and Beguile is reached through `#bgl` islands. Contrast **default mode**. See §15.1.2.
 - **primary trigger** — The first dictionary word in a verb's first grammar line; the word an `extend V { grammar += … }` targets. See §13.2.3.
+- **primitive type** — A type whose variable holds the value itself, one word, with no instance: `int`, `bool`, `char`, `float`, `string`, `dictionaryWord`, `attribute`, `property`, `bglClass`, the literal pseudo-types, `glulxImage` and every enum. Copied on assignment; `ref` doesn't apply. Declared `primitive class`. See §2.10.3, §8.2.5.
 - **program** — The set of source files compiled together to produce one story file. See §3.1.
 - **property accessor** — A member that reads and writes like a plain member but runs code on each access: a value class declaring a getter `operator ()` and a setter `operator =`, used as an owned member of the host class or object. See §9.9.
 - **proxy member** — A member that represents a relation over its owner rather than storing a value, such as `children` on `object`; it has no slot of its own, and its emitter methods act on the owner through `$host`. See §7.3, §11.5.
 - **pseudo-type** — The compile-time type of a literal (`intLiteral`, `stringLiteral`, …), inferred by the compiler and never written by the author; it takes part in overload and operator resolution separately from the runtime type it corresponds to. See §2.4.
+- **reference class** — A class not declared `value` (the default): its variables refer to instances owned elsewhere, are empty until assigned, and share on assignment and passing. See §2.10.3, §8.2.1.
 - **resolved type** — The static type the compiler assigns to an expression, which drives operator resolution, type checking and emitter dispatch. See §4.1.
+- **re-list** — `inline name;` in a class body or `extend`: makes an existing member positional at that point in the class's order, without redeclaring it. See §8.3.5.
 - **routine** — An I6 callable. A Beguile **function** compiles to a routine. See §6.1.
 - **size vs. length** — For a Beguile array, `size()` is the capacity reserved at compile time; `length()` is the runtime count of in-use elements. See §12.3.
 - **source file** — A file the compiler reads: a `.bgl` file, or an `.inf` file in precompiler mode. See §3.1, §15.1.
@@ -11347,7 +11779,7 @@ section with the full treatment.
 - **static instance** — An instance declared at file scope (`Name m;`, or an object declaration) and allocated once for the program, as opposed to a pooled instance obtained with `new` or an instance local to a routine. See §8.2.6, §11.2.
 - **`#storedEmitFirst` / `#storedEmitLast`** — A named, deferred raw-I6 block that is emitted only when a built-in I6 template whose `triggers` clause names it is applied. See §14.4.4, §18.9.
 - **story file** — The executable output of a build (`.z5`, `.z8` or `.ulx`), run by a Z-machine or Glulx interpreter. See §20.2.
-- **stringObj** — The `<string>` extension's owning text type: a slot that owns a buffer from the string pool and can be changed in place, as opposed to `string`, a slot referring to static text. See §22.3.
+- **stringObj** — The `<string>` extension's owning text type: a slot that owns a buffer from the string pool and can be changed in place, as opposed to `string`, a slot referring to static text. Assignment and passing copy the text; `ref` shares the buffer. See §22.3, §8.5.
 - **substitution token** — A `$`-prefixed placeholder in an emitter body (`$self`, `$val`, `$target`, `$⟨parameter⟩`) replaced at the call site. See §7.3, Appendix G.
 - **superposed** — A declaration qualifier marking a routine, global, object or class that is emitted only if something references it. See §3.12, §18.9.
 - **target** — The virtual machine a story file runs on: Z-machine or Glulx. See §17.3.
@@ -11355,15 +11787,16 @@ section with the full treatment.
 - **tracked buf** — With `<buf>` included, a sized `array<char>` that records its capacity and current length; its value behaves as an Inform 6 hybrid buffer. See §22.2.
 - **trigger word** — The dictionary word that begins a grammar line and selects its verb; a verb's first trigger word is its primary trigger. See §13.2.3, §13.4.
 - **typesealed** — A member qualifier that locks the member's type: a subclass or instance may re-initialize the member but not re-declare it with another type. See §8.2.8.
-- **value class** — A class that does not derive from `_bglObject` (and so not from `object`): a variable of the type holds the members themselves, is zero-initialized at routine entry, and is copied on assignment through the class's `operator =`. Contrast a class with reference semantics, whose variable holds an identity. See §2.10.3, §8.2.1, §21.5.8.
-- **veneer class** — A class declared `extern emitter class X : _bglObject`: a distinct Beguile type with no representation of its own, whose runtime value is the bare word it wraps; it adds a type and behavior but no storage. `int`, `char`, `uint` and `glulxImage` are veneer classes. See §8.2.5.
+- **value class** — A class declared `value class`: a global, local, member or parameter of the type owns an instance of its own and is copied on assignment and passing through the class's copy operator (`operator =` taking the class). Contrast a reference class, whose variables refer to shared instances. See §2.10.3, §8.2.7.
+- **veneer class** — A type label declared `extern emitter class` over a word that manages its own storage (`array<T>`). The one-word value types are primitive classes. See §8.2.5.
 - **word** — The machine's native integer unit: 16 bits on the Z-machine, 32 on Glulx. Every scalar value, reference and `array<T>` element other than an `array<char>` element occupies one word. See §2.2, Appendix J.
 
 ## H.2 Symbols
 
 - **`$self` / `$val` / `$target` / `$host` / `$prop`** — Substitution tokens used inside emitter bodies: `$self` is the receiver (in an operator or assignment emitter on a member, the member's owner), `$val` the full receiver expression, `$target` an assignment's left-hand side, `$host` the object a proxy member is accessed on, and `$prop` an array property's name. See §7.3, Appendix G.
 - **`$opref(op)`** — A lookup, not a substitution: it yields a reference to the receiver type's operator `op` — the routine for a `static` operator, the property for an instance operator, `0` when the type publishes none — so that a shared runtime routine can apply a type's operation. See §7.3.1, §12.10, Appendix G.
-- **`_bglObject`** — The root base class of the BLR, from which `object`, the primitive wrappers and the IF-domain types derive. Deriving from it gives a class with stored members reference semantics (§2.10.3). See §8.2.5, §21.5.8.
+- **`_bglObject`** — The root of every class whose values are I6 objects; a class declared without a base derives it, unless it is a `primitive` class. It declares the root assignment, which makes a reference-class variable refer to the assigned instance, and what I6 gives any object: identity, `provides`, `is`, `print`. See §2.10.3, §21.5.8.
+- **`_bglPrimitive`** — The root of every primitive class; a `primitive` class declared without a base derives it. It declares only the root assignment, which copies the word. See §21.5.8.
 - **`_bgl…` / `bgl…`** — Identifier prefixes reserved for the runtime and for compiler-generated symbols. See §1.4.
 
 ---
@@ -11400,13 +11833,15 @@ and `clear()` come from `<array>`.
 | `bgl.glulx.color` | object | `<glulxWindow>` | §22.7.8 |
 | `bgl.glulx.eStyleType`, `eWinType`, `eImgAlign`, `eImgDimension`, `bWinBorder`, `bWinPlacement`, `bWinScale` | type (enum aliases) | core (Glulx) | §21.3, §22.7.10 |
 | `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow`, `bgl.glulx.graphicsWindow` | type (path forms of the window types) | `<glulxWindow>` | §21.3, §22.7.1 |
+| `bgl.header` | namespace | core | §21.14 |
+| `bgl.header.printSerial()` | method on `bgl.header` | core | §21.14 |
+| `bgl.header.release` | member on `bgl.header` | core | §21.14 |
+| `bgl.header.serialChar(i)` | method on `bgl.header` | core | §21.14 |
 | `bgl.printRules` | namespace | core | §21.11 |
 | `bgl.printRules.bold`, `italics`, `underline`, `reverse`, `fixed`, `roman` | print rule | core | §21.11 |
 | `bgl.printRules.img(image[, align[, width[, height]]])` | print rule | core (Glulx) | §21.11 |
-| `bgl.story` | namespace | binding (`i6StandardLibrary`) | §23.3.9 |
-| `bgl.story.printSerial()` | method on `bgl.story` | binding (`i6StandardLibrary`) | §23.3.9 |
-| `bgl.story.release` | member on `bgl.story` | binding (`i6StandardLibrary`) | §23.3.9 |
-| `bgl.story.serialChar(i)` | method on `bgl.story` | binding (`i6StandardLibrary`) | §23.3.9 |
+| `bgl.printRules.link(text, target)` | print rule | core (Glulx) | §21.11 |
+| `HandleGlkEvent(event, context, buffer)` | function (`extern default` entry point; author-overridable) | core (Glulx) | §21.11 |
 | `bgl.ui` | namespace | core | §21.10 |
 | `bgl.ui.hideCursor()`, `showCursor()` | function | `<ui>` | §22.6 |
 | `bgl.ui.mainWin` | object (root text-buffer window) | core | §21.10, §22.7.2 |
@@ -11457,6 +11892,7 @@ and `clear()` come from `<array>`.
 | `_bglGlobalDeclaration()` | emitter hook on a class (one top-level I6 declaration per instance; `$selfsub`) | core | §15.8 |
 | `bglInit()` | function | core | §21.2, §18.8 |
 | `_bglObject` | type (emitter class) | core | §21.5.8 |
+| `_bglPrimitive` | type (emitter class) | core | §21.5.8 |
 | `bglSize` | type (value class) | core | §21.12 |
 | `bglStringDefaultSize` | constant (I6, set before the include) | `<buf>` | §22.2 |
 | `bglStringPoolReserve` | constant (I6, set before the include) | `<string>` | §22.3 |
@@ -11480,7 +11916,7 @@ and `clear()` come from `<array>`.
 | `copy(other)` | method on `bglAllocated` | core | §21.8 |
 | `count()` | method on `array<T>` | `<linq>` | §22.5 |
 | `create([p1[, p2[, p3]]])` | method on a pooled class (author-declared; run by `new`) | core | §8.2.6 |
-| `DEBUG` | symbol (`#define`; enables `log()`) | core | §21.4 |
+| `DEBUG` | symbol (defined by `--debug`; enables `log()` and the libraries' debug-only parts) | compiler | §20.3, §21.4, App. F |
 | `deinit()`, `static deinit(T v)` | lifecycle emitter / value-form method on a class | core | §8.5, §12.10 |
 | `delete(pos, count)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `destroy()` | method on a pooled class (author-declared; run by `delete`) | core | §8.2.6 |
@@ -11513,7 +11949,7 @@ and `clear()` come from `<array>`.
 | `getLength()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `gg_mainwin`, `gg_statuswin`, … | variable (Glulx window globals) | binding (`i6StandardLibrary`) | §23.2 |
 | `give(attr)`, `ungive(attr)` | method on `object`, `attributeList` | core | §21.5.1, §11.5.3 |
-| `glulxImage` | type (veneer class) | `<glulxImage>` | §22.8 |
+| `glulxImage` | type (primitive class) | `<glulxImage>` | §22.8 |
 | `grammar` | member on `verb` | core | §13.2, §13.4.5 |
 | `grammarRule` | type | core | §13.4.1, §21.5.5 |
 | `grammarRuleList` | type | core | §13.4.1, §21.5.5 |
@@ -11526,7 +11962,6 @@ and `clear()` come from `<array>`.
 | `id` | member on `bgl.ui.mainWin`, `bgl.ui.statusBar`, `window` | core | §21.10, §22.7.1 |
 | `indexOf(item)`, `find(item)` | method on `array<T>` | `<array>` | §22.4 |
 | `indexOf(search)` | method on `string`, `stringObj` | `<string>` | §22.3 |
-| `informVersion` | print rule | binding (`i6StandardLibrary`) | §23.3.9 |
 | `INFORMV__TX`, `LIBRARYV__TX`, `LibRelease` | constant | binding (`i6StandardLibrary`) | §23.3.9 |
 | `init()` | lifecycle emitter on a class (fires at a local's declaration) | core | §8.5 |
 | `Initialise()` | function (entry point the library calls; author-defined) | binding | §23.3.1 |
@@ -11534,6 +11969,7 @@ and `clear()` come from `<array>`.
 | `insert(pos, src)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `int` | type | core | §2.2 |
 | `intLiteral`, `negativeIntLiteral`, `stringLiteral`, `charLiteral`, `dictionaryWordLiteral`, `interpolatedStringLiteral` | type (literal pseudo-type) | core | §2.4 |
+| `nullLiteral` | type (literal pseudo-type: the type of `null`) | core | §2.5 |
 | `is(Class)` | method on `object` | core | §21.5.6 |
 | `isEmpty()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `isLower()`, `isUpper()`, `isAlpha()`, `isNumeric()`, `isAlphaNumeric()`, `isVowel()`, `isConsonant()` | method on `char` | core | §21.7 |
@@ -11555,7 +11991,7 @@ and `clear()` come from `<array>`.
 | `NO_ATTRIBUTE` | constant | core | §21.5.1 |
 | `n_obj` … `d_obj` (compass direction objects) | object (extern) | binding (`i6StandardLibrary`) | §23.3.4, §23.4 |
 | `null` | value | core | §2.5 |
-| `noun`, `held`, `creature`, `topic`, `multi`, `multiheld`, `multiexcept`, `multiinside`, `special`, `anynumber`, `number`, `scope`, `reverse` | constant (`grammarToken` values) | binding | §13.4.2, §23.3.6 |
+| `NOUN`, `HELD`, `CREATURE`, `TOPIC`, `MULTI`, `MULTIHELD`, `MULTIEXCEPT`, `MULTIINSIDE`, `SPECIAL`, `ANYNUMBER`, `NUMBER`, `SCOPE`, `REVERSE` | constant (`grammarToken` values) | binding | §13.4.2, §23.3.6 |
 | `noun`, `second`, `action`, `verb_word` | variable (extern; `action` is a `verb`) | binding | §23.3.4, §13.3 |
 | `object` | type | core | §2.2, §11 |
 | `orderBy([compare])` | method on `array<T>` | `<linq>` | §22.5 |
@@ -11569,6 +12005,7 @@ and `clear()` come from `<array>`.
 | `print()` | method on `_bglObject` (author-defined override) | core | §21.4 |
 | `print()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `print(v)` | function (overloaded by type) | core | §21.4 |
+| `printLine([v])` | function (`print(v)`, then a newline) | core | §21.4 |
 | `printName(obj)` | function | core | §21.4 |
 | `priority` | member on `verb` | core | §13.2.5 |
 | `property` | type | core | §11.7, §21.5.2 |
@@ -11586,7 +12023,8 @@ and `clear()` come from `<array>`.
 | `setBackgroundColor(color)` | method on `graphicsWindow` | `<glulxWindow>` | §22.7.5 |
 | `setLength(n)` | method on `array<T>` | core; `<array>` | §12.3, §22.4 |
 | `setStyle(styleType, style {…})`, `clearStyle(styleType)` | method on the text window types, the roots, `bgl.ui.screen` | `<glulxWindow>` | §22.7.7 |
-| `short_name` | member on `object` | core | §21.4 |
+| `short_name` | member on `object` | library bindings | §21.4, §23.3.4 |
+| `instanceName` | member on `_bglObject` (`inline const string`) | core | §8.3.5, §11.5.4 |
 | `size()` | method on `array<T>` | core | §12.3 |
 | `size()` | method on `glulxImage`, `eImages` | `<glulxImage>` | §22.8 |
 | `size()`, `length()`, `setLength(n)`, `isTracked()` | method on `array<char>` | `<buf>` | §22.2 |

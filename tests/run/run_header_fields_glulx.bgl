@@ -1,0 +1,11 @@
+/*  run_header_fields_glulx — `bgl.header` reads the release number and serial code from the story file
+    header, with no library, on Glulx.  */
+// EXPECT_OUTPUT: 7 260314
+#beguilerSettings { target = glulx; informName = "none"; release = 7; serial = "260314"; }
+#include "glulxConsole.bgl"
+
+void main(){
+    glulxConsole();
+    print($"{bgl.header.release} ");
+    bgl.header.printSerial();
+}

@@ -1,42 +1,23 @@
+/* -----------------------------------------------------------------------------
+    _grammar.bgl - Grammar
+    Declares the types behind a verb's grammar: the elements of a pattern, a rule
+    that pairs a pattern with a verb, and a verb's list of rules.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// Grammar type facade
-//
-// The classes below document the shape of grammar pattern elements and rules.
-// They are facade types — the parser handles grammar literal syntax directly,
-// and user code does not instantiate or reference these types in expressions.
-// They exist so the language model can be read and documented.
 
-//=============================================================================
-// type patternElement — base class for one element of a grammar pattern.
-// A pattern element is one of:
-//   • dictionaryWord — a literal word the player must type, written `.word`
-//   • grammarToken   — a pattern keyword (noun, held, creature, ...); see the
-//                       grammarToken enum in the library binding
-//   • attribute      — an attribute name that filters acceptable nouns
-//   • a global function used as a parser hook
-    primitive class patternElement { }
+/// One element of a grammar pattern: a dictionary word, a grammar token, an attribute or a parsing routine.
+primitive class patternElement { }
 
-//=============================================================================
-// type grammarRule — pairs a verb with a pattern and priority.
-// Constructed via literal syntax, inside a verb body or a grammar object:
-//   verb V { grammar = { {.trig, noun} }; }                 // implicit verb=V
-//   grammar G { grammarRule r = {V, {.trig, noun}, 5}; }    // explicit verb
-//
-// To emit I6's `-> Action reverse` (swaps noun/second_noun before the action runs),
-// place the `reverse` grammarToken value as the LAST element in the pattern:
-//   {.give, creature, held, reverse}
-// `reverse` is a patternElement like any other — the emitter detects it at the
-// tail of the pattern and renders it on the action side rather than the input side.
-    extern emitter class grammarRule {
-        verb verb;                       // target action when this rule matches
-        array<patternElement> pattern;   // sequence of pattern elements
-        int priority;                    // sort priority (default 10 — see class verb)
-    }
+/// A verb paired with a pattern and an optional priority: `{Take, {.grab, NOUN}, 5}`.
+extern emitter class grammarRule {
+    verb verb;                      /// The action the rule triggers.
+    array<patternElement> pattern;  /// The words and tokens the player's command must match.
+    int priority;                   /// The rule's priority: lower matches earlier.
+}
 
-//=============================================================================
-// type grammarRuleList — collection type for a verb's `grammar` property.
-// Conceptually array<grammarRule> with the verb implicit (the enclosing one).
-    extern emitter class grammarRuleList {
-        grammarRule rule;            // class-level member used for type inference
-    }
+/// A verb's grammar: a list of grammar rules.
+extern emitter class grammarRuleList {
+    grammarRule rule;  // Gives the list its element type.
+}

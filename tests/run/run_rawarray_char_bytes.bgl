@@ -1,0 +1,17 @@
+/*  run_rawarray_char_bytes — `rawArray<char>` indexes bytes, like `array<char>`.
+
+    It is a bare view over I6 byte memory (an `Array X ->` table, or an address inside the input
+    buffer). Element i is the byte at offset i; other element types stay word-indexed.  */
+// EXPECT_OUTPUT: b 3 / c 20
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 { Array rawBytes -> 'a' 'b' 'c'; Array rawWords --> 10 20 30; }
+extern rawArray<char> rawBytes;
+extern rawArray<int> rawWords;
+
+char third(rawArray<char> text){ return text[2]; }
+
+void main(){
+    bglInit();
+    rawBytes[0] = 3;
+    print($"{rawBytes[1]} {(int)rawBytes[0]} / {third(rawBytes)} {rawWords[1]}");
+}

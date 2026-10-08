@@ -19,6 +19,7 @@ enum class eCompileContext {noContext, global, objectDef, codeBlock};
 struct sourceLocation {
     string file;
     int line = 0;  // 0 = unknown/not set
+    int col = 0;   // where the lexer stood after the token: one past its last character
 };
 
 //base class for all elements in the language.

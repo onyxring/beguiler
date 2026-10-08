@@ -208,6 +208,7 @@ Iterates over every element of `⟨source⟩`, which is one of:
 | An inline list `{a, b, …}` | The type of the first element; each element is checked against `v` |
 | A call expression returning an array | `var`: any declared type for `v` is accepted |
 | A range `first to last` | Integer; inclusive at both ends; the bounds are any expressions |
+| An object's `children` | The class that declares `children`; the body may move the current child (§11.5.2) |
 
 The loop variable may be declared in the loop head or beforehand. Its type must be compatible with
 the element type or it is a compile-time error; `var` matches any element type, and `auto` infers the

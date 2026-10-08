@@ -13,7 +13,7 @@
   - [13.4.1 Grammar Types](#1341-grammar-types)
   - [13.4.2 Pattern Tokens](#1342-pattern-tokens)
   - [13.4.3 Alternation and Multi-trigger Lines](#1343-alternation-and-multi-trigger-lines)
-  - [13.4.4 Line Modifiers: `reverse`, `withI6Synonyms`](#1344-line-modifiers-reverse-withi6synonyms)
+  - [13.4.4 Line Modifiers: `REVERSE`, `withI6Synonyms`](#1344-line-modifiers-reverse-withi6synonyms)
   - [13.4.5 Grammar on Verbs and Grammar Objects](#1345-grammar-on-verbs-and-grammar-objects)
 - [13.5 Extending Grammar](#135-extending-grammar)
   - [13.5.1 `grammar +=`](#1351-grammar-)
@@ -83,8 +83,8 @@ shadows the verb (§3.10).
 ```bgl
 verb Examine {
     grammar = {
-        {.examine, noun},
-        {.x, noun},
+        {.examine, NOUN},
+        {.x, NOUN},
     };
     void handler() {
         print("You examine it closely.");
@@ -96,9 +96,9 @@ verb Examine {
 
 When the first token inside `grammar = { … }` is a dictionary-word literal, the
 outer braces are read as the braces of a single grammar line, so the inner braces may be omitted:
-`grammar = {.whistle, noun};` is equivalent to
-`grammar = { {.whistle, noun} };`. `|`-alternation is allowed in this form
-(`grammar = {.hum|.murmur, noun};`). It applies only when one line is being declared; several lines
+`grammar = {.whistle, NOUN};` is equivalent to
+`grammar = { {.whistle, NOUN} };`. `|`-alternation is allowed in this form
+(`grammar = {.hum|.murmur, NOUN};`). It applies only when one line is being declared; several lines
 use the full form with one pair of braces per line. The single-line form is recognized wherever a
 grammar line list is accepted: verb declarations, `extend` blocks (`grammar += { … }`,
 `grammar -= { … }`, `replace grammar = { … }`), grammar objects, and extern verb bodies.
@@ -271,23 +271,23 @@ come last. Per-rule and block-local priorities participate in the same ordering.
 ```bgl
 verb Take {
     priority = 5;
-    grammar = { {.take, noun}, {.grab, noun} };
+    grammar = { {.take, NOUN}, {.grab, NOUN} };
     void handler() { … }
 }
 
 extend Look {
     priority = 5;                              // before Look's own lines
-    grammar += { {.peek, noun} };
+    grammar += { {.peek, NOUN} };
 }
 
 extend Look {
     priority = 12;                             // after Look's own lines
-    grammar += { {.look, .carefully, noun} };
+    grammar += { {.look, .carefully, NOUN} };
 }
 
 grammar additions {
-    grammarRule r1 = {Take, {.nab, noun}};             // 10
-    grammarRule r2 = {Drop, {.toss, held}, 5};         // 5
+    grammarRule r1 = {Take, {.nab, NOUN}};             // 10
+    grammarRule r2 = {Drop, {.toss, HELD}, 5};         // 5
 }
 ```
 
@@ -332,9 +332,9 @@ on a verb (§13.4.5) or in a grammar object, and both forms have the same effect
 
 | Type | Purpose |
 |---|---|
-| `grammarToken` | An extern enum declared by the IF library binding (§23.3.6); its values are the parser tokens `noun`, `held`, `creature`, …. Both the bare value (`held`) and the qualified form (`grammarToken.held`) are valid in pattern position. `noun(Routine)` and `scope(Routine)` are its parameterized forms. |
-| `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, noun}`. |
-| `grammarRule` | One verb-targeted pattern, with an optional priority: `{Examine, {.examine, noun}}` or `{Examine, {.examine, noun}, 5}`. |
+| `grammarToken` | An extern enum declared by the IF library binding (§23.3.6); its values are the parser tokens `NOUN`, `HELD`, `CREATURE`, …. Both the bare value (`HELD`) and the qualified form (`grammarToken.HELD`) are valid in pattern position. `NOUN(Routine)` and `SCOPE(Routine)` are its parameterized forms. |
+| `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, NOUN}`. |
+| `grammarRule` | One verb-targeted pattern, with an optional priority: `{Examine, {.examine, NOUN}}` or `{Examine, {.examine, NOUN}, 5}`. |
 | `grammarRuleList` | A list of grammar rules; the type of the `grammar` member on `verb` and of a grammar object. |
 
 A `grammarRule` has two initializer forms:
@@ -360,26 +360,30 @@ Each element of a pattern is one of the following.
 | `.word` | the player typing that word |
 | `..words` | the plural form of the word |
 | `.w1 \| .w2` | any one of the listed words; may be parenthesized |
-| `noun` | any in-scope object |
-| `held` | a held object |
-| `creature` | a creature or actor |
-| `topic` | a topic phrase |
-| `multi` | one or more in-scope objects |
-| `multiheld` | one or more held objects |
-| `multiexcept` | one or more in-scope objects, excluding one already matched (used after a preposition: `multiexcept, .in, noun`) |
-| `multiinside` | one or more objects inside a specific container (used after a preposition: `multiinside, .from, noun`) |
-| `number` | a number typed by the player, range-checked |
-| `anynumber` | any number, no range check |
-| `special` | a number or a dictionary word |
+| `NOUN` | any in-scope object |
+| `HELD` | a held object |
+| `CREATURE` | a creature or actor |
+| `TOPIC` | a topic phrase |
+| `MULTI` | one or more in-scope objects |
+| `MULTIHELD` | one or more held objects |
+| `MULTIEXCEPT` | one or more in-scope objects, excluding one already matched (used after a preposition: `MULTIEXCEPT, .in, NOUN`) |
+| `MULTIINSIDE` | one or more objects inside a specific container (used after a preposition: `MULTIINSIDE, .from, NOUN`) |
+| `NUMBER` | a number typed by the player, range-checked |
+| `ANYNUMBER` | any number, no range check |
+| `SPECIAL` | a number or a dictionary word |
 | *attributeName* | an object that has that attribute (`container`, `animate`) |
 | *RoutineName* | a general parsing routine: a global `bool` function the parser calls to consume input words and report a match |
-| `noun(Routine)` | a noun filter: the parser matches nouns normally, then calls the global `bool` routine with each candidate object, which accepts or rejects it |
-| `scope(Routine)` | a scope setter: the global `bool` routine decides which objects are in scope for this line, using the library's scope routines (`PlaceInScope()`, `ScopeWithin()`) |
+| `NOUN(Routine)` | a noun filter: the parser matches nouns normally, then calls the global `bool` routine with each candidate object, which accepts or rejects it |
+| `SCOPE(Routine)` | a scope setter: the global `bool` routine decides which objects are in scope for this line, using the library's scope routines (`PlaceInScope()`, `ScopeWithin()`) |
 
 A bare identifier in a pattern must be declared as a `grammarToken`, an `attribute`, or a global
 function; any other declaration, or an undeclared name, is a compile-time error. In pattern position
-a bare `noun` resolves to the grammar token even when an `extern object noun` exists at file scope;
-outside a pattern the global wins, and `grammarToken.noun` selects the token explicitly.
+a bare `NOUN` resolves to the grammar token even when an `extern object noun` exists at file scope;
+outside a pattern the global wins, and `grammarToken.NOUN` selects the token explicitly.
+
+Grammar tokens are written in uppercase by convention (`NOUN`, `HELD`, `REVERSE`), which sets them
+apart from dictionary words and from same-named variables such as the `noun` global. Beguile is
+case-insensitive (§1.3), so `noun` in a pattern is the same token.
 
 **Example**
 
@@ -387,19 +391,19 @@ outside a pattern the global wins, and `grammarToken.noun` selects the token exp
 bool isEdible(object obj) { return obj.has(edible); }
 
 verb Taste {
-    grammar = { {.taste, noun(isEdible)} };
+    grammar = { {.taste, NOUN(isEdible)} };
     void handler() { … }
 }
 
 bool parseColor(int context) { … }
 
 verb Paint {
-    grammar = { {.paint, noun, parseColor} };      // "paint <object> <color>"
+    grammar = { {.paint, NOUN, parseColor} };      // "paint <object> <color>"
     void handler() { … }
 }
 
 verb Chat {
-    grammar = { {.chat, animate, .about, topic} };
+    grammar = { {.chat, animate, .about, TOPIC} };
     void handler() { … }
 }
 ```
@@ -425,24 +429,24 @@ same applies to multi-trigger lines inside `extend V { grammar += { … } }`.
 ```bgl
 verb Stow {
     grammar = {
-        {.stow, held, .on | .onto | .upon, noun},
-        {.stow, held, (.in | .into | .inside), noun},
+        {.stow, HELD, .on | .onto | .upon, NOUN},
+        {.stow, HELD, (.in | .into | .inside), NOUN},
     };
     void handler() { … }
 }
 
 verb TypeNum {                                     // three trigger words: one line per word
-    grammar = { {.type | .enter | .put, number, .into | .in | .on | .onto, noun} };
+    grammar = { {.type | .enter | .put, NUMBER, .into | .in | .on | .onto, NOUN} };
     void handler() { print("You can't type anything there."); }
 }
 ```
 
-### 13.4.4 Line Modifiers: `reverse`, `withI6Synonyms`
+### 13.4.4 Line Modifiers: `REVERSE`, `withI6Synonyms`
 
 **Syntax**
 
 ```syntax
-{ ⟨pattern⟩ [ , reverse ] [ , withI6Synonyms ] }
+{ ⟨pattern⟩ [ , REVERSE ] [ , withI6Synonyms ] }
 ```
 
 **Description**
@@ -451,8 +455,8 @@ Two pseudo-tokens may end a grammar line, in this order. Neither is matched agai
 `withI6Synonyms`, when present, must be last. The dotted forms `.reverse` and `.withI6Synonyms` are
 ordinary dictionary words and are unaffected.
 
-- `reverse` swaps `noun` and `second` when the action receives its parsed arguments:
-  `{.give, creature, held, reverse}`.
+- `REVERSE` swaps `noun` and `second` when the action receives its parsed arguments:
+  `{.give, CREATURE, HELD, REVERSE}`.
 - `withI6Synonyms` widens the line's effect on a library verb. A library verb may group several
   synonym words under one grammar table; when a line's trigger word belongs to such a group, the line
   affects only that word and its synonyms are untouched. With `withI6Synonyms` the line applies to
@@ -469,11 +473,11 @@ word as a fresh `Verb`. Background, non-normative: [Verbs and Grammar](../Verbs-
 
 ```bgl
 verb Keypad {
-    grammar = { {.enter, number, .into, noun} };    // "enter 5 into keypad"; "cross" unaffected
+    grammar = { {.enter, NUMBER, .into, NOUN} };    // "enter 5 into keypad"; "cross" unaffected
     void handler() { … }
 }
 
-extend Take { grammar += { {.take, .all, .from, noun, withI6Synonyms} }; }   // take/get/carry/…
+extend Take { grammar += { {.take, .all, .from, NOUN, withI6Synonyms} }; }   // take/get/carry/…
 ```
 
 ### 13.4.5 Grammar on Verbs and Grammar Objects
@@ -503,10 +507,10 @@ Per-rule priority is the optional third element (§13.2.5).
 
 ```bgl
 grammar customPatterns {
-    rule1 = {PutOn, {.hang, held, .on, noun}};
+    rule1 = {PutOn, {.hang, HELD, .on, NOUN}};
     array<grammarRule> rules = {
-        {PutOn,  {.put, held, .on, noun}},
-        {Insert, {.put, held, .in, noun}, 5},
+        {PutOn,  {.put, HELD, .on, NOUN}},
+        {Insert, {.put, HELD, .in, NOUN}, 5},
     };
 }
 ```
@@ -550,7 +554,7 @@ modifiers (§13.4.4) are accepted.
 ```bgl
 extern verb PutOn;
 extend PutOn {
-    grammar += { {.hang, held, .on, noun} };
+    grammar += { {.hang, HELD, .on, NOUN} };
 }
 ```
 
@@ -561,20 +565,20 @@ extend PutOn {
 `grammar -= { … }` removes grammar. The grain of the removal is set by how much of the line is named:
 
 - **Line-level** — `{.w, pattern…}` removes the one line that matches exactly: same trigger word,
-  same tokens, same `reverse` flag.
+  same tokens, same `REVERSE` flag.
 - **Word-level** — `{.w}` removes all of that word's grammar.
 
 A `-=` entry must match a line exactly; a partial (prefix) pattern matches nothing:
-`-= { {.give, noun} }` removes only the line whose pattern is exactly `noun`, never
-`{.give, noun, .to, noun}`. An alternation in a `-=` entry (`.a|.b|.c`) is one removal per word, each
+`-= { {.give, NOUN} }` removes only the line whose pattern is exactly `NOUN`, never
+`{.give, NOUN, .to, NOUN}`. An alternation in a `-=` entry (`.a|.b|.c`) is one removal per word, each
 matched and warned separately. Removal is source-ordered: a `-=` sees only lines declared before it,
 so a later `+=` of the same line is unaffected. A `-=` that matches nothing is a warning.
 
 **Example**
 
 ```bgl
-verb TypeNum { grammar = { {.type|.dial, .into, noun}, {.dial, .to, noun} }; void handler() { … } }
-extend TypeNum { grammar -= { {.dial, .into, noun} }; }   // that one dial line
+verb TypeNum { grammar = { {.type|.dial, .into, NOUN}, {.dial, .to, NOUN} }; void handler() { … } }
+extend TypeNum { grammar -= { {.dial, .into, NOUN} }; }   // that one dial line
 extend TypeNum { grammar -= { {.dial} }; }                // every dial line
 ```
 
@@ -593,7 +597,7 @@ Background, non-normative: [Verbs and Grammar](../Verbs-Grammar.md).
 
 ```bgl
 extend Enter  { grammar -= { {.enter} }; }      // evict 'enter' from the library verb …
-verb  Keypad  { grammar = { {.enter, number, .into, noun} }; void handler() { … } }   // … and reclaim it
+verb  Keypad  { grammar = { {.enter, NUMBER, .into, NOUN} }; void handler() { … } }   // … and reclaim it
 extend Disturb { grammar -= { {.xyzzy} }; }     // no reclaimer: 'xyzzy' is disabled
 ```
 
@@ -613,13 +617,13 @@ compile-time error.
 **Example**
 
 ```bgl
-verb TypeNum { grammar = { {.type|.dial, .into, noun} }; void handler() { … } }
+verb TypeNum { grammar = { {.type|.dial, .into, NOUN} }; void handler() { … } }
 extend TypeNum {
-    replace grammar = { {.dial, .to, noun} };     // 'type' is dropped
+    replace grammar = { {.dial, .to, NOUN} };     // 'type' is dropped
 }
 
 extend Take {
-    replace grammar = { {.take, .firmly, noun} };  // overrides the library's 'take'
+    replace grammar = { {.take, .firmly, NOUN} };  // overrides the library's 'take'
 }
 ```
 
@@ -645,7 +649,7 @@ There is no Beguile form for I6's `Extend 'w' only` directive; if needed, write 
 
 ```bgl
 extend Take { synonyms = {.steal, .grab, .pilfer}; }
-extend Take { grammar += { {.take, .quietly, noun} }; }   // also "steal quietly", "grab quietly"
+extend Take { grammar += { {.take, .quietly, NOUN} }; }   // also "steal quietly", "grab quietly"
 ```
 
 **See also** §13.2.3, §15.2.

@@ -7,13 +7,10 @@ Constant beguiler = 5;
     Constant story    = "";
     Constant headline = "";
 
-
-    Constant orLib_suppress_forced_banner_hook;
-
 Replace banner;
 
-    replace main _oldmain;
-
+        replace main _oldmain;
+    
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -283,20 +280,6 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-object frob
-  with handler [m;
-    meta = true;
-    if (meta) {
-        meta = false;
-    }
-    m=meta;
-  ]
-;
-[frobsub;
-                frob.handler();
-            ];
-verb 'frob'
-    * noun -> frob;
 [Banner;
     print "^";
     style bold;
@@ -304,9 +287,9 @@ verb 'frob'
     style roman;
     print (string)headline;
     print "Release ";
-    print _bglstory.release._opconv();
+    print _bglheader.release._opconv();
     print " / Serial number ";
-    _bglstory.printserial();
+    _bglheader.printserial();
     print "^";
     style underline;
     print "Written in";
@@ -322,28 +305,48 @@ verb 'frob'
     print "Compiled with";
     style roman;
     print " Inform v";
-    inversion;
+     inversion; 
     print " / Library v";
     print (string)librelease;
-    print "^";
+    print " ";
+    
+        #Ifdef STRICT_MODE; print "S"; #Endif;
+        #Ifdef INFIX; print "X";
+        #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
+    
+    print (string)"^";
 ];
+object frob
+  with handler [m;
+    meta = true;
+    if (meta) {
+        meta = false;
+    }
+    m=meta;
+  ]
+;
+[frobsub;
+            frob.handler();
+        ];
+verb 'frob'
+    * noun -> frob;
 
-    [main; 
-        bglInit();
-        _oldmain();
-    ];
-
-class _bglaccessor5
+        [main;
+            bglInit();
+            _oldmain();
+        ];
+    
+class _bglaccessor3
   with
     _opconv[;
-        return _bgl_bglOpCodes_loadw(hdr_gamerelease, 0) & 1023;
+        return _bgl_bglOpCodes_loadw(2, 0) & 1023;
     ]
 ;
-_bglaccessor5 __bglstory_release;
-object _bglStory
-  with release __bglstory_release,
+_bglaccessor3 __bglheader_release;
+object _bglHeader
+  with release __bglheader_release,
        serialChar [i;
-    return _bgl_bglOpCodes_loadb(hdr_gameserial, i);
+    return _bgl_bglOpCodes_loadb(18, i);
   ],
        printSerial [i;
     i = 0;

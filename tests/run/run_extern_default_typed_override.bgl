@@ -1,0 +1,19 @@
+/*  run_extern_default_typed_override — overriding an `extern default` with the same signature.
+
+    A library declares its overridable entry points as I6 `Stub`s, which define the routine only if
+    the program has not already. The override must therefore be emitted where it is written, ahead
+    of the stub, even when its signature matches the `extern default` declaration exactly.  */
+// EXPECT_OUTPUT: override 1
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 { Constant K_A 1; Constant K_B 2; }
+extern enum eKind { K_A, K_B }
+extern default bool MyHook(eKind k);
+
+bool MyHook(eKind k){ print($"override {(int)k}"); return true; }
+
+#i6 { Stub MyHook 1; }
+
+void main(){
+    bglInit();
+    MyHook(K_A);
+}

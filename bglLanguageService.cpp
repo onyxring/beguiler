@@ -216,6 +216,17 @@ static string fmtSrc(const sourceLocation& src){
     return format("{0}:{1}", src.file, src.line);
 }
 
+// Where the registered type (class, object or enum) named `name` was declared.
+static string typeSrc(bglLanguageService& ls, const string& name){
+    typeDef& td = ls.getType(name);
+    if(auto* cd = dynamic_cast<classDef*>(&td))  return fmtSrc(cd->src);
+    if(auto* od = dynamic_cast<objectDef*>(&td)) return fmtSrc(od->src);
+    if(auto* ed = dynamic_cast<enumDef*>(&td))   return fmtSrc(ed->src);
+    return fmtSrc({});
+}
+
+string bglLanguageService::declaredAt(const string& name){ return typeSrc(*this, name); }
+
 bool bglLanguageService::isAdditiveProperty(const string& name) const {
     if(name.empty()) return false;
     for(typeDef* g : globals)
@@ -283,12 +294,13 @@ enumDef& bglLanguageService::registerEnum(string name, bool isExternal, string d
         if(existing && existing->isPrePassStub){
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
+            existing->src = parser.file.currentLocation();
             if(!dspName.empty()) existing->displayName = dspName;
             rePushIfMissing(globals, existing, isExternal,
                             parser.getCurrentCompileContext() == eCompileContext::global);
             return *existing;
         }
-        string loc = existing ? fmtSrc(existing->src) : "unknown location";
+        string loc = typeSrc(*this, name);
         parser.parsingError(format("'{0}' is already defined (originally declared at {1})", dspName.empty() ? name : dspName, loc));
     }
     enumDef& newType=*(new enumDef());
@@ -308,12 +320,13 @@ classDef& bglLanguageService::registerClass(string name, bool isExternal, string
         if(existing && existing->isPrePassStub){
             existing->isPrePassStub = false;
             existing->isExternal = isExternal;
+            existing->src = parser.file.currentLocation();
             if(!dspName.empty()) existing->displayName = dspName;
             rePushIfMissing(globals, existing, isExternal,
                             parser.getCurrentCompileContext() == eCompileContext::global);
             return *existing;
         }
-        string loc = existing ? fmtSrc(existing->src) : "unknown location";
+        string loc = typeSrc(*this, name);
         parser.parsingError(format("'{0}' is already defined (originally declared at {1})", dspName.empty() ? name : dspName, loc));
     }
     classDef& newType=*(new classDef());
@@ -339,7 +352,7 @@ objectDef& bglLanguageService::registerObject(string name, bool isExternal, stri
                             parser.getCurrentCompileContext() == eCompileContext::global);
             return *existing;
         }
-        string loc = existing ? fmtSrc(existing->src) : "unknown location";
+        string loc = typeSrc(*this, name);
         parser.parsingError(format("'{0}' is already defined (originally declared at {1})", dspName.empty() ? name : dspName, loc));
     }
     objectDef& newType=*(new objectDef());
@@ -378,11 +391,7 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
     }
     // Check for collision with a registered type (class/object/enum) of the same name
     if(isObjectType(lowerName)){
-        string loc = "unknown location";
-        typeDef& td = getType(lowerName);
-        if(auto* cd = dynamic_cast<classDef*>(&td))       loc = fmtSrc(cd->src);
-        else if(auto* od = dynamic_cast<objectDef*>(&td)) loc = fmtSrc(od->src);
-        else if(auto* ed = dynamic_cast<enumDef*>(&td))   loc = fmtSrc(ed->src);
+        string loc = typeSrc(*this, lowerName);
         parser.parsingError(format("'{0}' is already defined as a type (originally declared at {1})", varDef.name, loc));
     }
     globals.push_back(&varDef);

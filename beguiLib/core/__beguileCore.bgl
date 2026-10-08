@@ -1,13 +1,13 @@
-/*=============================================================================
-    __beguileCore.bgl
- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
-    The entry point of the Beguile Language Runtime.  This file is included
-    automatically by the compiler and is responsible for loading the entirety
-    of the core BLR.
- -----------------------------------------------------------------------------*/
+/* -----------------------------------------------------------------------------
+    __beguileCore.bgl - The Beguile Language Runtime
+    The compiler includes this file in every program. It loads the rest of the
+    runtime and declares the types everything else builds on.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
 
-//--include the rest of the BLR, starting with base types...
+//-- Core types ----------------------------------------------------------------
 #include <core/_array>
 #include <core/_attribute>
 #include <core/_beguilerSettings>
@@ -21,64 +21,58 @@
 #include <core/_string>
 #include <core/_uint>
 #include <core/_verb>
-//--now utilities...
+
+//-- Utilities -----------------------------------------------------------------
 #include <core/_bglAllocated>
 #include <core/_bglWorld>
 #include <core/_math>
 #include <core/_typeof>
 #include <core/_mainWindow>
-#include <core/_printRules>  
+#include <core/_printRules>
 #include <core/_random>
 #include <core/_statusBar>
-#include <core/_ui>         
-//--and platform specific code...
+#include <core/_ui>
+
+//-- Target-specific code ------------------------------------------------------
 #if TARGET_GLULX
     #include<core/_glulxCore>
 #else
     #include<core/_zcodeCore>
 #endif
 
-//-- the BLR Namespace ---------------------------------------------------------
-_bglObject bgl{ // bgl is root 
-    emitter int wordsize {WORDSIZE} //bgl.wordsize value
-    alias util = _bglUtil;          //bgl.util - the util namespace to which other extensions will attach
+//-- The bgl namespace ---------------------------------------------------------
+/// The root of the runtime's namespaces.
+_bglObject bgl{
+    emitter int wordsize {WORDSIZE}  /// The size of a word in bytes: 2 on the Z-machine, 4 on Glulx.
+    alias util = _bglUtil;           /// General utilities; extensions add their own here.
 }
-superposed _bglObject _bglUtil{}    //actual bgl.util object, defined here so other extensions can hook into it
+// The object behind bgl.util, where extensions attach their utilities.
+superposed _bglObject _bglUtil{}
 
-//-- Base object types ---------------------------------------------------------
-// Two roots. A class whose values are I6 objects derives _bglObject; a class with no instances (a
-// primitive or emitter class: its value is a word the emitters interpret) derives _bglPrimitive.
-// A class declared without a base derives the one that fits its form (spec 8.6).
-
-/// The root of every class with no instances: primitive classes (int, bool, string…) and emitter
-/// classes (stringObj, array<T>…).
+//-- Base types ----------------------------------------------------------------
+/// The root of every class whose values are plain words: primitives such as int, and emitter classes such as array<T>.
 emitter class _bglPrimitive{
-    /// Assignment: the slot takes the value's word.
+    /// Assignment: the variable takes the value's word.
     emitter _bglPrimitive operator = (_bglPrimitive v){ $target = $v }
 }
 
-/// The type of `null`: the empty reference, which fits every type. Compared as an object (`x == null`).
+/// The type of `null`, the empty reference that fits every type.
 primitive class nullLiteral{
-    emitter _bglObject operator();
+    emitter _bglObject operator();  /// Convert null to any object type.
 }
 
-/// The root of every class whose values are I6 objects: what I6 gives any object (identity, class
-/// and property tests, its name). `object` (in _object.bgl) adds world-tree citizenship on top.
+/// The root of every class whose values are I6 objects.
 emitter class _bglObject{
-    /// The object's name: what `print(obj)` prints (I6's `(name)`), with or without a library. A
-    /// library prints `short_name` instead when the object has one. Set in an object's declaration
-    /// body, as a string literal: it is fixed when the program is compiled. Positional, and last:
-    /// `object lamp { "brass lamp"; }`; a class that adds positional members of its own can re-list
-    /// it (`inline instanceName;`) to put it first.
+    /// The object's name, as `print(obj)` shows it, given once in its declaration: `object lamp { "brass lamp"; }`.
+    /// With a library, an object's `short_name` takes its place.
     inline const string instanceName;
 
-    /// Assignment: the variable refers to the assigned instance (spec 2.10.3). A value class copies
-    /// instead, through its own `operator =` taking its own type.
+    /// Assignment: the variable refers to the assigned instance. A value class copies instead.
     emitter _bglObject operator = (_bglObject v){ $target = $v }
 
-    emitter eBool operator ?() { $val ~= nothing }
-    emitter eBool operator == (_bglObject v){ $val == $v }
-    emitter eBool operator != (_bglObject v){ $val ~= $v }
+    emitter eBool operator ?() { $val ~= nothing }               /// True unless the reference is null.
+    emitter eBool operator == (_bglObject v){ $val == $v }       /// True when both refer to the same object.
+    emitter eBool operator != (_bglObject v){ $val ~= $v }       /// True when they refer to different objects.
 
     /// True when this object declares `prop`, so reading it is safe.
     emitter bool provides(property prop){
@@ -88,57 +82,50 @@ emitter class _bglObject{
     emitter bool is(bglClass cls){
         ($val ofclass $cls)
     }
-    /// Print this object's short name. What `print(obj)` calls.
+    /// Print this object's name. What `print(obj)` calls.
     emitter void print(){
         print (name)$val;
     }
 }
-primitive class bglClass{ }   //the base type of all class references, used in cases where the type is checked (e.g. .is(bglClass))
+/// A reference to a class, as `obj.is(cls)` takes.
+primitive class bglClass{ }
 
-//-- Print routines ---------------------------------------------------------------------------
-emitter void print(var val){ print $val; } //the default, which will be used for all data types not defined
-emitter void print(_bglObject val){ if($val provides print) $val.print(); else print (name)$val;} //the default, which will be used for all data types not defined
-emitter void log(var msg){ ##if DEBUG print $msg; ##endif }
-/// Print `val` the way `print(val)` would, then a newline.
-emitter void printLine(var val){ $i6Expr(print($val)); print "^"; }
-/// Print an interpolated string, then a newline.
-emitter void printLine(interpolatedStringLiteral val){ $val; print "^"; }
-/// Print a newline.
-emitter void printLine(){ print "^"; }
-
-// Articles moved to bgl.printRules (core/_printRules) — a print rule belongs in the print-rule
-// namespace now that there is one. Reach them qualified, `bgl.printRules.the(noun)`, or bring the
-// short spelling back per file with `#using bgl.printRules;`.
-emitter void printName(object o){ print (name)$o; }   // I6 `(name) obj` print rule — bare short name, no article
-
-//-----------------------------------------------------------------------------
-// Blorb asset ids, partitioned by resource kind so operations only appear where they apply (an image's
-// width()/height() is meaningless on a sound). The blorbifier extends the matching enum for each asset
-// (pictures → eImages, sounds → eSounds) when blorbification is enabled; both are empty otherwise.
-enum eImages { }        // Pict (image) resource ids.
-enum eSounds { }        // Snd  (sound) resource ids.
-enum eUnknownAsset { }  // Data resource ids — the open catch-all: any file the blorbifier doesn't
-                        // recognize as an image/sound is surfaced here (packaged as generic Data) so
-                        // it is never silently dropped. Promote a kind to its own enum when it earns
-                        // first-class support (its own operations / a proper blorb usage).
-// Umbrella "any asset" type for APIs that genuinely accept any resource — and the extension point as
-// the blorb standard grows: add the new first-class enum as another union member here.
-union eAssets = eImages | eSounds | eUnknownAsset;
-extern void bglInit(); // bglInit() is a special, compiler built routine used to initialize the BLR
-
-// Holds an argument while a parameter of a class with init/deinit is given its own copy (§8.5).
-// Emitted only when such a parameter exists (the paramCopyIn.arg builtin template triggers it).
-#storedEmitFirst paramCopySupport {
-    Global _bglParamArg;
+//-- Global routines -----------------------------------------------------------
+emitter void print(var val){ print $val; }                                                           /// Print a value of a type with no print() of its own.
+emitter void print(_bglObject val){ if($val provides print) $val.print(); else print (name)$val;}  /// Print an object: its own print() if it has one, otherwise its name.
+/// Print `msg`, but only in a debug build.
+emitter void log(var msg){
+    ##if DEBUG
+    print $msg;
+    ##endif
 }
+emitter void printLine(var val){ $i6Expr(print($val)); print "^"; }                                  /// Print `val` the way `print(val)` would, then a newline.
+emitter void printLine(interpolatedStringLiteral val){ $val; print "^"; }                            /// Print an interpolated string, then a newline.
+emitter void printLine(){ print "^"; }                                                               /// Print a newline.
+emitter void printName(object o){ print (name)$o; }                                                  /// Print an object's name, with no article.
+extern void bglInit();                                                                               /// Start the Beguile runtime; runs before the game's own main.
 
-//-- Utility types
+//-- Blorb assets --------------------------------------------------------------
+enum eImages { }                                     /// The images packaged with the game.
+enum eSounds { }                                     /// The sounds packaged with the game.
+enum eUnknownAsset { }                               /// Other files packaged with the game.
+union eAssets = eImages | eSounds | eUnknownAsset;   /// Any packaged asset.
+
+//-- Utility types -------------------------------------------------------------
+/// A width and a height.
 superposed value class bglSize{
-    inline int width=0;
-    inline int height=0;
+    inline int width=0;    /// The width.
+    inline int height=0;   /// The height.
+    /// Copy another size.
     bglSize operator = (bglSize s){
         self.width=s.width;
         self.height=s.height;
         return self;
     }
+}
+
+//-- General bits of setup -----------------------------------------------------
+// Holds an argument while a parameter that owns its value takes its own copy.
+#storedEmitFirst paramCopySupport {
+    Global _bglParamArg;
 }

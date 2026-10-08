@@ -1,0 +1,26 @@
+/*  run_compare_derives_ordering — `<`, `>`, `<=` and `>=` come from `operator <=>` when a type lacks them.
+
+    `a < b` is `(a <=> b) < 0`, from a static or an instance `<=>`, inherited by subclasses. A declared
+    ordering operator takes precedence. Also covers `!(…)` around a non-emitter operator, whose `~~`
+    was emitted inside the operator call's argument list.  */
+// EXPECT_OUTPUT: lt gt le-ge not [own<]tag-lt tag-gt sub bool ne
+#beguilerSettings { target = z5; informName = "none"; }
+class Item { int w = 0; static int operator <=> (Item a, Item b) { return a.w - b.w; }
+             static bool operator == (Item a, Item b) { return a.w == b.w; } }
+class Tag  { int v = 0; int operator <=> (Tag o) { return v - o.v; }
+             bool operator < (Tag o) { print("[own<]"); return v < o.v; } }
+class Crate : Item { }
+Item light { w = 1; }  Item heavy { w = 5; }
+Tag t1 { v = 1; }  Tag t2 { v = 2; }
+Crate h { w = 9; }
+void main(){
+    if(light < heavy) print("lt ");
+    if(heavy > light) print("gt ");
+    if(light <= light && light >= light) print("le-ge ");
+    if(!(heavy < light)) print("not ");
+    if(t1 < t2) print("tag-lt ");
+    if(t2 > t1) print("tag-gt ");
+    if(light < h) print("sub ");
+    bool b = heavy > light; if(b) print("bool ");
+    if(!(light == heavy)) print("ne");
+}

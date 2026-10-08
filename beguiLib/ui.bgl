@@ -34,8 +34,7 @@ extend _bglUi {
     /// there is no usable one. Call `showCursor()` afterwards. `waitForKey` does both for you.
     int hideCursor(){
     #if TARGET_GLULX
-        // `id` is 0 unless a library binding maps it to a real grid window (core's own _bglStatus
-        // tracks its window privately), so both must hold before redirecting the request.
+        // `id` stays 0 until the status window is open, so both must hold before redirecting the request.
         if(bgl.ui.statusBar.height <= 0 || bgl.ui.statusBar.id == 0) return 0;
 
         int win = bgl.ui.statusBar.id;

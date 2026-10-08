@@ -265,7 +265,7 @@ void bglParser::preScanDirective(token tok){
             filesystem::path libPath = findLibIncludeRecursive(settings.libPath, includeName2);
             if(!libPath.empty()) preScanFile(libPath.string());
         }
-    } else if(tok.is("#define") || tok.is("#redef")){
+    } else if(tok.is("#define") || tok.is("#definei6") || tok.is("#redef")){
         // Store symbol in definedSymbols so #if works during pre-scan. Pre-scan
         // overwrites silently for both forms; the `#define`-redefine error is
         // raised in the main pass (processDirective) to avoid double-reporting.
@@ -461,6 +461,9 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
                 } else {
                     // Object-valued redirect (auto/alias to an object) needs the init name so the
                     // expr walk can follow it to the target object; harmless for class targets.
+                    // `alias` marks it a namespace hook, as the main pass will, so a path through
+                    // it resolves before the declaration is reached.
+                    vd.isAlias = isAliasKw;
                     expression* e = new expression();
                     e->tokens.push_back(rhs.value);
                     vd.declaredExpressionValue = e;
@@ -1266,6 +1269,25 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                         // Skip emitters (e.g. `emitter int wordsize {WORDSIZE}`) — those
                         // look like a property shape without parens but are value-emitters
                         // that the full pass installs differently.
+                        if(memberIsEmitter && afterName.is(token::braceOpen)){
+                            // Value emitter (`emitter int wordsize {WORDSIZE}`): register it with its
+                            // body, so a use that comes before the object's declaration expands it.
+                            functionDef& fd = *(new functionDef());
+                            fd.name = memberName.value;
+                            fd.returnType = languageService.getType(t.value);
+                            fd.isEmitter = true;
+                            fd.isValueEmitter = true;
+                            fd.isPrePassStub = true;
+                            i6Block* blk = new i6Block();
+                            blk->i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+                            fd.body = blk;
+                            bool exists = false;
+                            for(typeMember* m : objStub->members)
+                                if(m->name == fd.name){ exists = true; break; }
+                            if(!exists) objStub->members.push_back(&fd);
+                            t = file.getToken();
+                            continue;
+                        }
                         if(!memberIsEmitter){
                             variableDeclaration& vd = *(new variableDeclaration());
                             vd.name = memberName.value;
@@ -1477,12 +1499,16 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
         stub.name = nameStr;
         stub.returnType.name = typeName;
         stub.isEmitter = isEmitter;
+        stub.isExternal = isExtern;
         stub.isPrePassStub = true;
         preScanCaptureParams(stub.params);
         bool alreadyReg = false;
         for(typeDef* g : languageService.globals){
             auto* fd = dynamic_cast<functionDef*>(g);
             if(fd == nullptr || fd->name != nameStr) continue;
+            // A definition overriding an `extern default` of the same signature needs its own stub,
+            // or it loses its source position and lands after the library that calls it.
+            if(fd->isExternal != isExtern) continue;
             if(fd->params.size() != stub.params.size()) continue;
             bool sameSig = true;
             for(size_t i = 0; i < fd->params.size(); i++){
@@ -1621,7 +1647,8 @@ void bglParser::preScanGlobalLoop(){
         token declName = file.peekToken(1);
         if(!isEmitter && (declName.is(eTokenType::identifier) || declName.isDataType()) && !file.peekToken(2).is(token::parenOpen)
            && (objectBackedType(tok)
-               || (tok.isDataType() && (file.peekToken(2).is(token::braceOpen) || file.peekToken(2).is(":"))))){ preScanObject(tok, isExtern); continue; }
+               // a type not declared yet (core's `_bglObject bgl{ … }` precedes `_bglObject`) is still an object body
+               || ((tok.isDataType() || (tok.is(eTokenType::identifier) && !tok.is("grammar"))) && (file.peekToken(2).is(token::braceOpen) || file.peekToken(2).is(":"))))){ preScanObject(tok, isExtern); continue; }
 
         // grammar, attribute, beguilerSettings — skip
         if(tok.is("grammar") || tok.value == "beguilerSettings"){

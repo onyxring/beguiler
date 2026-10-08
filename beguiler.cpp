@@ -265,6 +265,9 @@ void beguiler::extractBlorbSettings(const string& filename) {
     // that would wipe it runs only in LSP mode.)
     if(beguilerSettings.autoInitialize) parser.defineSymbol("bglautoinitialize", "1");
 
+    // Debug builds: lets library and game code include what exists only there (#if DEBUG).
+    if(settings.debugMode) parser.defineSymbol("debug");
+
     // Surface generateBlorb as a compile-time #if symbol so library/core code can gate blorb-only
     // constructs (e.g. an `eAssets`-typed routine). Declared immutable (#declare): compiler-owned,
     // user can't redefine. ALWAYS declared, carrying its boolean VALUE — so it must be tested by
@@ -366,6 +369,7 @@ void beguiler::runPostParseChecks() {
     // contribution.
     parser.checkTypedPropertyMemberTypes();
     parser.validateHiddenMembers();
+    parser.validateRoutinePropertyClashes();
     parser.recordObjectMemberInits();
 
     // Apply defaults declared on beguilerSettingsType schema members for any unset fields
@@ -852,7 +856,9 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
                 beguilerSettings.target = "z8";
             } else if(arg.size() >= 3 && arg[1] == 'E' && isdigit(arg[2])) {
                 beguilerSettings.errorFormat = arg.substr(2);
-            } else if(arg == "--debug") {
+            } else if(arg == "--debug" || arg == "-D") {
+                // One debug mode: the Beguile debugger's files and I6's DEBUG (its debugging verbs
+                // and tracing) always go together; either flag turns on both.
                 settings.debugMode = true;
             } else if(arg.size() >= 5 && arg.substr(1,4)=="lib=") {
                 // Consumed by resolveLibPath; recognized here so it doesn't leak into I6 switches.
@@ -873,6 +879,8 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
             }
         }
     }
+
+    if(settings.debugMode) settings.switches += " -D";
 
     #if defined(_WIN32) || defined(_WIN64)
         settings.pathSep = '\\';

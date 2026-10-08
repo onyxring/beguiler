@@ -1,19 +1,25 @@
-#once
-//=============================================================================
-// type dictionary word
-    /// The type of a `.word` literal before it is assigned or compared. Converts to `dictionaryWord`.
-    primitive class dictionaryWordLiteral {
-        dictionaryWord operator auto();
-        replace emitter void print(){ print (address) $val }
-    }
-    /// A word in the story's dictionary, the unit a parser grammar matches. Write a literal with a
-    /// leading dot: `.lamp` for the singular, `..lamps` for the plural.
-    primitive class dictionaryWord : patternElement { //--an I6 dictionary word; literals use .word (singular) or ..word (plural) prefix syntax
-        emitter dictionaryWordLiteral operator();                           //--I6 passthrough; enables mixed expressions
-        emitter dictionaryWord operator = (dictionaryWordLiteral v){ $target = $v; }
-        emitter dictionaryWord operator = (dictionaryWord v){ $target = $v; }
-        replace emitter void print(){ print (address) $val }
-    }
+/* -----------------------------------------------------------------------------
+    _dictionaryWord.bgl - Dictionary words
+    Declares `dictionaryWord`, a word in the story's dictionary, written `.lamp`
+    for the singular and `..lamps` for the plural.
 
-    emitter void print(dictionaryWord val){ print (address) $val; }
-    emitter void print(dictionaryWordLiteral val){ print (address) $val; }
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
+#once
+
+/// The type of a `.word` literal before it is assigned or compared; it converts to `dictionaryWord`.
+primitive class dictionaryWordLiteral {
+    dictionaryWord operator auto();  /// Convert implicitly to a `dictionaryWord`.
+    replace emitter void print(){ print (address) $val }   /// Print the word.
+}
+
+/// A word in the story's dictionary, the unit a grammar matches: `.lamp` for the singular, `..lamps` for the plural.
+primitive class dictionaryWord : patternElement {
+    emitter dictionaryWordLiteral operator();                                     /// Convert to a dictionary-word literal.
+    emitter dictionaryWord operator = (dictionaryWordLiteral v){ $target = $v; }  /// Assignment: the variable takes the word.
+    emitter dictionaryWord operator = (dictionaryWord v){ $target = $v; }         /// Assignment: the variable takes the word.
+    replace emitter void print(){ print (address) $val }   /// Print the word.
+}
+
+emitter void print(dictionaryWord val){ print (address) $val; }          /// Print a dictionary word.
+emitter void print(dictionaryWordLiteral val){ print (address) $val; }   /// Print a dictionary word.

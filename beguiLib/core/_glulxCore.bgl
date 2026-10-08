@@ -1,62 +1,51 @@
-//-----------------------------------------------------------------------------
-// _glulxCore.bgl — the Glulx platform layer: the `bgl.glulx` namespace, the full
-// Glulx assembly opcode emitter class (bglOpCodes, via _glulxOpCodes) aliased as
-// `bgl.asm`, and the __glkHook dispatch routine that backs Glk operations.
-//
-// Included automatically by the compiler (__beguileCore.bgl) when the target is
-// Glulx — the counterpart to _zcodeCore.bgl on the Z-machine side. There is no
-// user-facing `#include`; the platform core follows the active target. (The
-// only opt-in Glulx extension is `<glulxWindow>`.)
-//-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
+    _glulxCore.bgl - Glulx platform layer
+    Provides `bgl.glulx`, the raw Glulx opcodes as `bgl.asm`, hyperlinks, images
+    and the story file header as `bgl.header`. It is included automatically on
+    Glulx targets.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
 
 #include<core/_glulxOpCodes>
-#include<core/_float>     
-//=============================================================================
-// _glulx — backing object for the bgl.glulx namespace.
-extend bgl{ auto glulx=_glulx; } //extend the bgl namespace object to include glulx-specific things
+#include<core/_float>
 
+//-- Namespaces ----------------------------------------------------------------
+extend bgl{
+    auto glulx=_glulx;   /// Glulx-specific facilities.
+}
+
+// The object behind bgl.glulx.
 _bglObject _glulx{
-   alias eStyleType for eGlulxStyleType; //bgl.glulx.eStyleType
+    alias eStyleType for eGlulxStyleType;   /// The Glk text styles.
 }
 
-// Values MUST match glk's style_* constants (Glk §5.5): style_Normal=0 … style_User2=10. Beguile
-// enums otherwise start at 1, so `normal = 0` anchors the sequence to the glk ABI — these are passed
-// straight to glk_stylehint_set/_clear (see <glulxWindow> setStyle).
+/// The Glk text styles; the values match Glk's own, so they pass to Glk unchanged.
 enum eGlulxStyleType{
-        normal = 0
-   ,    emphasized      // 1  (glk style_Emphasized)
-   ,    fixed           // 2  (glk style_Preformatted)
-   ,    header          // 3
-   ,    subheader       // 4
-   ,    alert           // 5
-   ,    note            // 6
-   ,    blockQuote      // 7
-   ,    input           // 8
-   ,    user1           // 9
-   ,    user2           // 10
+    normal = 0,    /// Plain text.
+    emphasized,    /// Emphasized text.
+    fixed,         /// Fixed-width text.
+    header,        /// A header.
+    subheader,     /// A subheader.
+    alert,         /// An alert.
+    note,          /// A note.
+    blockQuote,    /// A block quotation.
+    input,         /// The player's input.
+    user1,         /// A style the game defines.
+    user2          /// A second style the game defines.
 }
 
-#include<core/_glulxOpCodes>
-extend bgl { emitter auto asm = bglOpCodes; } //attach the opcodes to the namespace
+extend bgl {
+    emitter auto asm = bglOpCodes;   /// Raw Glulx assembly opcodes.
+}
 
-//=============================================================================
-// Hyperlinks — the `link` print rule and the Glk event plumbing behind it.
-//
-// A link's value is its handler when it is a routine (a lambda or a named function): the BLR calls
-// it on click. Any other value (an enum, an int, an object) is left to the author's HandleGlkEvent,
-// the established I6 way. Both run through one HandleGlkEvent, defined at the very end of the
-// program so that it wraps whatever the author wrote; I6's `Replace` renames the author's routine
-// to _bglAuthorGlkEvent. With no author routine the renamed symbol is 0 (a library `Stub` is not
-// renamed), hence the guard.
-//=============================================================================
-
-/// Glk's event hook, called for every event while the story waits for input. `event` is the
-/// four-word Glk event (type, window, val1, val2); `context` is 0 while waiting for a line and 1
-/// while waiting for a key; `buffer` is the input buffer. Return 0 to carry on as normal, 2 to end
-/// the input (with the result in `buffer`), or -1 to keep waiting.
+//-- Hyperlinks ----------------------------------------------------------------
+/// Called for each input event: `context` is 0 for line input and 1 for a key; `buffer` is the input buffer.
+/// Return 0 to carry on, 2 to end the input with the result in `buffer`, or -1 to keep waiting.
 extern default int HandleGlkEvent(var event, var context, var buffer);
 
+// Wrap the game's own HandleGlkEvent so link handlers run first.
 #emitfirst {
     Replace HandleGlkEvent _bglAuthorGlkEvent;
 }
@@ -68,11 +57,28 @@ extern default int HandleGlkEvent(var event, var context, var buffer);
     ];
 }
 
-// Glk forbids printing to a window while it waits for a line, so a link handler clicked at the
-// prompt runs with line input suspended. A binding that reads lines replaces these two: suspend
-// returns how many characters the player had typed, and resume re-prompts with them restored.
-int  _bglSuspendLineInput(var buffer){ return 0; }
-void _bglResumeLineInput(var buffer, int typed){ }
+// Pause and resume line input around a link handler clicked at the prompt.
+#if I6_STANDARD_LIBRARY
+    // TODO: library dependency in core — gg_mainwin, DrawStatusLine, the ##Prompt message and
+    // INPUT_BUFFER_LEN belong to the I6 standard library; core should get them from the binding.
+    extern int  _bglSuspendLineInput(var buffer);
+    extern void _bglResumeLineInput(var buffer, int typed);
+    #emitlast {
+        Array _bglLineEvent --> 4;
+        [ _bglSuspendLineInput buffer;
+            glk_cancel_line_event(gg_mainwin, _bglLineEvent);
+            return _bglLineEvent-->2;   ! characters typed so far; Glk left them in the buffer
+        ];
+        [ _bglResumeLineInput buffer typed;
+            DrawStatusLine();
+            L__M(##Prompt);
+            glk_request_line_event(gg_mainwin, buffer + WORDSIZE, INPUT_BUFFER_LEN - WORDSIZE, typed);
+        ];
+    }
+#else
+    int  _bglSuspendLineInput(var buffer){ return 0; }
+    void _bglResumeLineInput(var buffer, int typed){ }
+#endif
 
 // The BLR's share of HandleGlkEvent: true when it handled the event.
 bool _bglGlkEvent(var event, int context, var buffer){
@@ -100,10 +106,8 @@ int _bglCurrentWindow(){
 }
 
 extend _bglPrintRules {
-    /// Print `text` as a hyperlink. When it is clicked, a function `target` is called: a named
-    /// function, or a lambda that captures no variables, since it runs long after this call. An int
-    /// or enum `target` reaches HandleGlkEvent as the event's link value. A `target` of 0 makes no
-    /// link. Plain text on an interpreter without hyperlinks.
+    /// Print `text` as a hyperlink: clicking it calls a function `target`, or passes an int or enum `target` to HandleGlkEvent.
+    /// A lambda target must capture no variables; without hyperlink support the text prints plain.
     void link(string text, literal func<void> | int target){
         if(bgl.asm.gestalt(11, 0) == 0){ print(text); return; }   // 11: gestalt_Hyperlinks
         int win = _bglCurrentWindow();
@@ -114,32 +118,54 @@ extend _bglPrintRules {
     }
 }
 
-#if (generateBlorb == true) //no blorb, no images; so don't bother including the code
-bglSize scaleVectors(bglSize specified, bglSize imgSize){
-    float scaleX=1.0;
-    float scaleY=1.0;
+//-- Images ------------------------------------------------------------------
+#if (generateBlorb == true)   // Images exist only in a blorb.
+    /// Return `specified` with a zero width or height filled in to keep `imgSize`'s proportions.
+    bglSize scaleVectors(bglSize specified, bglSize imgSize){
+        float scaleX=1.0;
+        float scaleY=1.0;
 
-    if(specified.width==0 || specified.height==0){
-        if(specified.width!=0){
-            scaleX=(float)specified.width/imgSize.width;
-            scaleY=scaleX;
-        }
-        else if(specified.height!=0){
-            scaleY=(float)specified.height/imgSize.height;
-            scaleX=scaleY;
-        }
+        if(specified.width==0 || specified.height==0){
+            if(specified.width!=0){
+                scaleX=(float)specified.width/imgSize.width;
+                scaleY=scaleX;
+            }
+            else if(specified.height!=0){
+                scaleY=(float)specified.height/imgSize.height;
+                scaleX=scaleY;
+            }
 
-        specified.width=(int)(imgSize.width * scaleX);
-        specified.height=(int)(imgSize.height * scaleY);
+            specified.width=(int)(imgSize.width * scaleX);
+            specified.height=(int)(imgSize.height * scaleY);
+        }
+        return specified;
     }
-    return specified;
-}
-extend _bglPrintRules {
-    void img(eImages image, eGlulxImageAlign align=inlineCenter, int width=0, int height=0){
-        bglSize scaledSize = scaleVectors({width, height}, _bglGetImageInfo((int)image));
-        bgl.asm.imageDrawScaled(bgl.ui.mainWin.id, image, align, 0, scaledSize.width, scaledSize.height);
+    extend _bglPrintRules {
+        /// Draw `image` in the main window, scaled to `width` by `height`; a zero size keeps the image's own.
+        void img(eImages image, eGlulxImageAlign align=inlineCenter, int width=0, int height=0){
+            bglSize scaledSize = scaleVectors({width, height}, _bglGetImageInfo((int)image));
+            bgl.asm.imageDrawScaled(bgl.ui.mainWin.id, image, align, 0, scaledSize.width, scaledSize.height);
+        }
     }
-}
-extend _bglUi{
-}
+    extend _bglUi{
+    }
 #endif
+
+//-- Story file header ---------------------------------------------------------
+/// The story file header: the release number and serial code the game was compiled with.
+superposed _bglObject _bglHeader {
+    /// The release number.
+    auto release = {
+        int operator(){ return bgl.asm.aloads($34, 0); }
+    }
+    /// Character `i` (0-5) of the six-character serial code.
+    char serialChar(int i){ return (char)bgl.asm.aloadb($36, i); }
+    /// Print the serial code.
+    void printSerial(){
+        int i = 0;
+        for(i = 0; i < 6; i++) print(self.serialChar(i));
+    }
+}
+extend bgl {
+    alias header = _bglHeader;   /// The story file header.
+}

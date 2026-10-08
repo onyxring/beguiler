@@ -1,56 +1,70 @@
+/* -----------------------------------------------------------------------------
+    _string.bgl - Strings
+    The string and string-literal types, and the print and log routines that
+    take them. `#include <string>` adds content comparison and run-time text.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// type string
-/// The type of a `"…"` literal: a fixed, packed string in the story file. `==` compares ADDRESSES
-/// here, so two identical literals are not equal; `#include <string>` for content comparison.
+
+//-- Literals ------------------------------------------------------------------
+/// The type of a `"…"` literal. `==` compares addresses, so two identical literals are not equal; `#include <string>` compares content.
 primitive class stringLiteral {
-    emitter string operator();
-    replace emitter void print(){ print (string)$val; }
+    emitter string operator();                                   /// Convert to a `string`.
+    replace emitter void print(){ print (string)$val; }          /// Print the text.
 
-    // Comparison in core is ADDRESS equality — the I6 semantic. Two identical
-    // literals are separate packed strings, so `"a" == "a"` is false here. This is
-    // deliberate: core keeps I6's model and costs nothing. `#include <string>`
-    // replaces these with content comparison.
-    emitter eBool operator == (stringLiteral v) { $val == $v }
-    emitter eBool operator == (string v)        { $val == $v }
-    emitter eBool operator != (stringLiteral v) { $val ~= $v }
-    emitter eBool operator != (string v)        { $val ~= $v }
+    emitter eBool operator == (stringLiteral v) { $val == $v }   /// True when both are the same string.
+    emitter eBool operator == (string v)        { $val == $v }   /// True when both are the same string.
+    emitter eBool operator != (stringLiteral v) { $val ~= $v }   /// True when they are different strings.
+    emitter eBool operator != (string v)        { $val ~= $v }   /// True when they are different strings.
 
-    // `s == null` / `s != null`. Kept as the raw I6 address test and NOT replaced by
-    // <string>'s content comparison: there is no content to compare against null, and
-    // areEqual would walk a null pointer.
-    emitter eBool operator == (_bglObject v)    { $val == $v }
-    emitter eBool operator != (_bglObject v)    { $val ~= $v }
-}       
+    emitter eBool operator == (_bglObject v)    { $val == $v }   /// True when the string is null.
+    emitter eBool operator != (_bglObject v)    { $val ~= $v }   /// True unless the string is null.
+}
 
-/// The type of a `$"…{expr}…"` literal. The compiler expands it into print calls at the use site.
-primitive class interpolatedStringLiteral{} //interpolatedStrings are smoke and mirrors.  All functionality is implemented by the compiler. NOTE: _bglObject no longer carries print(), so there's no inherited member to worry about here; add a `replace emitter void print()` only if `@"{actor} was here".print();` should become a thing (as it is for other literals).
+/// The type of a `$"…{expr}…"` literal, which prints its text with each expression's value inserted.
+primitive class interpolatedStringLiteral{}
 
-/// A string value — one word holding the address of a packed string. Assigning copies the address,
-/// not the text. `#include <string>` adds `stringObj` for text you build at run time.
+//-- Strings -------------------------------------------------------------------
+/// A string value that refers to text in the story file. Assigning copies the reference, not the text; `#include <string>` adds `stringObj` for text built at run time.
 primitive class string {
+    /// Assignment: the variable refers to the literal's text.
     emitter string operator = (stringLiteral v){
         $target=$v
     }
-    emitter eBool operator ?() { $val ~= 0 }
-    replace emitter void print(){ print (string)$val; }
+    emitter eBool operator ?() { $val ~= 0 }                     /// True unless the string is null.
+    replace emitter void print(){ print (string)$val; }          /// Print the text.
 
-    // Address equality — see the note on stringLiteral above.
-    emitter eBool operator == (string v)        { $val == $v }
-    emitter eBool operator == (stringLiteral v) { $val == $v }
-    emitter eBool operator != (string v)        { $val ~= $v }
-    emitter eBool operator != (stringLiteral v) { $val ~= $v }
+    emitter eBool operator == (string v)        { $val == $v }   /// True when both are the same string.
+    emitter eBool operator == (stringLiteral v) { $val == $v }   /// True when both are the same string.
+    emitter eBool operator != (string v)        { $val ~= $v }   /// True when they are different strings.
+    emitter eBool operator != (stringLiteral v) { $val ~= $v }   /// True when they are different strings.
 
-    // `s == null` / `s != null`. See the note on stringLiteral — address test, and
-    // deliberately left alone by <string>'s content-comparison replacements.
-    emitter eBool operator == (_bglObject v)    { $val == $v }
-    emitter eBool operator != (_bglObject v)    { $val ~= $v }
+    emitter eBool operator == (_bglObject v)    { $val == $v }   /// True when the string is null.
+    emitter eBool operator != (_bglObject v)    { $val ~= $v }   /// True unless the string is null.
 }
 
-emitter void print(string str){ print (string)$str; }
-emitter void print(interpolatedStringLiteral v){ $v; }
-emitter void print(stringLiteral str){ print (string)$str; } //called out specifically, despite the implicit conversion to string, because the string version will be overridden in <string>
+//-- Printing ------------------------------------------------------------------
+emitter void print(string str){ print (string)$str; }                    /// Print `str`.
+emitter void print(interpolatedStringLiteral v){ $v; }                   /// Print an interpolated string.
+emitter void print(stringLiteral str){ print (string)$str; }             /// Print a string literal.
 
-emitter void log(interpolatedStringLiteral v){ ##if DEBUG $v; ##endif }
-emitter void log(stringLiteral msg){ ##if DEBUG print (string)$msg; ##endif }
-emitter void log(string msg){ ##if DEBUG print (string)$msg; ##endif }
+//-- Debug logging -------------------------------------------------------------
+/// Print an interpolated string in debug builds only.
+emitter void log(interpolatedStringLiteral v){
+    ##if DEBUG
+    $v;
+    ##endif
+}
+/// Print a string literal in debug builds only.
+emitter void log(stringLiteral msg){
+    ##if DEBUG
+    print (string)$msg;
+    ##endif
+}
+/// Print `msg` in debug builds only.
+emitter void log(string msg){
+    ##if DEBUG
+    print (string)$msg;
+    ##endif
+}

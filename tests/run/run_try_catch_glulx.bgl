@@ -1,0 +1,78 @@
+/*  run_try_catch_glulx — try/catch/throw, executed on Glulx.
+
+    Z-machine @throw returns from the routine that ran @catch, so each try body runs in a routine of
+    its own and the function's params and locals live in its frame. Covers: a throw from a nested
+    call and a clean completion; locals and params read and written inside the try; return, break
+    and continue out of a try; nested tries and a rethrow from a catch; thrown values 0..3 (which
+    double as completion codes); recursion through a try; a method keeping `self`; and the frame
+    pool's top restored after a throw skipped a callee's frame free.  */
+// EXPECT_OUTPUT: A:ok,c7 B:13 C:r5 D:0134 E:in,out9 F:t0t1t2t3 G:6 H:box I:ok J:0/0
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+void deep(int n){ if(n > 3) throw n; }
+int depthBelow(int n){
+    // 16 locals: spills into the frame pool, whose free a throw skips.
+    int a1=1; int a2=2; int a3=3; int a4=4; int a5=5; int a6=6; int a7=7; int a8=8;
+    int a9=9; int b1=1; int b2=2; int b3=3; int b4=4; int b5=5; int b6=6; int b7=7;
+    if(n == 0) throw a1 + b7;
+    return depthBelow(n - 1);
+}
+int early(int x){
+    try { if(x > 0) return x; } catch(int e) { }
+    return -1;
+}
+int fact(int n){
+    int r = 0;
+    try { if(n == 0) throw 1; r = n * fact(n - 1); } catch(int e) { r = e; }
+    return r;
+}
+class Box { string label = "box"; void show(){ try { deep(9); } catch(int e) { print(label); } } }
+Box theBox { }
+void main(){
+    bglInit(); glulxConsole();
+    print("A:");
+    try { deep(2); print("ok,"); } catch(int e) { print("bad"); }
+    try { deep(7); print("bad"); } catch(int e) { print($"c{e}"); }
+
+    print(" B:");
+    int total = 10; int add = 3;
+    try { total = total + add; } catch(int e) { }
+    print(total);
+
+    print($" C:r{early(5)}");
+
+    print(" D:");
+    for(int i = 0; i < 6; i++){
+        try { if(i == 2) continue; if(i == 5) break; deep(i); print(i); }
+        catch(int e) { print(e); }
+    }
+
+    print(" E:");
+    int got = 0;
+    try {
+        try { deep(9); } catch(int e) { print("in,"); throw e; }
+        print("bad");
+    } catch(int e) { got = e; }
+    print($"out{got}");
+
+    print(" F:");
+    for(int v = 0; v < 4; v++){
+        try { throw v; } catch(int e) { print($"t{e}"); }
+    }
+
+    print($" G:{fact(3)}");
+
+    print(" H:"); theBox.show();
+
+    print(" I:");
+    try { throw 5; } catch(int e) { }
+    try { deep(1); print("ok"); } catch(int e) { print("bad"); }
+
+    print(" J:");
+    int before = 0;
+    #i6 { before = _bglFrameTop; }
+    try { depthBelow(4); } catch(int e) { }
+    int after = 0;
+    #i6 { after = _bglFrameTop; }
+    print($"{after - before}/0");
+}

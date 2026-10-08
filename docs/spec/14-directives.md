@@ -9,7 +9,7 @@
   - [14.1.5 `#includeI6`](#1415-includei6)
   - [14.1.6 `#once`](#1416-once)
 - [14.2 Symbols and Conditional Compilation](#142-symbols-and-conditional-compilation)
-  - [14.2.1 `#define`](#1421-define)
+  - [14.2.1 `#define`, `#defineI6`](#1421-define-definei6)
   - [14.2.2 `#redef` and `#undef`](#1422-redef-and-undef)
   - [14.2.3 `#declare`](#1423-declare)
   - [14.2.4 Pre-defined Symbols](#1424-pre-defined-symbols)
@@ -244,13 +244,15 @@ all do.
 
 ## 14.2 Symbols and Conditional Compilation
 
-### 14.2.1 `#define`
+### 14.2.1 `#define`, `#defineI6`
 
 **Syntax**
 
 ```syntax
 #define ⟨name⟩
 #define ⟨name⟩ ⟨value⟩
+#defineI6 ⟨name⟩
+#defineI6 ⟨name⟩ ⟨value⟩
 ```
 
 **Description**
@@ -265,11 +267,26 @@ time: a numeric value is an integer literal, any other value a string literal. S
 removed it. Defining a symbol that is already defined is a compile-time error; use `#redef`
 (§14.2.2). Defining a symbol that was `#declare`d is a compile-time error (§14.2.3).
 
+`#defineI6` is `#define` that also passes the symbol to Inform 6 as a `Constant` of the same name and
+value, placed ahead of any I6 include. The Beguile symbol is an ordinary `#define`d symbol, so `#if`
+tests it and it follows the same linear rule. A later `#undef` or `#redef` affects only the Beguile
+symbol; the I6 constant stays.
+
+`#defineI6` is how a program sets an I6 library's option constants (`NO_PLACES`,
+`OPTIONAL_EXTENDED_METAVERBS`, …) so that the library and Beguile agree on them: the library bindings
+declare a library's optional parts only under the matching symbol (§23.3.10). Two consequences:
+
+- The `#defineI6` must come before the `#include` of the binding, or the binding's `#if` does not see
+  it.
+- A constant written in raw I6 (`#i6 { Constant NO_PLACES; }`) reaches only Inform 6. `#if` cannot see
+  it, so the binding still declares the parts it removes.
+
 **Example**
 
 ```bgl
-#define DEBUG          // DEBUG is true
+#define CHEATS         // CHEATS is true
 #define MAX_SCORE 100
+#defineI6 OPTIONAL_EXTENDED_METAVERBS   // also Constant OPTIONAL_EXTENDED_METAVERBS; in I6
 
 if(score >= MAX_SCORE) print("You win!");   // compiles as: if(score >= 100)
 const int maxScore = MAX_SCORE;
@@ -390,13 +407,16 @@ literal, an int property compares numerically, and a bool property tests on its 
 comparison ignores case, as everywhere else in Beguile. The property must be written with no space
 around the `.`; an undeclared property is a compile-time error, not a false condition.
 
+The condition runs to the end of its line. Anything after it on that line other than a comment is a
+compile-time error.
+
 A bare symbol name is true when the symbol is *defined*, whatever its value, so `#if V` is true even
 when `V` was defined as `0` or `false`. In a comparison the name resolves to the symbol's *value*; an
 undefined symbol compares as `0`. Thus after `#define V false`, `#if V` and `#if V == false` are both
 true and `#if V == true` is false.
 
 There is no `#ifdef` or `#ifndef`, in either the single- or double-hash form: `#if SYMBOL` and
-`#if !SYMBOL` test definedness. `#if` tests *Beguile* symbols; to emit a conditional for the Inform 6
+`#if !SYMBOL` test definedness. `#if` tests *Beguile* symbols (a symbol set with `#defineI6` is both, §14.2.1); to emit a conditional for the Inform 6
 compiler to evaluate — over one of its own constants, say — write it in an `#i6` island, where a
 single-hash directive is raw I6 and passes through (§7.4):
 
@@ -407,11 +427,11 @@ single-hash directive is raw I6 and passes through (§7.4):
 **Example**
 
 ```bgl
-#define DEBUG
+#define CHEATS
 #define FEATURE_LEVEL 3
 
-#if DEBUG && beguiler >= 1010
-    print("debug mode on Beguile 1.1+");
+#if CHEATS && beguiler >= 1010
+    print("cheats on, Beguile 1.1+");
 #endif
 
 #if FEATURE_LEVEL > 2

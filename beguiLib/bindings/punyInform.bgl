@@ -1,92 +1,49 @@
-//-----------------------------------------------------------------------------
-//  punyInform.bgl - extern declarations for the PunyInform library.
-//  Include this file to get typed access to PunyInform globals and objects:
-//      #include <bindings/punyInform>
-//
-//  Includes bindings for...
-//      #includeI6 "globals" 
-//      #includeI6 "puny"
-//-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
+    punyInform.bgl - Bindings for the PunyInform library
+    This file declares the globals and routines defined in PunyInform
+    so Beguile knows how to use them.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+    PunyInform: copyright (c) Fredrik Ramsberg and Johan Berntsson. MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-
-#include <bindings/_commonBindings>   // stringOrRoutine + print override (shared with the I6 std-lib binding)
-
-// Advertise the PunyInform library so core/BLR files can detect it regardless of include order
-// (see §3.3.3). Its counterpart in the I6 standard library binding is I6_STANDARD_LIBRARY.
 #declare PUNYINFORM
 
-//-- PunyInform attributes ------------------------------------------------------
-extern attribute light;         // object is a light source
-extern attribute edible;        // can be eaten
-extern attribute absent;        // object is currently out of scope
-extern attribute talkable;      // can be addressed directly
-extern attribute supporter;     // can hold objects on top of it
-extern attribute container;     // can hold objects inside it
-extern attribute enterable;     // player can enter this object
-extern attribute transparent;   // see through even when closed
-extern attribute open;          // container/door is currently open
-extern attribute openable;      // can be opened and closed
-extern attribute concealed;     // hidden from normal room listing
-extern attribute moved;         // object has been taken at least once
-extern attribute visited;       // room has been entered before
-extern attribute proper;        // name needs no "the" prefix
-extern attribute scenery;       // not listed in room descriptions
-extern attribute static;        // cannot be taken or moved
-extern attribute animate;       // is an NPC or animate object
-extern attribute clothing;      // can be worn
-extern attribute worn;          // clothing item is currently worn
-extern attribute pluralname;    // name is grammatically plural
-extern attribute female;        // animate: use she/her pronouns
-extern attribute neuter;        // animate: use it/its pronouns
-extern attribute general;       // general-purpose flag
-extern attribute switchable;    // can be switched on/off
-extern attribute on;            // switchable object is currently on
-extern attribute door;          // is a door between locations
-extern attribute locked;        // container/door is locked
-extern attribute lockable;      // can be locked and unlocked
-extern attribute workflag;      // internal working flag (parser use)
-extern attribute reactive;      // REQUIRED for objects with before/after/each_turn/react_before/react_after
-extern attribute scored;        // object/room has been scored
+//-- Attributes ------------------------------------------
+extern attribute light;        /// object is a light source
+extern attribute edible;       /// can be eaten
+extern attribute absent;       /// object is currently out of scope
+extern attribute talkable;     /// can be addressed directly
+extern attribute supporter;    /// can hold objects on top of it
+extern attribute container;    /// can hold objects inside it
+extern attribute enterable;    /// player can enter this object
+extern attribute transparent;  /// see through even when closed
+extern attribute open;         /// container/door is currently open
+extern attribute openable;     /// can be opened and closed
+extern attribute concealed;    /// hidden from normal room listing
+extern attribute moved;        /// object has been taken at least once
+extern attribute visited;      /// room has been entered before
+extern attribute proper;       /// name needs no "the" prefix
+extern attribute scenery;      /// not listed in room descriptions
+extern attribute static;       /// cannot be taken or moved
+extern attribute animate;      /// is an NPC or animate object
+extern attribute clothing;     /// can be worn
+extern attribute worn;         /// clothing item is currently worn
+extern attribute pluralname;   /// name is grammatically plural
+extern attribute female;       /// animate: use she/her pronouns
+extern attribute neuter;       /// animate: use it/its pronouns
+extern attribute general;      /// general-purpose flag
+extern attribute switchable;   /// can be switched on/off
+extern attribute on;           /// switchable object is currently on
+extern attribute door;         /// is a door between locations
+extern attribute locked;       /// container/door is locked
+extern attribute lockable;     /// can be locked and unlocked
+extern attribute workflag;     /// internal working flag (parser use)
+extern attribute reactive;     /// REQUIRED for objects with before/after/each_turn/react_before/react_after
+extern attribute scored;       /// object/room has been scored
 
-//-- Game state ---------------------------------------------------------------
-extern object location;             // current room
-extern object real_location;        // actual location when in darkness
-extern object player;               // object the human controls
-extern object actor;                // who was asked to do something
-extern int    deadflag;             // 0=alive, 1=dead, 2+=custom death
-extern int    score;                // current score
-extern int    turns;                // number of game turns elapsed
-extern int    the_time;             // time in minutes since midnight
-extern int    time_rate;            // how often time updates
-extern int    lookmode;             // verbosity: 1=brief, 2=verbose, 3=superbrief
-
-//-- Parser results -----------------------------------------------------------
-extern object       noun;           // first noun
-extern object       second;         // second noun
-extern verb         action;         // current action being performed
-extern int    parsed_number;        // user-supplied number
-extern int    consult_from;         // start word of consult topic
-extern int    consult_words;        // number of words in topic
-extern int    special_word;         // dictionary address for "special" token
-extern int    special_number;       // number typed for "special" token
-extern int    verb_word;            // the verb word
-extern int    verb_wordnum;         // verb position in input
-extern int    wn;                   // word number currently being parsed
-extern int    num_words;            // number of words typed
-extern int    keep_silent;          // suppress action output
-extern property selected_direction; // direction chosen for Go action — holds the
-                                    // property slot ID (n_to, s_to, ...). Compare with
-                                    // `(property)n_to` to bypass the bare-name lookup
-                                    // that would otherwise yield `self.n_to`'s value.
-extern int    selected_direction_index; // 1-based: 1=N, 2=S, 3=E, 4=W, 5=NE, 6=NW, 7=SE, 8=SW, 9=U, 10=D, 11=IN, 12=OUT
-
-//-- Direction properties -----------------------------------------------------
-// PunyInform diverges from the I6 standard library: there are no `n_obj`,
-// `s_obj`, etc. objects. Direction commands set `selected_direction` to the
-// matching direction *property* (n_to, s_to, ...), and `noun` to the shared
-// `Directions` placeholder. The idiomatic check is:
-//   if (selected_direction == n_to) { ... }
-// rather than the stdlib `if (noun == n_obj)`.
+//-- Properties ------------------------------------------
+// A direction command sets selected_direction to one of these, and noun to Directions.
 extern property n_to;
 extern property s_to;
 extern property e_to;
@@ -100,10 +57,8 @@ extern property d_to;
 extern property in_to;
 extern property out_to;
 
-//-- Fake direction-object constants ------------------------------------------
-// Sentinel values used internally by the puny parser to represent
-// not-yet-a-real-object direction references. Exposed for advanced parser
-// hooks (BeforeParsing etc.); most code uses `selected_direction` instead.
+//-- Global constants ---------------------------------------------------------------
+// Direction values the parser uses before a direction is resolved; most code uses selected_direction.
 extern const int FAKE_N_OBJ;
 extern const int FAKE_S_OBJ;
 extern const int FAKE_E_OBJ;
@@ -116,246 +71,269 @@ extern const int FAKE_U_OBJ;
 extern const int FAKE_D_OBJ;
 extern const int FAKE_IN_OBJ;
 extern const int FAKE_OUT_OBJ;
-extern object    Directions;     // shared placeholder bound to `noun` for direction commands
 
-//-- Pronoun tracking ---------------------------------------------------------
-extern object itobj;                // object currently referred to as "it"
-extern object himobj;               // object currently referred to as "him"
-extern object herobj;               // object currently referred to as "her"
-extern object themobj;              // object currently referred to as "them"
+//-- Global variables  ---------------------------------------------------------------
+extern object   location;                   /// current room
+extern object   real_location;              /// actual location when in darkness
+extern object   player;                     /// object the human controls
+extern object   actor;                      /// who was asked to do something
+extern int      deadflag;                   /// 0=alive, 1=dead, 2+=custom death
+extern int      score;                      /// current score
+extern int      turns;                      /// number of game turns elapsed
+extern int      the_time;                   /// time in minutes since midnight
+extern int      time_rate;                  /// how often time updates
+extern int      lookmode;                   /// verbosity: 1=brief, 2=verbose, 3=superbrief
+extern object   noun;                       /// first noun
+extern object   second;                     /// second noun
+extern verb     action;                     /// current action being performed
+extern int      parsed_number;              /// user-supplied number
+extern int      consult_from;               /// start word of consult topic
+extern int      consult_words;              /// number of words in topic
+extern int      special_word;               /// dictionary address for "special" token
+extern int      special_number;             /// number typed for "special" token
+extern int      verb_word;                  /// the verb word
+extern int      verb_wordnum;               /// verb position in input
+extern int      wn;                         /// word number currently being parsed
+extern int      num_words;                  /// number of words typed
+extern int      keep_silent;                /// suppress action output
+extern property selected_direction;         /// The direction property a Go action chose; compare it with `(property)n_to` and the like.
+extern int      selected_direction_index;   /// 1-based: 1=N, 2=S, 3=E, 4=W, 5=NE, 6=NW, 7=SE, 8=SW, 9=U, 10=D, 11=IN, 12=OUT
+extern object   itobj;                      /// object currently referred to as "it"
+extern object   himobj;                     /// object currently referred to as "him"
+extern object   herobj;                     /// object currently referred to as "her"
+extern object   themobj;                    /// object currently referred to as "them"
+extern int      notify_mode;                /// score notification on/off
+extern int      inventory_style;            /// inventory display style
+extern int      screen_width;               /// screen width in characters
+extern int      statusline_height;          /// The status-window height the library restores each turn, in lines.
+extern int      statusline_current_height;  /// The status window's current height, in lines.
+extern int      clr_on;                     /// set to true to enable colors (z5 and later)
+extern eColor   clr_bg;                     /// background color
+extern eColor   clr_fg;                     /// foreground color
+extern eColor   clr_fginput;                /// player input color (PUNY++)
+extern eColor   clr_fgstatus;               /// status line color
+extern int      things_score;               /// score from picking up scored objects
+extern int      places_score;               /// score from visiting scored rooms
+extern object   thedark;                    /// the darkness object (in-scope when no light)
+extern object   selfobj;                    /// the player self object
+extern object   Directions;                 /// shared placeholder bound to `noun` for direction commands
 
-//-- Notifications and modes --------------------------------------------------
-extern int    notify_mode;          // score notification on/off
-extern int    inventory_style;      // inventory display style
-extern int    debug_flag;           // debug mode flag
-extern int    screen_width;         // screen width in characters
-extern int    statusline_height;         // status-line height CONFIG (puny redraws to this each turn)
-extern int    statusline_current_height; // puny's tracked CURRENT status-window height (lines)
-extern void   _StatusLineHeight(int h);  // puny: split the status window to `h` lines and record it
+#if DEBUG
+    extern eDebugFlags debug_flag;  /// Which tracing is on.
+#endif
 
-//-- Colour settings (z5+ only) -----------------------------------------------
-extern int    clr_on;              // set to true to enable colours
-extern int    clr_bg;              // background colour
-extern int    clr_fg;              // foreground colour
-extern int    clr_fginput;         // player input colour (PUNY++)
-extern int    clr_fgstatus;        // status line colour
+//-- Global routines ------------------------------------------------
+extern void _StatusLineHeight(int h);  /// Sets the status window to `h` lines and remembers it.
 
-//-- Colour constants ---------------------------------------------------------
-extern const int CLR_BLACK;
-extern const int CLR_RED;
-extern const int CLR_GREEN;
-extern const int CLR_YELLOW;
-extern const int CLR_BLUE;
-extern const int CLR_MAGENTA;
-extern const int CLR_CYAN;
-extern const int CLR_WHITE;
-extern const int CLR_DEFAULT;
-extern const int CLR_CURRENT;
-
-//-- Ozmoo extended colours (PUNY++) ------------------------------------------
-extern const int CLR_OZMOO_ORANGE;
-extern const int CLR_OZMOO_BROWN;
-extern const int CLR_OZMOO_LIGHT_RED;
-extern const int CLR_OZMOO_DARK_GREY;
-extern const int CLR_OZMOO_MEDIUM_GREY;
-extern const int CLR_OZMOO_LIGHT_GREEN;
-extern const int CLR_OZMOO_LIGHT_BLUE;
-extern const int CLR_OZMOO_LIGHT_GREY;
-
-//-- Window constants ---------------------------------------------------------
-extern const int WIN_ALL;
-extern const int WIN_STATUS;
-extern const int WIN_MAIN;
-
-//-- Scoring ------------------------------------------------------------------
-extern int    things_score;         // score from picking up scored objects
-extern int    places_score;         // score from visiting scored rooms
-
-//-- Objects ------------------------------------------------------------------
-extern object thedark;              // the darkness object (in-scope when no light)
-extern object selfobj;              // the player self object
-
-//-- Standard grammar tokens --------------------------------------------------
-// Both bare (held) and qualified (grammarToken.held) access work; lexical scope
-// wins so a local/param of the same name doesn't collide.
-extern enum grammarToken {
-    /// Any in-scope object.
-    noun,
-    /// An object the actor is currently holding.
-    held,
-    /// An animate object — one with the `animate` attribute.
-    creature,
-    /// A free-form topic phrase (any sequence of words the player types).
-    topic,
-    /// One or more in-scope objects.
-    multi,
-    /// One or more held objects.
-    multiheld,
-    /// Multiple in-scope objects, excluding one already matched (commonly used after a preposition).
-    multiexcept,
-    /// Multiple objects inside a specific container.
-    multiinside,
-    /// A number or a single dictionary word.
-    special,
-    /// Any number typed by the player (no range check).
-    anynumber,
-    /// A number typed by the player (range-checked to fit a word).
-    number,
-    /// Placeholder marker — use the `scope=Routine` form on a real grammar line to set scope.
-    scope,
-    /// Action-target modifier — must appear as the LAST element of a grammar line literal,
-    /// e.g. `{.give, creature, held, reverse}`. Emits I6's `-> Action reverse`, which swaps
-    /// `noun` and `second_noun` before the action routine runs (so `give X to Y` and
-    /// `give Y X` both land X in `noun`, Y in `second_noun`). Not a pattern token — does
-    /// not match user input. Compile error if it appears anywhere other than last.
-    reverse
+//-- Helpful Enumerations ----------------------------------------------
+enum eColor {
+    current         = 0,   /// keep the current color
+    defaultColor    = 1,   /// the interpreter's default
+    black           = 2,
+    red             = 3,
+    green           = 4,
+    yellow          = 5,
+    blue            = 6,
+    magenta         = 7,
+    cyan            = 8,
+    white           = 9,
+    ozmooOrange     = 16,  /// Ozmoo (PUNY++)
+    ozmooBrown      = 17,  /// Ozmoo (PUNY++)
+    ozmooLightRed   = 18,  /// Ozmoo (PUNY++)
+    ozmooDarkGray   = 19,  /// Ozmoo (PUNY++)
+    ozmooMediumGray = 20,  /// Ozmoo (PUNY++)
+    ozmooLightGreen = 21,  /// Ozmoo (PUNY++)
+    ozmooLightBlue  = 22,  /// Ozmoo (PUNY++)
+    ozmooLightGray  = 23   /// Ozmoo (PUNY++)
 }
 
-//-- Standard game actions ----------------------------------------------------
-extern verb Answer { .answer|.say|.speak }                          // answer <topic> to <creature>
-extern verb Ask { .ask }                                            // ask <creature> about <topic>
-extern verb AskFor { .ask }                                         // ask <creature> for <noun>
-extern verb AskTo { .ask|.tell }                                    // ask/tell <creature> to <topic>
-extern verb Attack { .attack|.break|.crack|.destroy|.fight|.hit|.kill|.murder|.punch|.smash|.thump|.torture|.wreck }  // attack / hit / kill <noun>
-extern verb Blow { .blow }                                          // blow <held>
-extern verb Burn { .burn|.light }                                   // burn / light <noun>
-extern verb Buy { .buy|.purchase }                                  // buy / purchase <noun>
-extern verb Climb { .climb|.scale }                                 // climb / scale <noun>
-extern verb Close { .close|.cover|.shut }                           // close / shut <noun>
-extern verb Consult { .consult }                                    // consult <noun> about <topic>
-extern verb Cut { .cut|.chop|.prune|.slice }                        // cut / chop <noun>
-extern verb Dig { .dig }                                            // dig <noun>
-extern verb Disrobe { .shed|.disrobe|.doff }                        // shed / doff / disrobe <held>
-extern verb Drink { .drink|.sip|.swallow }                          // drink / sip <noun>
-extern verb Drop { .drop|.discard|.throw }                          // drop <multiheld> (puny folds 'throw' into the drop verb)
-extern verb Eat { .eat }                                            // eat <held>
-extern verb Empty { .empty }                                        // empty <noun>
-extern verb EmptyT { .empty }                                       // empty <noun> into <noun>
-extern verb Enter { .enter|.sit|.lie }                              // enter / sit on / lie on <noun>
-extern verb Examine { .examine|.x|.read }                           // examine / x / read <noun>
-extern verb Exit { .exit|.leave|.stand }                            // exit / leave / stand up
-extern verb Fill { .fill }                                          // fill <noun>
-extern verb GetOff { .get }                                         // get off <noun>
-extern verb Give { .give|.feed|.offer|.pay }                        // give <held> to <creature>
-extern verb Go { .go }                                              // go <direction>
-extern verb GoIn { .enter|.in|.inside }                             // go in / enter
-extern verb GoNear { .gonear }                                      // (debug) go to/near <object>
-extern verb Going;              // synthetic action fired during movement (Fake_Action);
-                                // before/after on rooms see selected_direction
-extern verb Goto { .goto }                                          // (debug) goto <object>
-extern verb Insert { .insert }                                      // insert <noun> into <noun>
-extern verb Inv { .inventory|.i }                                   // inventory / i
-extern verb Jump { .jump }                                          // jump
-extern verb JumpOver { .jump }                                      // jump over <noun>
-extern verb Kiss { .kiss|.embrace|.hug }                            // kiss / hug <creature>
-extern verb LetGo;              // synthetic; fires on the source when an object
-                                // is taken (Fake_Action, counterpart of Receive)
-extern verb Listen { .listen }                                      // listen
-extern verb Lock { .lock }                                          // lock <noun> with <held>
-extern verb Look { .look|.l }                                       // look / l
-extern verb Mild { .bother|.curses|.darn|.drat }                    // mild expletive
-extern verb No { .no }                                              // no
-extern verb Open { .open|.uncover|.unwrap }                         // open <noun>
-extern verb Pray { .pray }                                          // pray
-extern verb Pull { .pull|.drag }                                    // pull / drag <noun>
-extern verb Push { .push|.clear|.move|.press|.shift }               // push / move <noun>
-extern verb PushDir { .push|.clear|.move|.press|.shift }            // push <noun> <direction>
-extern verb PutOn { .put|.place }                                   // put <noun> on <noun>
-extern verb Receive;            // synthetic; fires on the destination when an
-                                // object is placed inside or onto it (Fake_Action)
-extern verb Remove { .remove }                                      // remove <noun> from <noun>
-extern verb Rub { .rub|.clean|.dust|.polish|.scrub|.shine|.sweep|.wipe }  // rub / clean / polish <noun>
-extern verb Search { .search }                                      // search <noun>
-extern verb Set { .set|.adjust }                                    // set / adjust <noun>
-extern verb SetTo { .set|.adjust }                                  // set <noun> to <value>
-extern verb Shout { .shout|.scream|.yell }                          // shout
-extern verb ShoutAt { .shout|.scream|.yell }                        // shout at <creature>
-extern verb Show { .show|.display|.present }                        // show <held> to <creature>
-extern verb Sing { .sing }                                          // sing
-extern verb Sleep { .sleep|.nap }                                   // sleep / nap
-extern verb Smell { .smell|.sniff }                                 // smell / sniff
-extern verb Sorry { .sorry }                                        // sorry
-extern verb Squeeze { .squeeze|.squash }                            // squeeze / squash <noun>
-extern verb Strong { .shit|.damn|.fuck|.sod }                       // strong expletive
-extern verb Swim { .swim|.dive }                                    // swim / dive
-extern verb Swing { .swing }                                        // swing <noun>
-extern verb SwitchOff { .switch|.turn }                             // switch <noun> off / turn off <noun>
-extern verb SwitchOn { .switch|.turn }                              // switch <noun> on / turn on <noun>
-extern verb Take { .take|.carry|.hold|.get|.pick|.peel }            // take / get / pick up <noun>
-extern verb Taste { .taste }                                        // taste <noun>
-extern verb Tell { .tell }                                          // tell <creature> about <topic>
-extern verb Think { .think }                                        // think
-extern verb ThrowAt { .throw }                                      // throw <held> at <noun>
-extern verb ThrownAt;           // synthetic; fires on the target after ThrowAt (Fake_Action)
-extern verb Tie { .tie|.attach|.fasten|.fix }                       // tie / attach <noun> to <noun>
-extern verb Touch { .touch|.feel|.fondle|.grope }                   // touch / feel <noun>
-extern verb Transfer { .transfer }                                  // transfer <noun> to <noun>
-extern verb Turn { .turn|.rotate|.screw|.twist|.unscrew }           // turn / rotate <noun>
-extern verb Unlock { .unlock|.pry|.prise|.prize|.lever|.jemmy|.force }  // unlock / pry open <noun> with <held>
-extern verb Wait { .wait|.z }                                       // wait / z
-extern verb Wake { .wake|.awake|.awaken }                           // wake / awake
-extern verb WakeOther { .wake|.awake|.awaken }                      // wake <creature>
-extern verb Wave { .wave }                                          // wave <noun>
-extern verb WaveHands { .wave }                                     // wave (no object)
-extern verb Wear { .wear }                                          // wear <held>
-extern verb Yes { .yes|.y }                                         // yes
+enum eWindow {
+    all    = 0,  /// both windows
+    status = 1,  /// the status bar
+    main   = 2   /// the main window
+}
 
-//-- Synthetic / parser actions ------------------------------------------------
-// These actions are set by the parser itself (not bound to a verb word). They
-// surface as `case Again:`/`case Oops:` etc. in user-side action handlers.
-extern verb Again { .again|.g }                                     // again / g — repeat last command
-extern verb Oops { .oops }                                          // oops <word> — correct a misspelled word
-extern verb OopsCorrection;     // synthetic; fired after Oops applies (no verb word of its own)
+#if DEBUG
+    bnum eDebugFlags {
+        messages = $0001,  /// Trace routine and message calls.
+        actions  = $0002,  /// Trace actions.
+        timers   = $0004   /// Trace timers and daemons.
+    }
+#endif
 
-//-- Meta actions -------------------------------------------------------------
-extern verb Quit { .quit|.q }                                       // quit / q
-extern verb Restart { .restart }                                    // restart
-extern verb Restore { .restore }                                    // restore
-extern verb Save { .save }                                          // save
-extern verb Score { .score }                                        // score
-extern verb FullScore { .fullscore|.full }                          // fullscore / full
-extern verb Version { .version }                                    // version
-extern verb Verify { .verify }                                      // verify
-extern verb ScriptOn { .script|.transcript }                        // script / transcript (on)
-extern verb ScriptOff { .noscript|.unscript }                       // noscript / unscript
-extern verb Pronouns { .pronoun|.pronouns }                         // pronoun / pronouns
-extern verb LookModeNormal { .brief|.normal }                       // brief / normal
-extern verb LookModeShort { .superbrief|.short }                    // superbrief / short
-extern verb LookModeLong { .verbose|.long }                         // verbose / long
-extern verb NotifyOn { .notify }                                    // notify / notify on
-extern verb NotifyOff { .notify }                                   // notify off
+extern enum grammarToken {
+    NOUN,         /// Any in-scope object.
+    HELD,         /// An object the actor is currently holding.
+    CREATURE,     /// An animate object — one with the `animate` attribute.
+    TOPIC,        /// A free-form topic phrase (any sequence of words the player types).
+    MULTI,        /// One or more in-scope objects.
+    MULTIHELD,    /// One or more held objects.
+    MULTIEXCEPT,  /// Multiple in-scope objects, excluding one already matched (commonly used after a preposition).
+    MULTIINSIDE,  /// Multiple objects inside a specific container.
+    SPECIAL,      /// A number or a single dictionary word.
+    ANYNUMBER,    /// Any number typed by the player (no range check).
+    NUMBER,       /// A number typed by the player (range-checked to fit a word).
+    SCOPE,        /// Placeholder marker — use the `SCOPE(Routine)` form on a real grammar line to set scope.
+    REVERSE       /// Pseudo-token: reverse the noun and second variables. If present, it must appear as the LAST element of a grammar line.
+}
 
-//-- Debug actions ------------------------------------------------------------
-// Available only when the puny debug feature constants are defined; declared
-// here so user code can reference them under the same conditional.
-extern verb ActionsOn { .actions }                                  // actions / actions on
-extern verb ActionsOff { .actions }                                 // actions off
-extern verb CommandsOn { .recording }                               // recording / recording on
-extern verb CommandsOff { .recording }                              // recording off
-extern verb CommandsRead { .replay }                                // replay
-extern verb Debug { .debug }                                        // debug
-extern verb Forest { .forest }                                      // forest
-extern verb Tree { .tree }                                          // tree
-extern verb Objects { .objects }                                    // objects
-extern verb Places { .places }                                      // places
-extern verb Purloin { .purloin }                                    // purloin <noun>
-extern verb RandomSeed { .random }                                  // random / random seed <number>
-extern verb Rooms { .rooms }                                        // rooms
-extern verb RoutinesOn { .routines|.messages }                      // routines / routines on
-extern verb RoutinesOff { .routines|.messages }                     // routines off
-extern verb Scope { .scope }                                        // scope
-extern verb TimersOn { .timers|.daemons }                           // timers / daemons on
-extern verb TimersOff { .timers|.daemons }                          // timers / daemons off
+//-- PunyInform actions ----------------------------------------------------
+extern verb Answer    { .answer|.say|.speak }                                   /// say a topic to second
+extern verb Ask       { .ask }                                                  /// ask noun about a topic
+extern verb AskFor    { .ask }                                                  /// ask noun for second
+extern verb AskTo     { .ask|.tell }                                            /// ask noun to do something
+extern verb Attack    { .attack|.break|.crack|.destroy|.fight|.hit|.kill|.murder|.punch|.smash|.thump|.torture|.wreck }  /// attack noun [with second]
+extern verb Blow      { .blow }                                                 /// blow noun
+extern verb Burn      { .burn|.light }                                          /// burn noun [with second]
+extern verb Buy       { .buy|.purchase }                                        /// buy noun
+extern verb Climb     { .climb|.scale }                                         /// climb noun
+extern verb Close     { .close|.cover|.shut }                                   /// close noun
+extern verb Consult   { .consult }                                              /// look up a topic in noun
+extern verb Cut       { .cut|.chop|.prune|.slice }                              /// cut noun
+extern verb Dig       { .dig }                                                  /// dig noun [with second]
+extern verb Disrobe   { .shed|.disrobe|.doff }                                  /// take off noun
+extern verb Drink     { .drink|.sip|.swallow }                                  /// drink noun
+extern verb Drop      { .drop|.discard|.throw }                                 /// drop noun
+extern verb Eat       { .eat }                                                  /// eat noun
+extern verb Empty     { .empty }                                                /// empty noun
+extern verb EmptyT    { .empty }                                                /// empty noun into second
+extern verb Enter     { .enter|.sit|.lie }                                      /// enter noun
+extern verb Examine   { .examine|.x|.read }                                     /// examine noun
+extern verb Exit      { .exit|.leave|.stand }                                   /// get out [of noun]
+extern verb Fill      { .fill }                                                 /// fill noun
+extern verb GetOff    { .get }                                                  /// get off noun
+extern verb Give      { .give|.feed|.offer|.pay }                               /// give noun to second
+extern verb Go        { .go }                                                   /// go in a direction; see selected_direction
+extern verb GoIn      { .enter|.in|.inside }                                    /// go in
+extern verb Insert    { .insert }                                               /// put noun in second
+extern verb Inv       { .inventory|.i }                                         /// list what the player carries
+extern verb Jump      { .jump }                                                 /// jump
+extern verb JumpOver  { .jump }                                                 /// jump over noun
+extern verb Kiss      { .kiss|.embrace|.hug }                                   /// kiss noun
+extern verb Listen    { .listen }                                               /// listen [to noun]
+extern verb Lock      { .lock }                                                 /// lock noun with second
+extern verb Look      { .look|.l }                                              /// look around
+extern verb Mild      { .bother|.curses|.darn|.drat }                           /// mild swearing
+extern verb No        { .no }                                                   /// answer no
+extern verb Open      { .open|.uncover|.unwrap }                                /// open noun
+extern verb Pray      { .pray }                                                 /// pray
+extern verb Pull      { .pull|.drag }                                           /// pull noun
+extern verb Push      { .push|.clear|.move|.press|.shift }                      /// push noun
+extern verb PushDir   { .push|.clear|.move|.press|.shift }                      /// push noun in direction second
+extern verb PutOn     { .put|.place }                                           /// put noun on second
+extern verb Remove    { .remove }                                               /// take noun out of second
+extern verb Rub       { .rub|.clean|.dust|.polish|.scrub|.shine|.sweep|.wipe }  /// rub noun
+extern verb Search    { .search }                                               /// search noun
+extern verb Set       { .set|.adjust }                                          /// set noun
+extern verb SetTo     { .set|.adjust }                                          /// set noun to second
+extern verb Shout     { .shout|.scream|.yell }                                  /// shout [a topic]
+extern verb ShoutAt   { .shout|.scream|.yell }                                  /// shout at noun
+extern verb Show      { .show|.display|.present }                               /// show noun to second
+extern verb Sing      { .sing }                                                 /// sing
+extern verb Sleep     { .sleep|.nap }                                           /// sleep
+extern verb Smell     { .smell|.sniff }                                         /// smell [noun]
+extern verb Sorry     { .sorry }                                                /// apologize
+extern verb Squeeze   { .squeeze|.squash }                                      /// squeeze noun
+extern verb Strong    { .shit|.damn|.fuck|.sod }                                /// strong swearing
+extern verb Swim      { .swim|.dive }                                           /// swim
+extern verb Swing     { .swing }                                                /// swing noun
+extern verb SwitchOff { .switch|.turn }                                         /// switch off noun
+extern verb SwitchOn  { .switch|.turn }                                         /// switch on noun
+extern verb Take      { .take|.carry|.hold|.get|.pick|.peel }                   /// take noun
+extern verb Taste     { .taste }                                                /// taste noun
+extern verb Tell      { .tell }                                                 /// tell noun about a topic
+extern verb Think     { .think }                                                /// think
+extern verb ThrowAt   { .throw }                                                /// throw noun at second
+extern verb Tie       { .tie|.attach|.fasten|.fix }                             /// tie noun [to second]
+extern verb Touch     { .touch|.feel|.fondle|.grope }                           /// touch noun
+extern verb Transfer  { .transfer }                                             /// move noun to second
+extern verb Turn      { .turn|.rotate|.screw|.twist|.unscrew }                  /// turn noun
+extern verb Unlock    { .unlock|.pry|.prise|.prize|.lever|.jemmy|.force }       /// unlock noun with second
+extern verb Wait      { .wait|.z }                                              /// wait
+extern verb Wake      { .wake|.awake|.awaken }                                  /// wake up
+extern verb WakeOther { .wake|.awake|.awaken }                                  /// wake noun
+extern verb Wave      { .wave }                                                 /// wave noun
+extern verb WaveHands { .wave }                                                 /// wave
+extern verb Wear      { .wear }                                                 /// wear noun
+extern verb Yes       { .yes|.y }                                               /// answer yes
 
-//-- Status window integration ------------------------------------------------
-// Map bgl.ui.statusBar.height onto PunyInform's status-line model. Without this,
-// `statusBar.height = v` falls through to core _statusBar's raw `@split_window`,
-// which puny's own DrawStatusLine reapplies (to `statusline_height`) every turn and
-// clobbers. So: read the tracked CURRENT height; on write, set puny's persistent
-// `statusline_height` (what its redraw reapplies) AND split immediately via
-// `_StatusLineHeight`. z-code has no status-window id → `id` is null (mirrors the
-// i6-stdlib binding's z-code branch). Puny defines `_StatusLineHeight` /
-// `statusline_current_height`, NOT the stdlib's `StatusLineHeight` / `gg_statuswin_cursize`.
+//-- Meta actions
+extern verb Again          { .again|.g }            /// repeat the last command (meta)
+extern verb Oops           { .oops }                /// correct a mistyped word (meta)
+extern verb Quit           { .quit|.q }             /// quit the game (meta)
+extern verb Restart        { .restart }             /// restart the game (meta)
+extern verb Restore        { .restore }             /// restore a saved game (meta)
+extern verb Save           { .save }                /// save the game (meta)
+extern verb Score          { .score }               /// show the score (meta)
+extern verb FullScore      { .fullscore|.full }     /// show the full score (meta)
+extern verb Version        { .version }             /// show version information (meta)
+extern verb Verify         { .verify }              /// verify the story file (meta)
+extern verb ScriptOn       { .script|.transcript }  /// start a transcript (meta)
+extern verb ScriptOff      { .noscript|.unscript }  /// stop the transcript (meta)
+extern verb Pronouns       { .pronoun|.pronouns }   /// show what the pronouns refer to (meta)
+extern verb LookModeNormal { .brief|.normal }       /// normal room descriptions (meta)
+extern verb LookModeShort  { .superbrief|.short }   /// brief room descriptions (meta)
+extern verb LookModeLong   { .verbose|.long }       /// verbose room descriptions (meta)
+extern verb NotifyOn       { .notify }              /// turn on score notification (meta)
+extern verb NotifyOff      { .notify }              /// turn off score notification (meta)
+#if OPTIONAL_EXTENDED_METAVERBS
+    extern verb CommandsOn   { .recording }  /// record commands to a file (meta)
+    extern verb CommandsOff  { .recording }  /// stop recording commands (meta)
+    extern verb CommandsRead { .replay }     /// replay commands from a file (meta)
+    #if !NO_PLACES
+        extern verb Objects { .objects }  /// list the objects handled (meta)
+        extern verb Places  { .places }   /// list the places visited (meta)
+    #endif
+#endif
+
+//-- Debug actions (debug builds only)
+#if DEBUG
+    extern verb ActionsOff  { .actions }             /// stop tracing actions (meta)
+    extern verb ActionsOn   { .actions }             /// trace actions (meta)
+    extern verb Debug       { .debug }               /// toggle debug options (meta)
+    extern verb Forest      { .forest }              /// show all object trees (meta)
+    extern verb GoNear      { .gonear }              /// go to noun's location (meta)
+    extern verb Goto        { .goto }                /// go to a room (meta)
+    extern verb Purloin     { .purloin }             /// take noun from anywhere (meta)
+    extern verb RandomSeed  { .random }              /// seed the random number generator (meta)
+    extern verb Rooms       { .rooms }               /// list the rooms (meta)
+    extern verb RoutinesOff { .routines|.messages }  /// stop tracing routines and messages (meta)
+    extern verb RoutinesOn  { .routines|.messages }  /// trace routines and messages (meta)
+    extern verb Scope       { .scope }               /// list what is in scope [for noun] (meta)
+    extern verb TimersOff   { .timers|.daemons }     /// stop tracing timers and daemons (meta)
+    extern verb TimersOn    { .timers|.daemons }     /// trace timers and daemons (meta)
+    extern verb Tree        { .tree }                /// show the object tree [of noun] (meta)
+#endif
+
+//-- Fake actions (no grammar)
+extern verb Going;           /// runs on rooms as the player moves; see selected_direction
+extern verb LetGo;           /// runs on the container or supporter when noun is taken from it
+extern verb Receive;         /// runs on the container or supporter when noun is put on or in it
+extern verb ThrownAt;        /// runs on second when noun is thrown at it
+extern verb OopsCorrection;  /// replace the mistyped word with second (meta)
+
+//-- General bits of I6-to-Beguile setup ----------------------------------------
+
+// stringOrRoutine is a convenience union type, since the library uses this pattern regularly.
+union stringOrRoutine = string | func<void> {
+    emitter bool isRoutine() { metaclass($val) == Routine }
+}
+emitter void print(stringOrRoutine v){
+    if(metaclass($v) == Routine) $v();
+    else print (string)$v;
+}
+// The library lets every object override its instanceName with the short_name property.
+extend extern class object {
+    stringOrRoutine short_name;
+}
+
+// The story title and headline fields in the beguilerSettings block serve Treaty of Babel metadata. Let's reuse these and keep their definitions all the same.
+#emitfirst {
+    Constant story    = ##beguilerSettings.title;
+    Constant headline = ##beguilerSettings.headline;
+}
+
+// Substitute the library's backing for the status bar, replacing Beguile's core behavior for this.
 extend _bglStatus {
     replace auto id = null;
     replace auto height = {
@@ -364,22 +342,12 @@ extend _bglStatus {
     }
 }
 
-//-- Map beguilerSettings metadata to PunyInform constants ----------------------
-// Hoisted via #emitfirst so the constants appear ABOVE the user's #includeI6
-// "puny" / "globals" directives — PunyInform's library reads Story/Headline
-// during its own include processing for the compile-time banner. If declared
-// after the include they'd be orphan constants ("declared but not used") and
-// the banner would fall back to defaults.
-#emitfirst {
-    Constant story    = ##beguilerSettings.title;
-    Constant headline = ##beguilerSettings.headline;
-} 
-
+// Automatically start up the Beguile run-time environment.
 #emitfirst{
     replace main _oldmain;
 }
 #emitlast{
-    [main; 
+    [main;
         bglInit();
         _oldmain();
     ];

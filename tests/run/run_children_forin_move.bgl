@@ -1,0 +1,24 @@
+/*  run_children_forin_move — `for (o in x.children)` survives the body moving `o`.
+
+    It compiled to an objectloop, which stops (with a programming error) once the current object
+    leaves the container. The next sibling is now read before the body, so moving every child out
+    works; `continue` still advances.  */
+// EXPECT_OUTPUT: moved 3, kitchen 0, skip-ok 2
+#beguilerSettings { target = z5; informName = "none"; }
+object kitchen { }
+object bowl { }
+object shelf { }
+object a1 { parent = kitchen; }
+object a2 { parent = kitchen; }
+object a3 { parent = kitchen; }
+void main(){
+    bglInit();
+    for(object o in kitchen.children) o.parent = bowl;
+    print($"moved {bowl.children.length()}, kitchen {kitchen.children.length()}, ");
+    int n = 0;
+    for(object o in bowl.children){
+        if(o == a2) continue;
+        o.parent = shelf; n++;
+    }
+    print($"skip-ok {n}");
+}

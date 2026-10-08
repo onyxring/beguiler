@@ -291,7 +291,9 @@ score g_pts
     print pts;
     print "^";
     print "Use {braces} for interpolation.^";
-     ;
+    print "Debug pts=";
+    print pts;
+    print "^";
     print "Total: ";
     print pts + bonus;
     print "^";

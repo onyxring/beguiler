@@ -33,11 +33,28 @@ a compile-time error.
 ```syntax
 // ⟨text to end of line⟩
 /* ⟨text⟩ */
+/// ⟨documentation to end of line⟩
+/** ⟨documentation⟩ */
 ```
 
 **Description**
 
-Beguile has two comment forms. Comments are discarded and have no effect on compilation.
+Beguile has two comment forms, the line comment `//` and the block comment `/* */`. Comments are
+discarded and have no effect on compilation.
+
+A comment that opens with a third character, `///` or `/**`, is a *doc comment*: it documents a
+declaration. Doc comments have no effect on compilation either; the language server (§16.6) shows the
+text, formatted as Markdown, wherever the declared name is hovered. In a `/** */` comment, a leading `*`
+on each line is not part of the text.
+
+A doc comment documents a declaration in one of two positions:
+
+- **Before it.** Doc comments on the lines directly above a declaration document it; consecutive doc
+  comments join into one text. A blank line between a doc comment and the next declaration detaches the
+  comment, which then documents nothing.
+- **After it, on the same line.** A doc comment that follows code on its line documents the declaration
+  that starts on that line, never the next one. A declaration documented both ways shows the text
+  above it first.
 
 **Example**
 
@@ -46,6 +63,14 @@ Beguile has two comment forms. Comments are discarded and have no effect on comp
 
 /* to the closing
    delimiter */
+
+/// The room the player is in.
+extern object location;
+extern int    score;      /// Points earned so far.
+
+/** Prints the banner.
+ * Called once, at startup. */
+void showBanner(){ print("Welcome."); }
 ```
 
 ## 1.3 Case-Insensitivity

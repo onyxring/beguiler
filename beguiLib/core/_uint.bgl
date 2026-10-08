@@ -1,103 +1,71 @@
+/* -----------------------------------------------------------------------------
+    _uint.bgl - Unsigned integers
+    Declares `uint`, a whole number read as unsigned, for addresses and bit
+    patterns.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// type uint — unsigned integer wrapper over the same native word as int.
-//
-// ALWAYS present, no manual include. `uint` is a pure emitter class (its
-// operators inline, emitting nothing of their own), and the one real routine it
-// needs — _bglPrintUint — is `superposed`, so it's emitted only when print(uint)
-// is actually used. A game that never touches uint pays nothing.
-//
-// Same bit pattern as int, but comparison and division treat the value as
-// unsigned. Conversion to/from int is an explicit cast: (uint)i / (int)u — no
-// implicit conversion. On Z-machine that's 16 bits (0..65535); on Glulx 32 bits
-// (0..4294967295). Division, modulo and ordering call the core `superposed`
-// unsigned-math routines (core/_math.bgl) directly — uint's operators are
-// emitters and can't nest-call the _bglMath facade, so they target the
-// standalones (_bglUnsignedDiv / _bglUnsignedMod / _bglUnsignedCompare).
-//=============================================================================
-/// A whole number read as UNSIGNED. Same word as `int` — only the comparisons, division and
-/// remainder differ, which is what makes it right for addresses and bit patterns.
-primitive class uint { //--unsigned integer wrapper; same I6 representation as int
-    emitter int operator = (uint v){ $target=$v; }
 
-    // Arithmetic — bit-identical to signed for same width (overflow wraps).
-    emitter uint operator + (uint v){ $val + $v }
-    emitter uint operator - (uint v){ $val - $v }
-    emitter uint operator * (uint v){ $val * $v }
+/// A whole number read as unsigned: the same word as `int`, but comparison, division and remainder treat it as unsigned.
+primitive class uint {
+    emitter int operator = (uint v){ $target=$v; }                           /// Assignment: the variable takes the value.
 
-    // Division and modulo — route through the core unsigned routines for correct
-    // unsigned semantics when either operand has the sign bit set.
-    emitter uint operator / (uint v){ _bglUnsignedDiv($val, $v) }
-    emitter uint operator % (uint v){ _bglUnsignedMod($val, $v) }
+    emitter uint operator + (uint v){ $val + $v }                            /// The sum, wrapping on overflow.
+    emitter uint operator - (uint v){ $val - $v }                            /// The difference, wrapping on overflow.
+    emitter uint operator * (uint v){ $val * $v }                            /// The product, wrapping on overflow.
 
-    // Equality — identical signed and unsigned.
-    emitter bool operator == (uint v){ $val == $v }
-    emitter bool operator != (uint v){ $val ~= $v }
+    emitter uint operator / (uint v){ _bglUnsignedDiv($val, $v) }            /// The quotient, reading both as unsigned.
+    emitter uint operator % (uint v){ _bglUnsignedMod($val, $v) }            /// The remainder, reading both as unsigned.
 
-    // Ordering — must route through unsignedCompare to get correct behavior at the high end
-    // of the range (values with the sign bit set, which signed `<` would treat as negative).
-    emitter bool operator <  (uint v){ _bglUnsignedCompare($val, $v) < 0 }
-    emitter bool operator <= (uint v){ _bglUnsignedCompare($val, $v) <= 0 }
-    emitter bool operator >  (uint v){ _bglUnsignedCompare($val, $v) > 0 }
-    emitter bool operator >= (uint v){ _bglUnsignedCompare($val, $v) >= 0 }
+    emitter bool operator == (uint v){ $val == $v }                          /// True when the values are equal.
+    emitter bool operator != (uint v){ $val ~= $v }                          /// True when the values differ.
 
-    // Compound assignment
-    emitter uint operator += (uint v){ $val = $val + $v }
-    emitter uint operator -= (uint v){ $val = $val - $v }
-    emitter uint operator *= (uint v){ $val = $val * $v }
-    emitter uint operator /= (uint v){ $val = _bglUnsignedDiv($val, $v) }
-    emitter uint operator %= (uint v){ $val = _bglUnsignedMod($val, $v) }
+    emitter bool operator <  (uint v){ _bglUnsignedCompare($val, $v) < 0 }   /// True when this is less than `v`, reading both as unsigned.
+    emitter bool operator <= (uint v){ _bglUnsignedCompare($val, $v) <= 0 }  /// True when this is at most `v`, reading both as unsigned.
+    emitter bool operator >  (uint v){ _bglUnsignedCompare($val, $v) > 0 }   /// True when this is greater than `v`, reading both as unsigned.
+    emitter bool operator >= (uint v){ _bglUnsignedCompare($val, $v) >= 0 }  /// True when this is at least `v`, reading both as unsigned.
 
-    // Increment / decrement — wrap-around is well-defined for uint.
-    emitter uint operator ++() { $val++ }
-    emitter uint operator --() { $val-- }
+    emitter uint operator += (uint v){ $val = $val + $v }                    /// Add `v` to the variable.
+    emitter uint operator -= (uint v){ $val = $val - $v }                    /// Subtract `v` from the variable.
+    emitter uint operator *= (uint v){ $val = $val * $v }                    /// Multiply the variable by `v`.
+    emitter uint operator /= (uint v){ $val = _bglUnsignedDiv($val, $v) }    /// Divide the variable by `v`, reading both as unsigned.
+    emitter uint operator %= (uint v){ $val = _bglUnsignedMod($val, $v) }    /// Set the variable to its unsigned remainder after dividing by `v`.
 
-    // Bitwise — identical at the bit level whether interpreted signed or unsigned.
-    emitter uint operator & (uint v){ $val & $v }
-    emitter uint operator | (uint v){ $val | $v }
-    emitter uint operator &= (uint v){ $val = $val & $v }
-    emitter uint operator |= (uint v){ $val = $val | $v }
-    emitter uint operator ^  (uint v){ ($val | $v) - ($val & $v) }
-    emitter uint operator ^= (uint v){ $val = (($val | $v) - ($val & $v)) }
+    emitter uint operator ++() { $val++ }                                    /// Add one to the variable.
+    emitter uint operator --() { $val-- }                                    /// Subtract one from the variable.
 
-    // Shifts — left is bit-identical to the signed form (reuse _bglShiftLeft); right
-    // must be LOGICAL (zero-fill), so it routes through _bglUnsignedShiftRight —
-    // signed `>>` would sign-extend a value whose high bit is set. Like uint's other
-    // routed operators, these are emitters, so they call the standalones directly.
-    emitter uint operator <<  (uint v){ _bglShiftLeft($val, $v) }
-    emitter uint operator <<= (uint v){ $val = _bglShiftLeft($val, $v) }
-    emitter uint operator >>  (uint v){ _bglUnsignedShiftRight($val, $v) }
-    emitter uint operator >>= (uint v){ $val = _bglUnsignedShiftRight($val, $v) }
+    emitter uint operator & (uint v){ $val & $v }                            /// The bitwise AND.
+    emitter uint operator | (uint v){ $val | $v }                            /// The bitwise OR.
+    emitter uint operator &= (uint v){ $val = $val & $v }                    /// Set the variable to its bitwise AND with `v`.
+    emitter uint operator |= (uint v){ $val = $val | $v }                    /// Set the variable to its bitwise OR with `v`.
+    emitter uint operator ^  (uint v){ ($val | $v) - ($val & $v) }           /// The bitwise exclusive OR.
+    emitter uint operator ^= (uint v){ $val = (($val | $v) - ($val & $v)) }  /// Set the variable to its bitwise exclusive OR with `v`.
 
-    // Explicit conversions to/from int — bit-preserving cast, no runtime work.
-    explicit emitter int  operator() { $val }
+    emitter uint operator <<  (uint v){ _bglShiftLeft($val, $v) }            /// The value shifted left by `v` bits.
+    emitter uint operator <<= (uint v){ $val = _bglShiftLeft($val, $v) }     /// Shift the variable left by `v` bits.
+    emitter uint operator >>  (uint v){ _bglUnsignedShiftRight($val, $v) }   /// The value shifted right by `v` bits, filling with zeros.
+    emitter uint operator >>= (uint v){ $val = _bglUnsignedShiftRight($val, $v) }  /// Shift the variable right by `v` bits, filling with zeros.
+
+    explicit emitter int  operator() { $val }                                /// Convert to an `int`, keeping the bits.
 }
 
-// Reverse cast: int → uint. Declared as an extension to int so `(uint)i` finds it.
 extend extern class int {
-    explicit emitter uint operator() { $val }
+    explicit emitter uint operator() { $val }   /// Convert to a `uint`, keeping the bits.
 }
 
-// Literal assignment: `uint a = 12;` resolves through intLiteral's non-explicit conversion.
-// Must be non-explicit so plain assignment (no cast) picks it up.
 extend extern class intLiteral {
-    emitter uint operator() { $val }
+    emitter uint operator() { $val }   /// Convert a literal to a `uint`.
 }
 
-// Negative literals require an explicit cast: `uint x = (uint)-1;` works, `uint x = -1;` errors.
-// This catches accidental negative-to-unsigned assignments at compile time.
 extend extern class negativeIntLiteral {
-    explicit emitter uint operator() { $val }
+    explicit emitter uint operator() { $val }   /// Convert a negative literal to a `uint`; it needs an explicit cast.
 }
 
-// print(uint): for values without the sign bit, native print works. For sign-bit
-// values, one unsigned div by 10 always brings the quotient into the signed range
-// (largest case: 65535/10=6553 on Z; 4294967295/10=429496729 on Glulx — both fit
-// in signed at their width). Native print handles the quotient; the remainder is
-// always a single digit 0-9. `superposed`, so it costs nothing unless print(uint) is used.
+// Prints a value as unsigned.
 superposed void _bglPrintUint(int v){
     if(v >= 0){ print(v); return; }
     print(_bglUnsignedDiv(v, 10));
     print(_bglUnsignedMod(v, 10));
 }
-emitter void print(uint c){ _bglPrintUint($c); }
+emitter void print(uint c){ _bglPrintUint($c); }   /// Print `c` as an unsigned number.

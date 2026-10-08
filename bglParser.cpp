@@ -435,6 +435,46 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
 //   (2) all contributions within ONE class hierarchy (the class's ancestor chain plus every
 //       instance of it) must use the SAME element type — fixed by the highest ancestor that
 //       declares it. Unrelated hierarchies may each fix their own element type.
+void bglParser::validateRoutinePropertyClashes(){
+    auto lower = [](string s){ transform(s.begin(), s.end(), s.begin(), ::tolower); return s; };
+    auto at = [](const sourceLocation& src){ return src.file.empty() ? string("an included file") : format("{0}:{1}", src.file, src.line); };
+    // Every property a non-superposed class or object emits, by I6 name.
+    struct PropertyUse { string owner; typeMember* member; sourceLocation src; };
+    map<string, PropertyUse> properties;
+    auto addMembers = [&](const vector<typeMember*>& members, const string& owner){
+        for(typeMember* m : members){
+            if(m->isPrePassStub) continue;
+            sourceLocation src;
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
+                if(vd->isStatic || vd->isNamespaceAlias()) continue;
+                src = vd->src;
+            } else if(auto* fd = dynamic_cast<functionDef*>(m)){
+                if(fd->isEmitter || fd->isStatic) continue;
+                src = fd->src;
+            } else continue;
+            properties.emplace(lower(m->i6name.empty() ? m->name : m->i6name), PropertyUse{owner, m, src});
+        }
+    };
+    for(typeDef* g : languageService.globals){
+        if(auto* cd = dynamic_cast<classDef*>(g)){
+            if(!cd->isEmitterClass && !cd->isSuperposed && !cd->isAlias) addMembers(cd->members, cd->dName());
+        } else if(auto* od = dynamic_cast<objectDef*>(g)){
+            if(!od->isSuperposed) addMembers(od->members, od->dName());
+        }
+    }
+    for(typeDef* g : languageService.globals){
+        auto* fd = dynamic_cast<functionDef*>(g);
+        if(fd == nullptr || fd->isEmitter || fd->isExternal || fd->isSuperposed || fd->isPrePassStub || fd->isReplacedDead)
+            continue;
+        string routine = fd->i6name.empty() ? fd->dName() : fd->i6name;
+        auto it = properties.find(lower(routine));
+        if(it == properties.end()) continue;
+        parsingError(format("{0}:{1}:1: routine '{2}' has the same name as member '{3}' of '{4}' ({5}); "
+            "Inform 6 keeps routines and properties in one namespace, ignoring case, so rename one of them.",
+            fd->src.file, fd->src.line, routine, it->second.member->dName(), it->second.owner, at(it->second.src)));
+    }
+}
+
 // Post-parse validation of `hide` directives. A hide that doesn't resolve to an INHERITED member
 // (or, for an operator hide, whose member type doesn't expose that operator) is a WARNING, not an
 // error (Jim's call — typo/refactor tolerance); the entry simply has no effect. Runs after the full
@@ -1816,6 +1856,14 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
     // Anything reaching here is either an expression statement (code block) or an error (global).
 
     if(getCurrentCompileContext() == eCompileContext::global) {
+        // `class X` where X already names a class, object or enum: say so, not "expected type name".
+        if(tok.is(token::classDeclaration)){
+            string nm = file.peekToken().value;
+            transform(nm.begin(), nm.end(), nm.begin(), ::tolower);
+            if(languageService.isObjectType(nm))
+                parsingError(format("'{0}' is already defined (originally declared at {1})",
+                    file.peekToken().originalValue, languageService.declaredAt(nm)));
+        }
         // Grammar-improved error: report what patterns came closest
         if(!match.failedCandidates.empty()) {
             auto best = max_element(match.failedCandidates.begin(), match.failedCandidates.end(),
@@ -2012,7 +2060,6 @@ bool bglParser::processParameterList(functionDef& funcDef){
             else if(elemType == "array" || elemType == "rawarray") elemType = parseArrayTypeTail(elemType);  // array<array<T>>
             file.getToken(">");
             // array<char> maps to bytearray (byte-access operators); others keep the <T> format.
-            // rawarray<char> stays word-indexed (raw I6 arrays are the caller's own layout).
             if(base == "array" && (elemType == "char" || elemType == "charliteral"))
                 paramTypeName = "bytearray";
             else
@@ -2336,9 +2383,12 @@ bool bglParser::parsingError(string msg){
         string fileName;
         int curLine, curCol;
         if(currentStatementSrc.line > 0){
+            // Still on the statement's line: the stream stands just past the offending part.
+            auto detail = file.getCurrentFileDetail();
             fileName = currentStatementSrc.file;
             curLine  = currentStatementSrc.line;
-            curCol   = 1;
+            curCol   = (get<1>(detail) == fileName && get<2>(detail) == curLine) ? get<3>(detail)
+                     : max(1, currentStatementSrc.col);
         } else {
             auto detail = file.getCurrentFileDetail();
             fileName = get<1>(detail);
@@ -2369,9 +2419,12 @@ void bglParser::parsingWarning(string msg){
         string fileName;
         int curLine, curCol;
         if(currentStatementSrc.line > 0){
+            // Still on the statement's line: the stream stands just past the offending part.
+            auto detail = file.getCurrentFileDetail();
             fileName = currentStatementSrc.file;
             curLine  = currentStatementSrc.line;
-            curCol   = 1;
+            curCol   = (get<1>(detail) == fileName && get<2>(detail) == curLine) ? get<3>(detail)
+                     : max(1, currentStatementSrc.col);
         } else {
             auto detail = file.getCurrentFileDetail();
             fileName = get<1>(detail);

@@ -279,16 +279,16 @@ class response
     weight,
     text
 ;
-array table table _bglanon3 _bglanon4 2 $9084;
+array table table _bglanon4 _bglanon5 2 $9084;
 [main;
     print (string) lines-->(0+1) ;
     print (string)( table-->(0+1) ).text;
 ];
-response _bglanon3
+response _bglanon4
   with weight 1,
        text "~Don't move,~ she warns."
 ;
-response _bglanon4
+response _bglanon5
   with weight 2,
        text "He won't say."
 ;

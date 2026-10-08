@@ -1,25 +1,17 @@
+/* -----------------------------------------------------------------------------
+    _property.bgl - Properties
+    Declares `property`, the name of an object property, and the `name`
+    property that holds an object's vocabulary.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// type property
 
-    /// Inform 6 property name. Declared free-standing with `property foo;` (or
-    /// `extern property foo;` for names provided by external I6 code) so it can
-    /// be passed to `obj.provides(prop)` even when no class declares a member
-    /// of that name. Class/object members auto-register as property names with
-    /// no decl needed.
-    ///
-    /// A `property` value is the I6 property identifier (slot ID) — a small
-    /// integer, bit-compatible with `int`. Equality and assignment work like
-    /// any other word-sized value; division/arithmetic operators are
-    /// intentionally not provided because they don't have a meaning on
-    /// property identifiers.
-    extern additive property name;
+extern additive property name;   /// The dictionary words the parser matches for an object.
 
-    /// A property NAME, not its value — the identifier `obj.provides(prop)` tests for. A small
-    /// integer, so it compares and assigns like any word.
-    primitive class property {
-        emitter property operator = (property v) { $target = $v; }
-        emitter bool     operator == (property v){ $val == $v }
-        emitter bool     operator != (property v){ $val ~= $v }
-    }
-
+/// A property name, not its value: the identifier `obj.provides(prop)` tests for.
+primitive class property {
+    emitter property operator = (property v) { $target = $v; }  /// Assignment: the variable takes the property name.
+    emitter bool     operator == (property v){ $val == $v }     /// True when both name the same property.
+    emitter bool     operator != (property v){ $val ~= $v }     /// True when they name different properties.
+}

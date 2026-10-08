@@ -1,42 +1,30 @@
+/* -----------------------------------------------------------------------------
+    _verb.bgl - Verbs
+    Declares `verb`, the class every player command derives from.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// type verb
-    //--Note: verb identifiers emit as ##Name in comparison context in i6.  This is hardcoded in the compiler.  Consider a mechanism to wrap this in an new overload emitter instead.  That way, anything could go into a switch statement if it could emit an appropriate constant value.
-    /// A player command. Declare one with `verb name { grammar = { … } }`, give it behaviour by
-    /// overriding `handler()`, and run it from code with `perform()`.
-    alias class verb for object{
-        /// The patterns that match this verb: `grammar = { 'take' noun }`. See 13.5.
-        grammarRuleList grammar;
-        /// True for an out-of-world command such as SAVE or SCORE: it does not advance the turn.
-        bool meta;               // when true, emits as I6 `Verb meta '...'` — verb does not increment the turn counter
-        /// Where this verb's grammar sits relative to another's. Lower matches earlier. Default 10.
-        int priority = 10;       // grammar sort priority. Anchor for this verb's own block; extends compare against it.
-                                 // < anchor → I6 `Extend 'v' first` (matches first); > anchor → `Extend 'v'` (matches last).
-        // handler() — what the verb DOES; its body becomes the I6 <verbName>Sub routine. User verbs
-        // override it to define behavior ('default' = override without 'replace'). The default body
-        // bridges to the library Sub (for extern/library verbs that already define <verbName>Sub).
-        /// What the verb DOES. Override it to give the verb behaviour; the default hands off to the
-        /// library's own routine for a verb the library already defines.
-        default emitter void handler(){ $selfsub(); }
 
-        // perform() — LAUNCH this action: the Beguile replacement for I6's <...> / <<...>> syntax.
-        // Emits I6 <...> under the hood, so the active library (stdlib/puny) binds its own action
-        // runner and saves/sets/restores actor·action·noun·second + runs the before/after rules.
-        // Library-agnostic; no compiler involvement.
-        //   <verb noun>         ->  Verb.perform(noun)
-        //   <verb noun second>  ->  Verb.perform(noun, second)
-        //   <<verb noun>>       ->  Verb.perform(noun); rtrue;   (explicit return — no hidden control flow)
-        /// Run this action now, as though the player had typed it. The library's before/after rules
-        /// run, and `noun` / `second` are set and restored around it.
-        emitter void perform()                   { <$self> }
-        emitter void perform(object n)           { <$self $n> }
-        emitter void perform(object n, object s) { <$self $n $s> }
+/// A player command: declare it with `verb Name { grammar = … }`, give it behavior in `handler()`, and run it with `perform()`.
+alias class verb for object{
+    grammarRuleList grammar;  /// The patterns that match this verb: `grammar = { {.take, NOUN} }`.
+    bool meta;                /// True for an out-of-world command, such as SAVE, that takes no game time.
+    int priority = 10;        /// Where this verb's grammar sits among others: lower matches earlier; the default is 10.
 
-        emitter eBool operator == (verb v){ $self == ##$v }
-        emitter eBool operator != (verb v){ $self ~= ##$v }
-        emitter void _bglGlobalDeclaration() {
-            [$selfsub;
-                $self.handler();
-            ];
-        }
+    /// What the verb does; override it to give the verb behavior. A library verb runs the library's own routine by default.
+    default emitter void handler(){ $selfsub(); }
+
+    emitter void perform()                   { <$self> }            /// Run this action now, as though the player typed it.
+    emitter void perform(object n)           { <$self $n> }         /// Run this action now on `n`, as though the player typed it.
+    emitter void perform(object n, object s) { <$self $n $s> }      /// Run this action now on `n` and `s`, as though the player typed it.
+
+    emitter eBool operator == (verb v){ $self == ##$v }  /// True when this is action `v`.
+    emitter eBool operator != (verb v){ $self ~= ##$v }  /// True unless this is action `v`.
+    // Emits the verb's action routine, which runs handler().
+    emitter void _bglGlobalDeclaration() {
+        [$selfsub;
+            $self.handler();
+        ];
+    }
 }

@@ -55,7 +55,7 @@ through, unchanged, to the Inform 6 command line (§16.3.1).
 | `-inform=<name>` | The Inform 6 compiler to run. An absolute path is used verbatim; anything else is resolved relative to the directory containing the `beguiler` binary. The name `none` skips the Inform 6 hand-off: the transpiled `.inf` is written and compilation stops there. | `informName` / `informPath` |
 | `-includepaths=<dir>[,<dir>…]` | Adds one or more directories to the include search path (§18.4). Comma-separated; whitespace around each entry is trimmed; duplicates are ignored. Entries are taken as written: no separator rewriting, no relative-path resolution, no existence check. | `includePaths` |
 | `-lib=<dir>` | Location of the Beguile system library (the `beguiLib` tree). An absolute path is used verbatim; a relative path is anchored to the directory containing the `beguiler` binary. Surrounding `"` or `'` quotes are stripped. | `beguiLibPath` |
-| `--debug` | Debug build: Inform 6 is run with `-k`, and the debug bundle is written (§20.3). | none |
+| `--debug`, `-D` | Debug build (§20.3): Inform 6 is run with `-k` and `-D`, the debug bundle is written, and `DEBUG` is defined. The two spellings are equivalent. | none |
 | `--lsp` | Language-server mode (§16.6). No compilation takes place. | none |
 
 ### 16.3.1 Pass-through switches

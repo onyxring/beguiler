@@ -1,46 +1,54 @@
+/* -----------------------------------------------------------------------------
+    _beguilerSettings.bgl - Compiler settings
+    Declares the settings a `#beguilerSettings { … }` block can set.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// beguilerSettings
-extern class beguilerSettingsType { //--schema for #beguilerSettings directive blocks; provides property IntelliSense
-    eTarget         target         = Glulx;         // compilation target: Glulx (default), Z5, or Z8
-    string          informPath;                     // full path to the Inform 6 compiler binary (overrides informName)
-    string          informName     = "inform";      // I6 binary filename (default "inform"); use "none" to skip I6 handoff
-    string          beguiLibPath   = "beguiLib";    // path to the Beguile language extensions directory
-    string          outputPath     = "output";      // output directory for compiled files
-    eErrorFormat    errorFormat    = E1;            // error format: "E1" (Microsoft) or "E2" (Macintosh)
-    int             release        = 0;             // story release number
-    string          serial         = "";            // serial number: exactly 6 digits (e.g. "250328")
-    int             framePoolSize  = 64;            // Z-machine local-variable overflow pool slots
-    int             linqScratchSize = 32;           // LINQ-style chain scratch buffer capacity (per buffer; two buffers allocated)
-    int             worldBufSize   = 128;            // bgl.world.* scratch buffer capacity (max objects per query); raise for very large worlds
-    int             forInScratchSize = 31;          // literal-list for-in (for(x in {a,b,c})) scratch capacity: max elements per loop; raise if a list overflows
-    string          includePaths;                   // include search path entries for both Beguile and I6 (additive); comma-separated allowed: "../a,../b,../c"
-    bool            rewritePaths   = true;          // substitute path separators to match OS
-    bool            autoInitialize = true;          // false → BLR does not wrap main (replace main / [main; bglInit; oldmain]); set when another extension already replaces main (e.g. orLibrary)
-    bool            omitUnusedRoutines = true;      // true → emit I6 $OMIT_UNUSED_ROUTINES=1 so Inform strips routines nothing references (safe: address-taken routines are kept); set false for debug builds where you want every routine present
-    bool            economy = false;                // true → auto text abbreviations: after transpile, compute optimal I6 abbreviations (inform6 -u), inject them, and compile with -e. Skipped if the source already defines its own Abbreviate directives (respects a hand-tuned set). Off by default; opt in for smaller Z-machine story files
-    bool            generateBlorb  = false;         // enable blorb packaging (asset scan + blorb build)
-    string          blorbAssetPath = "assets";      // asset directory relative to source .bgl file
-    string          author         = "";            // iFiction: game author (required)
-    string          title          = "";            // iFiction: game title (required)
-    string          headline       = "";            // iFiction: subtitle (e.g. "An Interactive Mystery")
-    string          genre          = "";            // iFiction: genre (e.g. "Fantasy", "Mystery", "Science Fiction")
-    string          description    = "";            // iFiction: blurb text (may contain line breaks; max ~2400 chars)
-    string          language       = "";            // iFiction: ISO-639 language code (e.g. "en", "en-US")
-    string          series         = "";            // iFiction: series name
-    int             seriesNumber   = 0;             // iFiction: position in series (requires series)
-    string          firstPublished = "";            // iFiction: publication date (YYYY or YYYY-MM-DD)
-    string          forgiveness    = "";            // iFiction: Merciful, Polite, Tough, Nasty, or Cruel
-    string          ifid           = "";            // Treaty of Babel IFID (UUID format); auto-generated if empty
+
+/// The settings a `#beguilerSettings { … }` block can set.
+extern class beguilerSettingsType {
+    eTarget      target             = Glulx;       /// The target machine: Glulx (the default), Z5 or Z8.
+    string       informPath;                       /// The full path to the Inform 6 compiler; overrides `informName`.
+    string       informName         = "inform";    /// The Inform 6 compiler's file name; "none" stops after writing the Inform 6 source.
+    string       beguiLibPath       = "beguiLib";  /// The folder that holds the Beguile library.
+    string       outputPath         = "output";    /// The folder for compiled files.
+    eErrorFormat errorFormat        = E1;          /// The format for error messages: E1 (Microsoft) or E2 (Macintosh).
+    int          release            = 0;           /// The story's release number.
+    string       serial             = "";          /// The story's serial number: exactly six digits, such as "250328".
+    int          framePoolSize      = 64;          /// How many overflow slots the Z-machine has for local variables.
+    int          linqScratchSize    = 32;          /// The capacity of each buffer that chained array queries use.
+    int          worldBufSize       = 128;         /// The most objects a `bgl.world` query can return; raise it for very large worlds.
+    int          forInScratchSize   = 31;          /// The most values a `for(x in {a, b, c})` list can hold; raise it if a list overflows.
+    string       includePaths;                     /// Extra folders to search for Beguile and Inform 6 includes, separated by commas.
+    bool         rewritePaths       = true;        /// Convert path separators to suit the operating system.
+    bool         autoInitialize     = true;        /// Start the Beguile runtime before the game's own main; set it false when another extension already replaces main.
+    bool         omitUnusedRoutines = true;        /// Leave routines nothing uses out of the story file; set it false to keep every routine.
+    bool         economy            = false;       /// Shrink a Z-machine story by abbreviating common text; skipped when the source has its own abbreviations.
+    bool         generateBlorb      = false;       /// Package the story and its assets into a blorb file.
+    string       blorbAssetPath     = "assets";    /// The asset folder, relative to the source file.
+    string       author             = "";          /// The author's name, for the story's bibliographic data (required).
+    string       title              = "";          /// The story's title (required).
+    string       headline           = "";          /// The story's subtitle, such as "An Interactive Mystery".
+    string       genre              = "";          /// The story's genre, such as "Fantasy" or "Mystery".
+    string       description        = "";          /// A blurb describing the story, up to about 2400 characters.
+    string       language           = "";          /// The story's language, as an ISO 639 code such as "en" or "en-US".
+    string       series             = "";          /// The series the story belongs to.
+    int          seriesNumber       = 0;           /// The story's position in its series; needs `series`.
+    string       firstPublished     = "";          /// When the story was first published: YYYY or YYYY-MM-DD.
+    string       forgiveness        = "";          /// How forgiving the story is: Merciful, Polite, Tough, Nasty or Cruel.
+    string       ifid               = "";          /// The story's IFID, a UUID; generated when left empty.
 }
 
+/// The machines Beguile can compile for.
 extern enum eTarget{
-    Glulx,
-    Z5,
-    Z8
+    Glulx,   /// The Glulx virtual machine.
+    Z5,      /// The Z-machine, version 5.
+    Z8       /// The Z-machine, version 8.
 }
-extern enum eErrorFormat{ 
-    E0,
-    E1,
-    E2
+/// The formats for compiler error messages.
+extern enum eErrorFormat{
+    E0,   /// Archimedes style.
+    E1,   /// Microsoft style.
+    E2    /// Macintosh style.
 }

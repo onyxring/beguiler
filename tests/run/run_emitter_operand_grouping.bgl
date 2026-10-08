@@ -1,0 +1,14 @@
+/*  run_emitter_operand_grouping — an emitter argument keeps its grouping inside the body.
+
+    Substitution is textual, so `$b == true` given `x ~= 0` read as I6's ambiguous `x ~= 0 == true`;
+    an operand is bracketed where the body's neighbouring operator would regroup it.  */
+// EXPECT_OUTPUT: true false 6 -2 true
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    int x = 3; int y = 1;
+    print($"{x != 0} {x > 5} ");
+    print((x + y) + (x - y) - y + 1); print(" ");
+    print(y - x); print(" ");
+    bool both = x > 0 && y > 0;
+    print($"{both}");
+}

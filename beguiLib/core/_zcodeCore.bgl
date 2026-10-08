@@ -1,21 +1,43 @@
-//-----------------------------------------------------------------------------
-// _zcodeCore.bgl — the Z-machine platform layer: the `bgl.zcode` namespace and
-// the Z-machine assembly opcode emitter class (via _zcodeOpCodes), aliased as
-// `bgl.asm`.
-//
-// Included automatically by the compiler (__beguileCore.bgl) when the target is
-// Z-code — the counterpart to _glulxCore.bgl on the Glulx side. There is no
-// user-facing `#include`; the platform core follows the active target.
-//-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
+    _zcodeCore.bgl - Z-machine Platform Layer
+    Provides `bgl.zcode`, the raw Z-machine opcodes as `bgl.asm`, and the story
+    file header as `bgl.header`. It is included automatically on Z-code targets.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
 
 #include<core/_zcodeOpCodes>
-//=============================================================================
-//
-extend bgl{ auto zcode=_zcode; } //extend the bgl namespace object with Z-code-specific things
 
-_bglObject _zcode{
-   
+//-- Namespaces ----------------------------------------------------------------
+extend bgl{
+    auto zcode=_zcode;   /// Z-machine-specific facilities.
 }
 
-extend bgl { emitter auto asm = bglOpCodes; }
+// The object behind bgl.zcode.
+_bglObject _zcode{
+
+}
+
+extend bgl {
+    emitter auto asm = bglOpCodes;   /// Raw Z-machine assembly opcodes.
+}
+
+//-- Story file header ---------------------------------------------------------
+/// The story file header: the release number and serial code the game was compiled with.
+superposed _bglObject _bglHeader {
+    /// The release number.
+    auto release = {
+        int operator(){ return bgl.asm.loadw($02, 0) & $03ff; }
+    }
+    /// Character `i` (0-5) of the six-character serial code.
+    char serialChar(int i){ return (char)bgl.asm.loadb($12, i); }
+    /// Print the serial code.
+    void printSerial(){
+        int i = 0;
+        for(i = 0; i < 6; i++) print(self.serialChar(i));
+    }
+}
+extend bgl {
+    alias header = _bglHeader;   /// The story file header.
+}

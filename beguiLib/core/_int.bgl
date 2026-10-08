@@ -1,68 +1,68 @@
+/* -----------------------------------------------------------------------------
+    _int.bgl - Integers
+    The int type and the type of integer literals, with their arithmetic,
+    comparison and bitwise operators.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-//=============================================================================
-// type int 
-    /// The type of a number written literally, before it is assigned or compared.
-    primitive class intLiteral {
-        emitter int operator();
-        int operator auto();
-    }
 
-    // Negative integer literals (e.g. -1, -42). Distinguished from intLiteral so the type
-    // system can restrict unsigned assignment: negativeIntLiteral converts to int implicitly
-    // but requires an explicit cast for uint.
-    /// The type of a negative literal such as `-1`. Behaves as `intLiteral` everywhere.
-    primitive class negativeIntLiteral {
-        emitter int operator();
-    }
+//-- Literals ------------------------------------------------------------------
+/// The type of a number written literally, before it is assigned or compared.
+primitive class intLiteral {
+    emitter int operator();      /// Convert to an `int`.
+    int operator auto();         /// Convert to an `int` implicitly.
+}
 
-    /// A signed whole number: 16-bit on the Z-machine, 32-bit on Glulx. The default numeric type.
-    primitive class int { //--Beguile-side type label over I6's word-sized integer slot; instances emit as `global X;`
-        emitter char operator();
-        emitter int operator = (int v){ $target=$v; }
+/// The type of a negative literal such as `-1`. Behaves as `intLiteral`, but needs an explicit cast to become a `uint`.
+primitive class negativeIntLiteral {
+    emitter int operator();      /// Convert to an `int`.
+}
 
-        // Arithmetic
-        emitter int operator + (int v){ $val + $v }
-        emitter int operator - (int v){ $val - $v }
-        emitter int operator * (int v){ $val * $v }
-        emitter int operator / (int v){ $val / $v }
-        emitter int operator % (int v){ $val % $v }
+//-- int -----------------------------------------------------------------------
+/// A signed whole number: 16-bit on the Z-machine, 32-bit on Glulx. The default numeric type.
+primitive class int {
+    emitter char operator();                                 /// Convert to a `char`.
+    emitter int operator = (int v){ $target=$v; }            /// Assignment: the variable takes the value.
 
-        // Comparison
-        emitter bool operator == (int v){ $val == $v }
-        emitter bool operator != (int v){ $val ~= $v }
-        emitter bool operator < (int v){ $val < $v }
-        emitter bool operator <= (int v){ $val <= $v }
-        emitter bool operator > (int v){ $val > $v }
-        emitter bool operator >= (int v){ $val >= $v }
+    //-- Arithmetic ------------------------------------------------------------
+    emitter int operator + (int v){ $val + $v }              /// The sum.
+    emitter int operator - (int v){ $val - $v }              /// The difference.
+    emitter int operator * (int v){ $val * $v }              /// The product.
+    emitter int operator / (int v){ $val / $v }              /// The quotient, rounded toward zero.
+    emitter int operator % (int v){ $val % $v }              /// The remainder.
 
-        // Compound assignment
-        emitter int operator += (int v){ $val = $val + $v }
-        emitter int operator -= (int v){ $val = $val - $v }
-        emitter int operator *= (int v){ $val = $val * $v }
-        emitter int operator /= (int v){ $val = $val / $v }
-        emitter int operator %= (int v){ $val = $val % $v }
+    //-- Comparison ------------------------------------------------------------
+    emitter bool operator == (int v){ $val == $v }           /// True when the values are equal.
+    emitter bool operator != (int v){ $val ~= $v }           /// True when the values differ.
+    emitter bool operator < (int v){ $val < $v }             /// True when this is less than `v`.
+    emitter bool operator <= (int v){ $val <= $v }           /// True when this is at most `v`.
+    emitter bool operator > (int v){ $val > $v }             /// True when this is greater than `v`.
+    emitter bool operator >= (int v){ $val >= $v }           /// True when this is at least `v`.
 
-        // Increment / decrement
-        emitter int operator ++() { $val++ }
-        emitter int operator --() { $val-- }
+    //-- Compound assignment ---------------------------------------------------
+    emitter int operator += (int v){ $val = $val + $v }      /// Add `v` to the variable.
+    emitter int operator -= (int v){ $val = $val - $v }      /// Subtract `v` from the variable.
+    emitter int operator *= (int v){ $val = $val * $v }      /// Multiply the variable by `v`.
+    emitter int operator /= (int v){ $val = $val / $v }      /// Divide the variable by `v`.
+    emitter int operator %= (int v){ $val = $val % $v }      /// Set the variable to its remainder after dividing by `v`.
 
-        // Bitwise — I6 supports `&` and `|` natively on both Z-machine and Glulx, so the
-        // AND/OR operators are direct passthroughs; XOR is synthesized from and/or. Shifts
-        // have no native Z-machine op, so `<<`/`>>` delegate to the core `superposed`
-        // routines _bglShiftLeft/_bglShiftRight (core/_math.bgl) — auto-loaded and emitted
-        // only when a shift is actually used. (These are emitters, so they call the
-        // standalone routines directly rather than the _bglMath facade.)
-        emitter int operator & (int v){ $val & $v }
-        emitter int operator | (int v){ $val | $v }
-        emitter int operator &= (int v){ $val = $val & $v }
-        emitter int operator |= (int v){ $val = $val | $v }
-        emitter int operator ^  (int v){ ($val | $v) - ($val & $v) }
-        emitter int operator ^= (int v){ $val = (($val | $v) - ($val & $v)) }
+    //-- Increment and decrement -----------------------------------------------
+    emitter int operator ++() { $val++ }                     /// Add one to the variable.
+    emitter int operator --() { $val-- }                     /// Subtract one from the variable.
 
-        emitter int operator <<  (int v){ _bglShiftLeft($val, $v) }
-        emitter int operator <<= (int v){ $val = _bglShiftLeft($val, $v) }
-        emitter int operator >>  (int v){ _bglShiftRight($val, $v) }
-        emitter int operator >>= (int v){ $val = _bglShiftRight($val, $v) }
-    }
-    
-    emitter void print(int c){ print $c; }
+    //-- Bitwise ---------------------------------------------------------------
+    emitter int operator & (int v){ $val & $v }              /// The bitwise AND.
+    emitter int operator | (int v){ $val | $v }              /// The bitwise OR.
+    emitter int operator &= (int v){ $val = $val & $v }      /// Set the variable to its bitwise AND with `v`.
+    emitter int operator |= (int v){ $val = $val | $v }      /// Set the variable to its bitwise OR with `v`.
+    emitter int operator ^  (int v){ ($val | $v) - ($val & $v) }          /// The bitwise exclusive OR.
+    emitter int operator ^= (int v){ $val = (($val | $v) - ($val & $v)) } /// Set the variable to its bitwise exclusive OR with `v`.
+
+    emitter int operator <<  (int v){ _bglShiftLeft($val, $v) }           /// The value shifted left by `v` bits.
+    emitter int operator <<= (int v){ $val = _bglShiftLeft($val, $v) }    /// Shift the variable left by `v` bits.
+    emitter int operator >>  (int v){ _bglShiftRight($val, $v) }          /// The value shifted right by `v` bits.
+    emitter int operator >>= (int v){ $val = _bglShiftRight($val, $v) }   /// Shift the variable right by `v` bits.
+}
+
+emitter void print(int c){ print $c; }   /// Print `c` as a number.

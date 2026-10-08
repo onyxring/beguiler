@@ -333,6 +333,159 @@ static size_t findWordCI(const string& haystack, const string& needle, size_t po
     return string::npos;
 }
 
+// I6 operator precedence (DM4 §1.8), loosest first; 0 for a token that isn't an operator.
+static int i6OpPrecedence(const string& op){
+    static const map<string,int> prec = {
+        {"=",1}, {"&&",2}, {"||",2}, {"~~",2},
+        {"==",3}, {"~=",3}, {">",3}, {"<",3}, {">=",3}, {"<=",3},
+        {"has",3}, {"hasnt",3}, {"in",3}, {"notin",3}, {"ofclass",3}, {"provides",3},
+        {"or",4}, {"+",5}, {"-",5}, {"*",6}, {"/",6}, {"%",6}, {"&",6}, {"|",6}, {"~",6},
+        {"->",7}, {"-->",7}, {"++",9}, {"--",9}, {".",12}, {"(",12}, {"::",13} };
+    auto it = prec.find(op);
+    return it == prec.end() ? 0 : it->second;
+}
+
+static bool isI6WordChar(char c){ return isalnum((unsigned char)c) || c == '_' || c == '$'; }
+
+// The operator token starting at i (symbolic or a word operator), or "" if none.
+static string i6OpAt(const string& s, size_t i){
+    static const char* sym[] = {"-->", "->", "==", "~=", ">=", "<=", "&&", "||", "~~", "++", "--", "::",
+                                "+", "-", "*", "/", "%", "&", "|", "~", ">", "<", "=", ".", "("};
+    for(const char* op : sym) if(s.compare(i, strlen(op), op) == 0) return op;
+    if(i < s.size() && isI6WordChar(s[i]) && (i == 0 || !isI6WordChar(s[i-1]))){
+        size_t j = i; while(j < s.size() && isI6WordChar(s[j])) j++;
+        string w = s.substr(i, j - i);
+        for(char& c : w) c = (char)tolower((unsigned char)c);
+        if(i6OpPrecedence(w) != 0) return w;
+    }
+    return "";
+}
+
+// The loosest operator at the top level of an expression's text: its precedence, whether every
+// operator at that level is `op` (so an associative op needs no brackets), and whether it is a
+// prefix. INT_MAX when atomic; -1 when the text isn't one balanced expression (statements, a
+// routine, or a fragment whose bracket the caller already emitted) and must be left alone.
+static int i6LoosestOperator(const string& text, string& op, bool& uniform, bool& prefix){
+    int depth = 0, loosest = INT_MAX;
+    bool afterOperand = false;
+    for(size_t i = 0; i < text.size(); i++){
+        char c = text[i];
+        if(c == ' ' || c == '\t' || c == '\n') continue;
+        if(c == '"' || c == '\''){
+            size_t j = text.find(c, i + 1);
+            if(j == string::npos) return -1;
+            i = j; afterOperand = true; continue;
+        }
+        if(c == ';' || c == '{' || c == '[') return -1;
+        if(c == '(') { depth++; afterOperand = false; continue; }
+        if(c == ')') { if(--depth < 0) return -1; afterOperand = true; continue; }
+        if(depth != 0) continue;
+        string tok = i6OpAt(text, i);
+        if(tok.empty() || tok == "." || tok == "(" || tok == "::"){
+            if(tok == "." || tok == "::"){ i += tok.size() - 1; if(i + 1 < text.size() && (text[i+1] == '&' || text[i+1] == '#')) i++; afterOperand = false; continue; }
+            if(isI6WordChar(c)){ while(i + 1 < text.size() && isI6WordChar(text[i+1])) i++; }
+            afterOperand = true; continue;
+        }
+        bool isPrefix = !afterOperand && (tok == "-" || tok == "~" || tok == "~~");
+        int p = (isPrefix && tok != "~~") ? 8          // unary minus / bitwise not
+              : (tok == "++" || tok == "--") ? 9
+              : i6OpPrecedence(tok);
+        if(p < loosest){ loosest = p; op = tok; uniform = true; prefix = isPrefix; }
+        else if(p == loosest && !isPrefix) prefix = false;
+        else if(p == loosest && tok != op) uniform = false;
+        i += tok.size() - 1;
+        afterOperand = (tok == "++" || tok == "--") && afterOperand;
+    }
+    return depth == 0 ? loosest : -1;
+}
+
+// Apply fn to the code between string and dictionary-word literals, leaving the literals as they are.
+static string mapOutsideLiterals(const string& text, const std::function<string(string)>& fn){
+    string mapped;
+    size_t i = 0;
+    while(i < text.size()){
+        size_t q = text.find_first_of("\"'", i);
+        mapped += fn(text.substr(i, q == string::npos ? string::npos : q - i));
+        if(q == string::npos) break;
+        size_t e = text.find(text[q], q + 1);
+        e = (e == string::npos) ? text.size() : e + 1;
+        mapped += text.substr(q, e - q);
+        i = e;
+    }
+    return mapped;
+}
+
+// Bracket each frame slot (`_bglFrm-->N`) that an adjacent ++/-- or unary -/~ would otherwise bind
+// to: those all bind tighter than `-->`, so `_bglFrm-->3++` increments the 3, not the slot.
+static string groupFrameSlots(string text){
+    static const string slot = "_bglFrm-->";
+    size_t pos = 0;
+    while((pos = text.find(slot, pos)) != string::npos){
+        size_t end = pos + slot.size();
+        while(end < text.size() && isdigit((unsigned char)text[end])) end++;
+        size_t r = end; while(r < text.size() && text[r] == ' ') r++;
+        size_t l = pos; while(l > 0 && text[l-1] == ' ') l--;
+        bool group = text.compare(r, 2, "++") == 0 || text.compare(r, 2, "--") == 0;
+        if(!group && l >= 2 && (text.compare(l-2, 2, "++") == 0 || text.compare(l-2, 2, "--") == 0)) group = true;
+        if(!group && l >= 1 && (text[l-1] == '-' || text[l-1] == '~')){
+            size_t b = l - 1; while(b > 0 && text[b-1] == ' ') b--;
+            group = b == 0 || !(isI6WordChar(text[b-1]) || text[b-1] == ')' || text[b-1] == ']');
+        }
+        if(group && !(l > 0 && text[l-1] == '(' && r < text.size() && text[r] == ')')){
+            text.insert(end, ")"); text.insert(pos, "(");
+            end += 2;
+        }
+        pos = end;
+    }
+    return text;
+}
+
+string i6Emitter::replaceOperand(string str, const string& from, const string& to){
+    string valOp; bool uniform = false, prefix = false;
+    int valPrec = i6LoosestOperator(to, valOp, uniform, prefix);
+    if(valPrec <= 0 || valPrec == INT_MAX) return replaceWord(str, from, to);
+    auto associative = [](const string& op){ return op == "+" || op == "*" || op == "&&" || op == "||" || op == "&" || op == "|"; };
+    size_t pos = 0;
+    while((pos = findWordCI(str, from, pos)) != string::npos){
+        bool leftOk  = pos==0 || !(isalnum(str[pos-1]) || str[pos-1]=='_' || str[pos-1]=='$' || str[pos-1]=='.');
+        bool rightOk = pos+from.size()>=str.size() || !(isalnum(str[pos+from.size()]) || str[pos+from.size()]=='_');
+        if(!(leftOk && rightOk)){ pos += from.size(); continue; }
+        bool group = false;
+        // Operator on the left: the value is its right operand (binary) or its operand (prefix).
+        size_t l = pos;
+        while(l > 0 && (str[l-1] == ' ' || str[l-1] == '\t')) l--;
+        if(l > 0){
+            string lop;
+            for(size_t k = (l >= 3 ? l - 3 : 0); k < l && lop.empty(); k++){
+                string t = i6OpAt(str, k);
+                if(!t.empty() && k + t.size() == l) lop = t;
+            }
+            if(!lop.empty() && lop != "(" && lop != "="){
+                size_t b = l - lop.size();
+                while(b > 0 && (str[b-1] == ' ' || str[b-1] == '\t')) b--;
+                bool binary = b > 0 && (isI6WordChar(str[b-1]) || str[b-1] == ')' || str[b-1] == ']' || str[b-1] == '"' || str[b-1] == '\'');
+                int lp = i6OpPrecedence(lop);
+                if(!binary) group = (lop == "~~") ? valPrec <= 2 : true;
+                else group = !prefix && (valPrec < lp || (valPrec == lp && !(uniform && valOp == lop && associative(lop))));
+            }
+        }
+        // Operator on the right: the value is its left operand.
+        size_t r = pos + from.size();
+        while(r < str.size() && (str[r] == ' ' || str[r] == '\t')) r++;
+        if(!group && r < str.size()){
+            string rop = i6OpAt(str, r);
+            if(!rop.empty() && rop != "="){
+                int rp = i6OpPrecedence(rop);
+                group = valPrec < rp || (valPrec == rp && rp <= 3 && !(uniform && valOp == rop && associative(rop)));
+            }
+        }
+        string rep = group ? "(" + to + ")" : to;
+        str.replace(pos, from.size(), rep);
+        pos += rep.size();
+    }
+    return str;
+}
+
 string i6Emitter::replaceWord(string str, const string& from, const string& to){
     size_t pos=0;
     while((pos=findWordCI(str,from,pos))!=string::npos){
@@ -376,6 +529,82 @@ void i6Emitter::collectBodyLocals(statementBlock* body, vector<variableDeclarati
             collectBodyLocals(tc->catchBody, out, seen);
         }
     }
+}
+
+// Every try/catch in a block, at any depth.
+static void collectTryStatements(statementBlock* body, vector<tryCatchStatement*>& out){
+    if(body == nullptr) return;
+    for(statement* s : body->statements){
+        if(auto* ifs = dynamic_cast<ifStatement*>(s)){
+            collectTryStatements(ifs->thenBlock, out);
+            collectTryStatements(ifs->elseBlock, out);
+        } else if(auto* fors = dynamic_cast<forStatement*>(s))   collectTryStatements(fors->body, out);
+        else if(auto* fis = dynamic_cast<forInStatement*>(s))    collectTryStatements(fis->body, out);
+        else if(auto* ws = dynamic_cast<whileStatement*>(s))     collectTryStatements(ws->body, out);
+        else if(auto* ds = dynamic_cast<doStatement*>(s))        collectTryStatements(ds->body, out);
+        else if(auto* sw = dynamic_cast<switchStatement*>(s)){
+            for(switchCase* sc : sw->cases) collectTryStatements(sc->body, out);
+        } else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){
+            out.push_back(tc);
+            collectTryStatements(tc->tryBody, out);
+            collectTryStatements(tc->catchBody, out);
+        }
+    }
+}
+
+// What a lifted try body hands back to its caller besides completing: a `return` (at any depth),
+// and a `break`/`continue` aimed at a loop outside the try.
+struct TryExits { bool ret = false, brk = false, cont = false; };
+static void scanTryExits(statementBlock* body, int loopDepth, TryExits& ex){
+    if(body == nullptr) return;
+    for(statement* s : body->statements){
+        if(dynamic_cast<returnStatement*>(s)) ex.ret = true;
+        else if(auto* raw = dynamic_cast<i6RawNode*>(s)){
+            if(raw->isI6Island || loopDepth > 0) continue;
+            if(raw->text == "break;") ex.brk = true;
+            else if(raw->text == "continue;") ex.cont = true;
+        }
+        else if(auto* ifs = dynamic_cast<ifStatement*>(s)){
+            scanTryExits(ifs->thenBlock, loopDepth, ex);
+            scanTryExits(ifs->elseBlock, loopDepth, ex);
+        } else if(auto* fors = dynamic_cast<forStatement*>(s))   scanTryExits(fors->body, loopDepth + 1, ex);
+        else if(auto* fis = dynamic_cast<forInStatement*>(s))    scanTryExits(fis->body, loopDepth + 1, ex);
+        else if(auto* ws = dynamic_cast<whileStatement*>(s))     scanTryExits(ws->body, loopDepth + 1, ex);
+        else if(auto* ds = dynamic_cast<doStatement*>(s))        scanTryExits(ds->body, loopDepth + 1, ex);
+        else if(auto* sw = dynamic_cast<switchStatement*>(s)){
+            for(switchCase* sc : sw->cases) scanTryExits(sc->body, loopDepth, ex);
+        } else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){
+            scanTryExits(tc->tryBody, loopDepth, ex);
+            scanTryExits(tc->catchBody, loopDepth, ex);
+        }
+    }
+}
+
+bool i6Emitter::funcHasZTry(functionDef* fd){
+    if(!isZTarget(currentTarget)) return false;
+    vector<tryCatchStatement*> tries;
+    collectTryStatements(dynamic_cast<statementBlock*>(fd->body), tries);
+    return !tries.empty();
+}
+
+vector<string> i6Emitter::glulxTryLocals(functionDef* fd){
+    vector<string> names;
+    if(isZTarget(currentTarget)) return names;
+    vector<tryCatchStatement*> tries;
+    collectTryStatements(dynamic_cast<statementBlock*>(fd->body), tries);
+    for(tryCatchStatement* tc : tries){
+        string id = to_string(tc->id);
+        names.push_back("_bgl_cv" + id);
+        names.push_back("_bgl_cvs" + id);
+        if(frameAllocEmitted) names.push_back("_bgl_ft" + id);
+    }
+    return names;
+}
+
+// A frame-held param's value arrives in its header local; copy it into the frame before any use.
+void i6Emitter::emitTryParamCopyIns(const string& indent){
+    for(auto& [name, raw] : currentTryParamRaw)
+        out << indent << currentSpillAliases[name] << " = " << raw << ";\n";
 }
 
 // Per-call set-up of class-typed locals that own an instance. The local is set to its backing (a
@@ -442,6 +671,7 @@ bool isHeaderMember(const string& name){
 // Param overflow (>5 params) is handled separately via _bglXPn globals.
 bool i6Emitter::funcNeedsSpill(functionDef* fd){
     if(!isZTarget(currentTarget)) return false;
+    if(funcHasZTry(fd)) return true;
     int effectiveParams = min((int)fd->params.size(), 5);
     statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
     vector<variableDeclaration*> locals;
@@ -496,6 +726,22 @@ void i6Emitter::buildSpillMap(functionDef* fd){
     // Map excess params to _bglXPn globals
     for(int i = maxParams; i < (int)fd->params.size(); i++)
         currentSpillAliases[fd->params[i]->name] = format("_bglXP{0}", i - maxParams);
+    if(funcHasZTry(fd)){
+        for(int i = 0; i < min((int)fd->params.size(), maxParams); i++){
+            const string& name = fd->params[i]->name;
+            currentTryParamRaw[name] = spillName(name);
+            currentSpillAliases[name] = format("_bglFrm-->{0}", currentSpillCount++);
+        }
+        for(variableDeclaration* vd : locals)
+            currentSpillAliases[vd->name] = format("_bglFrm-->{0}", currentSpillCount++);
+        vector<tryCatchStatement*> tries;
+        collectTryStatements(body, tries);
+        for(tryCatchStatement* tc : tries){
+            int cookie = currentSpillCount++;
+            currentTrySlots[tc->id] = {cookie, currentSpillCount++};
+        }
+        return;
+    }
     // Count only the params that fit in I6 locals
     int effectiveParams = min((int)fd->params.size(), maxParams);
     int total = effectiveParams + (int)locals.size();
@@ -509,6 +755,8 @@ void i6Emitter::clearSpillMap(){
     currentSpillAliases.clear();
     currentDisplayNames.clear();
     currentLocalRenames.clear();
+    currentTryParamRaw.clear();
+    currentTrySlots.clear();
     currentSpillCount = 0;
 }
 
@@ -689,13 +937,12 @@ string i6Emitter::exprText(expression* expr){
     // Catch concatenated sub-expressions (parser folds binary ops like "width==0" into
     // one token). replaceWord is word-boundary-safe and treats '.' as a left disqualifier,
     // so property accesses (`info.width`) stay intact.
-    if(!currentLocalRenames.empty())
-        for(auto& [from, to] : currentLocalRenames)
-            result = replaceWord(result, from, to);
-    if(!currentSpillAliases.empty())
-        for(auto& [from, to] : currentSpillAliases)
-            result = replaceWord(result, from, to);
-    return result;
+    if(currentLocalRenames.empty() && currentSpillAliases.empty()) return result;
+    return mapOutsideLiterals(result, [&](string code){
+        for(auto& [from, to] : currentLocalRenames)  code = replaceWord(code, from, to);
+        for(auto& [from, to] : currentSpillAliases)  code = replaceWord(code, from, to);
+        return currentSpillAliases.empty() ? code : groupFrameSlots(code);
+    });
 }
 
 // Single name lookup. Resolution order:
@@ -718,12 +965,11 @@ string i6Emitter::spillName(const string& name){
 // isn't touched by replaceWord, which matches whole tokens only.
 string i6Emitter::spillWord(const string& text){
     if(currentSpillAliases.empty() && currentLocalRenames.empty()) return text;
-    string result = text;
-    for(auto& [from, to] : currentSpillAliases)
-        result = replaceWord(result, from, to);
-    for(auto& [from, to] : currentLocalRenames)
-        result = replaceWord(result, from, to);
-    return result;
+    return mapOutsideLiterals(text, [&](string code){
+        for(auto& [from, to] : currentSpillAliases) code = replaceWord(code, from, to);
+        for(auto& [from, to] : currentLocalRenames) code = replaceWord(code, from, to);
+        return currentSpillAliases.empty() ? code : groupFrameSlots(code);
+    });
 }
 
 int i6Emitter::currentLine(){
@@ -1089,11 +1335,11 @@ if(languageService.switchTempNeeded)
     out << "global _bgl_sw;\n";
 if(languageService.tryCatchNeeded){
     out << "global _bgl_catch_cookie;\n";
-    // Emit per-instance cookie and save globals for each try/catch block
-    // (needed because I6 function locals must be declared in the header)
-    for(int i = 0; i < languageService.tryCatchCounter; i++){
-        out << format("global _bgl_cv{0};\n", i);
-        out << format("global _bgl_cvs{0};\n", i);
+    out << "global _bgl_throwv;\n";
+    if(isZTarget(currentTarget)){
+        out << "global _bgl_thrown;\n";      // set by a throw, so a lifted try's return value reads as thrown
+        out << "global _bgl_tryrc;\n";       // the lifted try's result: thrown value, or 0/1/2/3 (done/return/break/continue)
+        out << "global _bgl_tryret;\n";      // the value of a `return` inside the try
     }
 }
 }
@@ -1872,6 +2118,8 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             for(paramDef* p : fd->params)
                 if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
                     { out << sp << spillName(p->name); sp=" "; }
+                else if(currentTryParamRaw.count(p->name))
+                    { out << sp << currentTryParamRaw[p->name]; sp=" "; }
             statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
             vector<variableDeclaration*> locals;
             if(body != nullptr){
@@ -1881,10 +2129,12 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
                     if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
                         { out << sp << spillName(vd->name); sp=" "; }
             }
+            for(const string& n : glulxTryLocals(fd)){ out << sp << n; sp=" "; }
             if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
             out << ";\n";
             if(currentSpillCount > 0)
                 out << format("        _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+            emitTryParamCopyIns("        ");
             // Per-call copy-in for params that own an instance, on class/object member methods (same
             // shape as top-level functions, just with a deeper indent).
             emitOwnedLocalSetup(locals, "        ");
@@ -2002,6 +2252,8 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     for(paramDef* param : funcNode->params)
         if(currentSpillAliases.find(param->name) == currentSpillAliases.end())
             out << format(" {0}", spillName(param->name));
+        else if(currentTryParamRaw.count(param->name))
+            out << " " << currentTryParamRaw[param->name];
 
     statementBlock* body = dynamic_cast<statementBlock*>(funcNode->body);
     vector<variableDeclaration*> locals;
@@ -2013,10 +2265,12 @@ void i6Emitter::emitFunction(functionDef* funcNode){
                 out << format(" {0}", spillName(vd->name));
         }
     }
+    for(const string& n : glulxTryLocals(funcNode)) out << " " << n;
     if(currentSpillCount > 0) out << " _bglFrm";
     out << ";\n";
     if(currentSpillCount > 0)
         out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+    emitTryParamCopyIns("    ");
 
     emitOwnedLocalSetup(locals, "    ");
 
@@ -2148,7 +2402,7 @@ void i6Emitter::emitLocalDeclaration(variableDeclaration* var, const string& ind
             emitInterpolatedEmitterBody(b, var->initEmitterParam, var->interpSegments, indent);
         } else if(!var->initEmitterBody.empty()){
             string b = var->initEmitterBody;
-            b = replaceWord(b, "$" + var->initEmitterParam, exprText(var->declaredExpressionValue));
+            b = replaceOperand(b, "$" + var->initEmitterParam, exprText(var->declaredExpressionValue));
             b = replaceWord(b, "$self",              selfText);
             b = replaceWord(b, "$val",               selfText);
             b = replaceWord(b, "$target",            selfText);
@@ -2179,7 +2433,7 @@ void i6Emitter::emitAssignment(assignmentStatement* assign, const string& indent
         size_t s=b.find_first_not_of(" \t\n\r"); if(s!=string::npos) b=b.substr(s);
         size_t e=b.find_last_not_of(" \t\n\r");  if(e!=string::npos) b=b.substr(0,e+1);
         // Substitute params before $self to avoid double-substitution when param name matches the LHS variable
-        b=replaceWord(b,"$" + assign->emitterParam, assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "");
+        b=replaceOperand(b,"$" + assign->emitterParam, assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "");
         b=replaceWord(b,"$self", assign->emitterSelf.empty() ? spillName(assign->variableLeft) : spillName(assign->emitterSelf));
         b=replaceWord(b,"$val",  spillName(assign->variableLeft));
         b=replaceWord(b,"$target", spillName(assign->variableLeft));
@@ -2198,6 +2452,19 @@ void i6Emitter::emitAssignment(assignmentStatement* assign, const string& indent
 }
 // A `return`: deinit cleanups and frame-free first, then the matching I6 return form.
 void i6Emitter::emitReturn(returnStatement* ret, const string& indent){
+    // Inside a lifted try body the function's return is the caller's to make: hand the value back
+    // with code 1. Cleanups and the frame free run there.
+    if(inLiftedTry){
+        string v = ret->returnExpression == "rtrue" ? "1"
+                 : ret->returnExpression == "rfalse" || ret->returnExpression.empty() ? "0"
+                 : spillWord(ret->returnExpression);
+        out << indent << "_bgl_tryret = " << v << ";\n";
+        out << indent << "return 1;\n";
+        return;
+    }
+    // Leaving every active try: the cookie goes back to what it was outside the outermost.
+    if(!glulxTryStack.empty())
+        out << indent << "_bgl_catch_cookie = " << glulxTryStack.front().first << ";\n";
     // emit deinit cleanups before every return
     if(currentCleanups != nullptr)
         for(auto& [varName, body] : *currentCleanups)
@@ -2230,7 +2497,7 @@ void i6Emitter::emitFunctionCallStatement(functionCallStatement* call, const str
         // Substitute all non-interpolated parameters normally
         for(size_t i=0; i<call->emitterParams.size() && i<call->args.size(); i++)
             if((int)i != interpArgIdx)
-                b=replaceWord(b, "$" + call->emitterParams[i], exprText(call->args[i]));
+                b=replaceOperand(b, "$" + call->emitterParams[i], exprText(call->args[i]));
         // $target substitution for a discarded (statement-position) value-returning opcode:
         // the result is thrown away, so store it to `sp` (the stack pointer, I6 variable 0) —
         // a built-in destination that needs no declaration. Normally resolved at parse time
@@ -2338,10 +2605,13 @@ void i6Emitter::emitForInStatement(forInStatement* fi, const string& indent){
         out << indent << "}\n";
         return;
     }
-    // World-tree child collection: iterate the container's I6 children directly.
+    // World-tree child collection: walk the container's I6 children directly. The next sibling is
+    // read before the body runs, so the body may move the current object out (objectloop can't).
     if(fi->isChildrenForIn){
-        string el = spillName(fi->elementVar);
-        out << indent << "objectloop (" << el << " in " << fi->arrayVar << ") {\n";
+        string el   = spillName(fi->elementVar);
+        string next = spillName(fi->counterVar);
+        out << indent << "for (" << el << " = child(" << fi->arrayVar << ") : " << el << " : " << el << " = " << next << ") {\n";
+        out << indent << "    " << next << " = sibling(" << el << ");\n";
         if(fi->body != nullptr)
             for(statement* s : fi->body->statements)
                 emitStatement(s, indent + "    ");
@@ -2440,7 +2710,7 @@ void i6Emitter::emitSwitchStatement(switchStatement* sw, const string& indent){
                             if(colonPos != string::npos){
                                 string paramName = b.substr(0, colonPos);
                                 string body = b.substr(colonPos + 1);
-                                body = replaceWord(body, "$" + paramName, valText);
+                                body = replaceOperand(body, "$" + paramName, valText);
                                 body = replaceWord(body, "$self", "_bgl_sw");
                                 body = replaceWord(body, "$val",  "_bgl_sw");
                                 size_t s = body.find_first_not_of(" \t\n\r"); if(s!=string::npos) body=body.substr(s);
@@ -2502,10 +2772,13 @@ void i6Emitter::emitTryCatch(tryCatchStatement* tc, const string& indent){
     string tryLabel = "_bgl_try" + id;
     string endLabel = "_bgl_tryend" + id;
     if(currentTarget == "glulx"){
+        string frameTop = "_bgl_ft" + id;
         // Glulx: @catch cookie ?label — branches to label on first exec, falls through on throw
         out << indent << "@catch " << cvName << " ?" << tryLabel << ";\n";
         // Catch body (reached via @throw)
-        out << indent << "    " << tc->catchVarName << " = " << cvName << ";\n";
+        out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
+        if(frameAllocEmitted) out << indent << "    _bglFrameTop = " << frameTop << ";\n";
+        out << indent << "    " << spillName(tc->catchVarName) << " = " << cvName << ";\n";
         if(tc->catchBody != nullptr)
             for(statement* s : tc->catchBody->statements){
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
@@ -2516,28 +2789,56 @@ void i6Emitter::emitTryCatch(tryCatchStatement* tc, const string& indent){
         // Try body (normal execution — branched here by @catch)
         out << indent << "." << tryLabel << ";\n";
         out << indent << "    " << cvSave << " = _bgl_catch_cookie;\n";
+        if(frameAllocEmitted) out << indent << "    " << frameTop << " = _bglFrameTop;\n";
         out << indent << "    _bgl_catch_cookie = " << cvName << ";\n";
+        glulxTryStack.push_back({cvSave, liftedLoopDepth});
         if(tc->tryBody != nullptr)
             for(statement* s : tc->tryBody->statements)
                 emitStatement(s, indent + "    ");
+        glulxTryStack.pop_back();
         out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
         out << indent << "." << endLabel << ";\n";
         out << indent << "    _bgl_catch_cookie = _bgl_catch_cookie;\n";  // no-op to satisfy I6 label requirement
     } else {
-        // Z-machine: @catch -> cookie — no branch; saves frame cookie, resumes after @catch on throw
-        out << indent << cvSave << " = _bgl_catch_cookie;\n";
-        out << indent << "@catch -> " << cvName << ";\n";
-        out << indent << "if (_bgl_catch_cookie == " << cvName << ") {\n";
-        // First execution: cookie just stored, set it as the active catch cookie
-        out << indent << "    _bgl_catch_cookie = " << cvName << ";\n";
-        if(tc->tryBody != nullptr)
-            for(statement* s : tc->tryBody->statements)
-                emitStatement(s, indent + "    ");
-        out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
-        out << indent << "} else {\n";
-        // Throw landed: cvName contains thrown value
-        out << indent << "    _bgl_catch_cookie = " << cvSave << ";\n";
-        out << indent << "    " << tc->catchVarName << " = " << cvName << ";\n";
+        // Z-machine: the try body runs in its own routine, which catches; a throw returns from it.
+        string routine = "_bgl_try" + id;
+        auto [cookieSlot, topSlot] = currentTrySlots[tc->id];
+        TryExits exits;
+        scanTryExits(tc->tryBody, 0, exits);
+        {
+            stringstream captured;
+            std::swap(out, captured);
+            vector<tuple<int,string,int>> blockMap;
+            vector<tuple<int,string,int>>* prevTarget = sourceMapTarget;
+            sourceMapTarget = &blockMap;
+            bool prevLifted = inLiftedTry; int prevDepth = liftedLoopDepth;
+            inLiftedTry = true; liftedLoopDepth = 0;
+            out << "[ " << routine << " _bglFrm _bgl_cv;\n";
+            out << "    @catch -> _bgl_cv;\n";
+            out << "    _bgl_catch_cookie = _bgl_cv;\n";
+            if(tc->tryBody != nullptr)
+                for(statement* s : tc->tryBody->statements)
+                    emitStatement(s, "    ");
+            out << "    return 0;\n];\n";
+            inLiftedTry = prevLifted; liftedLoopDepth = prevDepth;
+            sourceMapTarget = prevTarget;
+            std::swap(out, captured);
+            superposedBlocks[routine] = captured.str();
+            superposedBlockMaps[routine] = std::move(blockMap);
+            routineSpillAliases[routine] = currentSpillAliases;
+            routineSpillCounts[routine]  = currentSpillCount;
+        }
+        string cookie = format("_bglFrm-->{0}", cookieSlot);
+        string top    = format("_bglFrm-->{0}", topSlot);
+        out << indent << cookie << " = _bgl_catch_cookie;\n";
+        out << indent << top << " = _bglFrameTop;\n";
+        out << indent << "_bgl_tryrc = " << routine << "(_bglFrm);\n";
+        out << indent << "_bgl_catch_cookie = " << cookie << ";\n";
+        out << indent << "if (_bgl_thrown) {\n";
+        out << indent << "    _bgl_thrown = 0;\n";
+        // A throw skipped the returns of every routine between it and here, frees included.
+        out << indent << "    _bglFrameTop = " << top << ";\n";
+        out << indent << "    " << spillName(tc->catchVarName) << " = _bgl_tryrc;\n";
         if(tc->catchBody != nullptr)
             for(statement* s : tc->catchBody->statements){
                 if(auto* vd = dynamic_cast<variableDeclaration*>(s))
@@ -2545,6 +2846,25 @@ void i6Emitter::emitTryCatch(tryCatchStatement* tc, const string& indent){
                 emitStatement(s, indent + "    ");
             }
         out << indent << "}\n";
+        // Not thrown: the result is how the body finished.
+        if(exits.ret){
+            out << indent << "else if (_bgl_tryrc == 1) {\n";
+            returnStatement ret; ret.returnExpression = "_bgl_tryret";
+            emitReturn(&ret, indent + "    ");
+            out << indent << "}\n";
+        }
+        if(exits.brk){
+            out << indent << "else if (_bgl_tryrc == 2) {\n";
+            i6RawNode brk; brk.text = "break;";
+            emitRawNode(&brk, indent + "    ");
+            out << indent << "}\n";
+        }
+        if(exits.cont){
+            out << indent << "else if (_bgl_tryrc == 3) {\n";
+            i6RawNode cont; cont.text = "continue;";
+            emitRawNode(&cont, indent + "    ");
+            out << indent << "}\n";
+        }
     }
 }
 // A `throw`: unhandled-exception guard, then @throw against the active catch cookie.
@@ -2554,14 +2874,32 @@ void i6Emitter::emitThrow(throwStatement* th, const string& indent){
     out << indent << "    print \"^[Unhandled exception]^\";\n";
     out << indent << "    quit;\n";
     out << indent << "}\n";
-    out << indent << "@throw " << val << " _bgl_catch_cookie;\n";
+    // @throw takes a variable or constant, not an expression.
+    out << indent << "_bgl_throwv = " << val << ";\n";
+    if(isZTarget(currentTarget)) out << indent << "_bgl_thrown = 1;\n";
+    out << indent << "@throw _bgl_throwv _bgl_catch_cookie;\n";
 }
 // A raw I6 island (`#i6{}` verbatim, or a cooked node whose local names get spill/rename applied).
 void i6Emitter::emitRawNode(i6RawNode* raw, const string& indent){
+    if(inLiftedTry && liftedLoopDepth == 0 && !raw->isI6Island){
+        if(raw->text == "break;")   { out << indent << "return 2;\n"; return; }
+        if(raw->text == "continue;"){ out << indent << "return 3;\n"; return; }
+    }
+    // A break/continue leaves the tries entered inside its loop: restore the outermost one's cookie.
+    if(!glulxTryStack.empty() && !raw->isI6Island && (raw->text == "break;" || raw->text == "continue;"))
+        for(auto& [save, depth] : glulxTryStack)
+            if(depth >= liftedLoopDepth){ out << indent << "_bgl_catch_cookie = " << save << ";\n"; break; }
     out << indent;
     // Cooked nodes reference Beguile locals by name → apply spill/rename (spillWord leaves
-    // `.property` accesses intact via its word-boundary rules); user `#i6{}` text is verbatim.
-    emitRawTextWithSourceMap(raw->cooked ? spillWord(raw->text) : raw->text, raw->src);
+    // `.property` accesses intact via its word-boundary rules). User `#i6{}` text is verbatim,
+    // except that a local living in the frame is reached through its slot.
+    string text = raw->cooked ? spillWord(raw->text) : raw->text;
+    if(!raw->cooked && !currentSpillAliases.empty())
+        text = mapOutsideLiterals(text, [&](string code){
+            for(auto& [from, to] : currentSpillAliases) code = replaceWord(code, from, to);
+            return groupFrameSlots(code);
+        });
+    emitRawTextWithSourceMap(text, raw->src);
     out << "\n";
 }
 void i6Emitter::emitStatement(statement* stmt, string indent){
@@ -2573,10 +2911,10 @@ void i6Emitter::emitStatement(statement* stmt, string indent){
     else if(typeid(*stmt) == typeid(returnStatement)) emitReturn((returnStatement*)stmt, indent);
     else if(typeid(*stmt) == typeid(functionCallStatement)) emitFunctionCallStatement((functionCallStatement*)stmt, indent);
     else if(typeid(*stmt) == typeid(ifStatement)) emitIfStatement((ifStatement*)stmt, indent);
-    else if(typeid(*stmt) == typeid(doStatement)) emitDoStatement((doStatement*)stmt, indent);
-    else if(typeid(*stmt) == typeid(whileStatement)) emitWhileStatement((whileStatement*)stmt, indent);
-    else if(typeid(*stmt) == typeid(forStatement)) emitForStatement((forStatement*)stmt, indent);
-    else if(typeid(*stmt) == typeid(forInStatement)) emitForInStatement((forInStatement*)stmt, indent);
+    else if(typeid(*stmt) == typeid(doStatement))    { liftedLoopDepth++; emitDoStatement((doStatement*)stmt, indent);         liftedLoopDepth--; }
+    else if(typeid(*stmt) == typeid(whileStatement)) { liftedLoopDepth++; emitWhileStatement((whileStatement*)stmt, indent);   liftedLoopDepth--; }
+    else if(typeid(*stmt) == typeid(forStatement))   { liftedLoopDepth++; emitForStatement((forStatement*)stmt, indent);       liftedLoopDepth--; }
+    else if(typeid(*stmt) == typeid(forInStatement)) { liftedLoopDepth++; emitForInStatement((forInStatement*)stmt, indent);   liftedLoopDepth--; }
     else if(typeid(*stmt) == typeid(switchStatement)) emitSwitchStatement((switchStatement*)stmt, indent);
     else if(typeid(*stmt) == typeid(tryCatchStatement)) emitTryCatch((tryCatchStatement*)stmt, indent);
     else if(typeid(*stmt) == typeid(throwStatement)) emitThrow((throwStatement*)stmt, indent);
@@ -2776,6 +3114,23 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
 // compile-time literals whose length is fixed and whose I6 hybrid
 // length-word convention is sufficient.
 void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
+    // rawArray<char>: bare bytes from offset 0, with no length word.
+    if(arr->isRaw){
+        auto* seed = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
+        out << format("array {0} ->", arr->dName());
+        if(!arr->stringInitializer.empty()) out << " " << arr->stringInitializer;
+        else if(seed != nullptr){
+            for(expression* elem : seed->elements){
+                string t = staticText(elem);
+                if(!t.empty() && t.front() == '-') out << " (" << t << ")";
+                else                                out << " " << t;
+            }
+            for(int pad = (int)seed->elements.size(); pad < arr->arraySize; pad++) out << " 0";
+        }
+        else out << " " << max(arr->arraySize, 1);
+        out << ";\n";
+        return;
+    }
     bool bufTracked = languageService.bufInUse;
     if(!arr->stringInitializer.empty()) {
         out << format("array {0} buffer {1};\n", arr->dName(), arr->stringInitializer);
@@ -3253,6 +3608,8 @@ for(typeMember* m : obj->members){
         for(paramDef* p : fd->params)
             if(currentSpillAliases.find(p->name) == currentSpillAliases.end())
                 { out << sp << spillName(p->name); sp=" "; }
+            else if(currentTryParamRaw.count(p->name))
+                { out << sp << currentTryParamRaw[p->name]; sp=" "; }
         statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
         vector<variableDeclaration*> locals;
         if(body){
@@ -3262,10 +3619,12 @@ for(typeMember* m : obj->members){
                 if(currentSpillAliases.find(vd->name) == currentSpillAliases.end())
                     { out << sp << spillName(vd->name); sp=" "; }
         }
+        for(const string& n : glulxTryLocals(fd)){ out << sp << n; sp=" "; }
         if(currentSpillCount > 0){ out << sp << "_bglFrm"; }
         out << ";\n";
         if(currentSpillCount > 0)
             out << format("    _bglFrm = _bglFrameAlloc({0});\n", currentSpillCount);
+        emitTryParamCopyIns("    ");
         emitOwnedLocalSetup(locals, "    ");
         emitParamCopyIns(fd, "    ");
         // Allocate object-method-local arrays — was SKIPPED here too, so an object property

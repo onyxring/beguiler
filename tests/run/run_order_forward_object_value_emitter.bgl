@@ -1,0 +1,18 @@
+/*  run_order_forward_object_value_emitter — an object's value emitter, used before the object.
+
+    A value emitter declared in an object's body (`emitter int size {42}`) is usable from code that
+    comes before the declaration, including when the object's class is itself declared later.  */
+// EXPECT_OUTPUT: 43 8
+#beguilerSettings { target = z5; informName = "none"; }
+
+int early(){ return holder.size + 1; }
+int alsoEarly(){ return later.width * 2; }
+
+_bglObject holder { emitter int size {42} }
+Shape later { emitter int width {4} }
+class Shape { }
+
+void main(){
+    bglInit();
+    print($"{early()} {alsoEarly()}");
+}

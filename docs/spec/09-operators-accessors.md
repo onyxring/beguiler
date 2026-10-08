@@ -209,7 +209,7 @@ equivalent to `emitter T operator () { $val }`.
 | `operator ? ()` | `x?`, `x?.m`, `x ?? y` | Defines what "present" (non-null) means for the type, returning `eBool`. Evaluated at each step of `?.`, to decide whether `??` needs its fallback, and directly by postfix `?`. A type without it cannot use any of the three; doing so is a compile-time error. Must be an emitter. |
 | `operator switch (U v)` | `switch(x){ case v: }` | The comparison applied to each `case` value. Must be an emitter. Statement semantics: §5.12. |
 | `operator ?= (U v)` | `x ?= y` | A binary comparison at equality precedence with result `eBool`. No built-in type defines it; a class gives it a meaning. |
-| `operator <=> (U v)` | `x <=> y` | Three-way comparison, result `int`: negative when the left operand orders first, `0` when equivalent, positive otherwise. Declarable `static` or as an instance operator (§9.6). |
+| `operator <=> (U v)` | `x <=> y` | Three-way comparison, result `int`: negative when the left operand orders first, `0` when equivalent, positive otherwise. Declarable `static` or as an instance operator (§9.6). A type that declares `<=>` but not `<`, `>`, `<=` or `>=` gets each missing one from it. |
 | `operator ! ()` | `!x` | Prefix logical not. |
 
 `string` defines `operator ? ()` as a non-zero handle test. The language has no built-in notion of
@@ -255,6 +255,10 @@ consult which operator is tabulated in §12.10.
 
 `<=>` follows the same rule: `static`, or an instance operator with the left operand as receiver. Either
 form is usable in an expression or a comparator lambda.
+
+A type with `<=>` but without `<`, `>`, `<=` or `>=` gets the missing ones from it: `a < b` means
+`(a <=> b) < 0`, and likewise for the others. An ordering operator the type declares, or inherits,
+takes precedence. `==` and `!=` are never derived from `<=>`.
 
 **Example**
 

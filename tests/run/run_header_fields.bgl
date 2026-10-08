@@ -1,0 +1,10 @@
+/*  run_header_fields — `bgl.header` reads the release number and serial code from the story file
+    header, with no library, on the Z-machine.  */
+// EXPECT_OUTPUT: 7 260314
+#beguilerSettings { target = z5; informName = "none"; release = 7; serial = "260314"; }
+
+void main(){
+    bglInit();
+    print($"{bgl.header.release} ");
+    bgl.header.printSerial();
+}

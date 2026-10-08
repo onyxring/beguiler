@@ -1,0 +1,21 @@
+/*  run_statusbar_glulx — the core status bar on Glulx without a library binding.
+
+    Setting `height` opens the grid window and records it in `id`, so a split from the status bar
+    has a parent; resizing keeps the same window. A split Glk refuses (graphics, which the headless
+    interpreter lacks) is `null`, not a window with id 0.  */
+// EXPECT_OUTPUT: open h=1 same h=2 buffer null
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <glulxWindow>
+void main(){
+    bglInit(); glulxConsole();
+    bgl.ui.statusBar.height = 1;
+    int first = bgl.ui.statusBar.id;
+    if(first != 0) print($"open h={bgl.ui.statusBar.height} ");
+    bgl.ui.statusBar.height = 2;
+    if(bgl.ui.statusBar.id == first) print($"same h={bgl.ui.statusBar.height} ");
+    textBufferWindowVert tb = bgl.ui.statusBar.splitLeftBuffer(10);
+    if(tb != null && tb.id != 0) print("buffer ");
+    graphicsWindowVert g = bgl.ui.statusBar.splitLeftGraphics(10);
+    if(g == null) print("null");
+}

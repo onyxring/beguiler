@@ -272,7 +272,7 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-class _bglaccessor3
+class _bglaccessor4
   with
     _raw 0,
     _opconv[;
@@ -282,7 +282,7 @@ class _bglaccessor3
         self._raw=v * gadget.scale;
     ]
 ;
-_bglaccessor3 _gadget_level;
+_bglaccessor4 _gadget_level;
 object gadget
   with scale 3,
        level _gadget_level

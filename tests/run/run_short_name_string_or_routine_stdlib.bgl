@@ -1,0 +1,27 @@
+/*  run_short_name_string_or_routine_stdlib — `short_name` is a `stringOrRoutine` under a library.
+
+    The standard library prints an object's name through PrintOrRun, so `short_name` may hold text
+    or a routine that prints it. PrintOrRunVar takes the same union (and ends printed text with a
+    newline, as I6 does).  */
+// EXPECT_OUTPUT: [brass lamp] [dusty book] [book] [late] [text]
+#beguilerSettings { target = glulx; informName = "none"; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+
+#i6 { Object Lab "Lab" with description "A lab.", has light; }
+
+object lamp { short_name = "brass lamp"; }
+object book { short_name = => { print("dusty book"); }; }
+object tome { instanceName = "book"; }
+
+void initialise(){
+    #i6 { location = Lab; }
+    print($"[{lamp}] [{book}] [{tome}] [");
+    stringOrRoutine late = => { print("late"); };
+    PrintOrRunVar(late);
+    print("] [");
+    PrintOrRunVar("text]");
+}
+
+#includeI6 "grammar"

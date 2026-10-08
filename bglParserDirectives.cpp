@@ -184,7 +184,7 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
     out = substituteI6Exprs(out, b);
     if(b.fn != nullptr)
         for(size_t i = 0; i < b.fn->params.size() && i < b.args.size(); i++)
-            out = i6Emitter::replaceWord(out, "$" + b.fn->params[i]->name, b.args[i]);
+            out = i6Emitter::replaceOperand(out, "$" + b.fn->params[i]->name, b.args[i]);
     // A declared parameter shadows the built-in token of the same name — the BLR really does write
     // `emitter void accelparam(int idx, int val)` and `emitter bool provides(property prop)`. With
     // args in hand the loop above has already consumed the token and this guard is a no-op; in the
@@ -197,8 +197,8 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
     // $selfsub before $self: $self is a prefix of it. replaceWord's right-boundary check already
     // makes the order immaterial, but the dependency is real and worth stating.
     if(b.selfsub) out = i6Emitter::replaceWord(out, "$selfsub", *b.selfsub);
-    if(b.self && !shadowed("self"))  out = i6Emitter::replaceWord(out, "$self",  *b.self);
-    if(b.val  && !shadowed("val"))   out = i6Emitter::replaceWord(out, "$val",   *b.val);
+    if(b.self && !shadowed("self"))  out = i6Emitter::replaceOperand(out, "$self",  *b.self);
+    if(b.val  && !shadowed("val"))   out = i6Emitter::replaceOperand(out, "$val",   *b.val);
     if(b.host && !shadowed("host"))  out = i6Emitter::replaceWord(out, "$host",  *b.host);
     if(b.prop && !shadowed("prop"))  out = i6Emitter::replaceWord(out, "$prop",  *b.prop);
     if(b.cls  && !shadowed("class")) out = i6Emitter::replaceWord(out, "$class", *b.cls);
@@ -370,7 +370,15 @@ bool bglParser::evaluateCondition(const string& expr){
         bool parseExpr(){ return parseOr(); }
     };
     Eval e{expr, 0, definedSymbols, *this};
-    return e.parseExpr();
+    bool result = e.parseExpr();
+    // A condition ends at the end of its line; leftover text means statements were written on the
+    // `#if` line itself (`##if DEBUG print x; ##endif`), which would otherwise just read as false.
+    e.skipWs();
+    string rest = expr.substr(e.pos);
+    if(!rest.empty() && rest.rfind("//", 0) != 0 && rest.rfind("/*", 0) != 0)
+        parsingError(format("Unexpected '{0}' in the condition '{1}'. A condition ends at the end of its "
+                            "line; put the code it controls on the lines that follow.", rest, expr));
+    return result;
 }
 
 // Skip tokens until ##else / ##endif at the current nesting depth (for ## compile-time conditionals).
@@ -722,6 +730,7 @@ bool bglParser::directiveIncludeI6(token directive, abstractObject& contextObj){
 }
 
 // #define / #redef — define a preprocessor symbol; #define rejects a redefinition, #redef overwrites.
+// #defineI6 is #define that also emits the symbol to I6 as a Constant, ahead of any library include.
 bool bglParser::directiveDefine(token directive, abstractObject& contextObj){
     bool isRedef = directive.is("#redef");
     token sym = file.getToken(eTokenType::identifier);
@@ -742,6 +751,11 @@ bool bglParser::directiveDefine(token directive, abstractObject& contextObj){
     if(!isRedef && definedSymbols.count(sym.value))
         parsingError(format("'#define {0}' redefines a symbol that is already defined; use '#redef {0}' to intentionally redefine it", sym.value));
     definedSymbols[sym.value] = valStr;
+    if(directive.is("#definei6")){
+        string name = sym.originalValue.empty() ? sym.value : sym.originalValue;
+        string i6Val = valStr.empty() ? "" : " " + valStr;
+        languageService.emitFirstBlocks.push_back("Constant " + name + i6Val + ";");
+    }
     return false;
 }
 
@@ -1074,6 +1088,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         case chk("#includei6"): return directiveIncludeI6(directive, contextObj);
         case chk("#i6"): return directiveI6(directive, contextObj);
         case chk("#define"):
+        case chk("#definei6"):
         case chk("#redef"): return directiveDefine(directive, contextObj);
         case chk("#declare"): return directiveDeclare(directive, contextObj);
         case chk("#undef"):{

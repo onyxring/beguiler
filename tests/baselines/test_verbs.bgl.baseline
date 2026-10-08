@@ -7,13 +7,10 @@ Constant beguiler = 5;
     Constant story    = "";
     Constant headline = "";
 
-
-    Constant orLib_suppress_forced_banner_hook;
-
 Replace banner;
 
-    replace main _oldmain;
-
+        replace main _oldmain;
+    
 global _bglInitDone = 0;
 [bglInit;
     if(_bglInitDone) return;
@@ -283,14 +280,50 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
+[Banner;
+    print "^";
+    style bold;
+    print (string)story;
+    style roman;
+    print (string)headline;
+    print "Release ";
+    print _bglheader.release._opconv();
+    print " / Serial number ";
+    _bglheader.printserial();
+    print "^";
+    style underline;
+    print "Written in";
+    style roman;
+    print " Beguile v";
+    print 0;
+    print ".";
+    print 0;
+    print ".";
+    print 5;
+    print "^";
+    style underline;
+    print "Compiled with";
+    style roman;
+    print " Inform v";
+     inversion; 
+    print " / Library v";
+    print (string)librelease;
+    print " ";
+    
+        #Ifdef STRICT_MODE; print "S"; #Endif;
+        #Ifdef INFIX; print "X";
+        #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
+    
+    print (string)"^";
+];
 object whiff
   with handler [;
     print (string)"You take a whiff of the air.";
   ]
 ;
 [whiffsub;
-                whiff.handler();
-            ];
+            whiff.handler();
+        ];
 verb 'whiff'
     * -> whiff;
 verb 'waft'
@@ -301,8 +334,8 @@ object nudge
   ]
 ;
 [nudgesub;
-                nudge.handler();
-            ];
+            nudge.handler();
+        ];
 verb 'nudge'
     * noun -> nudge;
 verb 'jostle'
@@ -335,8 +368,8 @@ object possess
   ]
 ;
 [possesssub;
-                possess.handler();
-            ];
+            possess.handler();
+        ];
 verb 'carol^s'
     * noun -> possess
     * noun -> possess;
@@ -346,8 +379,8 @@ object greet
   ]
 ;
 [greetsub;
-                greet.handler();
-            ];
+            greet.handler();
+        ];
 verb 'mr'
     * noun -> greet;
 object stow
@@ -356,8 +389,8 @@ object stow
   ]
 ;
 [stowsub;
-                stow.handler();
-            ];
+            stow.handler();
+        ];
 verb 'stow'
     * held 'on'/'onto'/'upon' noun -> stow
     * held 'in'/'into'/'inside' noun -> stow;
@@ -371,53 +404,23 @@ object testObj
     testobj.bump();
     s=testobj.score;
 ];
-[Banner;
-    print "^";
-    style bold;
-    print (string)story;
-    style roman;
-    print (string)headline;
-    print "Release ";
-    print _bglstory.release._opconv();
-    print " / Serial number ";
-    _bglstory.printserial();
-    print "^";
-    style underline;
-    print "Written in";
-    style roman;
-    print " Beguile v";
-    print 0;
-    print ".";
-    print 0;
-    print ".";
-    print 5;
-    print "^";
-    style underline;
-    print "Compiled with";
-    style roman;
-    print " Inform v";
-    inversion;
-    print " / Library v";
-    print (string)librelease;
-    print "^";
-];
 
-    [main; 
-        bglInit();
-        _oldmain();
-    ];
-
-class _bglaccessor5
+        [main;
+            bglInit();
+            _oldmain();
+        ];
+    
+class _bglaccessor3
   with
     _opconv[;
-        return _bgl_bglOpCodes_loadw(hdr_gamerelease, 0) & 1023;
+        return _bgl_bglOpCodes_loadw(2, 0) & 1023;
     ]
 ;
-_bglaccessor5 __bglstory_release;
-object _bglStory
-  with release __bglstory_release,
+_bglaccessor3 __bglheader_release;
+object _bglHeader
+  with release __bglheader_release,
        serialChar [i;
-    return _bgl_bglOpCodes_loadb(hdr_gameserial, i);
+    return _bgl_bglOpCodes_loadb(18, i);
   ],
        printSerial [i;
     i = 0;

@@ -30,6 +30,7 @@
   - [21.13.1 Glulx Opcodes](#21131-glulx-opcodes)
   - [21.13.2 Glk Calls](#21132-glk-calls)
   - [21.13.3 Z-machine Opcodes](#21133-z-machine-opcodes)
+- [21.14 `bgl.header`](#2114-bglheader)
 <!-- /toc -->
 
 ## 21.1 Overview
@@ -97,7 +98,7 @@ void Main() {
 | `bgl.world.*` | Object-tree queries (§21.9). | both |
 | `bgl.ui.*` | `mainWin`, `statusBar` (§21.10); `screen` with `<glulxWindow>` (§22.7.2); `hideCursor`, `showCursor`, `waitForKey` with `<ui>` (§22.6). | both |
 | `bgl.printRules.*` | Text-style print rules for interpolated strings (§21.11). | both |
-| `bgl.story.*` | Story-file identity values. Provided by the `i6StandardLibrary` binding (§23.3.9). | both |
+| `bgl.header.*` | The release number and serial code from the story file header (§21.14). | both |
 
 Only the branch for the active target is loaded: a Glulx build loads `bgl.glulx` and the Glulx `bgl.asm`; a Z-machine build loads `bgl.zcode` and the Z-machine `bgl.asm`. Referencing a member of the other target's branch is a compile-time error.
 
@@ -134,7 +135,7 @@ The name `(name)` prints is the object's `instanceName` (§11.5.4); an object wi
 
 `printLine(v)` prints `v` exactly as `print(v)` would, through whichever overload is current for its type, then a newline; `printLine()` prints just the newline. It takes an interpolated string too. It is not I6's `print_ret`: it does not return from the enclosing function.
 
-`log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined (§14.2.1). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
+`log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined: in a debug build (§20.3), or when the program turns it on with `#redef DEBUG` (§14.2.2). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
 
 The article helpers print a world-tree object with an article: `a(obj)` → "a lamp", `cA(obj)` → "A lamp", `the(obj)` → "the lamp", `cThe(obj)` → "The lamp". They are members of `bgl.printRules` (§21.11), so they are written qualified, or `#using bgl.printRules;` (§10.4) brings the short spelling into a file — which is how they read best inside interpolated text. `printName(obj)` → "lamp" prints the bare short name with no article and is a file-scope function.
 
@@ -150,7 +151,7 @@ void Main() {
     print($"You see {bgl.printRules.a(lamp)}.");   // → You see a brass lamp.
     bgl.printRules.cThe(lamp); print(" glows.");   // → The brass lamp glows.
     printLine($"Weight: {2}");                     // → Weight: 2, then a newline
-    log("reached Main");                           // output only with #define DEBUG
+    log("reached Main");                           // output only in a debug build
 }
 ```
 
@@ -278,7 +279,7 @@ void Main() {
 | Type | Purpose |
 |---|---|
 | `patternElement` | The base type of one element of a grammar pattern. A pattern element is a dictionary word, a grammar token, an attribute, or a parser-hook function. |
-| `grammarToken` | An `extern enum` of the parser's token names (`noun`, `held`, `creature`, …). It is declared by the library binding, not by the core (§23.3.6). |
+| `grammarToken` | An `extern enum` of the parser's token names (`NOUN`, `HELD`, `CREATURE`, …). It is declared by the library binding, not by the core (§23.3.6). |
 | `grammarRule` | One verb-targeted pattern with a priority: `{verb, {pattern}[, priority]}`. |
 | `grammarRuleList` | A list of grammar rules; the type of a verb's `grammar` member and of a grammar object. |
 
@@ -290,7 +291,7 @@ These types are the receivers of the grammar operators (`=`, `+=`, `-=`, `replac
 #include <i6StandardLibrary>
 
 grammar extraLines {
-    grammarRule hang = { PutOn, {.hang, held, .on, noun} };   // a verb and a pattern of pattern elements
+    grammarRule hang = { PutOn, {.hang, HELD, .on, NOUN} };   // a verb and a pattern of pattern elements
 }
 ```
 
@@ -494,7 +495,7 @@ uint w = (uint)-1;    // a negative literal requires the cast
 
 **Description**
 
-`bgl.util.math` holds the integer helpers that have no operator form.
+`bgl.util.math` holds the math helpers that have no operator form.
 
 | Function | Returns | Description |
 |---|---|---|
@@ -509,6 +510,10 @@ uint w = (uint)-1;    // a negative literal requires the cast
 | `bgl.util.math.unsignedDiv(a, b)` / `unsignedMod(a, b)` | `int` | Unsigned division / modulo; `b == 0` yields `0`. |
 
 The unsigned helpers are what the `uint` operators use; calling them directly is only needed for unsigned arithmetic on plain `int` values.
+
+> **[Glulx]** On Glulx `bgl.util.math` also takes `float` arguments: `abs(x)` and `pow(a, b)` have float
+> forms, and `sqrt(x)`, `exp(x)`, `log(x)`, `sin(x)`, `cos(x)`, `tan(x)`, `asin(x)`, `acos(x)`,
+> `atan(x)`, `atan2(y, x)`, `ceil(x)` and `floor(x)` take and return `float`. Angles are in radians.
 
 **Example**
 
@@ -995,3 +1000,26 @@ but `z3` (§17.7).
 | `checkUnicode` | `int checkUnicode(int ch)` | S | `@check_unicode` |
 
 **See also** §3.12; §10.2; §22.7.
+
+## 21.14 `bgl.header`
+
+**Description**
+
+`bgl.header` reads fields of the story file header: the release number and serial code the game was
+compiled with (§17.3). It needs no library.
+
+| Member | Returns | Description |
+|---|---|---|
+| `bgl.header.release` | `int` | The release number. |
+| `bgl.header.serialChar(i)` | `char` | Character `i` (`0..5`) of the six-character serial code. |
+| `bgl.header.printSerial()` | `void` | Prints the serial code. |
+
+**Example**
+
+```bgl
+print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}");
+```
+
+> **[Z-machine/Glulx difference]** The header layout differs per target; `bgl.header` reads the right
+> fields on each.
+

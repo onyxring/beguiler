@@ -1,10 +1,16 @@
+/* -----------------------------------------------------------------------------
+    _ui.bgl - User interface
+    Provides `bgl.ui`, the namespace for windows and screen output.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-/*-----------------------------------------------------------------------------
-    _ui.bgl - User Interface elements
- -----------------------------------------------------------------------------*/
-/// The `bgl.ui` namespace: windows and screen output. Reached as `bgl.ui.…`, never by this name.
+
+/// Windows and screen output.
 superposed _bglObject _bglUi{
 
 }
 
-extend bgl { alias ui = _bglUi; }
+extend bgl {
+    alias ui = _bglUi;   /// Windows and screen output.
+}

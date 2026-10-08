@@ -249,6 +249,9 @@ class bglParser {
         void checkTypedPropertyMemberTypes();
         // Post-parse validation of `hide` directives (unresolved → warning). See the .cpp.
         void validateHiddenMembers();
+        // A global routine and a member emitted as a property may not share a name (ignoring case):
+        // Inform 6 keeps both in one namespace.
+        void validateRoutinePropertyClashes();
         // Reject a length-changing array operation on a RAW member array (rawArray<T> or
         // array<dictionaryWord>), whose extent is fixed by the property that holds it.
         bool rejectRawMemberLengthOp(const std::string& owner, const std::string& prop,
@@ -530,7 +533,8 @@ class bglParser {
                                functionDef* func, statementBlock* body);
         vector<variableDeclaration*> positionalMembers(classDef* cls);
         bool processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
-                                abstractObject* ctx = nullptr, Qualifiers* q = nullptr, bool declIsRaw = false);
+                                abstractObject* ctx = nullptr, Qualifiers* q = nullptr, bool declIsRaw = false,
+                                const string& docComment = "");
         void processTypedMember(objectDef& obj, token typeTok, bool isReplace = false, bool isRef = false);
         void processMemberMethod(objectDef& obj, token returnType, token name, bool isReplace = false, string i6alias = "");
         // Consume an optional `as <i6name>` sitting after a method's parameter list (§3.11) and

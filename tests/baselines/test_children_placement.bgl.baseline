@@ -282,7 +282,8 @@ object stove kitchen
 ;
 [main n o _bglfi1;
     n = 0;
-    objectloop (o in kitchen) {
+    for (o = child(kitchen) : o : o = _bglfi1) {
+        _bglfi1 = sibling(o);
         n = n + 1;
     }
     print n;

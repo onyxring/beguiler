@@ -12,6 +12,7 @@ of islands and `extern`-related behavior are in §15.
 | `#bglStmt` | File-scope Beguile island, statements only | §14.5.2 |
 | `#declare` | Define an order-independent, immutable symbol | §14.2.3 |
 | `#define` | Define a compilation symbol (linear) | §14.2.1 |
+| `#defineI6` | `#define` that also emits the symbol to I6 as a `Constant` | §14.2.1 |
 | `#elif` | Alternative condition in an `#if` block | §14.2.5 |
 | `#else` | Fallback branch of an `#if` block | §14.2.5 |
 | `#emitfirst` | Raw I6 at the beginning of the generated program | §14.4.2 |

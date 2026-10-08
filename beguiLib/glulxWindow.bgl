@@ -157,11 +157,13 @@ alias class graphicsWindowVert   for graphicsWindow   { hide height.operator =; 
 // (which dissolves right back to the content type at emission), so nothing orientation-specific is
 // allocated or emitted here.
 window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags method, int size){
+    int id = bgl.asm.windowOpen(parentId, type, size, method, 0);
+    if(id == 0) return null;   // Glk refused the split (e.g. no graphics support)
     window kid;
     if(type == eGlulxWindowType.graphics)       kid = new graphicsWindow();
     else if(type == eGlulxWindowType.textGrid)  kid = new textGridWindow();
     else                                        kid = new textBufferWindow();
-    kid._bind(bgl.asm.windowOpen(parentId, type, size, method, 0), method);
+    kid._bind(id, method);
     return kid;
 }
 

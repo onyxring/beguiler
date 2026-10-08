@@ -1,48 +1,20 @@
-//-----------------------------------------------------------------------------
-// bglWorld.bgl — object-tree queries that replace I6's `objectloop`.
-//
-// Auto-included by the core (see __beguileCore.bgl), so `bgl.world` is available
-// in every Beguile game with no `#include`.
-//
-//   for(object o in bgl.world.getAll())            { ... }   // all objects
-//   for(object o in bgl.world.inParent(location))  { ... }   // children of a room
-//   for(object o in bgl.world.instances(Animal))   { ... }   // objects ofclass
-//   for(object o in bgl.world.instances(Animal,
-//                       (object o) => o.parent==cage)) { ... } // + inline predicate
-//
-// Each query walks the tree, fills a scratch buffer, and returns it as a tracked
-// `array<object>` — so every <array>/<linq> op works on the result. The optional
-// `func<bool, object>` predicate runs INSIDE the walk, so non-matching objects
-// never reach the buffer.
-//
-// Beguile-native: the routine shells, the rotating buffer pool, and the trailer
-// stamping are all Beguile. The only I6 left is the `objectloop` core of each
-// query — an irreducible primitive (Beguile has no all-objects iterator) — and
-// the trailer write (below the array surface). Queries and buffers are
-// `superposed`, and `bgl.world` is a compile-time-only alias (no runtime property),
-// so the whole thing gates on actual use: a game that never calls bgl.world emits
-// none of it.
-//
-// SHARED rotating scratch (4 buffers, #beguilerSettings.worldBufSize objects each,
-// default 128): a nested query inside a `for(o in bgl.world…)` loop gets a different
-// buffer than the live outer one. Tolerates up to (pool − 1) concurrent live
-// iterations. Don't store a result across turns; snapshot into your own
-// `array<object>` for deep nesting or large worlds (a walk that exceeds the buffer
-// stops silently).
-//-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
+    _bglWorld.bgl - World queries
+    Provides `bgl.world`, which lists the objects in the game world, optionally
+    filtered: `for(object o in bgl.world.instances(Animal)) { … }`.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
 #include <array>
 
-// Scratch pool — superposed. Capacity is #beguilerSettings.worldBufSize (default
-// 128); a declared size may be any compile-time integer, so the setting reaches the
-// declaration directly. The POOL SIZE (4) is still fixed: I6 cannot declare arrays in
-// a loop, so adding a buffer means a decl plus a selector arm.
+//-- Implementation ------------------------------------------------------------
+// The buffers query results are returned in, used in rotation so queries can nest.
 superposed array<object> _bglWorldBuf0[#beguilerSettings.worldBufSize];
 superposed array<object> _bglWorldBuf1[#beguilerSettings.worldBufSize];
 superposed array<object> _bglWorldBuf2[#beguilerSettings.worldBufSize];
 superposed array<object> _bglWorldBuf3[#beguilerSettings.worldBufSize];
-// Rotation index: a plain global. A superposed scalar Global can't be forward-referenced
-// by the routine that uses it (I6 wants it declared first); arrays forward-reference fine.
+// Not superposed: I6 must see this global before the routine that uses it.
 int _bglWorldBufIdx = -1;
 
 // Advance the rotation and hand back the next buffer in the pool.
@@ -57,9 +29,7 @@ superposed array<object> _bglWorldNextBuf(){
     return _bglWorldBuf0;
 }
 
-// Stamp the tracked-array trailer (magic + length) on a freshly-filled buffer.
-// Raw #i6 because the length/magic slots live below the user-visible array surface
-// (buf-->0 is the allocated size; length at -1, magic at -0).
+// Record a filled buffer's length, so it reads as an ordinary array.
 superposed void _bglWorldStamp(array<object> buf, int count){
     #i6 {
         buf-->(buf-->0)     = $9084;
@@ -67,8 +37,7 @@ superposed void _bglWorldStamp(array<object> buf, int count){
     }
 }
 
-// Walk ALL objects. `objectloop(o)` is an irreducible I6 primitive (Beguile has no
-// all-objects iterator — child/sibling only reach tree-attached objects).
+// Collect every object.
 superposed array<object> _bglWorldGetAll(var pred){
     array<object> buf = _bglWorldNextBuf();
     object o;
@@ -83,7 +52,7 @@ superposed array<object> _bglWorldGetAll(var pred){
     return buf;
 }
 
-// Walk objects of a class.
+// Collect the objects of a class.
 superposed array<object> _bglWorldInstances(var cls, var pred){
     array<object> buf = _bglWorldNextBuf();
     object o;
@@ -98,7 +67,7 @@ superposed array<object> _bglWorldInstances(var cls, var pred){
     return buf;
 }
 
-// Walk children of `parent`.
+// Collect the children of `parent`.
 superposed array<object> _bglWorldInParent(object parent, var pred){
     array<object> buf = _bglWorldNextBuf();
     object o;
@@ -113,17 +82,17 @@ superposed array<object> _bglWorldInParent(object parent, var pred){
     return buf;
 }
 
-// Public surface — bgl.world.getAll()/inParent()/instances(). Non-emitter because
-// `emitter array<T>` is only accepted on `extend extern class array`.
-/// `bgl.world` — queries over the object tree, replacing I6's `objectloop`.
+//-- Queries -------------------------------------------------------------------
+/// Queries that list the objects in the game world; each result is a shared buffer, so copy it to keep it.
 superposed _bglObject _bglWorld {
-    /// Every object in the story, optionally filtered: `bgl.world.getAll((object o) => o has light)`.
-    /// The result is a shared scratch buffer — copy it into your own array to keep it past the loop.
+    /// Return every object, optionally filtered: `bgl.world.getAll((object o) => o has light)`.
     array<object> getAll(func<bool, object> pred = 0)            { return _bglWorldGetAll(pred); }
-    /// The direct children of `p`, optionally filtered. Not grandchildren.
+    /// Return the objects directly inside `p`, optionally filtered.
     array<object> inParent(object p, func<bool, object> pred = 0){ return _bglWorldInParent(p, pred); }
-    /// Every object of class `cls`, including subclasses, optionally filtered.
+    /// Return every object of class `cls`, including subclasses, optionally filtered.
     array<object> instances(var cls, func<bool, object> pred = 0){ return _bglWorldInstances(cls, pred); }
 }
 
-extend bgl { alias world = _bglWorld; }
+extend bgl {
+    alias world = _bglWorld;   /// Queries that list the objects in the game world.
+}

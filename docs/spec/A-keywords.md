@@ -95,7 +95,7 @@ The following identifiers are not reserved, although they carry meaning: `gramma
 `priority` are members of the `verb` class, and `handler` and `perform` are its methods (§13.2);
 `typeof` is a function of the runtime core (§2.8.1); `create` and `destroy` are the lifecycle methods of a pooled class (§8.2.6)
 and `init` and `deinit` the lifecycle emitters of any class (§8.5); `first`, `last`, `after` and
-`before` are the positions of an array `inject` (§12.11); `reverse` and `withI6Synonyms` are the
+`before` are the positions of an array `inject` (§12.11); `REVERSE` and `withI6Synonyms` are the
 pseudo-tokens that may end a grammar line (§13.4.4). The keyword `for` is reused, outside a loop, in
 `alias class Foo for Bar` (§8.2.4).
 

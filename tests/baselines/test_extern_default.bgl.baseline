@@ -272,11 +272,11 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
+[Epilogue;
+    print (string)"The End.^";
+];
 [use s;
     clearscreen();
     s=chooseobjects(0,0);
     epilogue();
-];
-[Epilogue;
-    print (string)"The End.^";
 ];

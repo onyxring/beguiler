@@ -3582,6 +3582,25 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
     // already carries its i6name — the expression path emits its call text immediately, long
     // before the post-parse safety-net pass runs.
     mangleGlobalOverloadSet(name);
+    // Named arguments fill parameters by name, so they can only be type-checked once placed. Place
+    // them against each same-named overload in turn and bind the first one they then resolve to.
+    bool hasNamed = false;
+    for(auto& n : namedArgNames) if(!n.empty()){ hasNamed = true; break; }
+    if(hasNamed){
+        for(typeDef* g : languageService.globals){
+            auto* fd = dynamic_cast<functionDef*>(g);
+            if(fd == nullptr || fd->name != name) continue;
+            vector<expression*> placed = args;
+            vector<string> names = namedArgNames;
+            vector<vector<interpolatedSegment>> interps = interpSegmentsPerArg;
+            while(names.size() < placed.size()) names.push_back("");
+            while(interps.size() < placed.size()) interps.push_back({});
+            if(!reorderNamedArgsImpl(placed, names, interps, fd, [](string){ return false; })) continue;
+            if(resolveGlobalCall(name, placed, func, body).match != fd) continue;
+            args = placed; namedArgNames = names; interpSegmentsPerArg = interps;
+            break;
+        }
+    }
     GlobalCallMatch gcm = resolveGlobalCall(name, args, func, body);
     // validateGlobalCall returns the return type string; we discard it here (the caller derives
     // return type from the matched method). validateGlobalCall also throws on invalid calls.

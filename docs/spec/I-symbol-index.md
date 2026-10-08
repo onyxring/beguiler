@@ -30,15 +30,15 @@ and `clear()` come from `<array>`.
 | `bgl.glulx.color` | object | `<glulxWindow>` | §22.7.8 |
 | `bgl.glulx.eStyleType`, `eWinType`, `eImgAlign`, `eImgDimension`, `bWinBorder`, `bWinPlacement`, `bWinScale` | type (enum aliases) | core (Glulx) | §21.3, §22.7.10 |
 | `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow`, `bgl.glulx.graphicsWindow` | type (path forms of the window types) | `<glulxWindow>` | §21.3, §22.7.1 |
+| `bgl.header` | namespace | core | §21.14 |
+| `bgl.header.printSerial()` | method on `bgl.header` | core | §21.14 |
+| `bgl.header.release` | member on `bgl.header` | core | §21.14 |
+| `bgl.header.serialChar(i)` | method on `bgl.header` | core | §21.14 |
 | `bgl.printRules` | namespace | core | §21.11 |
 | `bgl.printRules.bold`, `italics`, `underline`, `reverse`, `fixed`, `roman` | print rule | core | §21.11 |
 | `bgl.printRules.img(image[, align[, width[, height]]])` | print rule | core (Glulx) | §21.11 |
 | `bgl.printRules.link(text, target)` | print rule | core (Glulx) | §21.11 |
 | `HandleGlkEvent(event, context, buffer)` | function (`extern default` entry point; author-overridable) | core (Glulx) | §21.11 |
-| `bgl.story` | namespace | binding (`i6StandardLibrary`) | §23.3.9 |
-| `bgl.story.printSerial()` | method on `bgl.story` | binding (`i6StandardLibrary`) | §23.3.9 |
-| `bgl.story.release` | member on `bgl.story` | binding (`i6StandardLibrary`) | §23.3.9 |
-| `bgl.story.serialChar(i)` | method on `bgl.story` | binding (`i6StandardLibrary`) | §23.3.9 |
 | `bgl.ui` | namespace | core | §21.10 |
 | `bgl.ui.hideCursor()`, `showCursor()` | function | `<ui>` | §22.6 |
 | `bgl.ui.mainWin` | object (root text-buffer window) | core | §21.10, §22.7.2 |
@@ -113,7 +113,7 @@ and `clear()` come from `<array>`.
 | `copy(other)` | method on `bglAllocated` | core | §21.8 |
 | `count()` | method on `array<T>` | `<linq>` | §22.5 |
 | `create([p1[, p2[, p3]]])` | method on a pooled class (author-declared; run by `new`) | core | §8.2.6 |
-| `DEBUG` | symbol (`#define`; enables `log()`) | core | §21.4 |
+| `DEBUG` | symbol (defined by `--debug`; enables `log()` and the libraries' debug-only parts) | compiler | §20.3, §21.4, App. F |
 | `deinit()`, `static deinit(T v)` | lifecycle emitter / value-form method on a class | core | §8.5, §12.10 |
 | `delete(pos, count)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `destroy()` | method on a pooled class (author-declared; run by `delete`) | core | §8.2.6 |
@@ -159,7 +159,6 @@ and `clear()` come from `<array>`.
 | `id` | member on `bgl.ui.mainWin`, `bgl.ui.statusBar`, `window` | core | §21.10, §22.7.1 |
 | `indexOf(item)`, `find(item)` | method on `array<T>` | `<array>` | §22.4 |
 | `indexOf(search)` | method on `string`, `stringObj` | `<string>` | §22.3 |
-| `informVersion` | print rule | binding (`i6StandardLibrary`) | §23.3.9 |
 | `INFORMV__TX`, `LIBRARYV__TX`, `LibRelease` | constant | binding (`i6StandardLibrary`) | §23.3.9 |
 | `init()` | lifecycle emitter on a class (fires at a local's declaration) | core | §8.5 |
 | `Initialise()` | function (entry point the library calls; author-defined) | binding | §23.3.1 |
@@ -189,7 +188,7 @@ and `clear()` come from `<array>`.
 | `NO_ATTRIBUTE` | constant | core | §21.5.1 |
 | `n_obj` … `d_obj` (compass direction objects) | object (extern) | binding (`i6StandardLibrary`) | §23.3.4, §23.4 |
 | `null` | value | core | §2.5 |
-| `noun`, `held`, `creature`, `topic`, `multi`, `multiheld`, `multiexcept`, `multiinside`, `special`, `anynumber`, `number`, `scope`, `reverse` | constant (`grammarToken` values) | binding | §13.4.2, §23.3.6 |
+| `NOUN`, `HELD`, `CREATURE`, `TOPIC`, `MULTI`, `MULTIHELD`, `MULTIEXCEPT`, `MULTIINSIDE`, `SPECIAL`, `ANYNUMBER`, `NUMBER`, `SCOPE`, `REVERSE` | constant (`grammarToken` values) | binding | §13.4.2, §23.3.6 |
 | `noun`, `second`, `action`, `verb_word` | variable (extern; `action` is a `verb`) | binding | §23.3.4, §13.3 |
 | `object` | type | core | §2.2, §11 |
 | `orderBy([compare])` | method on `array<T>` | `<linq>` | §22.5 |

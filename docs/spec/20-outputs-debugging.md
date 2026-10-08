@@ -43,10 +43,18 @@ hand-written `.inf` beside the source.
 
 ## 20.3 Debug Builds
 
-`--debug` (§16.3) changes two things: Inform 6 is run with `-k`, so it writes its own debug
-file, and the compiler writes its **debug bundle**, `<source file name>.bgldbg`, beside the transpiled
-file. Everything else about the build is unchanged; in particular `omitUnusedRoutines` still applies
-unless the program sets it `false` (§18.11).
+`--debug` (§16.3) changes three things:
+
+- Inform 6 is run with `-k`, so it writes its own debug file, and the compiler writes its **debug
+  bundle**, `<source file name>.bgldbg`, beside the transpiled file.
+- Inform 6 is run with `-D`, so the library's debugging features are present: its debugging verbs
+  (`tree`, `purloin`, `actions`, …) and action tracing.
+- The symbol `DEBUG` is defined (Appendix F), which turns on `log()` (§21.4). The library bindings
+  declare their debugging verbs only under it, so a program that names one outside `#if DEBUG` fails
+  to compile in an ordinary build.
+
+Everything else about the build is unchanged; in particular `omitUnusedRoutines` still applies unless
+the program sets it `false` (§18.11).
 
 The bundle is plain text in three sections, each introduced by a bracketed header:
 
@@ -74,5 +82,5 @@ story.
 A build reports, in order: the compiler banner; blorb scan and IFID notes when packaging is on; any
 compile-time diagnostics (§19.1); on a successful transpile, the exact Inform 6 command line that is
 about to run; Inform 6's own output, rewritten; and blorb assembly notes. Inform 6's command line
-shows the switches that were passed through unchanged (§16.3.1), the `-k` added
+shows the switches that were passed through unchanged (§16.3.1), the `-k` and `-D` added
 by `--debug`, and the `-e` added by `economy`.

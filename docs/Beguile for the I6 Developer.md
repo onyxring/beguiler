@@ -146,7 +146,7 @@ object cloak {
     string description = "A handsome cloak, of velvet trimmed with satin, and 
         slightly spattered with raindrops. Its blackness is so deep that it 
         almost seems to suck light from the room.";
-    array<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
+    rawArray<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
     bool before() {
         switch(action){
             case Drop, PutOn:
@@ -174,7 +174,7 @@ object cloak {
 object hook { 
     string short_name = "small brass hook";
     object parent = cloakroom;
-    array<dictionaryWord> name = {.small, .brass, .hook, .peg};
+    rawArray<dictionaryWord> name = {.small, .brass, .hook, .peg};
     bool description() {
         rtrue($"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}");       
     }
@@ -183,7 +183,7 @@ object hook {
 object message {
     string short_name = "scrawled message";
     object parent = bar;
-    array<dictionaryWord> name = {.message, .sawdust, .floor};
+    rawArray<dictionaryWord> name = {.message, .sawdust, .floor};
     bool description() {
         if (number < 2) {
             score++; 
@@ -679,7 +679,7 @@ object cloak {
     string description = "A handsome cloak, of velvet trimmed with satin, and 
         slightly spattered with raindrops. Its blackness is so deep that it 
         almost seems to suck light from the room.";
-    array<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
+    rawArray<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
     bool before() {
         switch(action){
             case Drop, PutOn:
@@ -720,25 +720,27 @@ This member variable is the primary means of positioning objects in the world mo
 
 #### Dictionary Words
 
-From the Beguile perspective, the I6 Standard Library and Puny Inform define the `name` property as an `array` of dictionary words:
+From the Beguile perspective, the I6 Standard Library and Puny Inform define the `name` property as a `rawArray` of dictionary words:
 
 ```
-array<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
+rawArray<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
 ```
 
 So let's break this down, starting with..
 
 ```
-array<dictionaryWord> name 
+rawArray<dictionaryWord> name 
 ```
 
-Because Beguile is a typed language, so are its `array`s.  That is, we define an `array` with the type it contains, using the `<`angle-bracket`>` notation.  In the above line, we define `name` as an `array` of type `dictionaryWord`.
+Because Beguile is a typed language, so are its arrays.  That is, we define an array with the type it contains, using the `<`angle-bracket`>` notation.  In the above line, we define `name` as a `rawArray` of type `dictionaryWord`.
+
+Beguile has two kinds of array.  An `array<T>` tracks its own length in an extra slot.  A `rawArray<T>` is a plain run of words, exactly what I6 stores in a property, with no length slot.  `name` must be a `rawArray` because it is an *additive* property: like I6's `name`, a class's words and an object's words are joined into a single run, and a length slot would land in the middle of that data.  Declaring `name` as `array<dictionaryWord>` is a compile-time error.
 
 ```
  = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
 ```
 
-In the above, we see the syntax for assigning values to an `array` includes enclosing a comma-separated list of the elements of the array in braces.  This is precisely the same syntax we used previously to assign values to the `attributeList` which is just an `array` of `attributes`, wrapped in an object which supplies specialized access members.
+In the above, we see the syntax for assigning values to an array includes enclosing a comma-separated list of the elements of the array in braces.  This is precisely the same syntax we used previously to assign values to the `attributeList` which is just an `array` of `attributes`, wrapped in an object which supplies specialized access members.
 
 ```
 .handsome
@@ -774,7 +776,7 @@ The hook object has one significant element which needs to be called out...
 object hook { 
     string short_name = "small brass hook";
     object parent = cloakroom;
-    array<dictionaryWord> name = {.small, .brass, .hook, .peg};
+    rawArray<dictionaryWord> name = {.small, .brass, .hook, .peg};
     bool description() {
         rtrue($"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}");       
     }

@@ -12,6 +12,7 @@ case-insensitive, like all Beguile identifiers.
 | `beguilerPatch` | `3` | Patch version component. |
 | `TARGET_GLULX` | (defined, no value) | Defined when the `target` setting is `Glulx`. |
 | `TARGET_ZCODE` | (defined, no value) | Defined when the `target` setting is a Z-machine version. |
+| `DEBUG` | (defined, no value) | Defined in a debug build (`--debug`, §20.3). A program can also turn it on itself with `#redef DEBUG` (§14.2.2), for example to keep `log()` output in an ordinary build (§21.4). |
 
 The version symbols are read-only and derived from the compiler's own version. The target symbols are
 set from the `target` setting (§17.3) before any source is read, so they are available to every `#if`
@@ -28,7 +29,8 @@ like any other bare symbol (§14.2.5). A finer question, such as Z5 versus Z8, i
 
 **Resolution rule.** Every symbol, pre-defined or `#define`d, that carries a value is resolved as an
 inline compile-time literal wherever it appears in a Beguile expression: the name is replaced by its
-value. A symbol never becomes an I6 `Constant` unless the program assigns it to a `const` variable.
+value. A symbol never becomes an I6 `Constant` unless it is defined with `#defineI6` (§14.2.1) or the
+program assigns it to a `const` variable.
 
 ```bgl
 if(beguiler >= 1010) { … }          // resolved at compile time to if(1010 >= 1010)

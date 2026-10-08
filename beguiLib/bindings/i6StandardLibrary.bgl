@@ -1,617 +1,529 @@
-//-----------------------------------------------------------------------------
-// parser.bgl - extern declarations for the Inform 6 standard library parser.h
-//      Include this file to get typed access to parser globals and objects.
-//      Corresponds to: #includeI6 "parser"
-//-----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
+    i6StandardLibrary.bgl - Bindings for the Inform 6 standard library
+    This file declares the globals and routines defined in the standard library 
+    so Beguile knows how to use them.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+    The Inform 6 standard library: Artistic License 2.0 or the Inform license.
+   -----------------------------------------------------------------------------*/
 #once
-
-#include <bindings/_commonBindings>   // stringOrRoutine + print override (shared with the PunyInform binding)
-
-// Advertise the standard library so core/BLR files can detect it regardless of include order
-// (see §3.3.3). e.g. core/_statusBar keys off this to defer to the library's status-window handling.
 #declare I6_STANDARD_LIBRARY
 
-//-- Standard I6 library attributes ------------------------------------------
-extern attribute light;         // object is a light source
-extern attribute worn;          // clothing item is currently worn
-extern attribute clothing;      // can be worn
-extern attribute scenery;       // not listed in room descriptions / inventory
-extern attribute static;        // cannot be taken or moved
-extern attribute enterable;     // player can enter this object
-extern attribute container;     // can hold objects inside it
-extern attribute supporter;     // can hold objects on top of it
-extern attribute open;          // container/door is currently open
-extern attribute openable;      // can be opened and closed
-extern attribute locked;        // container/door is locked
-extern attribute lockable;      // can be locked and unlocked
-extern attribute transparent;   // see through even when closed
-extern attribute animate;       // is an NPC or animate object
-extern attribute talkable;      // can be addressed directly
-extern attribute proper;        // name needs no "the" prefix
-extern additive property before;
-extern additive property after;
-extern additive property life;
-extern additive property orders;
-extern additive property describe;
-extern additive property time_out;
-extern additive property each_turn;
+//-- Attributes ------------------------------------------
+extern attribute light;        /// object is a light source
+extern attribute worn;         /// clothing item is currently worn
+extern attribute clothing;     /// can be worn
+extern attribute scenery;      /// not listed in room descriptions / inventory
+extern attribute static;       /// cannot be taken or moved
+extern attribute enterable;    /// player can enter this object
+extern attribute container;    /// can hold objects inside it
+extern attribute supporter;    /// can hold objects on top of it
+extern attribute open;         /// container/door is currently open
+extern attribute openable;     /// can be opened and closed
+extern attribute locked;       /// container/door is locked
+extern attribute lockable;     /// can be locked and unlocked
+extern attribute transparent;  /// see through even when closed
+extern attribute animate;      /// is an NPC or animate object
+extern attribute talkable;     /// can be addressed directly
+extern attribute proper;       /// name needs no "the" prefix
+extern attribute pluralname;   /// object is referred to in the plural ("some keys")
+extern attribute female;       /// animate: use she/her pronouns
+extern attribute male;         /// animate: use he/him pronouns
+extern attribute neuter;       /// animate: use it/its pronouns
+extern attribute concealed;    /// hidden from normal room listing
+extern attribute visited;      /// room has been entered before
+extern attribute general;      /// general-purpose flag
+extern attribute moved;        /// set once the player has taken/moved the object
+extern attribute edible;       /// can be eaten
+extern attribute door;         /// is a door between locations
+extern attribute absent;       /// object is currently out of scope
 
-extern property plural;         // the plural print-name of an object (I6 library property, linklpa.h — NOT an attribute; `pluralname` is the attribute)
-extern attribute pluralname;    // object is referred to in the plural ("some keys")
-extern attribute female;        // animate: use she/her pronouns
-extern attribute male;          // animate: use he/him pronouns
-extern attribute neuter;        // animate: use it/its pronouns
-extern attribute concealed;     // hidden from normal room listing
-extern attribute visited;       // room has been entered before
-extern attribute general;       // general-purpose flag
-extern attribute moved;         // set once the player has taken/moved the object (library-managed)
-extern attribute edible;        // can be eaten
-extern attribute door;          // is a door between locations
-extern attribute absent;        // object is currently out of scope
+//-- Properties ------------------------------------------
+extern property          plural;     /// the name for several identical objects ("three gold coins"); string or routine
+extern additive property before;     /// runs before an action on this object; return true to stop the action
+extern additive property after;      /// runs after an action on this object; return true to replace the library's report
+extern additive property life;       /// handles actions aimed at an animate object (Attack, Kiss, Give, Show, Ask, Tell, Answer…); return true to stop them
+extern additive property orders;     /// handles commands given to this character ("bob, go north"); on the player, sees every command; return true to stop it
+extern additive property describe;   /// prints the object's paragraph in a room description; return true to replace the default
+extern additive property time_out;   /// runs when the object's timer (StartTimer, time_left) reaches zero
+extern additive property each_turn;  /// runs at the end of every turn the object is in scope; string or routine
 
-// NOTE: the Inform library's object properties (description, capacity, door_to, when_open,
-// before/after, …; see inform6/stdlib/linklpa.h) are intentionally NOT declared here as members
-// of the base `object`. Doing so would let *any* object read *any* of them regardless of
-// whether it actually defines them — the opposite of the property-membership discipline.
-// Declare each property on the specific class/object that provides it. `short_name` is the
-// one exception: every object has a printing name, so _commonBindings declares it on `object`.
+//-- Global constants ---------------------------------------------------------------
+extern const string INFORMV__TX;       /// The banner text "Inform v".
+extern const string LIBRARYV__TX;      /// The banner text " Library v".
+extern const string LibRelease;        /// The library's release, such as "6.12.8".
+extern const string story;             /// The story title, from the `title` setting.
+extern const string headline;          /// The story headline, from the `headline` setting.
+extern const int    START_MOVE;        /// The turn count the game starts from.
+extern const int    MAX_TIMERS;        /// How many timers and daemons can run at once.
+extern const int    INPUT_BUFFER_LEN;  /// The size of the player's input buffer, in bytes.
+extern const int    PRESENT_TENSE;     /// The `narrative_tense` value for present-tense responses.
+extern const int    PAST_TENSE;        /// The `narrative_tense` value for past-tense responses.
 
-//-- Game state ---------------------------------------------------------------
-extern object location;             // current room (must be first global)
-extern object real_location;        // actual location when in darkness
-extern object prev_location;        // previous real_location
-extern object player;               // object the human controls
-extern object actor;                // who was asked to do something
-extern object actors_location;      // actor's current location
-extern object visibility_ceiling;   // highest visible object in tree
-extern int    deadflag;             // 0=alive, 1=dead, 2+=custom death
-extern int    lightflag;            // is there light to see by?
-extern int    score;                // current score
-extern int    last_score;           // score from last turn
-extern int    turns;                // number of game turns elapsed
-extern int    the_time;             // time in minutes since midnight
-extern int    time_rate;            // how often time updates
-extern int    time_step;            // time update increment
 
-//-- Parser results -----------------------------------------------------------
-extern object       noun;           // first noun 
-extern object       second;         // second noun  
-extern verb         action;         // current action being performed (type verb for action constant comparisons)
-extern verb         action_to_be;   // the action about to be performed (set before the before/react_before stage; type verb for constant comparisons)
-extern int    inp1;                 // first input (0, 1, or object)
-extern int    inp2;                 // second input (0, 1, or object)
-extern bool   meta;                 // true if verb is a meta-command (I6 int flag; bool so `meta = true` type-checks)
-extern int    multiflag;            // multiple-object flag
-extern int    keep_silent;          // suppress action output
-extern int    reason_code;          // reason for "life" rule
-extern int    receive_action;       // ##PutOn or ##Insert
-extern int    lm_n;                 // LibraryMessages: message number
-extern int    lm_o;                 // LibraryMessages: message object
-extern int    lm_s;                 // LibraryMessages: message second parameter
-extern int    parsed_number;        // user-supplied parsing result
-extern int    consult_from;         // start word of consult topic
-extern int    consult_words;        // number of words in topic
-extern int    special_word;         // dictionary address for "special" token
-extern int    special_number;       // number typed for "special" token
-extern int    verb_word;            // the verb word (e.g. 'take')
-extern int    verb_wordnum;         // verb position in input
-extern int    wn;                   // word number currently being parsed
-extern int    num_words;            // number of words typed
+//-- Global variables  ---------------------------------------------------------------
+extern object       location;              /// current room
+extern object       real_location;         /// actual location when in darkness
+extern object       prev_location;         /// previous real_location
+extern object       player;                /// object the human controls
+extern object       actor;                 /// who was asked to do something
+extern object       actors_location;       /// actor's current location
+extern object       visibility_ceiling;    /// highest visible object in tree
+extern int          deadflag;              /// 0=alive, 1=dead, 2+=custom death
+extern int          lightflag;             /// is there light to see by?
+extern int          score;                 /// current score
+extern int          last_score;            /// score from last turn
+extern int          turns;                 /// number of game turns elapsed
+extern int          the_time;              /// time in minutes since midnight
+extern int          time_rate;             /// how often time updates
+extern int          time_step;             /// time update increment
+extern object       noun;                  /// first noun
+extern object       second;                /// second noun
+extern verb         action;                /// current action being performed (type verb for action constant comparisons)
+extern verb         action_to_be;          /// the action about to be performed (set before the before/react_before stage; type verb for constant comparisons)
+extern int          inp1;                  /// first input (0, 1, or object)
+extern int          inp2;                  /// second input (0, 1, or object)
+extern bool         meta;                  /// true if verb is a meta-command (I6 int flag; bool so `meta = true` type-checks)
+extern int          multiflag;             /// multiple-object flag
+extern int          keep_silent;           /// suppress action output
+extern int          reason_code;           /// reason for "life" rule
+extern int          receive_action;        /// ##PutOn or ##Insert
+extern int          lm_n;                  /// LibraryMessages: message number
+extern int          lm_o;                  /// LibraryMessages: message object
+extern int          lm_s;                  /// LibraryMessages: message second parameter
+extern int          parsed_number;         /// user-supplied parsing result
+extern int          consult_from;          /// start word of consult topic
+extern int          consult_words;         /// number of words in topic
+extern int          special_word;          /// dictionary address for "special" token
+extern int          special_number;        /// number typed for "special" token
+extern int          verb_word;             /// the verb word (e.g. 'take')
+extern int          verb_wordnum;          /// verb position in input
+extern int          wn;                    /// word number currently being parsed
+extern int          num_words;             /// number of words typed
+extern object       itobj;                 /// object currently referred to as "it"
+extern object       himobj;                /// object currently referred to as "him"
+extern object       herobj;                /// object currently referred to as "her"
+extern int          notify_mode;           /// score notification on/off
+extern int          lookmode;              /// verbosity: 1=brief, 2=verbose, 3=superbrief
+extern int          transcript_mode;       /// game scripting on/off
+extern int          pretty_flag;           /// use character graphics for room descriptions
+extern int          before_first_turn;     /// true before first LOOK
+extern object       thedark;               /// the darkness object (in-scope when no light)
+extern object       selfobj;               /// the player self object
+extern object       n_obj;                 /// north
+extern object       s_obj;                 /// south
+extern object       e_obj;                 /// east
+extern object       w_obj;                 /// west
+extern object       ne_obj;                /// northeast
+extern object       nw_obj;                /// northwest
+extern object       se_obj;                /// southeast
+extern object       sw_obj;                /// southwest
+extern object       u_obj;                 /// up
+extern object       d_obj;                 /// down
+extern int          gg_statuswin_cursize;  /// current status-window height, in lines
+extern int          gg_statuswin_size;     /// the height DrawStatusLine restores on every redraw
+extern eScopeReason scope_reason;          /// why the parser is searching scope now
+extern eListStyle   inventory_style;       /// the style the current inventory listing uses
 
-//-- Pronoun tracking ---------------------------------------------------------
-extern object itobj;                // object currently referred to as "it"
-extern object himobj;               // object currently referred to as "him"
-extern object herobj;               // object currently referred to as "her"
+#if TARGET_GLULX
+    extern int gg_mainwin;    /// main window handle
+    extern int gg_statuswin;  /// status window handle
+    extern int gg_quotewin;   /// quote window handle
+#endif
+#if DEBUG
+    extern eDebugFlags debug_flag;  /// which tracing is on
+#endif
 
-//-- Notifications and modes --------------------------------------------------
-extern int    notify_mode;          // score notification on/off
-extern int    lookmode;             // verbosity: 1=brief, 2=verbose, 3=superbrief
-extern int    transcript_mode;      // game scripting on/off
-extern int    pretty_flag;          // use character graphics for room descriptions
-extern int    before_first_turn;    // true before first LOOK
-
-//-- Glulx windows ------------------------------------------------------------
-extern int    gg_mainwin;           // main window handle
-extern int    gg_statuswin;         // status window handle
-extern int    gg_statuswin_cursize; // current status-window height, in lines (tracked by StatusLineHeight)
-extern int    gg_statuswin_size;    // the height DrawStatusLine restores on every redraw
-extern int    gg_quotewin;          // quote window handle
-
-//-- Objects ------------------------------------------------------------------
-extern object thedark;              // the darkness object (in-scope when no light)
-extern object selfobj;              // the player self object
-
-//-- Compass direction objects ------------------------------------------------
-extern object n_obj;                // north
-extern object s_obj;                // south
-extern object e_obj;                // east
-extern object w_obj;                // west
-extern object ne_obj;               // northeast
-extern object nw_obj;               // northwest
-extern object se_obj;               // southeast
-extern object sw_obj;               // southwest
-extern object u_obj;                // up
-extern object d_obj;                // down
-
-extern emitter class informLibraryType {
-    emitter void play() {
-        $self.play()
-    }
-    emitter void end_turn_sequence() {
-        $self.end_turn_sequence()
-    }
-    emitter void begin_action(int a, var n, var s, int source) {
-        $self.begin_action(a, n, s, source)
-    }
-    emitter void actor_act(object p, int a, var n, var s) {
-        $self.actor_act(p, a, n, s)
-    }
+//-- Global objects ------------------------------------------------------
+extern object informParser;  /// parser object
+extern object informLibrary {      /// the main loop of the standard library
+    void      play();                                                                                 /// runs the game
+    void      end_turn_sequence();                                                                    /// lets a turn pass
+    void      begin_action(verb act, var firstNoun = null, var secondNoun = null, int fromCode = 1);  /// performs an action now
+    eActorAct actor_act(object person, verb act, var firstNoun = null, var secondNoun = null);        /// has person attempt an action
 }
-extern informLibraryType InformLibrary;
-
-extern object InformParser;         // parser object
-
-extern emitter class libraryExtensionsType {
-    emitter void RunAll(var prop, var a1, var a2, var a3) {
-        $self.RunAll(prop, a1, a2, a3)
-    }
-    emitter void RunUntil(var prop, var exitval, var a1, var a2, var a3) {
-        $self.RunUntil(prop, exitval, a1, a2, a3)
-    }
-    emitter void RunWhile(var prop, var exitval, var a1, var a2, var a3) {
-        $self.RunWhile(prop, exitval, a1, a2, a3)
-    }
-    // Note: ext_* hook properties not yet supported as class members (no property declarations in extern classes)
+extern object LibraryExtensions {  /// parent of library extension objects; runs their ext_* hooks
+    int RunAll(property prop, var a1 = 0, var a2 = 0, var a3 = 0);                 /// the highest value any hook returned
+    int RunUntil(property prop, int exitval, var a1 = 0, var a2 = 0, var a3 = 0);  /// exitval if a hook returned it, else ~~exitval
+    int RunWhile(property prop, int exitval, var a1 = 0, var a2 = 0, var a3 = 0);  /// the first value other than exitval, else exitval
 }
-extern libraryExtensionsType LibraryExtensions;
 
-//-- Parser error constants ---------------------------------------------------
-extern const int STUCK_PE;          // parser couldn't understand input
-extern const int UPTO_PE;           // only understood part of input
-extern const int NUMBER_PE;         // number out of range
-extern const int CANTSEE_PE;        // object not visible
-extern const int TOOLIT_PE;         // too many objects matched
-extern const int NOTHELD_PE;        // object not held
-extern const int MULTI_PE;          // multiple objects not allowed here
-extern const int MMULTI_PE;         // multiple matches but only one allowed
-extern const int VAGUE_PE;          // "it" etc. not clear
-extern const int EXCEPT_PE;         // exception object not present
-extern const int ANIMA_PE;          // not an animate object
-extern const int VERB_PE;           // verb not recognised
-extern const int SCENERY_PE;        // object is scenery
-extern const int ITGONE_PE;         // pronoun target no longer present
-extern const int JUNKAFTER_PE;      // junk after valid command
-extern const int TOOFEW_PE;         // too few objects matched
-extern const int NOTHING_PE;        // nothing matched
-extern const int ASKSCOPE_PE;       // scope routine asked for help
+//-- Global routines ------------------------------------------------
+extern int  RunRoutines(object obj, property prop);                         /// run obj.prop() and return its value
+extern int  PrintOrRun(object obj, property prop);                          /// if obj.prop is a routine, run it; if a string, print it
+extern int  PrintOrRunVar(stringOrRoutine v);                               /// if v is a routine, run it; if a string, print it
+extern void SetPronoun(dictionaryWord dword, object value);                 /// bind a pronoun word ('it'/'him'/…) to an object
+extern void PronounNotice(object obj);                                      /// update the pronoun table so "it"/"him" refers to obj
+extern void AddToScope(object obj);                                         /// inside an add_to_scope routine: bring obj into parser scope
+extern void MoveFloatingObjects();                                          /// relocate `found_in` backdrops/floating objects for the current location
+extern void StartTimer(object obj, int turns);                              /// start obj's timer; its time_out runs after `turns` turns
+extern void StopTimer(object obj);                                          /// cancel a running timer on obj
+extern void StartDaemon(object obj);                                        /// begin running obj's `daemon` property every turn
+extern void StopDaemon(object obj);                                         /// stop running obj's `daemon`
+extern void PlayerTo(object obj, int flag = 0);                             /// move the player to obj; flag 0=look, 1=no look, 2=no newline
+extern bool TestScope(object obj, object actor = 0);                        /// true if obj is in scope (for the given actor, default the player)
+extern void Banner();                                                       /// print the standard game banner (story title/headline/version)
+extern void ClearScreen();                                                  /// clear the screen
+extern void NotifyTheScore();                                               /// print "[Your score has gone up…]"
+extern void ScoreSub();                                                     /// the SCORE action handler
+extern void DisplayStatus();                                                /// refresh the status line
+extern void StatusLineHeight(int height);                                   /// set the status window height to `height` lines
+extern void DrawStatusLine();                                               /// redraws the status line
+extern void AfterGameOver();                                                /// post-game-over menu loop: AMUSING/UNDO/etc.
+extern void CSubjectVerb(object obj, bool reportage, bool nocaps, string v1, string v2 = null, string v3 = null, string past = null);  /// Prints obj with a verb that agrees with it ("You take", "Bob takes"); unused verb forms are 0.
+extern void SetColour(eColor fg, eColor bg, eWindow window = eWindow.all);  /// sets text colors; does nothing unless the COLOUR option is set (#defineI6 COLOUR)
+extern bool WriteListFrom(object o, eListStyle style, int depth = 0);       /// lists o and its siblings; false if there was nothing to list
 
-//-- Scope search reasons -----------------------------------------------------
-extern const int PARSING_REASON;    // normal parsing
-extern const int TALKING_REASON;    // NPC conversation
-extern const int EACH_TURN_REASON;  // each-turn daemon
-extern const int REACT_BEFORE_REASON; // react_before property
-extern const int REACT_AFTER_REASON;  // react_after property
-extern const int LOOPOVERSCOPE_REASON; // LoopOverScope() call
-extern const int TESTSCOPE_REASON;  // TestScope() call
+//-- Entry points --------------------------------------------
+extern default void           AfterLife();                                     /// player just died, before the death message
+extern default void           AfterPrompt();                                   /// after the ">" prompt is printed
+extern default void           Amusing();                                       /// the "AMUSING" option after winning
+extern default void           BeforeParsing();                                 /// before the parser reads the command
+extern default int            ChooseObjects(object obj, int code);             /// disambiguation scoring
+extern default void           DarkToDark();                                    /// moved from one dark room to another
+extern default void           DeathMessage();                                  /// custom "You have died" text (deadflag ≥ 3)
+extern default void           Epilogue();                                      /// end-of-game hook (after the final banner)
+extern default bool           GamePostRoutine();                               /// after every action (true = already handled)
+extern default bool           GamePreRoutine();                                /// before every action (true = already handled)
+extern default bool           InScope(object actor);                           /// add objects to scope (true = handled)
+extern default void           LookRoutine();                                   /// extra text after a room description
+extern default void           NewRoom();                                       /// player entered a new room
+extern default bool           ObjectDoesNotFit(object obj, object container);  /// custom "won't fit" message (true = handled)
+extern default int            ParseNumber(rawArray<char> text, int length);    /// parse a game-specific number token
+extern default bool           ParserError(eParserError err);                   /// custom parser-error message (true = handled)
+extern default void           PrintTaskName(int task);                         /// name a FULL-SCORE task
+extern default bool           PrintVerb(dictionaryWord word);                  /// custom verb printing (true = handled)
+extern default void           TimePasses();                                    /// each turn, after the action
+extern default dictionaryWord UnknownVerb(dictionaryWord word);                /// remap an unknown verb word
+extern default int            AfterSave();                                     /// after a SAVE
+extern default int            AfterRestore();                                  /// after a RESTORE
+#if TARGET_GLULX
+    extern default int IdentifyGlkObject(int phase, int type, int ref, int rock);  /// Glk object tracking
+    extern default int InitGlkWindow(int rock);                                    /// window setup
+#endif
 
-//-- Color constants ----------------------------------------------------------
-extern const int CLR_CURRENT;       // keep current color
-extern const int CLR_DEFAULT;       // default color
-extern const int CLR_BLACK;
-extern const int CLR_RED;
-extern const int CLR_GREEN;
-extern const int CLR_YELLOW;
-extern const int CLR_BLUE;
-extern const int CLR_MAGENTA;
-extern const int CLR_CYAN;
-extern const int CLR_WHITE;
-extern const int CLR_PURPLE;        // alias for CLR_MAGENTA
-extern const int CLR_AZURE;         // alias for CLR_CYAN
+//-- Helpful Enumerations ----------------------------------------------
+enum eActorAct {             /// what informLibrary.actor_act returns
+    ok                 = 0,  /// done; nothing more to do
+    abortNotUnderstood = 1,  /// not understood; perform the pending Answer action
+    abortOrder         = 2   /// refused; end the turn
+}
+enum eParserError {
+    stuck      = 1,   /// "I didn't understand that sentence."
+    upTo       = 2,   /// "I only understood you as far as…"
+    number     = 3,   /// "I didn't understand that number."
+    cantSee    = 4,   /// "You can't see any such thing."
+    tooLittle  = 5,   /// "You seem to have said too little!"
+    notHeld    = 6,   /// "You aren't holding that!"
+    multi      = 7,   /// "You can't use multiple objects with that verb."
+    multiTwice = 8,   /// "You can only use multiple objects once on a line."
+    vague      = 9,   /// "I'm not sure what 'it' refers to."
+    except     = 10,  /// "You excepted something not included anyway!"
+    notAnimate = 11,  /// "You can only do that to something animate."
+    verb       = 12,  /// "That's not a verb I recognize."
+    scenery    = 13,  /// "That's not something you need to refer to."
+    itGone     = 14,  /// "You can't see 'it' at the moment."
+    junkAfter  = 15,  /// "I didn't understand the way that finished."
+    tooFew     = 16,  /// "Only … of those are available."
+    nothing    = 17,  /// "Nothing to do!"
+    askScope   = 18   /// a scope routine reported the error
+}
 
-//-- Window constants ---------------------------------------------------------
-extern const int WIN_ALL;           // both windows
-extern const int WIN_STATUS;        // status bar
-extern const int WIN_MAIN;          // main game window
+enum eScopeReason {
+    parsing       = 0,  /// normal parsing
+    talking       = 1,  /// NPC conversation
+    eachTurn      = 2,  /// each_turn properties
+    reactBefore   = 3,  /// react_before properties
+    reactAfter    = 4,  /// react_after properties
+    loopOverScope = 5,  /// a LoopOverScope() call
+    testScope     = 6   /// a TestScope() call
+}
 
-//-- Debug trace flags --------------------------------------------------------
-extern const int DEBUG_MESSAGES;
-extern const int DEBUG_ACTIONS;
-extern const int DEBUG_TIMERS;
-extern const int DEBUG_CHANGES;
-extern const int DEBUG_VERBOSE;
+enum eColor {
+    current      = 0,  /// keep the current color
+    defaultColor = 1,  /// the interpreter's default
+    black        = 2,
+    red          = 3,
+    green        = 4,
+    yellow       = 5,
+    blue         = 6,
+    magenta      = 7,
+    cyan         = 8,
+    white        = 9,
+    purple       = 7,  /// same as magenta
+    azure        = 8   /// same as cyan
+}
 
-//-- Miscellaneous constants --------------------------------------------------
-extern const int START_MOVE;        // initial move counter
-extern const int MAX_TIMERS;        // max concurrent timers/daemons
-extern const int PRESENT_TENSE;
-extern const int PAST_TENSE;
+enum eWindow {
+    all    = 0,  /// both windows
+    status = 1,  /// the status bar
+    main   = 2   /// the main window
+}
 
-//-- Standard grammar tokens --------------------------------------------------
-// These appear in grammar line patterns inside grammar { } blocks. Conceptually
-// each value is a kind of `patternElement` (see _grammar.bgl) — the documented
-// base for everything that can appear in a grammar pattern. The enum form is
-// the practical mechanism: bare-resolve (held) or qualified (grammarToken.held).
-// Bare names won't shadow locals/params — lexical scope wins.
+#if DEBUG
+    bnum eDebugFlags {
+        messages = $0001,  /// trace library messages
+        actions  = $0002,  /// trace actions
+        timers   = $0004,  /// trace timers and daemons
+        changes  = $0008,  /// trace object changes
+        verbose  = $0080   /// trace verbosely
+    }
+#endif
+
+bnum eListStyle {
+    newline   = $0001,  /// new line after each entry
+    indent    = $0002,  /// indent each entry by depth
+    fullInv   = $0004,  /// full inventory information after each entry
+    english   = $0008,  /// English sentence style, with commas and "and"
+    recurse   = $0010,  /// list contents too, by the usual rules
+    always    = $0020,  /// always list contents
+    terse     = $0040,  /// terser English style
+    partInv   = $0080,  /// brief inventory information after each entry
+    defArt    = $0100,  /// use the definite article
+    workflag  = $0200,  /// at top level, only objects that have workflag
+    isAre     = $0400,  /// print " is" or " are" first
+    conceal   = $0800,  /// omit concealed and scenery objects
+    noArticle = $1000,  /// print no articles
+    id        = $2000   /// print each object's id
+}
+
 extern enum grammarToken {
-    /// Any in-scope object.
-    noun,
-    /// An object the actor is currently holding.
-    held,
-    /// An animate object — one with the `animate` attribute.
-    creature,
-    /// A free-form topic phrase (any sequence of words the player types).
-    topic,
-    /// One or more in-scope objects.
-    multi,
-    /// One or more held objects.
-    multiheld,
-    /// Multiple in-scope objects, excluding one already matched (commonly used after a preposition).
-    multiexcept,
-    /// Multiple objects inside a specific container.
-    multiinside,
-    /// A number or a single dictionary word.
-    special,
-    /// Any number typed by the player (no range check).
-    anynumber,
-    /// A number typed by the player (range-checked to fit a word).
-    number,
-    /// Placeholder marker — use the `scope=Routine` form on a real grammar line to set scope.
-    scope,
-    /// Action-target modifier — must appear as the LAST element of a grammar line literal,
-    /// e.g. `{.give, creature, held, reverse}`. Emits I6's `-> Action reverse`, which swaps
-    /// `noun` and `second_noun` before the action routine runs (so `give X to Y` and
-    /// `give Y X` both land X in `noun`, Y in `second_noun`). Not a pattern token — does
-    /// not match user input. Compile error if it appears anywhere other than last.
-    reverse
+    NOUN,         /// Any in-scope object.
+    HELD,         /// An object the actor is currently holding.
+    CREATURE,     /// An animate object — one with the `animate` attribute.
+    TOPIC,        /// A free-form topic phrase (any sequence of words the player types).
+    MULTI,        /// One or more in-scope objects.
+    MULTIHELD,    /// One or more held objects.
+    MULTIEXCEPT,  /// Multiple in-scope objects, excluding one already matched (commonly used after a preposition).
+    MULTIINSIDE,  /// Multiple objects inside a specific container.
+    SPECIAL,      /// A number or a single dictionary word.
+    ANYNUMBER,    /// Any number typed by the player (no range check).
+    NUMBER,       /// A number typed by the player (range-checked to fit a word).
+    SCOPE,        /// Placeholder marker — use the `SCOPE(Routine)` form on a real grammar line to set scope.
+    REVERSE       /// Pseudo-token: reverse the noun and second variables. If present, it must appear as the LAST element of a grammar line.
 }
 
-//-- Standard game actions ----------------------------------------------------
-// Use these in before() / after() switch(action) blocks.
-extern verb Answer { .answer|.say|.shout|.speak }                   // answer <topic> to <creature>
-extern verb Ask { .ask }                                            // ask <creature> about <topic>
-extern verb AskFor { .ask }                                         // ask <creature> for <noun>
-extern verb AskTo { .ask|.tell }                                    // ask/tell <creature> to <topic>
-extern verb Attack { .attack|.break|.crack|.destroy|.fight|.hit|.kill|.murder|.punch|.smash|.thump|.torture|.wreck }  // attack / hit / kill / destroy <noun>
-extern verb Blow { .blow }                                          // blow <held>
-extern verb Burn { .burn|.light }                                   // burn / light <noun>
-extern verb Buy { .buy|.purchase }                                  // buy / purchase <noun>
-extern verb Climb { .climb|.scale }                                 // climb / scale <noun>
-extern verb Close { .close|.shut|.cover }                           // close / shut <noun>
-extern verb Consult { .consult }                                    // consult <noun> about <topic>
-extern verb Cut { .cut|.slice|.prune|.chop }                        // cut / chop <noun>
-extern verb Dig { .dig }                                            // dig <noun>
-extern verb Disrobe { .shed|.doff|.disrobe }                        // shed / doff / disrobe <worn>
-extern verb Drink { .drink|.swallow|.sip }                          // drink / sip <noun>
-extern verb Drop { .drop|.discard }                                 // drop <multiheld>
-extern verb Eat { .eat }                                            // eat <held>
-extern verb Empty { .empty }                                        // empty <noun>
-extern verb EmptyT { .empty }                                       // empty <noun> into <noun>
-extern verb Enter { .enter|.cross|.sit|.lie }                       // enter / sit on / lie on <noun>
-extern verb Examine { .examine|.x|.watch|.describe|.check|.read }   // examine / x <noun>
-extern verb Exit { .exit|.out|.outside|.stand }                     // exit / out
-extern verb Fill { .fill }                                          // fill <noun>
-extern verb GetOff { .get }                                         // get off <noun>
-extern verb Give { .give|.pay|.offer|.feed }                        // give <held> to <creature>
-extern verb Go { .go|.run|.walk }                                   // go <direction>
-extern verb GoIn { .enter|.cross|.in|.inside }                      // go in / enter
-extern verb Insert { .insert }                                      // insert <noun> into <noun>
-extern verb Inv { .inventory|.inv|.i }                              // inventory / i
-extern verb InvTall { .inventory|.inv|.i }                          // inventory tall
-extern verb InvWide { .inventory|.inv|.i }                          // inventory wide
-extern verb Jump { .jump|.skip|.hop }                               // jump / hop
-extern verb JumpIn { .jump|.hop|.skip }                             // jump in/into <noun>
-extern verb JumpOn { .jump|.hop|.skip }                             // jump on <noun>
-extern verb JumpOver { .jump|.hop|.skip }                           // jump over <noun>
-extern verb Kiss { .kiss|.embrace|.hug }                            // kiss / hug <creature>
-extern verb Listen { .hear|.listen }                                // listen / hear
-extern verb Lock { .lock }                                          // lock <noun> with <held>
-extern verb Look { .look|.l }                                       // look / l
-extern verb LookUnder { .look|.l }                                  // look under <noun>
-extern verb Mild { .bother|.curses|.drat|.darn }                    // mild expletive
-extern verb No { .no }                                              // no
-extern verb Open { .open|.unwrap|.uncover|.undo }                   // open <noun>
-extern verb Pray { .pray }                                          // pray
-extern verb Pull { .pull|.drag }                                    // pull / drag <noun>
-extern verb Push { .push|.move|.shift|.clear|.press }               // push / move <noun>
-extern verb PushDir { .push|.move|.shift|.clear|.press }            // push <noun> <direction>
-extern verb PutOn { .put }                                          // put <noun> on <noun>
-extern verb Remove { .remove }                                      // remove <noun> from <noun>
-extern verb Rub { .rub|.shine|.polish|.sweep|.clean|.dust|.wipe|.scrub }  // rub / clean / polish <noun>
-extern verb Search { .search }                                      // search <noun>
-extern verb Set { .set|.adjust }                                    // set / adjust <noun>
-extern verb SetTo { .set|.adjust }                                  // set <noun> to <value>
-extern verb Show { .show|.present|.display }                        // show <held> to <creature>
-extern verb Sing { .sing }                                          // sing
-extern verb Sleep { .sleep|.nap }                                   // sleep / nap
-extern verb Smell { .smell|.sniff }                                 // smell / sniff
-extern verb Sorry { .sorry }                                        // sorry
-extern verb Squeeze { .squeeze|.squash }                            // squeeze / squash <noun>
-extern verb Strong { .shit|.fuck|.damn|.sod }                       // strong expletive
-extern verb Swim { .swim|.dive }                                    // swim / dive
-extern verb Swing { .swing }                                        // swing <noun>
-extern verb SwitchOff { .switch|.turn }                             // switch <noun> off / turn off <noun>
-extern verb SwitchOn { .switch|.turn }                              // switch <noun> on / turn on <noun>
-extern verb Take { .take|.carry|.hold|.get|.pick|.peel }            // take / get / pick up <noun>
-extern verb Taste { .taste }                                        // taste <noun>
-extern verb Tell { .tell }                                          // tell <creature> about <topic>
-extern verb Think { .think }                                        // think
-extern verb ThrowAt { .throw }                                      // throw <held> at <noun>
-extern verb Tie { .tie|.attach|.connect|.fasten|.fix }              // tie / attach / connect <noun> to <noun>
-extern verb Touch { .touch|.fondle|.feel|.grope }                   // touch / feel <noun>
-extern verb Transfer { .transfer }                                  // transfer <noun> to <noun>
-extern verb Turn { .turn|.rotate|.twist|.unscrew|.screw }           // turn / rotate <noun>
-extern verb Unlock { .unlock|.pry|.prise|.prize|.lever|.jemmy|.force }  // unlock / pry open <noun> with <held>
-extern verb VagueGo { .go|.walk|.run|.leave }                       // go (without direction)
-extern verb Wait { .wait|.z }                                       // wait / z
-extern verb Wake { .wake|.awake|.awaken }                           // wake / awake
-extern verb WakeOther { .wake|.awake|.awaken }                      // wake <creature>
-extern verb Wave { .wave }                                          // wave <noun>
-extern verb WaveHands { .wave }                                     // wave (no object)
-extern verb Wear { .wear|.don }                                     // wear / don <held>
-extern verb Yes { .yes|.y }                                         // yes
+//-- StdLib actions ----------------------------------------------------
+extern verb Answer    { .answer|.say|.shout|.speak }                            /// say a topic to second
+extern verb Ask       { .ask }                                                  /// ask noun about a topic
+extern verb AskFor    { .ask }                                                  /// ask noun for second
+extern verb AskTo     { .ask|.tell }                                            /// ask noun to do something
+extern verb Attack    { .attack|.break|.crack|.destroy|.fight|.hit|.kill|.murder|.punch|.smash|.thump|.torture|.wreck }  /// attack noun
+extern verb Blow      { .blow }                                                 /// blow noun
+extern verb Burn      { .burn|.light }                                          /// burn noun [with second]
+extern verb Buy       { .buy|.purchase }                                        /// buy noun
+extern verb Climb     { .climb|.scale }                                         /// climb noun
+extern verb Close     { .close|.shut|.cover }                                   /// close noun
+extern verb Consult   { .consult }                                              /// look up a topic in noun
+extern verb Cut       { .cut|.slice|.prune|.chop }                              /// cut noun
+extern verb Dig       { .dig }                                                  /// dig noun [with second]
+extern verb Disrobe   { .shed|.doff|.disrobe }                                  /// take off noun
+extern verb Drink     { .drink|.swallow|.sip }                                  /// drink noun
+extern verb Drop      { .drop|.discard }                                        /// drop noun
+extern verb Eat       { .eat }                                                  /// eat noun
+extern verb Empty     { .empty }                                                /// empty noun
+extern verb EmptyT    { .empty }                                                /// empty noun into second
+extern verb Enter     { .enter|.cross|.sit|.lie }                               /// enter noun
+extern verb Examine   { .examine|.x|.watch|.describe|.check|.read }             /// examine noun
+extern verb Exit      { .exit|.out|.outside|.stand }                            /// get out [of noun]
+extern verb Fill      { .fill }                                                 /// fill noun [from second]
+extern verb GetOff    { .get }                                                  /// get off noun
+extern verb Give      { .give|.pay|.offer|.feed }                               /// give noun to second
+extern verb Go        { .go|.run|.walk }                                        /// go in direction noun
+extern verb GoIn      { .enter|.cross|.in|.inside }                             /// go in
+extern verb Insert    { .insert }                                               /// put noun in second
+extern verb Inv       { .inventory|.inv|.i }                                    /// list what the player carries
+extern verb InvTall   { .inventory|.inv|.i }                                    /// list what the player carries, tall
+extern verb InvWide   { .inventory|.inv|.i }                                    /// list what the player carries, wide
+extern verb Jump      { .jump|.skip|.hop }                                      /// jump
+extern verb JumpIn    { .jump|.hop|.skip }                                      /// jump into noun
+extern verb JumpOn    { .jump|.hop|.skip }                                      /// jump onto noun
+extern verb JumpOver  { .jump|.hop|.skip }                                      /// jump over noun
+extern verb Kiss      { .kiss|.embrace|.hug }                                   /// kiss noun
+extern verb Listen    { .hear|.listen }                                         /// listen [to noun]
+extern verb Lock      { .lock }                                                 /// lock noun with second
+extern verb Look      { .look|.l }                                              /// look around
+extern verb LookUnder { .look|.l }                                              /// look under noun
+extern verb Mild      { .bother|.curses|.drat|.darn }                           /// mild swearing
+extern verb No        { .no }                                                   /// answer no
+extern verb Open      { .open|.unwrap|.uncover|.undo }                          /// open noun
+extern verb Pray      { .pray }                                                 /// pray
+extern verb Pull      { .pull|.drag }                                           /// pull noun
+extern verb Push      { .push|.move|.shift|.clear|.press }                      /// push noun
+extern verb PushDir   { .push|.move|.shift|.clear|.press }                      /// push noun in direction second
+extern verb PutOn     { .put }                                                  /// put noun on second
+extern verb Remove    { .remove }                                               /// take noun out [of second]
+extern verb Rub       { .rub|.shine|.polish|.sweep|.clean|.dust|.wipe|.scrub }  /// rub noun
+extern verb Search    { .search }                                               /// search noun
+extern verb Set       { .set|.adjust }                                          /// set noun
+extern verb SetTo     { .set|.adjust }                                          /// set noun to second
+extern verb Show      { .show|.present|.display }                               /// show noun to second
+extern verb Sing      { .sing }                                                 /// sing
+extern verb Sleep     { .sleep|.nap }                                           /// sleep
+extern verb Smell     { .smell|.sniff }                                         /// smell [noun]
+extern verb Sorry     { .sorry }                                                /// apologize
+extern verb Squeeze   { .squeeze|.squash }                                      /// squeeze noun
+extern verb Strong    { .shit|.fuck|.damn|.sod }                                /// strong swearing
+extern verb Swim      { .swim|.dive }                                           /// swim
+extern verb Swing     { .swing }                                                /// swing noun
+extern verb SwitchOff { .switch|.turn }                                         /// switch off noun
+extern verb SwitchOn  { .switch|.turn }                                         /// switch on noun
+extern verb Take      { .take|.carry|.hold|.get|.pick|.peel }                   /// take noun
+extern verb Taste     { .taste }                                                /// taste noun
+extern verb Tell      { .tell }                                                 /// tell noun about a topic
+extern verb Think     { .think }                                                /// think
+extern verb ThrowAt   { .throw }                                                /// throw noun [at second]
+extern verb Tie       { .tie|.attach|.connect|.fasten|.fix }                    /// tie noun [to second]
+extern verb Touch     { .touch|.fondle|.feel|.grope }                           /// touch noun
+extern verb Transfer  { .transfer }                                             /// move noun to second
+extern verb Turn      { .turn|.rotate|.twist|.unscrew|.screw }                  /// turn noun
+extern verb Unlock    { .unlock|.pry|.prise|.prize|.lever|.jemmy|.force }       /// unlock noun with second
+extern verb VagueGo   { .go|.walk|.run|.leave }                                 /// go, with no direction given
+extern verb Wait      { .wait|.z }                                              /// wait
+extern verb Wake      { .wake|.awake|.awaken }                                  /// wake up
+extern verb WakeOther { .wake|.awake|.awaken }                                  /// wake noun
+extern verb Wave      { .wave }                                                 /// wave noun [at second]
+extern verb WaveHands { .wave }                                                 /// wave [at noun]
+extern verb Wear      { .wear|.don }                                            /// wear noun
+extern verb Yes       { .yes|.y }                                               /// answer yes
 
-//-- Meta actions -------------------------------------------------------------
-// Issued as commands to the game system, not in-world actions.
-extern verb CommandsOff { .recording }                              // recording off
-extern verb CommandsOn { .recording }                               // recording / recording on
-extern verb CommandsRead { .replay }                                // replay
-extern verb FullScore { .fullscore|.full }                          // fullscore / full
-extern verb LMode1 { .brief }                                       // brief
-extern verb LMode2 { .verbose|.long }                               // verbose / long
-extern verb LMode3 { .superbrief|.short }                           // superbrief / short
-extern verb LModeNormal { .normal }                                 // normal
-extern verb NotifyOff { .notify }                                   // notify off
-extern verb NotifyOn { .notify }                                    // notify / notify on
-extern verb Objects { .objects }                                    // objects
-extern verb ObjectsTall { .objects }                                // objects tall
-extern verb ObjectsWide { .objects }                                // objects wide
-extern verb Places { .places }                                      // places
-extern verb PlacesTall { .places }                                  // places tall
-extern verb PlacesWide { .places }                                  // places wide
-extern verb Pronouns { .pronouns|.nouns }                           // pronouns / nouns
-extern verb Quit { .q|.quit|.die }                                  // q / quit / die
-extern verb Restart { .restart }                                    // restart
-extern verb Restore { .restore }                                    // restore
-extern verb Save { .save }                                          // save
-extern verb Score { .score }                                        // score
-extern verb ScriptOff { .noscript|.unscript }                       // noscript / unscript
-extern verb ScriptOn { .script|.transcript }                        // script / transcript
-extern verb Verify { .verify }                                      // verify
-extern verb Version { .version }                                    // version
-
-//-- Debug actions (only available in DEBUG builds) ---------------------------
-extern verb ActionsOff { .actions }             // actions off
-extern verb ActionsOn { .actions }              // actions / actions on
-extern verb ChangesOff { .changes }             // changes off
-extern verb ChangesOn { .changes }              // changes / changes on
-extern verb Glklist { .glklist }                // glklist (Glulx only)
-extern verb GoNear { .gonear }                  // gonear <noun>
-extern verb Goto { .goto }                      // goto <number>
-extern verb Predictable { .random }             // random
-extern verb RoutinesOff { .routines|.messages } // routines off
-extern verb RoutinesOn { .routines|.messages }  // routines / routines on
-extern verb RoutinesVerbose { .routines|.messages }  // routines verbose
-extern verb Scope { .scope }                    // scope
-extern verb ShowDict { .showdict|.dict }        // showdict / dict
-extern verb ShowObj { .showobj }                // showobj
-extern verb ShowVerb { .showverb }              // showverb
-extern verb TimersOff { .timers|.daemons }      // timers / daemons off
-extern verb TimersOn { .timers|.daemons }       // timers / daemons on
-extern verb TraceLevel { .trace }               // trace <number>
-extern verb TraceOff { .trace }                 // trace off
-extern verb TraceOn { .trace }                  // trace / trace on
-extern verb XAbstract { .abstract }             // abstract <noun> to <noun>
-extern verb XPurloin { .purloin }               // purloin <noun>
-extern verb XTree { .tree }                     // tree
-
-//-- Fake actions (no grammar) ------------------------------------------------
-// Library-generated actions with no verb grammar of their own — raised internally and matched in
-// object `before`/`after` routines. Grammarless `extern verb` registers the name for `switch(action)`
-// / `action == X` comparisons (emits `##Name`). Filled in as needed; not yet exhaustive.
-extern verb Receive;                            // ##PutOn/##Insert delivery — `before` of the container/supporter
-extern verb LetGo;                              // fake action fired on a container/supporter when its contents are taken (verblib.h)
-extern verb Going;                              // direction travel — library sets `action = ##Going` during a move (parser.h Fake_Action; no grammar of its own)
-
-//-- Standard library routines ------------------------------------------------
-extern int  RunRoutines(object obj, property prop);   // run obj.prop() and return its value (parser.h) — used to delegate before/react_before/etc.
-extern int  PrintOrRun(object obj, property prop);    // if obj.prop is a routine, run it; if a string, print it (parser.h)
-extern int  PrintOrRunVar(var v);                     // if v is a routine, run it; if a string, print it (parser.h) — value-or-run
-// (I6's `random(...)` built-in is not bound as a Beguile symbol: the canonical API is
-// `bgl.util.random.get(...)` / `.seed(...)` (core/_random.bgl), whose emitters emit I6's
-// native `random(...)` directly. It is a compiler builtin, so it needs no binding anyway.)
-// NOTE: the I6 built-in `parent()` is intentionally NOT bound for Beguile. The Beguile idiom is
-// `obj.parent` (and `obj.parent.parent`, …), which the parentProp emitter lowers to the I6
-// `parent(...)` construct. Exposing `parent()` as a callable would blur that Beguile↔I6 boundary.
-extern void SetPronoun(dictionaryWord dword, object value);  // bind a pronoun word ('it'/'him'/…) to an object (parser.h)
-extern void PronounNotice(object obj);                // update the pronoun table so "it"/"him" refers to obj (parser.h)
-extern void AddToScope(object obj);                   // inside an add_to_scope routine: bring obj into parser scope (parser.h)
-extern void MoveFloatingObjects();                    // relocate `found_in` backdrops/floating objects for the current location (verblib.h)
-extern void StartTimer(object obj, int turns);        // begin a daemon/timer countdown on obj; fires its time_out after N turns (parser.h)
-extern void StopTimer(object obj);                    // cancel a running timer on obj (parser.h)
-extern void StartDaemon(object obj);                  // begin running obj's `daemon` property every turn (parser.h)
-extern void StopDaemon(object obj);                   // stop running obj's `daemon` (parser.h)
-extern void PlayerTo(object obj, int flag = 0);       // move the player to obj; flag 0=look, 1=no look, 2=no newline (parser.h)
-extern bool TestScope(object obj, object actor = 0);  // true if obj is in scope (for the given actor, default the player) (parser.h)
-extern void Banner();                                 // print the standard game banner (story title/headline/version) (parser.h)
-extern void ClearScreen();                    // clear the screen (parser.h)
-extern void NotifyTheScore();                 // print "[Your score has gone up…]" (parser.h)
-extern void ScoreSub();                       // the SCORE action handler (verblib.h)
-extern void DisplayStatus();                  // refresh the status line (parser.h)
-extern void StatusLineHeight(int height);     // set the status window height to `height` lines (parser.h)
-extern void AfterGameOver();                  // post-game-over menu loop: AMUSING/UNDO/etc. (parser.h)
-
-// Under the I6 standard library the status window is the library's own. Defer bgl.ui.statusBar.height
-// to the library: read its tracked height (gg_statuswin_cursize), write through its canonical routine
-// (StatusLineHeight) — instead of core's self-managed @split_window / _h. `_bglStatus` is auto-included
-// by core (with a self-contained inline `height` accessor); here we replace that whole member with a
-// stdlib-backed one. Core stays library-ignorant; this binding owns the integration.
-#if(TARGET_GLULX)
-extend _bglStatus {
-    replace auto id = {
-        int operator()        { return gg_statuswin; }
-        void operator = (int v){ gg_statuswin=v; }
-    }
-    replace auto height = {
-        int operator()        { return gg_statuswin_cursize; }
-        void operator = (int v){ gg_statuswin_size = v; StatusLineHeight(v); }   // DrawStatusLine re-applies gg_statuswin_size each turn
-    }
-}
-#else //Z-code
-extend _bglStatus {
-    replace auto id = null; //zcode doesn't maintain ids for windows    
-    replace auto height = {
-        int operator()        { return gg_statuswin_cursize; }
-        void operator = (int v){ gg_statuswin_size = v; StatusLineHeight(v); }   // DrawStatusLine re-applies gg_statuswin_size each turn
-    }
-}
+//-- Meta actions
+extern verb CommandsOff  { .recording }          /// stop recording commands (meta)
+extern verb CommandsOn   { .recording }          /// record commands to a file (meta)
+extern verb CommandsRead { .replay }             /// replay commands from a file (meta)
+extern verb FullScore    { .fullscore|.full }    /// show the full score (meta)
+extern verb LMode1       { .brief }              /// brief room descriptions (meta)
+extern verb LMode2       { .verbose|.long }      /// verbose room descriptions (meta)
+extern verb LMode3       { .superbrief|.short }  /// superbrief room descriptions (meta)
+extern verb LModeNormal  { .normal }             /// normal room descriptions (meta)
+extern verb NotifyOff    { .notify }             /// turn off score notification (meta)
+extern verb NotifyOn     { .notify }             /// turn on score notification (meta)
+#if !NO_PLACES
+    extern verb Objects     { .objects }  /// list the objects handled (meta)
+    extern verb ObjectsTall { .objects }  /// list the objects handled, tall (meta)
+    extern verb ObjectsWide { .objects }  /// list the objects handled, wide (meta)
+    extern verb Places      { .places }   /// list the places visited (meta)
+    extern verb PlacesTall  { .places }   /// list the places visited, tall (meta)
+    extern verb PlacesWide  { .places }   /// list the places visited, wide (meta)
 #endif
-extend _bglMainWindow {
-    replace auto id = {
-        int operator()        { return gg_mainwin; }
-        void operator = (int v){ gg_mainwin=v; }
-    }
-}
+extern verb Pronouns  { .pronouns|.nouns }     /// show what the pronouns refer to (meta)
+extern verb Quit      { .q|.quit|.die }        /// quit the game (meta)
+extern verb Restart   { .restart }             /// restart the game (meta)
+extern verb Restore   { .restore }             /// restore a saved game (meta)
+extern verb Save      { .save }                /// save the game (meta)
+extern verb Score     { .score }               /// show the score (meta)
+extern verb ScriptOff { .noscript|.unscript }  /// stop the transcript (meta)
+extern verb ScriptOn  { .script|.transcript }  /// start a transcript (meta)
+extern verb Verify    { .verify }              /// verify the story file (meta)
+extern verb Version   { .version }             /// show version information (meta)
 
-//-- Standard library entry points (`Stub` defaults) --------------------------
-// The optional hooks the library calls at defined moments (grammar.h's `Stub` list). Each is
-// `extern default`: a game may override any of them by simply *defining* a routine of the same name —
-// no `replace` needed (the library provides a weak `Stub` default that the definition supplants).
-// Arg counts match the `Stub` declarations; args are untyped I6 slots, so `var`.
-extern default void AfterLife();                              // player just died, before the death message
-extern default void AfterPrompt();                            // after the ">" prompt is printed
-extern default void Amusing();                                // the "AMUSING" option after winning
-extern default void BeforeParsing();                          // before the parser reads the command
-extern default int  ChooseObjects(var obj, var code);         // disambiguation scoring
-extern default void DarkToDark();                             // moved from one dark room to another
-extern default void DeathMessage();                           // custom "You have died" text (deadflag ≥ 3)
-extern default void Epilogue();                               // end-of-game hook (after the final banner)
-extern default bool GamePostRoutine();                        // after every action (true = already handled)
-extern default bool GamePreRoutine();                         // before every action (true = already handled)
-extern default bool InScope(var actor);                       // add objects to scope (true = handled)
-extern default void LookRoutine();                            // extra text after a room description
-extern default void NewRoom();                                // player entered a new room
-extern default bool ObjectDoesNotFit(var obj, var container); // custom "won't fit" message (true = handled)
-extern default int  ParseNumber(var text, var length);        // parse a game-specific number token
-extern default bool ParserError(var errType);                 // custom parser-error message (true = handled)
-extern default void PrintTaskName(var task);                  // name a FULL-SCORE task
-extern default bool PrintVerb(var verb);                      // custom verb printing (true = handled)
-extern default void TimePasses();                             // each turn, after the action
-extern default int  UnknownVerb(var word);                    // remap an unknown verb word
-extern default int  AfterSave(var arg);                       // after a SAVE
-extern default int  AfterRestore(var arg);                    // after a RESTORE
-extern default int  IdentifyGlkObject(var phase, var typ, var ref, var value); // Glulx: Glk object tracking
-extern default int  InitGlkWindow(var rock);                  // Glulx: window setup
-// (HandleGlkEvent is declared by the Glulx core, which wraps it for hyperlinks.)
-
-#if TARGET_GLULX
-// A link handler clicked at the prompt (core's _bglGlkEvent) runs with the library's line input
-// suspended. KeyboardPrimitive reads lines in the main window into `buffer`, after its length word.
-extern int  INPUT_BUFFER_LEN;
-extern void DrawStatusLine();
-replace int _bglSuspendLineInput(var buffer){
-    rawArray<int> event[4];
-    bgl.asm.cancelLineEvent(gg_mainwin, &event);
-    return event[2];   // characters typed so far; Glk left them in the buffer
-}
-replace void _bglResumeLineInput(var buffer, int typed){
-    DrawStatusLine();
-    #i6 { L__M(##Prompt); }
-    bgl.asm.requestLineEvent(gg_mainwin, buffer + bgl.wordsize, INPUT_BUFFER_LEN - bgl.wordsize, typed);
-}
-#endif
-// Message verb-conjugation helper (English.h). Prints the subject + a verb conjugated for the
-// object's person/tense. The verb-form params (v1/v2/v3/past) are string-or-0 (0 = "reuse v1"), so
-// they're `var`.
-extern void CSubjectVerb(object obj, bool reportage, bool nocaps, var v1, var v2, var v3, var past);
-
-// Version text the library's own Banner prints: "Inform v", " Library v", and the library's
-// release (english.h / version.h). `inversion` is an I6 STATEMENT that prints the compiler version
-// and has no expression form, so it is bound as an emitter — usable in interpolated text the same
-// way bgl.printRules styles are: print($"{informV}{informVersion}{libraryV}{libRelease}").
-extern string INFORMV__TX;
-extern string LIBRARYV__TX;
-extern string LibRelease;
-emitter void informVersion { inversion; }
-
-// bgl.story — the story file's own identity fields, read from the header. The addresses and the
-// read opcodes both differ per target, and the Z-machine release lives in the low 10 bits only;
-// keeping that split here means a game's banner reads the same on either target.
-superposed _bglObject _bglStory {
-    auto release = {
-        int operator(){
-        #if TARGET_GLULX
-            return bgl.asm.aloads(ROM_GAMERELEASE, 0);
-        #else
-            return bgl.asm.loadw(HDR_GAMERELEASE, 0) & $03ff;
-        #endif
-        }
-    }
-    // The serial is six ASCII characters in the header, not a string — print it rather than
-    // allocating. `i` is the 0-5 index.
-    char serialChar(int i){
-    #if TARGET_GLULX
-        return (char)bgl.asm.aloadb(ROM_GAMESERIAL, i);
-    #else
-        return (char)bgl.asm.loadb(HDR_GAMESERIAL, i);
-    #endif
-    }
-    void printSerial(){
-        int i = 0;
-        for(i = 0; i < 6; i++) print(self.serialChar(i));
-    }
-}
-extend bgl { alias story = _bglStory; }
-
-// Story identity. The `#emitfirst` block below emits these as I6 constants from
-// #beguilerSettings; declaring them here lets Beguile code read them (e.g. a replacement Banner).
-extern string story;
-extern string headline;
-
-// Header fields carrying the release number and the six-character serial. The addresses differ per
-// target (parser.h): Z-machine keeps them at $02/$12, Glulx at $34/$36. Read with bgl.asm.loadw /
-// loadb on Z-code, bgl.asm.aloads / aloadb on Glulx.
-#if TARGET_GLULX
-extern int ROM_GAMERELEASE;
-extern int ROM_GAMESERIAL;
-#else
-extern int HDR_GAMERELEASE;
-extern int HDR_GAMESERIAL;
+//-- Debug actions (debug builds only)
+#if DEBUG
+    extern verb ActionsOff      { .actions }             /// stop tracing actions (meta)
+    extern verb ActionsOn       { .actions }             /// trace actions (meta)
+    extern verb ChangesOff      { .changes }             /// stop tracing object changes (meta)
+    extern verb ChangesOn       { .changes }             /// trace object changes (meta)
+    extern verb Glklist         { .glklist }             /// list Glk objects (meta)
+    extern verb GoNear          { .gonear }              /// go to noun's location (meta)
+    extern verb Goto            { .goto }                /// go to a room by object number (meta)
+    extern verb Predictable     { .random }              /// make random numbers predictable (meta)
+    extern verb RoutinesOff     { .routines|.messages }  /// stop tracing routines and messages (meta)
+    extern verb RoutinesOn      { .routines|.messages }  /// trace routines and messages (meta)
+    extern verb RoutinesVerbose { .routines|.messages }  /// trace routines and messages, verbosely (meta)
+    extern verb Scope           { .scope }               /// list what is in scope [for noun] (meta)
+    extern verb ShowDict        { .showdict|.dict }      /// show the dictionary (meta)
+    extern verb ShowObj         { .showobj }             /// show an object's details (meta)
+    extern verb ShowVerb        { .showverb }            /// show a verb's grammar (meta)
+    extern verb TimersOff       { .timers|.daemons }     /// stop tracing timers and daemons (meta)
+    extern verb TimersOn        { .timers|.daemons }     /// trace timers and daemons (meta)
+    extern verb TraceLevel      { .trace }               /// set the parser trace level (meta)
+    extern verb TraceOff        { .trace }               /// stop tracing the parser (meta)
+    extern verb TraceOn         { .trace }               /// trace the parser (meta)
+    extern verb XAbstract       { .abstract }            /// move noun to second (meta)
+    extern verb XPurloin        { .purloin }             /// take noun from anywhere (meta)
+    extern verb XTree           { .tree }                /// show the object tree [of noun] (meta)
 #endif
 
-// Hoisted via #emitfirst so the constants appear ABOVE the user's
-// #includeI6 "parser" directive — the I6 standard library reads Story/Headline
-// during its own include processing for the compile-time banner. If declared
-// after the include they'd be orphan constants ("declared but not used") and
-// the banner would fall back to defaults.
+//-- Fake actions (no grammar)
+extern verb Receive;  /// runs on second when noun is put on or in it; receive_action says which
+extern verb LetGo;    /// runs on the container or supporter when noun is taken from it
+extern verb Going;    /// runs on the destination room as the player moves
+
+//-- General bits of I6-to-Beguile setup ----------------------------------------
+
+// stringOrRoutine is a convenience union type, since the stdlib uses this pattern regularly.
+union stringOrRoutine = string | func<void> {
+    emitter bool isRoutine() { metaclass($val) == Routine }
+}
+emitter void print(stringOrRoutine v){
+    if(metaclass($v) == Routine) $v();
+    else print (string)$v;
+}
+// The stdLib allows all objects to override their instanceName via the short_name property.
+extend extern class object {
+    stringOrRoutine short_name;
+}
+
+// The story title and headline fields in the beguilerSettings block serve Treaty of Babel metadata.  Let's reuse these and keep their definitions all the same.
 #emitfirst {
     Constant story    = ##beguilerSettings.title;
     Constant headline = ##beguilerSettings.headline;
 }
 
-// This banner replaces the library's, so orLibrary's forced banner hook (#orExtensionFramework) is
-// switched off; orLibrary's bindings add their line on top of this one instead.
-#emitfirst {
-    Constant orLib_suppress_forced_banner_hook;
-}
+// Substitute the stdLib's backings for status bar and main window, replacing Beguile's core behavior for this.
+#if(TARGET_GLULX)
+    extend _bglStatus {
+        replace auto id = {
+            int operator()        { return gg_statuswin; }
+            void operator = (int v){ gg_statuswin=v; }
+        }
+        replace auto height = {
+            int operator()        { return gg_statuswin_cursize; }
+            void operator = (int v){ gg_statuswin_size = v; StatusLineHeight(v); }
+        }
+    }
+    extend _bglMainWindow {
+        replace auto id = {
+            int operator()        { return gg_mainwin; }
+            void operator = (int v){ gg_mainwin=v; }
+        }
+    }
+#else // Z-code
+    extend _bglStatus {
+        replace auto id = null; // Z-code doesn't maintain ids for windows
+        replace auto height = {
+            int operator()        { return gg_statuswin_cursize; }
+            void operator = (int v){ gg_statuswin_size = v; StatusLineHeight(v); }
+        }
+    }
+#endif
+
+// Update the Banner to show that this game is a Beguile game
 replace void Banner(){
-    print($"^{bgl.printRules.bold}{story}{bgl.printRules.roman}{headline}");    
-    print($"Release {bgl.story.release} / Serial number {bgl.story.printSerial()}");
+    print($"^{bgl.printRules.bold}{story}{bgl.printRules.roman}{headline}");
+    print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}");
     print($"^{bgl.printRules.italics}Written in{bgl.printRules.roman} Beguile v{beguilerMajor}.{beguilerMinor}.{beguilerPatch}");
-    print($"^{bgl.printRules.italics}Compiled with{bgl.printRules.roman} Inform v{informVersion} / Library v{LibRelease}^");
+    print($"^{bgl.printRules.italics}Compiled with{bgl.printRules.roman} Inform v");
+    #i6 { inversion; }
+    print($" / Library v{LibRelease} ");
+    // The library's switch letters: S strict mode, X the Infix debugger, otherwise D a debug build.
+    #i6 {
+        #Ifdef STRICT_MODE; print "S"; #Endif;
+        #Ifdef INFIX; print "X";
+        #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
+    }
+    print("^");
 }
 
-// The BLR wraps main to run bglInit() before the game's own main. Gated on `bglAutoInitialize`
-// (set from `#beguilerSettings autoInitialize`, default true). Set `autoInitialize = false` when
-// another extension already replaces main (e.g. orLibrary — I6 forbids nested `replace main`); the
-// caller is then responsible for running bglInit (or doesn't need it).
+// Automatically start up the Beguile run-time environment...
 #if bglAutoInitialize
-#emitfirst{
-    replace main _oldmain;
-}
-#emitlast{
-    [main; 
-        bglInit();
-        _oldmain();
-    ];
-}
+    #emitfirst{
+        replace main _oldmain;
+    }
+    #emitlast{
+        [main;
+            bglInit();
+            _oldmain();
+        ];
+    }
 #endif

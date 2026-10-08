@@ -122,6 +122,7 @@ using namespace std;
 //----------------------------------------------------------------------------------------
 //--Opening and closing files, and managing which of these is the "current file"
 void fileLexer::open(string filename){
+    lastTokenLine = -1; lastTokenFile.clear();
     // Virtual-file overlay (LSP mode only; g_virtualBglFiles is empty during compiles):
     // serve in-memory content (e.g. a live-scanned _blorbAssets.bgl) instead of touching disk.
     string virtualContent;
@@ -138,6 +139,7 @@ void fileLexer::open(string filename){
     files.push(make_tuple(static_cast<istream*>(inputFileStream), filename, 1, 0));
 }
 void fileLexer::openText(const std::string& content, const std::string& virtualName, int startLine){
+    lastTokenLine = -1; lastTokenFile.clear();
     // Push a stringstream as a virtual file. Used to parse #bgl{} blocks extracted from
     // surrounding raw I6 — gives Beguile its normal token-fetching path over an in-memory buffer.
     istringstream* stream = new istringstream(content);
@@ -149,6 +151,7 @@ void fileLexer::close(){
     // frees the buffer (istringstream); no explicit close() needed.
     delete inputFileStream;
     files.pop();
+    lastTokenLine = -1; lastTokenFile.clear();
 }
 void fileLexer::reset(){
     while(!files.empty()) close();      // drain the stack, deleting each stream
@@ -157,12 +160,14 @@ void fileLexer::reset(){
     prevTokenValue.clear();
     pendingDocComment.clear();
     pendingDocLastLine = -1;
+    lastTokenLine = -1; lastTokenFile.clear();
 }
 int fileLexer::getNumberOfOpenFiles(){
     return files.size();
 }
 void fileLexer::moveToStart(){
     currentStream()->seekg(0);
+    lastTokenLine = -1; lastTokenFile.clear();
 }
 istream* fileLexer::currentStream(){
     auto[inputFileStream, fileName, curLine, curCol]=files.top();
@@ -769,7 +774,7 @@ string fileLexer::getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& ou
 sourceLocation fileLexer::currentLocation(){
     if(files.empty()) return {};
     auto [stream, fileName, curLine, curCol] = files.top();
-    return {fileName, curLine};
+    return {fileName, curLine, curCol};
 }
 
 // token fileLexer::getRunTokenEol(){
@@ -824,6 +829,7 @@ sourceLocation fileLexer::currentLocation(){
 */
 // Pulls basic tokens until a non-comment one arrives, accumulating `///` and `/** */` doc
 // comments into pendingDocComment and attaching them to that token (a blank line orphans them).
+// A doc comment that trails code on its line goes to the first token of that line instead.
 void fileLexer::readTokenSkippingComments(token& retval){
     // Doc-comment capture (`///` line form, `/** */` block form):
     // Comments are normally discarded, but doc-comments are accumulated into `pendingDocComment`
@@ -875,22 +881,71 @@ void fileLexer::readTokenSkippingComments(token& retval){
         return "";
     };
 
+    // Reads ahead from the stream (then rewinds) for a doc comment later on the current line,
+    // skipping string and character literals; any other line comment ends the search.
+    auto scanTrailingDoc = [&]() -> std::string {
+        std::istream* s = currentStream();
+        // A token that ends the file leaves eofbit set, and tellg() fails while it is; restore it after.
+        auto savedState = s->rdstate();
+        s->clear();
+        auto save = s->tellg();
+        std::string raw;
+        char quote = 0;
+        int c;
+        while((c = s->get()) != EOF && c != '\n'){
+            if(quote){
+                if(c == '\\' && s->peek() != '\n') s->get();
+                else if(c == quote) quote = 0;
+                continue;
+            }
+            if(c == '"' || c == '\''){ quote = (char)c; continue; }
+            if(c != '/') continue;
+            if(s->peek() == '/'){
+                s->get();
+                if(s->peek() == '/'){
+                    raw = "//";
+                    while((c = s->get()) != EOF && c != '\n') raw += (char)c;
+                }
+                break;
+            }
+            if(s->peek() == '*'){
+                s->get();
+                std::string block = "/*";
+                bool closed = false;
+                while((c = s->get()) != EOF){
+                    block += (char)c;
+                    if(c == '/' && block.size() >= 4 && block[block.size()-2] == '*'){ closed = true; break; }
+                }
+                if(!closed) break;
+                if(isDocBlockForm(block)){ raw = block; break; }
+                if(block.find('\n') != std::string::npos) break;   // a plain block comment ran past the line
+            }
+        }
+        s->clear();
+        s->seekg(save);
+        s->setstate(savedState);
+        return raw.empty() ? "" : extractDocText(raw);
+    };
+
     //a special case: let's ignore all comment tokens (but capture doc-comments into pendingDocComment)
     do{
         retval=getBasicToken();
+        retval.src = currentLocation();
         if(retval.tokenType==eTokenType::comment){
             bool isDoc = isDocLineForm(retval.value) || isDocBlockForm(retval.value);
-            if(isDoc){
-                int lineNow = retval.src.line;
+            int endLine   = retval.src.line;
+            int startLine = endLine - (int)std::count(retval.value.begin(), retval.value.end(), '\n');
+            bool trailing = startLine == lastTokenLine && retval.src.file == lastTokenFile;
+            if(isDoc && !trailing){
                 // If a previous doc was captured but this new doc is more than one line later,
                 // discard the prior buffer (blank line orphaned it).
-                if(!pendingDocComment.empty() && pendingDocLastLine >= 0 && lineNow > pendingDocLastLine + 1){
+                if(!pendingDocComment.empty() && pendingDocLastLine >= 0 && startLine > pendingDocLastLine + 1){
                     pendingDocComment.clear();
                 }
                 std::string text = extractDocText(retval.value);
                 if(!pendingDocComment.empty()) pendingDocComment += "\n";
                 pendingDocComment += text;
-                pendingDocLastLine = lineNow;
+                pendingDocLastLine = endLine;
             }
             // Either way, fall through and read the next basic token (comments are not returned)
         }
@@ -907,6 +962,17 @@ void fileLexer::readTokenSkippingComments(token& retval){
             pendingDocComment.clear();
             pendingDocLastLine = -1;
         }
+    }
+
+    if(retval.tokenType != eTokenType::eof){
+        bool firstOnLine = retval.src.line != lastTokenLine || retval.src.file != lastTokenFile;
+        if(firstOnLine){
+            std::string trailingDoc = scanTrailingDoc();
+            if(!trailingDoc.empty())
+                retval.docComment = retval.docComment.empty() ? trailingDoc : retval.docComment + "\n" + trailingDoc;
+        }
+        lastTokenLine = retval.src.line;
+        lastTokenFile = retval.src.file;
     }
 }
 
@@ -1201,6 +1267,8 @@ token fileLexer::peekToken(int tokNum){
     eTokenType savedPrev = prevTokenType;
     string savedPrevValue = prevTokenValue;
     int savedBraceDepth = braceDepth;
+    int savedLastTokenLine = lastTokenLine;
+    string savedLastTokenFile = lastTokenFile;
     bool savedHasPending = hasPendingToken;
     token savedPending = pendingToken;
     // Save line/col from the current file's tuple (stream seek doesn't reset these)
@@ -1214,6 +1282,8 @@ token fileLexer::peekToken(int tokNum){
     prevTokenType = savedPrev;
     prevTokenValue = savedPrevValue;
     braceDepth = savedBraceDepth;
+    lastTokenLine = savedLastTokenLine;
+    lastTokenFile = savedLastTokenFile;
     hasPendingToken = savedHasPending;
     pendingToken = savedPending;
     pLine = saveLine;

@@ -1,15 +1,20 @@
+/* -----------------------------------------------------------------------------
+    _mainWindow.bgl - Main window
+    Provides `bgl.ui.mainWin`, the window the story prints to.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
 #once
-/*-----------------------------------------------------------------------------
-    _mainWindow 
 
- -----------------------------------------------------------------------------*/
-extend _bglUi { alias mainWin = _bglMainWindow; } //bgl.ui.statusBar
+extend _bglUi {
+    alias mainWin = _bglMainWindow;   /// The window the story prints to.
+}
 
-/// `bgl.ui.mainWin` — the window the story prints to.
+/// The window the story prints to.
 superposed _bglObject _bglMainWindow {
-    /// The window's handle. 0 on the Z-machine, which has no window handles; a Glk window id on Glulx.
-    auto id  = {   // id  getter/setter 
-        int _id   = 0;                 
+    /// The window's handle: a Glk window id on Glulx, 0 on the Z-machine.
+    auto id  = {
+        int _id   = 0;
         int operator() { return _id; }
         void operator = (int newId){
             _id=newId;

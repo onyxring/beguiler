@@ -297,18 +297,18 @@ menu child
        title "a child",
        words 'foo' 'bar' 'baz' 3 
 ;
-menu _bglanon3
+menu _bglanon4
   with linkto root,
        title "text to display",
        words 'type' 'kind' 2 
 ;
-menu _bglanon4
+menu _bglanon5
   with title "lonely"
 ;
 wrapper w
-  with head _bglanon5
+  with head _bglanon6
 ;
-menu _bglanon5
+menu _bglanon6
   with linkto root,
        title "nested",
        words 'x//' 1 

@@ -51,7 +51,7 @@ Marker treasure { } // set to (6,8) in main(); distance from origin = 10.0
 float distance(Marker a, Marker b){
     float dx = a.x - b.x;
     float dy = a.y - b.y;
-    return _bglFloat.sqrt(dx * dx + dy * dy);
+    return bgl.util.math.sqrt(dx * dx + dy * dy);
 }
 
 // ─── Probability gate ────────────────────────────────────────────────────────
@@ -105,17 +105,17 @@ void main(){
     print("distance home->treasure: "); print(d); print("^");
 
     // Math helpers — squared distance via @pow, log/exp round-trip.
-    float dSquared = _bglFloat.pow(d, (float)2);
+    float dSquared = bgl.util.math.pow(d, (float)2);
     print("d^2 = "); print(dSquared); print("^");
-    float roundTrip = _bglFloat.exp(_bglFloat.log(d));   // ~ d
+    float roundTrip = bgl.util.math.exp(bgl.util.math.log(d));   // ~ d
     print("exp(log(d)) ~ "); print(roundTrip); print("^");
 
     // Projectile motion — at 45° launch angle, range is v^2/g. Just exercise
     // sin/cos here; their numeric values aren't asserted, only that the
     // emission goes through without warning.
     float pi4 = (float)3927 / (float)5000;         // ~ pi/4 (0.7854)
-    float sinComp = _bglFloat.sin(pi4);
-    float cosComp = _bglFloat.cos(pi4);
+    float sinComp = bgl.util.math.sin(pi4);
+    float cosComp = bgl.util.math.cos(pi4);
     print("sin(pi/4) ~ "); print(sinComp); print("^");
     print("cos(pi/4) ~ "); print(cosComp); print("^");
 
@@ -136,13 +136,13 @@ void main(){
 
     // abs + comparison.
     float dx = (float)0 - (float)7;            // -7.0
-    print("abs(-7) = "); print(_bglFloat.abs(dx)); print("^");
+    print("abs(-7) = "); print(bgl.util.math.abs(dx)); print("^");
 
     // Modulo — fractional remainder.
     float modPart = (float)17 / (float)2 % (float)3;   // 8.5 % 3 = 2.5
     print("8.5 mod 3 = "); print(modPart); print("^");
 
     // ceil / floor — exercise the truncation opcodes.
-    print("ceil(3.2)  = "); print(_bglFloat.ceil((float)32 / (float)10)); print("^");
-    print("floor(3.8) = "); print(_bglFloat.floor((float)38 / (float)10)); print("^");
+    print("ceil(3.2)  = "); print(bgl.util.math.ceil((float)32 / (float)10)); print("^");
+    print("floor(3.8) = "); print(bgl.util.math.floor((float)38 / (float)10)); print("^");
 }
