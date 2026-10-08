@@ -66,10 +66,10 @@ bool bglParser::isEnumMemberQualifier(token t){
         || t.is(token::constantDeclararion) || t.is(token::replace) || t.is(token::external);
 }
 
-// Parse one `emitter <returnType> <name>(params){ body }` member inside an enum body (the `emitter`
-// keyword already consumed) and attach it to the enum's companion. Reuses the same leaf parsers as
-// class emitter methods (processParameterList / getRawTextThroughClosingBrace) so emission is
-// byte-identical. Only emitter methods are permitted here — operators / value-emitters error.
+// Parse one `emitter <returnType> <name>(params){ body }` method or `emitter <returnType> <name>{ body }`
+// value inside an enum body (the `emitter` keyword already consumed) and attach it to the enum's
+// companion. Reuses the same leaf parsers as class emitter members (processParameterList /
+// getRawTextThroughClosingBrace) so emission is byte-identical. Operators are rejected.
 void bglParser::parseEnumEmitterMethod(enumDef& en){
     token returnType = file.getToken({eTokenType::dataType, eTokenType::identifier});
     if(returnType.value == "func") returnType.value = parseFuncType();
@@ -79,9 +79,9 @@ void bglParser::parseEnumEmitterMethod(enumDef& en){
         parsingError(format("enum '{0}': operators cannot be attached to an enum — only emitter methods "
                             "(`emitter T name(){{ ... }}`) are allowed", en.dName()));
     token paren = file.getToken();
-    if(!paren.is(token::parenOpen))
-        parsingError(format("enum '{0}': '{1}' must be an emitter method — expected '(' after the name "
-                            "(value emitters and other member forms are not allowed on an enum)",
+    bool isValue = paren.is(token::braceOpen);
+    if(!paren.is(token::parenOpen) && !isValue)
+        parsingError(format("enum '{0}': '{1}' must be an emitter method or value — expected '(' or '{{' after the name",
                             en.dName(), (string)name));
     functionDef& fd = *(new functionDef());
     fd.name = (string)name; fd.displayName = name.originalValue;
@@ -91,6 +91,16 @@ void bglParser::parseEnumEmitterMethod(enumDef& en){
     fd.isEmitter = true;
     if(!returnType.docComment.empty())   fd.docComment = returnType.docComment;
     else if(!name.docComment.empty())    fd.docComment = name.docComment;
+    if(isValue){
+        fd.isValueEmitter = true;
+        i6Block& b = *(new i6Block());
+        b.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+        fd.body = &b;
+        classDef* comp = enumCompanion(en);
+        if(!replaceStubMember(comp->members, fd))
+            comp->members.push_back(&fd);
+        return;
+    }
     processParameterList(fd);                 // consumes through ')'
     synthesizeParamBackings(fd, en.dName());  // enum name as the backing-context key
     if(file.peekToken().is(token::endStatement)){
@@ -453,9 +463,12 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         if(auto* list = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue))
             checkLiteralElements(arrDecl, list->elements);
 
-    if(body != nullptr)
+    if(body != nullptr){
+        // Set-up an element needs (a `?.` test, a temp) runs before the elements are stored.
+        for(statement* inj : pendingInjections) body->statements.push_back(inj);
+        pendingInjections.clear();
         body->statements.push_back(&arrDecl);
-    else
+    } else
         languageService.registerInstance(arrDecl);
     return false;
 }
@@ -508,7 +521,7 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
                     const string& t = vd->type.name;
                     if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                 }
-                parsingWarning("Local variable '" + varDecl.name + "' shadows global of the same name; the global is unreachable from this scope.");
+                parsingWarning("Local variable '" + varDecl.name + "' shadows global of the same name; '::" + varDecl.name + "' reaches the global.");
             }
         if(currentClass != nullptr){
             for(typeMember* m : currentClass->members)
@@ -636,6 +649,8 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
     // `ref` locals opt out of all operator= dispatch — they're plain pointer-alias.
     // getDispatchClass (not getType) so a template-typed LHS (`array<int> keep = chain;`)
     // reaches operator= dispatch — this is the primary array copy-on-assign capture form.
+    if(!isRef) applyImplicitConversion(rhs, (string)dataType);
+    if(!isRef && (string)dataType == "verb") applyActionConstant(rhs);
     classDef* classType=getDispatchClass((string)dataType);
     if((classType == nullptr || ((string)dataType).find('<') != string::npos) && rhs != nullptr && !isRef)
         checkClasslessAssignable(rhs, (string)dataType, "variable");
@@ -1188,6 +1203,12 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // same mangler to look it up. Emitters are inlined and don't need the mangled name.
     if(!isEmitter && !funcDef.name.empty() && !isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')
         funcDef.i6name = mangleOperatorName(funcDef.name);
+    // A global routine named like an I6 statement keyword: a call would read as that statement.
+    if(!isEmitter && !isExternal && getCurrentCompileContext() == eCompileContext::global
+       && funcDef.i6name.empty() && bglLanguageService::isI6StatementKeyword(funcDef.name)){
+        funcDef.i6name = "_" + funcDef.dName();
+        funcDef.i6nameAvoidsKeyword = true;
+    }
 
     // Register into globals EARLY (replacing any pre-scan stub) so that LSP error recovery
     // preserves partial parse state even if the body parse throws. The full body and params

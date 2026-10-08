@@ -59,6 +59,6 @@ extern emitter class parentProp{
 
 /// The type of `object.children`: the objects directly inside an object, iterable with `for … in`.
 extern emitter class childrenProp{
-    emitter int length(){ children($host) }   /// Return how many children the object has.
-    emitter int size()  { children($host) }   /// Return how many children the object has; the same as `length()`.
+    emitter int length { children($host) }   /// How many children the object has.
+    emitter int size   { children($host) }   /// How many children the object has; the same as `length`.
 }

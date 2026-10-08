@@ -1,0 +1,10 @@
+// run_parent_chain_declared_backwards — a four-level `parent` chain declared child-first (plus a
+// `children =` placement) is emitted parent-first, as I6 requires of a positional parent.
+// EXPECT_OUTPUT: ok
+#beguilerSettings { target = z5; informName = "none"; }
+object ggc { parent = gc; }
+object gc { parent = kid; }
+object kid { parent = top; }
+object top { children = { other }; }
+object other { }
+void main(){ bglInit(); if (ggc.parent == gc && gc.parent == kid && kid.parent == top && other.parent == top) print("ok"); }

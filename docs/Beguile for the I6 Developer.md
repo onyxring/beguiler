@@ -1114,7 +1114,7 @@ Beguile arrays are far richer.  They are **typed**, track their run-time **lengt
 
 ```bgl
 array<int>  primes = {2, 3, 5, 7, 11};  
-for (int i=0: i<primes.size(): i++) print(primes[i]); 
+for (int i=0: i<primes.size: i++) print(primes[i]); 
 ```
 
 As shown above, the element **type** is mandatory and rides inside angle brackets, and you pre-populate an array with a brace-enclosed initializer list.  Also note that the index is automatically adjusted to compensate for the `size`, so `primes[0]` points to the 1st element, and *not* the size of the array (unlike i6 `table`arrays).
@@ -1124,14 +1124,14 @@ You can also declare an array with a fixed size (a sized array).  The following 
 ```bgl
 array<int>  primes[10];
 ...
-for(int i = 0; i<primes.size(); i++){ 
+for(int i = 0; i<primes.size; i++){ 
 	primes[i] = calcNthPrime(i);
 }
 ```
 
 > ***Note**: `calcNthprime()` is NOT an actual routine provided by Beguile or the BLR.  This is included for demonstration purposes only.
 
-> ***Note**: The two forms are mutually exclusive: an array declaration takes a size **or** an initializer list, never both.  `array<int> primes[10] = {2, 3, 5};` is a compile error.  To pre-seed an array that still has room to grow, declare it sized and fill it with the `append()`/`enqueue()` mutators from the `<array>` extension (below).*
+> ***Note**: The two forms combine.  `array<int> primes[10] = {2, 3, 5};` reserves 10 slots and seeds the first three: `size` is 10 and `length` is 3, so the array still has room to grow through `append()`/`enqueue()` (below).  An initializer longer than the declared size is a compile error.*
 
 The type is enforced everywhere.  An `array<int>` will not accept a `string`.  The correct `print` overload, operators, and member access all follow from the declared type.  
 
@@ -1149,19 +1149,19 @@ for(int p in primes) print(p);
 This approach uses the `length` if available or the `size` otherwise *(see "Size() vs. Length" below)*.
 
 ### With `<array>`
-The core Beguile language gives you declaration, subscripting, and `size()`.  Pull in the BLR's `<array>` language extension to expand the core functionality of arrays...
+The core Beguile language gives you declaration, subscripting, and `size`.  Pull in the BLR's `<array>` language extension to expand the core functionality of arrays...
 
 ```
 #include <array>
 ```
-#### `size()` vs. `length()`
+#### `size` vs. `length`
 
 I6 `table` arrays gives you one number: the allocated size.  Beguile gives you two:
 
-- **`size()`** is *capacity*: the slots reserved at compile time.  It never changes.
-- **`length()`** is the live count of in-use entries.  A list-initialized array starts with `length` and `size` being equal.  An empty, size-declared array, starts at `length` equal to 0.  
+- **`size`** is *capacity*: the slots reserved at compile time.  It never changes.
+- **`length`** is the live count of in-use entries.  A list-initialized array starts with `length` and `size` being equal.  An empty, size-declared array, starts at `length` equal to 0.  
 
-The distinction matters because **a plain slot write does not move the cursor**.  `scores[3] = 90;` stores the word but leaves `length()` at `0`.  An `array<T>` is a memory block, and only explicit operations (`setLength`, `clear`, `append`, …) change its length.  
+The distinction matters because **a plain slot write does not move the cursor**.  `scores[3] = 90;` stores the word but leaves `length` at `0`.  An `array<T>` is a memory block, and only explicit operations (assigning `length`, `clear`, `append`, …) change its length.  
 #### Additional `array` features
 Beguile arrays are more than just arrays.  They additionally provide the functionality of the `stack`, `queue`, and `deque` containers from other languages...
 
@@ -1175,9 +1175,9 @@ superHeroes.push("Aquaman");        // push adds at the FRONT
 superHeroes.push("Flash");
 // order is now:  Flash, Aquaman, Batman, Superman, Wonder Woman
 
-print(superHeroes.length());        // prints 5
+print(superHeroes.length);          // prints 5
 print(superHeroes.pop());           // prints Flash          (pop removes from the front)
-print(superHeroes.length());        // prints 4
+print(superHeroes.length);          // prints 4
 print(superHeroes.popEnd());        // prints Wonder Woman   (popEnd removes from the back)
 ```
 
@@ -1191,7 +1191,7 @@ print(superHeroes.popEnd());        // prints Wonder Woman   (popEnd removes fro
 
 `dequeue()` is an alias for `pop()`, so the FIFO pairing reads as `enqueue()`/`dequeue()` (in at the back, out at the front), while the LIFO pairing is `push()`/`pop()` (both at the front).  Use whichever pair names your intent.
 
-Note also that these are the *only* operations that move the cursor.  A sized array starts at `length` 0, so the `enqueue()` calls above are what grow it - had the example written `superHeroes[0] = "Batman";` instead, `length()` would still be `0`.
+Note also that these are the *only* operations that move the cursor.  A sized array starts at `length` 0, so the `enqueue()` calls above are what grow it - had the example written `superHeroes[0] = "Batman";` instead, `length` would still be `0`.
 
 ##### Searching
 

@@ -34,7 +34,7 @@ void main() {
     s = s.toUpper();                            // "CLOAK OF DARKNESS"
     print(s); print("^");
 
-    print(s.getLength()); print("^");           // 17
+    print(s.length); print("^");           // 17
     print(s.contains("DARK") ? "found^" : "missing^");
 
     // Comparison is by content across both types.

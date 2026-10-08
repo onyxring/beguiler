@@ -1,0 +1,5 @@
+// An object body's `parent = x` naming nothing declared is rejected.
+// EXPECT_ERROR: Undeclared identifier 'zzz'
+#beguilerSettings { target = z5; informName = "none"; }
+object o { parent = zzz; }
+void main(){ }

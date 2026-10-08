@@ -42,7 +42,7 @@ void main(){
 
     // ── 3. Chain stored to local; lifetime valid until next chain starts ─────
     array<int> result = g_nums.filter((int x) => x > 5);
-    print(result.length());                                     // 5
+    print(result.length);                                     // 5
     print(result[0]);                                           // 6
     print(result[4]);                                           // 10
 

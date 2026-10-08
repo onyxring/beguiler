@@ -16,8 +16,8 @@ gadget widget { }
 object rock { rawArray<dictionaryWord> name = .rock; }
 
 void main() {
-    print($"obj {t.nums.length()} {t.nums[1]}, sub {widget.nums.length()} {widget.nums[0]}, ");
-    print($"name lamp {lamp.name.length()} {(lamp.name[0] == .lamp)}, ");
-    print($"name gadget {widget.name.length()} {(widget.name[0] == .gadget)}, ");
-    print($"name rock {rock.name.length()} {(rock.name[0] == .rock)}");
+    print($"obj {t.nums.length} {t.nums[1]}, sub {widget.nums.length} {widget.nums[0]}, ");
+    print($"name lamp {lamp.name.length} {(lamp.name[0] == .lamp)}, ");
+    print($"name gadget {widget.name.length} {(widget.name[0] == .gadget)}, ");
+    print($"name rock {rock.name.length} {(rock.name[0] == .rock)}");
 }

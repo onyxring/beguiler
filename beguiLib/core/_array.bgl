@@ -12,8 +12,13 @@
 extern emitter class array<T>{
     replace emitter T    operator[](int i)        { $val-->($i+1) }       /// The element at `i`.
     replace emitter T    operator[]=(int i, T v)  { $val-->($i+1) = $v }  /// Set the element at `i`.
-    replace emitter int  size()                   { $val-->0 }             /// Return how many elements the array can hold.
-    replace emitter int  length()                 { $val-->0 }             /// Return how many elements are in use; the same as `size()` unless `<array>` is included.
+    replace emitter int  size                     { $val-->0 }             /// How many elements the array can hold.
+    typesealed arrayLength length;                                         /// How many elements are in use; the same as `size` unless `<array>` is included.
+}
+
+/// The type of an array's `length`: how many elements are in use. `<array>` makes it assignable.
+extern emitter class arrayLength {
+    emitter int operator()                        { $self-->0 }            /// How many elements are in use.
 }
 
 /// A bare block of memory with no length, for passing to and from Inform 6 code; `rawArray<char>` holds bytes.
@@ -29,9 +34,14 @@ extern emitter class rawArray<T> {
 extern emitter class byteArray : array {
     replace emitter char operator[](int i)          { $val->($i + WORDSIZE) }       /// The character at `i`.
     replace emitter char operator[]=(int i, char v) { $val->($i + WORDSIZE) = $v }  /// Set the character at `i`.
-    replace emitter int  size()                     { $val-->0 }                     /// Return how many characters the array holds.
-    // Kept here so byte arrays don't take `<array>`'s length(), which suits word arrays only.
-    replace emitter int  length()                   { $val-->0 }                     /// Return how many characters the array holds.
+    replace emitter int  size                       { $val-->0 }                     /// How many characters the array holds.
+    // Its own type, so byte arrays don't take `<array>`'s length, which suits word arrays only.
+    replace typesealed byteArrayLength length;                                       /// How many characters the array holds.
+}
+
+/// The type of an `array<char>`'s `length`. `<buf>` makes it assignable.
+extern emitter class byteArrayLength {
+    emitter int operator()                          { $self-->0 }                    /// How many characters are in use.
 }
 //-- Implementation ------------------------------------------------------------
 // Scratch storage for `for(x in {a, b, c})` lists.

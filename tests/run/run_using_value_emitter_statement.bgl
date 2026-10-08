@@ -1,0 +1,23 @@
+/*  run_using_value_emitter_statement — a void value emitter reached through a `#using` import, used
+    as a statement (`strings.banner;`), emitted the prefixed path verbatim (`lib.strings.banner;`)
+    instead of expanding it.  */
+// EXPECT_OUTPUT: B B B 7
+#beguilerSettings { target = z5; informName = "none"; }
+void _orStr_banner() { print("B "); }
+int _orStr_count = 7;
+emitter class libStrings {
+    void banner { _orStr_banner() }
+    int  count  { _orStr_count }
+    void hello() { _orStr_banner() }
+}
+emitter class lib { }
+extend class lib { libStrings strings; }
+#using lib
+void main(){
+    bglInit();
+    int d = strings.count;
+    strings.hello();
+    strings.banner;
+    lib.strings.banner;
+    print(d);
+}

@@ -53,15 +53,15 @@ Every entry below has the same shape: purpose, include line, what it adds, the s
 
 A tracked buf's value behaves as a standard I6 hybrid buffer — the length word first, then the characters — so it can be passed directly to I6 library routines that expect one (`print_to_array`, `glk_put_buffer`, …). `buf[i]` reads and writes character `i` (§12.4). Length and capacity are read and written through the methods below. Writing `buf[i]` does not change the length.
 
-An `array<char>` that is not tracked (an `extern` I6 array, or one created without the tracked layout) answers `size()` and `length()` from the buffer's length word (§12.4), and `isTracked()` returns false.
+An `array<char>` that is not tracked (an `extern` I6 array, or one created without the tracked layout) answers `size` and `length` from the buffer's length word (§12.4), and `isTracked()` returns false.
 
 **Methods on `array<char>`**
 
 | Method | Returns | Description |
 |---|---|---|
-| `buf.size()` | `int` | Capacity in characters; `-1` for an untracked buffer. |
-| `buf.length()` | `int` | Current number of characters. |
-| `buf.setLength(n)` | `void` | Set the current length, limited to `size()` on a tracked buffer. |
+| `buf.size` | `int` | Capacity in characters; `-1` for an untracked buffer. |
+| `buf.length` | `int` | Current number of characters. |
+| `buf.length = n` | | Set the current length, limited to `size` on a tracked buffer. |
 | `buf.isTracked()` | `bool` | True for a tracked buf. |
 
 **Buffer operations, `bgl.util.buf`**
@@ -96,24 +96,25 @@ Every operation takes the buffer as its first argument. Operations that return `
 ```bgl
 #include <buf>
 array<char> line[64];
+array<char> word[16];
 
 void Main() {
     bglInit();
     bgl.util.buf.set(line, "hello");
-    bgl.util.buf.append(line, " world");
+    bgl.util.buf.set(word, " world");
+    bgl.util.buf.append(line, word);   // append takes a buffer; set takes a literal too
     bgl.util.buf.toUpper(line);
-    bgl.util.buf.print(line);        // → HELLO WORLD
-    print(line.length());            // → 11
+    bgl.util.buf.print(line);          // → HELLO WORLD
+    print(line.length);                // → 11
 }
 ```
 
 **Settings**
 
-`bglStringDefaultSize` (default `500`) is the capacity used for capture into an untracked buffer and for the pool buffers of `<string>`. It is an I6 constant, set before the include:
+`bglStringDefaultSize` (default `500`) is the capacity used for capture into an untracked buffer and for the pool buffers of `<string>`. It is an I6 constant; the runtime core loads `<buf>` before your code, so set it in an `#emitfirst` block (§14.4.2):
 
 ```bgl
-#i6 { Constant bglStringDefaultSize 800; }
-#include <buf>
+#emitfirst { Constant bglStringDefaultSize 800; }
 ```
 
 **Notes**
@@ -175,7 +176,7 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 | `s.delete(pos, count)` | `stringObj` | With `count` characters removed at `pos`. |
 | `s.replace(search, repl)` / `s.replaceAll(search, repl)` | `stringObj` | With the first / every occurrence replaced. |
 | `s.format(pattern[, p1[, p2]])` | `stringObj` | `pattern` with `$0` replaced by `s` and `$1`, `$2` by the arguments. |
-| `s.getLength()` | `int` | Number of characters. |
+| `s.length` | `int` | Number of characters. |
 | `s.compareTo(other[, caseInsensitive])` | `int` | `-1`, `0` or `1`; the form a sort comparator needs. |
 | `s.indexOf(search)` | `int` | Position of the first occurrence, or `-1`. |
 | `s.startsWith(prefix)` / `s.endsWith(suffix)` / `s.contains(search)` | `bool` | Substring tests. |
@@ -234,7 +235,7 @@ Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by
 
 **Description**
 
-The runtime core loads `<array>` automatically, so an explicit `#include <array>` is never required; the built-in part of the surface is subscripting, `size()` and `length()` (§12.3). `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
+The runtime core loads `<array>` automatically, so an explicit `#include <array>` is never required; the built-in part of the surface is subscripting, `size` and `length` (§12.3). `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
 
 Methods that take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`: an argument of an incompatible type is a compile-time error. Where a method needs an operation of `T` — equality, ordering, assignment, release — it uses the one `T` publishes, or the plain word semantics when `T` publishes none; the contract is specified in §12.10.
 
@@ -242,17 +243,17 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 
 | Method | Returns | Description |
 |---|---|---|
-| `length()` | `int` | The number of elements in use. It is set at allocation (the element count for a list initializer, `0` for a sized declaration) and changed only by the operations below. On an untracked `extern` array it returns `size()`. |
-| `setLength(n)` | `void` | Set the length. A negative `n` is a runtime error. No effect on an untracked array. |
+| `length` | `int` | The number of elements in use. It is set at allocation (the element count for a list initializer, `0` for a sized declaration) and changed only by the operations below. On an untracked `extern` array it reads as `size`. |
+| `length = n` | | Set the length, at most `size`. A negative `n` is a runtime error. No effect on an untracked array. |
 | `isTracked()` | `bool` | True for a Beguile-declared array with length tracking; false for an I6-native `extern` array. |
-| `indexOf(item)` / `find(item)` | `int` | First index of `item` in `0..length()-1`, or `-1`. |
+| `indexOf(item)` / `find(item)` | `int` | First index of `item` in `0..length-1`, or `-1`. |
 | `contains(item)` | `bool` | True when `item` is present. |
-| `clear()` | `void` | Zero every slot up to `size()`, releasing owned elements, and set the length to `0`. |
+| `clear()` | `void` | Zero every slot up to `size`, releasing owned elements, and set the length to `0`. |
 | `swap(pos1, pos2)` | `void` | Exchange two elements. Indices must be in range. |
-| `reverse()` | `void` | Reverse the elements `0..length()-1` in place. |
-| `append(item)` | `bool` | Add at position `length()`. False when the array is full. |
+| `reverse()` | `void` | Reverse the elements `0..length-1` in place. |
+| `append(item)` | `bool` | Add at position `length`. False when the array is full. |
 | `prepend(item)` | `bool` | Insert at position `0`, shifting the rest right. False when full. |
-| `insert(pos, item)` | `bool` | Insert at `pos` (`0..length()`), shifting the rest right. False when full or `pos` is out of range. |
+| `insert(pos, item)` | `bool` | Insert at `pos` (`0..length`), shifting the rest right. False when full or `pos` is out of range. |
 | `remove(pos)` | `void` | Remove the element at `pos`, shifting the rest left. Out of range: no effect. |
 | `removeValue(item)` | `void` | Remove every element equal to `item`. |
 | `arr = { a, b }` | `void` | Replace the contents: `clear()`, then append each element of the list. |
@@ -265,7 +266,7 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 | `dequeue()` | `T` | Remove and return the front element; `0` when empty. |
 | `peekEnd()` | `T` | The back element without removing it; `0` when empty. |
 | `popEnd()` | `T` | Remove and return the back element; `0` when empty. |
-| `sort()` | `void` | Sort `0..length()-1` ascending in place, by `T`'s ordering operator or, when it has none, by signed word value. |
+| `sort()` | `void` | Sort `0..length-1` ascending in place, by `T`'s ordering operator or, when it has none, by signed word value. |
 | `sort(compare)` | `void` | Sort with a comparator `func<int, T, T>` returning `-1`, `0` or `1`. |
 
 `push`, `peek` and `pop` operate at the front of the array; `enqueue`, `peekEnd` and `popEnd` at the back. The sort is stable.
@@ -310,13 +311,13 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 |---|---|---|
 | `filter(pred)` | `array<T>` | The elements for which `pred(elem)` is true. `pred` is `func<bool, T>`. |
 | `map(f)` | `array<var>` | `f(elem)` for each element. `f` is `func<var, T>`; the result is `array<var>` because the mapper's result type is not tracked. |
-| `take(n)` / `skip(n)` | `array<T>` | The first `n` elements / all but the first `n`. `n` is limited to `0..length()`. |
+| `take(n)` / `skip(n)` | `array<T>` | The first `n` elements / all but the first `n`. `n` is limited to `0..length`. |
 | `takeWhile(pred)` / `skipWhile(pred)` | `array<T>` | Elements up to the first for which `pred` is false / from that element on. |
 | `distinct()` | `array<T>` | The first occurrence of each value. |
 | `orderBy()` | `array<T>` | A sorted copy, by signed word value; the source is unchanged. |
 | `orderBy(compare)` | `array<T>` | A sorted copy using `func<int, T, T>`. |
 | `first()` / `last()` | `T` | The first / last element; `0` when empty. |
-| `count()` | `int` | The same as `length()`. |
+| `count()` | `int` | The same as `length`. |
 | `any(pred)` | `bool` | True when some element satisfies `pred`; false on an empty array. |
 | `all(pred)` | `bool` | True when every element satisfies `pred`; true on an empty array. |
 
@@ -417,7 +418,7 @@ Glk arranges the screen as a binary tree of windows: a window is never resized d
 
 The types are also reachable as `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow` and `bgl.glulx.graphicsWindow`. Windows derive from `_bglObject`, not from `object`: they are not world-tree objects and have no `parent`, `children` or attributes.
 
-Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13), and so does a split the interpreter refuses (a graphics window where it has no graphics): either way the result is `null`, so `?.` or a `null` test guards the window's use.
+Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13), and so does a split the interpreter refuses (a graphics window where it has no graphics) or one from a window that isn't open (a status bar never given a height): in each case the result is `null`, so `?.` or a `null` test guards the window's use.
 
 ### 22.7.2 Roots
 
@@ -490,6 +491,7 @@ void Main() {
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 auto hud = bgl.ui.mainWin.splitUpGrid(3);
 hud.height = 5;                      // the split axis
@@ -516,6 +518,7 @@ Image drawing needs blorb assets, so these methods exist only when `generateBlor
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 pic.drawImage(eImages.coverArt);                  // natural size, at the top-left
 pic.drawImage(eImages.coverArt, width: 100);      // width 100, height to match
@@ -537,6 +540,7 @@ A text-grid window positions its cursor explicitly; any child window can be clos
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 auto hud = bgl.ui.mainWin.splitUpGrid(3);   // textGridWindowHorz
 hud.moveCursor(0, 0);                       // the top-left cell
@@ -573,6 +577,7 @@ Glk styles are hints set per window kind and style type; a hint affects windows 
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 bgl.ui.screen.setStyle(eGlulxStyleType.normal, style { backColor = $111111; foreColor = $cccccc; });
 bgl.ui.screen.setStyle(eGlulxStyleType.header, style { fontWeight = 1; justify = (int)eGlulxJustify.centered; });
@@ -588,6 +593,7 @@ hud.clearStyle(eGlulxStyleType.alert);
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #using bgl.glulx;
 pic.setBackgroundColor(color.rgb(20, 30, 40));
@@ -602,6 +608,7 @@ Interpreters may ignore style hints. On a child window, `measureStyle(styleType,
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 if (!hud.styleHonored(eGlulxStyleType.alert, eGlulxStyleHint.reverse)) { /* fall back */ }
 int fg = hud.measureStyle(eGlulxStyleType.normal, eGlulxStyleHint.foreColor);
@@ -647,20 +654,21 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 
 | Member | Returns | Description |
 |---|---|---|
-| `img.width()` / `img.height()` | `int` | Natural pixel dimensions. |
-| `img.size()` | `bglSize` | Both dimensions (§21.12). |
+| `img.width` / `img.height` | `int` | Natural pixel dimensions. |
+| `img.size` | `bglSize` | Both dimensions (§21.12). |
 
-The same three members are added to the `eImages` enum, so `eImages.logo.width()` works without a handle.
+The same three are added to the `eImages` enum (§7.9), so `eImages.logo.width` works without a handle.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #include <glulxImage>
 
 void Main() {
     glulxImage cover = eImages.coverArt;
-    int w = cover.width();
-    pic.drawImage(cover, 0, 0, cover.width() / 2);
+    int w = cover.width;
+    pic.drawImage(cover, 0, 0, cover.width / 2);
 }
 ```
 

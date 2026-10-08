@@ -90,6 +90,8 @@ class bglLanguageService{
         bool isAdditiveProperty(const std::string& name) const;
         // "file:line" of the class, object or enum registered as `name`, for redefinition messages.
         string declaredAt(const string& name);
+        // An I6 statement keyword (`jump`, `box`, …): a global by that name needs another emitted name.
+        static bool isI6StatementKeyword(const string& name);
         bool isObjectType(string);
         bool isClassType(string);  // true for classes/enums/types only, not object instances
         

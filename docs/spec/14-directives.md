@@ -79,6 +79,7 @@ so `<i6StandardLibrary>` and `<bindings/i6StandardLibrary>` are the same include
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #include <string>                  // beguiLib/string.bgl
 #include <i6StandardLibrary>       // same as <bindings/i6StandardLibrary>
@@ -112,6 +113,7 @@ A file may be included more than once; a file that must be processed only once g
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #include "myLibrary"
 #include "utils/helpers"
@@ -142,6 +144,7 @@ string (`$"…"`) is not accepted as an include path.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #include @"vendor\legacy\helpers"
 ```
@@ -519,6 +522,7 @@ format with file name and line number.
 
 **Example**
 
+<!-- doctest: error -->
 ```bgl
 #if !PLATFORM_DEFINED
     #error "You must define PLATFORM_DEFINED before including this file."

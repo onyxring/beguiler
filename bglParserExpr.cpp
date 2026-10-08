@@ -54,7 +54,8 @@ using namespace std;
 
 // Substitute a property-class member's operator() read emitter — see bglParser.h. Generic:
 // works for any property-class (parentProp, etc.); the emitter body lives in the BLR.
-string bglParser::applyPropertyClassRead(const string& objText, const string& memberType, string& outRetType){
+string bglParser::applyPropertyClassRead(const string& objText, const string& memberType, string& outRetType,
+                                         const ArrayReceiver* arr){
     outRetType = "";
     classDef* cls = getDispatchClass(memberType);
     if(cls == nullptr || !cls->isEmitterClass) return "";
@@ -63,10 +64,70 @@ string bglParser::applyPropertyClassRead(const string& objText, const string& me
     auto* fn = dynamic_cast<functionDef*>(found);
     auto* blk = dynamic_cast<i6Block*>(fn->body);
     emitterBindings bind; bind.self = objText; bind.val = objText; bind.trim = emitterTrim::wsSemi;
+    // On an array the owner is the array, addressed as its emitters expect: (owner, prop) for a
+    // member array, (array, 0) otherwise.
+    if(arr != nullptr){
+        if(arr->isMember){ bind.self = arr->owner; bind.prop = arr->prop; }
+        else bind.prop = "0";
+    }
     string b = expandEmitterBody(blk, bind);
     if(b.empty()) return "";
     outRetType = fn->returnType.name;
     return b;
+}
+
+bglParser::ArrayReceiver bglParser::arrayReceiver(string& objName, const string& rawObjName, const string& objType,
+                                                 functionDef* func, statementBlock* body){
+    ArrayReceiver r;
+    if(!isWordArrayType(objType)) return r;
+    size_t d = objName.rfind('.');
+    if(d != string::npos){ r.owner = objName.substr(0, d); r.prop = objName.substr(d + 1); r.isMember = true; }
+    else r.isMember = splitQualifiedMember(rawObjName, func, body, r.owner, r.prop);
+    // A `ref` member holds a POINTER to an array owned elsewhere: address it as a value, through
+    // the property READ where the pointer lives (splitQualifiedMember yields `self` for a bare
+    // member inside a body, so this joins to `self.nums`, not the raw `nums`).
+    if(r.isMember && memberArrayIsRef(r.owner, r.prop, func, body)){
+        objName = r.owner + "." + r.prop;
+        r.isMember = false;
+    }
+    return r;
+}
+
+// A tracked member spends its LAST word on the length: capacity is one less than the property
+// holds, and the length is read from that slot. A rawArray or dictionaryWord array keeps the bare
+// layout, where length == size. Must agree with the emitter's member-array layout.
+string bglParser::memberArraySizeText(const ArrayReceiver& r, const string& which,
+                                      functionDef* func, statementBlock* body){
+    string words = "((" + r.owner + ".#" + r.prop + ")/WORDSIZE)";
+    if(!memberArrayIsTracked(r.owner, r.prop, func, body)) return words;
+    return which == "size" ? "(" + words + " - 1)"
+                           : "(" + r.owner + ".&" + r.prop + "-->(" + words + " - 1))";
+}
+
+string bglParser::expandMemberValueEmitter(string objText, const string& rawRecv, const string& recvType,
+                                           const string& memberName, functionDef* func, statementBlock* body,
+                                           string& outRetType){
+    classDef* rc = getDispatchClass(recvType);
+    if(rc == nullptr) return "";
+    auto* ve = dynamic_cast<functionDef*>(findMemberInHierarchy(rc, [&](typeMember* m){
+        auto* fd = dynamic_cast<functionDef*>(m);
+        return fd && fd->name == memberName && fd->isEmitter && fd->isValueEmitter;
+    }));
+    auto* blk = ve ? dynamic_cast<i6Block*>(ve->body) : nullptr;
+    if(blk == nullptr) return "";
+    outRetType = ve->returnType.name;
+    ArrayReceiver arr = arrayReceiver(objText, rawRecv, recvType, func, body);
+    if(arr.isMember && (memberName == "size" || memberName == "length"))
+        return memberArraySizeText(arr, memberName, func, body);
+    emitterBindings vb;
+    vb.self = arr.isMember ? arr.owner : objText;
+    vb.val  = objText;
+    vb.host = objText.substr(0, objText.rfind('.') == string::npos ? objText.size() : objText.rfind('.'));
+    if(isWordArrayType(recvType)) vb.prop = arr.isMember ? arr.prop : "0";
+    vb.selfType = recvType;
+    vb.cls = rc->i6Name();
+    vb.trim = emitterTrim::wsSemi;
+    return expandEmitterBody(blk, vb);
 }
 
 // Fluent property-class read chain (IDENT.m1.m2… → nested reads). See bglParser.h. Peek-only until
@@ -254,6 +315,7 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
         variableDeclaration& capGlobal = *(new variableDeclaration());
         capGlobal.name = cap.globalName;
         capGlobal.type.name = cap.typeName;
+        capGlobal.needsEarlyGlobalDecl = true;   // a class method's lambda is emitted with the class
         languageService.globals.insert(languageService.globals.begin(), &capGlobal);
         if(cap.outerName == "self"){
             i6RawNode* selfAssign = new i6RawNode();
@@ -426,6 +488,14 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         parsingError(format("Directive '{0}' is not valid in an expression.", rhs.value));
     }
 
+    // A verb operand named directly is its action constant (`action == Take` compares with ##Take);
+    // a verb-typed variable or member is already an action value.
+    if(rhsType == "verb"){
+        expression r; r.tokens.push_back(rhsText); r.resolvedType = "verb";
+        if(applyActionConstant(&r)) rhsText = r.tokens[0];
+    }
+    if(expr->resolvedType == "verb" && expr->tokens.size() == 1) applyActionConstant(expr);
+
     // Step 2: Find matching operator emitter
     // 'var' is the escape-hatch type — if either side is var, skip param-type checking
     // (treat the same as an empty/unknown rhsType: match by operator name alone).
@@ -521,7 +591,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     if(!matchedOp){
         for(typeMember* m : cls->members){
             auto* convFn = dynamic_cast<functionDef*>(m);
-            if(!convFn || convFn->name != "operator()" || !convFn->params.empty() || !convFn->isEmitter || convFn->isExplicit) continue;
+            if(!convFn || convFn->name != "operator()" || !convFn->params.empty() || convFn->isExplicit) continue;
             string convertedType = convFn->returnType.name;
             classDef* convCls = getDispatchClass(convertedType);
             if(!convCls) continue;
@@ -538,6 +608,15 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
                 return false;
             })){
                 matchedOp = dynamic_cast<functionDef*>(m2);
+                // The operator is the converted type's, so its left operand is the converted value.
+                vector<string> prefix;
+                while(expr->tokens.size() > 1 && (expr->tokens.front() == "(" || expr->tokens.front() == "~~"))
+                    { prefix.push_back(expr->tokens.front()); expr->tokens.erase(expr->tokens.begin()); }
+                string converted = applyCastConversion(expr->text(), cls->name, convertedType);
+                expr->tokens.clear();
+                for(auto& p : prefix) expr->tokens.push_back(p);
+                expr->tokens.push_back(converted);
+                expr->emitterSelf.clear();
                 cls = convCls;
                 break;
             }
@@ -670,8 +749,12 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         for(auto& p : prefix) expr->tokens.push_back(p);
         if(matchedOp->isStatic)
             expr->tokens.push_back(i6Emitter::staticRoutineName(cls, matchedOp) + "(" + lhsText + ", " + rhsText + ")");
-        else
-            expr->tokens.push_back(lhsText + "." + matchedOp->i6name + "(" + rhsText + ")");
+        else {
+            // A message send binds tighter than any I6 operator, so a receiver that is more than a
+            // name (`boxes-->(0+1)`) must be grouped or the send lands on its last operand.
+            bool bare = all_of(lhsText.begin(), lhsText.end(), [](char c){ return isalnum((unsigned char)c) || c == '_' || c == '.'; });
+            expr->tokens.push_back((bare ? lhsText : "(" + lhsText + ")") + "." + matchedOp->i6name + "(" + rhsText + ")");
+        }
     } else {
         // No operator found on this type
         parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'",
@@ -956,7 +1039,13 @@ void bglParser::exprEmitRawBinaryOp(ExprParseState& st, const string& opTok){
     // that may contain emitter-class comparisons (`obj.parent == player`). Other raw operators
     // (arithmetic, bitwise, comparison) keep the token-by-token passthrough — those RHSs
     // don't open a fresh emitter dispatch context.
-    if(opTok != "&&" && opTok != "||"){ expr->tokens.push_back(opTok); return; }
+    if(opTok != "&&" && opTok != "||"){
+        expr->tokens.push_back(opTok);
+        // A comparison yields a truth value whatever it compares (`typeof(x) == eType.int`).
+        static const std::set<string> comparisons = {"==", "!=", "~=", "<", ">", "<=", ">="};
+        if(comparisons.count(opTok)) expr->resolvedType = "bool";
+        return;
+    }
     int rawPrec = operatorPrecedence(opTok);
     if(rawPrec < 0){ expr->tokens.push_back(opTok); return; }
     vector<string> rhsTerminators = terminators;
@@ -1414,7 +1503,7 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
         parsingError(format("No operator[] returning '{0}' on type '{1}'. Add an overload or use a supported element type.",
             typeDisplayName(elemType), typeDisplayName(arrType)));
     }
-    if(expr->resolvedType.empty()) expr->resolvedType = getMethod->returnType.name;
+    if(expr->resolvedType.empty() || expr->tokens.empty()) expr->resolvedType = getMethod->returnType.name;
     string subscriptText;
     // Member (property) WORD arrays use the orLibrary property-array convention:
     // a plain `with prop a b c` property accessed via `obj.&prop-->n` (0-indexed,
@@ -1530,9 +1619,38 @@ bglParser::ExprStep bglParser::parseExprSubscript(ExprParseState& st, token& nex
                 string propType = findPropType(elemCls);
                 if(!propType.empty()) expr->resolvedType = propType;
             }
-            // Replace the subscript text with (subscript).member
+            // `arr[0].items[i]` — an element of the element's member word array (inline property data).
+            arrayDeclaration* memberArr = elemCls == nullptr ? nullptr :
+                dynamic_cast<arrayDeclaration*>(findMemberInHierarchy(elemCls, [&](typeMember* m){
+                    return dynamic_cast<arrayDeclaration*>(m) != nullptr && m->name == member.value; }));
+            if(memberArr != nullptr && !memberArr->isRefLocal && file.peekToken().is(token::bracketOpen)
+               && isWordArrayType(expr->resolvedType)){
+                file.getToken();   // '['
+                expression* innerIndex = parseExpression(file.getToken(), {token::bracketClose}, func, body);
+                if(!expr->tokens.empty()) expr->tokens.pop_back();
+                expr->tokens.push_back("(" + recv + ").&" + memberI6Name(elemType, member.value)
+                                       + "-->(" + innerIndex->text() + ")");
+                expr->resolvedType = memberArr->elementType;
+                return ExprStep::Advance;
+            }
+            // An emitter value or a getter on the element (`grid[0].length`) reads through its
+            // emitter; a subscript's result is a value, so an array element is (array, 0).
+            string readRet;
+            string read = expandMemberValueEmitter(recv, "", elemType, member.value, func, body, readRet);
+            if(read.empty() && isPropertyClassType(expr->resolvedType)){
+                ArrayReceiver valueArr;
+                read = applyPropertyClassRead(recv, expr->resolvedType, readRet,
+                                              isWordArrayType(elemType) ? &valueArr : nullptr);
+            }
             if(!expr->tokens.empty()) expr->tokens.pop_back();
-            expr->tokens.push_back(recv + "." + member.value);
+            if(!read.empty()){
+                expr->tokens.push_back(read);
+                if(!readRet.empty()) expr->resolvedType = readRet;
+            } else if(functionDef* g = castType.empty() ? nativeGetterOf(expr->resolvedType) : nullptr){
+                expr->tokens.push_back(recv + "." + member.value + "." + g->i6name + "()");
+                expr->resolvedType = g->returnType.name;
+            } else
+                expr->tokens.push_back(recv + "." + member.value);
         }
     }
     // Apply a pending cast to the subscript (or subscript.member) result —
@@ -1628,7 +1746,21 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
     // Lowers to: _bgl_tempN = obj; if(nullTest) _bgl_tempN = _bgl_tempN.member;
     string optTemp = format("_bgl_temp{0}", languageService.ternaryTempCount++);
     string lhsName = cur.value;
-    string lhsType = !castType.empty() ? castType : resolveIdentifierType(lhsName, func, body);
+    string lhsType;
+    // A receiver already parsed (`owner.dog?.parent`) arrives as text + type; leading `(` tokens
+    // belong to an enclosing group and stay in place ahead of the chain's result.
+    vector<string> chainPrefix;
+    if(!st.chainRecvText.empty()){
+        lhsName = st.chainRecvText;
+        lhsType = st.chainRecvType;
+        while(!expr->tokens.empty() && (expr->tokens.front() == "(" || expr->tokens.front() == "~~")){
+            chainPrefix.push_back(expr->tokens.front());
+            expr->tokens.erase(expr->tokens.begin());
+        }
+        lhsName.clear(); for(const auto& t : expr->tokens) lhsName += t;
+        st.chainRecvText.clear(); st.chainRecvType.clear();
+    } else
+        lhsType = !castType.empty() ? castType : resolveIdentifierType(lhsName, func, body);
     castType = "";
     if(lhsType.empty()) parsingError(format("Unknown variable '{0}' in optional chain", lhsName));
     // Look up operator?() on LHS type for the null test
@@ -1656,8 +1788,13 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                     auto* v = dynamic_cast<variableDeclaration*>(m); return v && v->name == memberName; })))
                 propType = vd->type.name;
         string readRet;
-        string read = applyPropertyClassRead(optTemp, propType, readRet);
-        if(read.empty()) return optTemp + "." + memberI6Name(currentType, memberName);
+        string read = expandMemberValueEmitter(optTemp, "", currentType, memberName, func, body, readRet);
+        if(read.empty()) read = applyPropertyClassRead(optTemp, propType, readRet);
+        if(read.empty()){
+            string plain = optTemp + "." + memberI6Name(currentType, memberName);
+            if(functionDef* g = nativeGetterOf(propType)){ propType = g->returnType.name; return plain + "." + g->i6name + "()"; }
+            return plain;
+        }
         if(!readRet.empty()) propType = readRet;
         return read;
     };
@@ -1672,15 +1809,9 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
             // ?.method(args) — find method, inline emitter or call
             string methName = member.value;
             classDef* cls = getDispatchClass(currentType);
-            vector<expression*> callArgs;
-            token firstArg = file.getToken();
-            while(firstArg.isNot(token::parenClose)){
-                expression* arg = parseExpression(firstArg, {token::comma, token::parenClose}, func, body);
-                callArgs.push_back(arg);
-                if(arg->terminator == token::parenClose) break;
-                firstArg = file.getToken();
-            }
-            MethodMatch mm = resolveMethod(currentType, optTemp, methName, callArgs);
+            ParsedArgList opal = parseCallArgList(func, body);
+            vector<expression*> callArgs = opal.args;
+            MethodMatch mm = resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
             functionDef* method = mm.method;
             if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, typeDisplayName(currentType)));
             mangleOverloadSetForReceiver(currentType, methName);
@@ -1732,15 +1863,9 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 // .method(args) — build as non-guarded call
                 string methName = nextMember.value;
                 classDef* cls = getDispatchClass(currentType);
-                vector<expression*> callArgs;
-                token firstArg = file.getToken();
-                while(firstArg.isNot(token::parenClose)){
-                    expression* arg = parseExpression(firstArg, {token::comma, token::parenClose}, func, body);
-                    callArgs.push_back(arg);
-                    if(arg->terminator == token::parenClose) break;
-                    firstArg = file.getToken();
-                }
-                MethodMatch mm2 = resolveMethod(currentType, optTemp, methName, callArgs);
+                ParsedArgList opal = parseCallArgList(func, body);
+                vector<expression*> callArgs = opal.args;
+                MethodMatch mm2 = resolveMethodNamed(currentType, optTemp, methName, callArgs, opal.namedArgNames);
                 functionDef* method = mm2.method;
                 if(!method) parsingError(format("No method '{0}' on type '{1}' in optional chain", methName, typeDisplayName(currentType)));
                 mangleOverloadSetForReceiver(currentType, methName);
@@ -1789,6 +1914,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
     inj->text = injText;
     pendingInjections.push_back(inj);
     expr->tokens.clear();
+    for(const auto& p : chainPrefix) expr->tokens.push_back(p);
     expr->tokens.push_back(optTemp);
     if(!currentType.empty()) expr->resolvedType = currentType;
     return ExprStep::Advance;
@@ -1839,11 +1965,17 @@ bglParser::ExprStep bglParser::parseExprSelfMember(ExprParseState& st, token& me
     // read emitter (parentProp → parent($self)), dispatch through it — mirrors the
     // non-self property-access path. Without this, `self.parent` emitted a raw
     // property read (reading a non-existent I6 property).
-    string accessText = selfText + "." + member.value;
+    string selfType = currentClass != nullptr ? currentClass->name : currentObject != nullptr ? currentObject->name : "";
+    string accessText = selfText + "." + (selfType.empty() ? member.value : memberI6Name(selfType, member.value));
     {
         string readRet;
-        string readText = applyPropertyClassRead(selfText, memberType, readRet);
+        string readText = selfType.empty() ? "" : expandMemberValueEmitter(selfText, "self", selfType, member.value, func, body, readRet);
+        if(readText.empty()) readText = applyPropertyClassRead(selfText, memberType, readRet);
         if(!readText.empty()){ accessText = readText; if(!readRet.empty()) memberType = readRet; }
+        else if(functionDef* g = nativeGetterOf(memberType)){
+            accessText += "." + g->i6name + "()";
+            memberType = g->returnType.name;
+        }
     }
     if(expr->resolvedType.empty() && !memberType.empty()) expr->resolvedType = memberType;
     expr->tokens.push_back(accessText);
@@ -2015,44 +2147,15 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
     string exprPropValue = isWordArrayType(objType) ? "0" : "<$prop undefined>";
 
     // Member (property) WORD array? Detect once for member-aware lowering.
-    // A qualified receiver ("obj.prop") or a bare name resolving to a member
-    // uses the orLibrary property convention, not the global/tracked form.
-    string mOwner, mProp;
-    bool isMemberArr = false;
-    if(isWordArrayType(objType)){
-        size_t d = objName.rfind('.');
-        if(d != string::npos){ mOwner = objName.substr(0, d); mProp = objName.substr(d + 1); isMemberArr = true; }
-        else isMemberArr = splitQualifiedMember(rawObjName, func, body, mOwner, mProp);
-        // A `ref` member holds a POINTER to an array owned elsewhere, so every
-        // operation addresses it as a value — (obj.prop, 0) — not as inline
-        // property data. Without this, `length()` on a bound ref member read
-        // the slot the pointer lives in.
-        if(isMemberArr && memberArrayIsRef(mOwner, mProp, func, body)){
-            // Retarget at the property READ, which is where the pointer lives.
-            // splitQualifiedMember already yields `self` for a bare member
-            // inside a body, so joining gives `self.nums` rather than the raw
-            // `nums`, which would name nothing at all.
-            objName = mOwner + "." + mProp;
-            isMemberArr = false;
-        }
-    }
+    ArrayReceiver arr = arrayReceiver(objName, rawObjName, objType, func, body);
+    const string& mOwner = arr.owner;
+    const string& mProp  = arr.prop;
+    bool isMemberArr = arr.isMember;
 
     string callText;
-    // size()/length() on a member array inline here rather than routing
-    // through _bglArray, which may not exist when <array> is absent — so this
-    // has to know the layout itself and agree with the emitter. A tracked
-    // member spends its LAST word on the length: capacity is one less than the
-    // property holds, and the length is read from that slot. A rawArray or a
-    // dictionaryWord array keeps the bare layout, where length == size.
     if(isMemberArr) rejectRawMemberLengthOp(mOwner, mProp, methName, func, body);
     if(isMemberArr && (methName == "size" || methName == "length")){
-        string words = "((" + mOwner + ".#" + mProp + ")/WORDSIZE)";
-        if(memberArrayIsTracked(mOwner, mProp, func, body))
-            callText = (methName == "size")
-                     ? "(" + words + " - 1)"
-                     : "(" + mOwner + ".&" + mProp + "-->(" + words + " - 1))";
-        else
-            callText = words;
+        callText = memberArraySizeText(arr, methName, func, body);
         expr->tokens.push_back(callText);
     }
     else if(method->isEmitter){
@@ -2197,7 +2300,8 @@ bglParser::ExprStep bglParser::parseExprMemberSubscript(ExprParseState& st, toke
             parsingError(format("Subscript on '{0}.{1}': property is not a declared array", objName, propName));
         parsingError(format("No operator[] returning '{0}' on type '{1}'", typeDisplayName(elemType), typeDisplayName(propType)));
     }
-    if(expr->resolvedType.empty()) expr->resolvedType = getMethod->returnType.name;
+    // As the expression's first operand the element is its type, whatever reading the owner path left there.
+    if(expr->resolvedType.empty() || expr->tokens.empty()) expr->resolvedType = getMethod->returnType.name;
     // A word-array member is INLINE property data: it is read as
     // `obj.&prop-->(i)`, with no count slot, exactly as the write path and
     // the bare-name read already do. Running the global emitter body here
@@ -2242,6 +2346,28 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     string propType = resolvePathType(cur.value + "." + member.value, func, body);
     string objText = func != nullptr ? qualifyIdentifier(cur.value, func, body, member.value) : cur.value;
     string computedProp;   // set when `obj.p` is a computed property access
+    string recvType = !objText.empty() ? resolveIdentifierType(cur.value, func, body) : "";
+    // The path walk misses a member of a generic receiver reached through a parameter or a
+    // subscript (`data.length`, `grid[0].length`); the receiver's type still declares it.
+    if((member.value == "size" || member.value == "length") && recvType.rfind("rawarray<", 0) == 0)
+        parsingError(format("'{0}' is unavailable on rawArray '{1}': a rawArray is a bare I6 word "
+            "pointer with no length header, so its size isn't known at runtime. Pass the length "
+            "explicitly (e.g. as a separate parameter) instead.", member.value, cur.value));
+    if(propType.empty() && !recvType.empty())
+        if(classDef* rc = getDispatchClass(recvType))
+            if(auto* vd = dynamic_cast<variableDeclaration*>(findMemberInHierarchy(rc, [&](typeMember* m){
+                    auto* v = dynamic_cast<variableDeclaration*>(m); return v && v->name == member.value; })))
+                propType = vd->type.name;
+    if(!objText.empty() && castType.empty()){
+        string veRet;
+        string veText = expandMemberValueEmitter(objText, cur.value, recvType, member.value, func, body, veRet);
+        if(!veText.empty()){
+            expr->tokens.push_back(veText);
+            if(expr->resolvedType.empty()) expr->resolvedType = veRet;
+            expr->emitterSelf = cur.value;
+            return ExprStep::Advance;
+        }
+    }
     if(objText.empty()){
         // Receiver didn't resolve. Outside loose mode, a dotted access on an
         // unknown object is an error, just like a bare undeclared identifier —
@@ -2307,8 +2433,15 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     // etc. member reads are unaffected. The value re-types to the emitter's
     // return type so downstream comparisons/casts operate on the read result.
     {
+        string arrObj = objText;
+        ArrayReceiver arr = arrayReceiver(arrObj, cur.value, recvType, func, body);
         string readRet;
-        string readText = applyPropertyClassRead(objText, propType, readRet);
+        string readText;
+        if(arr.isMember && (member.value == "size" || member.value == "length") && isPropertyClassType(propType)){
+            readText = memberArraySizeText(arr, member.value, func, body);
+            readRet = "int";
+        } else
+            readText = applyPropertyClassRead(arrObj, propType, readRet, isWordArrayType(recvType) ? &arr : nullptr);
         if(!readText.empty()){ accessText = readText; if(!readRet.empty()) propType = readRet; }
     }
     // Regular-method (non-emitter) operator() getter: if the emitter read above
@@ -2318,20 +2451,11 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     // (which the castType block below still handles). This is a READ site;
     // assignment targets are parsed by the statement parser (→ operator=), and
     // explicit conversions (cast-only) are excluded.
-    if(castType.empty() && accessText == objText + "." + member.value && !propType.empty()){
-        classDef* pcls = getDispatchClass(propType);
-        typeMember* g = pcls ? findMemberInHierarchy(pcls, [&](typeMember* m){
-            auto* fn = dynamic_cast<functionDef*>(m);
-            return fn && fn->name=="operator()" && fn->params.empty() && !fn->isEmitter && !fn->isExplicit
-                   && !fn->returnType.name.empty() && fn->returnType.name != "void";
-        }) : nullptr;
-        if(g){
-            auto* fn = dynamic_cast<functionDef*>(g);
-            if(fn->i6name.empty()) fn->i6name = mangleOperatorName(fn->name);
+    if(castType.empty() && accessText == objText + "." + member.value)
+        if(functionDef* fn = nativeGetterOf(propType)){
             accessText = accessText + "." + fn->i6name + "()";
             propType = fn->returnType.name;
         }
-    }
     // Cast precedence: `(T)obj.prop` means cast applies to the property
     // access result, not to the bare `obj`. If castType is set here, run
     // it through applyCastConversion against the property's resolved type.
@@ -2566,7 +2690,7 @@ bglParser::ExprStep bglParser::parseExprMemberAccess(ExprParseState& st, token& 
     // Read afterMember here so both self and non-self paths share it.
     // For the self property-access case, put it back via prefetched.
     token afterMember = exprNext(st);
-    if(cur.value == "self" && !afterMember.is(token::parenOpen)){
+    if(cur.value == "self" && !afterMember.is(token::parenOpen) && !afterMember.is(token::bracketOpen)){
         return parseExprSelfMember(st, member, afterMember);
     } else {
         // Non-self identifier, or self.method(args).
@@ -2625,7 +2749,7 @@ bglParser::ExprStep bglParser::parseExprPostfixQuery(ExprParseState& st, token& 
         if(!qualified.empty()){
             if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body);
             expr->tokens.push_back(qualified);
-        } else if(func != nullptr){
+        } else if(func != nullptr || !looseIdentifierMode){
             parsingError(format("Undeclared identifier '{0}'", cur.value));
         } else {
             expr->tokens.push_back(cur.value);
@@ -2650,7 +2774,10 @@ bglParser::ExprStep bglParser::parseExprBareIdentifier(ExprParseState& st, token
     // `o ofclass C`, `o has light`, `o in container`, etc. that the property/class
     // name passthroughs would otherwise quietly mash into the emitted text.
     // Each of these has a canonical Beguile method-call form.
-    if(next.is(eTokenType::name) || next.is(eTokenType::identifier) || next.is(eTokenType::dataType)){
+    // A word the caller ends this expression on (`to` in `for (i in a to b)`) is not a juxtaposition.
+    const vector<string>& stops = *st.terminators;
+    bool isStop = find(stops.begin(), stops.end(), next.value) != stops.end();
+    if(!isStop && (next.is(eTokenType::name) || next.is(eTokenType::identifier) || next.is(eTokenType::dataType))){
         static const std::map<std::string,std::string> i6KeywordMigrations = {
             {"provides", "{lhs}.provides({rhs})"},
             {"ofclass",  "{lhs}.is({rhs})"},
@@ -2732,10 +2859,10 @@ bglParser::ExprStep bglParser::parseExprBareIdentifier(ExprParseState& st, token
             if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body, memberHint);
             expr->tokens.push_back(qualified);
         }
-    } else if(func != nullptr){
+    } else if(func != nullptr || !looseIdentifierMode){
         parsingError(format("Undeclared identifier '{0}'", cur.value));
     } else {
-        expr->tokens.push_back(cur.value); // global-context passthrough for unknown identifiers
+        expr->tokens.push_back(cur.value); // #bgl island: an I6 name Beguile hasn't seen
     }
     return ExprStep::Advance;
 }
@@ -2838,6 +2965,13 @@ bglParser::ExprStep bglParser::parseExprIdentifier(ExprParseState& st){
 // ─── BINARY OPERATOR: emitter dispatch via applyBinaryOperator() ─
 bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
     expression* expr = st.expr;
+    // `<expr>?.member`: optional chaining off a receiver that is already parsed (a member read).
+    if(st.cur.value == "?." && !expr->tokens.empty() && !expr->resolvedType.empty()){
+        st.chainRecvText = "<expr>";
+        st.chainRecvType = expr->resolvedType;
+        token q = st.cur;
+        return parseExprOptionalChain(st, q);
+    }
     int& parenDepth = st.parenDepth;
     token& cur = st.cur;
     optional<token>& prefetched = st.prefetched;
@@ -2955,6 +3089,21 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
     optional<token>& prefetched = st.prefetched;
     functionDef* func = st.func;
 
+    // An emitter value on the receiver's type (`holder.items.size`, `box.children.length`).
+    {
+        string selfText; for(const auto& t : expr->tokens) selfText += t;
+        string veRet;
+        string veText = expandMemberValueEmitter(selfText, selfText.find('(') == string::npos ? selfText : "",
+                                                 expr->resolvedType, member.value, func, st.body, veRet);
+        if(!veText.empty()){
+            expr->tokens.clear();
+            expr->tokens.push_back(veText);
+            expr->resolvedType = veRet;
+            prefetched = afterMember;
+            cur = exprNext(st);
+            return ExprStep::Continue;
+        }
+    }
     // Property-class read off a COMPUTED expression (e.g. `getObj().parent`, or a further
     // `.parent` off a prior read): dispatch through the read emitter with $self = the
     // accumulated expression text, instead of emitting a raw `<expr>.member` property read.
@@ -2979,7 +3128,22 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         string mtype = pm ? dynamic_cast<variableDeclaration*>(pm)->type.name : "";
         if(!mtype.empty() && isPropertyClassType(mtype)){
             string selfText; for(const auto& t : expr->tokens) selfText += t;
-            string ret; string read = applyPropertyClassRead(selfText, mtype, ret);
+            // A dotted path to an array is addressed as its emitters expect (see arrayReceiver);
+            // a computed one (a call's result) is just a value.
+            ArrayReceiver arr;
+            bool isArr = isWordArrayType(expr->resolvedType);
+            // A member of a call's result (`getBox().items`) is still a member: its last `.` follows the call.
+            size_t lastDot = selfText.rfind('.'), lastParen = selfText.rfind(')');
+            bool callOwner = lastParen != string::npos;
+            if(isArr && (!callOwner || (lastDot != string::npos && lastDot > lastParen)))
+                arr = arrayReceiver(selfText, selfText, expr->resolvedType, func, st.body);
+            string ret, read;
+            // The inline form names the owner twice; a call owner must run once, so it goes through the routine.
+            if(arr.isMember && !callOwner && (member.value == "size" || member.value == "length")){
+                read = memberArraySizeText(arr, member.value, func, st.body);
+                ret = "int";
+            } else
+                read = applyPropertyClassRead(selfText, mtype, ret, isArr ? &arr : nullptr);
             if(!read.empty()){
                 expr->tokens.clear();
                 expr->tokens.push_back(read);
@@ -2996,16 +3160,8 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         // READ path: an assignment target `<expr>.member = v` is handled by the statement
         // parser (→ operator=) and never reaches here. Explicit conversions are excluded
         // (they fire only at explicit casts). Emits `<recv>.member._opconv()`.
-        if(!mtype.empty()){
-            classDef* mcls = getDispatchClass(mtype);
-            typeMember* g = mcls ? findMemberInHierarchy(mcls, [&](typeMember* m){
-                auto* fn = dynamic_cast<functionDef*>(m);
-                return fn && fn->name=="operator()" && fn->params.empty() && !fn->isEmitter && !fn->isExplicit
-                       && !fn->returnType.name.empty() && fn->returnType.name != "void";
-            }) : nullptr;
-            if(g){
-                auto* fn = dynamic_cast<functionDef*>(g);
-                if(fn->i6name.empty()) fn->i6name = mangleOperatorName(fn->name);
+        {
+            if(functionDef* fn = nativeGetterOf(mtype)){
                 string selfText; for(const auto& t : expr->tokens) selfText += t;
                 expr->tokens.clear();
                 expr->tokens.push_back(selfText + "." + member.value + "." + fn->i6name + "()");
@@ -3022,6 +3178,19 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         // would run identifier resolution on the bare field name and — if that name is
         // also a member of the *enclosing* class — wrongly prepend `self.` (yielding
         // `self.next.self.id` instead of `self.next.id`).
+        // `<expr>.items[i]` — an element of a member word array, which is inline property data.
+        if(auto* ad = dynamic_cast<arrayDeclaration*>(pm);
+           ad != nullptr && afterMember.is(token::bracketOpen) && isWordArrayType(mtype) && !ad->isRefLocal){
+            string owner; for(const auto& t : expr->tokens) owner += t;
+            expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, st.body);
+            if(owner.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") != string::npos)
+                owner = "(" + owner + ")";
+            expr->tokens.clear();
+            expr->tokens.push_back(owner + ".&" + memberI6Name(expr->resolvedType, member.value) + "-->(" + indexExpr->text() + ")");
+            expr->resolvedType = ad->elementType;
+            cur = exprNext(st);
+            return ExprStep::Continue;
+        }
         if(pm != nullptr){
             expr->tokens.push_back("." + member.value);
             expr->resolvedType = mtype;
@@ -3086,16 +3255,9 @@ bglParser::ExprStep bglParser::parseExprDotChainCall(ExprParseState& st, token& 
         parsingError(format("Type '{0}' has no methods", chainTypeName));
 
     string methName = member.value;
-    vector<expression*> callArgs;
-    token firstArg = file.getToken();
-    while(firstArg.isNot(token::parenClose)){
-        expression* arg = parseExpression(firstArg, {token::comma, token::parenClose}, func, body);
-        callArgs.push_back(arg);
-        if(arg->terminator == token::parenClose) break;
-        firstArg = file.getToken();
-    }
-
-    vector<string> emptyNamed;
+    ParsedArgList cpal = parseCallArgList(func, body);
+    vector<expression*> callArgs = cpal.args;
+    vector<string> emptyNamed = cpal.namedArgNames;
     vector<vector<interpolatedSegment>> emptyInterp;
     // Element type for generic receivers (array<int> → int), so T binds in the
     // method signature (indexOf(T item), filter(func<bool,T>), …).
@@ -3107,9 +3269,11 @@ bglParser::ExprStep bglParser::parseExprDotChainCall(ExprParseState& st, token& 
     // Member (property) array receiver: a dotted path with no call (e.g. "widget.m")
     // routes through the dual-form utility with $self=owner, $prop=property. A chained
     // call result ("_bglArray.filter(…)" — has '(') is a scratch global → 0 sentinel.
+    // A member of a call's result (`getBox().items`) is a member too: its last `.` follows the call.
+    size_t lastDot = selfText.rfind('.'), lastParen = selfText.rfind(')');
     bool chainIsMember = isWordArrayType(chainTypeName)
-                         && selfText.find('.') != string::npos
-                         && selfText.find('(') == string::npos;
+                         && lastDot != string::npos
+                         && (lastParen == string::npos || lastDot > lastParen);
     // A `ref` member holds a POINTER to an array owned elsewhere, so a chained call on
     // it — `obj.slot.length()` — addresses the pointed-at array as a value, (obj.slot, 0),
     // not the property slot as inline data.

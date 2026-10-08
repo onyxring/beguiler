@@ -19,8 +19,8 @@ alias class verb for object{
     emitter void perform(object n)           { <$self $n> }         /// Run this action now on `n`, as though the player typed it.
     emitter void perform(object n, object s) { <$self $n $s> }      /// Run this action now on `n` and `s`, as though the player typed it.
 
-    emitter eBool operator == (verb v){ $self == ##$v }  /// True when this is action `v`.
-    emitter eBool operator != (verb v){ $self ~= ##$v }  /// True unless this is action `v`.
+    emitter eBool operator == (verb v){ $val == $v }     /// True when this is action `v`.
+    emitter eBool operator != (verb v){ $val ~= $v }     /// True unless this is action `v`.
     // Emits the verb's action routine, which runs handler().
     emitter void _bglGlobalDeclaration() {
         [$selfsub;

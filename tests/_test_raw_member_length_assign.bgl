@@ -1,0 +1,6 @@
+/* Assigning `length` on a RAW member array would overwrite its last element: it has no length word. */
+// EXPECT_ERROR: Assigning 'length' needs an array's length word
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+object w { rawArray<int> r = {11,22,99}; }
+void main(){ bglInit(); w.r.length = 1; }

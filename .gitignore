@@ -31,3 +31,6 @@ docs/.obsidian/
 # whole directory. Nothing here is matched by the four real documents.
 /docs/*preview*post*.md
 /docs/*release*post*.md
+
+# Python bytecode from the test tools
+__pycache__/

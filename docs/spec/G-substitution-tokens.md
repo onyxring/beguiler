@@ -9,9 +9,9 @@ and unrecognized `##name` text, passes through to the output unchanged. Full rul
 
 | Token | Meaning | See |
 |---|---|---|
-| `$self` | In an operator or assignment emitter, the receiver with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`container.children` for `container.children.length()`). Not meaningful in a global emitter. | §7.3 |
+| `$self` | In an operator or assignment emitter, the receiver with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`container.children` for `container.children.length`). Not meaningful in a global emitter. | §7.3 |
 | `$val` | The full receiver expression as written: `obj.score` for `obj.score + 1`; otherwise the same as `$self`. | §7.3 |
-| `$host` | The object a proxy member is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter (`container` for `container.children.length()`); equals `$self` when the receiver is not a member access. | §7.3, §7.3.2 |
+| `$host` | The object a proxy member is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter (`container` for `container.children.length`); equals `$self` when the receiver is not a member access. | §7.3, §7.3.2 |
 | `$name` | The argument supplied for the parameter declared as `name`. | §7.3 |
 | `$target` | The assignment target as a full lvalue path, or a compiler-supplied temporary in statement position. Its presence makes the body responsible for the store. | §7.3.2 |
 | `$prop` | In an `array<T>` emitter, the property name of an object-member array; `0` for a global array. | §7.3, §12.7 |

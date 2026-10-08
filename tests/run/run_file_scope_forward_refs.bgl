@@ -1,0 +1,18 @@
+// run_file_scope_forward_refs — file-scope initializers (global, member, array literal, aggregate,
+// `parent =`, func) may name a declaration that comes later in the file; only a name declared
+// nowhere is an error.
+// EXPECT_OUTPUT: later 4 4 4 9 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+object a { parent = b; int n = LIMIT; }
+func<void> f = later;
+array<int> xs = {LIMIT, 2};
+class R : object { inline int n; inline verb v; }
+R r1 = { LIMIT, Jumpy };
+int g = h2;
+const int LIMIT = 4;
+int h2 = 9;
+object b { }
+void later() { print("later"); }
+verb Jumpy { grammar = { {.jumpy} }; void handler() { } }
+void main(){ bglInit(); f(); print($" {a.n} {xs[0]} {r1.n} {g} "); if (a.parent == b) print("1"); }

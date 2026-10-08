@@ -1,0 +1,8 @@
+// run_i6name_enum_value — `$i6Name` of a Beguile enum value is its number (the value has no I6 name
+// of its own); it emitted the bare word, e.g. `int` for `eType.int`.
+// EXPECT_OUTPUT: 1 3
+#beguilerSettings { target = z5; informName = "none"; }
+enum eColor { red = 1, green, blue }
+emitter int intTag()  { $i6Name(eType.int) }
+emitter int blueTag() { $i6Name(eColor.blue) }
+void main(){ bglInit(); print($"{intTag()} {blueTag()}"); }

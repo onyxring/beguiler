@@ -21,17 +21,17 @@ object widget {
     array<int> nums = {30, 10, 20};
     int    findIt()        { return nums.indexOf(20); }       // _bglArray.indexOf(self, nums, 20)
     bool   hasIt()         { return nums.contains(10); }      // _bglArray.indexOf(self, nums, 10) >= 0
-    int    lenOf()         { return nums.length(); }          // (self.#nums)/WORDSIZE  (inline, Stage 1)
+    int    lenOf()         { return nums.length; }          // (self.#nums)/WORDSIZE  (inline, Stage 1)
     void   sortIt()        { nums.sort(); }                   // _bglArray.sort(self, nums, _bglArrayCompareAsc)
     void   pushIt(int v)   { nums.push(v); }                  // _bglArray.push(self, nums, v)
-    int    sumGt(int n)    { return nums.filter((int x) => x > n).length(); }  // filter(self, nums, ...) chain
+    int    sumGt(int n)    { return nums.filter((int x) => x > n).length; }  // filter(self, nums, ...) chain
 }
 
 // Global path — same surface, must pass the array + 0 sentinel.
 array<int> g = {30, 10, 20};
 int  gFind()  { return g.indexOf(20); }      // _bglArray.indexOf(g, 0, 20)
 void gSort()  { g.sort(); }                  // _bglArray.sort(g, 0, _bglArrayCompareAsc)
-int  gChain() { return g.filter((int x) => x > 15).length(); }
+int  gChain() { return g.filter((int x) => x > 15).length; }
 
 // #2 regression — external dotted member algorithm call resolves element type + routes
 // through the dual-form utility (owner, property).
@@ -39,4 +39,4 @@ int extFind() { return widget.nums.indexOf(20); }   // _bglArray.indexOf(widget,
 
 // #3 regression — a named function passed where a func<…> is expected binds like a lambda.
 bool isOdd(int x) { return (x % 2) != 0; }
-int  namedPred() { return g.filter(isOdd).length(); }
+int  namedPred() { return g.filter(isOdd).length; }

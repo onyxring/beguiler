@@ -2,7 +2,7 @@
 
     `o?.parent` (and a trailing `.parent` after a `?.` step) reads like `o.parent`, never as a raw
     property; a null receiver short-circuits to the `??` fallback.  */
-// EXPECT_OUTPUT: table nowhere room
+// EXPECT_OUTPUT: table nowhere room | kennel nowhere
 #beguilerSettings { target = z5; informName = "none"; }
 object nowhere { "nowhere"; }
 object room { "room"; }
@@ -10,7 +10,13 @@ object table { "table"; parent = room; }
 object apple { "apple"; parent = table; }
 object holder(object o) { return o?.parent ?? nowhere; }
 object grand(object o) { return o?.parent.parent ?? nowhere; }
+class Person : object { object dog; }
+object kennel { "kennel"; }
+object rex { "rex"; parent = kennel; }
+Person hugo { "hugo"; dog = rex; }
+Person mara { "mara"; }
+object dogHome(Person p) { return p.dog?.parent ?? nowhere; }
 void main(){
     bglInit();
-    print($"{holder(apple)} {holder(null)} {grand(apple)}");
+    print($"{holder(apple)} {holder(null)} {grand(apple)} | {dogHome(hugo)} {dogHome(mara)}");
 }

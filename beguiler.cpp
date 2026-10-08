@@ -370,6 +370,7 @@ void beguiler::runPostParseChecks() {
     parser.checkTypedPropertyMemberTypes();
     parser.validateHiddenMembers();
     parser.validateRoutinePropertyClashes();
+    parser.renameI6KeywordNames();
     parser.recordObjectMemberInits();
 
     // Apply defaults declared on beguilerSettingsType schema members for any unset fields
@@ -532,7 +533,9 @@ bool beguiler::emitOutput(CompileJob& job) {
                         size_t j = i + 1;
                         while(j < vline.size() && (isalnum((unsigned char)vline[j]) || vline[j]=='_')) j++;
                         std::string name = vline.substr(i + 1, j - (i + 1));
-                        if(propMembers.count(name)){
+                        size_t k = j; while(k < vline.size() && vline[k] == ' ') k++;
+                        bool isSend = k < vline.size() && vline[k] == '(';   // `obj.length(…)` calls a routine
+                        if(propMembers.count(name) && !isSend){
                             std::cerr << "ERROR: raw '." << name << "' property access emitted at "
                                       << settings.tmpFile << ":" << vno << " — the property-class member '"
                                       << name << "' did not dispatch through its read emitter. This is an "

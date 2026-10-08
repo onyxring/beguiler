@@ -157,6 +157,7 @@ alias class graphicsWindowVert   for graphicsWindow   { hide height.operator =; 
 // (which dissolves right back to the content type at emission), so nothing orientation-specific is
 // allocated or emitted here.
 window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags method, int size){
+    if(parentId == 0) return null;   // the window to split isn't open (e.g. a status bar with no height)
     int id = bgl.asm.windowOpen(parentId, type, size, method, 0);
     if(id == 0) return null;   // Glk refused the split (e.g. no graphics support)
     window kid;

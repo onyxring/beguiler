@@ -1,0 +1,10 @@
+/*  run_raw_string_literal — a raw string prints every character as written (§1.6.4).
+
+    `\` and `@` reached Inform 6 unescaped, where `\` continues a line and `@` starts an escape, so a
+    Windows path didn't compile. Only `\"` is processed.  */
+// EXPECT_OUTPUT: C:\Users\jim\a@b~c^d.bgl|say "hi"
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    string path = @"C:\Users\jim\a@b~c^d.bgl";
+    print(path); print("|"); print(@"say \"hi\"");
+}

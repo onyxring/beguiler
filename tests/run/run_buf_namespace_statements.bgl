@@ -1,0 +1,18 @@
+/*  run_buf_namespace_statements — `bgl.util.buf.…` called as statements.
+
+    `buf` was hooked into `bgl.util` with `auto`, an ordinary member, so a statement call emitted the raw
+    run-time chain `bgl.util.buf.set(…)` (a property read on `bgl`) instead of `_bglBuf.set(…)`.  */
+// EXPECT_OUTPUT: HELLO WORLD 11
+#beguilerSettings { target = z5; informName = "none"; }
+#include <buf>
+array<char> line[64];
+array<char> word[16];
+void main(){
+    bglInit();
+    bgl.util.buf.set(line, "hello");
+    bgl.util.buf.set(word, " world");
+    bgl.util.buf.append(line, word);
+    bgl.util.buf.toUpper(line);
+    bgl.util.buf.print(line);
+    print($" {line.length}");
+}

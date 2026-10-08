@@ -1,0 +1,6 @@
+// A member array seed longer than its declared capacity is rejected.
+// EXPECT_ERROR: declares capacity 2 but its initializer supplies 3 elements
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+object o { array<int> a[2] = {1, 2, 3}; }
+void main(){ }

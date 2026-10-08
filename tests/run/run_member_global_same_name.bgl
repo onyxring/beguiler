@@ -1,0 +1,24 @@
+/*  run_member_global_same_name — a member may share its name with a global (§3.10).
+
+    Inform 6 keeps globals and properties in one namespace, so `int count` beside a member `count` (or a
+    member `score` beside the library's global `score`) failed in Inform 6. The member is emitted under
+    another property name; `self.count` and `::count` still reach the right one.  */
+// EXPECT_OUTPUT: member 3 global 1 other 7
+#beguilerSettings { target = z5; informName = "none"; }
+int count = 0;
+object tally {
+    int count = 0;
+    void bump() {
+        self.count++;
+        ++self.count;
+        ::count++;
+    }
+}
+class Thing : object { int count = 7; }
+Thing other { }
+void main(){
+    bglInit();
+    tally.bump();
+    tally.count = tally.count + 1;
+    print($"member {tally.count} global {count} other {other.count}");
+}

@@ -24,11 +24,11 @@ array<int>  aSized[5] = 7;    // capacity 5, first slot 7, length 1, tail zeroed
 
 void main(){
     bglInit();
-    print("bare ");  print(aBare[0]);  print(" len ");  print(aBare.length());  print("^");
-    print("brace "); print(aBrace[0]); print(" len ");  print(aBrace.length()); print("^");
+    print("bare ");  print(aBare[0]);  print(" len ");  print(aBare.length);  print("^");
+    print("brace "); print(aBrace[0]); print(" len ");  print(aBrace.length); print("^");
     print("obj ");   print(aObj[0].visits); print("^");
-    print("sized "); print(aSized[0]); print(" len "); print(aSized.length());
+    print("sized "); print(aSized[0]); print(" len "); print(aSized.length);
         print(" tail "); print(aSized[4]); print("^");
     aSized.append(99);
-    print("sized appended "); print(aSized[1]); print(" len "); print(aSized.length()); print("^");
+    print("sized appended "); print(aSized[1]); print(" len "); print(aSized.length); print("^");
 }

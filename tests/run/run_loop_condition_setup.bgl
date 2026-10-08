@@ -1,0 +1,17 @@
+// run_loop_condition_setup — a loop condition that needs set-up statements (a `?.` test) runs them
+// before EVERY test: `while` and `for` re-tested a value computed once before the loop, `do`/`while`
+// tested one computed after it, and `switch` and an array literal read it before it was computed.
+// A `continue` in the `do` body still runs the set-up.
+// EXPECT_OUTPUT: 7 s 7 3 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Box : object { int n = 7; }
+Box gb { }
+Box gnull = null;
+void main(){ bglInit();
+    int d = 0; do { d++; if (d == 2) continue; } while (d < gb?.n); print(d);
+    switch (gb?.n) { case 7: print(" s"); default: print(" x"); }
+    array<int> t = {gb?.n, 1}; print($" {t[0]}");
+    int w = 0; Box cur = gb; while (cur?.n == 7 && w < 3) { w++; if (w == 3) cur = gnull; } print($" {w}");
+    int f = 0; for (int i = 0; i < gb?.n; i++) { f++; if (i == 1) continue; } print($" {f}");
+}

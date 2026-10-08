@@ -11,27 +11,27 @@
 // Coverage: field read/write (statement + self), method call whose name collides, use in a
 // condition and as a call argument, field read through a class-typed member, and a member
 // literally named after a built-in type keyword (`object`).
+//
+// Inform 6 keeps classes and properties in one namespace, so each colliding member emits under its
+// own I6 name (`asI6`); without one, the member is rejected at its declaration.
+// EXPECT_OUTPUT: 5 7 7 9 3 2
 
-#beguilerSettings {
-    target = z5;
-    informName = "none";
-    outputPath = "tests/output";
-}
+#beguilerSettings { target = z5; informName = "none"; }
 
 value class Color { int r; }        // makes `color` lex as a dataType
 class Draw  { int n; }        // makes `draw` lex as a dataType
 
 class Thing {
-    int color;                // field name collides with class Color
+    int color asI6 colorVal;  // field name collides with class Color
     ref Color tint;           // for chain-read through a class-typed member
-    int object;               // field name collides with the built-in `object` keyword
+    int object asI6 objVal;   // field name collides with the built-in `object` keyword
 
     void setColor(int c){ self.color = c; }        // self-based write, colliding name
     int  getColor(){ return self.color; }          // self-based read,  colliding name
 }
 
 class Win {
-    int draw(){ return 3; }   // METHOD name collides with class Draw
+    int draw() asI6 drawIt { return 3; }   // METHOD name collides with class Draw
 }
 
 Thing tg { }
@@ -41,6 +41,7 @@ Win   wn { }
 void take(int n){ }
 
 void main(){
+    bglInit();
     tg.color = 5;              // statement write through colliding field name
     int a = tg.color;          // statement read
     tg.setColor(7);            // self-based colliding write
@@ -53,4 +54,5 @@ void main(){
     tg.tint := cx;
     tg.tint.r = 2;             // write through a class-typed member (chain)
     int e = tg.tint.r;         // read through a class-typed member (chain)
+    print($"{a} {b} {tg.color} {tg.object} {d} {e}");
 }

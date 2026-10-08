@@ -71,7 +71,7 @@ A program built on an IF library binding does not call `bglInit()` itself: the b
 
 Omitting it does not stop the build and does not stop the program: it runs on uninitialized data, where a sized tracked array reports its raw header word as its length and a sized byte array is still a null pointer. The compiler therefore warns when the program has initialization to do and nothing in the transpiled file calls `bglInit()` (§19.3).
 
-Extensions that need `bglInit()` say so in their entry in §22: `<string>` and `<linq>` do, and so do `<array>` and `<buf>`, whose sized, uninitialized tracked arrays have no length header until it runs: before `bglInit()`, such an array reports its raw header word from `size()` and `length()` and `append` fails; arrays declared with an initializer list are complete at compile time. `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
+Extensions that need `bglInit()` say so in their entry in §22: `<string>` and `<linq>` do, and so do `<array>` and `<buf>`, whose sized, uninitialized tracked arrays have no length header until it runs: before `bglInit()`, such an array reports its raw header word from `size` and `length` and `append` fails; arrays declared with an initializer list are complete at compile time. `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
 
 **Example**
 
@@ -144,7 +144,6 @@ The article helpers print a world-tree object with an article: `a(obj)` → "a l
 **Example**
 
 ```bgl
-extern attribute light;
 object lamp { short_name = "brass lamp"; }
 
 void Main() {
@@ -189,10 +188,6 @@ At runtime an object's attributes change through `give()` and `ungive()` and are
 **Example**
 
 ```bgl
-extern attribute light;
-extern attribute scenery;
-extern attribute static;
-
 class lampPost : object {
     attributeList attributes = { light, static };
 }
@@ -329,8 +324,8 @@ void Main() {
 ⟨obj⟩.parent = ⟨newParent⟩ ;
 ⟨obj⟩.parent
 for ( object ⟨name⟩ in ⟨obj⟩.children ) ⟨statement⟩
-⟨obj⟩.children.length()
-⟨obj⟩.children.size()
+⟨obj⟩.children.length
+⟨obj⟩.children.size
 ⟨obj⟩.children += { ⟨obj⟩ , … } ;
 ```
 
@@ -338,7 +333,7 @@ for ( object ⟨name⟩ in ⟨obj⟩.children ) ⟨statement⟩
 
 `parentProp` is the type of the `parent` member that every `object` has. Assigning to `obj.parent` *moves* the object in the world tree; reading it yields the parent object; `==` and `!=` compare against an object. The member is `typesealed`: an object body may re-initialize `parent` but not change its type (§8.2.8).
 
-`childrenProp` is the type of the `children` member: the collection of an object's direct children. It is iterable with `for … in`, reports its count with `length()` or `size()` (synonyms here: a world-tree collection has no capacity), is populated in an object body with `children = { … }`, and grows at runtime with `+=`. It is a storageless member: it has no slot of its own and reads the world tree through its owner. The placement rules are in §11.5.
+`childrenProp` is the type of the `children` member: the collection of an object's direct children. It is iterable with `for … in`, reports its count with `length` or `size` (synonyms here: a world-tree collection has no capacity), is populated in an object body with `children = { … }`, and grows at runtime with `+=`. It is a storageless member: it has no slot of its own and reads the world tree through its owner. The placement rules are in §11.5.
 
 **Example**
 
@@ -348,7 +343,7 @@ object lamp { parent = cave; }
 
 void Main() {
     lamp.parent = player;                    // move lamp to player
-    int n = cave.children.length();          // 0
+    int n = cave.children.length;          // 0
 }
 ```
 
@@ -483,6 +478,7 @@ uint ⟨name⟩ [ = ⟨expr⟩ ] ;
 **Example**
 
 ```bgl
+int  n = 7;
 uint x = 12;          // literal
 uint y = (uint)n;     // explicit cast from int
 int  z = (int)y;      // explicit cast back
@@ -538,6 +534,7 @@ int s = bgl.util.math.sign(-7);               // → -1
 **Example**
 
 ```bgl
+object coin {}  object gem {}  object key {}
 int d6 = bgl.util.random.get(6);
 object prize = bgl.util.random.get(coin, gem, key);
 ```
@@ -638,7 +635,6 @@ Results live in a shared rotating set of four scratch buffers, each holding `wor
 **Example**
 
 ```bgl
-extern attribute light;
 class Treasure : object { }
 
 void Main() {
@@ -726,6 +722,7 @@ The `target` of a `link` decides what a click does:
 - A **function**, whether a lambda (§4.14) or a named function, is called. The parameter is `literal` (§6.3): the function runs when the player clicks, long after the `print`, so a lambda that captures a variable is a compile-time error.
 - An **`int`** or an **enum value** is delivered to `HandleGlkEvent` as the event's link value. This is the Inform 6 way of handling links, and a program that handles its links there keeps working unchanged. A `target` of `0` makes no link.
 
+<!-- doctest: skip -->
 ```bgl
 #using bgl.printRules;
 print($"There's a {link("button", => { print("Click.^"); })} on the machine.");  // run code
@@ -773,6 +770,7 @@ is an emitter; **S** is a `static superposed` function.
 
 **Example**
 
+<!-- doctest: glulx -->
 ```bgl
 #using bgl;
 int n = asm.random(6);        // Glulx: @random; Z-machine: @random

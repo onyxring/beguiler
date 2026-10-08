@@ -130,11 +130,12 @@ void bglParser::preScanEnumEmitterMember(enumDef& en){
     token typeTok = file.getToken();
     preScanConsumeGenericSuffix(typeTok);
     token nameTok = file.getToken();
-    // Only a well-formed `name (` method is captured. Anything else here (an operator, a value
-    // emitter `name { … }`, junk) is not our concern in the pre-pass: drain it WITHOUT erroring and
+    // Only a well-formed `name (` method or `name {` value is captured. Anything else here (an
+    // operator, junk) is not our concern in the pre-pass: drain it WITHOUT erroring and
     // let the main pass emit the precise diagnostic (parseEnumEmitterMethod). This keeps a bad form
     // from aborting the pre-scan with a confusing message before the real error is reached.
-    if(!nameTok.is(eTokenType::identifier) || !file.peekToken().is(token::parenOpen)){
+    bool isValue = file.peekToken().is(token::braceOpen);
+    if(!nameTok.is(eTokenType::identifier) || !(file.peekToken().is(token::parenOpen) || isValue)){
         preScanSkipEnumMemberBody();
         return;
     }
@@ -147,6 +148,7 @@ void bglParser::preScanEnumEmitterMember(enumDef& en){
         fd.name = nameTok.value;
         fd.returnType.name = typeTok.value;
         fd.isEmitter = true;
+        fd.isValueEmitter = isValue;
         fd.isPrePassStub = true;
         comp->members.push_back(&fd);
         mStub = &fd;
@@ -312,7 +314,7 @@ void bglParser::preScanDirective(token tok){
         // Skip optional '?' marker
         if(file.peekToken().is("?")) file.getToken();
         token filename = file.getToken(); // consume the quoted filename
-        string innerPath = filename.value;
+        string innerPath = filename.literalText();
         if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
             innerPath = innerPath.substr(1, innerPath.size()-2);
         string emitPath;
@@ -1044,7 +1046,8 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                           bt = file.getToken();
                           continue;
                       }
-                      if(afterType.is(eTokenType::identifier) && file.peekToken().is(token::parenOpen)){
+                      if((afterType.is(eTokenType::identifier) || afterType.is(eTokenType::dataType))
+                         && file.peekToken().is(token::parenOpen)){
                           // Method declaration — register functionDef stub, capturing params
                           // so forward overload resolution has the signature (order-independence).
                           string mname = afterType.value;
@@ -1077,7 +1080,12 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
                           bt = file.getToken();
                           continue;
                       }
-                      if(afterType.is(eTokenType::identifier)){
+                      // A member whose name is also a class name lexes as a type; what follows it
+                      // (`;`, `=`, `asI6`) still marks it as the member's name.
+                      token afterName = file.peekToken();
+                      bool typeLexedName = afterType.is(eTokenType::dataType)
+                          && (afterName.is(token::endStatement) || afterName.is(token::assignment) || afterName.is("asi6"));
+                      if(afterType.is(eTokenType::identifier) || typeLexedName){
                           // Property declaration — register variableDeclaration stub
                           string pname = afterType.value;
                           bool exists = false;
@@ -1238,6 +1246,12 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                 if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
                 if(t.is("ref")) t = file.getToken();   // `ref` variable-member qualifier — skip so the type follows
                 if(t.is("typesealed")) t = file.getToken();   // `typesealed` member qualifier — likewise
+                // `name = v` where the member's name is also a class name: an assignment, not a declaration.
+                if(t.isDataType() && (file.peekToken().is(token::assignment) || file.peekToken().is(token::bindAssignment))){
+                    preScanSkipToSemicolon();
+                    t = file.getToken();
+                    continue;
+                }
                 if(t.isDataType()){
                     preScanConsumeGenericSuffix(t);
                     token memberName = file.getToken();
@@ -1470,8 +1484,10 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
     // Optional ': ClassName' for typed object declarations
     token sym = file.getToken();
     if(sym.is(":")){
-        file.getToken(); // class name
-        sym = file.getToken(); // should be '{'
+        do {
+            file.getToken(); // class name
+            sym = file.getToken(); // ',' before another base, else '{'
+        } while(sym.is(","));
     }
     // Optional `as <i6name>` (§3.11), after the class when both are present. The pre-scan has no
     // use for the alias itself — the main pass records it — but it must step over the clause.
@@ -1501,6 +1517,10 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
         stub.isEmitter = isEmitter;
         stub.isExternal = isExtern;
         stub.isPrePassStub = true;
+        if(!isEmitter && !isExtern && bglLanguageService::isI6StatementKeyword(nameStr)){
+            stub.i6name = "_" + nameStr;   // see registerObject: a call would read as the I6 statement
+            stub.i6nameAvoidsKeyword = true;
+        }
         preScanCaptureParams(stub.params);
         bool alreadyReg = false;
         for(typeDef* g : languageService.globals){

@@ -154,6 +154,30 @@ filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& 
     return dir / target; // not found; return as-is so the error surfaces normally
 }
 
+void bglParser::unknownTypeError(const token& typeTok){
+    string shown = typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue;
+    string lower = typeTok.value;
+    transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    std::regex decl("^\\s*(?:(?:extern|emitter|value|primitive|superposed|abstract|typesealed)\\s+)*"
+                    "(?:class|enum|bnum|union)\\s+" + lower + "\\b", std::regex::icase);
+    vector<filesystem::path> files;
+    std::error_code ec;
+    for(auto it = filesystem::recursive_directory_iterator(settings.libPath, ec);
+        !ec && it != filesystem::recursive_directory_iterator(); it.increment(ec))
+        if(it->is_regular_file(ec) && it->path().extension() == ".bgl") files.push_back(it->path());
+    sort(files.begin(), files.end());
+    for(const auto& f : files){
+        ifstream in(f);
+        for(string line; getline(in, line); )
+            if(std::regex_search(line, decl)){
+                parsingError(format("Unknown type '{0}'. It is declared by the library extension <{1}>: add "
+                                    "`#include <{1}>`.", shown, f.stem().string()));
+                return;
+            }
+    }
+    parsingError(format("Unknown type '{0}': no class, enum or union of that name is declared.", shown));
+}
+
 // Recursive helper for findLibIncludeRecursive. Scans `dir` in pre-order — this folder's files
 // first, then subfolders in alphabetical (case-insensitive) order, depth-first. `specLower` is the
 // lowercased include spec split on '/', with the last element being the target file name
@@ -396,6 +420,9 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
                 group.push_back(fd);
     if(group.size() < 2) return;
     for(functionDef* fd : group){
+        // Conversion operators take no parameters; they are told apart by result type, which their
+        // declaration already put in the name (`_opconv_int`).
+        if(fd->name == "operator()") continue;
         // Operators are mangled at parse time (`==` → `_opeqeq`), which is what makes a
         // declared-but-never-called operator emit a legal I6 identifier. That name is shared
         // by every overload, so an overload SET needs the parameter types appended too.
@@ -435,6 +462,18 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
 //   (2) all contributions within ONE class hierarchy (the class's ancestor chain plus every
 //       instance of it) must use the SAME element type — fixed by the highest ancestor that
 //       declares it. Unrelated hierarchies may each fix their own element type.
+void bglParser::renameI6KeywordNames(){
+    for(typeDef* g : languageService.globals){
+        if(!g->i6name.empty() || !bglLanguageService::isI6StatementKeyword(g->name)) continue;
+        if(auto* od = dynamic_cast<objectDef*>(g)){ if(od->isExternal) continue; }
+        else if(auto* fd = dynamic_cast<functionDef*>(g)){ if(fd->isExternal || fd->isEmitter) continue; }
+        else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ if(vd->isExternal) continue; }
+        else continue;
+        g->i6name = "_" + g->dName();
+        g->i6nameAvoidsKeyword = true;
+    }
+}
+
 void bglParser::validateRoutinePropertyClashes(){
     auto lower = [](string s){ transform(s.begin(), s.end(), s.begin(), ::tolower); return s; };
     auto at = [](const sourceLocation& src){ return src.file.empty() ? string("an included file") : format("{0}:{1}", src.file, src.line); };
@@ -1882,6 +1921,8 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
         // Common shape: an identifier (not a type) followed by `=`, `;`, or a literal —
         // user wrote a variable declaration without a type. Give a targeted message instead
         // of the generic "Illegal global identifier" fallback.
+        if(tok.is(eTokenType::identifier) && !tok.isDataType() && file.peekToken(1).is(eTokenType::identifier))
+            unknownTypeError(tok);
         if(tok.is(eTokenType::identifier) && !tok.isDataType()) {
             token nextTok = file.peekToken(1);
             bool looksLikeDeclaration =
@@ -2097,7 +2138,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
                             const string& t = vd->type.name;
                             if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                         }
-                        parsingWarning("Parameter '" + param.name + "' shadows global of the same name; the global is unreachable from this routine's scope.");
+                        parsingWarning("Parameter '" + param.name + "' shadows global of the same name; '::" + param.name + "' reaches the global.");
                     }
                 if(currentClass != nullptr){
                     for(typeMember* m : currentClass->members)

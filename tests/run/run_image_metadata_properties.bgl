@@ -1,0 +1,13 @@
+/*  run_image_metadata_properties — an `eImages` value's `width`, `height` and `size` are read as
+    properties, with no parentheses. With no blorb the image is unknown, so each reads 0.  */
+// EXPECT_OUTPUT: w=0 h=0 s=0
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <glulxImage>
+extend enum eImages { coverArt = 3 }
+void main(){
+    bglInit(); glulxConsole();
+    eImages pic = eImages.coverArt;
+    int w = eImages.coverArt.width;
+    print($"w={w} h={pic.height} s={pic.size.width}");
+}

@@ -23,7 +23,13 @@ emitter bool _bglMcString(var v)  { (metaclass($v) == String) }
 emitter bool _bglMcObject(var v)  { (metaclass($v) == Object) }
 emitter bool _bglMcClass(var v)   { (metaclass($v) == Class) }
 
-/// Return what kind of value `v` holds; bool, char and enum values report `int`.
+/// A value declared `int`, `bool` or `char` is plainly an `int`; no run-time test is needed.
+emitter eType typeof(int v)  { $i6Expr(eType.int) }
+emitter eType typeof(bool v) { $i6Expr(eType.int) }
+emitter eType typeof(char v) { $i6Expr(eType.int) }
+
+/// Return what kind of value `v` holds; bool, char and enum values report `int`. A plain number
+/// can't be told from the object with that number, so test a union's members, not arbitrary values.
 superposed eType typeof(var v) {
     if (v == null)          return eType.unknown;
     if (_bglMcRoutine(v))   return eType.routine;

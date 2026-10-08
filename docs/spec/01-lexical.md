@@ -78,6 +78,7 @@ void showBanner(){ print("Welcome."); }
 Beguile is case-insensitive for every token except the contents of string literals. Keywords, type
 names, identifiers and operator names are normalized to lowercase, so the following are equivalent:
 
+<!-- doctest: skip -->
 ```bgl
 if(X == 1) print("yes");
 IF(x == 1) Print("yes");
@@ -102,6 +103,7 @@ A reserved word (§1.5) should not be used as a name. A member may share its nam
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 score   myVar   _internal   room1   velvetCloak
 ```
@@ -193,6 +195,7 @@ An integer literal has the pseudo-type `intLiteral`; a negated one has `negative
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 42        $FF         $$11111111     // → 42, 255, 255
 -1234     $0A         $$11010        // → -1234, 10, 26
@@ -219,6 +222,7 @@ value is formed by prefixing `-`. `1.` is not a float literal and is a compile-t
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 1.0     .3     -1.2
 ```
@@ -261,6 +265,7 @@ A string literal has the pseudo-type `stringLiteral` (§2.4).
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 "Hello, world!"
 "She said, \"well done.\""
@@ -339,6 +344,7 @@ followed by such a vowel is an escaped single quote. A character literal has the
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 'a'   '\n'   '\\'   'ä'   '\:a'
 ```
@@ -367,6 +373,7 @@ A dictionary word literal has the pseudo-type `dictionaryWordLiteral` and is com
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 .cloak   ..cloaks   .medium-sized   .monkey's
 ```

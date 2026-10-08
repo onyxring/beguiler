@@ -39,16 +39,16 @@ void main(){
     bglInit();
     obj.small += 1;
     obj.big += 7; obj.big += 9;
-    print("small cap "); print(obj.small.size()); print(" len "); print(obj.small.length()); print("^");
-    print("big cap ");   print(obj.big.size());   print(" len "); print(obj.big.length());
+    print("small cap "); print(obj.small.size); print(" len "); print(obj.small.length); print("^");
+    print("big cap ");   print(obj.big.size);   print(" len "); print(obj.big.length);
     print(" -> "); print(obj.big[0]); print(" "); print(obj.big[1]); print("^");
 
     r1.log += 11; r1.log += 12;
     r2.log += 99;
-    print("class r1 len "); print(r1.log.length()); print(" first "); print(r1.log[0]); print("^");
-    print("class r2 len "); print(r2.log.length()); print(" first "); print(r2.log[0]); print("^");
+    print("class r1 len "); print(r1.log.length); print(" first "); print(r1.log[0]); print("^");
+    print("class r2 len "); print(r2.log.length); print(" first "); print(r2.log[0]); print("^");
 
     b1.items += 3; b1.items += 4;
-    print("class-declared small cap "); print(b1.items.size());
-    print(" len "); print(b1.items.length()); print("^");
+    print("class-declared small cap "); print(b1.items.size);
+    print(" len "); print(b1.items.length); print("^");
 }

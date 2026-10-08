@@ -35,10 +35,10 @@ void assignment() {
 
 void introspection() {
     string s; s = "hello";
-    print("getLength: "); print(s.getLength()); print("^");
+    print("getLength: "); print(s.length); print("^");
     print("isEmpty-false: "); print(s.isEmpty() ? "yes" : "no"); print("^");
     string e; e = "";
-    print("getLength-empty: "); print(e.getLength()); print("^");
+    print("getLength-empty: "); print(e.length); print("^");
 }
 
 void search() {

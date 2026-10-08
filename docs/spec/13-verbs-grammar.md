@@ -81,13 +81,13 @@ shadows the verb (§3.10).
 **Example**
 
 ```bgl
-verb Examine {
+verb Inspect {
     grammar = {
-        {.examine, NOUN},
-        {.x, NOUN},
+        {.inspect, NOUN},
+        {.study, NOUN},
     };
     void handler() {
-        print("You examine it closely.");
+        print("You inspect it closely.");
     }
 }
 ```
@@ -149,6 +149,7 @@ action and then return true from the enclosing function, follow the call with an
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 Enter.perform(door);
 Take.perform(coin, pouch);

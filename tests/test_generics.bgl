@@ -37,6 +37,6 @@ void main(){
     rooms[0] = hall;
 
     // Size is invariant — int regardless of element type.
-    int n1 = nums.size();
-    int n2 = rooms.size();
+    int n1 = nums.size;
+    int n2 = rooms.size;
 }

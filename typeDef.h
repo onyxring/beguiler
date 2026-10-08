@@ -28,6 +28,7 @@ class abstractObject{
         string name;
         string displayName; // original-case name for error messages (empty = use 'name')
         string i6name;  // optional I6 alias: if non-empty, emitted under this name instead of 'name'
+        bool i6nameAvoidsKeyword = false;   // i6name was given only because 'name' is an I6 statement keyword
         string docComment;  // user-authored doc-comment (`///` or `/** */`) preceding the declaration; rendered as Markdown in LSP hover
         bool operator == (abstractObject);
         bool isExternal;
@@ -251,6 +252,7 @@ class assignmentStatement:public statement{
         string emitterBody;   // raw i6 body text if operator is an emitter, else ""
         string emitterParam;  // parameter name to substitute in the body
         string emitterSelf;   // value to substitute for $self; defaults to variableLeft if empty
+        string emitterProp;   // value to substitute for $prop, when the owner is an array
         vector<interpolatedSegment> interpSegments; // non-empty when RHS is $"..."
 };
 //a type of statement which returns a value from a function
@@ -329,6 +331,9 @@ class functionCallStatement:public statement{
 class functionDef:public typeMember, public typeDef{
     public:
         sourceLocation src;
+        // Names read as `::name` while a parameter or local of the same name is in scope. I6 has no
+        // way past a local to the global, so the emitter renames those locals.
+        set<string> globalEscapes;
         bool isEmitter;
         bool isExplicit = false;   // true for 'explicit emitter': conversion operator only fires at explicit cast sites
         bool isDefault = false;    // true for 'default': expected to be overridden without requiring 'replace'

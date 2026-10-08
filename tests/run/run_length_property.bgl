@@ -1,0 +1,37 @@
+/*  run_length_property — `length` and `size` are properties, not methods.
+
+    `size` is read-only; `length` reads like `size` and, with `<array>`, is assignable (clamped to
+    `size`). Covers global, member, local, parameter and subscript receivers, a `<linq>` result,
+    `children.length`/`size`, a call's result, `stringObj.length`, and an emitter value read through a parameter
+    (which used to compile to a raw read of a property that doesn't exist).  */
+// EXPECT_OUTPUT: g 3/8 m 1/4 l 2/5 p 3 sub 3 2 linq 2 kids 2 2 str 5 dbl 6
+// EXPECT_OUTPUT: set 1 0 5 clamp 8 4 call 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+#include <string>
+array<int> g[8];
+array<array<int>> grid = {{1,2,3},{4,5}};
+object holder { array<int> m[4]; }
+object box { }
+object a1 { parent = box; }
+object a2 { parent = box; }
+class Foo : object { int w = 3; emitter int dbl { $self.w * 2 } }
+Foo widget { }
+int count(array<int> data) { return data.length; }
+int twice(Foo x) { return x.dbl; }
+void main(){
+    bglInit();
+    array<int> loc[5];
+    g += {1, 2, 3};  holder.m.append(7);  loc += {4, 4};
+    print($"g {g.length}/{g.size} m {holder.m.length}/{holder.m.size} l {loc.length}/{loc.size} ");
+    print($"p {count(g)} sub {grid[0].length} {grid[1].length} ");
+    print($"linq {g.filter((int v) => v > 1).length} kids {box.children.length} {box.children.size} ");
+    stringObj s = "hello";
+    print($"str {s.length} dbl {twice(widget)}\n");
+    g.length = 1; holder.m.length = 0; loc.length = 5;
+    print($"set {g.length} {holder.m.length} {loc.length} ");
+    g.length = 99; holder.m.length = 99;
+    print($"clamp {g.length} {holder.m.length} ");
+    print($"call {bgl.world.inParent(box).length}");
+}

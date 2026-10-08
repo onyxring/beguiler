@@ -107,7 +107,7 @@ extend extern class array {
     emitter T    first()                            { _bglArray.first($self, $prop) }
     /// The last element, or 0 when empty. A terminal.
     emitter T    last()                             { _bglArray.last($self, $prop) }
-    /// How many elements. A terminal; the same number as `length()`.
+    /// How many elements. A terminal; the same number as `length`.
     emitter int  count()                            { _bglArray.length($self, $prop) }
     /// True when at least one element satisfies `pred`. Stops at the first hit.
     emitter bool any(func<bool, T> pred)            { _bglArray.any($self, $prop, $pred) }
@@ -168,7 +168,7 @@ extend _bglArray {
                 writeCount++;
             }
         }
-        dst.setLength(writeCount);
+        dst.length = writeCount;
         _bglLinqLeave();
         return dst;
     }
@@ -217,7 +217,7 @@ extend _bglArray {
         for(int i = 0; i < srcLen; i++){
             dst[i] = f(get(obj, prop, i));
         }
-        dst.setLength(srcLen);
+        dst.length = srcLen;
         _bglLinqLeave();
         return dst;
     }
@@ -244,7 +244,7 @@ extend _bglArray {
             }
         }
         for(int i = 0; i < outLen; i++) dst[i] = get(obj, prop, i);
-        dst.setLength(outLen);
+        dst.length = outLen;
         _bglLinqLeave();
         return dst;
     }
@@ -264,7 +264,7 @@ extend _bglArray {
             }
         }
         for(int i = 0; i < outLen; i++) dst[i] = get(obj, prop, start + i);
-        dst.setLength(outLen);
+        dst.length = outLen;
         _bglLinqLeave();
         return dst;
     }
@@ -285,7 +285,7 @@ extend _bglArray {
             dst[outLen] = get(obj, prop, i);
             outLen++;
         }
-        dst.setLength(outLen);
+        dst.length = outLen;
         _bglLinqLeave();
         return dst;
     }
@@ -304,7 +304,7 @@ extend _bglArray {
             }
         }
         for(int i = 0; i < outLen; i++) dst[i] = get(obj, prop, start + i);
-        dst.setLength(outLen);
+        dst.length = outLen;
         _bglLinqLeave();
         return dst;
     }
@@ -337,7 +337,7 @@ extend _bglArray {
                 outLen++;
             }
         }
-        dst.setLength(outLen);
+        dst.length = outLen;
         _bglLinqLeave();
         return dst;
     }
@@ -353,7 +353,7 @@ extend _bglArray {
             }
         }
         for(int i = 0; i < srcLen; i++) dst[i] = get(obj, prop, i);
-        dst.setLength(srcLen);
+        dst.length = srcLen;
         sort(dst, 0, compare);
         _bglLinqLeave();
         return dst;

@@ -24,7 +24,7 @@ array<int> poolB[6];
 object w {
     ref array<int> nums;
     void fill(){ nums += 30; nums += 10; }   // bare name inside a method
-    int  len(){ return nums.length(); }
+    int  len(){ return nums.length; }
     void sortIt(){ nums.sort(); }
     int  at(int i){ return nums[i]; }
 }
@@ -39,12 +39,12 @@ void main(){
     print("sorted "); print(w.at(0)); print(" "); print(w.at(1)); print("^");
 
     // and from outside the object
-    print("outside len "); print(w.nums.length()); print(" first "); print(w.nums[0]); print("^");
-    print("backing sees it "); print(poolA.length()); print("^");
+    print("outside len "); print(w.nums.length); print(" first "); print(w.nums[0]); print("^");
+    print("backing sees it "); print(poolA.length); print("^");
 
     // rebinding moves the reference; the old target keeps its contents
     w.nums := poolB;
     w.nums += 99;
-    print("rebound len "); print(w.nums.length());
-    print(", old target still "); print(poolA.length()); print("^");
+    print("rebound len "); print(w.nums.length);
+    print(", old target still "); print(poolA.length); print("^");
 }

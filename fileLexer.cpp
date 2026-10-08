@@ -259,6 +259,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
             else if(c=='@' && nc=='"') {
                 retval.tokenType=eTokenType::rawQuote;
                 retval.value="\""; // adopt the same outer-quote format as regular quote tokens
+                retval.originalValue="\"";
                 readChar();        // consume the '"'
             }
             else if(c == '$' && nc == '$'){
@@ -468,10 +469,16 @@ token fileLexer::getBasicToken(bool suppressBleed){
         }
         if(retval.tokenType==eTokenType::rawQuote){
             readChar(); // consume the peeked character
-            // No Beguile escape processing — but translate I6-special chars so they stay literal
+            // No Beguile escape processing except `\"`. `value` keeps every character literal in an I6
+            // string (where `\` continues a line and `@` starts an escape); `originalValue` is the text as
+            // written, for directives that read a path or a message.
+            if(c=='\\' && peekChar()=='"'){ readChar(); retval.value+='~'; retval.originalValue+="\\\""; c=peekChar(); continue; }
+            retval.originalValue+=c;
             if     (c=='"')   { retval.value+=c; break; }  // closing quote
             else if(c=='~')   retval.value+="@@126";        // literal tilde
             else if(c=='^')   retval.value+="@@94";         // literal caret
+            else if(c=='\\')  retval.value+="@@92";         // literal backslash
+            else if(c=='@')   retval.value+="@@64";         // literal at-sign
             else              retval.value+=c;
             c=peekChar();
             continue;
@@ -538,12 +545,14 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
              if(dl == "#i6") pendingI6 = true;
              continue;
          }
-         // Skip // line comments — braces inside don't count
+         // Skip // line comments — braces inside don't count. In I6 content a Beguile comment is
+         // dropped (I6 would read it as code); newlines stay so line numbers still match.
+         bool dropComment = isI6Content || i6Depth != -1;
          if(c=='/' && peekChar()=='/'){
-             retval += c; c = readChar();  // second /
-             retval += c; c = readChar();
+             if(!dropComment){ retval += c; } c = readChar();  // second /
+             if(!dropComment){ retval += c; } c = readChar();
              while(c != '\n' && c != EOF){
-                 retval += c;
+                 if(!dropComment) retval += c;
                  c = readChar();
              }
              if(c == '\n'){ retval += c; c = readChar(); }
@@ -553,15 +562,16 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
          // don't count, and (critically) apostrophes inside ("Edaw's") would otherwise
          // open a runaway char-literal skip that swallows braces far below.
          if(c=='/' && peekChar()=='*'){
-             retval += c; c = readChar();  // consume first '/'
-             retval += c; c = readChar();  // consume the '*'
+             if(!dropComment){ retval += c; } c = readChar();  // consume first '/'
+             if(!dropComment){ retval += c; } c = readChar();  // consume the '*'
              while(c != EOF){
                  if(c == '*' && peekChar() == '/'){
-                     retval += c; c = readChar();  // consume the '*'
-                     retval += c; c = readChar();  // consume the closing '/'
+                     if(!dropComment){ retval += c; } c = readChar();  // consume the '*'
+                     if(!dropComment){ retval += c; } c = readChar();  // consume the closing '/'
                      break;
                  }
-                 retval += c; c = readChar();
+                 if(!dropComment || c == '\n') retval += c;
+                 c = readChar();
              }
              continue;
          }

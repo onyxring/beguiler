@@ -58,7 +58,7 @@ extend lib { auto gfx = _gfx; }
 
 lib.gfx.window w;                                   // declaration
 void open(lib.gfx.window win){ }                    // parameter
-int where = lib.gfx.placement.above;                // enum value
+eGfxPlacement where = lib.gfx.placement.above;      // enum value
 ```
 
 ## 10.2 Value Aliases
@@ -185,11 +185,13 @@ aliased class; with `#using bgl`, `glulx.window` resolves through the partial pa
 
 **Example**
 
+<!-- doctest: glulx -->
 ```bgl
 emitter class myPlatform { int wordsize { WORDSIZE } }
 #using myPlatform
 void Main() { int ws = wordsize; }    // myPlatform.wordsize
 
+#include <glulxWindow>
 #using bgl.glulx
 window myWin;                         // resolves to glulxWindow
 ```

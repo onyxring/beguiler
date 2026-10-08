@@ -1,0 +1,18 @@
+/*  run_define_trailing_comment — a comment after `#define`/`#defineI6` is not the symbol's value.
+
+    The first token after the name was taken as the value even when it was a `//` comment, so
+    `#define CHEATS // on` defined CHEATS as the comment text, and `#defineI6` emitted the comment into
+    an I6 `Constant` directive (where `//` reads as a division).  */
+// EXPECT_OUTPUT: cheats level3
+#beguilerSettings { target = z5; informName = "none"; }
+#define CHEATS   // on
+#define LEVEL 3  // three
+#defineI6 FLAGGY   // emitted as Constant FLAGGY
+void main(){
+    #if CHEATS
+        print("cheats ");
+    #endif
+    #if LEVEL == 3
+        print("level3");
+    #endif
+}

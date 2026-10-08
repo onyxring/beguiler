@@ -12,7 +12,7 @@
 void change(stringObj s){ s = "changed"; }
 void changeRef(ref stringObj s){ s = "changed"; }
 bool isLong(stringObj s){
-    if(s.getLength() > 3) return true;
+    if(s.length > 3) return true;
     s = "x";
     return false;
 }

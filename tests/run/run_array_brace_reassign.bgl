@@ -9,14 +9,14 @@
 void main(){
     array<int> a[5] = {1, 2};
     a = {3, 4, 5};
-    print($"{a.length()}:");
+    print($"{a.length}:");
     for(int x in a) print(x);
 
     array<string> s = {"a", "b"};
     s = {"c"};
-    print($" {s.length()}:");
+    print($" {s.length}:");
     for(string t in s) print(t);
 
     a = {};
-    print($" {a.length()}:");
+    print($" {a.length}:");
 }

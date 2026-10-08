@@ -1,0 +1,4 @@
+// EXPECT_ERROR: 'length' is a property of 'array', not a method
+#beguilerSettings { target = z5; informName = "none"; }
+array<int> a[4];
+void main(){ print(a.length()); }

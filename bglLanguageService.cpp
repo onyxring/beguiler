@@ -227,6 +227,15 @@ static string typeSrc(bglLanguageService& ls, const string& name){
 
 string bglLanguageService::declaredAt(const string& name){ return typeSrc(*this, name); }
 
+bool bglLanguageService::isI6StatementKeyword(const string& name){
+    static const std::set<string> keywords = {
+        "box", "break", "continue", "do", "font", "for", "give", "if", "inversion", "jump", "move",
+        "new_line", "objectloop", "print", "print_ret", "quit", "read", "remove", "restore", "return",
+        "rfalse", "rtrue", "save", "spaces", "string", "style", "switch", "while"
+    };
+    return keywords.count(name) > 0;
+}
+
 bool bglLanguageService::isAdditiveProperty(const string& name) const {
     if(name.empty()) return false;
     for(typeDef* g : globals)
@@ -348,6 +357,7 @@ objectDef& bglLanguageService::registerObject(string name, bool isExternal, stri
             existing->isExternal = isExternal;
             existing->src = parser.file.currentLocation();
             if(!dspName.empty()) existing->displayName = dspName;
+            if(isExternal && existing->i6nameAvoidsKeyword){ existing->i6name.clear(); existing->i6nameAvoidsKeyword = false; }
             rePushIfMissing(globals, existing, isExternal,
                             parser.getCurrentCompileContext() == eCompileContext::global);
             return *existing;
@@ -360,6 +370,11 @@ objectDef& bglLanguageService::registerObject(string name, bool isExternal, stri
     newType.displayName=dspName;
     newType.isExternal=isExternal;
     newType.src = parser.file.currentLocation();
+    // Named like an I6 statement keyword: `jump.handler();` would read as a `jump` statement.
+    if(!isExternal && isI6StatementKeyword(name)){
+        newType.i6name = "_" + (dspName.empty() ? name : dspName);
+        newType.i6nameAvoidsKeyword = true;
+    }
     objectInstances.push_back(&newType);
     objectDef& retval=(objectDef&)getType(name);
     if(parser.getCurrentCompileContext()==eCompileContext::global && !isExternal) globals.push_back(&retval);
@@ -382,6 +397,8 @@ variableDeclaration& bglLanguageService::registerInstance(variableDeclaration& v
             for(typeDef*& g : globals)
                 if(g == existing){ g = &varDef; break; }
             varDef.isPrePassStub = false;
+            // An earlier deferred initializer that reads this global marked the stub.
+            if(existing->needsEarlyGlobalDecl) varDef.needsEarlyGlobalDecl = true;
             return varDef;
         }
         if(!eitherIsVerb){

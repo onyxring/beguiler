@@ -1,8 +1,8 @@
-// Only emitter METHODS may be attached to an enum — a value emitter (no `()`) is rejected.
-// EXPECT_ERROR: must be an emitter method
+// An emitter value on an enum is read as a property; calling it with `()` is rejected.
+// EXPECT_ERROR: is an emitter value, not a function
 #beguilerSettings { target = z5; informName = "none"; }
 enum eThing {
     Alpha, Beta,
     emitter int tag { ($self) }
 }
-void main(){ print("x"); }
+void main(){ int n = Alpha.tag(); print(n); }

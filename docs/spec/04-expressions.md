@@ -97,7 +97,7 @@ class Money {
     emitter bool operator == (Money v){ $self.cents == $v.cents }
     int operator () { return cents; }          // implicit conversion to int
 }
-Money a; Money b; int five = 5;
+Money a { } Money b { } int five = 5;
 bool same = a == b;       // 1: Money declares operator == (Money)
 int  sum  = a + five;     // 2: no operator + on Money; a converts to int, built-in + applies
 ```
@@ -163,6 +163,7 @@ as the mistyping it is.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 print(x > 0 ? "positive" : "non-positive");
 int result = (cond ? a : b) + extra;
@@ -204,6 +205,7 @@ ternary; the postfix query applies only when the `?` ends the expression.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 object dest = actor?.destination ?? location;
 string desc = noun?.parent.description;   // parent guarded, .description not
@@ -247,6 +249,7 @@ untyped read with no member check.
 
 **Example**
 
+<!-- doctest: compile -->
 ```bgl
 class Room : object { int lit; }
 Room library { int shelves; }
@@ -274,6 +277,7 @@ pointer types. A `&` with a left operand is the bitwise and (§4.8).
 
 **Example**
 
+<!-- doctest: compile -->
 ```bgl
 extern void FillBuffer(int address, int length);   // an I6 routine
 array<char> buf[32];

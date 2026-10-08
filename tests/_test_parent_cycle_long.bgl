@@ -1,0 +1,7 @@
+// A longer parent loop (a → b → c → a) is rejected too.
+// EXPECT_ERROR: is its own ancestor
+#beguilerSettings { target = z5; informName = "none"; }
+object a { parent = b; }
+object b { parent = c; }
+object c { parent = a; }
+void main(){ bglInit(); }

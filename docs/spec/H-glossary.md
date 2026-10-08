@@ -58,7 +58,7 @@ section with the full treatment.
 - **resolved type** — The static type the compiler assigns to an expression, which drives operator resolution, type checking and emitter dispatch. See §4.1.
 - **re-list** — `inline name;` in a class body or `extend`: makes an existing member positional at that point in the class's order, without redeclaring it. See §8.3.5.
 - **routine** — An I6 callable. A Beguile **function** compiles to a routine. See §6.1.
-- **size vs. length** — For a Beguile array, `size()` is the capacity reserved at compile time; `length()` is the runtime count of in-use elements. See §12.3.
+- **size vs. length** — For a Beguile array, `size` is the capacity reserved at compile time; `length` is the runtime count of in-use elements. See §12.3.
 - **source file** — A file the compiler reads: a `.bgl` file, or an `.inf` file in precompiler mode. See §3.1, §15.1.
 - **statement** — An executable unit inside a function body, ending in `;` or a `{ }` block. See §5.1.
 - **static instance** — An instance declared at file scope (`Name m;`, or an object declaration) and allocated once for the program, as opposed to a pooled instance obtained with `new` or an instance local to a routine. See §8.2.6, §11.2.

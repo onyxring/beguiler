@@ -108,7 +108,7 @@ void exerciseMethods(){
     t = s.format("[$0:$1]", "extra");
     t = s.format("[$0:$1:$2]", "a", "b");
 
-    int len = s.getLength();
+    int len = s.length;
     int pos = s.indexOf("World");
     bool sw  = s.startsWith("Hello");
     bool ew  = s.endsWith("World");

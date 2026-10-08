@@ -50,7 +50,11 @@ const token _nullToken;
     bool token::isDataType(){
         return languageService.isClassType(value);
     }
-    bool token::isString(){
+    std::string token::literalText() const {
+    return tokenType == eTokenType::rawQuote && !originalValue.empty() ? originalValue : value;
+}
+
+bool token::isString(){
         return tokenType == eTokenType::quote || tokenType == eTokenType::rawQuote;
     }
     bool token::isNumeric(){

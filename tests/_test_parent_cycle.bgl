@@ -1,0 +1,6 @@
+// Objects naming each other as parent are rejected: the world tree would have a cycle.
+// EXPECT_ERROR: is its own ancestor
+#beguilerSettings { target = z5; informName = "none"; }
+object a { parent = b; }
+object b { parent = a; }
+void main(){ bglInit(); }

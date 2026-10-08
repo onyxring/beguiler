@@ -86,6 +86,7 @@ are in §2.10.1. Reference binding (`:=`) is specified in §3.7.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 score = score + 10;
 lamp.parent = library;
@@ -407,6 +408,7 @@ classes are specified in §8.2.6; allocation with `new` in §4.13.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 Marble m = new Marble();
 if (m != null) delete m;       // destroy() runs; the slot returns to the pool

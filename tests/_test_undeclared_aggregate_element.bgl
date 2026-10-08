@@ -1,0 +1,6 @@
+// An inline aggregate element naming nothing declared is rejected.
+// EXPECT_ERROR: Undeclared identifier 'zzz'
+#beguilerSettings { target = z5; informName = "none"; }
+class R : object { inline int n; inline int m; }
+R r1 = { 1, zzz };
+void main(){ }

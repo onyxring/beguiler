@@ -11,8 +11,9 @@
 //   #include <string>      in your .bgl file to activate string support.
 //
 // Pool sizing can be overridden before including this file:
-//   #i6 { Default bglStringPoolReserve 20; }   ! number of simultaneous strings
-//   #i6 { Default bglStringDefaultSize 800; }  ! per-string capacity in chars
+//   #i6 { Default bglStringPoolReserve 20; }            ! number of simultaneous strings
+// The per-string capacity lives in <buf>, which the core loads first:
+//   #emitfirst { Constant bglStringDefaultSize 800; }   ! per-string capacity in chars
 //-----------------------------------------------------------------------------
 #once
 
@@ -1098,7 +1099,7 @@ extend class string {
     emitter stringObj  format(var pattern, var p1)           { _bglStr.format($val, $pattern, $p1) }
     emitter stringObj  format(var pattern, var p1, var p2)   { _bglStr.format($val, $pattern, $p1, $p2) }
     /// How many characters, not counting a terminator.
-    emitter int     getLength()                           { _bglStr.getLength($val) }
+    emitter int     length                                { _bglStr.getLength($val) }
     /// Order two strings by content: <0, 0 or >0. This is the comparison to hand `sort`.
     emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
     /// Order by content, optionally ignoring case.
@@ -1263,7 +1264,7 @@ emitter class stringObj {
     emitter stringObj  format(var pattern)                   { _bglStr.format($val, $pattern) }
     emitter stringObj  format(var pattern, var p1)           { _bglStr.format($val, $pattern, $p1) }
     emitter stringObj  format(var pattern, var p1, var p2)   { _bglStr.format($val, $pattern, $p1, $p2) }
-    emitter int     getLength()                           { _bglStr.getLength($val) }
+    emitter int     length                                { _bglStr.getLength($val) }
     emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
     emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
     emitter int     indexOf(var searchText)               { _bglStr.indexOf($val, $searchText, 0) }

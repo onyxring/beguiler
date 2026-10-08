@@ -26,9 +26,9 @@ array<char> bufB[64];
 array<char> bufSmall[16];
 
 void exerciseLength(){
-    int szA = bufA.size();
-    bufA.setLength(0);
-    int n = bufA.length();
+    int szA = bufA.size;
+    bufA.length = 0;
+    int n = bufA.length;
     bool tr = bufA.isTracked();
 }
 

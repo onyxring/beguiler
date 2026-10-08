@@ -14,7 +14,7 @@ object a3 { parent = kitchen; }
 void main(){
     bglInit();
     for(object o in kitchen.children) o.parent = bowl;
-    print($"moved {bowl.children.length()}, kitchen {kitchen.children.length()}, ");
+    print($"moved {bowl.children.length}, kitchen {kitchen.children.length}, ");
     int n = 0;
     for(object o in bowl.children){
         if(o == a2) continue;

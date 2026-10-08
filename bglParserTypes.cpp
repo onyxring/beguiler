@@ -830,6 +830,8 @@ bool bglParser::isInheritedObjectMember(const string& name, functionDef* func, s
 // for arrayDeclaration subclass instances so the elementType field can be read.
 
 string bglParser::resolveArrayElementType(const string& name, functionDef* func, statementBlock* body){
+    if(size_t d = name.rfind('.'); d != string::npos)
+        return resolveArrayElementTypeDotted(name.substr(0, d), name.substr(d + 1), func, body);
     if(func != nullptr)
         for(paramDef* p : func->params)
             if(p->name == name) {
@@ -865,8 +867,15 @@ string bglParser::resolveArrayElementType(const string& name, functionDef* func,
 
 // Resolve the element type of `objName.propName` where propName is an array member of obj's class.
 
-string bglParser::resolveArrayElementTypeDotted(const string& objName, const string& propName,
+string bglParser::resolveArrayElementTypeDotted(const string& objNameIn, const string& propNameIn,
                                                   functionDef* func, statementBlock* body){
+    // A longer path (`gh.item` + `items`, or `gh` + `item.items`): the array is the last segment,
+    // and everything before it is the owner.
+    string objName = objNameIn, propName = propNameIn;
+    if(size_t d = propName.rfind('.'); d != string::npos){
+        objName += "." + propName.substr(0, d);
+        propName = propName.substr(d + 1);
+    }
     // Find objName's class — walk objectInstances + globals
     classDef* cls = nullptr;
     for(typeDef* t : languageService.objectInstances)
@@ -879,7 +888,8 @@ string bglParser::resolveArrayElementTypeDotted(const string& objName, const str
                 break;
             }
     if(!cls) {
-        string objType = resolveIdentifierType(objName, func, body);
+        string objType = objName.find_first_of(".(") != string::npos ? resolvePathType(objName, func, body)
+                                                                    : resolveIdentifierType(objName, func, body);
         cls = languageService.classOf(objType);
     }
     function<string(classDef*)> walk = [&](classDef* c) -> string {
@@ -1579,10 +1589,12 @@ string bglParser::resolveI6Name(const string& spec){
     string head = trim(path.substr(0, dot)), member = trim(path.substr(dot + 1));
     string headType = resolvePathType(head, nullptr, nullptr, member);
     if(headType.empty()) headType = head;          // the head may already BE a type name
+    // An enum value: an extern enum's is an I6 word of its own; a Beguile enum's is its number.
+    if(auto* ed = languageService.findEnum(headType))
+        for(enumValueDef* ev : ed->namedValues)
+            if(ev->name == member) return ed->isExternal ? member : to_string(ev->value);
     classDef* cls = getDispatchClass(headType);
     if(cls == nullptr){
-        // An enum value is a bare word and is its own I6 name.
-        if(auto* ed = languageService.findEnum(headType)) { (void)ed; return member; }
         parsingError(format("$i6Name({0}) — '{1}' does not name a type with members", spec, head));
         return "";
     }
@@ -1795,6 +1807,40 @@ string bglParser::substituteI6Names(const string& body){
 // clash — including one of the compiler's reserved additive properties such as `name`. The
 // declaration honoured the alias but access sites did not, emitting `obj.<beguileName>` for a
 // property declared under another name, which I6 rejects outright.
+string bglParser::withMemberI6Name(const string& written, string qualified, functionDef* func, statementBlock* body){
+    size_t wd = written.rfind('.'), qd = qualified.rfind('.');
+    if(func == nullptr || wd == string::npos || qd == string::npos) return qualified;
+    string mem = written.substr(wd + 1);
+    string aliased = memberI6Name(resolveIdentifierType(written.substr(0, wd), func, body), mem);
+    return aliased != mem ? qualified.substr(0, qd + 1) + aliased : qualified;
+}
+
+void bglParser::rejectMemberNamedLikeClass(const string& name, const string& shown){
+    classDef* cls = languageService.findClass(name);
+    if(cls == nullptr || cls->isEmitterClass || cls->isAlias || cls->isPrimitive) return;
+    string i6 = cls->i6Name();
+    transform(i6.begin(), i6.end(), i6.begin(), ::tolower);
+    if(i6 != name) return;
+    parsingError(format("Member '{0}' has the same name as class '{1}'. Inform 6 keeps classes and properties "
+                        "in one namespace, ignoring case, so rename the member or give it an I6 name with "
+                        "`asI6`.", shown, cls->dName()));
+}
+
+string bglParser::memberI6NameFor(const string& name, const string& i6alias, bool ownerIsExtern){
+    if(!i6alias.empty() || ownerIsExtern) return i6alias;
+    rejectMemberNamedLikeClass(name, name);
+    // Inform 6 keeps properties, globals, objects and routines in one namespace. A `property` global
+    // names this very property; an emitter emits no symbol.
+    for(typeDef* g : languageService.globals){
+        if(g->name != name) continue;
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ if(vd->type.name != "property") return "_m_" + name; }
+        else if(auto* fd = dynamic_cast<functionDef*>(g)){ if(!fd->isEmitter) return "_m_" + name; }
+    }
+    if(languageService.findObjectType(name) != nullptr) return "_m_" + name;
+    for(verbObjectDef* v : languageService.verbs) if(v->name == name) return "_m_" + name;
+    return "";
+}
+
 std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::string& memberName){
     if(recvTypeName.empty() || memberName.empty()) return memberName;
     typeDef& td = languageService.getType(recvTypeName);
@@ -1864,17 +1910,18 @@ bool bglParser::rejectRawMemberLengthOp(const std::string& owner, const std::str
     // delegate to one. size()/length() are absent deliberately: the compiler lowers those to
     // `obj.#prop/WORDSIZE` at the call site, so they need no length word and stay available.
     static const std::set<std::string> needsLengthWord = {
-        "setlength", "clear", "freeall", "append", "insert", "prepend", "remove", "removevalue",
+        "length =", "clear", "freeall", "append", "insert", "prepend", "remove", "removevalue",
         "push", "pop", "dequeue", "enqueue", "popend", "peek", "peekend",
         "indexof", "reverse", "sort", "sortdefault"
     };
     if(needsLengthWord.count(methName) == 0) return false;
     if(memberArrayIsTracked(owner, prop, func, body)) return false;
-    parsingError(format("'{0}()' needs an array's length word, but '{1}.{2}' is a RAW member array "
+    string what = methName == "length =" ? string("Assigning 'length'") : "'" + methName + "()'";
+    parsingError(format("{0} needs an array's length word, but '{1}.{2}' is a RAW member array "
         "(rawArray<T>, or array<dictionaryWord>, whose layout I6 owns). It is inline property data "
         "with no length word — its extent is fixed at {1}.#{2}/WORDSIZE — so the operation would "
-        "read the last ELEMENT as a length and walk off the end. size(), length() and subscripting "
-        "do work on it; declare the member `array<T>` if you need the rest.", methName, owner, prop));
+        "read the last ELEMENT as a length and walk off the end. size, length and subscripting "
+        "do work on it; declare the member `array<T>` if you need the rest.", what, owner, prop));
     return true;
 }
 
@@ -1906,7 +1953,11 @@ bool bglParser::memberArrayIsTracked(const std::string& ownerName, const std::st
     typeDef* ownerObj = nullptr;
     { typeDef& t = languageService.getType(owner);
       if(dynamic_cast<objectDef*>(&t) != nullptr) ownerObj = &t; }
-    string resolvedOwner = resolveIdentifierType(owner, func, body);
+    string resolvedOwner = owner.find('.') != string::npos ? resolvePathType(owner, func, body)
+                                                          : resolveIdentifierType(owner, func, body);
+    if(resolvedOwner.empty() && currentFunc != nullptr)   // a lambda's capture slot stands for the local it copied
+        for(auto& cap : currentFunc->captures)
+            if(cap.globalName == owner){ resolvedOwner = cap.typeName; break; }
     typeDef& td = ownerObj != nullptr
                 ? *ownerObj
                 : languageService.getType(resolvedOwner.empty() ? owner : resolvedOwner);
@@ -1927,6 +1978,7 @@ bool bglParser::splitQualifiedMember(const string& name, functionDef* func, stat
                                      string& ownerOut, string& propOut){
     if(func == nullptr) return false;
     string qualified = qualifyIdentifier(name, func, body);
+    if(qualified.empty()) qualified = name;   // already qualified (a capture slot, a renamed local)
     size_t dot = qualified.rfind('.');
     if(dot == string::npos) return false;   // global/local — not a property access
     ownerOut = qualified.substr(0, dot);
@@ -2519,6 +2571,17 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
     // Handle dot-path: qualify the head, then check for value emitter on the tail
     size_t dot = name.find('.');
     if(dot != string::npos) return qualifyDottedPath(name, dot, func, body, forceGlobalScope);
+    // `::name` past a parameter or local of the same name: the routine's local is renamed at
+    // emission, and the marker keeps this reference out of that rename (stripped in resolvedOutput).
+    if(forceGlobalScope && func != nullptr
+       && (qualifyFromParams(name, func) || qualifyFromBodyLocals(name, body) || qualifyFromAncestorBlocks(name, body))){
+        string g = qualifyIdentifier("::" + name, nullptr, nullptr, memberHint);
+        bool isIdent = !g.empty() && all_of(g.begin(), g.end(), [](char c){ return isalnum((unsigned char)c) || c == '_'; })
+                       && !isdigit((unsigned char)g[0]);
+        if(!isIdent) return g;
+        (currentFunc != nullptr ? currentFunc : func)->globalEscapes.insert(name);   // loop bodies parse under a stand-in func
+        return kGlobalEscapeMarker + g;
+    }
     if(!forceGlobalScope){
         if(auto r = qualifyFromParams(name, func))          return *r;
         if(auto r = qualifyFromBodyLocals(name, body))      return *r;
@@ -3060,6 +3123,7 @@ void bglParser::checkReturnValue(expression* e, const string& returnType, const 
     if(returnType.empty() || returnType == "void" || returnType == "var") return;
     const string valueType = e->resolvedType;
     if(valueType.empty() || valueType == "var" || valueType == "void" || e->text() == "nothing") return;
+    applyImplicitConversion(e, returnType);
     applyAssignOperatorAsValue(e, returnType);
     auto fail = [&](const string& shown){
         parsingError(format("Cannot return a value of type '{0}' from '{1}', which returns '{2}'",
@@ -3124,6 +3188,44 @@ bool bglParser::applyAssignOperatorAsValue(expression* e, const string& targetTy
     if(b.empty()) return false;
     e->tokens.clear();
     e->tokens.push_back(b);
+    e->resolvedType = targetType;
+    return true;
+}
+
+bool bglParser::applyActionConstant(expression* e){
+    if(e == nullptr || e->resolvedType != "verb" || e->tokens.size() != 1) return false;
+    string t = e->tokens[0];
+    if(t.rfind("##", 0) == 0) return false;
+    string tl = t; transform(tl.begin(), tl.end(), tl.begin(), ::tolower);
+    if(tl == "action" || tl == "action_to_be" || tl == "second_action") return false;
+    for(verbObjectDef* v : languageService.verbs){
+        string vi6 = v->i6name; transform(vi6.begin(), vi6.end(), vi6.begin(), ::tolower);
+        if(v->name != tl && vi6 != tl) continue;
+        e->tokens[0] = "##" + v->dName();   // an action is named for the verb, whatever its object's I6 name
+        return true;
+    }
+    return false;
+}
+
+bool bglParser::applyImplicitConversion(expression* e, const string& targetType){
+    if(e == nullptr || targetType.empty() || targetType == "var") return false;
+    const string valueType = e->resolvedType;
+    if(valueType.empty() || valueType == "var" || valueType == targetType) return false;
+    classDef* vc = getDispatchClass(valueType);
+    if(vc == nullptr) return false;
+    if(classDef* tc = getDispatchClass(targetType))
+        if(findAssignOperator(tc, valueType, [](functionDef*){ return true; }, true, targetType)) return false;
+    bool hasConversion = findMemberInHierarchy(vc, [&](typeMember* m){
+        auto* fn = dynamic_cast<functionDef*>(m);
+        return fn && fn->name == "operator()" && fn->params.empty() && !fn->isExplicit
+               && fn->returnType.name == targetType;
+    }) != nullptr;
+    if(!hasConversion) return false;
+    string text = e->text();
+    string converted = applyCastConversion(text, valueType, targetType);
+    if(converted == text) return false;
+    e->tokens.clear();
+    e->tokens.push_back(converted);
     e->resolvedType = targetType;
     return true;
 }
@@ -3476,6 +3578,30 @@ void bglParser::reportMethodOverloadMismatch(const string& objType, const string
         methodName, typeDisplayName(objType), provided, detail));
 }
 
+functionDef* bglParser::nativeGetterOf(const string& memberType){
+    if(memberType.empty()) return nullptr;
+    classDef* mcls = getDispatchClass(memberType);
+    auto* fn = mcls ? dynamic_cast<functionDef*>(findMemberInHierarchy(mcls, [&](typeMember* m){
+        auto* f = dynamic_cast<functionDef*>(m);
+        return f && f->name=="operator()" && f->params.empty() && !f->isEmitter && !f->isExplicit
+               && !f->returnType.name.empty() && f->returnType.name != "void";
+    })) : nullptr;
+    if(fn && fn->i6name.empty()) fn->i6name = mangleOperatorName(fn->name);
+    return fn;
+}
+
+bglParser::MethodMatch bglParser::resolveMethodNamed(const string& typeName, const string& objPath, const string& methodName,
+                                                     vector<expression*>& args, vector<string>& namedArgNames){
+    MethodMatch mm = resolveMethod(typeName, objPath, methodName, args);
+    bool hasNamed = false;
+    for(auto& n : namedArgNames) if(!n.empty()){ hasNamed = true; break; }
+    functionDef* target = mm.method ? mm.method : mm.arityMatch;
+    if(!hasNamed || target == nullptr) return mm;
+    vector<vector<interpolatedSegment>> interp;
+    finalizeCallArgs(args, namedArgNames, interp, target);
+    return resolveMethod(typeName, objPath, methodName, args);
+}
+
 functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, const string& methodName,
                                         vector<expression*>& args, vector<string>& namedArgNames,
                                         vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
@@ -3498,7 +3624,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
     // (`_bglArray.size(arr, 0)`), so it never carries a `rawarray<...>` static type
     // and never reaches this guard.
     if((methodName == "size" || methodName == "length") && objType.rfind("rawarray<", 0) == 0)
-        parsingError(format("'{0}()' is unavailable on rawArray '{1}': a rawArray is a bare I6 word "
+        parsingError(format("'{0}' is unavailable on rawArray '{1}': a rawArray is a bare I6 word "
             "pointer with no length header, so its size isn't known at runtime. Pass the length "
             "explicitly (e.g. as a separate parameter) instead.", methodName, objPath));
     MethodMatch mm = resolveMethodWithConversion(objType, objPath, methodName, args, elementType);
@@ -3520,6 +3646,12 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
     }
     if(!mm.nameFound){
         if(functionDef* synth = synthesizeFuncPropertyCall(objType, methodName)) return synth;
+        // `arr.length()` where `length` is a property: say so, rather than "no method".
+        if(classDef* oc = getDispatchClass(objType))
+            if(findMemberInHierarchy(oc, [&](typeMember* m){
+                   return dynamic_cast<variableDeclaration*>(m) != nullptr && m->name == methodName; }))
+                parsingError(format("'{0}' is a property of '{1}', not a method; use it without parentheses "
+                                    "('{0}', not '{0}()')", methodName, typeDisplayName(objType)));
         // If the receiver is an array and <linq> isn't included, the missing method is very
         // likely a LINQ chain op (filter/map/take/…) that now lives in <linq>. Point there.
         if(!languageService.linqInUse && getDispatchClass(objType) != nullptr
@@ -3565,6 +3697,9 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
         }
         reportMethodOverloadMismatch(objType, methodName, args);
     }
+    // A value (`emitter int size { … }`) is read, never called.
+    if(mm.method->isEmitter && mm.method->isValueEmitter)
+        parsingError(format("'{0}' is an emitter value, not a function; use it without parentheses ('{0}', not '{0}()')", methodName));
     finalizeCallArgs(args, namedArgNames, interpSegmentsPerArg, mm.method);
     mangleOverloadSetForReceiver(objType, methodName);
     return mm.method;

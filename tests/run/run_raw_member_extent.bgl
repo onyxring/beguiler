@@ -43,15 +43,15 @@ void row(int sz, int ln){ print("size "); print(sz); print(" len "); print(ln); 
 
 void main(){
     bglInit();
-    print("raw seeded: ");  row(w.r.size(),     w.r.length());
-    print("raw sized: ");   row(w.sized.size(), w.sized.length());
-    print("dict: ");        row(w.name.size(),  w.name.length());
-    print("additive across layers: "); row(w.myHook.size(), w.myHook.length());
+    print("raw seeded: ");  row(w.r.size,     w.r.length);
+    print("raw sized: ");   row(w.sized.size, w.sized.length);
+    print("dict: ");        row(w.name.size,  w.name.length);
+    print("additive across layers: "); row(w.myHook.size, w.myHook.length);
 
     w.r[0] = 99;
     print("subscript: "); for(int i = 0; i < 3; i++){ print(w.r[i]); print(" "); } print("^");
 
     w.trk.append(4); w.trk.append(5);
-    print("tracked member: "); row(w.trk.size(), w.trk.length());
-    print("tracked global: "); row(gTracked.size(), gTracked.length());
+    print("tracked member: "); row(w.trk.size, w.trk.length);
+    print("tracked global: "); row(gTracked.size, gTracked.length);
 }

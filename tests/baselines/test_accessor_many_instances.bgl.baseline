@@ -49,7 +49,7 @@ object _bglArray
        isTracked [obj prop hdr;
      if(metaclass(obj)==object) rfalse; 
     hdr = self.rawget(obj,0);
-    return self.rawget(obj,hdr)==36996&&self.rawget(obj,hdr-1)>=0;
+    return self.rawget(obj,hdr)==36996 && self.rawget(obj,hdr-1)>=0;
   ],
        size [obj prop;
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
@@ -65,13 +65,17 @@ object _bglArray
     }
     return self.rawget(obj,0);
   ],
-       setLength [obj prop n;
+       setLength [obj prop n cap;
+    if (n < 0) {
+        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+         quit; 
+    }
+    cap=self.size(obj,prop);
+    if (n > cap) {
+        n=cap;
+    }
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     if (self.istracked(obj,prop)) {
-        if (n < 0) {
-            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-             quit; 
-        }
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
@@ -275,7 +279,7 @@ object bgl
 class box
   with
     _val 0,
-    _opconv[;
+    _opconv_int[;
         return self._val;
     ],
     _opeq[v;
@@ -303,7 +307,7 @@ thing t3
     t1.b._opeq(5);
     t2.b._opeq(9);
     t3.b._opeq(100);
-    print t1.b._opconv();
-    print t2.b._opconv();
-    print t3.b._opconv();
+    print t1.b._opconv_int();
+    print t2.b._opconv_int();
+    print t3.b._opconv_int();
 ];

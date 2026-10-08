@@ -23,6 +23,15 @@
 #                                                    Z-machine interpreter is unavailable.
 #   • Example smoke:     ../examples/*.bgl            — must compile. Examples are shipped docs and
 #                                                    used to rot unnoticed.
+#   • Spec doc tests:    tools/spec_doctest.py        — every `bgl` block in ../docs/spec/ is compiled
+#                                                    and run, and its `// →` values checked. A block
+#                                                    is steered by a `<!-- doctest: … -->` marker;
+#                                                    see the script's header.
+#   • Feature matrix:    tools/feature_matrix.py      — each feature (member, accessor, `?.`, method,
+#                                                    operator, array, write forms, …) through each
+#                                                    receiver (global, local, parameter, self, member,
+#                                                    subscript, call, chain) in each position, run on
+#                                                    Z and Glulx with its output checked.
 #
 # The execution tier needs these external tools, discovered in this order:
 #   Inform 6:     $INFORM6, then `inform6` on PATH, then ../../inform6/inform6
@@ -301,15 +310,27 @@ if [ "$CAPTURE" = true ]; then
     echo "(Negative tests run on every invocation; --capture only affects positive baselines.)"
 else
     # Debug-bundle soundness — static .bgldbg validator over the tests/debug/ corpus.
-    DBG_FAIL=0
+    CHECK_FAIL=0
     if [ -f "$SCRIPT_DIR/validate_bgldbg.py" ] && command -v python3 >/dev/null 2>&1; then
         echo ""
         echo "Validating .bgldbg debug bundles..."
-        if ! python3 "$SCRIPT_DIR/validate_bgldbg.py"; then DBG_FAIL=1; fi
+        if ! python3 "$SCRIPT_DIR/validate_bgldbg.py"; then CHECK_FAIL=1; fi
+    fi
+    # Spec doc tests — every `bgl` block in docs/spec/ compiled, run, and its `// →` values checked.
+    if [ -f "$SCRIPT_DIR/tools/spec_doctest.py" ] && command -v python3 >/dev/null 2>&1; then
+        echo ""
+        echo "Running spec doc tests..."
+        if ! python3 "$SCRIPT_DIR/tools/spec_doctest.py"; then CHECK_FAIL=1; fi
+    fi
+    # Feature matrix — each feature through each receiver in each position, run on Z and Glulx.
+    if [ -f "$SCRIPT_DIR/tools/feature_matrix.py" ] && command -v python3 >/dev/null 2>&1; then
+        echo ""
+        echo "Running feature matrix..."
+        if ! python3 "$SCRIPT_DIR/tools/feature_matrix.py"; then CHECK_FAIL=1; fi
     fi
     echo ""
     echo "Results: $PASS passed, $FAIL failed, $ERRORS errors"
-    if [ $FAIL -gt 0 ] || [ $ERRORS -gt 0 ] || [ $DBG_FAIL -gt 0 ]; then
+    if [ $FAIL -gt 0 ] || [ $ERRORS -gt 0 ] || [ $CHECK_FAIL -gt 0 ]; then
         exit 1
     fi
 fi

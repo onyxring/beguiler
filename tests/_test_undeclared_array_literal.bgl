@@ -1,0 +1,6 @@
+// A global array literal element naming nothing declared is rejected.
+// EXPECT_ERROR: Undeclared identifier 'zzz'
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+array<int> a = {1, zzz};
+void main(){ }

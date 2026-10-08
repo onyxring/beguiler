@@ -139,6 +139,7 @@ a subscript read supports member access, resolved against the element type.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern class myBuf {
     emitter var  operator []  (int i)        { $val-->$i }
@@ -187,7 +188,8 @@ class MyType {
 }
 MyType t { }
 int    n = t;              // OK
-string s = (string)t;      // OK; `string s = t;` is a compile-time error
+string s = (string)t;      // OK
+string e = t;              // compile-time error: the conversion is explicit
 
 class heightProxy {
     int _val = 0;
@@ -217,6 +219,7 @@ null; it is entirely type-defined. Expression semantics of `?`, `?.` and `??` ar
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern class object {
     emitter eBool operator ? () { $self ~= nothing }
@@ -293,6 +296,7 @@ directly to the variable.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 n += 2;         // → n = n + 2;  when n's type declares no operator +=
 ```

@@ -1,0 +1,7 @@
+// A member with a class's name would emit an I6 property under that class's name, which Inform 6
+// rejects; Beguiler says so at the member rather than failing later.
+// EXPECT_ERROR: Member 'box' has the same name as class 'Box'
+#beguilerSettings { target = z5; informName = "none"; }
+class Box : object { int n = 7; }
+class Holder : object { Box box; }
+void main(){ }

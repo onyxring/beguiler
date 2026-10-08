@@ -1,0 +1,10 @@
+// run_member_named_like_class — a member whose name is also a class name (case-insensitive) works
+// when it emits under its own I6 name (`asI6`); the class, the pre-scan and an object body that assigns
+// it all read the name as the member, not the type.
+// EXPECT_OUTPUT: 7 7
+#beguilerSettings { target = z5; informName = "none"; }
+class Box : object { int n = 7; }
+class Holder : object { Box box asI6 theBox; }
+Box gb { }
+Holder gh { box = gb; }
+void main(){ bglInit(); print(gh.box.n); Box b = gh.box; print($" {b.n}"); }

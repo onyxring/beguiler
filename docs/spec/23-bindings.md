@@ -139,6 +139,7 @@ lacks it fails with a Beguile error instead of an Inform 6 one:
 
 A program sets a library option with `#defineI6` (§14.2.1), before the binding's `#include`:
 
+<!-- doctest: skip -->
 ```bgl
 #defineI6 OPTIONAL_EXTENDED_METAVERBS
 #includeI6 @"globals"

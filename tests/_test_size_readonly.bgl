@@ -1,0 +1,4 @@
+// EXPECT_ERROR: 'size' is read-only
+#beguilerSettings { target = z5; informName = "none"; }
+array<int> a[4];
+void main(){ a.size = 3; }

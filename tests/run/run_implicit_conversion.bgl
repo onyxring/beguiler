@@ -1,0 +1,27 @@
+/*  run_implicit_conversion — a class's implicit `operator ()` runs wherever its target type is expected.
+
+    A class with both an implicit and an explicit conversion emitted the `_opconv` property twice; each
+    is now named for its result type. The implicit routine ran only for call arguments and bare member
+    reads: an initializer, an assignment and a return copied the object itself, and `Money + int` (the
+    left operand converted to reach int's `+`) was rejected.  */
+// EXPECT_OUTPUT: 212 a temperature 212 212 true 35
+#beguilerSettings { target = z5; informName = "none"; }
+class Celsius {
+    int degrees = 0;
+    int operator () { return degrees * 9 / 5 + 32; }
+    explicit string operator () { return "a temperature"; }
+}
+Celsius t { degrees = 100; }
+int asInt(Celsius c) { return c; }
+class Money {
+    int cents = 0;
+    emitter bool operator == (Money v){ $self.cents == $v.cents }
+    int operator () { return cents; }
+}
+Money a { cents = 30; }  Money b { cents = 30; }
+void main(){
+    int n = t; string u = (string)t; int m = 0; m = t;
+    print($"{n} {u} {m} {asInt(t)} ");
+    int five = 5; bool same = a == b; int sum = a + five;
+    print($"{same} {sum}");
+}

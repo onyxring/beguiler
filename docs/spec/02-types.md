@@ -177,6 +177,7 @@ the ones `string` and `obj.parent` declare.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 object o;
 if(o == null) print("not yet set");
@@ -322,6 +323,7 @@ boolean-result type (§2.2), is declared this way by the runtime core.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern enum eBool { true, false }
 extern enum eErrorFormat { E1, E2 }
@@ -409,7 +411,8 @@ a function declared in the core, needs no `#include`, and works on both targets.
 `typeof` reports machine categories, not source types:
 
 - `bool`, `char` and enumeration values are represented as `int` and report `eType.int`. Two union
-  members that share a representation, such as `int | bool`, cannot be told apart by `typeof`.
+  members that share a representation, such as `int | bool`, cannot be told apart by `typeof`. An
+  argument declared `int`, `bool` or `char` reports `eType.int` without a run-time test.
 - A scalar that happens to equal a valid object number, or a string or routine address, is reported as
   that reference category. A union mixing a scalar with a reference type, such as `int | string`, must
   be discriminated by the author's own test, then narrowed with a cast.
@@ -422,6 +425,7 @@ Objects and classes report `eType.object` and `eType.class`; a value's class is 
 
 The core declares `eType` as follows; it is shown for reference, and a program does not declare it.
 
+<!-- doctest: skip -->
 ```bgl
 enum eType { unknown = 0, int, string, routine, object, class }
 ```

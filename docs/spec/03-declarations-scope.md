@@ -306,18 +306,18 @@ object tally {
 
 **Description**
 
-Local variables, parameters and `for`-loop variables are checked against the enclosing scopes.
+Local variables, parameters and `for`-loop variables are checked against the enclosing scopes. A local
+may shadow a global; inside its scope the bare name is the local and `::name` (§3.9) is the global.
 
 **Errors.**
-- Shadowing a global variable. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
-  and `grammarToken` are exempt: they name compile-time constants, not runtime storage.
-- Shadowing a registered type name (a class or an enum).
 - Re-declaring a local that an enclosing block still has open, or a parameter of the same function.
   A nested declaration does not shadow the outer name — it shares its storage — so the two must have
   different names. Blocks that do not enclose one another may reuse a name freely; their lifetimes
   do not overlap, and a name is not visible after its block closes.
 
 **Warnings.**
+- Shadowing a global variable, object or type name. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
+  and `grammarToken` are exempt: they name compile-time constants, not runtime storage.
 - Shadowing a direct member of the enclosing class or object, or a member inherited from a base
   class; `self.name` reaches the member.
 - A lambda-local variable shadowing a capturable outer local or parameter (§4.14).
@@ -342,10 +342,10 @@ does — so do not shadow something you still mean to call.
 
 ```bgl
 int score = 0;
-class Counter { int n = 0; }
 void foo() {
-    int score = 5;       // error: shadows global
-    int Counter = 0;     // error: shadows class
+    int score = 5;       // warning: shadows global
+    score++;             // the local: 6
+    ::score = score;     // the global: 6
 }
 ```
 
@@ -388,6 +388,11 @@ of subclasses such as `room Name asI6 place { }`), and on class and object membe
 the member name. It is ignored on operator methods; on a type declaration (`extern class`,
 `alias class`) or on a free function it is a compile-time error. The usual reason to reach for either
 clause is that the name required on one side is a keyword or reserved word on the other (§15.9).
+
+A member is emitted as an Inform 6 property, and Inform 6 keeps class names and property names in one
+namespace, ignoring case. A member (field, array or method) named like a class that reaches the I6
+output, such as `Box box;` beside `class Box`, is therefore a compile-time error unless `asI6` gives
+the member a different I6 name: `Box box asI6 theBox;`. Beguile source still calls it `box`.
 
 Both clauses cross the language boundary. `alias` never does: `alias class Foo for Bar` (§8.2.4),
 `alias name for Type;` and `alias name = Target;` (§10.2) each introduce a second *Beguile* name for

@@ -72,6 +72,9 @@ class token {
         bool isValidIdentifier();
         bool isNumeric();
         bool isString();   // true for both quote and rawQuote
+        // The text as written: a raw string's literal characters (a path, a message), where `value`
+        // holds them made safe for an Inform 6 string.
+        std::string literalText() const;
 
         token assert(eTokenType, std::string="");
         token assert(std::string, std::string="");

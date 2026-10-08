@@ -1,0 +1,19 @@
+/*  run_global_scope_past_local — `::name` reaches the global when a parameter, local or loop
+    variable of the same name shadows it. I6 resolves the name to the routine local, so the
+    shadowing local is renamed in the emitted routine.  */
+// EXPECT_OUTPUT: 3 13 5 14 7 15 15
+#beguilerSettings { target = z5; informName = "none"; }
+int score = 1;
+void foo(int score) {
+    ::score = score + 10;
+    print($"{score} {::score} ");
+}
+void bar() {
+    int score = 5;
+    ::score++;
+    if (true) { print($"{score} {::score} "); }
+}
+void baz() {
+    for (int score in 7 to 7) { ::score += 1; print($"{score} {::score} "); }
+}
+void main(){ bglInit(); foo(3); bar(); baz(); print(score); }

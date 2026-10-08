@@ -29,6 +29,7 @@ in a raw string literal, which recognizes only `\"`.
 
 An unescaped `^` in a string is a newline and an unescaped `~` is a double quote, as in I6.
 
+<!-- doctest: skip -->
 ```bgl
 "She said, \"well done.\""
 "Price: 5\~ off!"
@@ -109,6 +110,7 @@ be one of the ZSCII extended characters (codes 155 to 224):
 Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6 and, on
 Glulx, the characters described below.
 
+<!-- doctest: skip -->
 ```bgl
 "café"
 'ñ'

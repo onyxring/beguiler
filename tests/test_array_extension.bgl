@@ -57,14 +57,14 @@ void main(){
     if(g_sparse.isTracked()) print(1);
 
     // length() — explicit, set by compiler at allocation
-    print(g_nums.length());      // 5
-    print(g_sparse.length());    // 0
-    print(g_partial.length());   // 5 (zeros are data, not sentinels)
+    print(g_nums.length);      // 5
+    print(g_sparse.length);    // 0
+    print(g_partial.length);   // 5 (zeros are data, not sentinels)
 
     // size() — capacity, immutable
-    print(g_nums.size());        // 5
-    print(g_sparse.size());      // 8
-    print(g_partial.size());     // 5
+    print(g_nums.size);        // 5
+    print(g_sparse.size);      // 8
+    print(g_partial.size);     // 5
 
     // indexOf — full size scan
     print(g_nums.indexOf(30));   // 2
@@ -97,24 +97,24 @@ void main(){
     // clear — zeros all data slots AND sets length to 0
     g_cl.clear();
     print(g_cl[0]);          // 0
-    print(g_cl.length());    // 0
-    print(g_cl.size());      // 3 (capacity unchanged)
+    print(g_cl.length);    // 0
+    print(g_cl.size);      // 3 (capacity unchanged)
 
     // setLength — explicit length write
     g_sl[0] = 100;
     g_sl[1] = 200;
     g_sl[2] = 300;
-    g_sl.setLength(3);       // promote three filled slots to "in-use"
-    print(g_sl.length());    // 3
-    print(g_sl.size());      // 5
+    g_sl.length = 3;       // promote three filled slots to "in-use"
+    print(g_sl.length);    // 3
+    print(g_sl.size);      // 5
 
     // Critical contract: writes to slots do NOT change length.
     // arr[i] = v leaves length alone; only setLength/append/etc change it.
     g_w[0] = 42;
     g_w[1] = 43;
     g_w[2] = 44;
-    print(g_w.length());     // 0 (writes did not extend length)
-    print(g_w.size());       // 5
+    print(g_w.length);     // 0 (writes did not extend length)
+    print(g_w.size);       // 5
     print(g_w.indexOf(43));  // 1 (indexOf scans size, finds it anyway)
 
     // ── Slice 3 — length-changing mutators ──────────────────────────────────
@@ -123,7 +123,7 @@ void main(){
     print(g_ap.append(10) ? 1 : 0);   // 1 (success)
     print(g_ap.append(20) ? 1 : 0);   // 1
     print(g_ap.append(30) ? 1 : 0);   // 1
-    print(g_ap.length());             // 3
+    print(g_ap.length);             // 3
     print(g_ap[0]);                   // 10
     print(g_ap[2]);                   // 30
 
@@ -131,7 +131,7 @@ void main(){
     g_pp.append(10);
     g_pp.append(20);
     g_pp.prepend(5);
-    print(g_pp.length());             // 3
+    print(g_pp.length);             // 3
     print(g_pp[0]);                   // 5
     print(g_pp[1]);                   // 10
     print(g_pp[2]);                   // 20
@@ -141,7 +141,7 @@ void main(){
     g_ins.append(20);
     g_ins.append(40);
     g_ins.insert(2, 30);              // {10, 20, 30, 40}
-    print(g_ins.length());            // 4
+    print(g_ins.length);            // 4
     print(g_ins[2]);                  // 30
     print(g_ins[3]);                  // 40
 
@@ -149,21 +149,21 @@ void main(){
     g_full.append(1);
     g_full.append(2);
     print(g_full.append(3) ? 1 : 0);  // 0 (full)
-    print(g_full.length());           // 2 (no change)
+    print(g_full.length);           // 2 (no change)
 
     // remove — shrink, shifting later elements left
     g_rm.remove(2);                   // remove 30
-    print(g_rm.length());             // 4
+    print(g_rm.length);             // 4
     print(g_rm[2]);                   // 40 (was 30)
     print(g_rm[3]);                   // 50
 
     // remove out-of-range is silent no-op
     g_rm.remove(99);
-    print(g_rm.length());             // 4 (unchanged)
+    print(g_rm.length);             // 4 (unchanged)
 
     // removeValue — remove every occurrence within the used range
     g_rv.removeValue(7);
-    print(g_rv.length());             // 3
+    print(g_rv.length);             // 3
     print(g_rv[0]);                   // 1
     print(g_rv[1]);                   // 2
     print(g_rv[2]);                   // 3
@@ -175,12 +175,12 @@ void main(){
     g_stack.push(10);                 // [10]
     g_stack.push(20);                 // [20, 10]
     g_stack.push(30);                 // [30, 20, 10]
-    print(g_stack.length());          // 3
+    print(g_stack.length);          // 3
     print(g_stack.peek());            // 30 (front of stack)
     print(g_stack.pop());             // 30
     print(g_stack.pop());             // 20
     print(g_stack.pop());             // 10
-    print(g_stack.length());          // 0
+    print(g_stack.length);          // 0
     print(g_stack.pop());             // 0 (empty)
 
     // Queue semantics — enqueue at back, dequeue from front
@@ -189,13 +189,13 @@ void main(){
     g_queue.enqueue(3);               // [1, 2, 3]
     print(g_queue.dequeue());         // 1
     print(g_queue.dequeue());         // 2
-    print(g_queue.length());          // 1
+    print(g_queue.length);          // 1
     print(g_queue.peek());            // 3 (still at front)
 
     // Back-access — peekEnd, popEnd
     print(g_back.peekEnd());          // 30
     print(g_back.popEnd());           // 30
-    print(g_back.length());           // 2
+    print(g_back.length);           // 2
     print(g_back.peekEnd());          // 20
 
     // ── Slice 5 — sort ───────────────────────────────────────────────────────

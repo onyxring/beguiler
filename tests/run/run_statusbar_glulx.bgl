@@ -2,13 +2,14 @@
 
     Setting `height` opens the grid window and records it in `id`, so a split from the status bar
     has a parent; resizing keeps the same window. A split Glk refuses (graphics, which the headless
-    interpreter lacks) is `null`, not a window with id 0.  */
-// EXPECT_OUTPUT: open h=1 same h=2 buffer null
+    interpreter lacks) is `null`, not a window with id 0, as is a split from the status bar before it is opened.  */
+// EXPECT_OUTPUT: closed open h=1 same h=2 buffer null
 #beguilerSettings { target = glulx; informName = "none"; }
 #include "glulxConsole.bgl"
 #include <glulxWindow>
 void main(){
     bglInit(); glulxConsole();
+    if(bgl.ui.statusBar.splitLeftBuffer(10) == null) print("closed ");   // not open yet: nothing to split
     bgl.ui.statusBar.height = 1;
     int first = bgl.ui.statusBar.id;
     if(first != 0) print($"open h={bgl.ui.statusBar.height} ");

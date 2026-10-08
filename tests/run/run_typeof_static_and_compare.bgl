@@ -1,0 +1,17 @@
+/*  run_typeof_static_and_compare — a comparison is a truth value, and `typeof` of a plain value is `int`.
+
+    `bool b = typeof(x) == eType.int;` was rejected: an enum comparison kept the enum's type. And on the
+    Z-machine a small number is also an object number (`1` is the Class metaclass), so `typeof(true)`
+    reported `class`; an argument declared `int`/`bool`/`char` now answers `int` without a run-time test.  */
+// EXPECT_OUTPUT: true true true object
+#beguilerSettings { target = z5; informName = "none"; }
+object lamp { }
+void main(){
+    bool a = typeof(true) == eType.int;
+    bool b = typeof(5) == eType.int;
+    char c = 'c';
+    bool d = typeof(c) == eType.int;
+    var v = lamp;
+    print($"{a} {b} {d} ");
+    if (typeof(v) == eType.object) print("object");
+}

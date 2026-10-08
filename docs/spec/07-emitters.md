@@ -13,7 +13,7 @@
 - [7.6 Emitter Values](#76-emitter-values)
 - [7.7 Emitter Namespaces](#77-emitter-namespaces)
 - [7.8 `operator auto()`](#78-operator-auto)
-- [7.9 Emitter Methods on Enums and Bnums](#79-emitter-methods-on-enums-and-bnums)
+- [7.9 Emitter Members on Enums and Bnums](#79-emitter-members-on-enums-and-bnums)
 - [7.10 Emitters and Functions Compared](#710-emitters-and-functions-compared)
 <!-- /toc -->
 
@@ -83,7 +83,7 @@ documented with that feature (`$selfsub`, §15.8). Appendix G is the one-page in
 
 | Token | Replaced with |
 |---|---|
-| `$self` | In an operator or assignment emitter, the receiver expression with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`x` for `x + 1`, `container.children` for `container.children.length()`); a method emitter on `parent` or `attributes` (§11.5) is the exception and receives the owner. Not meaningful in a global emitter. |
+| `$self` | In an operator or assignment emitter, the receiver expression with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`x` for `x + 1`, `container.children` for `container.children.length`); a method emitter on `parent` or `attributes` (§11.5) is the exception and receives the owner. Not meaningful in a global emitter. |
 | `$val` | The full receiver expression as written: `obj.score` for `obj.score + 1`; otherwise identical to `$self`. |
 | `$host` | The object a proxy member (§7.3.2) is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter. For a receiver that is not a member access, `$host` equals `$self`. |
 | `$paramName` | The argument expression supplied for the parameter of that name. |
@@ -96,7 +96,7 @@ documented with that feature (`$selfsub`, §15.8). Appendix G is the one-page in
 
 **`$self` and `$host`.** The two differ in which emitters strip the trailing member: `$self` strips
 it only in an operator or assignment emitter, whereas `$host` strips it in a method emitter as well,
-which is how a method on a proxy member reaches the owner. For `container.children.length()`, `$self`
+which is how a method on a proxy member reaches the owner. For `container.children.length`, `$self`
 and `$val` are `container.children` and `$host` is `container`.
 
 **`$target`.** When the emitter's result is assigned (`int r = f();`), `$target` is the left-hand
@@ -134,6 +134,7 @@ ambiguous and is a compile-time error; name the operand type to select one:
 
 ```bgl
 class Money {
+    int cents;
     static bool operator == (Money a, Money b) { return a.cents == b.cents; }
     static bool operator == (Money a, int b)   { return a.cents == b; }
     emitter int refMoney(){ $opref(==, Money) }     // $opref(==) alone is ambiguous
@@ -149,6 +150,7 @@ that supplies its own comparator.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 emitter int  indexOf(T item) { _bglArray.indexOf($self, $prop, $item, $opref(==)) }
 emitter void sort()          { _bglArray.sortDefault($self, $prop, $oprefReq(<=>)) }
@@ -171,6 +173,7 @@ emitter void sort()          { _bglArray.sortDefault($self, $prop, $oprefReq(<=>
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 primitive class int {
     emitter int  operator +  (int v){ $val + $v }
@@ -233,7 +236,7 @@ resolved and never reports.
 **Example**
 
 ```bgl
-extern attribute lit asI6 light;
+extern attribute lit asBgl light;
 object myHook asI6 hook;
 
 emitter bool isLit(object o)      { ($o has $i6Name(lit)) }          // → ($o has light)
@@ -489,6 +492,7 @@ The literal pseudo-types declare it so that `auto x = 5;` infers `int` rather th
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 primitive class intLiteral {
     emitter int operator();     // implicit conversion to int
@@ -498,25 +502,29 @@ primitive class intLiteral {
 
 **See also** §2.4 (literal pseudo-types), §5.9.1 (`auto` in `for-in`).
 
-## 7.9 Emitter Methods on Enums and Bnums
+## 7.9 Emitter Members on Enums and Bnums
 
 **Syntax**
 
 ```syntax
-enum ⟨name⟩ { ⟨value⟩, …, emitter ⟨type⟩ ⟨method⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ } }
-extend enum ⟨name⟩ { emitter ⟨type⟩ ⟨method⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ } }
+enum ⟨name⟩ { ⟨value⟩, …, ⟨emitter-member⟩ … }
+extend enum ⟨name⟩ { ⟨emitter-member⟩ … }
+
+⟨emitter-member⟩ ::= emitter ⟨type⟩ ⟨method⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ }
+                   | emitter ⟨type⟩ ⟨property⟩ { ⟨i6-template⟩ }
 ```
 
 **Description**
 
-An enum or bnum value is a bare word, so an enum can host emitter methods: members substituted at the
-call site with `$self` bound to the value and `$paramName` to each argument. They are declared in the
-enum body, or added later with `extend enum`, using the same member form as an emitter class. A
-method may be called on a bare value or on an enum-typed variable, and may be used before the
-declaration that adds it.
+An enum or bnum value is a bare word, so an enum can host emitter members: substituted at the use
+site with `$self` bound to the value and `$paramName` to each argument. An emitter method is called
+with parentheses; an emitter value (§14.4.5) is read as a property, without them. They are declared
+in the enum body, or added later with `extend enum`, using the same member forms as an emitter class.
+A member may be used on a bare value or on an enum-typed variable, and before the declaration that
+adds it.
 
-Only emitter methods may be attached. `operator` overloads, `static` members, plain members, and
-emitter values are compile-time errors in an enum body. A value with methods costs exactly what a
+Only emitter methods and values may be attached. `operator` overloads, `static` members and plain
+members are compile-time errors in an enum body. A value with methods costs exactly what a
 plain value costs, and the methods are not reachable as a nameable type.
 
 **Example**
@@ -528,13 +536,14 @@ enum eDirection {
     emitter int plus(int n) { ($self + $n)  }
 }
 extend enum eDirection {
-    emitter int tenfold()   { ($self * 10) }
+    emitter int tenfold     { ($self * 10) }
 }
 
 int a = north.bump();       // → 101
 eDirection d = south;
 int b = d.bump();           // → 102
 int c = east.plus(10);      // → 13
+int e = west.tenfold;       // → 40
 ```
 
 **See also** §2.7 (enumerations).

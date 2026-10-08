@@ -116,6 +116,7 @@ to another `literal` parameter or stored; an unqualified parameter may not be pa
 values kept to use later, such as event handlers or a rulebook's rules. On a variable or member it
 covers the whole type:
 
+<!-- doctest: skip -->
 ```bgl
 literal func<void> onStart = intro;              // a global
 class door { literal func<void> onOpen; }        // a member

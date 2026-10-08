@@ -1,0 +1,4 @@
+// EXPECT_ERROR: is an emitter value, not a function
+#beguilerSettings { target = z5; informName = "none"; }
+object box { }
+void main(){ print(box.children.size()); }

@@ -15,6 +15,10 @@
 // i6Emitter::replaceWord, which additionally treats `.` as a left-disqualifier.
 std::string replaceWord(std::string str, const std::string& from, const std::string& to);
 
+// Prefixes a global read as `::name` where a local of that name would hide it in I6; removed from
+// the final output once the local has been renamed.
+inline constexpr const char* kGlobalEscapeMarker = "_bglG_";
+
 // Look up a type's original-case display name from the language service. Falls
 // back to the (lowercased) input when the type has no recorded displayName.
 std::string typeDisplayName(const std::string& typeName);

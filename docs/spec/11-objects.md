@@ -61,6 +61,7 @@ members in order (§8.3.5), ended by the first `;`, exactly as in an inline obje
 follow as usual. A member given positionally can't also be given by name.
 
 ```bgl
+object hall { "hall"; }
 class Pet : object { inline instanceName; inline int legs; string owner; }
 Pet rex { "rex", 3; owner = "Jim"; parent = hall; }
 object lamp { "brass lamp"; }        // the name, positional on every class (§11.5.4)
@@ -275,6 +276,7 @@ class menu : object {
     inline array<dictionaryWord> words;
 }
 
+object root { }
 menu child = { root, "a child", {.foo, .bar, .baz} };
 ```
 
@@ -289,6 +291,7 @@ object, reachable only by an object-tree walk (§21.9).
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 menu{ root, "text to display", {.type, .kind} };
 ```
@@ -386,8 +389,8 @@ compile-time error: listing an object in two containers' `children`, or listing 
 `children` while it sets `parent` to a different object. Declaring the same link both ways
 (`kitchen.children = { table }` and `table.parent = kitchen`) is accepted.
 
-**Reading.** `obj.children` is a collection: it is iterated with `for … in`, and `.length()` (or its
-synonym `.size()`) returns the number of direct children. It is the live tree, not an array, so it
+**Reading.** `obj.children` is a collection: it is iterated with `for … in`, and `.length` (or its
+synonym `.size`) returns the number of direct children. It is the live tree, not an array, so it
 cannot initialize or be assigned to an `array<object>`; `bgl.world.inParent(obj)` returns one (§21.9).
 
 **Iterating while moving.** `for … in obj.children` reads each child's next sibling before running
@@ -403,6 +406,7 @@ it by assigning its `parent`.
 **Example**
 
 ```bgl
+attribute seen;
 object table {}
 object chair {}
 object kitchen {
@@ -413,7 +417,7 @@ object apple {}
 object pear {}
 
 for (object o in kitchen.children) { o.give(seen); }
-int n = kitchen.children.length();
+int n = kitchen.children.length;
 bowl.children += { apple, pear };
 ```
 
@@ -611,8 +615,8 @@ the ancestor's type and is always consistent. A member declared `array<T>` or as
 type that disagrees with the hierarchy's.
 
 **Extent and operations.** A contributing member's extent is the total accumulated across every
-layer, so `size()` and `length()` on `r1.name` in the example both answer 3. `size()`, `length()`
-and subscripting work; every operation that needs a length word (`setLength`, `clear`,
+layer, so `size` and `length` on `r1.name` in the example both answer 3. `size`, `length`
+and subscripting work; every operation that needs a length word (assigning `length`, `clear`,
 `append`, `insert`, `prepend`, `remove`, `removeValue`, `push`, `pop`, `dequeue`, `enqueue`,
 `popEnd`, `peek`, `peekEnd`, `indexOf`, `reverse`, `sort`) is a compile-time error on
 such a member.
@@ -651,6 +655,7 @@ known property name is accepted: a member of any class or object, or a free-stan
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 var p = (property) val;
 int v = obj.p;
@@ -680,7 +685,7 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 **Description**
 
 A member may be an array. It has the same semantics as any other array: subscripting, `for … in`,
-`length()` and the `<array>` methods (§22.4) behave identically, and element type checking follows
+`length` and the `<array>` methods (§22.4) behave identically, and element type checking follows
 the rules for global arrays (§12.2). A byte-array member (`array<char>`) accepts a string initializer
 or a brace initializer. Storage rules for member arrays, including the Z-machine property-size limit
 and `ref` members, are given in §12.7; the `rawArray<T>` member form is covered in §12.8.3 and its
@@ -859,6 +864,7 @@ Rules for the body:
 
 **Example**
 
+<!-- doctest: compile -->
 ```bgl
 extern object playerCommands {
     void pushCommand(string cmd, bool isMeta = false, bool isSilent = false);

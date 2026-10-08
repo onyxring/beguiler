@@ -7,8 +7,8 @@ include, §21), an extension (`<name>`, §22) or a binding (§23). *Section* is 
 specified. Overloads share one row; a family of names that differ only in a suffix is listed once
 with the suffix spelled out. Names of the `bgl` namespace are listed under `bgl.…`.
 
-`<array>` is loaded by the core, so its methods need no include; `length()` is built in, `setLength()`
-and `clear()` come from `<array>`.
+`<array>` is loaded by the core, so its methods need no include; `size` and `length` are built in,
+and assigning `length` and `clear()` come from `<array>`.
 
 | Name | Kind | Provided by | Section |
 | --- | --- | --- | --- |
@@ -143,7 +143,6 @@ and `clear()` come from `<array>`.
 | `float` | type | core (Glulx) | §2.3 |
 | `format(pattern[, p1[, p2]])` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `func<…>` | type | core | §2.9 |
-| `getLength()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `gg_mainwin`, `gg_statuswin`, … | variable (Glulx window globals) | binding (`i6StandardLibrary`) | §23.2 |
 | `give(attr)`, `ungive(attr)` | method on `object`, `attributeList` | core | §21.5.1, §11.5.3 |
 | `glulxImage` | type (primitive class) | `<glulxImage>` | §22.8 |
@@ -173,8 +172,9 @@ and `clear()` come from `<array>`.
 | `isRoutine()` | method on `stringOrRoutine` | binding | §21.5.10 |
 | `isTracked()` | method on `array<T>` | `<array>` | §22.4 |
 | `itobj`, `himobj`, `herobj` | variable (pronoun objects) | binding | §23.4 |
-| `length()` | method on `array<T>` | core; `<array>` | §12.3, §22.4 |
-| `length()`, `size()` | method on `children` | core | §11.5.2, §21.5.7 |
+| `length` | property on `array<T>` (assignable with `<array>`) | core; `<array>` | §12.3, §22.4 |
+| `length` | property on `string`, `stringObj` (read-only) | `<string>` | §22.3 |
+| `length`, `size` | property on `children` (read-only) | core | §11.5.2, §21.5.7 |
 | `light`, `container`, `scenery`, `static`, … (library attributes) | value (`attribute`) | binding | §23.3.4 |
 | `location`, `player`, `actor`, `score`, `turns` | variable (extern) | binding | §23.3.4 |
 | `log(v)` | function | core | §21.4 |
@@ -218,13 +218,13 @@ and `clear()` come from `<array>`.
 | `reverse()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `selected_direction`, `selected_direction_index` | variable (extern) | binding (`punyInform`) | §23.4 |
 | `setBackgroundColor(color)` | method on `graphicsWindow` | `<glulxWindow>` | §22.7.5 |
-| `setLength(n)` | method on `array<T>` | core; `<array>` | §12.3, §22.4 |
 | `setStyle(styleType, style {…})`, `clearStyle(styleType)` | method on the text window types, the roots, `bgl.ui.screen` | `<glulxWindow>` | §22.7.7 |
 | `short_name` | member on `object` | library bindings | §21.4, §23.3.4 |
 | `instanceName` | member on `_bglObject` (`inline const string`) | core | §8.3.5, §11.5.4 |
-| `size()` | method on `array<T>` | core | §12.3 |
-| `size()` | method on `glulxImage`, `eImages` | `<glulxImage>` | §22.8 |
-| `size()`, `length()`, `setLength(n)`, `isTracked()` | method on `array<char>` | `<buf>` | §22.2 |
+| `size` | property on `array<T>` (read-only) | core | §12.3 |
+| `size` | property on `glulxImage` (read-only); method `size()` on `eImages` | `<glulxImage>` | §22.8 |
+| `size`, `length` | property on `array<char>` (`length` assignable) | `<buf>` | §22.2 |
+| `isTracked()` | method on `array<char>` | `<buf>` | §22.2 |
 | `sort([compare])` | method on `array<T>` | `<array>` | §22.4 |
 | `splitUpGrid()` … `splitRightBuffer()` (12 combinations of direction and kind) | method on `window`, the roots | `<glulxWindow>` | §22.7.3 |
 | `startsWith(prefix)`, `endsWith(suffix)`, `contains(search)` | method on `string`, `stringObj` | `<string>` | §22.3 |
@@ -255,5 +255,5 @@ and `clear()` come from `<array>`.
 | `verb` | type | core | §13.2, §21.5.4 |
 | `void` | type | core | §2.2 |
 | `width` | member on `window`, the roots | `<glulxWindow>` | §22.7.4 |
-| `width()`, `height()` | method on `glulxImage`, `eImages` | `<glulxImage>` | §22.8 |
+| `width`, `height` | property on `glulxImage` (read-only); methods `width()`, `height()` on `eImages` | `<glulxImage>` | §22.8 |
 | `window` | type | `<glulxWindow>` | §22.7.1 |

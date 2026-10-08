@@ -31,10 +31,10 @@ object w {
     array<int> seeded = {1, 2, 3};   // capacity 3, length 3
     void fill(){ nums += 30; nums += 10; }
     void sortIt(){ nums.sort(); }
-    int  len(){ return nums.length(); }
-    int  cap(){ return nums.size(); }
+    int  len(){ return nums.length; }
+    int  cap(){ return nums.size; }
     void show(string label){
-        print(label); for(int i = 0; i < nums.length(); i++){ print(nums[i]); print(" "); } print("^");
+        print(label); for(int i = 0; i < nums.length; i++){ print(nums[i]); print(" "); } print("^");
     }
 }
 object ext { array<int> slots[4]; }
@@ -48,12 +48,12 @@ void main(){
     w.sortIt();
     print("sorted "); for(int i = 0; i < 2; i++){ print(w.nums[i]); print(" "); } print("^");
 
-    print("seeded cap "); print(w.seeded.size()); print(" len "); print(w.seeded.length()); print("^");
-    print("popped ");     print(w.seeded.pop());  print(" len "); print(w.seeded.length()); print("^");
+    print("seeded cap "); print(w.seeded.size); print(" len "); print(w.seeded.length); print("^");
+    print("popped ");     print(w.seeded.pop());  print(" len "); print(w.seeded.length); print("^");
     w.seeded.removeValue(2);
-    print("removed len "); print(w.seeded.length()); print("^");
+    print("removed len "); print(w.seeded.length); print("^");
 
     // and from outside the object
     ext.slots += 5;
-    print("external cap "); print(ext.slots.size()); print(" len "); print(ext.slots.length()); print("^");
+    print("external cap "); print(ext.slots.size); print(" len "); print(ext.slots.length); print("^");
 }

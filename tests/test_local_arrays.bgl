@@ -53,7 +53,7 @@ int earlyReturn(bool flag){
 // to emit no allocation, so the pointer was garbage on entry).
 int sumAll(array<int> data){
     int total = 0;
-    for(int i = 0; i < data.length(); i++) total = total + data[i];
+    for(int i = 0; i < data.length; i++) total = total + data[i];
     return total;
 }
 
@@ -62,7 +62,7 @@ int sumAll(array<int> data){
 // written at the declaration point. Used directly and passed to a helper.
 int listInitLocal(){
     array<int> primes = {2, 3, 5, 7, 11};   // length starts at 5
-    return primes.length() * 100 + sumAll(primes);  // 5*100 + 28 = 528
+    return primes.length * 100 + sumAll(primes);  // 5*100 + 28 = 528
 }
 
 // Sized local BYTE array (array<char>) via framePool hybrid-buffer backing:

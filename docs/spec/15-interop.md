@@ -149,6 +149,7 @@ guarantees around classes and instances are in §18.7.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 #i6 Constant DEBUG_FLAG = 1;
 
@@ -360,6 +361,7 @@ rules are specific to `extern`:
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern class object {
     parentProp parent;
@@ -405,6 +407,7 @@ type.
 
 **Example**
 
+<!-- doctest: compile -->
 ```bgl
 extern object playerCommands {
     void pushCommand(string cmd, bool isMeta = false, bool isSilent = false);
@@ -487,7 +490,7 @@ token is available here:
 class counter : object {
     int count = 0;
     emitter void _bglGlobalDeclaration() {
-        [ $selfsub;                     // one routine per instance: stepssub, clickssub, …
+        [ $selfsub;                     ! one routine per instance: stepssub, clickssub, …
             $self.count++;
             return $self.count;
         ];

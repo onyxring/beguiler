@@ -1,0 +1,11 @@
+// run_emitter_body_comments — line and block comments in an emitter body are dropped, as anywhere
+// else in Beguile; they used to reach the I6, and a trailing one swallowed the closing `;`.
+// EXPECT_OUTPUT: 8hi!
+#beguilerSettings { target = z5; informName = "none"; }
+emitter int twice(int n) {
+    // doubles it
+    ($n * 2)   // trailing
+}
+emitter void hi() { print "hi"; /* greet */ // and more
+    print "!"; }
+void main(){ bglInit(); print(twice(4)); hi(); }

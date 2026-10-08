@@ -1,0 +1,16 @@
+// run_member_array_brace_list — `+=`, `-=` and `=` with a brace list on a MEMBER array apply per
+// element through (owner, prop), as on a global; `holder.m += {7}` passed the list to I6 raw and
+// `holder.m = {4, 5}` was rejected.
+// EXPECT_OUTPUT: 2 7 9 2 4 5
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class holderC : object { array<int> m[4]; }
+holderC holder { }
+void main(){
+    bglInit();
+    holder.m += {7, 8, 9};
+    holder.m -= {8};
+    print($"{holder.m.length} {holder.m[0]} {holder.m[1]} ");
+    holder.m = {4, 5};
+    print($"{holder.m.length} {holder.m[0]} {holder.m[1]}");
+}

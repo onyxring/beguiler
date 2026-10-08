@@ -18,7 +18,7 @@ is specified in the section named in the last column; this table does not add li
 | Ternary operators per statement | 1 | both | §4.9 |
 | Member types in a named union | at least 2 | both | §2.8.2 |
 | Integer literal in an `array<char>` initializer or element write | 0..255 | both | §12.4 |
-| `setLength(n)` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
+| Assigned array `length` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
 | Include nesting depth | 255 | both | §14.1.6, §18.4 |
 | Compile-time errors reported per build; the first ends the build | 1 | both | §19.1, §16.7 |
 | Elements in a literal-list `for (x in {…})` (`forInScratchSize`) | 31 by default; at least 1 | both | §17.4, §5.9.1 |

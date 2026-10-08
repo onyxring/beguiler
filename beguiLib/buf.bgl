@@ -42,9 +42,10 @@
 // etc., without any wrapping.
 //
 // Pool size of the default capture buffer for string-stream redirection can
-// be overridden by setting `bglStringDefaultSize` before this file is included:
+// be overridden by setting `bglStringDefaultSize` early; the runtime core loads
+// this file before user code, so use an #emitfirst block:
 //
-//     Default bglStringDefaultSize 500;
+//     #emitfirst { Constant bglStringDefaultSize 800; }
 //
 // Naming note: all symbols in this file are `_bgl`-prefixed to avoid collision
 // with orLibrary's `_orBuf` / `orStringDefaultSize` / etc. if a user includes
@@ -138,13 +139,17 @@ array<int> _bglTrackedRegistry[128];
 /// how much of it is in use.
 extend extern class byteArray {
     /// How many bytes the buffer can hold.
-    replace emitter int  size()           { _bglBuf.size($val) }
-    /// How many bytes are in use.
-    replace emitter int  length()         { _bglBuf.length($val) }
-    /// Set the in-use count, after writing into the buffer through some other route.
-    emitter void setLength(int n)         { _bglBuf.setLength($val, $n) }
+    replace emitter int  size             { _bglBuf.size($val) }
     /// True when this buffer carries a length. A buffer built outside `<buf>` does not.
     emitter bool isTracked()              { _bglBuf.isTracked($val) }
+}
+
+/// With `<buf>`, a buffer's `length` is assignable.
+extend extern class byteArrayLength {
+    /// How many bytes are in use.
+    replace emitter int  operator()       { _bglBuf.length($self) }
+    /// Set how many bytes are in use, after writing into the buffer through some other route.
+    emitter void operator = (int n)       { _bglBuf.setLength($self, $n) }
 }
 
 //=============================================================================
@@ -620,5 +625,5 @@ object _bglBuf {
 }
 
 extend _bglUtil {
-    auto buf = _bglBuf;
+    alias buf = _bglBuf;   /// Text-buffer operations.
 }

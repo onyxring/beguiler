@@ -317,6 +317,13 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
        && (funcDef.name == "operator()"
            || (!isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')))
         funcDef.i6name = mangleOperatorName(funcDef.name);
+    // A class may convert to several types (`int operator ()`, `explicit string operator ()`): each
+    // is its own routine, named for its result type, so one doesn't overwrite the other.
+    if(!isEmitter && funcDef.name == "operator()"){
+        string rt = funcDef.returnType.name;
+        for(char& ch : rt) if(!isalnum((unsigned char)ch)) ch = '_';
+        funcDef.i6name = "_opconv_" + rt;
+    }
     if(isExplicitConversion && funcDef.name != "operator()")
         parsingError("'explicit' is only valid on conversion operators (operator())");
     processParameterList(funcDef);
@@ -639,7 +646,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     variableDeclaration& varDef=*(new variableDeclaration());
     varDef.name=(string) name;
     varDef.displayName = name.originalValue;
-    varDef.i6name = i6alias;        // `Type member as <i6name>;` — empty leaves the Beguile name
+    varDef.i6name = memberI6NameFor(varDef.name, i6alias, newClass.isExternal);
     varDef.src = name.src.line > 0 ? name.src : file.currentLocation();
     varDef.type=languageService.getType((string) returnType);
     // Keep a parameterized type's full name (getType gives the bare base): func<…> so the member is
@@ -927,8 +934,20 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
         i6Block& rawblock = *(new i6Block());
         rawblock.i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
         funcDef.body = &rawblock;
-        if(!replaceStubMember(newClass.members, funcDef))
-            newClass.members.push_back(&funcDef);
+        if(!replaceStubMember(newClass.members, funcDef)){
+            // A same-named value in this class body: `replace` swaps it in place, as for a method.
+            auto it = find_if(newClass.members.begin(), newClass.members.end(), [&](typeMember* m){
+                auto* fd = dynamic_cast<functionDef*>(m);
+                return fd && fd->name == funcDef.name && fd->isValueEmitter;
+            });
+            if(it != newClass.members.end()){
+                if(!q.isReplace)
+                    parsingError(format("class '{0}': emitter value '{1}' is already defined; use 'replace' to override",
+                                        newClass.dName(), funcDef.dName()));
+                *it = &funcDef;
+            } else
+                newClass.members.push_back(&funcDef);
+        }
     }
     else{
         if(isOperator==true) parsingError("Operators must be functions.");
@@ -1181,6 +1200,7 @@ void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
                && !isTypeCompatible(expr->resolvedType, typeName))
                 parsingError(format("Cannot assign value of type '{0}' to property '{1}' of type '{2}'",
                     typeDisplayName(expr->resolvedType), prop.dName(), typeDisplayName(typeName)));
+            if(typeName == "verb") applyActionConstant(expr);
             prop.declaredExpressionValue = expr;
         }
     }
@@ -1336,6 +1356,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     arrDecl.docComment = docComment;
     arrDecl.src = file.currentLocation();   // so diagnostics on this member array report a line
     arrDecl.name = (string)propName;
+    if(!file.peekToken().is("asi6")) rejectMemberNamedLikeClass(arrDecl.name, propName.originalValue.empty() ? arrDecl.name : propName.originalValue);
     arrDecl.literalElements = literalElements;
     if(q) arrDecl.isInline = q->isInline;   // an `inline array<T>` member is a positional slot (§6.2.1)
     if(q && q->isInline)
@@ -1346,13 +1367,14 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     if(q) arrDecl.isRefLocal = q->isRef;
     arrDecl.type = languageService.getType("array");
     arrDecl.elementType = elemType;
+    // `[N]` fixes the capacity; an initializer may follow to seed the leading slots, as on a global.
     if(sym.is(token::bracketOpen)){
-        token sizeTok = file.getToken(eTokenType::integer);
-        arrDecl.arraySize = stoi(sizeTok.value);
+        arrDecl.arraySize = readCompileTimeInt("an array's capacity");
         promoteMemberArrayIfOversized(arrDecl);
         file.getToken(token::bracketClose);
-        file.getToken(token::endStatement);
-    } else if(sym.is(token::assignment)){
+        sym = file.getToken({token::endStatement, token::assignment});
+    }
+    if(sym.is(token::assignment)){
         // Check for string initializer: array<char> name = "text";
         token peek = file.peekToken(1);
         if(peek.is(eTokenType::quote) || peek.is(eTokenType::rawQuote)){
@@ -1398,6 +1420,11 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
             arrDecl.declaredExpressionValue = list;
         }
     }
+    if(arrDecl.arraySize > 0)
+        if(auto* seed = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue);
+           seed != nullptr && (int)seed->elements.size() > arrDecl.arraySize)
+            parsingError(format("Array '{0}' declares capacity {1} but its initializer supplies {2} elements.",
+                                arrDecl.dName(), arrDecl.arraySize, seed->elements.size()));
     // Set byte array type for char arrays
     if(elemType == "char"){
         arrDecl.isByteArray = true;
@@ -1424,7 +1451,10 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
 
 
 void bglParser::consumeMethodI6Alias(functionDef& funcDef){
-    if(!file.peekToken().is("asi6")) return;
+    if(!file.peekToken().is("asi6")){
+        if(!funcDef.isEmitter && !funcDef.isStatic) rejectMemberNamedLikeClass(funcDef.name, funcDef.dName());
+        return;
+    }
     file.getToken();                                   // 'as'
     token aliasTok = file.getToken(eTokenType::identifier);
     // §3.11: the clause is ignored on operator methods, whose i6name is assigned by the
@@ -1533,7 +1563,10 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     variableDeclaration& prop = *(new variableDeclaration());
     prop.name = name;
     prop.docComment = docComment;
-    prop.i6name = i6alias;  // `Type member as <i6name>;` — emitted I6 property short-name (empty = use Beguile name)
+    // An inherited member keeps the I6 name its class gave it (an `asI6` name, or a clash rename).
+    if(i6alias.empty() && obj.objectClass != nullptr)
+        if(string inherited = memberI6Name(obj.objectClass->name, name); inherited != name) i6alias = inherited;
+    prop.i6name = memberI6NameFor(prop.name, i6alias, obj.isExternal);
     prop.src = file.currentLocation();
     prop.type = languageService.getType(typeName);
     if(typeName.rfind("func<", 0) == 0) prop.type.name = typeName;  // getType returns base "func"; keep the parameterized name
@@ -2008,6 +2041,7 @@ string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, to
             bakeInlineObjectAggregate(fcls, target->type.name, anonName, func, body);
             variableDeclaration& mem = *(new variableDeclaration());
             mem.name = target->name;
+            mem.i6name = target->i6name;
             mem.type = target->type;
             expression* ref = new expression();
             ref->tokens.push_back(anonName);
@@ -2025,8 +2059,10 @@ string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, to
                 && !isTypeCompatible(val->resolvedType, target->type.name))
             parsingError(format("'{0}': member '{1}' is '{2}', so it can't take a value of type '{3}'",
                                 typeDisplay, target->dName(), typeDisplayName(target->type.name), typeDisplayName(val->resolvedType)));
+        if(target->type.name == "verb") applyActionConstant(val);
         variableDeclaration& mem = *(new variableDeclaration());
         mem.name = target->name;
+        mem.i6name = target->i6name;
         mem.type = target->type;
         mem.isConst = target->isConst;
         mem.declaredExpressionValue = val;
@@ -2147,6 +2183,24 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
 bool bglParser::processTypedObjectDeclaration(token typeTok, token nameTok, token classNameTok, Qualifiers& q, abstractObject& ctx){
     // Entered after "Type name : ClassName" have been consumed. Reads optional "as alias" then symbol.
     string objectClassName = classNameTok.value;
+    // More than one base (`object dog : object, Animal, Robot { … }`): an object has one class, so
+    // the bases go on a class of the object's own, declared here just ahead of it.
+    if(file.peekToken().is(",")){
+        vector<token> baseToks{classNameTok};
+        while(file.peekToken().is(",")){
+            file.getToken();
+            baseToks.push_back(consumeTypeToken(file.getToken({eTokenType::dataType, eTokenType::identifier})));
+        }
+        string objDisplay = nameTok.originalValue.empty() ? (string)nameTok : nameTok.originalValue;
+        classDef& cls = languageService.registerClass("_" + (string)nameTok + "_class", false, objDisplay);
+        for(token& b : baseToks){
+            classDef* base = languageService.findClass(b.value);
+            if(!base) parsingError(format("Unknown base class '{0}'", b.originalValue.empty() ? b.value : b.originalValue));
+            if(find(cls.baseClasses.begin(), cls.baseClasses.end(), base) == cls.baseClasses.end())
+                cls.baseClasses.push_back(base);
+        }
+        objectClassName = cls.name;
+    }
     string i6alias;
     if(file.peekToken().is("asi6")){
         file.getToken();
@@ -2459,6 +2513,10 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
     }
     Qualifiers q = parseQualifiers(tok);
     bool memberIsReplace = q.isReplace;
+    // `box = v` where a class is also named Box (the member emits under an `asI6` name): a type
+    // followed by `=` can't begin a declaration, so this is the member.
+    bool assignsMember = file.peekToken().is(token::assignment) || file.peekToken().is(token::bindAssignment);
+    if(assignsMember) tok.tokenType = eTokenType::identifier;
     // Context-specific validation
     if(q.isExtern)  parsingError("'extern' is not valid inside an object body");
     if(q.isExtend)  parsingError("'extend' is not valid inside an object body");
@@ -2541,7 +2599,7 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
             newObj.members.push_back((typeMember*)&funcDef);
     } else if(tok.value == "array" || tok.value == "rawarray")
         processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray", tok.docComment);
-    else if(tok.isDataType())
+    else if(tok.isDataType() && !assignsMember)
         processTypedMember(newObj, tok, memberIsReplace, q.isRef);
     else if(tok.is(eTokenType::identifier))
         processInheritedMember(newObj, tok);

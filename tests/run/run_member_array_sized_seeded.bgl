@@ -1,0 +1,13 @@
+// run_member_array_sized_seeded — a class or object member array may take a capacity AND an
+// initializer, as a global does: capacity N, length = the seed count, the rest zeroed and free to grow.
+// EXPECT_OUTPUT: 4 6 7 2 4 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#define CAP 6
+class Box : object { array<int> items[CAP] = {4, 5, 6}; }
+Box gb { }
+object shelf { array<int> slots[4] = {1}; }
+void main(){ bglInit();
+    gb.items += 7; shelf.slots += 2;
+    print($"{gb.items.length} {gb.items.size} {gb.items[3]} {shelf.slots.length} {shelf.slots.size} {shelf.slots[1]}");
+}

@@ -25,8 +25,8 @@ The element type `T` is mandatory; bare `array` is not a type. `T` may be any ba
 (§12.9). `rawArray<T>` (§12.8) is the untracked form used at the I6 boundary.
 
 The `<array>` extension is loaded by the runtime core, so every array operation is available
-without an explicit `#include <array>`. Subscripting, `size()`, `length()` and `for … in` are built
-in; `setLength()`, `clear()`, value-semantic assignment and the remaining methods (`append`,
+without an explicit `#include <array>`. Subscripting, `size`, `length` and `for … in` are built
+in; assigning `length`, `clear()`, value-semantic assignment and the remaining methods (`append`,
 `indexOf`, `sort`, …) are provided by `<array>` and are cataloged in §22.4.
 
 ## 12.2 Declaring Arrays
@@ -38,6 +38,7 @@ array<⟨type⟩> ⟨name⟩[⟨n⟩] ;
 array<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 array<⟨type⟩> ⟨name⟩ = ⟨value⟩ ;
 array<⟨type⟩> ⟨name⟩ ;
+array<⟨type⟩> ⟨name⟩[⟨n⟩] = { ⟨value⟩ , … } ;
 ```
 
 `<`, `>`, `[` and `]` are literal. The first form is a sized array: capacity `⟨n⟩`, zero-initialized,
@@ -46,7 +47,9 @@ an integer (§14.2.1), or an integer `#beguilerSettings` property (§17.7). The 
 third is the one-element form of the second: a single value of the element type needs no braces, so
 `array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
 from that array instead; the value's type decides which is meant. The same shorthand applies to a
-list-typed class or object member (§11.5.3, §12.7). The fourth is declared without capacity.
+list-typed class or object member (§11.5.3, §12.7). The fourth is declared without capacity. The fifth
+combines the first two: capacity `⟨n⟩`, length the number of values, the remaining slots zeroed. A list
+longer than `⟨n⟩` is a compile-time error.
 
 **Description**
 
@@ -71,9 +74,9 @@ array<Room> visited;
 ```syntax
 ⟨array⟩[⟨index⟩]
 ⟨array⟩[⟨index⟩] = ⟨value⟩
-⟨array⟩ . size ( )
-⟨array⟩ . length ( )
-⟨array⟩ . setLength ( ⟨n⟩ )
+⟨array⟩ . size
+⟨array⟩ . length
+⟨array⟩ . length = ⟨n⟩
 ⟨array⟩ . clear ( )
 ```
 
@@ -81,22 +84,23 @@ array<Room> visited;
 
 **Description**
 
-Subscripts are zero-based. `size()` returns the number of elements allocated for the array, whether or
-not those slots hold meaningful values.
+Subscripts are zero-based. `size` is the number of elements allocated for the array, whether or
+not those slots hold meaningful values. It is read-only.
 
 An array also carries an explicit *length*, the count of in-use entries. Length is set at allocation
 (N for an initializer list, 0 for a sized array) and changes only through explicit operations:
-`setLength()`, `clear()`, and the mutators of `<array>` (§22.4). A slot write (`arr[i] = v`) does not
-change length; the array behaves as a buffer with a cursor. `setLength(n)` is range-checked to the
-signed word range of the target; `clear()` zeroes every slot up to `size()` and resets length to 0.
+assigning `length`, `clear()`, and the mutators of `<array>` (§22.4). A slot write (`arr[i] = v`) does
+not change length; the array behaves as a buffer with a cursor. An assigned `length` is limited to
+`size`, and a negative one is a runtime error; `clear()` zeroes every slot up to `size` and resets
+length to 0.
 
 Every traversal in `<array>` (`indexOf()`, `contains()`, `removeValue()`, `sort()`, `first()`,
-`last()`, …) walks the in-use range only; slots beyond `length()` are not searched, sorted or matched.
+`last()`, …) walks the in-use range only; slots beyond `length` are not searched, sorted or matched.
 `clear()` is the one capacity-wide operation. A sized array filled only by slot writes therefore has
-`length() == 0` and reads as empty; use `+=`, `insert()` or `setLength()` to make the slots live.
+`length == 0` and reads as empty; use `+=`, `insert()` or assign `length` to make the slots live.
 
-On an `array<char>` (§12.4), `size()` and `length()` both read the buffer's length word, which starts
-at the declared capacity. On a `rawArray<T>` (§12.8) `size()`, `length()` and `for … in` are
+On an `array<char>` (§12.4), `size` and `length` both read the buffer's length word, which starts
+at the declared capacity. On a `rawArray<T>` (§12.8) `size`, `length` and `for … in` are
 compile-time errors, except that a raw member array reports its property length from both. `isTracked()`
 (§22.4) tells a tracked array from an untracked one.
 
@@ -107,17 +111,17 @@ array<int> scores[5];
 
 int x = scores[2];
 scores[0] = 99;
-int n = scores.size();          // → 5
-int used = scores.length();     // → 0: a slot write does not change length
-scores.setLength(1);            // → length() is now 1
+int n = scores.size;            // → 5
+int used = scores.length;       // → 0: a slot write does not change length
+scores.length = 1;              // → length is now 1
 scores.clear();                 // every slot 0, length 0
 ```
 
 **Notes**
 
-> **[Z-machine]** `setLength(n)` accepts 0..32767.
+> **[Z-machine]** `length` accepts 0..32767, and no more than `size`.
 
-> **[Glulx]** `setLength(n)` accepts 0..2^31-1.
+> **[Glulx]** `length` accepts 0..2^31-1, and no more than `size`.
 
 ## 12.4 Byte Arrays — `array<char>`
 
@@ -219,6 +223,7 @@ int n = keep[0];                // safe
 ```syntax
 array<⟨type⟩> ⟨name⟩[⟨n⟩] ;
 array<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
+array<⟨type⟩> ⟨name⟩[⟨n⟩] = { ⟨value⟩ , … } ;
 ref array<⟨type⟩> ⟨name⟩ ;
 ```
 
@@ -227,7 +232,7 @@ ref array<⟨type⟩> ⟨name⟩ ;
 **Description**
 
 An `array<T>` declared as a class or object member (§8.3.1, §11.8) has the same semantics as any other
-array: `length()`, `append()`, `pop()` and the rest behave identically. Storage is per instance: every
+array: `length`, `append()`, `pop()` and the rest behave identically. Storage is per instance: every
 instance of a class has its own copy of a member array, with the declared capacity and initializer.
 
 | Declared capacity | Storage |
@@ -289,7 +294,7 @@ receiving it as a `rawArray<T>` parameter allows ordinary subscript syntax on it
 | | `array<T>` | `rawArray<T>` parameter |
 |---|---|---|
 | Layout | count word, then elements | elements only |
-| `size()` / `length()` | available | unavailable; the length is passed explicitly |
+| `size` / `length` | available | unavailable; the length is passed explicitly |
 | Length tracking | yes | none |
 
 Because a `rawArray<T>` carries no length, `for … in` over a `rawArray<T>` parameter is a compile-time
@@ -298,6 +303,7 @@ type-checked at every subscript and may be cast like any other value.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 bool ext_parsererror(eParserError etype, rawArray<var> results) {   // PutOn, Insert: library actions
     if (etype == eParserError.nothing && ((verb)results[0] == PutOn || (verb)results[0] == Insert))
@@ -354,7 +360,7 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 **Description**
 
 A `rawArray<T>` member is a bare property array. It is required for members that contribute to an
-`additive` property, and its `size()`, `length()` and permitted operations on such members are
+`additive` property, and its `size`, `length` and permitted operations on such members are
 specified in §11.7.2.
 
 **Example**
@@ -380,7 +386,7 @@ element of `⟨type⟩`.
 
 The element type of an array may itself be an array type, to any depth. A nested initializer supplies
 one braced list per inner array, and the inner arrays may differ in length. `name[i]` is an
-`array<T>` and supports `length()` and the array surface; `name[i][j]` reads or writes an element,
+`array<T>` and supports `length` and the array surface; `name[i][j]` reads or writes an element,
 and `name[i][j].member = v` writes through an object element. `for (array<T> row in name)` iterates
 the outer array with `row` typed `array<T>`. A nested array may be declared as a local. A wrong
 element type or a wrong nesting depth in an initializer is a compile-time error.
@@ -391,12 +397,12 @@ element type or a wrong nesting depth in an initializer is a compile-time error.
 array<array<int>> grid = { {1,2,3}, {4,5} };
 
 int v = grid[0][1];                    // 2
-int rows = grid.length();              // 2
-int cols = grid[1].length();           // 2
+int rows = grid.length;              // 2
+int cols = grid[1].length;           // 2
 grid[0][1] = 99;
 int total = 0;
 for (array<int> row in grid) {
-    for (int i = 0; i < row.length(); i++) { total += row[i]; }
+    for (int i = 0; i < row.length; i++) { total += row[i]; }
 }
 ```
 
@@ -438,6 +444,7 @@ allocates a second time; the original is not released.
 **Example**
 
 ```bgl
+#include <string>
 array<stringObj> slots[4];
 
 slots += "alpha";                    // the slot allocates and owns
@@ -490,6 +497,7 @@ The statements apply in source order, so a later `move` or `remove` sees the eff
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 array<rule> before = { cantTakeYourself, cantTakeScenery };
 

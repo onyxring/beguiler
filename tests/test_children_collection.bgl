@@ -17,6 +17,6 @@ void main() {
     int n = 0;
     for(object o in shelf.children) { n = n + 1; }   // objectloop
     print(n);
-    print(shelf.children.length());        // count via .length
-    print(bowl.children.size());           // count via .size (synonym)
+    print(shelf.children.length);        // count via .length
+    print(bowl.children.size);           // count via .size (synonym)
 }

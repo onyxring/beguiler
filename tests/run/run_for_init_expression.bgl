@@ -1,6 +1,6 @@
 /*  run_for_init_expression — a C-style `for` initializer is an expression like any other.
 
-    The initializer's tokens were copied into the I6 `for` as written, so `a.length()` there reached
+    The initializer's tokens were copied into the I6 `for` as written, so `a.length` there reached
     I6 as a property message on a local and failed at run time.  */
 // EXPECT_OUTPUT: 871
 #beguilerSettings { target = z5; informName = "none"; }
@@ -9,7 +9,7 @@ void main() {
     array<int> a[4];
     a.append(7);
     a.append(8);
-    for(int i = a.length() - 1; i >= 0; i--) print(a[i]);
+    for(int i = a.length - 1; i >= 0; i--) print(a[i]);
     int n = 0;
-    for(n = a.length() - 1; n > 0; n--) print(n);
+    for(n = a.length - 1; n > 0; n--) print(n);
 }

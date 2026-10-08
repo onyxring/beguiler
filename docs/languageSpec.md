@@ -149,7 +149,7 @@ of contents.
   - [7.6 Emitter Values](#76-emitter-values)
   - [7.7 Emitter Namespaces](#77-emitter-namespaces)
   - [7.8 `operator auto()`](#78-operator-auto)
-  - [7.9 Emitter Methods on Enums and Bnums](#79-emitter-methods-on-enums-and-bnums)
+  - [7.9 Emitter Members on Enums and Bnums](#79-emitter-members-on-enums-and-bnums)
   - [7.10 Emitters and Functions Compared](#710-emitters-and-functions-compared)
 - [8 Classes](#8-classes)
   - [8.1 Class Declaration](#81-class-declaration)
@@ -1426,7 +1426,8 @@ a function declared in the core, needs no `#include`, and works on both targets.
 `typeof` reports machine categories, not source types:
 
 - `bool`, `char` and enumeration values are represented as `int` and report `eType.int`. Two union
-  members that share a representation, such as `int | bool`, cannot be told apart by `typeof`.
+  members that share a representation, such as `int | bool`, cannot be told apart by `typeof`. An
+  argument declared `int`, `bool` or `char` reports `eType.int` without a run-time test.
 - A scalar that happens to equal a valid object number, or a string or routine address, is reported as
   that reference category. A union mixing a scalar with a reference type, such as `int | string`, must
   be discriminated by the author's own test, then narrowed with a cast.
@@ -2011,18 +2012,18 @@ object tally {
 
 **Description**
 
-Local variables, parameters and `for`-loop variables are checked against the enclosing scopes.
+Local variables, parameters and `for`-loop variables are checked against the enclosing scopes. A local
+may shadow a global; inside its scope the bare name is the local and `::name` (§3.9) is the global.
 
 **Errors.**
-- Shadowing a global variable. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
-  and `grammarToken` are exempt: they name compile-time constants, not runtime storage.
-- Shadowing a registered type name (a class or an enum).
 - Re-declaring a local that an enclosing block still has open, or a parameter of the same function.
   A nested declaration does not shadow the outer name — it shares its storage — so the two must have
   different names. Blocks that do not enclose one another may reuse a name freely; their lifetimes
   do not overlap, and a name is not visible after its block closes.
 
 **Warnings.**
+- Shadowing a global variable, object or type name. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
+  and `grammarToken` are exempt: they name compile-time constants, not runtime storage.
 - Shadowing a direct member of the enclosing class or object, or a member inherited from a base
   class; `self.name` reaches the member.
 - A lambda-local variable shadowing a capturable outer local or parameter (§4.14).
@@ -2047,10 +2048,10 @@ does — so do not shadow something you still mean to call.
 
 ```bgl
 int score = 0;
-class Counter { int n = 0; }
 void foo() {
-    int score = 5;       // error: shadows global
-    int Counter = 0;     // error: shadows class
+    int score = 5;       // warning: shadows global
+    score++;             // the local: 6
+    ::score = score;     // the global: 6
 }
 ```
 
@@ -2093,6 +2094,11 @@ of subclasses such as `room Name asI6 place { }`), and on class and object membe
 the member name. It is ignored on operator methods; on a type declaration (`extern class`,
 `alias class`) or on a free function it is a compile-time error. The usual reason to reach for either
 clause is that the name required on one side is a keyword or reserved word on the other (§15.9).
+
+A member is emitted as an Inform 6 property, and Inform 6 keeps class names and property names in one
+namespace, ignoring case. A member (field, array or method) named like a class that reaches the I6
+output, such as `Box box;` beside `class Box`, is therefore a compile-time error unless `asI6` gives
+the member a different I6 name: `Box box asI6 theBox;`. Beguile source still calls it `box`.
 
 Both clauses cross the language boundary. `alias` never does: `alias class Foo for Bar` (§8.2.4),
 `alias name for Type;` and `alias name = Target;` (§10.2) each introduce a second *Beguile* name for
@@ -3305,7 +3311,7 @@ documented with that feature (`$selfsub`, §15.8). Appendix G is the one-page in
 
 | Token | Replaced with |
 |---|---|
-| `$self` | In an operator or assignment emitter, the receiver expression with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`x` for `x + 1`, `container.children` for `container.children.length()`); a method emitter on `parent` or `attributes` (§11.5) is the exception and receives the owner. Not meaningful in a global emitter. |
+| `$self` | In an operator or assignment emitter, the receiver expression with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`x` for `x + 1`, `container.children` for `container.children.length`); a method emitter on `parent` or `attributes` (§11.5) is the exception and receives the owner. Not meaningful in a global emitter. |
 | `$val` | The full receiver expression as written: `obj.score` for `obj.score + 1`; otherwise identical to `$self`. |
 | `$host` | The object a proxy member (§7.3.2) is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter. For a receiver that is not a member access, `$host` equals `$self`. |
 | `$paramName` | The argument expression supplied for the parameter of that name. |
@@ -3318,7 +3324,7 @@ documented with that feature (`$selfsub`, §15.8). Appendix G is the one-page in
 
 **`$self` and `$host`.** The two differ in which emitters strip the trailing member: `$self` strips
 it only in an operator or assignment emitter, whereas `$host` strips it in a method emitter as well,
-which is how a method on a proxy member reaches the owner. For `container.children.length()`, `$self`
+which is how a method on a proxy member reaches the owner. For `container.children.length`, `$self`
 and `$val` are `container.children` and `$host` is `container`.
 
 **`$target`.** When the emitter's result is assigned (`int r = f();`), `$target` is the left-hand
@@ -3720,25 +3726,29 @@ primitive class intLiteral {
 
 **See also** §2.4 (literal pseudo-types), §5.9.1 (`auto` in `for-in`).
 
-## 7.9 Emitter Methods on Enums and Bnums
+## 7.9 Emitter Members on Enums and Bnums
 
 **Syntax**
 
 ```syntax
-enum ⟨name⟩ { ⟨value⟩, …, emitter ⟨type⟩ ⟨method⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ } }
-extend enum ⟨name⟩ { emitter ⟨type⟩ ⟨method⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ } }
+enum ⟨name⟩ { ⟨value⟩, …, ⟨emitter-member⟩ … }
+extend enum ⟨name⟩ { ⟨emitter-member⟩ … }
+
+⟨emitter-member⟩ ::= emitter ⟨type⟩ ⟨method⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ }
+                   | emitter ⟨type⟩ ⟨property⟩ { ⟨i6-template⟩ }
 ```
 
 **Description**
 
-An enum or bnum value is a bare word, so an enum can host emitter methods: members substituted at the
-call site with `$self` bound to the value and `$paramName` to each argument. They are declared in the
-enum body, or added later with `extend enum`, using the same member form as an emitter class. A
-method may be called on a bare value or on an enum-typed variable, and may be used before the
-declaration that adds it.
+An enum or bnum value is a bare word, so an enum can host emitter members: substituted at the use
+site with `$self` bound to the value and `$paramName` to each argument. An emitter method is called
+with parentheses; an emitter value (§14.4.5) is read as a property, without them. They are declared
+in the enum body, or added later with `extend enum`, using the same member forms as an emitter class.
+A member may be used on a bare value or on an enum-typed variable, and before the declaration that
+adds it.
 
-Only emitter methods may be attached. `operator` overloads, `static` members, plain members, and
-emitter values are compile-time errors in an enum body. A value with methods costs exactly what a
+Only emitter methods and values may be attached. `operator` overloads, `static` members and plain
+members are compile-time errors in an enum body. A value with methods costs exactly what a
 plain value costs, and the methods are not reachable as a nameable type.
 
 **Example**
@@ -3750,13 +3760,14 @@ enum eDirection {
     emitter int plus(int n) { ($self + $n)  }
 }
 extend enum eDirection {
-    emitter int tenfold()   { ($self * 10) }
+    emitter int tenfold     { ($self * 10) }
 }
 
 int a = north.bump();       // → 101
 eDirection d = south;
 int b = d.bump();           // → 102
 int c = east.plus(10);      // → 13
+int e = west.tenfold;       // → 40
 ```
 
 **See also** §2.7 (enumerations).
@@ -3824,42 +3835,9 @@ class Point {
 
 ### 8.1.1 Type Parameters
 
-**Syntax**
-
-```syntax
-class ⟨name⟩<⟨T⟩> [ : ⟨parent⟩ ] { ⟨member⟩ … }
-⟨name⟩<⟨type⟩> ⟨variable⟩ ;
-```
-
-`<` and `>` are literal.
-
-**Description**
-
-A class may declare one type parameter after its name. The parameter is a name scoped to the class
-body and may be used wherever a type is expected in a member declaration: return types, parameter
-types, member-variable types. At a use site the binding is supplied, and every `T` in the relevant
-member's signature is replaced by it, so `Box<Room> b;` gives `b.payload` the type `Room` and rejects
-incompatible writes at compile time. The substitution is purely static.
-
-- Only the first type parameter binds; `<K, V>` parses but only `K` is used.
-- The parameter is not a global type; it exists only inside its declaring class.
-- `extend class Name<…>` and `alias class Name<…>` are compile-time errors; type parameters belong
-  to the original declaration.
-- A binding may be supplied in a declaration but not in inheritance position, where the class-name
-  form is used (`class byteArray : array<char>` is written as a class name).
-
-**Example**
-
-```bgl
-class Box<T> : object {
-    T   payload;
-    int weight;
-}
-Box<Room> roomBox;      // T = Room
-Box<int>  scoreBox;     // T = int
-```
-
-**See also** §12.1 — `array<T>` is the principal client.
+Beguile has no generic classes. The `<T>` form is for array types: `array<T>`, `rawArray<T>` and any
+array class, wherever it is declared (§12.1). `array<Room>` binds `T` to `Room` in the array's method
+signatures, so `rooms.push(lamp)` is rejected when `lamp` is not a `Room`.
 
 ## 8.2 Class Forms
 
@@ -4043,7 +4021,7 @@ primitive class int {
 }
 
 glulxImage cover = eAssets.coverArt;    // a primitive over int accepts the int
-int w = cover.width();                  // behavior without storage
+int w = cover.width;                    // behavior without storage
 ```
 
 ### 8.2.6 Pooled Classes
@@ -5280,6 +5258,7 @@ emitter class myPlatform { int wordsize { WORDSIZE } }
 #using myPlatform
 void Main() { int ws = wordsize; }    // myPlatform.wordsize
 
+#include <glulxWindow>
 #using bgl.glulx
 window myWin;                         // resolves to glulxWindow
 ```
@@ -5653,8 +5632,8 @@ compile-time error: listing an object in two containers' `children`, or listing 
 `children` while it sets `parent` to a different object. Declaring the same link both ways
 (`kitchen.children = { table }` and `table.parent = kitchen`) is accepted.
 
-**Reading.** `obj.children` is a collection: it is iterated with `for … in`, and `.length()` (or its
-synonym `.size()`) returns the number of direct children. It is the live tree, not an array, so it
+**Reading.** `obj.children` is a collection: it is iterated with `for … in`, and `.length` (or its
+synonym `.size`) returns the number of direct children. It is the live tree, not an array, so it
 cannot initialize or be assigned to an `array<object>`; `bgl.world.inParent(obj)` returns one (§21.9).
 
 **Iterating while moving.** `for … in obj.children` reads each child's next sibling before running
@@ -5680,7 +5659,7 @@ object apple {}
 object pear {}
 
 for (object o in kitchen.children) { o.give(seen); }
-int n = kitchen.children.length();
+int n = kitchen.children.length;
 bowl.children += { apple, pear };
 ```
 
@@ -5878,8 +5857,8 @@ the ancestor's type and is always consistent. A member declared `array<T>` or as
 type that disagrees with the hierarchy's.
 
 **Extent and operations.** A contributing member's extent is the total accumulated across every
-layer, so `size()` and `length()` on `r1.name` in the example both answer 3. `size()`, `length()`
-and subscripting work; every operation that needs a length word (`setLength`, `clear`,
+layer, so `size` and `length` on `r1.name` in the example both answer 3. `size`, `length`
+and subscripting work; every operation that needs a length word (assigning `length`, `clear`,
 `append`, `insert`, `prepend`, `remove`, `removeValue`, `push`, `pop`, `dequeue`, `enqueue`,
 `popEnd`, `peek`, `peekEnd`, `indexOf`, `reverse`, `sort`) is a compile-time error on
 such a member.
@@ -5947,7 +5926,7 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 **Description**
 
 A member may be an array. It has the same semantics as any other array: subscripting, `for … in`,
-`length()` and the `<array>` methods (§22.4) behave identically, and element type checking follows
+`length` and the `<array>` methods (§22.4) behave identically, and element type checking follows
 the rules for global arrays (§12.2). A byte-array member (`array<char>`) accepts a string initializer
 or a brace initializer. Storage rules for member arrays, including the Z-machine property-size limit
 and `ref` members, are given in §12.7; the `rawArray<T>` member form is covered in §12.8.3 and its
@@ -6149,8 +6128,8 @@ The element type `T` is mandatory; bare `array` is not a type. `T` may be any ba
 (§12.9). `rawArray<T>` (§12.8) is the untracked form used at the I6 boundary.
 
 The `<array>` extension is loaded by the runtime core, so every array operation is available
-without an explicit `#include <array>`. Subscripting, `size()`, `length()` and `for … in` are built
-in; `setLength()`, `clear()`, value-semantic assignment and the remaining methods (`append`,
+without an explicit `#include <array>`. Subscripting, `size`, `length` and `for … in` are built
+in; assigning `length`, `clear()`, value-semantic assignment and the remaining methods (`append`,
 `indexOf`, `sort`, …) are provided by `<array>` and are cataloged in §22.4.
 
 ## 12.2 Declaring Arrays
@@ -6162,6 +6141,7 @@ array<⟨type⟩> ⟨name⟩[⟨n⟩] ;
 array<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 array<⟨type⟩> ⟨name⟩ = ⟨value⟩ ;
 array<⟨type⟩> ⟨name⟩ ;
+array<⟨type⟩> ⟨name⟩[⟨n⟩] = { ⟨value⟩ , … } ;
 ```
 
 `<`, `>`, `[` and `]` are literal. The first form is a sized array: capacity `⟨n⟩`, zero-initialized,
@@ -6170,7 +6150,9 @@ an integer (§14.2.1), or an integer `#beguilerSettings` property (§17.7). The 
 third is the one-element form of the second: a single value of the element type needs no braces, so
 `array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
 from that array instead; the value's type decides which is meant. The same shorthand applies to a
-list-typed class or object member (§11.5.3, §12.7). The fourth is declared without capacity.
+list-typed class or object member (§11.5.3, §12.7). The fourth is declared without capacity. The fifth
+combines the first two: capacity `⟨n⟩`, length the number of values, the remaining slots zeroed. A list
+longer than `⟨n⟩` is a compile-time error.
 
 **Description**
 
@@ -6195,9 +6177,9 @@ array<Room> visited;
 ```syntax
 ⟨array⟩[⟨index⟩]
 ⟨array⟩[⟨index⟩] = ⟨value⟩
-⟨array⟩ . size ( )
-⟨array⟩ . length ( )
-⟨array⟩ . setLength ( ⟨n⟩ )
+⟨array⟩ . size
+⟨array⟩ . length
+⟨array⟩ . length = ⟨n⟩
 ⟨array⟩ . clear ( )
 ```
 
@@ -6205,22 +6187,23 @@ array<Room> visited;
 
 **Description**
 
-Subscripts are zero-based. `size()` returns the number of elements allocated for the array, whether or
-not those slots hold meaningful values.
+Subscripts are zero-based. `size` is the number of elements allocated for the array, whether or
+not those slots hold meaningful values. It is read-only.
 
 An array also carries an explicit *length*, the count of in-use entries. Length is set at allocation
 (N for an initializer list, 0 for a sized array) and changes only through explicit operations:
-`setLength()`, `clear()`, and the mutators of `<array>` (§22.4). A slot write (`arr[i] = v`) does not
-change length; the array behaves as a buffer with a cursor. `setLength(n)` is range-checked to the
-signed word range of the target; `clear()` zeroes every slot up to `size()` and resets length to 0.
+assigning `length`, `clear()`, and the mutators of `<array>` (§22.4). A slot write (`arr[i] = v`) does
+not change length; the array behaves as a buffer with a cursor. An assigned `length` is limited to
+`size`, and a negative one is a runtime error; `clear()` zeroes every slot up to `size` and resets
+length to 0.
 
 Every traversal in `<array>` (`indexOf()`, `contains()`, `removeValue()`, `sort()`, `first()`,
-`last()`, …) walks the in-use range only; slots beyond `length()` are not searched, sorted or matched.
+`last()`, …) walks the in-use range only; slots beyond `length` are not searched, sorted or matched.
 `clear()` is the one capacity-wide operation. A sized array filled only by slot writes therefore has
-`length() == 0` and reads as empty; use `+=`, `insert()` or `setLength()` to make the slots live.
+`length == 0` and reads as empty; use `+=`, `insert()` or assign `length` to make the slots live.
 
-On an `array<char>` (§12.4), `size()` and `length()` both read the buffer's length word, which starts
-at the declared capacity. On a `rawArray<T>` (§12.8) `size()`, `length()` and `for … in` are
+On an `array<char>` (§12.4), `size` and `length` both read the buffer's length word, which starts
+at the declared capacity. On a `rawArray<T>` (§12.8) `size`, `length` and `for … in` are
 compile-time errors, except that a raw member array reports its property length from both. `isTracked()`
 (§22.4) tells a tracked array from an untracked one.
 
@@ -6231,17 +6214,17 @@ array<int> scores[5];
 
 int x = scores[2];
 scores[0] = 99;
-int n = scores.size();          // → 5
-int used = scores.length();     // → 0: a slot write does not change length
-scores.setLength(1);            // → length() is now 1
+int n = scores.size;            // → 5
+int used = scores.length;       // → 0: a slot write does not change length
+scores.length = 1;              // → length is now 1
 scores.clear();                 // every slot 0, length 0
 ```
 
 **Notes**
 
-> **[Z-machine]** `setLength(n)` accepts 0..32767.
+> **[Z-machine]** `length` accepts 0..32767, and no more than `size`.
 
-> **[Glulx]** `setLength(n)` accepts 0..2^31-1.
+> **[Glulx]** `length` accepts 0..2^31-1, and no more than `size`.
 
 ## 12.4 Byte Arrays — `array<char>`
 
@@ -6343,6 +6326,7 @@ int n = keep[0];                // safe
 ```syntax
 array<⟨type⟩> ⟨name⟩[⟨n⟩] ;
 array<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
+array<⟨type⟩> ⟨name⟩[⟨n⟩] = { ⟨value⟩ , … } ;
 ref array<⟨type⟩> ⟨name⟩ ;
 ```
 
@@ -6351,7 +6335,7 @@ ref array<⟨type⟩> ⟨name⟩ ;
 **Description**
 
 An `array<T>` declared as a class or object member (§8.3.1, §11.8) has the same semantics as any other
-array: `length()`, `append()`, `pop()` and the rest behave identically. Storage is per instance: every
+array: `length`, `append()`, `pop()` and the rest behave identically. Storage is per instance: every
 instance of a class has its own copy of a member array, with the declared capacity and initializer.
 
 | Declared capacity | Storage |
@@ -6413,7 +6397,7 @@ receiving it as a `rawArray<T>` parameter allows ordinary subscript syntax on it
 | | `array<T>` | `rawArray<T>` parameter |
 |---|---|---|
 | Layout | count word, then elements | elements only |
-| `size()` / `length()` | available | unavailable; the length is passed explicitly |
+| `size` / `length` | available | unavailable; the length is passed explicitly |
 | Length tracking | yes | none |
 
 Because a `rawArray<T>` carries no length, `for … in` over a `rawArray<T>` parameter is a compile-time
@@ -6478,7 +6462,7 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 **Description**
 
 A `rawArray<T>` member is a bare property array. It is required for members that contribute to an
-`additive` property, and its `size()`, `length()` and permitted operations on such members are
+`additive` property, and its `size`, `length` and permitted operations on such members are
 specified in §11.7.2.
 
 **Example**
@@ -6504,7 +6488,7 @@ element of `⟨type⟩`.
 
 The element type of an array may itself be an array type, to any depth. A nested initializer supplies
 one braced list per inner array, and the inner arrays may differ in length. `name[i]` is an
-`array<T>` and supports `length()` and the array surface; `name[i][j]` reads or writes an element,
+`array<T>` and supports `length` and the array surface; `name[i][j]` reads or writes an element,
 and `name[i][j].member = v` writes through an object element. `for (array<T> row in name)` iterates
 the outer array with `row` typed `array<T>`. A nested array may be declared as a local. A wrong
 element type or a wrong nesting depth in an initializer is a compile-time error.
@@ -6515,12 +6499,12 @@ element type or a wrong nesting depth in an initializer is a compile-time error.
 array<array<int>> grid = { {1,2,3}, {4,5} };
 
 int v = grid[0][1];                    // 2
-int rows = grid.length();              // 2
-int cols = grid[1].length();           // 2
+int rows = grid.length;              // 2
+int cols = grid[1].length;           // 2
 grid[0][1] = 99;
 int total = 0;
 for (array<int> row in grid) {
-    for (int i = 0; i < row.length(); i++) { total += row[i]; }
+    for (int i = 0; i < row.length; i++) { total += row[i]; }
 }
 ```
 
@@ -6562,6 +6546,7 @@ allocates a second time; the original is not released.
 **Example**
 
 ```bgl
+#include <string>
 array<stringObj> slots[4];
 
 slots += "alpha";                    // the slot allocates and owns
@@ -9320,7 +9305,7 @@ message and halts the story with `quit`, except where stated.
 | Literal-list `for … in` scratch full (§5.9.1) | `[Beguile runtime error: for-in literal-list scratch exhausted]` | Raise `forInScratchSize`. |
 | `<linq>` query step exceeds its buffer (§22.5) | `[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]` (the method name varies) | Raise `linqScratchSize`. |
 | `<linq>` query chains nested more than two deep (§22.5) | `[Beguile runtime error: LINQ chain nesting exceeds _BGL_LINQ_MAXDEPTH. …]` | Capture the inner result in a local first. |
-| `setLength` beyond the word range (§12.3) | `[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]` | — |
+| An array `length` assigned beyond the word range (§12.3) | `[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]` | — |
 | `<string>` pool full (§22.3) | `[ERROR: Unable to allocate a new instance.]` | Raise `bglStringPoolReserve`. |
 | Pooled class full (§8.2.6) | none: `new` returns `nothing` | Test the result of `new`, or size the pool larger. |
 | `bgl.world` result buffer full (§21.9) | none: the walk stops at 128 objects | Narrow the query. |
@@ -9451,7 +9436,7 @@ A program built on an IF library binding does not call `bglInit()` itself: the b
 
 Omitting it does not stop the build and does not stop the program: it runs on uninitialized data, where a sized tracked array reports its raw header word as its length and a sized byte array is still a null pointer. The compiler therefore warns when the program has initialization to do and nothing in the transpiled file calls `bglInit()` (§19.3).
 
-Extensions that need `bglInit()` say so in their entry in §22: `<string>` and `<linq>` do, and so do `<array>` and `<buf>`, whose sized, uninitialized tracked arrays have no length header until it runs: before `bglInit()`, such an array reports its raw header word from `size()` and `length()` and `append` fails; arrays declared with an initializer list are complete at compile time. `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
+Extensions that need `bglInit()` say so in their entry in §22: `<string>` and `<linq>` do, and so do `<array>` and `<buf>`, whose sized, uninitialized tracked arrays have no length header until it runs: before `bglInit()`, such an array reports its raw header word from `size` and `length` and `append` fails; arrays declared with an initializer list are complete at compile time. `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
 
 **Example**
 
@@ -9709,8 +9694,8 @@ void Main() {
 ⟨obj⟩.parent = ⟨newParent⟩ ;
 ⟨obj⟩.parent
 for ( object ⟨name⟩ in ⟨obj⟩.children ) ⟨statement⟩
-⟨obj⟩.children.length()
-⟨obj⟩.children.size()
+⟨obj⟩.children.length
+⟨obj⟩.children.size
 ⟨obj⟩.children += { ⟨obj⟩ , … } ;
 ```
 
@@ -9718,7 +9703,7 @@ for ( object ⟨name⟩ in ⟨obj⟩.children ) ⟨statement⟩
 
 `parentProp` is the type of the `parent` member that every `object` has. Assigning to `obj.parent` *moves* the object in the world tree; reading it yields the parent object; `==` and `!=` compare against an object. The member is `typesealed`: an object body may re-initialize `parent` but not change its type (§8.2.8).
 
-`childrenProp` is the type of the `children` member: the collection of an object's direct children. It is iterable with `for … in`, reports its count with `length()` or `size()` (synonyms here: a world-tree collection has no capacity), is populated in an object body with `children = { … }`, and grows at runtime with `+=`. It is a storageless member: it has no slot of its own and reads the world tree through its owner. The placement rules are in §11.5.
+`childrenProp` is the type of the `children` member: the collection of an object's direct children. It is iterable with `for … in`, reports its count with `length` or `size` (synonyms here: a world-tree collection has no capacity), is populated in an object body with `children = { … }`, and grows at runtime with `+=`. It is a storageless member: it has no slot of its own and reads the world tree through its owner. The placement rules are in §11.5.
 
 **Example**
 
@@ -9728,7 +9713,7 @@ object lamp { parent = cave; }
 
 void Main() {
     lamp.parent = player;                    // move lamp to player
-    int n = cave.children.length();          // 0
+    int n = cave.children.length;          // 0
 }
 ```
 
@@ -10439,15 +10424,15 @@ Every entry below has the same shape: purpose, include line, what it adds, the s
 
 A tracked buf's value behaves as a standard I6 hybrid buffer — the length word first, then the characters — so it can be passed directly to I6 library routines that expect one (`print_to_array`, `glk_put_buffer`, …). `buf[i]` reads and writes character `i` (§12.4). Length and capacity are read and written through the methods below. Writing `buf[i]` does not change the length.
 
-An `array<char>` that is not tracked (an `extern` I6 array, or one created without the tracked layout) answers `size()` and `length()` from the buffer's length word (§12.4), and `isTracked()` returns false.
+An `array<char>` that is not tracked (an `extern` I6 array, or one created without the tracked layout) answers `size` and `length` from the buffer's length word (§12.4), and `isTracked()` returns false.
 
 **Methods on `array<char>`**
 
 | Method | Returns | Description |
 |---|---|---|
-| `buf.size()` | `int` | Capacity in characters; `-1` for an untracked buffer. |
-| `buf.length()` | `int` | Current number of characters. |
-| `buf.setLength(n)` | `void` | Set the current length, limited to `size()` on a tracked buffer. |
+| `buf.size` | `int` | Capacity in characters; `-1` for an untracked buffer. |
+| `buf.length` | `int` | Current number of characters. |
+| `buf.length = n` | | Set the current length, limited to `size` on a tracked buffer. |
 | `buf.isTracked()` | `bool` | True for a tracked buf. |
 
 **Buffer operations, `bgl.util.buf`**
@@ -10482,24 +10467,25 @@ Every operation takes the buffer as its first argument. Operations that return `
 ```bgl
 #include <buf>
 array<char> line[64];
+array<char> word[16];
 
 void Main() {
     bglInit();
     bgl.util.buf.set(line, "hello");
-    bgl.util.buf.append(line, " world");
+    bgl.util.buf.set(word, " world");
+    bgl.util.buf.append(line, word);   // append takes a buffer; set takes a literal too
     bgl.util.buf.toUpper(line);
-    bgl.util.buf.print(line);        // → HELLO WORLD
-    print(line.length());            // → 11
+    bgl.util.buf.print(line);          // → HELLO WORLD
+    print(line.length);                // → 11
 }
 ```
 
 **Settings**
 
-`bglStringDefaultSize` (default `500`) is the capacity used for capture into an untracked buffer and for the pool buffers of `<string>`. It is an I6 constant, set before the include:
+`bglStringDefaultSize` (default `500`) is the capacity used for capture into an untracked buffer and for the pool buffers of `<string>`. It is an I6 constant; the runtime core loads `<buf>` before your code, so set it in an `#emitfirst` block (§14.4.2):
 
 ```bgl
-#i6 { Constant bglStringDefaultSize 800; }
-#include <buf>
+#emitfirst { Constant bglStringDefaultSize 800; }
 ```
 
 **Notes**
@@ -10561,7 +10547,7 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 | `s.delete(pos, count)` | `stringObj` | With `count` characters removed at `pos`. |
 | `s.replace(search, repl)` / `s.replaceAll(search, repl)` | `stringObj` | With the first / every occurrence replaced. |
 | `s.format(pattern[, p1[, p2]])` | `stringObj` | `pattern` with `$0` replaced by `s` and `$1`, `$2` by the arguments. |
-| `s.getLength()` | `int` | Number of characters. |
+| `s.length` | `int` | Number of characters. |
 | `s.compareTo(other[, caseInsensitive])` | `int` | `-1`, `0` or `1`; the form a sort comparator needs. |
 | `s.indexOf(search)` | `int` | Position of the first occurrence, or `-1`. |
 | `s.startsWith(prefix)` / `s.endsWith(suffix)` / `s.contains(search)` | `bool` | Substring tests. |
@@ -10620,7 +10606,7 @@ Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by
 
 **Description**
 
-The runtime core loads `<array>` automatically, so an explicit `#include <array>` is never required; the built-in part of the surface is subscripting, `size()` and `length()` (§12.3). `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
+The runtime core loads `<array>` automatically, so an explicit `#include <array>` is never required; the built-in part of the surface is subscripting, `size` and `length` (§12.3). `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
 
 Methods that take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`: an argument of an incompatible type is a compile-time error. Where a method needs an operation of `T` — equality, ordering, assignment, release — it uses the one `T` publishes, or the plain word semantics when `T` publishes none; the contract is specified in §12.10.
 
@@ -10628,17 +10614,17 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 
 | Method | Returns | Description |
 |---|---|---|
-| `length()` | `int` | The number of elements in use. It is set at allocation (the element count for a list initializer, `0` for a sized declaration) and changed only by the operations below. On an untracked `extern` array it returns `size()`. |
-| `setLength(n)` | `void` | Set the length. A negative `n` is a runtime error. No effect on an untracked array. |
+| `length` | `int` | The number of elements in use. It is set at allocation (the element count for a list initializer, `0` for a sized declaration) and changed only by the operations below. On an untracked `extern` array it reads as `size`. |
+| `length = n` | | Set the length, at most `size`. A negative `n` is a runtime error. No effect on an untracked array. |
 | `isTracked()` | `bool` | True for a Beguile-declared array with length tracking; false for an I6-native `extern` array. |
-| `indexOf(item)` / `find(item)` | `int` | First index of `item` in `0..length()-1`, or `-1`. |
+| `indexOf(item)` / `find(item)` | `int` | First index of `item` in `0..length-1`, or `-1`. |
 | `contains(item)` | `bool` | True when `item` is present. |
-| `clear()` | `void` | Zero every slot up to `size()`, releasing owned elements, and set the length to `0`. |
+| `clear()` | `void` | Zero every slot up to `size`, releasing owned elements, and set the length to `0`. |
 | `swap(pos1, pos2)` | `void` | Exchange two elements. Indices must be in range. |
-| `reverse()` | `void` | Reverse the elements `0..length()-1` in place. |
-| `append(item)` | `bool` | Add at position `length()`. False when the array is full. |
+| `reverse()` | `void` | Reverse the elements `0..length-1` in place. |
+| `append(item)` | `bool` | Add at position `length`. False when the array is full. |
 | `prepend(item)` | `bool` | Insert at position `0`, shifting the rest right. False when full. |
-| `insert(pos, item)` | `bool` | Insert at `pos` (`0..length()`), shifting the rest right. False when full or `pos` is out of range. |
+| `insert(pos, item)` | `bool` | Insert at `pos` (`0..length`), shifting the rest right. False when full or `pos` is out of range. |
 | `remove(pos)` | `void` | Remove the element at `pos`, shifting the rest left. Out of range: no effect. |
 | `removeValue(item)` | `void` | Remove every element equal to `item`. |
 | `arr = { a, b }` | `void` | Replace the contents: `clear()`, then append each element of the list. |
@@ -10651,7 +10637,7 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 | `dequeue()` | `T` | Remove and return the front element; `0` when empty. |
 | `peekEnd()` | `T` | The back element without removing it; `0` when empty. |
 | `popEnd()` | `T` | Remove and return the back element; `0` when empty. |
-| `sort()` | `void` | Sort `0..length()-1` ascending in place, by `T`'s ordering operator or, when it has none, by signed word value. |
+| `sort()` | `void` | Sort `0..length-1` ascending in place, by `T`'s ordering operator or, when it has none, by signed word value. |
 | `sort(compare)` | `void` | Sort with a comparator `func<int, T, T>` returning `-1`, `0` or `1`. |
 
 `push`, `peek` and `pop` operate at the front of the array; `enqueue`, `peekEnd` and `popEnd` at the back. The sort is stable.
@@ -10696,13 +10682,13 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 |---|---|---|
 | `filter(pred)` | `array<T>` | The elements for which `pred(elem)` is true. `pred` is `func<bool, T>`. |
 | `map(f)` | `array<var>` | `f(elem)` for each element. `f` is `func<var, T>`; the result is `array<var>` because the mapper's result type is not tracked. |
-| `take(n)` / `skip(n)` | `array<T>` | The first `n` elements / all but the first `n`. `n` is limited to `0..length()`. |
+| `take(n)` / `skip(n)` | `array<T>` | The first `n` elements / all but the first `n`. `n` is limited to `0..length`. |
 | `takeWhile(pred)` / `skipWhile(pred)` | `array<T>` | Elements up to the first for which `pred` is false / from that element on. |
 | `distinct()` | `array<T>` | The first occurrence of each value. |
 | `orderBy()` | `array<T>` | A sorted copy, by signed word value; the source is unchanged. |
 | `orderBy(compare)` | `array<T>` | A sorted copy using `func<int, T, T>`. |
 | `first()` / `last()` | `T` | The first / last element; `0` when empty. |
-| `count()` | `int` | The same as `length()`. |
+| `count()` | `int` | The same as `length`. |
 | `any(pred)` | `bool` | True when some element satisfies `pred`; false on an empty array. |
 | `all(pred)` | `bool` | True when every element satisfies `pred`; true on an empty array. |
 
@@ -10803,7 +10789,7 @@ Glk arranges the screen as a binary tree of windows: a window is never resized d
 
 The types are also reachable as `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow` and `bgl.glulx.graphicsWindow`. Windows derive from `_bglObject`, not from `object`: they are not world-tree objects and have no `parent`, `children` or attributes.
 
-Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13), and so does a split the interpreter refuses (a graphics window where it has no graphics): either way the result is `null`, so `?.` or a `null` test guards the window's use.
+Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13), and so does a split the interpreter refuses (a graphics window where it has no graphics) or one from a window that isn't open (a status bar never given a height): in each case the result is `null`, so `?.` or a `null` test guards the window's use.
 
 ### 22.7.2 Roots
 
@@ -11033,10 +11019,10 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 
 | Member | Returns | Description |
 |---|---|---|
-| `img.width()` / `img.height()` | `int` | Natural pixel dimensions. |
-| `img.size()` | `bglSize` | Both dimensions (§21.12). |
+| `img.width` / `img.height` | `int` | Natural pixel dimensions. |
+| `img.size` | `bglSize` | Both dimensions (§21.12). |
 
-The same three members are added to the `eImages` enum, so `eImages.logo.width()` works without a handle.
+The same three are added to the `eImages` enum (§7.9), so `eImages.logo.width` works without a handle.
 
 **Example**
 
@@ -11045,8 +11031,8 @@ The same three members are added to the `eImages` enum, so `eImages.logo.width()
 
 void Main() {
     glulxImage cover = eImages.coverArt;
-    int w = cover.width();
-    pic.drawImage(cover, 0, 0, cover.width() / 2);
+    int w = cover.width;
+    pic.drawImage(cover, 0, 0, cover.width / 2);
 }
 ```
 
@@ -11696,9 +11682,9 @@ and unrecognized `##name` text, passes through to the output unchanged. Full rul
 
 | Token | Meaning | See |
 |---|---|---|
-| `$self` | In an operator or assignment emitter, the receiver with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`container.children` for `container.children.length()`). Not meaningful in a global emitter. | §7.3 |
+| `$self` | In an operator or assignment emitter, the receiver with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`container.children` for `container.children.length`). Not meaningful in a global emitter. | §7.3 |
 | `$val` | The full receiver expression as written: `obj.score` for `obj.score + 1`; otherwise the same as `$self`. | §7.3 |
-| `$host` | The object a proxy member is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter (`container` for `container.children.length()`); equals `$self` when the receiver is not a member access. | §7.3, §7.3.2 |
+| `$host` | The object a proxy member is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter (`container` for `container.children.length`); equals `$self` when the receiver is not a member access. | §7.3, §7.3.2 |
 | `$name` | The argument supplied for the parameter declared as `name`. | §7.3 |
 | `$target` | The assignment target as a full lvalue path, or a compiler-supplied temporary in statement position. Its presence makes the body responsible for the store. | §7.3.2 |
 | `$prop` | In an `array<T>` emitter, the property name of an object-member array; `0` for a global array. | §7.3, §12.7 |
@@ -11773,7 +11759,7 @@ section with the full treatment.
 - **resolved type** — The static type the compiler assigns to an expression, which drives operator resolution, type checking and emitter dispatch. See §4.1.
 - **re-list** — `inline name;` in a class body or `extend`: makes an existing member positional at that point in the class's order, without redeclaring it. See §8.3.5.
 - **routine** — An I6 callable. A Beguile **function** compiles to a routine. See §6.1.
-- **size vs. length** — For a Beguile array, `size()` is the capacity reserved at compile time; `length()` is the runtime count of in-use elements. See §12.3.
+- **size vs. length** — For a Beguile array, `size` is the capacity reserved at compile time; `length` is the runtime count of in-use elements. See §12.3.
 - **source file** — A file the compiler reads: a `.bgl` file, or an `.inf` file in precompiler mode. See §3.1, §15.1.
 - **statement** — An executable unit inside a function body, ending in `;` or a `{ }` block. See §5.1.
 - **static instance** — An instance declared at file scope (`Name m;`, or an object declaration) and allocated once for the program, as opposed to a pooled instance obtained with `new` or an instance local to a routine. See §8.2.6, §11.2.
@@ -11810,8 +11796,8 @@ include, §21), an extension (`<name>`, §22) or a binding (§23). *Section* is 
 specified. Overloads share one row; a family of names that differ only in a suffix is listed once
 with the suffix spelled out. Names of the `bgl` namespace are listed under `bgl.…`.
 
-`<array>` is loaded by the core, so its methods need no include; `length()` is built in, `setLength()`
-and `clear()` come from `<array>`.
+`<array>` is loaded by the core, so its methods need no include; `size` and `length` are built in,
+and assigning `length` and `clear()` come from `<array>`.
 
 | Name | Kind | Provided by | Section |
 | --- | --- | --- | --- |
@@ -11946,7 +11932,6 @@ and `clear()` come from `<array>`.
 | `float` | type | core (Glulx) | §2.3 |
 | `format(pattern[, p1[, p2]])` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `func<…>` | type | core | §2.9 |
-| `getLength()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `gg_mainwin`, `gg_statuswin`, … | variable (Glulx window globals) | binding (`i6StandardLibrary`) | §23.2 |
 | `give(attr)`, `ungive(attr)` | method on `object`, `attributeList` | core | §21.5.1, §11.5.3 |
 | `glulxImage` | type (primitive class) | `<glulxImage>` | §22.8 |
@@ -11976,8 +11961,9 @@ and `clear()` come from `<array>`.
 | `isRoutine()` | method on `stringOrRoutine` | binding | §21.5.10 |
 | `isTracked()` | method on `array<T>` | `<array>` | §22.4 |
 | `itobj`, `himobj`, `herobj` | variable (pronoun objects) | binding | §23.4 |
-| `length()` | method on `array<T>` | core; `<array>` | §12.3, §22.4 |
-| `length()`, `size()` | method on `children` | core | §11.5.2, §21.5.7 |
+| `length` | property on `array<T>` (assignable with `<array>`) | core; `<array>` | §12.3, §22.4 |
+| `length` | property on `string`, `stringObj` (read-only) | `<string>` | §22.3 |
+| `length`, `size` | property on `children` (read-only) | core | §11.5.2, §21.5.7 |
 | `light`, `container`, `scenery`, `static`, … (library attributes) | value (`attribute`) | binding | §23.3.4 |
 | `location`, `player`, `actor`, `score`, `turns` | variable (extern) | binding | §23.3.4 |
 | `log(v)` | function | core | §21.4 |
@@ -12021,13 +12007,13 @@ and `clear()` come from `<array>`.
 | `reverse()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `selected_direction`, `selected_direction_index` | variable (extern) | binding (`punyInform`) | §23.4 |
 | `setBackgroundColor(color)` | method on `graphicsWindow` | `<glulxWindow>` | §22.7.5 |
-| `setLength(n)` | method on `array<T>` | core; `<array>` | §12.3, §22.4 |
 | `setStyle(styleType, style {…})`, `clearStyle(styleType)` | method on the text window types, the roots, `bgl.ui.screen` | `<glulxWindow>` | §22.7.7 |
 | `short_name` | member on `object` | library bindings | §21.4, §23.3.4 |
 | `instanceName` | member on `_bglObject` (`inline const string`) | core | §8.3.5, §11.5.4 |
-| `size()` | method on `array<T>` | core | §12.3 |
-| `size()` | method on `glulxImage`, `eImages` | `<glulxImage>` | §22.8 |
-| `size()`, `length()`, `setLength(n)`, `isTracked()` | method on `array<char>` | `<buf>` | §22.2 |
+| `size` | property on `array<T>` (read-only) | core | §12.3 |
+| `size` | property on `glulxImage` (read-only); method `size()` on `eImages` | `<glulxImage>` | §22.8 |
+| `size`, `length` | property on `array<char>` (`length` assignable) | `<buf>` | §22.2 |
+| `isTracked()` | method on `array<char>` | `<buf>` | §22.2 |
 | `sort([compare])` | method on `array<T>` | `<array>` | §22.4 |
 | `splitUpGrid()` … `splitRightBuffer()` (12 combinations of direction and kind) | method on `window`, the roots | `<glulxWindow>` | §22.7.3 |
 | `startsWith(prefix)`, `endsWith(suffix)`, `contains(search)` | method on `string`, `stringObj` | `<string>` | §22.3 |
@@ -12058,7 +12044,7 @@ and `clear()` come from `<array>`.
 | `verb` | type | core | §13.2, §21.5.4 |
 | `void` | type | core | §2.2 |
 | `width` | member on `window`, the roots | `<glulxWindow>` | §22.7.4 |
-| `width()`, `height()` | method on `glulxImage`, `eImages` | `<glulxImage>` | §22.8 |
+| `width`, `height` | property on `glulxImage` (read-only); methods `width()`, `height()` on `eImages` | `<glulxImage>` | §22.8 |
 | `window` | type | `<glulxWindow>` | §22.7.1 |
 
 ---
@@ -12083,7 +12069,7 @@ is specified in the section named in the last column; this table does not add li
 | Ternary operators per statement | 1 | both | §4.9 |
 | Member types in a named union | at least 2 | both | §2.8.2 |
 | Integer literal in an `array<char>` initializer or element write | 0..255 | both | §12.4 |
-| `setLength(n)` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
+| Assigned array `length` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
 | Include nesting depth | 255 | both | §14.1.6, §18.4 |
 | Compile-time errors reported per build; the first ends the build | 1 | both | §19.1, §16.7 |
 | Elements in a literal-list `for (x in {…})` (`forInScratchSize`) | 31 by default; at least 1 | both | §17.4, §5.9.1 |

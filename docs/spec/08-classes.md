@@ -73,42 +73,9 @@ class Point {
 
 ### 8.1.1 Type Parameters
 
-**Syntax**
-
-```syntax
-class ⟨name⟩<⟨T⟩> [ : ⟨parent⟩ ] { ⟨member⟩ … }
-⟨name⟩<⟨type⟩> ⟨variable⟩ ;
-```
-
-`<` and `>` are literal.
-
-**Description**
-
-A class may declare one type parameter after its name. The parameter is a name scoped to the class
-body and may be used wherever a type is expected in a member declaration: return types, parameter
-types, member-variable types. At a use site the binding is supplied, and every `T` in the relevant
-member's signature is replaced by it, so `Box<Room> b;` gives `b.payload` the type `Room` and rejects
-incompatible writes at compile time. The substitution is purely static.
-
-- Only the first type parameter binds; `<K, V>` parses but only `K` is used.
-- The parameter is not a global type; it exists only inside its declaring class.
-- `extend class Name<…>` and `alias class Name<…>` are compile-time errors; type parameters belong
-  to the original declaration.
-- A binding may be supplied in a declaration but not in inheritance position, where the class-name
-  form is used (`class byteArray : array<char>` is written as a class name).
-
-**Example**
-
-```bgl
-class Box<T> : object {
-    T   payload;
-    int weight;
-}
-Box<Room> roomBox;      // T = Room
-Box<int>  scoreBox;     // T = int
-```
-
-**See also** §12.1 — `array<T>` is the principal client.
+Beguile has no generic classes. The `<T>` form is for array types: `array<T>`, `rawArray<T>` and any
+array class, wherever it is declared (§12.1). `array<Room>` binds `T` to `Room` in the array's method
+signatures, so `rooms.push(lamp)` is rejected when `lamp` is not a `Room`.
 
 ## 8.2 Class Forms
 
@@ -186,6 +153,7 @@ be present or omitted. `extern class Name[N]` with an explicit size is a compile
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extern class object {
     parentProp    parent;
@@ -216,6 +184,7 @@ which is only called by name.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 emitter class celsius {
     fahrenheit operator(){ $val * 9 / 5 + 32 }
@@ -286,13 +255,14 @@ sometimes called *veneer classes*.
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 primitive class int {
     emitter int operator + (int v){ $val + $v }
 }
 
 glulxImage cover = eAssets.coverArt;    // a primitive over int accepts the int
-int w = cover.width();                  // behavior without storage
+int w = cover.width;                    // behavior without storage
 ```
 
 ### 8.2.6 Pooled Classes
@@ -457,6 +427,7 @@ are owned (§8.3.4).
 **Example**
 
 ```bgl
+object lamp {}  object key {}
 class Inventory : object {
     array<int>    slots[6];
     array<object> heldRefs = { lamp, key };
@@ -486,8 +457,8 @@ class Config {
     const int    maxScore = 100;
     const string title    = "My Game";
 }
-Config config { }
-config.maxScore = 200;      // compile-time error
+Config gameConfig { }
+gameConfig.maxScore = 200;  // compile-time error
 ```
 
 ### 8.3.3 `static` Members
@@ -600,7 +571,7 @@ Pet rex { "rex", 3; }
 class A : object { inline int a1; int n; }
 class B : A { inline int b1; }
 extend class A { inline int a2; inline n; }   // A: a1, a2, n
-B x { 1, 2, 3, 4, "the x"; }                   // b1, a1, a2, n, name
+B item { 1, 2, 3, 4, "the item"; }             // b1, a1, a2, n, name
 ```
 
 ## 8.4 Methods
@@ -780,6 +751,7 @@ a compile-time error. `replace` on a member that does not exist is a warning, an
 
 **Example**
 
+<!-- doctest: skip -->
 ```bgl
 extend class stringObj {
     replace emitter stringObj operator = (stringLiteral v){ $self.setFromLit($v); }
@@ -852,7 +824,7 @@ that does not hide it reaches it, whether by upcast or by passing the value to a
 **Example**
 
 ```bgl
-class dim {                           // a getter and a setter (§9.9.1)
+value class dim {                     // a getter and a setter (§9.9.1)
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v; }

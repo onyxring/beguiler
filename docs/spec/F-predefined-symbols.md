@@ -23,6 +23,7 @@ Having no value, neither can be used in a Beguile expression — `#if TARGET_ZCO
 like any other bare symbol (§14.2.5). A finer question, such as Z5 versus Z8, is a question about the
 `target` *setting*, which `#if` reads directly:
 
+<!-- doctest: skip -->
 ```bgl
 #if #beguilerSettings.target == "z8"
 ```

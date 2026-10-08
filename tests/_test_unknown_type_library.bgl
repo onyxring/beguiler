@@ -1,0 +1,4 @@
+// A library extension's type used without its include names the include to add.
+// EXPECT_ERROR: declared by the library extension <string>: add `#include <string>`
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ stringObj s; }

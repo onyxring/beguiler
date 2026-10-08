@@ -46,20 +46,20 @@ array<char> bufSmall[16];
 void exerciseLength(){
     // size — both surfaces, both bufs
     int szA  = _bglBuf.size(bufA);
-    int szA2 = bufA.size();
-    int szB  = bufB.size();
-    int szS  = bufSmall.size();
+    int szA2 = bufA.size;
+    int szB  = bufB.size;
+    int szS  = bufSmall.size;
 
     // setLength — both surfaces, with clamp behavior implicit
     _bglBuf.setLength(bufA, 0);
-    bufA.setLength(5);
-    bufB.setLength(10);
-    bufSmall.setLength(1);
+    bufA.length = 5;
+    bufB.length = 10;
+    bufSmall.length = 1;
 
     // length — both surfaces
     int lenA = _bglBuf.length(bufA);
-    int lenA2 = bufA.length();
-    int lenB = bufB.length();
+    int lenA2 = bufA.length;
+    int lenB = bufB.length;
 
     // isTracked — both surfaces
     bool trA = _bglBuf.isTracked(bufA);
@@ -121,7 +121,7 @@ void exerciseCopy(){
 // must compile cleanly.
 // ─────────────────────────────────────────────────────────────────────────────
 void exerciseStream(){
-    _bglBuf.capture(bufA);                // default size = bufA.size()
+    _bglBuf.capture(bufA);                // default size = bufA.size
     _bglBuf.capture(bufB, 32);            // explicit max
     int depthAfterCapture = _bglBuf.stackLen();
     _bglBuf.release();

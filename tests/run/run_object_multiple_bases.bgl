@@ -1,0 +1,19 @@
+/*  run_object_multiple_bases — `object dog : object, Animal, Robot { … }` declares an object with
+    several bases, as a class may. An object has one class, so the bases go on a class of its own.  */
+// EXPECT_OUTPUT: shaggy dog 10 1 rex 3
+#beguilerSettings { target = z5; informName = "none"; }
+class Robot  { int power; }
+class Animal { string short_name; void describe() { print(short_name); } }
+object hall { "hall"; }
+object dog : object, Animal, Robot {
+    short_name = "shaggy dog";
+    power = 10;
+}
+object rex : Animal, Robot { short_name = "rex"; power = 3; }
+void main(){
+    bglInit();
+    dog.describe(); print($" {dog.power} ");
+    dog.parent = hall;
+    if (dog.parent == hall) print("1 ");
+    rex.describe(); print($" {rex.power}");
+}

@@ -191,7 +191,7 @@ message and halts the story with `quit`, except where stated.
 | Literal-list `for … in` scratch full (§5.9.1) | `[Beguile runtime error: for-in literal-list scratch exhausted]` | Raise `forInScratchSize`. |
 | `<linq>` query step exceeds its buffer (§22.5) | `[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]` (the method name varies) | Raise `linqScratchSize`. |
 | `<linq>` query chains nested more than two deep (§22.5) | `[Beguile runtime error: LINQ chain nesting exceeds _BGL_LINQ_MAXDEPTH. …]` | Capture the inner result in a local first. |
-| `setLength` beyond the word range (§12.3) | `[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]` | — |
+| An array `length` assigned beyond the word range (§12.3) | `[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]` | — |
 | `<string>` pool full (§22.3) | `[ERROR: Unable to allocate a new instance.]` | Raise `bglStringPoolReserve`. |
 | Pooled class full (§8.2.6) | none: `new` returns `nothing` | Test the result of `new`, or size the pool larger. |
 | `bgl.world` result buffer full (§21.9) | none: the walk stops at 128 objects | Narrow the query. |

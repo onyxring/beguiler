@@ -1,0 +1,18 @@
+/*  run_i6_keyword_names — globals named like I6 statement keywords.
+
+    `jump.handler();` or `box.n` at the start of a statement read as I6's `jump`/`box` statements. Such a
+    global gets an emitted name that can't; a verb keeps its action name, so its routine is still `JumpSub`.  */
+// EXPECT_OUTPUT: 3 4 jumped
+#beguilerSettings { target = z5; informName = "none"; }
+object box { "box"; int n = 3; }
+int spaces(int x) { return x + 1; }
+verb Jump {
+    grammar = { {.jump} };
+    void handler() { print("jumped"); }
+}
+void main(){
+    bglInit();
+    box.n = box.n;
+    print($"{box.n} {spaces(3)} ");
+    Jump.handler();
+}

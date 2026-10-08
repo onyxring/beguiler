@@ -252,6 +252,9 @@ class bglParser {
         // A global routine and a member emitted as a property may not share a name (ignoring case):
         // Inform 6 keeps both in one namespace.
         void validateRoutinePropertyClashes();
+        // A Beguile-declared global named like an I6 statement keyword (`jump`, `move`, …) would read as
+        // that statement wherever it starts one; give it an emitted name that can't.
+        void renameI6KeywordNames();
         // Reject a length-changing array operation on a RAW member array (rawArray<T> or
         // array<dictionaryWord>), whose extent is fixed by the property that holds it.
         bool rejectRawMemberLengthOp(const std::string& owner, const std::string& prop,
@@ -279,6 +282,8 @@ class bglParser {
         void emitOpenBlockCleanups(statementBlock* body);
         bool parsingError(string);   //called when there is an error, to output the error message and the place in the code where it appeared
         void parsingWarning(string); //like parsingError but continues parsing
+        // `T name` where T is not a declared type: names the library include that declares T, if any.
+        void unknownTypeError(const token& typeTok);
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
         void defineSymbol(const string& name, const string& value = ""){ definedSymbols[name] = value; }
         // Like defineSymbol but immutable (the `#declare` path): user code cannot #define/#redef it.
@@ -495,6 +500,14 @@ class bglParser {
         int anonObjectCounter = 0;          // counter for unique _bglAnonN inline-object names
         int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
+        // Every `continue` parsed, with the loopDepth it belongs to — a do loop whose condition needs
+        // set-up retargets its own to run that set-up first.
+        vector<pair<int, class i6RawNode*>> parsedContinues;
+        int doTestLabelCounter = 0;
+        // A loop condition whose evaluation needs statements first (a `?.` test, a ternary temp):
+        // those must run before EVERY test, so the condition moves into the body as
+        // `setup; if (~~cond) break;` and the loop tests `true`.
+        void moveConditionIntoBody(expression*& condition, vector<statement*> setup, statementBlock* loopBody);
         set<string> currentLoopVars;        // names of active for-loop init variables (for capture warnings)
         int ternaryDepth = 0;               // nesting depth of ternary expressions (max 1)
 
@@ -615,6 +628,7 @@ class bglParser {
             bool lhsIsRefLocal = false;     // the target is a `ref` slot (pointer-copy assign)
             bool lhsIsByteArray = false;    // the target is an array<char> (byteArray)
             string emitterSelf;             // $self for the target's operator= emitter
+            string emitterProp;             // $prop for it, when the owner is an array (see arrayReceiver)
             classDef* classType = nullptr;  // class used for operator= dispatch
             classDef* ancestorCast = nullptr;   // `(Base)x = v;`: Base, a strict ancestor of x's class
         };
@@ -657,7 +671,19 @@ class bglParser {
         // `name(args);` — binds a global function call statement.
         void bindGlobalCallStatement(functionCallStatement& callStmt, token tok, string& chainReturnType, StatementContext& sc);
         // `…().m1().m2();` — folds chained `.method()` suffixes into the call statement, up to `;`.
-        void parseMethodChain(functionCallStatement& callStmt, string& chainReturnType, StatementContext& sc);
+        // Returns true when the chain ended in a member write (`f().n = v`), which it parsed and emitted.
+        bool parseMethodChain(functionCallStatement& callStmt, string& chainReturnType, StatementContext& sc);
+        bool dispatchPathStatement(token tok, token symbol, StatementContext& sc);
+        // A member emitted as an I6 property under a class's I6 name: Inform 6 keeps classes and
+        // properties in one namespace, ignoring case, so it is an error (rename it, or `asI6`).
+        void rejectMemberNamedLikeClass(const string& name, const string& shown);
+        // `++`/`--` whose target begins with a call or subscript, finished when that path reaches `;`.
+        optional<token> pendingPrefixOp;
+        bool finishPrefixIncDec(token op, token varName, StatementContext& sc);
+        // A write through a computed receiver (`arr[i].n += v`, `f().n = v`): binds the receiver to a
+        // hidden local and handles `local.member <op> …` as an ordinary path statement.
+        string bindReceiverLocal(const string& recvText, const string& recvType, StatementContext& sc);
+        bool dispatchWriteThroughReceiver(const string& recvText, const string& recvType, token memberTok, StatementContext& sc);
         bool processDirective(token, abstractObject& = emptyContainer);
         // One handler per directive; processDirective's switch is the dispatch table over these.
         bool processDirectiveUnrecognized(token directive);                          // shared tail: no case matched, or a case bailed out
@@ -704,6 +730,8 @@ class bglParser {
             token cur;                          // token being processed this iteration
             optional<token> prefetched;         // a token a sub-parse produced that the loop must see next
             string castType;  // set when a (TypeName) cast prefix is detected
+            // `<expr>?.member`: the receiver already parsed into expr, for parseExprOptionalChain.
+            string chainRecvText, chainRecvType;
             // When a cast prefix is followed by '(', the cast applies to the result of the
             // parenthesized expression, not to the first identifier inside. Push castType
             // onto this stack on parenOpen and pop/apply on the matching parenClose. The
@@ -928,6 +956,23 @@ class bglParser {
                                   functionDef* func, statementBlock* body);
         bool splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                   string& ownerOut, string& propOut);
+        // The I6 property name for a member: its `asI6` alias, else a name clear of a global variable
+        // of the same name (I6 keeps globals and properties in one namespace), else "" for its own.
+        string memberI6NameFor(const string& name, const string& i6alias, bool ownerIsExtern);
+        // `qualified` (the emitted form of `written`, a dotted member path) with its last member renamed
+        // to the property name the member is emitted under.
+        string withMemberI6Name(const string& written, string qualified, functionDef* func, statementBlock* body);
+        // How an array receiver is addressed. A member word array (`obj.prop`, or a bare member name)
+        // is reached through its owner and property (`$self`/`$prop` = owner, prop); anything else is
+        // the array itself with a 0 sentinel. A `ref` member holds a pointer, so it is a value too.
+        // `objName` is the receiver's emitted text and may be rewritten (a ref member's read).
+        struct ArrayReceiver { bool isMember = false; string owner, prop; };
+        ArrayReceiver arrayReceiver(string& objName, const string& rawObjName, const string& objType,
+                                    functionDef* func, statementBlock* body);
+        // `size`/`length` of a member word array, read straight from its property layout: core
+        // can't route through _bglArray, which exists only with <array>.
+        string memberArraySizeText(const ArrayReceiver& r, const string& which,
+                                   functionDef* func, statementBlock* body);
         // `$elemop(<op>)` — the element type's implementation of one operator, as either a
         // free-routine name (static) or a property name (instance), or "0". Callers tell the
         // two apart at runtime via metaclass()==Routine.
@@ -1003,7 +1048,13 @@ class bglParser {
         // Substitute a property-class member's `operator()` read emitter with $self = objText,
         // returning the emitted text (e.g. `parent(<objText>)`) and, via outRetType, the emitter's
         // return type. Returns "" when memberType isn't a property-class. Generic — no member name.
-        string applyPropertyClassRead(const string& objText, const string& memberType, string& outRetType);
+        string applyPropertyClassRead(const string& objText, const string& memberType, string& outRetType,
+                                      const ArrayReceiver* arr = nullptr);
+        // `recv.member` where member is an emitter value on the receiver's type (§7.6): its body
+        // expanded with the receiver bound, as for an emitter method. "" when it isn't one.
+        string expandMemberValueEmitter(string objText, const string& rawRecv, const string& recvType,
+                                        const string& memberName, functionDef* func, statementBlock* body,
+                                        string& outRetType);
         // Fluent property-class read chain: IDENT.m1.m2… (head + >=2 members, ALL property-classes of
         // the running type) → nested reads, e.g. `obj.parent.parent` → `parent(parent(obj))`. Peek-only
         // until it commits; returns false (consuming nothing) if the path isn't a pure property-class
@@ -1011,6 +1062,12 @@ class bglParser {
         bool tryConsumePropertyClassReadChain(token first, functionDef* func, statementBlock* body,
                                               string& outEmission, string& outType);
         void applyArgConversions(vector<expression*>& args, functionDef* fd);
+        // A value going where `targetType` is expected (an initializer, an assignment, a return) runs the
+        // value's implicit `operator ()` to that type, unless the target takes the value as it is.
+        bool applyImplicitConversion(expression* e, const string& targetType);
+        // A verb named as a value (`action = Take`, `{ Drop, … }`) is its I6 action constant `##Take`.
+        // A verb-typed variable, and the library's action-holding globals, stay as they are.
+        bool applyActionConstant(expression* e);
         bool applyAssignOperatorAsValue(expression* e, const string& targetType);
         void checkReturnValue(expression* e, const string& returnType, const string& fnName);
         void checkClasslessAssignable(const expression* value, const string& targetType, const string& what);
@@ -1057,6 +1114,13 @@ class bglParser {
         // emitters and retries on each converted type. If a conversion succeeds, typeName is updated
         // in-place to the converted type name so the caller can substitute it.
         MethodMatch resolveMethodWithConversion(string& typeName, const string& objPath, const string& methodName, const vector<expression*>& args, const string& elementType = "");
+        // resolveMethod for a call whose arguments may be named: binds them to the matching overload's
+        // parameters (reordering `args`, filling defaults) and resolves again.
+        // A member of type `memberType` whose class declares a regular-method `operator ()` getter: the
+        // getter (non-emitter, non-explicit, non-void) to call on a bare read, or nullptr.
+        functionDef* nativeGetterOf(const string& memberType);
+        MethodMatch resolveMethodNamed(const string& typeName, const string& objPath, const string& methodName,
+                                       vector<expression*>& args, vector<string>& namedArgNames);
 
         // Shared argument list parsing: reads comma-separated expressions from stream (assumes '(' already consumed).
         // Returns parsed args, named arg names, and per-arg interpolated segments.

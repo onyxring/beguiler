@@ -50,7 +50,7 @@ object _bglArray
        isTracked [obj prop hdr;
      if(metaclass(obj)==object) rfalse; 
     hdr = self.rawget(obj,0);
-    return self.rawget(obj,hdr)==36996&&self.rawget(obj,hdr-1)>=0;
+    return self.rawget(obj,hdr)==36996 && self.rawget(obj,hdr-1)>=0;
   ],
        size [obj prop;
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
@@ -66,13 +66,17 @@ object _bglArray
     }
     return self.rawget(obj,0);
   ],
-       setLength [obj prop n;
+       setLength [obj prop n cap;
+    if (n < 0) {
+        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+         quit; 
+    }
+    cap=self.size(obj,prop);
+    if (n > cap) {
+        n=cap;
+    }
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     if (self.istracked(obj,prop)) {
-        if (n < 0) {
-            print (string)"^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-             quit; 
-        }
         self.set(obj, prop, self.size(obj,prop), n);
     }
   ],
@@ -275,7 +279,7 @@ object bgl
 ;
 constant MAX = 100;
 constant TITLE = "Test";
-constant RAW_MSG = "raw \n stays literal and \t too";
+constant RAW_MSG = "raw @@92n stays literal and @@92t too";
 constant RAW_WITH_QUOTE = "has a ""quoted"" word";
 [main a b c s ch flag autoInt autoChar i j;
     a = 5;

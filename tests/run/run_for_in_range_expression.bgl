@@ -1,0 +1,12 @@
+/*  run_for_in_range_expression — a range's bounds are any expressions (§5.9.1).
+
+    A lower bound that is a plain variable (`start to …`) was rejected: `to` was read as a second
+    identifier juxtaposed with `start`, though the range parse had asked to stop there.  */
+// EXPECT_OUTPUT: 101112 345
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){
+    int start = 10; int count = 3;
+    for (int i in start to start + count - 1) print(i);
+    print(" ");
+    for (int j in count to count + 2) print(j);
+}

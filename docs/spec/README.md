@@ -137,7 +137,7 @@ appendices are for lookup.
   - [7.6 Emitter Values](07-emitters.md#76-emitter-values)
   - [7.7 Emitter Namespaces](07-emitters.md#77-emitter-namespaces)
   - [7.8 `operator auto()`](07-emitters.md#78-operator-auto)
-  - [7.9 Emitter Methods on Enums and Bnums](07-emitters.md#79-emitter-methods-on-enums-and-bnums)
+  - [7.9 Emitter Members on Enums and Bnums](07-emitters.md#79-emitter-members-on-enums-and-bnums)
   - [7.10 Emitters and Functions Compared](07-emitters.md#710-emitters-and-functions-compared)
 - [8 Classes](08-classes.md)
   - [8.1 Class Declaration](08-classes.md#81-class-declaration)

@@ -54,11 +54,7 @@ extend extern class array {
     // Tracked-aware overrides of the core's raw `$val-->0` size/length.
     // Probe a magic marker stamped by the compiler when `<array>` is included.
     /// How many elements the array can hold. Fixed at declaration.
-    replace emitter int  size()           { _bglArray.size($self, $prop) }
-    /// How many elements are in use. `append` and friends move it; `size()` does not change.
-    replace emitter int  length()         { _bglArray.length($self, $prop) }
-    /// Set the in-use count directly. Growing it exposes slots that were never written.
-    emitter void setLength(int n)         { _bglArray.setLength($self, $prop, $n) }
+    replace emitter int  size             { _bglArray.size($self, $prop) }
     /// True when this array carries a length separate from its capacity. A `rawArray` does not.
     emitter bool isTracked()              { _bglArray.isTracked($self, $prop) }
 
@@ -144,6 +140,14 @@ extend extern class array {
     /// Sort with your own comparison, which returns <0, 0 or >0 like `<=>`.
     emitter void sort(func<int, T, T> compare)     { _bglArray.sort($self, $prop, $compare) }
 
+}
+
+/// With `<array>`, an array's `length` is assignable: set it to say how many elements are in use.
+extend extern class arrayLength {
+    /// How many elements are in use. `append` and friends move it; `size` does not change.
+    replace emitter int  operator()       { _bglArray.length($self, $prop) }
+    /// Set how many elements are in use, at most `size`. Growing it exposes slots that were never written.
+    emitter void operator = (int n)       { _bglArray.setLength($self, $prop, $n) }
 }
 
 
@@ -239,12 +243,14 @@ object _bglArray {
     }
 
     void setLength(var obj, var prop, int n){
+        if(n < 0){
+            print("^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^");
+            #i6 { quit; }   // I6 control; no Beguile equivalent yet
+        }
+        int cap = size(obj, prop);
+        if(n > cap) n = cap;   // never past capacity: later reads would walk off the end
         #i6 { if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } }
         if(isTracked(obj, prop)){
-            if(n < 0){
-                print("^[Beguile runtime error: setLength value exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^");
-                #i6 { quit; }   // I6 control; no Beguile equivalent yet
-            }
             // length slot = element index size() of the raw allocation.
             set(obj, prop, size(obj, prop), n);
         }
@@ -454,7 +460,7 @@ object _bglArray {
     // project_array_deque_naming memory for the rationale.
 
     void push(var obj, var prop, var val){
-        insert(obj, prop, 0, val);   // bool result intentionally discarded; full-array detection is via .length()/.size()
+        insert(obj, prop, 0, val);   // bool result intentionally discarded; full-array detection is via .length/.size
     }
 
     var pop(var obj, var prop){

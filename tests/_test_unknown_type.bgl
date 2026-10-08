@@ -1,0 +1,5 @@
+// A declaration whose type is not declared anywhere says so, rather than "Illegal global identifier".
+// EXPECT_ERROR: Unknown type 'Thingy': no class, enum or union of that name is declared
+#beguilerSettings { target = z5; informName = "none"; }
+Thingy t;
+void main(){ }

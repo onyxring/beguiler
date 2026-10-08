@@ -459,7 +459,7 @@ bool bglParser::directiveInclude(token directive, abstractObject& contextObj){
     }
     if(next.isString()){
         // Quoted form: search source dir + bglIncludePaths for a .bgl file
-        string includeName = next.value;
+        string includeName = next.literalText();
         if(includeName.size() >= 2 && includeName.front()=='"' && includeName.back()=='"')
             includeName = includeName.substr(1, includeName.size()-2);
         if(includeNameSpansLines(includeName)){
@@ -667,7 +667,7 @@ bool bglParser::directiveIncludeI6(token directive, abstractObject& contextObj){
         i6Optional = true;
     }
     token filename = file.getToken({eTokenType::quote, eTokenType::rawQuote});
-    string innerPath = filename.value;
+    string innerPath = filename.literalText();
     if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
         innerPath = innerPath.substr(1, innerPath.size()-2);
     if(includeNameSpansLines(innerPath)){
@@ -738,6 +738,10 @@ bool bglParser::directiveDefine(token directive, abstractObject& contextObj){
     while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
     token val = file.getBasicToken(true);
     string valStr;
+    // A trailing comment is not the value (`#define CHEATS   // on`).
+    if(val.is(eTokenType::comment)){
+        while(val.isNot("\n") && val.isNot(eTokenType::eof)) val = file.getBasicToken(true);
+    }
     if(val.isNot("\n") && val.isNot(eTokenType::eof)){
         valStr = val.value;
         // consume rest of line
@@ -769,6 +773,10 @@ bool bglParser::directiveDeclare(token directive, abstractObject& contextObj){
     while(file.peekChar() == ' ' || file.peekChar() == '\t') file.readChar();
     token val = file.getBasicToken(true);
     string valStr;
+    // A trailing comment is not the value (`#define CHEATS   // on`).
+    if(val.is(eTokenType::comment)){
+        while(val.isNot("\n") && val.isNot(eTokenType::eof)) val = file.getBasicToken(true);
+    }
     if(val.isNot("\n") && val.isNot(eTokenType::eof)){
         valStr = val.value;
         token rest = file.getBasicToken(true);
@@ -1135,20 +1143,20 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         }
         case chk("#message"):{
             token msg = file.getToken({eTokenType::quote, eTokenType::rawQuote});
-            string text = msg.value;
+            string text = msg.literalText();
             if(text.size()>=2 && text.front()=='"' && text.back()=='"') text = text.substr(1,text.size()-2);
             cout << text << endl;
             return false;
         }
         case chk("#error"):{
             token msg = file.getToken({eTokenType::quote, eTokenType::rawQuote});
-            string text = msg.value;
+            string text = msg.literalText();
             if(text.size()>=2 && text.front()=='"' && text.back()=='"') text = text.substr(1,text.size()-2);
             return parsingError(text);
         }
         case chk("#warning"):{
             token msg = file.getToken({eTokenType::quote, eTokenType::rawQuote});
-            string text = msg.value;
+            string text = msg.literalText();
             if(text.size()>=2 && text.front()=='"' && text.back()=='"') text = text.substr(1,text.size()-2);
             parsingWarning(text);
             return false;
@@ -1231,7 +1239,7 @@ bool bglParser::processBeguilerSettings(){
 
         string strVal = val.value;
         if(val.isString()){
-            strVal = val.unescape(val.value);
+            strVal = val.is(eTokenType::rawQuote) ? val.literalText() : val.unescape(val.value);
             if(strVal.size() >= 2 && strVal.front() == '"' && strVal.back() == '"')
                 strVal = strVal.substr(1, strVal.size() - 2);
         }

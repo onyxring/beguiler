@@ -1,0 +1,20 @@
+/*  run_verb_as_value — a verb named as a value is its action constant, and compares through a member.
+
+    `{ Wave, … }` and `action = Wave;` stored the verb's object (or, in a library game, an undefined
+    constant `wave`) where an action belongs; they now store `##Wave`, as a call argument already did.
+    `r.act == Wave` compared the OWNER `r` with the action: the verb's `==` used `$self`, which for a
+    member read is the object that holds it.  */
+// EXPECT_OUTPUT: same differs ok
+#beguilerSettings { target = z5; informName = "none"; }
+verb Wave { grammar = { {.wave} }; void handler() { print("waved"); } }
+verb Clap { grammar = { {.clap} }; void handler() { print("clapped"); } }
+class rule : object { inline verb act; inline int n; }
+rule r1 = { Wave, 3 };
+rule r2 { act = Clap; n = 4; }
+void main(){
+    bglInit();
+    if (r1.act == Wave) print("same ");
+    if (r2.act != Wave) print("differs ");
+    verb v = Clap;
+    if (v == r2.act) print("ok");
+}

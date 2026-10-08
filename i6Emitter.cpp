@@ -155,6 +155,8 @@ string i6Emitter::resolvedOutput(){
             std::cerr << "WARNING: nothing calls bglInit(), so this program starts with the BLR "
                          "uninitialized.\n";
     }
+    for(size_t p = 0; (p = buf.find(kGlobalEscapeMarker, p)) != string::npos; )
+        buf.erase(p, strlen(kGlobalEscapeMarker));
     return buf;
 }
 
@@ -415,8 +417,9 @@ static string mapOutsideLiterals(const string& text, const std::function<string(
     return mapped;
 }
 
-// Bracket each frame slot (`_bglFrm-->N`) that an adjacent ++/-- or unary -/~ would otherwise bind
-// to: those all bind tighter than `-->`, so `_bglFrm-->3++` increments the 3, not the slot.
+// Bracket each frame slot (`_bglFrm-->N`) that an adjacent ++/--, unary -/~, call `(` or property
+// `.` would otherwise bind to: those all bind tighter than `-->`, so `_bglFrm-->3++` increments the 3
+// and `_bglFrm-->1()` calls routine 1, not the slot.
 static string groupFrameSlots(string text){
     static const string slot = "_bglFrm-->";
     size_t pos = 0;
@@ -425,7 +428,8 @@ static string groupFrameSlots(string text){
         while(end < text.size() && isdigit((unsigned char)text[end])) end++;
         size_t r = end; while(r < text.size() && text[r] == ' ') r++;
         size_t l = pos; while(l > 0 && text[l-1] == ' ') l--;
-        bool group = text.compare(r, 2, "++") == 0 || text.compare(r, 2, "--") == 0;
+        bool group = text.compare(r, 2, "++") == 0 || text.compare(r, 2, "--") == 0
+                  || (r < text.size() && (text[r] == '(' || text[r] == '.'));
         if(!group && l >= 2 && (text.compare(l-2, 2, "++") == 0 || text.compare(l-2, 2, "--") == 0)) group = true;
         if(!group && l >= 1 && (text[l-1] == '-' || text[l-1] == '~')){
             size_t b = l - 1; while(b > 0 && text[b-1] == ' ') b--;
@@ -891,7 +895,7 @@ void i6Emitter::buildLocalRenameMap(functionDef* fd){
     if(!body) return;
     set<string> propNames;
     collectDottedAccessNames(body, propNames);
-    if(propNames.empty()) return;
+    if(propNames.empty() && fd->globalEscapes.empty()) return;
     // Names referenced verbatim inside a raw `#i6` block can't be rewritten (raw I6 is emitted
     // as-is), so renaming them in the header/body would desync from that raw reference. Leave such
     // names raw — I6 lets a routine local safely shadow a property of the same name, so this is
@@ -902,7 +906,7 @@ void i6Emitter::buildLocalRenameMap(functionDef* fd){
     // Preserve original-case (display name) inside the mangled form for readability.
     auto maybeRename = [&](const string& canonical, const string& display){
         if(currentLocalRenames.count(canonical)) return;
-        if(!propNames.count(canonical)) return;
+        if(!propNames.count(canonical) && !fd->globalEscapes.count(canonical)) return;
         if(rawTextHasWord(rawI6, canonical)) return;   // verbatim in raw I6 → keep the raw name
         const string& shown = display.empty() ? canonical : display;
         currentLocalRenames[canonical] = "_l_" + shown;
@@ -956,7 +960,11 @@ string i6Emitter::spillName(const string& name){
     auto rn = currentLocalRenames.find(name);
     if(rn != currentLocalRenames.end()) return rn->second;
     auto dn = currentDisplayNames.find(name);
-    return (dn != currentDisplayNames.end()) ? dn->second : name;
+    if(dn != currentDisplayNames.end()) return dn->second;
+    // A path (`l.n`, `arr-->i`): rename the locals inside it.
+    if(any_of(name.begin(), name.end(), [](char c){ return !(isalnum((unsigned char)c) || c == '_'); }))
+        return spillWord(name);
+    return name;
 }
 
 // Word-boundary substitution of all spill aliases AND local renames in a raw string
@@ -2435,6 +2443,7 @@ void i6Emitter::emitAssignment(assignmentStatement* assign, const string& indent
         // Substitute params before $self to avoid double-substitution when param name matches the LHS variable
         b=replaceOperand(b,"$" + assign->emitterParam, assign->assignedExpression != nullptr ? exprText(assign->assignedExpression) : "");
         b=replaceWord(b,"$self", assign->emitterSelf.empty() ? spillName(assign->variableLeft) : spillName(assign->emitterSelf));
+        if(!assign->emitterProp.empty()) b=replaceWord(b,"$prop", assign->emitterProp);
         b=replaceWord(b,"$val",  spillName(assign->variableLeft));
         b=replaceWord(b,"$target", spillName(assign->variableLeft));
         while(!b.empty() && b.back()==';') b.pop_back();
@@ -2511,7 +2520,7 @@ void i6Emitter::emitFunctionCallStatement(functionCallStatement* call, const str
                 call->interpSegmentsPerArg[interpArgIdx], indent);
         } else {
             while(!b.empty() && b.back()==';') b.pop_back();
-            out << indent << b << ";\n";
+            out << indent << spillWord(b) << ";\n";   // locals the body names directly (a member-array owner)
         }
     } else {
         // On Z-machine, args beyond the 5th are passed via _bglXPn globals — but ONLY for
@@ -2530,7 +2539,9 @@ void i6Emitter::emitFunctionCallStatement(functionCallStatement* call, const str
         // convention as dName() for declared symbols. displayName is empty for
         // resolved Beguile calls, so they continue to emit lowercase as before.
         const string& emitName = call->displayName.empty() ? call->functionName : call->displayName;
-        out << indent << spillWord(emitName) << token::parenOpen;
+        string callee = spillWord(emitName);
+        if(callee.rfind("_bglFrm-->", 0) == 0) callee = "(" + callee + ")";   // a call binds tighter than -->
+        out << indent << callee << token::parenOpen;
         for(size_t i = 0; i < maxDirectArgs; i++){
             if(i>0) out << ", ";
             out << exprText(call->args[i]);
@@ -3684,7 +3695,8 @@ void i6Emitter::emitObjectGlobalDeclarationEmitter(objectDef* obj, const string&
 string body = obj->objectClass->globalDeclarationBody;
 size_t s = body.find_first_not_of(" \t\n\r"); if(s != string::npos) body = body.substr(s);
 size_t e = body.find_last_not_of(" \t\n\r");  if(e != string::npos) body = body.substr(0, e+1);
-body = replaceWord(body, "$selfsub", objI6Name + "sub");
+// The action routine is named for the action, which keeps the verb's own name (`BoxSub` for `-> Box`).
+body = replaceWord(body, "$selfsub", (obj->i6nameAvoidsKeyword ? obj->dName() : objI6Name) + "sub");
 body = replaceWord(body, "$self",    objI6Name);
 body = replaceWord(body, "$val",     objI6Name);
 out << body << "\n";
@@ -3831,6 +3843,26 @@ void i6Emitter::synthesizeChildrenPlacement(){
             placedParent[child] = container;
         }
     }
+    // An object's own `parent = x` is a positional parent too, and x may be declared after it.
+    {
+        map<string, objectDef*> byI6;
+        for(auto& [name, od] : byName){
+            string n = od->i6name.empty() ? od->dName() : od->i6name;
+            transform(n.begin(), n.end(), n.begin(), ::tolower);
+            byI6[n] = od;
+        }
+        for(auto& [name, child] : byName){
+            if(placedParent.count(child)) continue;
+            for(typeMember* m : child->members){
+                auto* vd = dynamic_cast<variableDeclaration*>(m);
+                if(!vd || vd->name != "parent" || !vd->declaredExpressionValue) continue;
+                string p = vd->declaredExpressionValue->text();
+                transform(p.begin(), p.end(), p.begin(), ::tolower);
+                if(auto it = byI6.find(p); it != byI6.end() && it->second != child) placedParent[child] = it->second;
+                break;
+            }
+        }
+    }
     if(placedParent.empty()) return;
 
     // I6 requires a positional parent to be DEFINED before the child that names it. A container is
@@ -3838,12 +3870,17 @@ void i6Emitter::synthesizeChildrenPlacement(){
     // container. Dependency-respecting and stable: non-placed objects keep their relative order, and a
     // container pulled earlier drags in its own container first (nested rooms/containers).
     vector<typeDef*> reordered;
-    set<typeDef*> emitted;
+    set<typeDef*> emitted, visiting;
     std::function<void(typeDef*)> place = [&](typeDef* g){
         if(emitted.count(g)) return;
         if(auto* od = dynamic_cast<objectDef*>(g)){
             auto pit = placedParent.find(od);
-            if(pit != placedParent.end()) place(pit->second);   // container first
+            if(pit != placedParent.end()){
+                if(!visiting.insert(od).second)
+                    throw runtime_error(format("'{0}' is its own ancestor: its `parent` chain leads back to it.", od->dName()));
+                place(pit->second);   // container first
+                visiting.erase(od);
+            }
         }
         if(emitted.insert(g).second) reordered.push_back(g);
     };

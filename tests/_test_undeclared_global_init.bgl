@@ -1,0 +1,5 @@
+// A global initializer naming nothing declared is rejected (it reached I6 as an unknown constant).
+// EXPECT_ERROR: Undeclared identifier 'zzz'
+#beguilerSettings { target = z5; informName = "none"; }
+int g = zzz;
+void main(){ }

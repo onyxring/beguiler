@@ -1,0 +1,5 @@
+// EXPECT_ERROR: emitter value 'twice' is already defined; use 'replace'
+#beguilerSettings { target = z5; informName = "none"; }
+class Foo : object { int w; emitter int twice { $self.w * 2 } }
+extend class Foo { emitter int twice { $self.w + $self.w } }
+void main(){ }

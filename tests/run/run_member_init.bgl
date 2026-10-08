@@ -72,7 +72,7 @@ object cyc { Cycle top; }
 void main(){
     bglInit();
     print("member: ");          print(j.label);              print("^");
-    print("member length: ");   print(j.label.getLength());  print("^");
+    print("member length: ");   print(j.label.length);  print("^");
 
     j.label = "trout";                                       // operator= into the MEMBER
     print("member assigned: "); print(j.label);              print("^");

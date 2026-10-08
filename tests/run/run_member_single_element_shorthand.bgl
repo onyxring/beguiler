@@ -20,5 +20,5 @@ void main() {
     if(lamp.has(lit)) print("lamp lit, ");
     if(crate.has(opened)) print("box open, ");
     if(widget.name[0] == .widget) print("word ok, ");
-    print($"count {widget.name.length()}, nums {tally.nums[0]}/{tally.nums.length()}");
+    print($"count {widget.name.length}, nums {tally.nums[0]}/{tally.nums.length}");
 }

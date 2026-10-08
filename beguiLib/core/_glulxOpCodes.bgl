@@ -142,6 +142,7 @@ superposed class bglOpCodes {
 
     //-- I/O -------------------------------------------------------------------
     emitter void streamchar(int ch)      { @streamchar $ch; }      /// Print the character `ch` (`@streamchar`).
+    emitter void streamchar(char ch)     { @streamchar $ch; }      /// Print the character `ch` (`@streamchar`).
     emitter void streamnum(int n)        { @streamnum $n; }        /// Print `n` as a signed number (`@streamnum`).
     emitter void streamstr(int addr)     { @streamstr $addr; }     /// Print the string at `addr` (`@streamstr`).
     emitter void streamunichar(int ch)   { @streamunichar $ch; }   /// Print the Unicode character `ch` (`@streamunichar`).
